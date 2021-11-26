@@ -1,0 +1,3 @@
+[submodule "source/sexp/test/sexp_parser"]
+	path = source/sexp/test/sexp_parser
+	url = https://github.com/realthunder/sexp_parser.git
