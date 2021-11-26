@@ -52,6 +52,9 @@ def _cleanparsed(parsed):
 
     # remove line numbers
     parsed = parsed[1:]
+    for i,obj in enumerate(parsed):
+        if type(obj) is str and re.match('^".+"$', obj) is not None:
+            parsed[i] = obj[1:-1]
     # recurse
     parsed = tuple(map(_cleanparsed, parsed))
 
@@ -110,8 +113,11 @@ def _test_net2py2net(netfilepath):
         print("Not equal")
         if eq_str:
             print("But strings are equal")
-        print("Source:", netsexpparsed)
-        print("Gen:", netsexpgenparsed)
+        else:
+            print("\tSourceStr:\t", netsexpcleaned)
+            print("\tGen   Str:\t",netsexpgen)
+        print("\tSource   :\t", netsexpparsed)
+        print("\tGen      :\t", netsexpgenparsed)
 
     return eq
 
@@ -155,8 +161,8 @@ def test_sexp():
                 "version": "D",
                 "design": {
                     "source": "/home/...",
-                    "date": '"Sat 13 ..."',
-                    "tool": '"Eeschema"',
+                    "date": 'Sat 13 ...',
+                    "tool": 'Eeschema',
                     "sheet": {
                         "number": "1",
                         "name" : "/",
@@ -195,4 +201,6 @@ def test_sexp():
     ok = _test_net2py2net("main.net")
     print("net2py2net:", ok)
 
+
+    # TODO test empty dicts,lists,tuples,...
 

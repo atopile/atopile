@@ -3,6 +3,7 @@
 
 import logging
 from typing import Iterable
+import re
 
 logger = logging.getLogger("sexp")
 
@@ -32,7 +33,10 @@ def gensexp(obj):
         return None
 
     if not _expandable(obj):
-        return str(obj)
+        strrepr = str(obj)
+        if re.search("[ ()]", strrepr) is not None:
+            strrepr = f'"{strrepr}"'
+        return strrepr
 
     # Recursion
     # TODO: key with empty val
@@ -42,13 +46,15 @@ def gensexp(obj):
         obj = obj.items() 
 
     sexp = " ".join(
-        filter(lambda x: x is not None, 
+        filter(lambda x: 
+                x is not None and
+                len(x) > 0,
             map(gensexp, obj)
         )
     )
 
     # if not dict [i.e. list, tuple], add parantheses
-    if type(obj) in [list, tuple] : #type({}.items()):
+    if type(obj) in [list, tuple] and len(obj) > 0: #type({}.items()):
         sexp = "({})".format(sexp)    
     
     #logger.info("%s -> %s", str(obj), sexp)
