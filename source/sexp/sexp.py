@@ -10,7 +10,7 @@ logger = logging.getLogger("sexp")
 class multi_key_dict:
     def __init__(self, *args,**kwargs):
         self.dict_ = kwargs
-        self.tuple_list = args
+        self.tuple_list = list(args)
 
     def items(self):
         for i in self.tuple_list:
@@ -18,8 +18,19 @@ class multi_key_dict:
         for i in self.dict_.items():
             yield i
 
+    def update(self, tuple_list, dict_):
+        self.tuple_list = []
+        self.dict_ = {}
+        if tuple_list is not None:
+            self.tuple_list = tuple_list
+        if dict_ is not None:
+            self.dict_ = dict_
+
     def __repr__(self):
         return repr(list(self.items()))
+
+    def __len__(self):
+        return len(self.tuple_list) + len(self.dict_)
 
 def _expandable(obj):
     return type(obj) in [dict, list, tuple, multi_key_dict]
