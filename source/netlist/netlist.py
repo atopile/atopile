@@ -2,6 +2,7 @@ import datetime
 import time
 import version
 import pprint
+import itertools
 
 from sexp import sexp
 
@@ -13,18 +14,18 @@ def _gen_node(ref, pin):
     }}
 
 def _gen_net(code, name, nodes):
-    return {"net": {
-        "code": code,
-        "name": name,
-        "nodes": sexp.multi_key_dict(*nodes),
-    }}
+    return {"net": sexp.multi_key_dict(
+        ("code", code),
+        ("name", name),
+        *nodes,
+    )}
 
 def _gen_library(logical, uri):
     return {"library": {
         "logical": logical,
         "uri": uri,
     }}
-    
+
 def _gen_footprint(fp):
     return {"fp": fp}
 
@@ -50,14 +51,13 @@ def _gen_libpart(lib, part, description, docs, footprints, fields, pins):
     }}
 
 def _gen_comp(
-        value, footprint, datasheet, fields, 
+        ref, value, footprint, datasheet, fields,
         libsource_lib, libsource_part, libsource_description,
-        sheetpath_names, sheetpath_tstamps, 
+        sheetpath_names, sheetpath_tstamps,
         tstamp
     ):
-    if fields is None:
-        fields = []
-    base = {"comp": {
+    return {"comp": {
+        "ref": ref,
         "value": value,
         "footprint": footprint,
         "datasheet": datasheet,
@@ -74,26 +74,19 @@ def _gen_comp(
         "tstamp": tstamp
     }}
 
-    if fields == []:
-        del base["comp"]["fields"]
-    
-    if footprint is None:
-        del base["comp"]["footprint"]
-
-    return base
-
 def _gen_comment(number, value):
     return {"comment": {
                 "number": number,
                 "value": value,
         }}
 
-def _gen_netlist(version, source, date, tool, 
+def _gen_netlist(version, source, date, tool,
         sheet_number, sheet_name, sheet_tstamps,
         title_block_title, title_block_company, title_block_rev, title_block_date, title_block_source, title_block_comments,
         components, libparts, libraries, nets
     ):
-    return {"export": {
+
+    return _clean_none_and_empty({"export": {
                 "version": version,
                 "design": {
                     "source": source,
@@ -109,12 +102,12 @@ def _gen_netlist(version, source, date, tool,
                             ("rev",title_block_rev),
                             ("date",title_block_date),
                             ("source", title_block_source),
-                            _sublist(_gen_comment, 
-                                [{"number": k+1, "value": v} for k,v in 
+                            _sublist(_gen_comment,
+                                [{"number": k+1, "value": v} for k,v in
                                     enumerate(title_block_comments)
                                 ]
                             )
-                            
+
                         )
                     }
                 },
@@ -122,7 +115,9 @@ def _gen_netlist(version, source, date, tool,
                 "libparts":     _list(_gen_libpart, libparts),
                 "libraries":    _list(_gen_library, libraries),
                 "nets":         _list(_gen_net,     nets),
-            }}
+            }})
+
+
 
 
 # Compositions ----------------------------------------------------------------
@@ -133,108 +128,152 @@ def _list(generator_function, obj_list):
 
 def _sublist(generator_function, obj_list):
     #return tuple(map(lambda x: generator_function(**x), obj_list))
-    return tuple(obj_list)
-    
+    return [y for x in obj_list for y in x.items()]
+
+def _clean_none_and_empty(obj,rd=0):
+    #print("\t"*rd+"Clean:", type(obj), obj)
+    new_obj = obj
+    if obj is None:
+        return None
+    if type(obj) is dict:
+        new_obj = obj.copy() #shallow
+        for k,v in obj.items():
+            v_ = _clean_none_and_empty(v,rd+1)
+            if v_ is None:
+                del new_obj[k]
+                continue
+            new_obj[k] = v_
+    elif type(obj) is sexp.multi_key_dict:
+        new_obj.update(
+            tuple_list=_clean_none_and_empty(obj.tuple_list,rd+1),
+            dict_ = _clean_none_and_empty(obj.dict_,rd+1)
+        )
+    elif type(obj) is list:
+        new_obj = list(filter(lambda x: x is not None, map(_clean_none_and_empty, obj)))
+    elif type(obj) is tuple:
+        new_obj = tuple(filter(lambda x: x is not None, map(_clean_none_and_empty, obj)))
+        if len(new_obj) == 1:
+            new_obj = ()
+    else:
+        return new_obj
+    if len(new_obj) == 0:
+        new_obj = None
+
+    #print("\t"*rd+"Cleaned:", new_obj)
+    return new_obj
+
+
 # Helper ----------------------------------------------------------------------
-def _defaulted_netlist(source,
-        components,libparts,libraries,nets):
+def _defaulted_netlist(components,nets):
     #date = datetime.datetime.now().strftime("%a %d %b %Y %H:%M:%S %Z")
-    date = datetime.datetime.now().strftime("%c %z")
+    #date = datetime.datetime.now().strftime("%c %z")
 
     return _gen_netlist(
         version="D",
-        source=source,
-        date=date,
-        tool="faebryk {}".format(version.version()),
-        sheet_number="1",
-        sheet_name="/",
-        sheet_tstamps=date,
-        title_block_title="<Title>",
-        title_block_company="<Company>",
-        title_block_rev="<Rev>",
-        title_block_date=date,
-        title_block_source="<Source>",
-        title_block_comments=[
-            "<Comment 1>", 
-            "<Comment 2>", 
-            "<Comment 3>", 
-            "<Comment 4>",
-        ],
+        source=None,
+        date=None,
+        tool=None,#"faebryk {}".format(version.version()),
+        sheet_number=None,
+        sheet_name=None,
+        sheet_tstamps=None,
+        title_block_title=None,
+        title_block_company=None,
+        title_block_rev=None,
+        title_block_date=None,
+        title_block_source=None,
+        title_block_comments=[],
         components=components,
-        libparts=libparts,
-        libraries=libraries,
+        libparts=[],
+        libraries=[],
         nets=nets,
     )
+
+def _defaulted_comp(ref, value, footprint, tstamp):
+    return _gen_comp(
+        ref=ref,
+        value=value,
+        footprint=footprint,
+        datasheet=None,
+        fields=[],
+        libsource_lib=None,
+        libsource_part=None,
+        libsource_description=None,
+        sheetpath_names=None,
+        sheetpath_tstamps=None,
+        tstamp=tstamp,
+    )
+
 
 
 # Test stuff ------------------------------------------------------------------
 
 
 def make_test_netlist():
-    timestamp = "{:X}".format(int(time.time()))
 
-    resistor_comp = _gen_comp(
+    # Footprint pins are just referenced by number through netlist of symbol
+
+    # We only need
+    #   - components
+    #       - ref
+    #       - value (for silk)
+    #       - footprint
+    #       - tstamp (uuid gen)
+    #   - nets
+    #       - code (uuid gen)
+    #       - name
+    #       - nodes
+    #           - ref (comp)
+    #           - pin (of footprint)
+
+    # Careful comps need distinct timestamps
+    tstamp = itertools.count(1)
+
+    resistor_comp = _defaulted_comp(
+        ref="R1",
         value="R",
         footprint="Resistor_SMD:R_0805_2012Metric",
-        datasheet="~",
-        fields=None,
-        libsource_lib="Device",
-        libsource_part="R",
-        libsource_description="Resistor",
-        sheetpath_names="/",
-        sheetpath_tstamps="/",
-        tstamp=timestamp,
+        tstamp=next(tstamp),
+    )
+    resistor_comp2 = _defaulted_comp(
+        ref="R2",
+        value="R",
+        footprint="Resistor_SMD:R_0805_2012Metric",
+        tstamp=next(tstamp),
     )
 
-    resistor_part = _gen_libpart(
-        lib="Device",
-        part="R",
-        description="Resistor",
-        docs="~",
-        footprints=[_gen_footprint("R_*")],
-        fields=[
-            _gen_field("Reference", "R"),
-            _gen_field("Value", "R")
-        ],
-        pins=[
-            _gen_pin(num=1, name="~", type="passive"),
-            _gen_pin(num=2, name="~", type="passive")
-        ],
-    )
-
-    device_library = _gen_library(
-        logical="Device",
-        uri='C:\\Program Files\\KiCad\\share\\kicad\\library/Device.lib'
-    )
-    
     device_nets = [
         _gen_net(
             code=1,
-            name="+3V3",
+            name="GND",
             nodes=[
                 _gen_node(
-                    ref="R101",
-                    pin="pin 1"
-                )
+                    ref="R1",
+                    pin=2,
+                ),
+                _gen_node(
+                    ref="R2",
+                    pin=2,
+                ),
             ],
         ),
         _gen_net(
             code=2,
-            name="GND",
+            name="+3V3",
             nodes=[
                 _gen_node(
-                    ref="R101",
-                    pin="pin 2"
-                )
+                    ref="R1",
+                    pin=1,
+                ),
+                _gen_node(
+                    ref="R2",
+                    pin=1,
+                ),
             ],
         ),
     ]
-    
+
     netlist = _defaulted_netlist(
-        source="N/A Source",
-        components=[resistor_comp],
-        libparts=[resistor_part],
-        libraries=[device_library],
+        components=[resistor_comp, resistor_comp2],
         nets=[*device_nets],
     )
 
