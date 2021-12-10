@@ -1,5 +1,7 @@
 import networkx as nx
 
+from util import hashable_dict
+
 # 0. netlist = graph
 
 #TODO add name precendence
@@ -13,38 +15,13 @@ import networkx as nx
 # t2 is transposed to list nets instead of vertices
 # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
 
-def make_t2_netlist_from_t1(netlist):
+class vertex(hashable_dict):
+    def __init__(self, node, pin):
+        super().__init__({"node": node["name"], "pin": pin})
+        self.node = node
+        self.pin = pin
 
-    #TODO
-
-    # make undirected graph where nodes=(vertex, pin),
-    #   edges=in neighbors relation
-    # nets = connected components
-    # opt: determine net.prop.name by nodes?
-
-    #TODO remove dep or put into readme
-
-    class vertex():
-        def __init__(self, node, pin):
-            self.node = node
-            self.pin = pin
-
-        def __hash__(self):
-            val =  hash(hash(self.node["name"])+hash(self.pin))
-            #print("Hash {}: {}".format(repr(self), val))
-            return val
-
-        def __repr__(self):
-            return "vertex({},{})".format(
-                self.node.get("name"),
-                self.pin
-            )
-
-        def __eq__(self, other):
-            return hash(self) == hash(other)
-
-
-    #print(netlist)
+def _make_graph(netlist):
     G = nx.Graph()
     edges = [((vertex(node, spin)),
                 (vertex(neighbor["vertex"], neighbor["pin"])))
@@ -53,12 +30,17 @@ def make_t2_netlist_from_t1(netlist):
         for neighbor in v_neighbors
     ]
     G.add_edges_from(edges)
-    #print("\nEdges", edges)
-    #print("\nHashedEdges", list(map(lambda x: tuple(map(hash, x)), edges)))
-    #print("\nGraphEdges", list(G.nodes))
+    return G
 
+
+def make_t2_netlist_from_t1(t1_netlist):
+    # make undirected graph where nodes=(vertex, pin),
+    #   edges=in neighbors relation
+    # nets = connected components
+    # opt: determine net.prop.name by nodes?
+
+    G = _make_graph(t1_netlist)
     nets = list(nx.connected_components(G))
-    #print("\nnets", nets)
 
     t2_netlist = [
         {
@@ -78,20 +60,22 @@ def make_t2_netlist_from_t1(netlist):
         for net in nets
     ]
 
-    #print("\nT2", t2_netlist)
-
-
-    #import matplotlib.pyplot as plt
-    #nodes = [vertex(node, spin)
-    #    for node in netlist
-    #    for spin in node.get("neighbors", {1: None}).keys()
-    #]
-    #nodes_dict = {node:"{}:{}".format(node.node["name"], node.pin)
-    #    for node in nodes}
-    #plot = plt.subplot(121)
-    #layout = nx.spring_layout(G)
-    #nx.draw(G, pos=layout)
-    #nx.draw_networkx_labels(G, pos=layout, labels=nodes_dict)
-    #plt.show()
-
     return t2_netlist
+
+def _render_graph(t1_netlist):
+    import matplotlib.pyplot as plt
+
+    G = _make_graph(t1_netlist)
+
+    nodes = [vertex(node, spin)
+        for node in t1_netlist
+        for spin in node.get("neighbors", {1: None}).keys()
+    ]
+    nodes_dict = {node:"{}:{}".format(node.node["name"], node.pin)
+        for node in nodes}
+
+    plt.subplot(121)
+    layout = nx.spring_layout(G)
+    nx.draw(G, pos=layout)
+    nx.draw_networkx_labels(G, pos=layout, labels=nodes_dict)
+    plt.show()

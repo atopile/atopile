@@ -10,3 +10,16 @@ class lazy:
 
 def kw2dict(**kw):
     return dict(kw)
+
+class hashable_dict:
+    def __init__(self, obj: dict):
+        self.obj = obj
+
+    def __hash__(self):
+        return hash(sum(map(hash, self.obj.items())))
+
+    def __repr__(self):
+        return "{}({})".format(type(self), repr(self.obj))
+
+    def __eq__(self, other):
+        return hash(self) == hash(other)
