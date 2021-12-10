@@ -42,10 +42,19 @@ def make_t2_netlist_from_t1(t1_netlist):
     G = _make_graph(t1_netlist)
     nets = list(nx.connected_components(G))
 
+    # Only keep nets that have more than one real component connected
+    nets = [net for net in nets
+        if len([vertex for vertex in net if vertex.node["real"]]) > 1]
+
     def determine_net_name(net):
         #TODO use name precedence instead
 
-        virtual_name = "-".join([vertex.node["name"] for vertex in net if not vertex.node["real"]])
+        virtual_name = "-".join(
+            [
+                vertex.node["name"] + ("" if vertex.pin == 1 else f":{vertex.pin}")
+                    for vertex in net
+                    if not vertex.node["real"]
+            ])
         if virtual_name != "":
             return virtual_name
 
