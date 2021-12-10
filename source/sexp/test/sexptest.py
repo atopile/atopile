@@ -52,6 +52,9 @@ def _cleanparsed(parsed):
 
     # remove line numbers
     parsed = parsed[1:]
+    for i,obj in enumerate(parsed):
+        if type(obj) is str and re.match('^".+"$', obj) is not None:
+            parsed[i] = obj[1:-1]
     # recurse
     parsed = tuple(map(_cleanparsed, parsed))
 
@@ -110,8 +113,11 @@ def _test_net2py2net(netfilepath):
         print("Not equal")
         if eq_str:
             print("But strings are equal")
-        print("Source:", netsexpparsed)
-        print("Gen:", netsexpgenparsed)
+        else:
+            print("\tSourceStr:\t", netsexpcleaned)
+            print("\tGen   Str:\t",netsexpgen)
+        print("\tSource   :\t", netsexpparsed)
+        print("\tGen      :\t", netsexpgenparsed)
 
     return eq
 
@@ -132,7 +138,9 @@ def test_sexp():
         }
 
     ok = _test_py2net2py(testdict)
-    print("testdict:", ok)
+    if not ok:
+        print("testdict:", ok)
+        return ok
 
     testdict2 = multi_key_dict(
         ("testdict", multi_key_dict(
@@ -146,7 +154,9 @@ def test_sexp():
         ))
     )
     ok = _test_py2net2py(testdict2)
-    print("testdict2:", ok)
+    if not ok:
+        print("testdict2:", ok)
+        return ok
 
 
     netlistdict = {
@@ -155,8 +165,8 @@ def test_sexp():
                 "version": "D",
                 "design": {
                     "source": "/home/...",
-                    "date": '"Sat 13 ..."',
-                    "tool": '"Eeschema"',
+                    "date": 'Sat 13 ...',
+                    "tool": 'Eeschema',
                     "sheet": {
                         "number": "1",
                         "name" : "/",
@@ -190,9 +200,16 @@ def test_sexp():
     }
 
     ok = _test_py2net2py(netlistdict)
-    print("netlistdict:", ok)
+    if not ok:
+        print("netlistdict:", ok)
+        return ok
 
     ok = _test_net2py2net("main.net")
-    print("net2py2net:", ok)
+    if not ok:
+        print("net2py2net:", ok)
+        return ok
 
+
+    return ok
+    # TODO test empty dicts,lists,tuples,...
 

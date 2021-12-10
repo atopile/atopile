@@ -3,13 +3,14 @@
 
 import logging
 from typing import Iterable
+import re
 
 logger = logging.getLogger("sexp")
 
 class multi_key_dict:
     def __init__(self, *args,**kwargs):
         self.dict_ = kwargs
-        self.tuple_list = args
+        self.tuple_list = list(args)
 
     def items(self):
         for i in self.tuple_list:
@@ -17,8 +18,19 @@ class multi_key_dict:
         for i in self.dict_.items():
             yield i
 
+    def update(self, tuple_list, dict_):
+        self.tuple_list = []
+        self.dict_ = {}
+        if tuple_list is not None:
+            self.tuple_list = tuple_list
+        if dict_ is not None:
+            self.dict_ = dict_
+
     def __repr__(self):
         return repr(list(self.items()))
+
+    def __len__(self):
+        return len(self.tuple_list) + len(self.dict_)
 
 def _expandable(obj):
     return type(obj) in [dict, list, tuple, multi_key_dict]
@@ -32,7 +44,10 @@ def gensexp(obj):
         return None
 
     if not _expandable(obj):
-        return str(obj)
+        strrepr = str(obj)
+        if re.search("[ ()]", strrepr) is not None:
+            strrepr = f'"{strrepr}"'
+        return strrepr
 
     # Recursion
     # TODO: key with empty val
@@ -42,13 +57,15 @@ def gensexp(obj):
         obj = obj.items() 
 
     sexp = " ".join(
-        filter(lambda x: x is not None, 
+        filter(lambda x: 
+                x is not None and
+                len(x) > 0,
             map(gensexp, obj)
         )
     )
 
     # if not dict [i.e. list, tuple], add parantheses
-    if type(obj) in [list, tuple] : #type({}.items()):
+    if type(obj) in [list, tuple] and len(obj) > 0: #type({}.items()):
         sexp = "({})".format(sexp)    
     
     #logger.info("%s -> %s", str(obj), sexp)

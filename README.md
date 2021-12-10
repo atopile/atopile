@@ -19,8 +19,14 @@ Open-source software-defined EDA
 > git submodule update
 ```
 ```
+> pip install -r requirements.txt
+```
+```
 > ./source/main.py
 ```
+
+## Dependencies
+- networkx
 
 ## Community Support
 Community support is provided via mailing lists and Discord; see the Resources below for details.
@@ -29,3 +35,4 @@ Community support is provided via mailing lists and Discord; see the Resources b
 - Source Code: https://github.com/faebryk/faebryk
 - Chat: Real-time chat happens in faebryks's Discord Server. Use this Discord [Invite](https://discord.gg/Sekvbrej8j) to register
 - Issues: https://github.com/faebryk/faebryk/issues
+
