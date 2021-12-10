@@ -4,20 +4,19 @@
 # SPDX-License-Identifier: MIT
 import sys
 import logging
-
-from sexp.sexp import gensexp
-from sexp.test.sexptest import test_sexp
-from netlist import netlist
+import tests
+import experiment
 
 
 def main(argc, argv, argi):
     print("faebryk dev v0.0")
     logging.basicConfig(level=logging.INFO)
 
-    test_sexp()
+    ok = tests.run_tests()
+    print("Tests ok?", ok)
 
-    netlist.make_test_netlist()
-
+    print("Running experiment")
+    experiment.run_experiment()
 
 if __name__ == "__main__":
     main(len(sys.argv), sys.argv, iter(sys.argv))

@@ -1,6 +1,5 @@
 import datetime
 import version
-import pprint
 import itertools
 
 from sexp import sexp
@@ -116,9 +115,6 @@ def _gen_netlist(version, source, date, tool,
                 "nets":         _list(_gen_net,     nets),
             }})
 
-
-
-
 # Compositions ----------------------------------------------------------------
 def _list(generator_function, obj_list):
     return sexp.multi_key_dict(
@@ -161,7 +157,6 @@ def _clean_none_and_empty(obj,rd=0):
     #print("\t"*rd+"Cleaned:", new_obj)
     return new_obj
 
-
 # Helper ----------------------------------------------------------------------
 def _defaulted_netlist(components,nets):
     #date = datetime.datetime.now().strftime("%a %d %b %Y %H:%M:%S %Z")
@@ -202,10 +197,7 @@ def _defaulted_comp(ref, value, footprint, tstamp):
         tstamp=tstamp,
     )
 
-
-
 # Test stuff ------------------------------------------------------------------
-
 def from_faebryk_t2_netlist(netlist):
     tstamp = itertools.count(1)
     net_code = itertools.count(1)
@@ -213,7 +205,7 @@ def from_faebryk_t2_netlist(netlist):
     # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
 
     # kicad_netlist = {
-    #   comps:  [(ref, value, fp, tstamp)], 
+    #   comps:  [(ref, value, fp, tstamp)],
     #   nets:   [(code, name, [node=(ref, pin)])],
     # }
 
@@ -222,6 +214,7 @@ def from_faebryk_t2_netlist(netlist):
     #   - vertex properties has to contain footprint
     #   - tstamps can be generated (unique)
     #   - net_code can be generated (ascending, continuous)
+    #   - components unique
 
     def kicad_fp(fp):
         # TODO implement
@@ -229,7 +222,7 @@ def from_faebryk_t2_netlist(netlist):
         return fp
 
     def gen_net_name(net):
-       import random 
+       import random
        return hex(random.randrange(1<<31))
 
     def unique(non_unique):
@@ -242,12 +235,17 @@ def from_faebryk_t2_netlist(netlist):
 
     pre_comps = unique([vertex["comp"] for net in netlist for vertex in net["vertices"]])
 
-    comps = [_defaulted_comp(
-        ref=comp["name"],
-        value=comp["value"],
-        footprint=kicad_fp(comp["properties"]["footprint"]),
-        tstamp=next(tstamp),
-    ) for comp in pre_comps]
+    comps = [
+        _defaulted_comp(
+            ref=comp["name"],
+            value=comp["value"],
+            footprint=kicad_fp(comp["properties"]["footprint"]),
+            tstamp=next(tstamp),
+        )
+        for comp in #pre_comps
+            sorted(pre_comps, key=lambda comp: comp["name"])
+            # sort because tstamp determined by pos
+    ]
 
     nets = [
         _gen_net(
@@ -257,9 +255,12 @@ def from_faebryk_t2_netlist(netlist):
                 _gen_node(
                     ref=vertex["comp"]["name"],
                     pin=vertex["pin"],
-                ) for vertex in net["vertices"]
+                ) for vertex in #net["vertices"]
+                    sorted(net["vertices"], key=lambda x: x["comp"]["name"])
             ]
-        ) for net in netlist
+        ) for net in #netlist
+            sorted(netlist, key=lambda net: net["properties"].get("name"))
+            # sort because code determined by pos
     ]
 
     out_netlist = _defaulted_netlist(
@@ -270,80 +271,3 @@ def from_faebryk_t2_netlist(netlist):
     sexp_netlist = sexp.gensexp(out_netlist)
 
     return sexp_netlist
-
-
-
-def make_test_netlist_manu():
-    # Footprint pins are just referenced by number through netlist of symbol
-
-    # We only need
-    #   - components
-    #       - ref
-    #       - value (for silk)
-    #       - footprint
-    #       - tstamp (uuid gen)
-    #   - nets
-    #       - code (uuid gen)
-    #       - name
-    #       - nodes
-    #           - ref (comp)
-    #           - pin (of footprint)
-
-    # Careful comps need distinct timestamps
-    tstamp = itertools.count(1)
-
-    resistor_comp = _defaulted_comp(
-        ref="R1",
-        value="R",
-        footprint="Resistor_SMD:R_0805_2012Metric",
-        tstamp=next(tstamp),
-    )
-    resistor_comp2 = _defaulted_comp(
-        ref="R2",
-        value="R",
-        footprint="Resistor_SMD:R_0805_2012Metric",
-        tstamp=next(tstamp),
-    )
-
-    device_nets = [
-        _gen_net(
-            code=1,
-            name="GND",
-            nodes=[
-                _gen_node(
-                    ref="R1",
-                    pin=2,
-                ),
-                _gen_node(
-                    ref="R2",
-                    pin=2,
-                ),
-            ],
-        ),
-        _gen_net(
-            code=2,
-            name="+3V3",
-            nodes=[
-                _gen_node(
-                    ref="R1",
-                    pin=1,
-                ),
-                _gen_node(
-                    ref="R2",
-                    pin=1,
-                ),
-            ],
-        ),
-    ]
-
-    netlist = _defaulted_netlist(
-        components=[resistor_comp, resistor_comp2],
-        nets=[*device_nets],
-    )
-
-    pp = pprint.PrettyPrinter(indent=2)
-    pp.pprint(netlist)
-
-    sexpnet = sexp.gensexp(netlist)
-    #print(sexpnet)
-    return sexpnet

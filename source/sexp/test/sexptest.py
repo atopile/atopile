@@ -138,7 +138,9 @@ def test_sexp():
         }
 
     ok = _test_py2net2py(testdict)
-    print("testdict:", ok)
+    if not ok:
+        print("testdict:", ok)
+        return ok
 
     testdict2 = multi_key_dict(
         ("testdict", multi_key_dict(
@@ -152,7 +154,9 @@ def test_sexp():
         ))
     )
     ok = _test_py2net2py(testdict2)
-    print("testdict2:", ok)
+    if not ok:
+        print("testdict2:", ok)
+        return ok
 
 
     netlistdict = {
@@ -196,11 +200,16 @@ def test_sexp():
     }
 
     ok = _test_py2net2py(netlistdict)
-    print("netlistdict:", ok)
+    if not ok:
+        print("netlistdict:", ok)
+        return ok
 
     ok = _test_net2py2net("main.net")
-    print("net2py2net:", ok)
+    if not ok:
+        print("net2py2net:", ok)
+        return ok
 
 
+    return ok
     # TODO test empty dicts,lists,tuples,...
 
