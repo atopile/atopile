@@ -42,11 +42,24 @@ def make_t2_netlist_from_t1(t1_netlist):
     G = _make_graph(t1_netlist)
     nets = list(nx.connected_components(G))
 
+    def determine_net_name(net):
+        #TODO use name precedence instead
+
+        virtual_name = "-".join([vertex.node["name"] for vertex in net if not vertex.node["real"]])
+        if virtual_name != "":
+            return virtual_name
+
+        comp_name = "-".join(vertex.node["name"] for vertex in net)
+        if comp_name != "":
+            return comp_name
+
+        #TODO implement default policy
+        raise NotImplementedError
+
     t2_netlist = [
         {
-            #TODO use name precedence instead
             "properties": {
-                "name": "-".join([vertex.node["name"] for vertex in net if not vertex.node["real"]]),
+                "name": determine_net_name(net),
             },
             "vertices": [
                 {
