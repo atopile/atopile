@@ -74,8 +74,22 @@ def _render_graph(t1_netlist):
     nodes_dict = {node:"{}:{}".format(node.node["name"], node.pin)
         for node in nodes}
 
+    netedges = G.edges()
+
+    def _helper(obj):
+        return list(obj["neighbors"].keys())
+
+    intra_comp_edges = [
+        (vertex(node, _helper(node)[0]), vertex(node, pin))
+            for node in t1_netlist
+            for pin in _helper(node)[1:]
+    ]
+    G.add_edges_from(intra_comp_edges)
+
     plt.subplot(121)
     layout = nx.spring_layout(G)
-    nx.draw(G, pos=layout)
+    #nx.draw_networkx_nodes(G, pos=layout)
+    nx.draw_networkx_edges(G, pos=layout, edgelist=netedges, edge_color="#FF0000")
+    nx.draw_networkx_edges(G, pos=layout, edgelist=intra_comp_edges, edge_color="#0000FF")
     nx.draw_networkx_labels(G, pos=layout, labels=nodes_dict)
     plt.show()
