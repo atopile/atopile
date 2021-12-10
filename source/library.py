@@ -18,6 +18,8 @@ class Component:
             if other.pins != [1]:
                 raise FaebrykException
             dpin = 1
+        if dpin not in other.pins:
+            raise FaebrykException
 
         self.comp["neighbors"][spin].append({
             "vertex": other.get_comp(),
@@ -27,7 +29,6 @@ class Component:
     def connect_zip(self, other):
         for pin in self.comp["neighbors"]:
            self.connect(pin, other, pin)
-
 
     def get_comp(self):
         return self.comp
