@@ -4,9 +4,6 @@ Open-source software-defined EDA
 
 ## Get running
 ```
-> pip install networkx
-```
-```
 > git clone git@github.com:faebryk/faebryk.git
 ```
 ```
@@ -18,7 +15,11 @@ Open-source software-defined EDA
 ```
 > git submodule init
 ```
+```
 > git submodule update
+```
+```
+> pip install -r requirements.txt
 ```
 ```
 > ./source/main.py
