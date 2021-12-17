@@ -1,6 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import logging
+logger = logging.getLogger("library")
+
 class FaebrykException(Exception):
     def __init__(self, *args: object) -> None:
         super().__init__(*args)
@@ -24,6 +27,12 @@ class Component:
         if dpin not in other.pins:
             raise FaebrykException
 
+        logger.debug("Connecting {}:{} -> {}:{}".format(
+            self.comp["name"],
+            spin,
+            other.comp["name"],
+            dpin
+        ))
         self.comp["neighbors"][spin].append({
             "vertex": other.get_comp(),
             "pin": dpin,
