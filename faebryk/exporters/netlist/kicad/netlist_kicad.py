@@ -236,33 +236,33 @@ def from_faebryk_t2_netlist(netlist):
         return out_unique
 
 
-    pre_comps = unique([vertex["comp"] for net in netlist for vertex in net["vertices"]])
+    pre_comps = unique([vertex.component for net in netlist for vertex in net.vertices])
 
     comps = [
         _defaulted_comp(
-            ref=comp["name"],
-            value=comp["value"],
-            footprint=kicad_fp(comp["properties"]["footprint"]),
+            ref=comp.name,
+            value=comp.value,
+            footprint=kicad_fp(comp.properties["footprint"]),
             tstamp=next(tstamp),
         )
         for comp in #pre_comps
-            sorted(pre_comps, key=lambda comp: comp["name"])
+            sorted(pre_comps, key=lambda comp: comp.name)
             # sort because tstamp determined by pos
     ]
 
     nets = [
         _gen_net(
             code=next(net_code),
-            name=net["properties"].get("name", gen_net_name(net)),
+            name=net.properties.get("name", gen_net_name(net)),
             nodes=[
                 _gen_node(
-                    ref=vertex["comp"]["name"],
-                    pin=vertex["pin"],
+                    ref=vertex.component.name,
+                    pin=vertex.pin,
                 ) for vertex in #net["vertices"]
-                    sorted(net["vertices"], key=lambda x: x["comp"]["name"])
+                    sorted(net.vertices, key=lambda vert: vert.component.name)
             ]
         ) for net in #netlist
-            sorted(netlist, key=lambda net: net["properties"].get("name"))
+            sorted(netlist, key=lambda net: net.properties.get("name"))
             # sort because code determined by pos
     ]
 

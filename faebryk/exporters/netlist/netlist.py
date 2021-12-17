@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import networkx as nx
+from dataclasses import dataclass
 from faebryk.libs.util import hashable_dict
 from faebryk.libs.exceptions import FaebrykException
 
@@ -13,10 +14,6 @@ from faebryk.libs.exceptions import FaebrykException
 #     {name, value, properties, real,
 #       neighbors={pin: [{&vertex, pin}]},
 # ]
-
-
-# t2 is transposed to list nets instead of vertices
-# t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
 
 class vertex(hashable_dict):
     def __init__(self, node, pin):
@@ -40,6 +37,21 @@ def _make_graph(netlist):
     G.add_edges_from(edges)
     return G
 
+@dataclass(frozen=True)
+class Component:
+    name: str
+    value: 'typing.Any'
+    properties: dict
+
+@dataclass(frozen=True)
+class Vertex:
+    component: Component
+    pin: int
+
+@dataclass(frozen=True)
+class Net:
+    properties: dict
+    vertices: list[Vertex]
 
 def make_t2_netlist_from_t1(t1_netlist):
     # make undirected graph where nodes=(vertex, pin),
@@ -74,19 +86,23 @@ def make_t2_netlist_from_t1(t1_netlist):
         raise NotImplementedError
 
     t2_netlist = [
-        {
-            "properties": {
+        Net(
+            properties = {
                 "name": determine_net_name(net),
             },
-            "vertices": [
-                {
-                    "comp": {k:v for k,v in vertex.node.items() if k not in ["real", "neighbors"]},
-                    "pin": vertex.pin
-                }
+            vertices = [
+                Vertex(
+                    component = Component(
+                        name = vertex.node["name"],
+                        value = vertex.node["value"],
+                        properties = vertex.node["properties"],
+                    ),
+                    pin = vertex.pin,
+                )
                 for vertex in net
                 if vertex.node["real"]
             ]
-        }
+        )
         for net in nets
     ]
 
