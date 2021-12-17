@@ -1,8 +1,11 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
 import datetime
-import version
+import faebryk.version
 import itertools
 
-from sexp import sexp
+import faebryk.exporters.netlist.kicad.sexp as sexp
 
 # Generators ------------------------------------------------------------------
 def _gen_node(ref, pin):
@@ -166,7 +169,7 @@ def _defaulted_netlist(components,nets):
         version="D",
         source=None,
         date=None,
-        tool=None,#"faebryk {}".format(version.version()),
+        tool=None,#"faebryk {}".format(faebryk.version.version()),
         sheet_number=None,
         sheet_name=None,
         sheet_tstamps=None,

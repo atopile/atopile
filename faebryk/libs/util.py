@@ -1,3 +1,6 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
 class lazy:
     def __init__(self, expr):
         self.expr = expr

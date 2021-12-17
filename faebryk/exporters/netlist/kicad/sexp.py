@@ -1,8 +1,7 @@
-# Copyright (c) 2021 ITENG
+# This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import Iterable
 import re
 
 logger = logging.getLogger("sexp")

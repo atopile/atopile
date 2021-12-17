@@ -1,6 +1,9 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
 import networkx as nx
 
-from util import hashable_dict
+from faebryk.libs.util import hashable_dict
 
 # 0. netlist = graph
 
@@ -84,7 +87,7 @@ def make_t2_netlist_from_t1(t1_netlist):
 
     return t2_netlist
 
-def _render_graph(t1_netlist):
+def render_graph(t1_netlist):
     import matplotlib.pyplot as plt
 
     G = _make_graph(t1_netlist)

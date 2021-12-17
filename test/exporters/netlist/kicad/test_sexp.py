@@ -1,7 +1,20 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
+import os
+
+if __name__ == '__main__':
+    import os
+    import sys
+    root = os.path.join(os.path.dirname(__file__), '../../../..')
+    sys.path.append(root)
+
 from typing import Iterable
-from sexp.sexp import gensexp, multi_key_dict
-from .sexp_parser.sexp_parser import parseSexp
+import faebryk.exporters.netlist.kicad.sexp as sexp_gen
+from faebryk.exporters.netlist.kicad.sexp import multi_key_dict
+from test.deps import sexp_parser
 import re
+import unittest
 
 """
     Converts python dict to format which can be recovered by sexp without
@@ -66,8 +79,8 @@ def _cleanparsed(parsed):
     Test whether obj -> sexp -> obj returns back same obj
 """
 def _test_py2net2py(obj):
-    sexp=gensexp(obj)
-    parsed = parseSexp(sexp)
+    sexp=sexp_gen.gensexp(obj)
+    parsed = sexp_parser.parseSexp(sexp)
     try:
         cleaned = _cleanparsed(parsed)
     except Exception as e:
@@ -95,10 +108,10 @@ def _test_py2net2py(obj):
 def _test_net2py2net(netfilepath):
     with open(netfilepath, "r") as netfile:
         netsexp=netfile.read()
-    netsexpparsed = parseSexp(netsexp)
+    netsexpparsed = sexp_parser.parseSexp(netsexp)
     cleaned = _cleanparsed(netsexpparsed)
-    netsexpgen = gensexp(cleaned)
-    netsexpgenparsed = parseSexp(netsexpgen)
+    netsexpgen = sexp_gen.gensexp(cleaned)
+    netsexpgenparsed = sexp_parser.parseSexp(netsexpgen)
     cleanedparsed = _cleanparsed(netsexpgenparsed)
 
     netsexpcleaned = netsexp
@@ -122,8 +135,7 @@ def _test_net2py2net(netfilepath):
     return eq
 
 
-
-def test_sexp():
+def _test_sexp():
     testdict = {
         "testdict" :
             {
@@ -204,7 +216,7 @@ def test_sexp():
         print("netlistdict:", ok)
         return ok
 
-    ok = _test_net2py2net("main.net")
+    ok = _test_net2py2net(os.path.join(os.path.dirname(__file__), "test.net"))
     if not ok:
         print("net2py2net:", ok)
         return ok
@@ -213,3 +225,11 @@ def test_sexp():
     return ok
     # TODO test empty dicts,lists,tuples,...
 
+
+class TestSexp(unittest.TestCase):
+    def test_sexp(self):
+        self.assertTrue(_test_sexp())
+
+
+if __name__ == '__main__':
+    unittest.main()

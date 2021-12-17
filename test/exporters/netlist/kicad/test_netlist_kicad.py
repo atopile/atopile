@@ -1,40 +1,13 @@
-from sexp.test.sexptest import test_sexp
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
 
-def run_tests():
-    success = test_sexp()
-    if not success:
-        print("Sexp tests: failed")
-        return success
-
-    success, netlist = test_netlist_t2()
-    if not success:
-        print("T2 netlist test: failed")
-        return success
-
-    success, netlist = test_netlist_t1()
-    if not success:
-        print("T1 netlist test: failed")
-        return success
-
-    success, netlist = test_netlist_graph()
-    if not success:
-        print("Graph netlist test: failed")
-        return success
-
-    return success
-
-# TESTS =======================================================================
-# Sexp ------------------------------------------------------------------------
-def test_sexp():
-    from sexp.test.sexptest import test_sexp
-    return test_sexp()
+import unittest
 
 # Netlists --------------------------------------------------------------------
 def test_netlist_graph():
-    from netlist.kicad_netlist import from_faebryk_t2_netlist
-    from netlist.netlist import make_t2_netlist_from_t1
-    from experiment import make_t1_netlist_from_graph
-    from library import VirtualComponent, SMD_Resistor
+    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
+    from faebryk.exporters.netlist import make_t2_netlist_from_t1
+    from faebryk.library import VirtualComponent, SMD_Resistor
 
     gnd = VirtualComponent(
         name="GND",
@@ -65,7 +38,7 @@ def test_netlist_graph():
     comps = [gnd, vcc, resistor1, resistor2]
     netlist = from_faebryk_t2_netlist(
         make_t2_netlist_from_t1(
-            make_t1_netlist_from_graph(comps)
+            [comp.get_comp() for comp in comps]
         )
     )
 
@@ -79,8 +52,8 @@ def test_netlist_graph():
     return success, netlist
 
 def test_netlist_t1():
-    from netlist.kicad_netlist import from_faebryk_t2_netlist
-    from netlist.netlist import make_t2_netlist_from_t1
+    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
+    from faebryk.exporters.netlist import make_t2_netlist_from_t1
 
     gnd = {
         "vertex": {
@@ -144,7 +117,7 @@ def test_netlist_t1():
     return success, kicad_netlist
 
 def test_netlist_t2():
-    from netlist.kicad_netlist import from_faebryk_t2_netlist
+    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 
     # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
 
@@ -210,8 +183,8 @@ def test_netlist_t2():
 
 def _test_netlist_manu():
     import itertools
-    from netlist.kicad_netlist import _defaulted_comp, _gen_net, _gen_node, _defaulted_netlist
-    from sexp import sexp
+    from faebryk.exporters.netlist.kicad.netlist_kicad import _defaulted_comp, _gen_net, _gen_node, _defaulted_netlist
+    import faebryk.exporters.netlist.kicad.sexp as sexp
     # Footprint pins are just referenced by number through netlist of symbol
 
     # We only need
@@ -282,3 +255,14 @@ def _test_netlist_manu():
     sexpnet = sexp.gensexp(netlist)
 
     return sexpnet
+
+class TestNetlist(unittest.TestCase):
+    def test_netlist(self):
+        ok, _ = test_netlist_t2()
+        self.assertTrue(ok)
+
+        ok, _ = test_netlist_t1()
+        self.assertTrue(ok)
+
+        ok, _ = test_netlist_graph()
+        self.assertTrue(ok)
