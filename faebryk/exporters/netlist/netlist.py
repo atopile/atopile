@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 import networkx as nx
-
 from faebryk.libs.util import hashable_dict
+from faebryk.libs.exceptions import FaebrykException
 
 # 0. netlist = graph
 
@@ -32,6 +32,11 @@ def _make_graph(netlist):
         for spin,v_neighbors in node.get("neighbors", {1: []}).items()
         for neighbor in v_neighbors
     ]
+    for s_vertex,d_vertex in edges:
+        if d_vertex.node not in netlist:
+            raise FaebrykException("{} was connected to but not in graph as node".format(
+                d_vertex.node["name"]))
+
     G.add_edges_from(edges)
     return G
 

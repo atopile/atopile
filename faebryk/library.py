@@ -1,12 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from faebryk.libs.exceptions import FaebrykException
 import logging
 logger = logging.getLogger("library")
-
-class FaebrykException(Exception):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
 
 class Component:
     def __init__(self, name, pins, real):
