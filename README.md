@@ -1,6 +1,17 @@
+<div align="center">
+
 # faebryk
 
+<a href="https://github.com/faebryk/faebryk">
+<img height=300 width=300 src="./faebryk_logo.png"/>
+</a>
+<br/>
+
 Open-source software-defined EDA
+
+[![Version](https://img.shields.io/github/v/tag/faebryk/faebryk)](https://github.com/faebryk/faebryk/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/faebryk/faebryk/blob/main/LICENSE) [![Pull requests open](https://img.shields.io/github/issues-pr/faebryk/faebryk)](https://github.com/faebryk/faebryk/pulls) [![Issues open](https://img.shields.io/github/issues/faebryk/faebryk)](https://github.com/faebryk/faebryk/issues)
+
+</div>
 
 ## Get running
 Setup
