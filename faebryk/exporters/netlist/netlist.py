@@ -15,24 +15,26 @@ from faebryk.libs.exceptions import FaebrykException
 #       neighbors={pin: [{&vertex, pin}]},
 # ]
 
-class vertex(hashable_dict):
-    def __init__(self, node, pin):
-        super().__init__({"node": node["name"], "pin": pin})
-        self.node = node
-        self.pin = pin
-
 def _make_graph(netlist):
+    class _Vertex(hashable_dict):
+        def __init__(self, node, pin):
+            super().__init__({"node": node["name"], "pin": pin})
+            self.node = node
+            self.pin = pin
+
     G = nx.Graph()
-    edges = [((vertex(node, spin)),
-                (vertex(neighbor["vertex"], neighbor["pin"])))
+    edges = [(
+                _Vertex(node, source_pin),
+                _Vertex(neighbor["vertex"], neighbor["pin"])
+        )
         for node in netlist
-        for spin,v_neighbors in node.get("neighbors", {1: []}).items()
-        for neighbor in v_neighbors
+        for source_pin, neighbors in node.get("neighbors", {1: []}).items()
+        for neighbor in neighbors
     ]
-    for s_vertex,d_vertex in edges:
-        if d_vertex.node not in netlist:
-            raise FaebrykException("{} was connected to but not in graph as node".format(
-                d_vertex.node["name"]))
+    for source_vertex, dest_vertex in edges:
+        if dest_vertex.node not in netlist:
+            raise FaebrykException("Referenced node not in netlist: {}".format(
+                dest_vertex.node["name"]))
 
     G.add_edges_from(edges)
     return G
@@ -113,29 +115,27 @@ def render_graph(t1_netlist):
 
     G = _make_graph(t1_netlist)
 
-    nodes = [vertex(node, spin)
-        for node in t1_netlist
-        for spin in node.get("neighbors", {1: None}).keys()
-    ]
-    nodes_dict = {node:"{}:{}".format(node.node["name"], node.pin)
-        for node in nodes}
-
     netedges = G.edges()
 
-    def _helper(obj):
-        return list(obj["neighbors"].keys())
-
-    intra_comp_edges = [
-        (vertex(node, _helper(node)[0]), vertex(node, pin))
-            for node in t1_netlist
-            for pin in _helper(node)[1:]
+    comp_edges = [
+        (vertex.node["name"], vertex)
+        for vertex in G.nodes
     ]
-    G.add_edges_from(intra_comp_edges)
+    G.add_edges_from(comp_edges)
+
+    def vertex_name(vertex):
+        if isinstance(vertex, str):
+            return vertex
+        return str(vertex.pin)
+    vertex_names = {
+        vertex : vertex_name(vertex)
+        for vertex in G.nodes
+    }
 
     plt.subplot(121)
     layout = nx.spring_layout(G)
     #nx.draw_networkx_nodes(G, pos=layout)
     nx.draw_networkx_edges(G, pos=layout, edgelist=netedges, edge_color="#FF0000")
-    nx.draw_networkx_edges(G, pos=layout, edgelist=intra_comp_edges, edge_color="#0000FF")
-    nx.draw_networkx_labels(G, pos=layout, labels=nodes_dict)
+    nx.draw_networkx_edges(G, pos=layout, edgelist=comp_edges, edge_color="#0000FF")
+    nx.draw_networkx_labels(G, pos=layout, labels=vertex_names)
     plt.show()
