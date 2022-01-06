@@ -9,7 +9,7 @@ from faebryk.libs.exceptions import FaebrykException
 # 0. netlist = graph
 
 #TODO add name precendence
-# t1 is basically a reduced version of the grap
+# t1 is basically a reduced version of the graph
 # t1_netlist = [
 #     {name, value, properties, real,
 #       neighbors={pin: [{&vertex, pin}]},
