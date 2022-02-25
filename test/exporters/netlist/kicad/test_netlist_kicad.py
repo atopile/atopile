@@ -118,56 +118,57 @@ def test_netlist_t1():
 
 def test_netlist_t2():
     from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
+    from faebryk.exporters.netlist import Net, Vertex, Component
 
     # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
 
-    resistor1 = {
-        "name": "R1",
-        "value": "R",
-        "properties": {
+    resistor1 = Component(
+        name = "R1",
+        value = "R",
+        properties = {
             "footprint": "Resistor_SMD:R_0805_2012Metric",
         },
-    }
+    )
 
-    resistor2 = {
-        "name": "R2",
-        "value": "R",
-        "properties": {
+    resistor2 = Component(
+        name = "R2",
+        value = "R",
+        properties = {
             "footprint": "Resistor_SMD:R_0805_2012Metric",
         },
-    }
+    )
 
     netlist = [
-        {
-            "properties": {
+        Net(
+            properties = {
                 "name": "GND",
             },
-            "vertices": [
-                {
-                    "comp": resistor1,
-                    "pin": 2
-                },
-                {
-                    "comp": resistor2,
-                    "pin": 2
-                },
+            vertices = [
+                Vertex(
+                    component = resistor1,
+                    pin = 2,
+                ),
+                Vertex(
+                    component = resistor2,
+                    pin = 2,
+                ),
             ],
-        },
-        {
-            "properties": {
+        ),
+        Net(
+            properties = {
                 "name": "+3V3",
             },
-            "vertices": [
-                {
-                    "comp": resistor1,
-                    "pin": 1
-                },
-                {
-                    "comp": resistor2,
-                    "pin": 1
-                },
+            vertices = [
+                Vertex(
+                    component = resistor1,
+                    pin = 1,
+                ),
+                Vertex(
+                    component = resistor2,
+                    pin = 1,
+                ),
             ],
-        },
+        ),
     ]
     #print("T2 netlist:", netlist)
 
