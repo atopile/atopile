@@ -1,7 +1,7 @@
 name: 🔮 Feature Request
 description: File a feature request
-title: "[Feature request]: <title>"
-labels: ["feature-request"]
+title: "<title>"
+labels: ["⭐ goal: addition"]
 body:
   - type: markdown
     attributes:
