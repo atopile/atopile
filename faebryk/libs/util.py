@@ -26,3 +26,15 @@ class hashable_dict:
 
     def __eq__(self, other):
         return hash(self) == hash(other)
+
+
+def unique(it, key):
+    seen = []
+    out = []
+    for i in it:
+        v = key(i)
+        if v in seen:
+            continue
+        seen.append(v)
+        out.append(i)
+    return out

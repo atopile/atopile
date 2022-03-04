@@ -7,38 +7,74 @@ import unittest
 def test_netlist_graph():
     from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
     from faebryk.exporters.netlist import make_t2_netlist_from_t1
-    from faebryk.library import VirtualComponent, SMD_Resistor
+    from faebryk.library.core import Component
+    from faebryk.library.library.interfaces import Electrical
+    from faebryk.library.traits.component import has_defined_footprint
+    from faebryk.library.core import Footprint
+    from faebryk.library.kicad import has_defined_kicad_ref
+    from faebryk.library.traits.component import has_defined_footprint_pinmap, has_defined_type_description, has_interfaces, has_interfaces_list, has_type_description
+    from faebryk.library.kicad import has_kicad_manual_footprint
+    from faebryk.exporters.netlist.graph import make_t1_netlist_from_graph, make_graph_from_components
 
-    gnd = VirtualComponent(
-        name="GND",
-        pins=[1],
-    )
+    
+    # component definition
+    gnd = Electrical()
+    vcc = Electrical()
+    resistor1 = Component()
+    resistor2 = Component()
 
-    vcc = VirtualComponent(
-        name="+3V3",
-        pins=[1],
-    )
+    # name
+    resistor1.add_trait(has_defined_kicad_ref("R1"))
+    resistor2.add_trait(has_defined_kicad_ref("R2"))
 
-    resistor1 = SMD_Resistor(
-        name="1",
-        value="R",
-        footprint_subtype="R_0805_2012Metric",
-    )
+    for r in [resistor1, resistor2]:
+        # value
+        r.add_trait(has_defined_type_description("R"))
+        # interfaces
+        r.interfaces = [Electrical(), Electrical()]
+        r.add_trait(has_interfaces_list(r))
+        r.get_trait(has_interfaces).set_interface_comp(r)
+        # footprint
+        fp = Footprint()
+        fp.add_trait(has_kicad_manual_footprint("Resistor_SMD:R_0805_2012Metric"))
+        r.add_trait(has_defined_footprint(fp))
+        # pinmap
+        r.add_trait(has_defined_footprint_pinmap(
+            {
+                1: r.interfaces[0],
+                2: r.interfaces[1],
+            }
+        ))
 
-    resistor2 = SMD_Resistor(
-        name="2",
-        value="R",
-        footprint_subtype="R_0805_2012Metric",
-    )
+    resistor1.interfaces[0].connect(vcc)
+    resistor1.interfaces[1].connect(gnd)
+    resistor2.interfaces[0].connect(resistor1.interfaces[0])
+    resistor2.interfaces[1].connect(resistor1.interfaces[1])
 
-    resistor1.connect(1, vcc)
-    resistor1.connect(2, gnd)
-    resistor2.connect_zip(resistor1)
+    # net naming
+    net_wrappers = []
+    for i in [gnd, vcc]:
+        wrap = Component()
+        wrap.interfaces = [i]
+        wrap.add_trait(has_interfaces_list(wrap))
+        wrap.get_trait(has_interfaces).set_interface_comp(wrap)
+        wrap.add_trait(has_defined_kicad_ref("+3V3" if i == vcc else "GND"))
+        wrap.add_trait(has_defined_footprint_pinmap({1: i}))
+        net_wrappers.append(wrap)
 
-    comps = [gnd, vcc, resistor1, resistor2]
+    # Make netlist
+    comps = [
+        resistor1,
+        resistor2,
+        *net_wrappers,
+    ]
     netlist = from_faebryk_t2_netlist(
         make_t2_netlist_from_t1(
-            [comp.get_comp() for comp in comps]
+            make_t1_netlist_from_graph(
+                make_graph_from_components(
+                    comps
+                )
+            )
         )
     )
 
