@@ -1,6 +1,18 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+"""
+This file contains a faebryk sample.
+Faebryk samples demonstrate the usage by building example systems.
+This particular sample creates a netlist with an led and a nand ic 
+    that creates some logic. 
+The goal of this sample is to show how faebryk can be used to iteratively
+    expand the specifics of a design in multiple steps.
+Thus this is a netlist sample.
+Netlist samples can be run directly.
+The netlist is printed to stdout.
+"""
+
 def run_experiment():
     from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
     from faebryk.exporters.netlist import make_t2_netlist_from_t1
@@ -164,4 +176,3 @@ if __name__ == "__main__":
     root = os.path.join(os.path.dirname(__file__), '..')
     sys.path.append(root)
     main(len(sys.argv), sys.argv, iter(sys.argv))
- 
