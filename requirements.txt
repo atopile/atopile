@@ -1,1 +1,3 @@
 networkx
+numpy
+matplotlib

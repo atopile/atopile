@@ -2,4 +2,4 @@
 # SPDX-License-Identifier: MIT
 
 def version():
-    return "0.1"
+    return "1.0.0"
