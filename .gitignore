@@ -92,3 +92,5 @@ ENV/
 
 # IDE stuff
 .vscode
+
+_local
