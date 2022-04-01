@@ -26,6 +26,34 @@ class DIP(Footprint):
 
         self.add_trait(_has_kicad_footprint())
 
+class QFN(Footprint):
+    def __init__(self, pin_cnt: int, exposed_thermal_pad_cnt: int, size_xy_mm: tuple[float, float], pitch_mm: float, exposed_thermal_pad_dimensions_mm: tuple[float, float], has_thermal_vias: bool) -> None:
+        super().__init__()
+
+        # Constraints
+        assert(exposed_thermal_pad_cnt > 0 or not has_thermal_vias)
+        assert(
+            exposed_thermal_pad_dimensions_mm[0] < size_xy_mm[0] and
+            exposed_thermal_pad_dimensions_mm[1] < size_xy_mm[1]
+        )
+
+        class _has_kicad_footprint(has_kicad_footprint):
+            @staticmethod
+            def get_kicad_footprint() -> str:
+                # example: QFN-16-1EP_4x4mm_P0.5mm_EP2.45x2.45mm_ThermalVias
+                return \
+                    "Package_DFN_QFN:QFN-{leads}-{ep}EP_{size_x}x{size_y}mm_P{pitch}mm_EP{ep_x}x{ep_y}mm{vias}".format(
+                        leads=pin_cnt,
+                        ep=exposed_thermal_pad_cnt,
+                        size_x=size_xy_mm[0],
+                        size_y=size_xy_mm[1],
+                        pitch=pitch_mm,
+                        ep_x=exposed_thermal_pad_dimensions_mm[0],
+                        ep_y=exposed_thermal_pad_dimensions_mm[1],
+                        vias="_ThermalVias" if has_thermal_vias else "",
+                    )
+        self.add_trait(_has_kicad_footprint())
+
 class SMDTwoPin(Footprint):
     class Type(Enum):
         _01005 = 0
