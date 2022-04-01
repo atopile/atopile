@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+
 class lazy:
     def __init__(self, expr):
         self.expr = expr
@@ -11,8 +12,10 @@ class lazy:
     def __repr__(self):
         return repr(self.expr())
 
+
 def kw2dict(**kw):
     return dict(kw)
+
 
 class hashable_dict:
     def __init__(self, obj: dict):

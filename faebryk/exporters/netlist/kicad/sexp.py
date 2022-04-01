@@ -6,8 +6,9 @@ import re
 
 logger = logging.getLogger("sexp")
 
+
 class multi_key_dict:
-    def __init__(self, *args,**kwargs):
+    def __init__(self, *args, **kwargs):
         self.dict_ = kwargs
         self.tuple_list = list(args)
 
@@ -31,8 +32,10 @@ class multi_key_dict:
     def __len__(self):
         return len(self.tuple_list) + len(self.dict_)
 
+
 def _expandable(obj):
     return type(obj) in [dict, list, tuple, multi_key_dict]
+
 
 # Limitations:
 # - dict only
@@ -53,20 +56,14 @@ def gensexp(obj):
 
     # Dict
     if type(obj) in [dict, multi_key_dict]:
-        obj = obj.items() 
+        obj = obj.items()
 
-    sexp = " ".join(
-        filter(lambda x: 
-                x is not None and
-                len(x) > 0,
-            map(gensexp, obj)
-        )
-    )
+    sexp = " ".join(filter(lambda x: x is not None and len(x) > 0, map(gensexp, obj)))
 
     # if not dict [i.e. list, tuple], add parantheses
-    if type(obj) in [list, tuple] and len(obj) > 0: #type({}.items()):
-        sexp = "({})".format(sexp)    
-    
-    #logger.info("%s -> %s", str(obj), sexp)
+    if type(obj) in [list, tuple] and len(obj) > 0:  # type({}.items()):
+        sexp = "({})".format(sexp)
+
+    # logger.info("%s -> %s", str(obj), sexp)
 
     return sexp

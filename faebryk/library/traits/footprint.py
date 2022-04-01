@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+
 logger = logging.getLogger("library")
 
 from faebryk.library.core import FootprintTrait
