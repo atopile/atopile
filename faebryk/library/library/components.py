@@ -27,16 +27,16 @@ class Resistor(Component):
                 r = Resistor.__new__(Resistor)
                 r._setup_resistance(resistance)
                 r.interfaces = interfaces
-                r.get_trait(has_interfaces).set_interface_comp(r)
+                r.get_trait(has_interfaces).set_interface_comp()
 
                 return r
 
-        self.add_trait(has_interfaces_list(self))
+        self.add_trait(has_interfaces_list())
         self.add_trait(_contructable_from_component())
 
     def _setup_interfaces(self):
         self.interfaces = times(2, Electrical)
-        self.get_trait(has_interfaces).set_interface_comp(self)
+        self.get_trait(has_interfaces).set_interface_comp()
 
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
@@ -86,7 +86,7 @@ class LED(Component):
     def _setup_interfaces(self):
         self.anode = Electrical()
         self.cathode = Electrical()
-        self.get_trait(has_interfaces).set_interface_comp(self)
+        self.get_trait(has_interfaces).set_interface_comp()
 
     def __new__(cls):
         self = super().__new__(cls)
@@ -117,11 +117,11 @@ class LED(Component):
 class Switch(Component):
     def _setup_traits(self):
         self.add_trait(has_defined_type_description("SW"))
-        self.add_trait(has_interfaces_list(self))
+        self.add_trait(has_interfaces_list())
 
     def _setup_interfaces(self):
         self.interfaces = times(2, Electrical)
-        self.get_trait(has_interfaces).set_interface_comp(self)
+        self.get_trait(has_interfaces).set_interface_comp()
 
     def __new__(cls):
         self = super().__new__(cls)
@@ -158,7 +158,7 @@ class NAND(Component):
         self._set_interface_comp()
 
     def _set_interface_comp(self):
-        self.get_trait(has_interfaces).set_interface_comp(self)
+        self.get_trait(has_interfaces).set_interface_comp()
 
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
@@ -233,14 +233,14 @@ class CD4011(Component):
     def _setup_nands(self):
         self.nands = times(4, lambda: NAND(input_cnt=2))
         for n in self.nands:
-            n.add_trait(has_symmetric_footprint_pinmap(n))
+            n.add_trait(has_symmetric_footprint_pinmap())
 
     def _setup_inouts(self):
         nand_inout_interfaces = [i for n in self.nands for i in get_all_interfaces([n.output, *n.inputs])]
         self.in_outs = times(len(nand_inout_interfaces), Electrical)
 
     def _setup_internal_connections(self):
-        self.get_trait(has_interfaces).set_interface_comp(self)
+        self.get_trait(has_interfaces).set_interface_comp()
 
         self.connection_map = {}
 

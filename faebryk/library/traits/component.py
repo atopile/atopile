@@ -22,21 +22,13 @@ class has_interfaces(ComponentTrait):
     def get_interfaces(self) -> list[Interface]:
         raise NotImplementedError()
 
-    def set_interface_comp(self, comp):
+    def set_interface_comp(self):
         for i in self.get_interfaces():
-            i.set_component(comp)
+            i.set_component(self.get_obj())
 
 class has_interfaces_list(has_interfaces):
-    def __init__(self, comp: Component) -> None:
-        super().__init__()
-        self.comp = comp
-
     def get_interfaces(self) -> list[Interface]:
-        return self.comp.interfaces
-
-    def set_interface_comp(self, comp=None):
-        assert (comp is None or comp == self.comp) 
-        super().set_interface_comp(self.comp)
+        return self.get_obj().interfaces
 
 class has_defined_interfaces(has_interfaces):
     def __init__(self, interfaces: list[Interface]) -> None:
@@ -77,10 +69,6 @@ class has_defined_footprint_pinmap(has_footprint_pinmap):
         return self.pin_map
 
 class has_symmetric_footprint_pinmap(has_footprint_pinmap):
-    def __init__(self, comp: Component) -> None:
-        super().__init__()
-        self.comp = comp
-    
     def get_pin_map(self):
-        ifs = self.comp.get_trait(has_interfaces).get_interfaces()
+        ifs = self.get_obj().get_trait(has_interfaces).get_interfaces()
         return {k+1:v for k,v in enumerate(ifs)}

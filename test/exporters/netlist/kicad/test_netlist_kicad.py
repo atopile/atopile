@@ -32,8 +32,8 @@ def test_netlist_graph():
         r.add_trait(has_defined_type_description("R"))
         # interfaces
         r.interfaces = [Electrical(), Electrical()]
-        r.add_trait(has_interfaces_list(r))
-        r.get_trait(has_interfaces).set_interface_comp(r)
+        r.add_trait(has_interfaces_list())
+        r.get_trait(has_interfaces).set_interface_comp()
         # footprint
         fp = Footprint()
         fp.add_trait(has_kicad_manual_footprint("Resistor_SMD:R_0805_2012Metric"))
@@ -56,8 +56,8 @@ def test_netlist_graph():
     for i in [gnd, vcc]:
         wrap = Component()
         wrap.interfaces = [i]
-        wrap.add_trait(has_interfaces_list(wrap))
-        wrap.get_trait(has_interfaces).set_interface_comp(wrap)
+        wrap.add_trait(has_interfaces_list())
+        wrap.get_trait(has_interfaces).set_interface_comp()
         wrap.add_trait(has_defined_kicad_ref("+3V3" if i == vcc else "GND"))
         wrap.add_trait(has_defined_footprint_pinmap({1: i}))
         net_wrappers.append(wrap)

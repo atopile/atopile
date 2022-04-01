@@ -10,8 +10,21 @@ logger = logging.getLogger("library")
 
 # 1st order classes -----------------------------------------------------------
 class Trait:
+    def __init__(self) -> None:
+        self._obj = None
+
     def __eq__(self, other: Trait) -> bool:
         return isinstance(self, other)
+
+    def set_obj(self, _obj):
+        self._obj = _obj
+
+    def remove_obj(self):
+        self._obj = None
+
+    def get_obj(self):
+        assert(self._obj is not None), "trait is not linked to object"
+        return self._obj
 
 class FaebrykLibObject:
     def __new__(cls, *args, **kwargs):
@@ -23,20 +36,27 @@ class FaebrykLibObject:
     def __init__(self) -> None:
         pass
 
-    #TODO trait should always get ref to object
     def add_trait(self, trait : Trait) -> None:
+        assert(trait._obj is None), "trait already in use"
+        trait.set_obj(self)
+
+        # Add trait if new
         if type(trait) not in self.traits:
             self.traits.append(trait)
             return
 
-        self.traits[self.traits.index(type(trait))] = trait
+        # Replace old trait
+        old_idx = self.traits.index(type(trait))
+        self.traits[old_idx].remove_obj()
+        self.traits[old_idx] = trait
 
     def del_trait(self, trait):
         if self.has_trait(trait):
+            self.traits[trait].remove_obj()
             del self.traits[trait]
 
     def has_trait(self, trait) -> bool:
-        #return any(lambda t: type(t) is trait, self.traits)
+        # Make use of eq overload
         return trait in self.traits
 
     def get_trait(self, trait):
@@ -86,6 +106,7 @@ class Interface(FaebrykLibObject):
     def connect(self, other: Interface):
         assert (type(other) is type(self)), "{} is not {}".format(type(other), type(self))
         self.connections.append(other)
+        other.connections.append(self)
 
     def set_component(self, component):
         from faebryk.library.traits.interface import is_part_of_component, can_list_interfaces
@@ -96,6 +117,11 @@ class Interface(FaebrykLibObject):
             @staticmethod
             def get_component() -> Component:
                 return self.component
+
+
+        if component is None:
+            self.del_trait(is_part_of_component)
+            return
 
         self.add_trait(_())
 

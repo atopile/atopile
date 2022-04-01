@@ -53,8 +53,8 @@ def run_experiment():
         r.add_trait(has_defined_footprint(SMDTwoPin(
             SMDTwoPin.Type._0805
         )))
-        r.add_trait(has_symmetric_footprint_pinmap(r))
-    battery.add_trait(has_symmetric_footprint_pinmap(battery))
+        r.add_trait(has_symmetric_footprint_pinmap())
+    battery.add_trait(has_symmetric_footprint_pinmap())
 
 
     comps = [

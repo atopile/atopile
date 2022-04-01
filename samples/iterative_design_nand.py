@@ -111,7 +111,7 @@ def run_experiment():
     switch.add_trait(has_defined_footprint(switch_fp))
 
     for symmetric_component in [pull_down_resistor, current_limiting_resistor, switch]:
-        symmetric_component.add_trait(has_symmetric_footprint_pinmap(symmetric_component))
+        symmetric_component.add_trait(has_symmetric_footprint_pinmap())
 
     led.add_trait(has_defined_footprint_pinmap({
         1: led.anode,
@@ -120,16 +120,16 @@ def run_experiment():
 
     #TODO: remove, just compensation for old graph
     battery.add_trait(has_defined_interfaces([battery.power]))
-    battery.get_trait(has_interfaces).set_interface_comp(battery)
-    battery.add_trait(has_symmetric_footprint_pinmap(battery))
+    battery.get_trait(has_interfaces).set_interface_comp()
+    battery.add_trait(has_symmetric_footprint_pinmap())
     logic_virt = Component()
     logic_virt.high = high
     logic_virt.low = low
     logic_virt.add_trait(has_defined_interfaces([logic_virt.high, logic_virt.low]))
-    logic_virt.get_trait(has_interfaces).set_interface_comp(logic_virt)
-    logic_virt.add_trait(has_symmetric_footprint_pinmap(logic_virt))
+    logic_virt.get_trait(has_interfaces).set_interface_comp()
+    logic_virt.add_trait(has_symmetric_footprint_pinmap())
     for n in nand_ic.nands:
-        n.add_trait(has_symmetric_footprint_pinmap(n))
+        n.add_trait(has_symmetric_footprint_pinmap())
 
     # make graph
     components = [
