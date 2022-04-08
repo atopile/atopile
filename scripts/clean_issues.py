@@ -5,7 +5,9 @@
 import csv
 import subprocess
 import re
+import logging
 
+logger = logging.getLogger("script")
 
 # Expects a csv file in the format: issue_number,title
 # Can be generated with gh issue list and some manual editing
@@ -25,7 +27,7 @@ new_titles = {
 }
 
 for issue,title in issues.items():
-    print("{}->{}".format(title, new_titles[issue]))
+    logger.info("{}->{}".format(title, new_titles[issue]))
 
 
 for issue,title in new_titles.items():

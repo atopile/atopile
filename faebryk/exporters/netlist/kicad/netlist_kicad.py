@@ -4,6 +4,9 @@
 import datetime
 import faebryk.version
 import itertools
+import logging
+
+logger = logging.getLogger("netlist")
 
 import faebryk.exporters.netlist.kicad.sexp as sexp
 
@@ -176,7 +179,7 @@ def _sublist(generator_function, obj_list):
 
 
 def _clean_none_and_empty(obj, rd=0):
-    # print("\t"*rd+"Clean:", type(obj), obj)
+    logger.debug("\t" * rd + "Clean:", type(obj), obj)
     new_obj = obj
     if obj is None:
         return None
@@ -206,7 +209,7 @@ def _clean_none_and_empty(obj, rd=0):
     if len(new_obj) == 0:
         new_obj = None
 
-    # print("\t"*rd+"Cleaned:", new_obj)
+    logger.debug("\t" * rd + "Cleaned:", new_obj)
     return new_obj
 
 

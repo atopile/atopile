@@ -10,6 +10,9 @@ Thus this is a netlist sample.
 Netlist samples can be run directly.
 The netlist is printed to stdout.
 """
+import logging
+
+logger = logging.getLogger("main")
 
 def run_experiment():
     # function imports
@@ -75,7 +78,7 @@ def run_experiment():
         )
     )
 
-    print("Experiment netlist:")
+    logger.info("Experiment netlist:")
     print(netlist)
 
     from faebryk.exporters.netlist import render_graph
@@ -83,12 +86,11 @@ def run_experiment():
 
 # Boilerplate -----------------------------------------------------------------
 import sys
-import logging
 
 def main(argc, argv, argi):
     logging.basicConfig(level=logging.INFO)
 
-    print("Running experiment")
+    logger.info("Running experiment")
     run_experiment()
 
 if __name__ == "__main__":

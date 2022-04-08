@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 import unittest
+import logging
+
+logger = logging.getLogger("test")
 
 # Netlists --------------------------------------------------------------------
 def test_netlist_graph():
@@ -81,9 +84,9 @@ def test_netlist_graph():
     _,netlist_t1 = test_netlist_t1()
     success = netlist == netlist_t1
     if not success:
-        print("Graph != T1")
-        print("T1", netlist_t1)
-        print("Graph", netlist)
+        logger.error("Graph != T1")
+        logger.error("T1", netlist_t1)
+        logger.error("Graph", netlist)
 
     return success, netlist
 
@@ -146,9 +149,9 @@ def test_netlist_t1():
 
     success = kicad_netlist == kicad_netlist_t2
     if not success:
-        print("T1 != T2")
-        print("T2", kicad_netlist_t2)
-        print("T1", kicad_netlist)
+        logger.error("T1 != T2")
+        logger.error("T2", kicad_netlist_t2)
+        logger.error("T1", kicad_netlist)
 
     return success, kicad_netlist
 
@@ -206,15 +209,15 @@ def test_netlist_t2():
             ],
         ),
     ]
-    #print("T2 netlist:", netlist)
+    logger.debug("T2 netlist:", netlist)
 
     kicad_net = from_faebryk_t2_netlist(netlist)
     kicad_net_manu = _test_netlist_manu()
 
     success = kicad_net == kicad_net_manu
     if not success:
-        print("T2 != Manu")
-        print(kicad_net_manu)
+        logger.error("T2 != Manu")
+        logger.error(kicad_net_manu)
 
     return success, netlist
 
