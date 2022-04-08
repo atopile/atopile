@@ -24,6 +24,9 @@ When in doubt, ask a question on our [Discord](https://discord.gg/95jYuPmnUW) co
 
 Like with new issues, we use a template for creating pull requests. Please fill in the template and be elaborate so we can try to merge your pr as soon as possible.
 
+**Run the [Black](https://github.com/psf/black) code formatting tool before creating the pr!!**
+``python -m black {source_file_or_directory}``
+
 Be sure there is an issue linked to your pr.
 
 ## Labels

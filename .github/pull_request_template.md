@@ -19,6 +19,7 @@ Please read and execute the following:
 - [ ] I have added tests that prove my fix is effective or that my feature works (if applicable)
 - [ ] New and existing unit tests pass locally with my changes
 - [ ] Any dependent changes have been merged and published in downstream modules
+- [ ] I ran [Black](../docs/CONTRIBUTING.md#creating-a-pull-request) to format my code
 
 #### Code of Conduct
 
