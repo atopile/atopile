@@ -83,6 +83,61 @@ class Resistor(Component):
         self.add_trait(_has_type_description())
 
 
+class Capacitor(Component):
+    def _setup_traits(self):
+        class _has_interfaces(has_interfaces):
+            @staticmethod
+            def get_interfaces() -> list(Interface):
+                return self.interfaces
+
+        class _contructable_from_component(contructable_from_component):
+            @staticmethod
+            def from_component(comp: Component, capacitance: Parameter) -> Capacitor:
+                assert comp.has_trait(has_interfaces)
+                interfaces = comp.get_trait(has_interfaces).get_interfaces()
+                assert len(interfaces) == 2
+                assert len([i for i in interfaces if type(i) is not Electrical]) == 0
+
+                c = Capacitor.__new__(Capacitor)
+                c._setup_capacitance(capacitance)
+                c.interfaces = interfaces
+
+                return c
+
+        self.add_trait(_has_interfaces())
+        self.add_trait(_contructable_from_component())
+
+    def _setup_interfaces(self):
+        self.interfaces = [Electrical(), Electrical()]
+
+    def __new__(cls, *args, **kwargs):
+        self = super().__new__(cls)
+        self._setup_traits()
+        return self
+
+    def __init__(self, capacitance: Parameter):
+        super().__init__()
+
+        self._setup_interfaces()
+        self.set_capacitance(capacitance)
+
+    def set_capacitance(self, capacitance: Parameter):
+        self.capacitance = capacitance
+
+        if type(capacitance) is not Constant:
+            return
+
+        class _has_type_description(has_type_description):
+            @staticmethod
+            def get_type_description():
+                capacitance = self.capacitance
+                return unit_map(
+                    capacitance.value, ["µF", "mF", "F", "KF", "MF", "GF"], start="F"
+                )
+
+        self.add_trait(_has_type_description())
+
+
 class LED(Component):
     class has_calculatable_needed_series_resistance(ComponentTrait):
         @staticmethod
