@@ -14,8 +14,11 @@ class Trait:
     def __init__(self) -> None:
         self._obj = None
 
-    def __eq__(self, other: Trait) -> bool:
-        return isinstance(self, other)
+    def __eq__(self, other) -> bool:
+        if type(other) is type:
+            return isinstance(self, other) or issubclass(other, type(self))
+        else:
+            return super.__eq__(self, other)
 
     def set_obj(self, _obj):
         self._obj = _obj
@@ -43,6 +46,8 @@ class FaebrykLibObject:
         trait.set_obj(self)
 
         # Add trait if new
+        # Be careful with parent/child classes of a trait
+        # They count as one, but not sister/nephew classes
         if type(trait) not in self.traits:
             self.traits.append(trait)
             return
@@ -54,8 +59,9 @@ class FaebrykLibObject:
 
     def del_trait(self, trait):
         if self.has_trait(trait):
-            self.traits[trait].remove_obj()
-            del self.traits[trait]
+            trait_idx = self.traits.index(trait)
+            self.traits[trait_idx].remove_obj()
+            del self.traits[trait_idx]
 
     def has_trait(self, trait) -> bool:
         # Make use of eq overload
