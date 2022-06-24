@@ -27,6 +27,7 @@ def make_graph_from_components(components):
     from faebryk.library.traits.interface import is_part_of_component
     from faebryk.library.kicad import has_kicad_footprint
     from faebryk.library.kicad import has_kicad_ref
+    from faebryk.library.util import get_all_components
 
     class wrapper:
         def __init__(self, component: Component) -> None:
@@ -125,6 +126,10 @@ def make_graph_from_components(components):
             self._update_comp()
 
             return self._get_comp()
+
+    # add subcomponents to graph
+    for i in map(get_all_components, components):
+        components.extend(i)
 
     wrapped_list = list(map(wrapper, components))
     for i in wrapped_list:

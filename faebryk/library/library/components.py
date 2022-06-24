@@ -5,13 +5,11 @@ import logging
 from faebryk.library.traits import component
 
 from faebryk.library.traits.component import (
+    can_bridge_defined,
     contructable_from_component,
     has_defined_footprint,
-    has_defined_footprint_pinmap,
     has_defined_type_description,
     has_footprint_pinmap,
-    has_interfaces,
-    has_interfaces_list,
     has_symmetric_footprint_pinmap,
     has_type_description,
 )
@@ -23,7 +21,7 @@ from faebryk.library.core import Component, ComponentTrait, Interface, Parameter
 from faebryk.library.library.interfaces import Electrical, Power
 from faebryk.library.library.parameters import Constant
 from faebryk.library.traits import *
-from faebryk.library.util import get_all_interfaces, times, unit_map
+from faebryk.library.util import times, unit_map
 
 
 class Resistor(Component):
@@ -31,24 +29,22 @@ class Resistor(Component):
         class _contructable_from_component(contructable_from_component):
             @staticmethod
             def from_component(comp: Component, resistance: Parameter) -> Resistor:
-                assert comp.has_trait(has_interfaces)
-                interfaces = comp.get_trait(has_interfaces).get_interfaces()
+                interfaces = comp.IFs.get_all()
                 assert len(interfaces) == 2
                 assert len([i for i in interfaces if type(i) is not Electrical]) == 0
 
                 r = Resistor.__new__(Resistor)
                 r._setup_resistance(resistance)
-                r.interfaces = interfaces
-                r.get_trait(has_interfaces).set_interface_comp()
+                r.IFs.add_all(interfaces)
 
                 return r
 
-        self.add_trait(has_interfaces_list())
         self.add_trait(_contructable_from_component())
 
     def _setup_interfaces(self):
-        self.interfaces = times(2, Electrical)
-        self.get_trait(has_interfaces).set_interface_comp()
+        self.IFs.add_all(times(2, Electrical))
+
+        self.add_trait(can_bridge_defined(*self.IFs.get_all()))
 
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
@@ -85,16 +81,10 @@ class Resistor(Component):
 
 class Capacitor(Component):
     def _setup_traits(self):
-        class _has_interfaces(has_interfaces):
-            @staticmethod
-            def get_interfaces() -> list(Interface):
-                return self.interfaces
-
         class _contructable_from_component(contructable_from_component):
             @staticmethod
             def from_component(comp: Component, capacitance: Parameter) -> Capacitor:
-                assert comp.has_trait(has_interfaces)
-                interfaces = comp.get_trait(has_interfaces).get_interfaces()
+                interfaces = comp.IFs.get_all()
                 assert len(interfaces) == 2
                 assert len([i for i in interfaces if type(i) is not Electrical]) == 0
 
@@ -104,7 +94,6 @@ class Capacitor(Component):
 
                 return c
 
-        self.add_trait(_has_interfaces())
         self.add_trait(_contructable_from_component())
 
     def _setup_interfaces(self):
@@ -145,18 +134,11 @@ class LED(Component):
             raise NotImplemented
 
     def _setup_traits(self):
-        class _has_interfaces(has_interfaces):
-            @staticmethod
-            def get_interfaces() -> list[Interface]:
-                return [self.anode, self.cathode]
-
         self.add_trait(has_defined_type_description("LED"))
-        self.add_trait(_has_interfaces())
 
     def _setup_interfaces(self):
-        self.anode = Electrical()
-        self.cathode = Electrical()
-        self.get_trait(has_interfaces).set_interface_comp()
+        self.IFs.anode = Electrical()
+        self.IFs.cathode = Electrical()
 
     def __new__(cls):
         self = super().__new__(cls)
@@ -189,11 +171,10 @@ class LED(Component):
 class Switch(Component):
     def _setup_traits(self):
         self.add_trait(has_defined_type_description("SW"))
-        self.add_trait(has_interfaces_list())
 
     def _setup_interfaces(self):
-        self.interfaces = times(2, Electrical)
-        self.get_trait(has_interfaces).set_interface_comp()
+        self.IFs.add_all(times(2, Electrical))
+        self.add_trait(can_bridge_defined(*self.IFs.get_all()))
 
     def __new__(cls):
         self = super().__new__(cls)
@@ -207,11 +188,6 @@ class Switch(Component):
 
 class NAND(Component):
     def _setup_traits(self):
-        class _has_interfaces(has_interfaces):
-            @staticmethod
-            def get_interfaces():
-                return get_all_interfaces([self.power, self.output, *self.inputs])
-
         class _constructable_from_component(contructable_from_component):
             @staticmethod
             def from_comp(comp: Component) -> NAND:
@@ -219,19 +195,14 @@ class NAND(Component):
                 n.__init_from_comp(comp)
                 return n
 
-        self.add_trait(_has_interfaces())
         self.add_trait(_constructable_from_component())
 
     def _setup_power(self):
-        self.power = Power()
+        self.IFs.power = Power()
 
     def _setup_inouts(self, input_cnt):
-        self.output = Electrical()
-        self.inputs = times(input_cnt, Electrical)
-        self._set_interface_comp()
-
-    def _set_interface_comp(self):
-        self.get_trait(has_interfaces).set_interface_comp()
+        self.IFs.output = Electrical()
+        self.IFs.inputs = times(input_cnt, Electrical)
 
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
@@ -249,29 +220,23 @@ class NAND(Component):
         self.input_cnt = input_cnt
 
     def __init_from_comp(self, comp: Component):
-        dummy = NAND(2)
-        base_cnt = len(get_all_interfaces(dummy))
-
-        assert comp.has_trait(has_interfaces)
-        interfaces = comp.get_trait(has_interfaces).get_interfaces()
-        assert len(interfaces) >= base_cnt
-        assert len([i for i in interfaces if type(i) is not Electrical]) == 0
+        interfaces = comp.IFs.get_all()
+        assert all(lambda i: type(i) is Electrical, interfaces)
 
         it = iter(interfaces)
 
-        self.power = (
+        self.IFs.power = (
             Power().get_trait(contructable_from_interface_list).from_interfaces(it)
         )
-        self.output = (
+        self.IFs.output = (
             Electrical().get_trait(contructable_from_interface_list).from_interfaces(it)
         )
-        self.inputs = [
+        self.IFs.inputs = [
             Electrical().get_trait(contructable_from_interface_list).from_interfaces(it)
             for i in self.inputs
         ]
 
         self.input_cnt = len(self.inputs)
-        self._set_interface_comp()
 
 
 class CD4011(Component):
@@ -281,11 +246,6 @@ class CD4011(Component):
             raise NotImplemented
 
     def _setup_traits(self):
-        class _has_interfaces(has_interfaces):
-            @staticmethod
-            def get_interfaces():
-                return get_all_interfaces([self.power, *self.in_outs])
-
         class _constructable_from_component(contructable_from_component):
             @staticmethod
             def from_comp(comp: Component) -> CD4011:
@@ -300,38 +260,35 @@ class CD4011(Component):
                 c._init_from_nands(nands)
                 return c
 
-        self.add_trait(_has_interfaces())
         self.add_trait(_constructable_from_component())
         self.add_trait(_constructable_from_nands())
         self.add_trait(has_defined_type_description("cd4011"))
 
     def _setup_power(self):
-        self.power = Power()
+        self.IFs.power = Power()
 
     def _setup_nands(self):
-        self.nands = times(4, lambda: NAND(input_cnt=2))
-        for n in self.nands:
+        self.CMPs.nands = times(4, lambda: NAND(input_cnt=2))
+        for n in self.CMPs.nands:
             n.add_trait(has_symmetric_footprint_pinmap())
 
     def _setup_inouts(self):
         nand_inout_interfaces = [
-            i for n in self.nands for i in get_all_interfaces([n.output, *n.inputs])
+            i for n in self.CMPs.nands for i in [n.IFs.output, *n.IFs.inputs]
         ]
-        self.in_outs = times(len(nand_inout_interfaces), Electrical)
+        self.IFs.in_outs = times(len(nand_inout_interfaces), Electrical)
 
     def _setup_internal_connections(self):
-        self.get_trait(has_interfaces).set_interface_comp()
-
         self.connection_map = {}
 
-        it = iter(self.in_outs)
-        for n in self.nands:
-            n.power.connect(self.power)
+        it = iter(self.IFs.in_outs)
+        for n in self.CMPs.nands:
+            n.IFs.power.connect(self.IFs.power)
             target = next(it)
-            target.connect(n.output)
-            self.connection_map[n.output] = target
+            target.connect(n.IFs.output)
+            self.connection_map[n.IFs.output] = target
 
-            for i in n.inputs:
+            for i in n.IFs.inputs:
                 target = next(it)
                 target.connect(i)
                 self.connection_map[i] = target
@@ -355,26 +312,29 @@ class CD4011(Component):
         self._setup_internal_connections()
 
     def _init_from_comp(self, comp: Component):
+        super().__init__()
+
         # checks
-        assert comp.has_trait(has_interfaces)
-        interfaces = comp.get_trait(has_interfaces).get_interfaces()
-        assert len(interfaces) == len(self.get_trait(has_interfaces).get_interfaces())
+        interfaces = comp.IFs.get_all()
+        assert len(interfaces) == len(self.IFs.get_all())
         assert len([i for i in interfaces if type(i) is not Electrical]) == 0
 
         it = iter(interfaces)
 
         # setup
-        self.power = (
+        self.IFs.power = (
             Power().get_trait(contructable_from_interface_list).from_interfaces(it)
         )
         self._setup_nands()
-        self.in_outs = [
+        self.IFs.in_outs = [
             Electrical().get_trait(contructable_from_interface_list).from_interfaces(i)
             for i in it
         ]
         self._setup_internal_connections()
 
     def _init_from_nands(self, nands: list[NAND]):
+        super().__init__()
+
         # checks
         assert len(nands) <= 4
         cd_nands = list(nands)
@@ -385,7 +345,7 @@ class CD4011(Component):
 
         # setup
         self._setup_power()
-        self.nands = cd_nands
+        self.CMPs.nands = cd_nands
         self._setup_inouts()
         self._setup_internal_connections()
 
@@ -415,20 +375,20 @@ class TI_CD4011BE(CD4011):
             def get_pin_map(self):
                 component = self.component
                 return {
-                    7: component.power.lv,
-                    14: component.power.hv,
-                    3: component.connection_map[component.nands[0].output],
-                    4: component.connection_map[component.nands[1].output],
-                    11: component.connection_map[component.nands[2].output],
-                    10: component.connection_map[component.nands[3].output],
-                    1: component.connection_map[component.nands[0].inputs[0]],
-                    2: component.connection_map[component.nands[0].inputs[1]],
-                    5: component.connection_map[component.nands[1].inputs[0]],
-                    6: component.connection_map[component.nands[1].inputs[1]],
-                    12: component.connection_map[component.nands[2].inputs[0]],
-                    13: component.connection_map[component.nands[2].inputs[1]],
-                    9: component.connection_map[component.nands[3].inputs[0]],
-                    8: component.connection_map[component.nands[3].inputs[1]],
+                    7: component.IFs.power.IFs.lv,
+                    14: component.IFs.power.IFs.hv,
+                    3: component.connection_map[component.CMPs.nands[0].IFs.output],
+                    4: component.connection_map[component.CMPs.nands[1].IFs.output],
+                    11: component.connection_map[component.CMPs.nands[2].IFs.output],
+                    10: component.connection_map[component.CMPs.nands[3].IFs.output],
+                    1: component.connection_map[component.CMPs.nands[0].IFs.inputs[0]],
+                    2: component.connection_map[component.CMPs.nands[0].IFs.inputs[1]],
+                    5: component.connection_map[component.CMPs.nands[1].IFs.inputs[0]],
+                    6: component.connection_map[component.CMPs.nands[1].IFs.inputs[1]],
+                    12: component.connection_map[component.CMPs.nands[2].IFs.inputs[0]],
+                    13: component.connection_map[component.CMPs.nands[2].IFs.inputs[1]],
+                    9: component.connection_map[component.CMPs.nands[3].IFs.inputs[0]],
+                    8: component.connection_map[component.CMPs.nands[3].IFs.inputs[1]],
                 }
 
         self.add_trait(_has_footprint_pinmap(self))
