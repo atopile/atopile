@@ -89,9 +89,14 @@ def make_graph_from_components(components):
                         target_pinmap = target_component.get_trait(
                             has_footprint_pinmap
                         ).get_pin_map()
-                        target_pin = list(target_pinmap.items())[
-                            list(target_pinmap.values()).index(target_interface)
-                        ][0]
+                        try:
+                            target_pin = list(target_pinmap.items())[
+                                list(target_pinmap.values()).index(target_interface)
+                            ][0]
+                        except ValueError:
+                            raise FaebrykException(
+                                "Pinmap of component does not contain referenced pin"
+                            )
                         try:
                             target_wrapped = [
                                 i
