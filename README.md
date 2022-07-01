@@ -2,6 +2,8 @@
 
 # faebryk
 
+### \[fˈɛbɹɪk\]
+
 <a href="https://github.com/faebryk/faebryk">
 <img height=300 width=300 src="./faebryk_logo.png"/>
 </a>
