@@ -53,7 +53,7 @@ class TraitImpl:
         return self._obj
 
     def cmp(self, other: TraitImpl) -> tuple[bool, TraitImpl]:
-        assert (type(other), TraitImpl)
+        assert type(other), TraitImpl
 
         # If other same or more specific
         if other.implements(self.trait):
