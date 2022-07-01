@@ -83,25 +83,6 @@ class Resistor(Component):
 
 
 class Capacitor(Component):
-    def _setup_traits(self):
-        class _contructable_from_component(contructable_from_component.impl()):
-            @staticmethod
-            def from_component(comp: Component, capacitance: Parameter) -> Capacitor:
-                interfaces = comp.IFs.get_all()
-                assert len(interfaces) == 2
-                assert len([i for i in interfaces if type(i) is not Electrical]) == 0
-
-                c = Capacitor.__new__(Capacitor)
-                c._setup_capacitance(capacitance)
-                c.interfaces = interfaces
-
-                return c
-
-        self.add_trait(_contructable_from_component())
-
-    def _setup_interfaces(self):
-        self.interfaces = [Electrical(), Electrical()]
-
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
         self._setup_traits()
@@ -112,6 +93,13 @@ class Capacitor(Component):
 
         self._setup_interfaces()
         self.set_capacitance(capacitance)
+
+    def _setup_traits(self):
+        pass
+
+    def _setup_interfaces(self):
+        self.IFs.add_all(times(2, Electrical))
+        self.add_trait(can_bridge_defined(*self.IFs._unnamed))
 
     def set_capacitance(self, capacitance: Parameter):
         self.capacitance = capacitance
@@ -128,6 +116,25 @@ class Capacitor(Component):
                 )
 
         self.add_trait(_has_type_description())
+
+
+class Transistor(Component):
+    def __new__(cls):
+        self = super().__new__(cls)
+        self._setup_traits()
+        return self
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._setup_interfaces()
+
+    def _setup_traits(self):
+        self.add_trait(has_defined_type_description("Transistor"))
+
+    def _setup_interfaces(self):
+        self.IFs.emitter = Electrical()
+        self.IFs.base = Electrical()
+        self.IFs.collector = Electrical()
 
 
 class LED(Component):
@@ -171,6 +178,40 @@ class LED(Component):
         return Constant((input_voltage_V - forward_voltage_V) / forward_current_A)
 
 
+class Potentiometer(Component):
+    def __new__(cls, *args, **kwargs):
+        self = super().__new__(cls, *args, **kwargs)
+        self._setup_traits()
+        return self
+
+    def __init__(self, resistance: Parameter) -> None:
+        super().__init__()
+        self._setup_interfaces(resistance)
+
+    def _setup_traits(self):
+        pass
+
+    def _setup_interfaces(self, resistance):
+        self.CMPs.resistors = [Resistor(resistance) for _ in range(2)]
+        self.IFs.resistors = times(2, Electrical)
+        self.IFs.wiper = Electrical()
+
+        self.IFs.wiper.connect_all(
+            [
+                self.CMPs.resistors[0].IFs._unnamed[1],
+                self.CMPs.resistors[1].IFs._unnamed[1],
+            ]
+        )
+
+        for i, resistor in enumerate(self.CMPs.resistors):
+            self.IFs.resistors[i].connect(resistor.IFs._unnamed[0])
+
+    def connect_as_voltage_divider(self, high, low, out):
+        self.IFs.resistors[0].connect(high)
+        self.IFs.resistors[1].connect(low)
+        self.IFs.wiper.connect(out)
+
+
 class Switch(Component):
     def _setup_traits(self):
         self.add_trait(has_defined_type_description("SW"))
@@ -187,6 +228,25 @@ class Switch(Component):
     def __init__(self) -> None:
         super().__init__()
         self._setup_interfaces()
+
+
+class PJ398SM(Component):
+    def __new__(cls):
+        self = super().__new__(cls)
+        self._setup_traits()
+        return self
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._setup_interfaces()
+
+    def _setup_traits(self):
+        self.add_trait(has_defined_type_description("Connector"))
+
+    def _setup_interfaces(self):
+        self.IFs.tip = Electrical()
+        self.IFs.sleeve = Electrical()
+        self.IFs.switch = Electrical()
 
 
 class NAND(Component):
