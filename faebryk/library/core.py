@@ -182,11 +182,11 @@ class Interface(FaebrykLibObject):
 
     def connect_all(self, others: list[Interface]) -> Interface:
         for i in others:
-            self.connect(self, i)
+            self.connect(i)
 
         return self
 
-    def connect_via(self, bridge: Interface, target: Interface):
+    def connect_via(self, bridge: Component, target: Interface):
         from faebryk.library.traits.component import can_bridge
 
         bridge.get_trait(can_bridge).bridge(self, target)
