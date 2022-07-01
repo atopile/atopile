@@ -20,65 +20,74 @@ class TestTraits(unittest.TestCase):
     def test_equality(self):
         from faebryk.library.core import Trait
 
-        class trait1(Trait):
-            def do(self) -> Integral:
-                return 1
+        class _trait1(Trait):
+            pass
 
-        class trait1_1(trait1):
-            def do(self) -> Integral:
-                return 11
+        class _trait1_1(_trait1):
+            pass
 
-        class trait1_1_1(trait1_1):
-            def do(self) -> Integral:
-                return 111
+        class _trait2(Trait):
+            pass
 
-        class trait1_2(trait1):
-            def do(self) -> Integral:
-                return 12
+        class impl1(_trait1.impl()):
+            pass
 
-        class trait2(Trait):
-            def do(self) -> Integral:
-                return 2
+        class impl1_1(impl1):
+            pass
 
-        a = trait1()
+        class impl1_1_1(impl1_1):
+            pass
 
-        def assertEqualSym(one, two):
-            self.assertEqual(one, two)
-            self.assertEqual(two, one)
+        class impl1_2(impl1):
+            pass
 
-        def assertNotEqualSym(one, two):
-            self.assertNotEqual(one, two)
-            self.assertNotEqual(two, one)
+        class impl_1_1(_trait1_1.impl()):
+            pass
+
+        class impl2(_trait2.impl()):
+            pass
+
+        a = impl1()
 
         # different inst
-        assertNotEqualSym(trait1(), trait1())
+        self.assertNotEqual(impl1(), impl1())
         # same inst
-        assertEqualSym(a, a)
+        self.assertEqual(a, a)
         # same class
-        assertEqualSym(trait1, trait1)
+        self.assertEqual(impl1, impl1)
         # class & parent/child class
-        assertNotEqualSym(trait1_1, trait1)
+        self.assertNotEqual(impl1_1, impl1)
         # class & parallel class
-        assertNotEqualSym(trait2, trait1)
+        self.assertNotEqual(impl2, impl1)
+
+        def assertCmpTrue(one, two):
+            self.assertTrue(one.cmp(two)[0])
+
+        def assertCmpFalse(one, two):
+            self.assertFalse(one.cmp(two)[0])
 
         # inst & class
-        assertEqualSym(trait1(), trait1)
-        assertEqualSym(trait1_1(), trait1_1)
+        assertCmpTrue(impl1(), impl1())
+        assertCmpTrue(impl1_1(), impl1_1())
         # inst & parent class
-        assertEqualSym(trait1_1(), trait1)
+        assertCmpTrue(impl1_1(), impl1())
         # inst & child class
-        assertEqualSym(trait1(), trait1_1)
+        assertCmpTrue(impl1(), impl1_1())
         # inst & parallel class
-        assertNotEqualSym(trait2(), trait1)
-        assertNotEqualSym(trait2(), trait1_1)
+        assertCmpFalse(impl2(), impl1())
+        assertCmpFalse(impl2(), impl1_1())
         # inst & double child class
-        assertEqualSym(trait1_1_1(), trait1)
+        assertCmpTrue(impl1_1_1(), impl1())
         # inst & double parent class
-        assertEqualSym(trait1(), trait1_1_1)
+        assertCmpTrue(impl1(), impl1_1_1())
         # inst & sister class
-        assertEqualSym(trait1_2(), trait1_1)
+        assertCmpTrue(impl1_2(), impl1_1())
         # inst & nephew class
-        assertEqualSym(trait1_2(), trait1_1_1)
+        assertCmpTrue(impl1_2(), impl1_1_1())
+
+        # Trait inheritance
+        assertCmpTrue(impl1(), impl_1_1())
+        assertCmpTrue(impl_1_1(), impl1())
 
     def test_obj_traits(self):
         from faebryk.library.core import FaebrykLibObject, Trait
@@ -90,7 +99,7 @@ class TestTraits(unittest.TestCase):
             def do(self) -> Integral:
                 raise NotImplementedError
 
-        class trait1impl(trait1):
+        class trait1impl(trait1.impl()):
             def do(self) -> Integral:
                 return 1
 
@@ -102,12 +111,19 @@ class TestTraits(unittest.TestCase):
             def do(self) -> Integral:
                 return self.cfg
 
+        class trait2(trait1):
+            pass
+
+        class impl2(trait2.impl()):
+            pass
+
         # Test failure on getting non existent
         self.assertFalse(obj.has_trait(trait1))
         self.assertRaises(AssertionError, lambda: obj.get_trait(trait1))
 
         trait1_inst = trait1impl()
         cfgtrait1_inst = cfgtrait1(5)
+        impl2_inst = impl2()
 
         # Test getting trait
         obj.add_trait(trait1_inst)
@@ -126,6 +142,8 @@ class TestTraits(unittest.TestCase):
         self.assertEquals(trait1_inst, obj.get_trait(trait1))
 
         # Test remove
+        obj.del_trait(trait2)
+        self.assertTrue(obj.has_trait(trait1))
         obj.del_trait(trait1)
         self.assertFalse(obj.has_trait(trait1))
 
@@ -135,6 +153,15 @@ class TestTraits(unittest.TestCase):
         self.assertEquals(obj.get_trait(trait1).get_obj(), obj)
         obj.del_trait(trait1)
         self.assertRaises(AssertionError, lambda: trait1_inst.get_obj())
+
+        # Test specific override
+        obj.add_trait(impl2_inst)
+        obj.add_trait(trait1_inst)
+        self.assertEquals(impl2_inst, obj.get_trait(trait1))
+
+        # Test child delete
+        obj.del_trait(trait1)
+        self.assertFalse(obj.has_trait(trait1))
 
 
 if __name__ == "__main__":

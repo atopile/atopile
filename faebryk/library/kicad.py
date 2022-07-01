@@ -12,7 +12,7 @@ class has_kicad_ref(ComponentTrait):
         raise NotImplementedError()
 
 
-class has_defined_kicad_ref(has_kicad_ref):
+class has_defined_kicad_ref(has_kicad_ref.impl()):
     def __init__(self, ref: str) -> None:
         super().__init__()
         self.ref = ref
@@ -29,7 +29,7 @@ class has_kicad_footprint(FootprintTrait):
         raise NotImplementedError()
 
 
-class has_kicad_manual_footprint(has_kicad_footprint):
+class has_kicad_manual_footprint(has_kicad_footprint.impl()):
     def __init__(self, str) -> None:
         super().__init__()
         self.str = str

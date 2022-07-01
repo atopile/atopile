@@ -12,10 +12,10 @@ def test_netlist_graph():
     from faebryk.exporters.netlist import make_t2_netlist_from_t1
     from faebryk.library.core import Component
     from faebryk.library.library.interfaces import Electrical
-    from faebryk.library.traits.component import has_defined_footprint
+    from faebryk.library.trait_impl.component import has_defined_footprint
     from faebryk.library.core import Footprint
     from faebryk.library.kicad import has_defined_kicad_ref
-    from faebryk.library.traits.component import has_defined_footprint_pinmap, has_defined_type_description
+    from faebryk.library.trait_impl.component import has_defined_footprint_pinmap, has_defined_type_description
     from faebryk.library.kicad import has_kicad_manual_footprint
     from faebryk.exporters.netlist.graph import make_t1_netlist_from_graph, make_graph_from_components
 

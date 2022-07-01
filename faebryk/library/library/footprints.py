@@ -15,7 +15,7 @@ class DIP(Footprint):
     def __init__(self, pin_cnt: int, spacing_mm: int, long_pads: bool) -> None:
         super().__init__()
 
-        class _has_kicad_footprint(has_kicad_footprint):
+        class _has_kicad_footprint(has_kicad_footprint.impl()):
             @staticmethod
             def get_kicad_footprint() -> str:
                 return "Package_DIP:DIP-{leads}_W{spacing:.2f}mm{longpads}".format(
@@ -46,7 +46,7 @@ class QFN(Footprint):
             and exposed_thermal_pad_dimensions_mm[1] < size_xy_mm[1]
         )
 
-        class _has_kicad_footprint(has_kicad_footprint):
+        class _has_kicad_footprint(has_kicad_footprint.impl()):
             @staticmethod
             def get_kicad_footprint() -> str:
                 # example: QFN-16-1EP_4x4mm_P0.5mm_EP2.45x2.45mm_ThermalVias
@@ -80,7 +80,7 @@ class SMDTwoPin(Footprint):
     def __init__(self, type: Type) -> None:
         super().__init__()
 
-        class _has_kicad_footprint(has_kicad_footprint):
+        class _has_kicad_footprint(has_kicad_footprint.impl()):
             @staticmethod
             def get_kicad_footprint() -> str:
                 table = {

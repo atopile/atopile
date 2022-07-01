@@ -11,14 +11,36 @@ logger = logging.getLogger("library")
 
 # 1st order classes -----------------------------------------------------------
 class Trait:
+    @classmethod
+    def impl(cls):
+        class _Impl(TraitImpl, cls):
+            pass
+
+        return _Impl
+
+
+class TraitImpl:
     def __init__(self) -> None:
         self._obj = None
 
-    def __eq__(self, other) -> bool:
-        if type(other) is type:
-            return isinstance(self, other) or issubclass(other, type(self))
-        else:
-            return super.__eq__(self, other)
+        self.trait = None
+        bases = type(self).__bases__
+        while not self.trait:
+            for base in bases:
+                if not issubclass(base, TraitImpl) and issubclass(base, Trait):
+                    self.trait = base
+                    break
+            bases = [
+                new_base
+                for base in bases
+                if issubclass(base, TraitImpl)
+                for new_base in base.__bases__
+            ]
+            assert len(bases) > 0
+
+        assert type(self.trait) is type
+        assert issubclass(self.trait, Trait)
+        assert self.trait is not TraitImpl
 
     def set_obj(self, _obj):
         self._obj = _obj
@@ -29,6 +51,24 @@ class Trait:
     def get_obj(self):
         assert self._obj is not None, "trait is not linked to object"
         return self._obj
+
+    def cmp(self, other: TraitImpl) -> tuple[bool, TraitImpl]:
+        assert (type(other), TraitImpl)
+
+        # If other same or more specific
+        if other.implements(self.trait):
+            return True, other
+
+        # If we are more specific
+        if self.implements(other.trait):
+            return True, self
+
+        return False, self
+
+    def implements(self, trait: type):
+        assert issubclass(trait, Trait)
+
+        return issubclass(self.trait, trait)
 
 
 class FaebrykLibObject:
@@ -41,35 +81,49 @@ class FaebrykLibObject:
     def __init__(self) -> None:
         pass
 
-    def add_trait(self, trait: Trait) -> None:
+    def add_trait(self, trait: TraitImpl) -> None:
+        assert isinstance(trait, TraitImpl), ("not a traitimpl:", trait)
+        assert isinstance(trait, Trait)
         assert trait._obj is None, "trait already in use"
         trait.set_obj(self)
 
-        # Add trait if new
-        # Be careful with parent/child classes of a trait
-        # They count as one, but not sister/nephew classes
-        if type(trait) not in self.traits:
-            self.traits.append(trait)
-            return
+        # Override existing trait if more specific or same
+        for i, t in enumerate(self.traits):
+            hit, replace = t.cmp(trait)
+            if hit:
+                if replace == trait:
+                    t.remove_obj()
+                    self.traits[i] = replace
+                return
 
-        # Replace old trait
-        old_idx = self.traits.index(type(trait))
-        self.traits[old_idx].remove_obj()
-        self.traits[old_idx] = trait
+        # No hit: Add new trait
+        self.traits.append(trait)
+
+    def _find(self, trait):
+        return list(
+            filter(lambda tup: tup[1].implements(trait), enumerate(self.traits))
+        )
 
     def del_trait(self, trait):
-        if self.has_trait(trait):
-            trait_idx = self.traits.index(trait)
-            self.traits[trait_idx].remove_obj()
-            del self.traits[trait_idx]
+        candidates = self._find(trait)
+        assert len(candidates) <= 1
+        if len(candidates) == 0:
+            return
+        assert len(candidates) == 1, "{} not in {}[{}]".format(trait, type(self), self)
+        i, impl = candidates[0]
+        assert self.traits[i] == impl
+        impl.remove_obj()
+        del self.traits[i]
 
     def has_trait(self, trait) -> bool:
-        # Make use of eq overload
-        return trait in self.traits
+        return len(self._find(trait)) > 0
 
     def get_trait(self, trait):
-        assert trait in self.traits, "{} not in {}[{}]".format(trait, type(self), self)
-        return self.traits[self.traits.index(trait)]
+        candidates = self._find(trait)
+        assert len(candidates) <= 1
+        assert len(candidates) == 1, "{} not in {}[{}]".format(trait, type(self), self)
+
+        return candidates[0][1]
 
 
 # -----------------------------------------------------------------------------
@@ -155,18 +209,16 @@ class Interface(FaebrykLibObject):
                     _self.add(intf)
 
             def get_all(_self) -> list[Interface]:
-                return \
-                    [
-                        intf
-                        for intf in vars(_self).values()
-                        if issubclass(type(intf), Interface)
-                    ] \
-                    + [
-                        intf
-                        for name, intfs in vars(_self).items()
-                        if type(intfs) in [tuple, list]
-                        for intf in intfs
-                    ]
+                return [
+                    intf
+                    for intf in vars(_self).values()
+                    if issubclass(type(intf), Interface)
+                ] + [
+                    intf
+                    for name, intfs in vars(_self).items()
+                    if type(intfs) in [tuple, list]
+                    for intf in intfs
+                ]
 
         self.IFs = _Interfaces()
 
@@ -205,7 +257,7 @@ class Interface(FaebrykLibObject):
 
         self.component = component
 
-        class _(is_part_of_component):
+        class _(is_part_of_component.impl()):
             @staticmethod
             def get_component() -> Component:
                 return self.component
@@ -259,25 +311,22 @@ class Component(FaebrykLibObject):
                     _self.add(intf)
 
             def get_all(_self) -> list[Interface]:
-                return \
-                    [
-                        intf
-                        for intf in vars(_self).values()
-                        if issubclass(type(intf), Interface)
-                    ] \
-                    + [
-                        intf
-                        for name, intfs in vars(_self).items()
-                        if type(intfs) in [tuple, list] and name != "_unpopped"
-                        for intf in intfs
-                    ]
+                return [
+                    intf
+                    for intf in vars(_self).values()
+                    if issubclass(type(intf), Interface)
+                ] + [
+                    intf
+                    for name, intfs in vars(_self).items()
+                    if type(intfs) in [tuple, list] and name != "_unpopped"
+                    for intf in intfs
+                ]
 
             """ returns iterator on unnamed interfaces """
 
             def next(_self):
                 assert len(_self._unpopped) > 0, "No more interfaces to pop"
                 return _self._unpopped.pop(0)
-
 
         class _Components(NotifiesOnPropertyChange):
             def __init__(_self) -> None:
@@ -306,18 +355,16 @@ class Component(FaebrykLibObject):
                     _self.add(cmp)
 
             def get_all(_self) -> list[Component]:
-                return \
-                    [
-                        cmp
-                        for cmp in vars(_self).values()
-                        if issubclass(type(cmp), Component)
-                    ] \
-                    + [
-                        cmp
-                        for name, cmps in vars(_self).items()
-                        if type(cmps) in [tuple, list]
-                        for cmp in cmps
-                    ]
+                return [
+                    cmp
+                    for cmp in vars(_self).values()
+                    if issubclass(type(cmp), Component)
+                ] + [
+                    cmp
+                    for name, cmps in vars(_self).items()
+                    if type(cmps) in [tuple, list]
+                    for cmp in cmps
+                ]
 
         self.IFs = _Interfaces()
         self.CMPs = _Components()

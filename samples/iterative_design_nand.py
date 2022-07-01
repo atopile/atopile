@@ -29,7 +29,7 @@ def run_experiment():
     from faebryk.library.library.footprints import DIP, SMDTwoPin
     from faebryk.library.library.interfaces import Electrical, Power
     from faebryk.library.library.parameters import TBD, Constant
-    from faebryk.library.traits.component import (
+    from faebryk.library.trait_impl.component import (
         has_defined_footprint,
         has_defined_footprint_pinmap,
         has_symmetric_footprint_pinmap,

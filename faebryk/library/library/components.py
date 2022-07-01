@@ -5,15 +5,18 @@ import logging
 from faebryk.library.traits import component
 
 from faebryk.library.traits.component import (
-    can_bridge_defined,
     contructable_from_component,
-    has_defined_footprint,
-    has_defined_type_description,
     has_footprint_pinmap,
-    has_symmetric_footprint_pinmap,
     has_type_description,
 )
 from faebryk.library.traits.interface import contructable_from_interface_list
+
+from faebryk.library.trait_impl.component import (
+    can_bridge_defined,
+    has_defined_footprint,
+    has_defined_type_description,
+    has_symmetric_footprint_pinmap,
+)
 
 logger = logging.getLogger("library")
 
@@ -26,7 +29,7 @@ from faebryk.library.util import times, unit_map
 
 class Resistor(Component):
     def _setup_traits(self):
-        class _contructable_from_component(contructable_from_component):
+        class _contructable_from_component(contructable_from_component.impl()):
             @staticmethod
             def from_component(comp: Component, resistance: Parameter) -> Resistor:
                 interfaces = comp.IFs.get_all()
@@ -68,7 +71,7 @@ class Resistor(Component):
             self.del_trait(has_type_description)
             return
 
-        class _has_type_description(has_type_description):
+        class _has_type_description(has_type_description.impl()):
             @staticmethod
             def get_type_description():
                 resistance = self.resistance
@@ -81,7 +84,7 @@ class Resistor(Component):
 
 class Capacitor(Component):
     def _setup_traits(self):
-        class _contructable_from_component(contructable_from_component):
+        class _contructable_from_component(contructable_from_component.impl()):
             @staticmethod
             def from_component(comp: Component, capacitance: Parameter) -> Capacitor:
                 interfaces = comp.IFs.get_all()
@@ -116,7 +119,7 @@ class Capacitor(Component):
         if type(capacitance) is not Constant:
             return
 
-        class _has_type_description(has_type_description):
+        class _has_type_description(has_type_description.impl()):
             @staticmethod
             def get_type_description():
                 capacitance = self.capacitance
@@ -152,7 +155,7 @@ class LED(Component):
     def set_forward_parameters(self, voltage_V: Parameter, current_A: Parameter):
         if type(voltage_V) is Constant and type(current_A) is Constant:
 
-            class _(self.has_calculatable_needed_series_resistance):
+            class _(self.has_calculatable_needed_series_resistance.impl()):
                 @staticmethod
                 def get_needed_series_resistance_ohm(input_voltage_V) -> int:
                     return LED.needed_series_resistance_ohm(
@@ -188,7 +191,7 @@ class Switch(Component):
 
 class NAND(Component):
     def _setup_traits(self):
-        class _constructable_from_component(contructable_from_component):
+        class _constructable_from_component(contructable_from_component.impl()):
             @staticmethod
             def from_comp(comp: Component) -> NAND:
                 n = NAND.__new__(NAND)
@@ -246,14 +249,14 @@ class CD4011(Component):
             raise NotImplemented
 
     def _setup_traits(self):
-        class _constructable_from_component(contructable_from_component):
+        class _constructable_from_component(contructable_from_component.impl()):
             @staticmethod
             def from_comp(comp: Component) -> CD4011:
                 c = CD4011.__new__(CD4011)
                 c._init_from_comp(comp)
                 return c
 
-        class _constructable_from_nands(self.constructable_from_nands):
+        class _constructable_from_nands(self.constructable_from_nands.impl()):
             @staticmethod
             def from_nands(nands: list[NAND]) -> CD4011:
                 c = CD4011.__new__(CD4011)
@@ -367,7 +370,7 @@ class TI_CD4011BE(CD4011):
             has_defined_footprint(DIP(pin_cnt=14, spacing_mm=7.62, long_pads=False))
         )
 
-        class _has_footprint_pinmap(has_footprint_pinmap):
+        class _has_footprint_pinmap(has_footprint_pinmap.impl()):
             def __init__(self, component: Component) -> None:
                 super().__init__()
                 self.component = component
