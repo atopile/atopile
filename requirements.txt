@@ -1,3 +1,4 @@
 networkx
 numpy
 matplotlib
+sexpdata

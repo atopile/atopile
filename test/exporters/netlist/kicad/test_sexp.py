@@ -12,7 +12,7 @@ if __name__ == '__main__':
 from typing import Iterable
 import faebryk.exporters.netlist.kicad.sexp as sexp_gen
 from faebryk.exporters.netlist.kicad.sexp import multi_key_dict
-from test.deps import sexp_parser
+import sexpdata
 import re
 import unittest
 import logging
@@ -53,29 +53,25 @@ def _dict2tuple(obj):
 
 
 """
-    Clean the parsed output of parsesexp
-    Removes line numbers and converts lists to tuples
+    Clean the parsed output of sexpdata
+    Converts lists to tuples and gets values out of objects
     Useful for comparing equivalence of parsed and generated output.
 """
 def _cleanparsed(parsed):
-    # base case
-    if type(parsed) is not list:
-        return parsed
+    # recursion
+    if type(parsed) is list:
+        return tuple(map(_cleanparsed, parsed))
 
-    if type(parsed[0]) != type(1):
-        logger.error("Fault:", parsed)
-        raise Exception
+    # basecase 1
+    if isinstance(parsed, sexpdata.SExpBase):
+        return str(parsed.value())
 
-    # remove line numbers
-    parsed = parsed[1:]
-    for i,obj in enumerate(parsed):
-        if type(obj) is str and re.match('^".+"$', obj) is not None:
-            parsed[i] = obj[1:-1]
-    # recurse
-    parsed = tuple(map(_cleanparsed, parsed))
+    # workaround for empty strings to make sexpdata behave like sexp_parser
+    if type(parsed) is str and parsed == "":
+        return '""'
 
-    return parsed
-
+    # basecase 2
+    return str(parsed)
 
 """
     Test case
@@ -83,12 +79,12 @@ def _cleanparsed(parsed):
 """
 def _test_py2net2py(obj):
     sexp=sexp_gen.gensexp(obj)
-    parsed = sexp_parser.parseSexp(sexp)
+    parsed = sexpdata.loads(sexp)
     try:
         cleaned = _cleanparsed(parsed)
     except Exception as e:
-        logger.error("Source:", sexp)
-        logger.error("Died:", parsed)
+        logger.error("Source:%s", sexp)
+        logger.error("Died:%s", parsed)
         return False
 
     objtuple = _dict2tuple(obj)[0]
@@ -96,10 +92,11 @@ def _test_py2net2py(obj):
     eq = objtuple == cleaned
     if not eq:
         logger.info("Not equal:")
-        logger.info("\tsource\t", obj)
-        logger.info("\tdic2tup\t", objtuple)
-        logger.info("\tsexp\t", sexp)
-        logger.info("\tparsed\t", cleaned)
+        logger.info("\tsource\t%s", obj)
+        logger.info("\tsexp\t%s", sexp)
+        logger.info("\tdic2tup\t%s", objtuple)
+        logger.info("\tcleaned\t%s", cleaned)
+        logger.info("\tparsed\t%s", parsed)
 
     return eq
 
@@ -111,10 +108,10 @@ def _test_py2net2py(obj):
 def _test_net2py2net(netfilepath):
     with open(netfilepath, "r") as netfile:
         netsexp=netfile.read()
-    netsexpparsed = sexp_parser.parseSexp(netsexp)
+    netsexpparsed = sexpdata.loads(netsexp)
     cleaned = _cleanparsed(netsexpparsed)
     netsexpgen = sexp_gen.gensexp(cleaned)
-    netsexpgenparsed = sexp_parser.parseSexp(netsexpgen)
+    netsexpgenparsed = sexpdata.loads(netsexpgen)
     cleanedparsed = _cleanparsed(netsexpgenparsed)
 
     netsexpcleaned = netsexp
@@ -130,10 +127,10 @@ def _test_net2py2net(netfilepath):
         if eq_str:
             logger.error("But strings are equal")
         else:
-            logger.info("\tSourceStr:\t", netsexpcleaned)
-            logger.info("\tGen   Str:\t",netsexpgen)
-        logger.info("\tSource   :\t", netsexpparsed)
-        logger.info("\tGen      :\t", netsexpgenparsed)
+            logger.info("\tSourceStr:\t%s", netsexpcleaned)
+            logger.info("\tGen   Str:\t%s",netsexpgen)
+        logger.info("\tSource   :\t%s", netsexpparsed)
+        logger.info("\tGen      :\t%s", netsexpgenparsed)
 
     return eq
 
@@ -154,7 +151,7 @@ def _test_sexp():
 
     ok = _test_py2net2py(testdict)
     if not ok:
-        logger.info("testdict:", ok)
+        logger.info("testdict:%s", ok)
         return ok
 
     testdict2 = multi_key_dict(
@@ -170,7 +167,7 @@ def _test_sexp():
     )
     ok = _test_py2net2py(testdict2)
     if not ok:
-        logger.info("testdict2:", ok)
+        logger.info("testdict2:%s", ok)
         return ok
 
 
@@ -216,12 +213,12 @@ def _test_sexp():
 
     ok = _test_py2net2py(netlistdict)
     if not ok:
-        logger.info("netlistdict:", ok)
+        logger.info("netlistdict:%s", ok)
         return ok
 
     ok = _test_net2py2net(os.path.join(os.path.dirname(__file__), "test.net"))
     if not ok:
-        logger.info("net2py2net:", ok)
+        logger.info("net2py2net:%s", ok)
         return ok
 
 
