@@ -171,7 +171,11 @@ def render_graph(t1_netlist):
     intra_edge_dict = dict(
         unique(
             {
-                edge: "{}".format(re.search(r"\[.*\]", edge[0].node["name"]).group())
+                edge: "{}".format(
+                    re.search(r"\[.*\]", edge[0].node["name"]).group()
+                    if edge[0].node["name"].startswith("COMP[")
+                    else edge[0].node["name"]
+                )
                 for edge in intra_comp_edges
             }.items(),
             key=lambda edge: edge[0][0].node,
