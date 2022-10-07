@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "faebryk"
+version = "1.0.0"
+authors = [
+    { name="ioannis_iteng", email="ioannis@iteng.nl" },
+]
+description = "Open-source software-defined EDA"
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+	"networkx",
+	"numpy",
+	"matplotlib",
+	"sexpdata",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/faebryk/faebryk "
+"Bug Tracker" = "https://github.com/faebryk/faebryk/issues "
