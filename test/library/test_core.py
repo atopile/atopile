@@ -128,18 +128,18 @@ class TestTraits(unittest.TestCase):
         # Test getting trait
         obj.add_trait(trait1_inst)
         self.assertTrue(obj.has_trait(trait1))
-        self.assertEquals(trait1_inst, obj.get_trait(trait1))
-        self.assertEquals(trait1_inst.do(), obj.get_trait(trait1).do())
+        self.assertEqual(trait1_inst, obj.get_trait(trait1))
+        self.assertEqual(trait1_inst.do(), obj.get_trait(trait1).do())
 
         # Test double add
         self.assertRaises(AssertionError, lambda: obj.add_trait(trait1_inst))
 
         # Test replace
         obj.add_trait(cfgtrait1_inst)
-        self.assertEquals(cfgtrait1_inst, obj.get_trait(trait1))
-        self.assertEquals(cfgtrait1_inst.do(), obj.get_trait(trait1).do())
+        self.assertEqual(cfgtrait1_inst, obj.get_trait(trait1))
+        self.assertEqual(cfgtrait1_inst.do(), obj.get_trait(trait1).do())
         obj.add_trait(trait1_inst)
-        self.assertEquals(trait1_inst, obj.get_trait(trait1))
+        self.assertEqual(trait1_inst, obj.get_trait(trait1))
 
         # Test remove
         obj.del_trait(trait2)
@@ -150,14 +150,14 @@ class TestTraits(unittest.TestCase):
         # Test get obj
         self.assertRaises(AssertionError, lambda: trait1_inst.get_obj())
         obj.add_trait(trait1_inst)
-        self.assertEquals(obj.get_trait(trait1).get_obj(), obj)
+        self.assertEqual(obj.get_trait(trait1).get_obj(), obj)
         obj.del_trait(trait1)
         self.assertRaises(AssertionError, lambda: trait1_inst.get_obj())
 
         # Test specific override
         obj.add_trait(impl2_inst)
         obj.add_trait(trait1_inst)
-        self.assertEquals(impl2_inst, obj.get_trait(trait1))
+        self.assertEqual(impl2_inst, obj.get_trait(trait1))
 
         # Test child delete
         obj.del_trait(trait1)
