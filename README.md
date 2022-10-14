@@ -133,12 +133,6 @@ Call your file with `python3 samples/<yourfile>.py`.
 
 #### Running tests
 
-Setup
-
-```bash
-> pip install -r test/requirements.txt
-```
-
 Run
 
 ```bash
