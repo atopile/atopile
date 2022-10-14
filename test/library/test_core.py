@@ -3,16 +3,6 @@
 
 from abc import abstractmethod
 from numbers import Integral
-import os
-
-
-if __name__ == "__main__":
-    import os
-    import sys
-
-    root = os.path.join(os.path.dirname(__file__), "../../../..")
-    sys.path.append(root)
-
 import unittest
 
 

@@ -1,4 +1,1 @@
-networkx
-numpy
-matplotlib
-sexpdata
+setuptools >= 64.0.0

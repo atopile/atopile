@@ -69,6 +69,10 @@ For pull requests and bug-reports, see our [contributing guidelines](docs/CONTRI
 Setup
 
 ```bash
+> # optional: use venv
+> python -m venv venv
+> . venv/bin/activate
+>
 > pip install faebryk
 ```
 
@@ -88,9 +92,14 @@ Setup
 ```bash
 > git clone git@github.com:faebryk/faebryk.git
 > cd faebryk
-> git submodule init
-> git submodule update
+>
+> # create venv
+> python -m venv venv
+> . venv/bin/activate
+>
+> # requires pip version >= 21.3
 > pip install -r requirements.txt
+> pip install --editable .
 ```
 
 Running samples

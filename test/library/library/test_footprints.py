@@ -1,14 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import os
-
-if __name__ == '__main__':
-    import os
-    import sys
-    root = os.path.join(os.path.dirname(__file__), '../../../..')
-    sys.path.append(root)
-
 import unittest
 import faebryk.library.library.footprints as footprints
 from faebryk.library.kicad import has_kicad_footprint

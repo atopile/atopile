@@ -2,13 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import os
-
-if __name__ == '__main__':
-    import os
-    import sys
-    root = os.path.join(os.path.dirname(__file__), '../../../..')
-    sys.path.append(root)
-
 from typing import Iterable
 import faebryk.exporters.netlist.kicad.sexp as sexp_gen
 from faebryk.exporters.netlist.kicad.sexp import multi_key_dict
