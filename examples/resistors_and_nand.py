@@ -37,8 +37,15 @@ def run_experiment():
     )
 
     # power
-    battery = Component()
-    battery.IFs.power = Power()
+    class Battery(Component):
+        class _IFS(Component.InterfacesCls()):
+            power = Power()
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.IFs = Battery._IFS(self)
+
+    battery = Battery()
 
     # functional components
     resistor1 = Resistor(Constant(100))
@@ -50,8 +57,10 @@ def run_experiment():
     gnd = battery.IFs.power.IFs.lv
 
     # connections
-    resistor1.IFs.next().connect(vcc).connect(resistor2.IFs.next())
-    resistor1.IFs.next().connect(gnd).connect(resistor2.IFs.next())
+    r1it = iter(resistor1.IFs.get_all())
+    r2it = iter(resistor2.IFs.get_all())
+    next(r1it).connect(vcc).connect(next(r2it))
+    next(r1it).connect(gnd).connect(next(r2it))
     cd4011.CMPs.nands[0].IFs.inputs[0].connect(vcc)
     cd4011.CMPs.nands[0].IFs.inputs[1].connect(gnd)
     cd4011.IFs.power.connect(battery.IFs.power)
@@ -72,7 +81,7 @@ def run_experiment():
     t1_ = make_t1_netlist_from_graph(make_graph_from_components(comps))
 
     netlist = from_faebryk_t2_netlist(make_t2_netlist_from_t1(t1_))
-
+    assert netlist is not None
 
     path = Path("./build/faebryk.net")
     logger.info("Writing Experiment netlist to {}".format(path.absolute()))
@@ -94,4 +103,6 @@ def main(argc, argv, argi):
 
 
 if __name__ == "__main__":
+    import sys
+
     main(len(sys.argv), sys.argv, iter(sys.argv))

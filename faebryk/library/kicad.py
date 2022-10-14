@@ -2,13 +2,24 @@
 # SPDX-License-Identifier: MIT
 
 
-from faebryk.library.core import ComponentTrait
+from faebryk.library.core import ComponentTrait, Footprint
 from faebryk.library.core import FootprintTrait
+from faebryk.library.traits.component import has_footprint
 
+
+# Footprints ------------------------------------------------------------------
+class KicadFootprint(Footprint):
+    def __init__(self, name) -> None:
+        super().__init__()
+        self.name = name
+
+        self.add_trait(has_kicad_manual_footprint(name))
+
+# -----------------------------------------------------------------------------
 
 # Component Traits ------------------------------------------------------------
 class has_kicad_ref(ComponentTrait):
-    def get_ref() -> str:
+    def get_ref(self) -> str:
         raise NotImplementedError()
 
 

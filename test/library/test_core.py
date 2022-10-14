@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 from abc import abstractmethod
-from numbers import Integral
+from typing import cast
+from faebryk.library.core import TraitImpl
 import unittest
 
 
@@ -86,11 +87,11 @@ class TestTraits(unittest.TestCase):
 
         class trait1(Trait):
             @abstractmethod
-            def do(self) -> Integral:
+            def do(self) -> int:
                 raise NotImplementedError
 
         class trait1impl(trait1.impl()):
-            def do(self) -> Integral:
+            def do(self) -> int:
                 return 1
 
         class cfgtrait1(trait1impl):
@@ -98,7 +99,7 @@ class TestTraits(unittest.TestCase):
                 super().__init__()
                 self.cfg = cfg
 
-            def do(self) -> Integral:
+            def do(self) -> int:
                 return self.cfg
 
         class trait2(trait1):
@@ -140,7 +141,8 @@ class TestTraits(unittest.TestCase):
         # Test get obj
         self.assertRaises(AssertionError, lambda: trait1_inst.get_obj())
         obj.add_trait(trait1_inst)
-        self.assertEqual(obj.get_trait(trait1).get_obj(), obj)
+        _impl: TraitImpl = cast(TraitImpl, obj.get_trait(trait1))
+        self.assertEquals(_impl.get_obj(), obj)
         obj.del_trait(trait1)
         self.assertRaises(AssertionError, lambda: trait1_inst.get_obj())
 

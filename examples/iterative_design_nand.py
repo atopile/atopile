@@ -15,6 +15,7 @@ The netlist is printed to stdout.
 from pathlib import Path
 import logging
 
+
 logger = logging.getLogger("main")
 
 
@@ -25,7 +26,7 @@ def run_experiment():
         make_graph_from_components,
         make_t1_netlist_from_graph,
     )
-    from faebryk.library.core import Component, Footprint
+    from faebryk.library.core import Component, Footprint, Parameter
     from faebryk.library.library.components import CD4011, LED, NAND, Resistor, Switch
     from faebryk.library.library.footprints import DIP, SMDTwoPin
     from faebryk.library.library.interfaces import Electrical, Power
@@ -42,8 +43,17 @@ def run_experiment():
     low = Electrical()
 
     # power
-    battery = Component()
-    battery.IFs.power = Power()
+    class Battery(Component):
+        def __init__(self) -> None:
+            super().__init__()
+
+            class _IFs(Component.InterfacesCls()):
+                power = Power()
+
+            self.IFs = _IFs(self)
+            self.voltage: Parameter = TBD()
+
+    battery = Battery()
 
     # alias
     gnd = battery.IFs.power.IFs.lv
@@ -71,7 +81,7 @@ def run_experiment():
     logic_out.connect(led.IFs.anode)
 
     # parametrizing
-    battery.voltage = 5
+    battery.voltage = Constant(5)
     pull_down_resistor.set_resistance(Constant(100_000))
     led.set_forward_parameters(voltage_V=Constant(2.4), current_A=Constant(0.020))
     nand_ic = CD4011().get_trait(CD4011.constructable_from_nands).from_nands(nands)
@@ -81,7 +91,7 @@ def run_experiment():
     current_limiting_resistor.set_resistance(
         led.get_trait(
             LED.has_calculatable_needed_series_resistance
-        ).get_needed_series_resistance_ohm(battery.voltage)
+        ).get_needed_series_resistance_ohm(battery.voltage.value)
     )
 
     # packaging
@@ -151,6 +161,7 @@ def run_experiment():
     t1_ = make_t1_netlist_from_graph(make_graph_from_components(components))
 
     netlist = from_faebryk_t2_netlist(make_t2_netlist_from_t1(t1_))
+    assert netlist is not None
 
     path = Path("./build/faebryk.net")
     logger.info("Writing Experiment netlist to {}".format(path.absolute()))
@@ -162,9 +173,6 @@ def run_experiment():
 
 
 # Boilerplate -----------------------------------------------------------------
-import sys
-
-
 def main(argc, argv, argi):
     logging.basicConfig(level=logging.INFO)
 
@@ -173,4 +181,6 @@ def main(argc, argv, argi):
 
 
 if __name__ == "__main__":
+    import sys
+
     main(len(sys.argv), sys.argv, iter(sys.argv))

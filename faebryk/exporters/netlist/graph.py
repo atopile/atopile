@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from typing import List
+from typing_extensions import Self
 
 logger = logging.getLogger("netlist")
 
@@ -30,6 +32,8 @@ def make_graph_from_components(components):
     from faebryk.library.util import get_all_components
 
     class wrapper:
+        wrapped_list: List[Self]
+
         def __init__(self, component: Component) -> None:
             self.component = component
             self._setup_non_rec()
@@ -127,16 +131,17 @@ def make_graph_from_components(components):
 
             return self._get_comp()
 
+    all_components = list(components)
     # add subcomponents to graph
     for i in map(get_all_components, components):
-        components.extend(i)
+        all_components.extend(i)
 
-    wrapped_list = list(map(wrapper, components))
+    wrapped_list = list(map(wrapper, all_components))
     for i in wrapped_list:
         i.wrapped_list = wrapped_list
 
     logger.debug(
-        "Making graph from components:\n\t{}".format("\n\t".join(map(str, components)))
+        "Making graph from components:\n\t{}".format("\n\t".join(map(str, all_components)))
     )
 
     return wrapped_list

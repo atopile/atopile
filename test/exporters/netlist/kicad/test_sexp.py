@@ -209,7 +209,7 @@ def _test_sexp():
         logger.info("netlistdict:%s", ok)
         return ok
 
-    ok = _test_net2py2net(os.path.join(os.path.dirname(__file__), "test.net"))
+    ok = _test_net2py2net(os.path.join(os.path.dirname(__file__), "../../../common/resources/test.net"))
     if not ok:
         logger.info("net2py2net:%s", ok)
         return ok

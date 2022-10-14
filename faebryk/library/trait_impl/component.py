@@ -9,7 +9,8 @@ from faebryk.library.core import (
     Footprint,
     Interface,
 )
-from faebryk.library.traits.component import *
+from faebryk.library.traits.component import has_footprint, has_type_description, has_footprint_pinmap, can_bridge
+from faebryk.library.library.interfaces import Electrical
 
 
 class has_defined_type_description(has_type_description.impl()):
@@ -43,9 +44,7 @@ class has_symmetric_footprint_pinmap(has_footprint_pinmap.impl()):
     def get_pin_map(self):
         from faebryk.library.util import get_all_interfaces
 
-        #TODO not sure if thats needed/desired
-        # get all (nested) interfaces
-        ifs = get_all_interfaces(self.get_obj().IFs.get_all())
+        ifs = get_all_interfaces(self.get_obj(), Electrical)
         return {k + 1: v for k, v in enumerate(ifs)}
 
 

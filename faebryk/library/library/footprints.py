@@ -12,7 +12,7 @@ from enum import Enum
 
 
 class DIP(Footprint):
-    def __init__(self, pin_cnt: int, spacing_mm: int, long_pads: bool) -> None:
+    def __init__(self, pin_cnt: int, spacing_mm: float, long_pads: bool) -> None:
         super().__init__()
 
         class _has_kicad_footprint(has_kicad_footprint.impl()):

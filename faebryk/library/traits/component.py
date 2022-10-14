@@ -8,7 +8,7 @@ logger = logging.getLogger("library")
 from faebryk.library.core import (
     Component,
     ComponentTrait,
-    FootprintTrait,
+    Footprint,
 )
 
 
@@ -23,7 +23,7 @@ class contructable_from_component(ComponentTrait):
 
 
 class has_footprint(ComponentTrait):
-    def get_footprint(self) -> FootprintTrait:
+    def get_footprint(self) -> Footprint:
         raise NotImplementedError()
 
 

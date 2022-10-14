@@ -2,33 +2,36 @@
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
-from faebryk.libs.exceptions import FaebrykException
-import typing
+from typing import Iterable, List, Type, TypeVar
 
 import logging
+
+from faebryk.libs.util import Holder
 
 logger = logging.getLogger("library")
 
 # 1st order classes -----------------------------------------------------------
 class Trait:
     @classmethod
-    def impl(cls):
+    def impl(cls: Type[Trait]):
         class _Impl(TraitImpl, cls):
             pass
 
         return _Impl
 
+class TraitImpl():
+    trait : Type[Trait]
 
-class TraitImpl:
     def __init__(self) -> None:
         self._obj = None
-
-        self.trait = None
+        
+        found = False
         bases = type(self).__bases__
-        while not self.trait:
+        while not found:
             for base in bases:
                 if not issubclass(base, TraitImpl) and issubclass(base, Trait):
                     self.trait = base
+                    found = True
                     break
             bases = [
                 new_base
@@ -72,6 +75,8 @@ class TraitImpl:
 
 
 class FaebrykLibObject:
+    traits : List[TraitImpl]
+
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
         # TODO maybe dict[class => [obj]
@@ -118,12 +123,15 @@ class FaebrykLibObject:
     def has_trait(self, trait) -> bool:
         return len(self._find(trait)) > 0
 
-    def get_trait(self, trait):
+    T = TypeVar("T", bound=Trait)
+    def get_trait(self, trait: Type[T]) -> T:
         candidates = self._find(trait)
         assert len(candidates) <= 1
         assert len(candidates) == 1, "{} not in {}[{}]".format(trait, type(self), self)
 
-        return candidates[0][1]
+        out = candidates[0][1]
+        assert isinstance(out, trait)
+        return out
 
 
 # -----------------------------------------------------------------------------
@@ -156,11 +164,44 @@ class Footprint(FaebrykLibObject):
     def __init__(self) -> None:
         super().__init__()
 
-    def add_trait(self, trait: FootprintTrait):
+    def add_trait(self, trait: TraitImpl):
+        assert isinstance(trait, FootprintTrait)
         return super().add_trait(trait)
 
 
 class Interface(FaebrykLibObject):
+    from faebryk.libs.util import NotifiesOnPropertyChange
+    connections: List[Interface]
+
+    @classmethod
+    def InterfacesCls(cls):
+        class _Interfaces(Holder(Interface)):
+            def __init__(self, intf: Interface) -> None:
+                self._intf = intf
+                if not hasattr(self, "unnamed"):
+                    self.unnamed = ()
+
+                super().__init__()
+
+            def handle_add(self, intf: Interface):
+                if self._intf.component is None:
+                    return
+                intf.set_component(self._intf.component)
+
+            # TODO this is blocking a nicer implementation of Holder
+            # due to not putting into the list, maybe just remove the whole thing
+            def add(self, intf: Interface):
+                self.unnamed += (intf,)
+                if self._intf.component is None:
+                    return
+                intf.set_component(self._intf.component)
+
+            def add_all(self, intfs: Iterable[Interface]):
+                for intf in intfs:
+                    self.add(intf)
+
+        return _Interfaces
+
     def __new__(cls, *args, component=None, **kwargs):
         self = super().__new__(cls)
         self.connections = []
@@ -172,57 +213,10 @@ class Interface(FaebrykLibObject):
     def __init__(self) -> None:
         super().__init__()
 
-        from faebryk.library.util import NotifiesOnPropertyChange
+        self.IFs = Interface.InterfacesCls()(self)
 
-        class _Interfaces(NotifiesOnPropertyChange):
-            def __init__(_self) -> None:
-                super().__init__(
-                    # TODO maybe throw warnig?
-                    lambda k, v: _self.on_change(k, v)
-                    if issubclass(type(v), Interface)
-                    else _self.on_change_s(k, v)
-                    if type(v) is list
-                    and all([issubclass(type(x), Interface) for x in v])
-                    else None
-                )
-                _self._unnamed = ()
-
-            def on_change(_self, name, intf: Interface):
-                if self.component is None:
-                    return
-                intf.set_component(self.component)
-
-            def on_change_s(_self, name, intfs: list[Interface]):
-                if self.component is None:
-                    return
-                for intf in intfs:
-                    intf.set_component(self.component)
-
-            def add(_self, intf: Interface):
-                _self._unnamed += (intf,)
-                if self.component is None:
-                    return
-                intf.set_component(self.component)
-
-            def add_all(_self, intfs: typing.Iterable[Interface]):
-                for intf in intfs:
-                    _self.add(intf)
-
-            def get_all(_self) -> list[Interface]:
-                return [
-                    intf
-                    for intf in vars(_self).values()
-                    if issubclass(type(intf), Interface)
-                ] + [
-                    intf
-                    for name, intfs in vars(_self).items()
-                    if type(intfs) in [tuple, list]
-                    for intf in intfs
-                ]
-
-        self.IFs = _Interfaces()
-
-    def add_trait(self, trait: InterfaceTrait) -> None:
+    def add_trait(self, trait: TraitImpl) -> None:
+        assert isinstance(trait, InterfaceTrait)
         return super().add_trait(trait)
 
     def connect(self, other: Interface) -> Interface:
@@ -270,108 +264,69 @@ class Interface(FaebrykLibObject):
         # TODO I think its nicer to have a parent relationship to the other interface
         #   instead of carrying the component through all compositions
         for i in self.IFs.get_all():
+            assert i != self
             i.set_component(component)
 
 
 class Component(FaebrykLibObject):
+    from faebryk.libs.util import NotifiesOnPropertyChange
+
+    @classmethod
+    def InterfacesCls(cls):
+        class _Interfaces(Holder(Interface)):
+            def __init__(self, comp: Component) -> None:
+                self._comp = comp
+                if not hasattr(self, "unnamed"):
+                    self.unnamed : List = []
+
+                super().__init__()
+
+            def handle_add(self, intf: Interface):
+                intf.set_component(self._comp)
+
+            def add(self, intf: Interface):
+                self.unnamed.append(intf)
+                intf.set_component(self._comp)
+
+            def add_all(self, intfs: Iterable[Interface]):
+                for intf in intfs:
+                    self.add(intf)
+
+        return _Interfaces
+
+    @classmethod
+    def ComponentsCls(cls):
+        class _Components(Holder(Component)):
+            def __init__(self, comp: Component) -> None:
+                self._comp = comp
+                if not hasattr(self, "unnamed"):
+                    self.unnamed = ()
+
+                super().__init__()
+
+            def add(self, cmp: Component):
+                self.unnamed += (cmp,)
+
+            def add_all(self, cmps: Iterable[Component]):
+                for cmp in cmps:
+                    self.add(cmp)
+
+        return _Components
+
     def __init__(self) -> None:
         super().__init__()
 
-        from faebryk.library.util import NotifiesOnPropertyChange
+        if not hasattr(self, "IFs"):
+            self.IFs = Component.InterfacesCls()(self)
 
-        class _Interfaces(NotifiesOnPropertyChange):
-            def __init__(_self) -> None:
-                super().__init__(
-                    # TODO maybe throw warnig?
-                    lambda k, v: _self.on_change(k, v)
-                    if issubclass(type(v), Interface)
-                    else _self.on_change_s(k, v)
-                    if type(v) is list
-                    and all([issubclass(type(x), Interface) for x in v])
-                    else None
-                )
-                _self._unnamed = ()
-                # helper array for next method
-                _self._unpopped = []
+        if not hasattr(self, "CMPs"):
+            self.CMPs = Component.ComponentsCls()(self)
 
-            def on_change(_self, name, intf: Interface):
-                intf.set_component(self)
-
-            def on_change_s(_self, name, intfs: list[Interface]):
-                for intf in intfs:
-                    intf.set_component(self)
-
-            def add(_self, intf: Interface):
-                _self._unnamed += (intf,)
-                intf.set_component(self)
-                _self._unpopped.append(intf)
-
-            def add_all(_self, intfs: typing.Iterable[Interface]):
-                for intf in intfs:
-                    _self.add(intf)
-
-            def get_all(_self) -> list[Interface]:
-                return [
-                    intf
-                    for intf in vars(_self).values()
-                    if issubclass(type(intf), Interface)
-                ] + [
-                    intf
-                    for name, intfs in vars(_self).items()
-                    if type(intfs) in [tuple, list] and name != "_unpopped"
-                    for intf in intfs
-                ]
-
-            """ returns iterator on unnamed interfaces """
-
-            def next(_self):
-                assert len(_self._unpopped) > 0, "No more interfaces to pop"
-                return _self._unpopped.pop(0)
-
-        class _Components(NotifiesOnPropertyChange):
-            def __init__(_self) -> None:
-                super().__init__(
-                    # TODO maybe throw warnig?
-                    lambda k, v: _self.on_change(k, v)
-                    if issubclass(type(v), Component)
-                    else _self.on_change_s(k, v)
-                    if type(v) is list
-                    and all([issubclass(type(x), Component) for x in v])
-                    else None
-                )
-                _self._unnamed = ()
-
-            def on_change(_self, name, cmp: Component):
-                pass
-
-            def on_change_s(_self, name, cmps: list[Component]):
-                pass
-
-            def add(_self, cmp: Component):
-                _self._unnamed += (cmp,)
-
-            def add_all(_self, cmps: typing.Iterable[Component]):
-                for cmp in cmps:
-                    _self.add(cmp)
-
-            def get_all(_self) -> list[Component]:
-                return [
-                    cmp
-                    for cmp in vars(_self).values()
-                    if issubclass(type(cmp), Component)
-                ] + [
-                    cmp
-                    for name, cmps in vars(_self).items()
-                    if type(cmps) in [tuple, list]
-                    for cmp in cmps
-                ]
-
-        self.IFs = _Interfaces()
-        self.CMPs = _Components()
-
-    def add_trait(self, trait: ComponentTrait) -> None:
+    def add_trait(self, trait: TraitImpl) -> None:
+        assert isinstance(trait, ComponentTrait)
         return super().add_trait(trait)
 
+    @staticmethod
     def from_comp(other: Component) -> Component:
         # TODO traits?
         return Component()
@@ -381,7 +336,8 @@ class Link(FaebrykLibObject):
     def __init__(self) -> None:
         super().__init__()
 
-    def add_trait(self, trait: LinkTrait) -> None:
+    def add_trait(self, trait: TraitImpl) -> None:
+        assert isinstance(trait, LinkTrait)
         return super().add_trait(trait)
 
 
@@ -389,7 +345,8 @@ class Parameter(FaebrykLibObject):
     def __init__(self) -> None:
         super().__init__()
 
-    def add_trait(self, trait: ParameterTrait) -> None:
+    def add_trait(self, trait: TraitImpl) -> None:
+        assert isinstance(trait, ParameterTrait)
         return super().add_trait(trait)
 
 
