@@ -90,7 +90,7 @@ Running samples
 Setup
 
 ```bash
-> git clone git@github.com:faebryk/faebryk.git
+> git clone https://github.com/faebryk/faebryk.git
 > cd faebryk
 >
 > # create venv
