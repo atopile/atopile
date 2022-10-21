@@ -17,6 +17,8 @@ logger = logging.getLogger("test")
     information loss.
     Useful for comparing equivalence of parsed and generated output.
 """
+
+
 def _dict2tuple(obj):
     if type(obj) not in [dict, list, multi_key_dict]:
         return obj
@@ -35,12 +37,11 @@ def _dict2tuple(obj):
             if len(obj[i]) == 2 and type(obj[i][1]) in [dict, multi_key_dict]:
                 flag += [i]
 
-
     out = [tuple(map(_dict2tuple, o)) for o in obj]
 
     # See comment above
     for i in flag:
-        out[i] = out[i][0],*out[i][1]
+        out[i] = out[i][0], *out[i][1]
 
     return out
 
@@ -50,6 +51,8 @@ def _dict2tuple(obj):
     Converts lists to tuples and gets values out of objects
     Useful for comparing equivalence of parsed and generated output.
 """
+
+
 def _cleanparsed(parsed):
     # recursion
     if type(parsed) is list:
@@ -66,12 +69,15 @@ def _cleanparsed(parsed):
     # basecase 2
     return str(parsed)
 
+
 """
     Test case
     Test whether obj -> sexp -> obj returns back same obj
 """
+
+
 def _test_py2net2py(obj):
-    sexp=sexp_gen.gensexp(obj)
+    sexp = sexp_gen.gensexp(obj)
     parsed = sexpdata.loads(sexp)
     try:
         cleaned = _cleanparsed(parsed)
@@ -98,9 +104,11 @@ def _test_py2net2py(obj):
     Test case
     Test whether sexp -> obj -> sexp returns back same sexp
 """
+
+
 def _test_net2py2net(netfilepath):
     with open(netfilepath, "r") as netfile:
-        netsexp=netfile.read()
+        netsexp = netfile.read()
     netsexpparsed = sexpdata.loads(netsexp)
     cleaned = _cleanparsed(netsexpparsed)
     netsexpgen = sexp_gen.gensexp(cleaned)
@@ -121,7 +129,7 @@ def _test_net2py2net(netfilepath):
             logger.error("But strings are equal")
         else:
             logger.info("\tSourceStr:\t%s", netsexpcleaned)
-            logger.info("\tGen   Str:\t%s",netsexpgen)
+            logger.info("\tGen   Str:\t%s", netsexpgen)
         logger.info("\tSource   :\t%s", netsexpparsed)
         logger.info("\tGen      :\t%s", netsexpgenparsed)
 
@@ -129,18 +137,7 @@ def _test_net2py2net(netfilepath):
 
 
 def _test_sexp():
-    testdict = {
-        "testdict" :
-            {
-                "a": {
-                    "b" : "5"
-                },
-                "e": {
-                    "b" : "5"
-                },
-                "c": "d"
-            }
-        }
+    testdict = {"testdict": {"a": {"b": "5"}, "e": {"b": "5"}, "c": "d"}}
 
     ok = _test_py2net2py(testdict)
     if not ok:
@@ -148,60 +145,50 @@ def _test_sexp():
         return ok
 
     testdict2 = multi_key_dict(
-        ("testdict", multi_key_dict(
-            ("a", multi_key_dict(
-                ("b", "5"),
-            )),
-            ("e", multi_key_dict(
-                ("b", "5")
-            )),
-            ("c", "d")
-        ))
+        (
+            "testdict",
+            multi_key_dict(
+                (
+                    "a",
+                    multi_key_dict(
+                        ("b", "5"),
+                    ),
+                ),
+                ("e", multi_key_dict(("b", "5"))),
+                ("c", "d"),
+            ),
+        )
     )
     ok = _test_py2net2py(testdict2)
     if not ok:
         logger.info("testdict2:%s", ok)
         return ok
 
-
     netlistdict = {
-        "export":
-            {
-                "version": "D",
-                "design": {
-                    "source": "/home/...",
-                    "date": 'Sat 13 ...',
-                    "tool": 'Eeschema',
-                    "sheet": {
-                        "number": "1",
-                        "name" : "/",
-                        "tstamps": "/",
-                        "title_block": multi_key_dict(
-                            ("title",),
-                            ("company",),
-                            ("rev",),
-                            ("date",),
-                            ("source", "main.sch"),
-                            ("comment",  {
-                                "number": "1",
-                                "value": "\"\""
-                            }),
-                            ("comment",  {
-                                "number": "2",
-                                "value": "\"\""
-                            }),
-                            ("comment",  {
-                                "number": "3",
-                                "value": "\"\""
-                            }),
-                            ("comment",  {
-                                "number": "4",
-                                "value": "\"\""
-                            }),
-                        )
-                    }
-                }
-            }
+        "export": {
+            "version": "D",
+            "design": {
+                "source": "/home/...",
+                "date": "Sat 13 ...",
+                "tool": "Eeschema",
+                "sheet": {
+                    "number": "1",
+                    "name": "/",
+                    "tstamps": "/",
+                    "title_block": multi_key_dict(
+                        ("title",),
+                        ("company",),
+                        ("rev",),
+                        ("date",),
+                        ("source", "main.sch"),
+                        ("comment", {"number": "1", "value": '""'}),
+                        ("comment", {"number": "2", "value": '""'}),
+                        ("comment", {"number": "3", "value": '""'}),
+                        ("comment", {"number": "4", "value": '""'}),
+                    ),
+                },
+            },
+        }
     }
 
     ok = _test_py2net2py(netlistdict)
@@ -209,11 +196,12 @@ def _test_sexp():
         logger.info("netlistdict:%s", ok)
         return ok
 
-    ok = _test_net2py2net(os.path.join(os.path.dirname(__file__), "../../../common/resources/test.net"))
+    ok = _test_net2py2net(
+        os.path.join(os.path.dirname(__file__), "../../../common/resources/test.net")
+    )
     if not ok:
         logger.info("net2py2net:%s", ok)
         return ok
-
 
     return ok
     # TODO test empty dicts,lists,tuples,...
@@ -224,5 +212,5 @@ class TestSexp(unittest.TestCase):
         self.assertTrue(_test_sexp())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,7 @@ class KicadFootprint(Footprint):
 
         self.add_trait(has_kicad_manual_footprint(name))
 
+
 # -----------------------------------------------------------------------------
 
 # Component Traits ------------------------------------------------------------

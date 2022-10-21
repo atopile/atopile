@@ -7,6 +7,7 @@ import string
 from textwrap import wrap
 from typing import Any, Generic, Iterable, Iterator, List, Type, TypeVar, cast
 
+
 class lazy:
     def __init__(self, expr):
         self.expr = expr
@@ -77,11 +78,9 @@ class NotifiesOnPropertyChange(object):
             self.callback(__name, __value)
 
 
-# def Holder(_type: Type):
-#    def decorate(cls: Type):
-
-
 T = TypeVar("T")
+
+
 class _wrapper(NotifiesOnPropertyChange, Generic[T]):
     @abstractmethod
     def __init__(self) -> None:
@@ -95,8 +94,10 @@ class _wrapper(NotifiesOnPropertyChange, Generic[T]):
     def handle_add(self, obj: T):
         raise NotImplementedError
 
+
 def Holder(_type: Type[T]) -> Type[_wrapper[T]]:
     _T = TypeVar("_T")
+
     class __wrapper(_wrapper[_T]):
         def __init__(self) -> None:
             self._list: List[T] = []
@@ -152,6 +153,7 @@ def Holder(_type: Type[T]) -> Type[_wrapper[T]]:
 def NotNone(x):
     assert x is not None
     return x
+
 
 def consume_iterator(target, it: Iterator):
     while True:

@@ -19,12 +19,13 @@ class Trait:
 
         return _Impl
 
-class TraitImpl():
-    trait : Type[Trait]
+
+class TraitImpl:
+    trait: Type[Trait]
 
     def __init__(self) -> None:
         self._obj = None
-        
+
         found = False
         bases = type(self).__bases__
         while not found:
@@ -75,7 +76,7 @@ class TraitImpl():
 
 
 class FaebrykLibObject:
-    traits : List[TraitImpl]
+    traits: List[TraitImpl]
 
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
@@ -124,6 +125,7 @@ class FaebrykLibObject:
         return len(self._find(trait)) > 0
 
     T = TypeVar("T", bound=Trait)
+
     def get_trait(self, trait: Type[T]) -> T:
         candidates = self._find(trait)
         assert len(candidates) <= 1
@@ -171,6 +173,7 @@ class Footprint(FaebrykLibObject):
 
 class Interface(FaebrykLibObject):
     from faebryk.libs.util import NotifiesOnPropertyChange
+
     connections: List[Interface]
 
     @classmethod
@@ -277,7 +280,7 @@ class Component(FaebrykLibObject):
             def __init__(self, comp: Component) -> None:
                 self._comp = comp
                 if not hasattr(self, "unnamed"):
-                    self.unnamed : List = []
+                    self.unnamed: List = []
 
                 super().__init__()
 

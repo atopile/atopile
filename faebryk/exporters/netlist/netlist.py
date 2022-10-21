@@ -149,7 +149,7 @@ def render_graph(t1_netlist):
     def _get_vertex_pins(vertex):
         return list(vertex.node["neighbors"].keys())
 
-    nodes : typing.List[_GraphVertex] = list(G.nodes)
+    nodes: typing.List[_GraphVertex] = list(G.nodes)
     intra_comp_edges = [
         (_GraphVertex(vertex.node, spin), _GraphVertex(vertex.node, dpin))
         for vertex in nodes
@@ -169,7 +169,7 @@ def render_graph(t1_netlist):
 
     import re
 
-    #(match.group() if (match:=re.search(r"\[.*\]", edge[0].node["name"])) is not None else None)
+    # (match.group() if (match:=re.search(r"\[.*\]", edge[0].node["name"])) is not None else None)
 
     intra_edge_dict = dict(
         unique(

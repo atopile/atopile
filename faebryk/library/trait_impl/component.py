@@ -9,7 +9,12 @@ from faebryk.library.core import (
     Footprint,
     Interface,
 )
-from faebryk.library.traits.component import has_footprint, has_type_description, has_footprint_pinmap, can_bridge
+from faebryk.library.traits.component import (
+    has_footprint,
+    has_type_description,
+    has_footprint_pinmap,
+    can_bridge,
+)
 from faebryk.library.library.interfaces import Electrical
 
 

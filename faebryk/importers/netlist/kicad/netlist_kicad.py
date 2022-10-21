@@ -94,16 +94,14 @@ def to_faebryk_t1_netlist(t2_netlist):
     for net in t2_netlist:
         if len(net.vertices) > 2:
             virtual = Component(
-                name = net.properties["name"],
-                value = None,
+                name=net.properties["name"],
+                value=None,
                 properties={},
             )
             for vertex in net.vertices:
                 nets.append(
                     Net(
-                        properties={
-                            "name": f"{virtual.name}-{vertex.component.name}"
-                        },
+                        properties={"name": f"{virtual.name}-{vertex.component.name}"},
                         vertices=[
                             Vertex(
                                 component=vertex.component,
@@ -112,13 +110,12 @@ def to_faebryk_t1_netlist(t2_netlist):
                             Vertex(
                                 component=virtual,
                                 pin="1",
-                            )
+                            ),
                         ],
-                                )
+                    )
                 )
         elif len(net.vertices) == 2:
             nets.append(net)
-
 
     def comp2v(comp, neigh):
         return {
@@ -146,7 +143,6 @@ def to_faebryk_t1_netlist(t2_netlist):
         for vertex in net.vertices:
             comp_neighbours[vertex.component.name][1][vertex.pin] = [
                 v for v in net.vertices if v.component.name != vertex.component.name
-            
             ]
 
     pre = {name: comp2v(comp, neigh) for name, (comp, neigh) in comp_neighbours.items()}

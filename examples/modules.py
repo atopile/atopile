@@ -120,7 +120,9 @@ def run_experiment():
 
             power.connect(self.CMPs.led_ind.IFs.input_power)
             power.connect(self.CMPs.switch.IFs.input_power)
-            self.CMPs.switch.IFs.output_control.connect(self.CMPs.led_ind.IFs.input_control)
+            self.CMPs.switch.IFs.output_control.connect(
+                self.CMPs.led_ind.IFs.input_control
+            )
 
     app = App()
 
@@ -148,7 +150,11 @@ def run_experiment():
     switch_fp.add_trait(has_kicad_manual_footprint("Panasonic_EVQPUJ_EVQPUA"))
     app.CMPs.switch.CMPs.switch.add_trait(has_defined_footprint(switch_fp))
 
-    for symmetric_component in [app.CMPs.switch.CMPs.pull_down_resistor, app.CMPs.switch.CMPs.switch, app.CMPs.led_ind.CMPs.current_limiting_resistor]:
+    for symmetric_component in [
+        app.CMPs.switch.CMPs.pull_down_resistor,
+        app.CMPs.switch.CMPs.switch,
+        app.CMPs.led_ind.CMPs.current_limiting_resistor,
+    ]:
         symmetric_component.add_trait(has_symmetric_footprint_pinmap())
 
     app.CMPs.led_ind.CMPs.led.add_trait(
@@ -161,15 +167,13 @@ def run_experiment():
     )
 
     # TODO: remove, just compensation for old graph
-    for i in get_all_components(app)+[app]:
+    for i in get_all_components(app) + [app]:
         if i.has_trait(has_footprint_pinmap):
             continue
         i.add_trait(has_symmetric_footprint_pinmap())
 
     # make graph
-    components = [
-        app
-    ]
+    components = [app]
 
     t1_ = make_t1_netlist_from_graph(make_graph_from_components(components))
 

@@ -5,7 +5,9 @@ import logging
 
 logger = logging.getLogger("library")
 
-from faebryk.library.trait_impl.parameter import is_representable_by_single_value_defined
+from faebryk.library.trait_impl.parameter import (
+    is_representable_by_single_value_defined,
+)
 from faebryk.library.core import Parameter
 from faebryk.library.traits import *
 from faebryk.libs.exceptions import FaebrykException

@@ -141,7 +141,9 @@ def make_graph_from_components(components):
         i.wrapped_list = wrapped_list
 
     logger.debug(
-        "Making graph from components:\n\t{}".format("\n\t".join(map(str, all_components)))
+        "Making graph from components:\n\t{}".format(
+            "\n\t".join(map(str, all_components))
+        )
     )
 
     return wrapped_list

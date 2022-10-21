@@ -136,7 +136,9 @@ def from_t1_netlist(t1_netlist):
     def comp_to_faebryk(component):
         def get_comp_name(component):
             if component["name"].startswith("COMP["):
-                class_name = NotNone(re.search(r"\[(.*):.*\]", component["name"])).group(1)
+                class_name = NotNone(
+                    re.search(r"\[(.*):.*\]", component["name"])
+                ).group(1)
             else:
                 class_name = component["name"]
 
