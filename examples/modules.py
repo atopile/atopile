@@ -14,8 +14,6 @@ The netlist is printed to stdout.
 """
 import logging
 
-from common.buildutil import export_graph, export_netlist
-
 from faebryk.exporters.netlist import make_t2_netlist_from_t1
 from faebryk.exporters.netlist.graph import (
     make_graph_from_components,
@@ -35,6 +33,7 @@ from faebryk.library.trait_impl.component import (
 )
 from faebryk.library.traits.component import has_footprint_pinmap
 from faebryk.library.util import get_all_components
+from faebryk.libs.experiments.buildutil import export_graph, export_netlist
 
 logger = logging.getLogger("main")
 

@@ -27,30 +27,33 @@ import logging
 logger = logging.getLogger("main")
 
 
-def run_experiment():
-    # function imports
-    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-    from faebryk.exporters.netlist import make_t2_netlist_from_t1
-    from faebryk.exporters.netlist.graph import (
-        make_graph_from_components,
-        make_t1_netlist_from_graph,
-    )
-    {function_imports}
+# function imports
+from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
+from faebryk.exporters.netlist import make_t2_netlist_from_t1
+from faebryk.exporters.netlist.graph import (
+    make_graph_from_components,
+    make_t1_netlist_from_graph,
+)
+{function_imports}
 
-    # library imports
-    from faebryk.library.core import Component
-    from faebryk.library.library.parameters import Constant
-    from faebryk.library.library.interfaces import Electrical
-    from faebryk.library.trait_impl.component import (
-        has_defined_footprint,
-        has_defined_footprint_pinmap,
-        has_defined_type_description,
-    )
-    from faebryk.library.kicad import (
-        has_defined_kicad_ref,
-        KicadFootprint,
-    )
-    {library_imports}
+# library imports
+from faebryk.library.core import Component
+from faebryk.library.library.parameters import Constant
+from faebryk.library.library.interfaces import Electrical
+from faebryk.library.trait_impl.component import (
+    has_defined_footprint,
+    has_defined_footprint_pinmap,
+    has_defined_type_description,
+)
+from faebryk.library.kicad import (
+    has_defined_kicad_ref,
+    KicadFootprint,
+)
+{library_imports}
+
+from faebryk.libs.experiments.buildutil import export_graph, export_netlist
+
+def run_experiment():
 
     {definitions}
 
@@ -65,13 +68,8 @@ def run_experiment():
     netlist = from_faebryk_t2_netlist(make_t2_netlist_from_t1(t1_))
     assert netlist is not None
 
-    path = Path("./build/faebryk.net")
-    logger.info("Writing Experiment netlist to {{}}".format(path.absolute()))
-    path.write_text(netlist)
-
-    from faebryk.exporters.netlist import render_graph
-
-    render_graph(t1_)
+    export_netlist(netlist)
+    export_graph(t1_, show=True)
 
 # Boilerplate -----------------------------------------------------------------
 import sys
