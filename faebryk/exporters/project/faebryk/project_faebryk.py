@@ -4,9 +4,11 @@
 """
 """
 
-import re
-import black
 import logging
+import re
+
+import black
+
 from faebryk.libs.pycodegen import sanitize_name
 from faebryk.libs.util import NotNone
 

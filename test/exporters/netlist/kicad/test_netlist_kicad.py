@@ -1,28 +1,26 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import unittest
 import logging
+import unittest
 
 logger = logging.getLogger("test")
 
 # Netlists --------------------------------------------------------------------
 def test_netlist_graph():
-    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
     from faebryk.exporters.netlist import make_t2_netlist_from_t1
-    from faebryk.library.core import Component
+    from faebryk.exporters.netlist.graph import (
+        make_graph_from_components,
+        make_t1_netlist_from_graph,
+    )
+    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
+    from faebryk.library.core import Component, Footprint
+    from faebryk.library.kicad import has_defined_kicad_ref, has_kicad_manual_footprint
     from faebryk.library.library.interfaces import Electrical
-    from faebryk.library.trait_impl.component import has_defined_footprint
-    from faebryk.library.core import Footprint
-    from faebryk.library.kicad import has_defined_kicad_ref
     from faebryk.library.trait_impl.component import (
+        has_defined_footprint,
         has_defined_footprint_pinmap,
         has_defined_type_description,
-    )
-    from faebryk.library.kicad import has_kicad_manual_footprint
-    from faebryk.exporters.netlist.graph import (
-        make_t1_netlist_from_graph,
-        make_graph_from_components,
     )
 
     # component definition
@@ -91,8 +89,8 @@ def test_netlist_graph():
 
 
 def test_netlist_t1():
-    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
     from faebryk.exporters.netlist import make_t2_netlist_from_t1
+    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 
     gnd = {
         "vertex": {
@@ -156,8 +154,8 @@ def test_netlist_t1():
 
 
 def test_netlist_t2():
+    from faebryk.exporters.netlist import Component, Net, Vertex
     from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-    from faebryk.exporters.netlist import Net, Vertex, Component
 
     # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
 
@@ -224,16 +222,16 @@ def test_netlist_t2():
 
 def _test_netlist_manu():
     import itertools
+
+    import faebryk.exporters.netlist.kicad.sexp as sexp
     from faebryk.exporters.netlist.kicad.netlist_kicad import (
         _defaulted_comp,
+        _defaulted_netlist,
         _gen_net,
         _gen_node,
-        _defaulted_netlist,
     )
-    import faebryk.exporters.netlist.kicad.sexp as sexp
 
     # Footprint pins are just referenced by number through netlist of symbol
-
     # We only need
     #   - components
     #       - ref
@@ -246,7 +244,6 @@ def _test_netlist_manu():
     #       - nodes
     #           - ref (comp)
     #           - pin (of footprint)
-
     # Careful comps need distinct timestamps
     tstamp = itertools.count(1)
 

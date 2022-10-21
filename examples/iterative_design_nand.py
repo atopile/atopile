@@ -12,21 +12,21 @@ Thus this is a netlist sample.
 Netlist samples can be run directly.
 The netlist is printed to stdout.
 """
-from pathlib import Path
 import logging
-
+from pathlib import Path
 
 logger = logging.getLogger("main")
 
 
 def run_experiment():
-    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
     from faebryk.exporters.netlist import make_t2_netlist_from_t1
     from faebryk.exporters.netlist.graph import (
         make_graph_from_components,
         make_t1_netlist_from_graph,
     )
+    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
     from faebryk.library.core import Component, Footprint, Parameter
+    from faebryk.library.kicad import has_kicad_manual_footprint
     from faebryk.library.library.components import CD4011, LED, NAND, Resistor, Switch
     from faebryk.library.library.footprints import DIP, SMDTwoPin
     from faebryk.library.library.interfaces import Electrical, Power
@@ -36,7 +36,6 @@ def run_experiment():
         has_defined_footprint_pinmap,
         has_symmetric_footprint_pinmap,
     )
-    from faebryk.library.kicad import has_kicad_manual_footprint
 
     # levels
     high = Electrical()

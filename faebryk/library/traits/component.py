@@ -5,11 +5,7 @@ import logging
 
 logger = logging.getLogger("library")
 
-from faebryk.library.core import (
-    Component,
-    ComponentTrait,
-    Footprint,
-)
+from faebryk.library.core import Component, ComponentTrait, Footprint
 
 
 class has_type_description(ComponentTrait):

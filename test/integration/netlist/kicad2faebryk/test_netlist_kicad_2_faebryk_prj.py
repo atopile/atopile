@@ -1,20 +1,20 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import unittest
 import logging
 import os
+import unittest
 
 logger = logging.getLogger("test")
 
 
 class TestNetlistKicad2FaebrykProject(unittest.TestCase):
     def test_eq(self):
-        from faebryk.importers.netlist.kicad.netlist_kicad import (
-            to_faebryk_t2_netlist,
-            to_faebryk_t1_netlist,
-        )
         from faebryk.exporters.project.faebryk.project_faebryk import from_t1_netlist
+        from faebryk.importers.netlist.kicad.netlist_kicad import (
+            to_faebryk_t1_netlist,
+            to_faebryk_t2_netlist,
+        )
 
         with open(
             os.path.join(

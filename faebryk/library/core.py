@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
-from typing import Iterable, List, Type, TypeVar
 
 import logging
+from typing import Iterable, List, Type, TypeVar
 
 from faebryk.libs.util import Holder
 

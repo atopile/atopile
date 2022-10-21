@@ -1,7 +1,7 @@
 # import sexp_parser
-from sexpdata import loads, SExpBase
-import re
 import logging
+
+from sexpdata import SExpBase, loads
 
 from faebryk.libs.util import get_dict
 

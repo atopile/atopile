@@ -30,3 +30,15 @@ dependencies = [
 [project.urls]
 "Homepage" = "https://github.com/faebryk/faebryk "
 "Bug Tracker" = "https://github.com/faebryk/faebryk/issues "
+
+[tool.isort]
+profile = "black"
+
+[tool.autoflake]
+remove-all-unused-imports = true
+ignore-init-module-imports = true
+expand-star-imports = true
+# leaves rhs for stateless functions too, which is not really clear
+# could add remove-rhs-for-unused-variables, but that might break a lot of stuff
+# so for now we keep this false
+remove-unused-variables = false

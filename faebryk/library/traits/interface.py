@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger("library")
 
 from typing import Iterable
+
 from faebryk.library.core import Component, Interface, InterfaceTrait
 
 

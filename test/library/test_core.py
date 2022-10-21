@@ -1,10 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import unittest
 from abc import abstractmethod
 from typing import cast
+
 from faebryk.library.core import TraitImpl
-import unittest
 
 
 class TestTraits(unittest.TestCase):

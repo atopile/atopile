@@ -4,6 +4,3 @@
 import logging
 
 logger = logging.getLogger("library")
-
-from faebryk.library.core import FootprintTrait
-from faebryk.library.traits.footprint import *

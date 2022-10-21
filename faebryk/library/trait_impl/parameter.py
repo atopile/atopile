@@ -6,7 +6,8 @@ import logging
 logger = logging.getLogger("library")
 
 import typing
-from faebryk.library.traits.parameter import *
+
+from faebryk.library.traits.parameter import is_representable_by_single_value
 
 
 class is_representable_by_single_value_defined(is_representable_by_single_value.impl()):

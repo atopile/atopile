@@ -5,17 +5,14 @@ import logging
 
 logger = logging.getLogger("library")
 
-from faebryk.library.core import (
-    Footprint,
-    Interface,
-)
-from faebryk.library.traits.component import (
-    has_footprint,
-    has_type_description,
-    has_footprint_pinmap,
-    can_bridge,
-)
+from faebryk.library.core import Footprint, Interface
 from faebryk.library.library.interfaces import Electrical
+from faebryk.library.traits.component import (
+    can_bridge,
+    has_footprint,
+    has_footprint_pinmap,
+    has_type_description,
+)
 
 
 class has_defined_type_description(has_type_description.impl()):

@@ -1,9 +1,8 @@
-import sys
-import logging
-import re
 import hashlib
+import logging
 import pprint
-import black
+import sys
+
 import click
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)

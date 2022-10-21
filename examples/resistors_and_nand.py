@@ -10,24 +10,24 @@ Thus this is a netlist sample.
 Netlist samples can be run directly.
 The netlist is printed to stdout.
 """
-from pathlib import Path
 import logging
+from pathlib import Path
 
 logger = logging.getLogger("main")
 
 
 def run_experiment():
     # function imports
-    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
     from faebryk.exporters.netlist import make_t2_netlist_from_t1
     from faebryk.exporters.netlist.graph import (
         make_graph_from_components,
         make_t1_netlist_from_graph,
     )
+    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 
     # library imports
     from faebryk.library.core import Component
-    from faebryk.library.library.components import Resistor, TI_CD4011BE
+    from faebryk.library.library.components import TI_CD4011BE, Resistor
     from faebryk.library.library.footprints import SMDTwoPin
     from faebryk.library.library.interfaces import Power
     from faebryk.library.library.parameters import Constant

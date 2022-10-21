@@ -7,7 +7,6 @@ from typing import Iterator
 logger = logging.getLogger("library")
 
 from faebryk.library.core import Interface
-from faebryk.library.traits import *
 from faebryk.library.traits.interface import contructable_from_interface_list
 
 

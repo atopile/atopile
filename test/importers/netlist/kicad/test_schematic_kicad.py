@@ -1,9 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import unittest
 import logging
 import os
+import unittest
 
 logger = logging.getLogger("test")
 
@@ -20,15 +20,15 @@ class TestImportSchematicKicad(unittest.TestCase):
             with open(os.path.join(base_path, name), "r") as f:
                 return f.read()
 
-        from faebryk.importers.netlist.kicad.schematic_kicad import (
-            to_faebryk_t2_netlist,
-        )
         from faebryk.exporters.netlist.kicad.netlist_kicad import (
             from_faebryk_t2_netlist,
         )
         from faebryk.exporters.project.faebryk.project_faebryk import from_t1_netlist
         from faebryk.importers.netlist.kicad.netlist_kicad import (
             to_faebryk_t1_netlist as t2_to_t1,
+        )
+        from faebryk.importers.netlist.kicad.schematic_kicad import (
+            to_faebryk_t2_netlist,
         )
 
         t2 = to_faebryk_t2_netlist(load_file("test.kicad_sch"), file_loader=load_file)

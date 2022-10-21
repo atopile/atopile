@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import unittest
+
 import faebryk.library.library.footprints as footprints
 from faebryk.library.kicad import has_kicad_footprint
 

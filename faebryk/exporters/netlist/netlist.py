@@ -5,13 +5,14 @@ import logging
 
 logger = logging.getLogger("netlist")
 
+import typing
+from dataclasses import dataclass
 from pathlib import Path
 
-import typing
 import networkx as nx
-from dataclasses import dataclass
-from faebryk.libs.util import NotNone, hashable_dict, unique
+
 from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.util import NotNone, hashable_dict, unique
 
 # 0. netlist = graph
 

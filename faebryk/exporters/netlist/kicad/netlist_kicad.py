@@ -1,14 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import datetime
-import faebryk.version
 import itertools
 import logging
 
 logger = logging.getLogger("netlist")
 
 import faebryk.exporters.netlist.kicad.sexp as sexp
+
 
 # Generators ------------------------------------------------------------------
 def _gen_node(ref, pin):

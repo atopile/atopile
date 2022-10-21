@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.exporters.netlist import Vertex, Net, Component
+from faebryk.exporters.netlist import Component, Net, Vertex
 from faebryk.libs.kicad.parser import parse_kicad_netlist
 
 

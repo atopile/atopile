@@ -1,10 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.exporters.netlist import Vertex, Net, Component
+from faebryk.exporters.netlist import Component, Net, Vertex
 from faebryk.libs.algorithm import ufds
 from faebryk.libs.kicad.parser import parse_kicad_schematic
-from faebryk.libs.util import get_dict, flatten
+from faebryk.libs.util import flatten, get_dict
 
 
 def to_faebryk_t2_netlist(kicad_schematic, file_loader=None):

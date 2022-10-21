@@ -3,6 +3,7 @@
 
 import logging
 from typing import List
+
 from typing_extensions import Self
 
 logger = logging.getLogger("netlist")
@@ -20,16 +21,15 @@ def make_t1_netlist_from_graph(comps):
 #   built from directly
 def make_graph_from_components(components):
     from faebryk.library.core import Component
-    from faebryk.libs.exceptions import FaebrykException
+    from faebryk.library.kicad import has_kicad_footprint, has_kicad_ref
     from faebryk.library.traits.component import (
         has_footprint,
-        has_type_description,
         has_footprint_pinmap,
+        has_type_description,
     )
     from faebryk.library.traits.interface import is_part_of_component
-    from faebryk.library.kicad import has_kicad_footprint
-    from faebryk.library.kicad import has_kicad_ref
     from faebryk.library.util import get_all_components
+    from faebryk.libs.exceptions import FaebrykException
 
     class wrapper:
         wrapped_list: List[Self]

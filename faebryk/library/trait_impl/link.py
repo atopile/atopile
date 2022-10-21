@@ -4,5 +4,3 @@
 import logging
 
 logger = logging.getLogger("library")
-
-from faebryk.library.traits.link import *

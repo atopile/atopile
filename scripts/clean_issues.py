@@ -3,9 +3,9 @@
 
 
 import csv
-import subprocess
-import re
 import logging
+import re
+import subprocess
 
 logger = logging.getLogger("script")
 

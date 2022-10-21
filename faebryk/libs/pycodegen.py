@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import re
 import logging
+import re
 
 logger = logging.getLogger("pycodegen")
 

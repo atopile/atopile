@@ -1,18 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from abc import abstractmethod
 import logging
 from typing import List
-from typing_extensions import Self
-from faebryk.library.traits import component
-
-from faebryk.library.traits.component import (
-    contructable_from_component,
-    has_footprint_pinmap,
-    has_type_description,
-)
-from faebryk.library.traits.interface import contructable_from_interface_list
 
 from faebryk.library.trait_impl.component import (
     can_bridge_defined,
@@ -20,14 +10,19 @@ from faebryk.library.trait_impl.component import (
     has_defined_type_description,
     has_symmetric_footprint_pinmap,
 )
+from faebryk.library.traits.component import (
+    contructable_from_component,
+    has_footprint_pinmap,
+    has_type_description,
+)
+from faebryk.library.traits.interface import contructable_from_interface_list
 from faebryk.libs.util import consume_iterator
 
 logger = logging.getLogger("library")
 
-from faebryk.library.core import Component, ComponentTrait, Interface, Parameter
+from faebryk.library.core import Component, ComponentTrait, Parameter
 from faebryk.library.library.interfaces import Electrical, Power
 from faebryk.library.library.parameters import Constant
-from faebryk.library.traits import *
 from faebryk.library.util import times, unit_map
 
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 
-import faebryk.libs.util
+import faebryk.libs.algorithm
 import faebryk.libs.exceptions
 import faebryk.libs.pycodegen
-import faebryk.libs.algorithm
+import faebryk.libs.util

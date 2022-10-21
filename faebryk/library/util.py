@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import Any, Callable, List, TypeVar
+from typing import Callable, List, TypeVar
 
 logger = logging.getLogger("library")
 
 # TODO this file should not exist
 
-from faebryk.library.core import FaebrykLibObject, Interface, Component
+from faebryk.library.core import Component, Interface
 
 
 def default_with(given, default):
