@@ -74,6 +74,10 @@ class TraitImpl:
 
         return issubclass(self.trait, trait)
 
+    # override this to implement a dynamic trait
+    def is_implemented(self):
+        return True
+
 
 class FaebrykLibObject:
     traits: List[TraitImpl]
@@ -95,6 +99,7 @@ class FaebrykLibObject:
         trait.set_obj(self)
 
         # Override existing trait if more specific or same
+        # TODO deal with dynamic traits
         for i, t in enumerate(self.traits):
             hit, replace = t.cmp(trait)
             if hit:
@@ -106,13 +111,17 @@ class FaebrykLibObject:
         # No hit: Add new trait
         self.traits.append(trait)
 
-    def _find(self, trait):
+    def _find(self, trait, only_implemented: bool):
         return list(
-            filter(lambda tup: tup[1].implements(trait), enumerate(self.traits))
+            filter(
+                lambda tup: tup[1].implements(trait)
+                and (tup[1].is_implemented() or not only_implemented),
+                enumerate(self.traits),
+            )
         )
 
     def del_trait(self, trait):
-        candidates = self._find(trait)
+        candidates = self._find(trait, only_implemented=False)
         assert len(candidates) <= 1
         if len(candidates) == 0:
             return
@@ -123,12 +132,12 @@ class FaebrykLibObject:
         del self.traits[i]
 
     def has_trait(self, trait) -> bool:
-        return len(self._find(trait)) > 0
+        return len(self._find(trait, only_implemented=True)) > 0
 
     T = TypeVar("T", bound=Trait)
 
     def get_trait(self, trait: Type[T]) -> T:
-        candidates = self._find(trait)
+        candidates = self._find(trait, only_implemented=True)
         assert len(candidates) <= 1
         assert len(candidates) == 1, "{} not in {}[{}]".format(trait, type(self), self)
 
@@ -213,10 +222,9 @@ class Interface(FaebrykLibObject):
 
         from faebryk.library.traits.interface import is_part_of_component
 
-        # TODO we need to have a more dynamic way to check if a trait exists
         class _(is_part_of_component.impl()):
             @staticmethod
-            def get_component() -> Component | None:
+            def _get_component() -> Component | None:
                 if self.parent is None:
                     return None
                 parent = self.parent[0]
@@ -224,6 +232,18 @@ class Interface(FaebrykLibObject):
                     return parent
                 assert isinstance(parent, Interface)
                 return parent.get_trait(is_part_of_component).get_component()
+
+            @staticmethod
+            def get_component() -> Component:
+                comp = _._get_component()
+                assert comp is not None
+                return comp
+
+            def is_implemented(self):
+                if _._get_component() is None:
+                    return False
+
+                return super().is_implemented()
 
         self.add_trait(_())
 
