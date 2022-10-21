@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from itertools import groupby
 from typing import List
 
 from typing_extensions import Self
+
+from faebryk.library.traits.component import has_overriden_name
 
 logger = logging.getLogger("netlist")
 
@@ -21,7 +24,7 @@ def make_t1_netlist_from_graph(comps):
 #   built from directly
 def make_graph_from_components(components):
     from faebryk.library.core import Component
-    from faebryk.library.kicad import has_kicad_footprint, has_kicad_ref
+    from faebryk.library.kicad import has_kicad_footprint
     from faebryk.library.traits.component import (
         has_footprint,
         has_footprint_pinmap,
@@ -32,15 +35,12 @@ def make_graph_from_components(components):
     from faebryk.libs.exceptions import FaebrykException
 
     class wrapper:
-        wrapped_list: List[Self]
-
-        def __init__(self, component: Component) -> None:
+        def __init__(self, component: Component, wrapped_list: List[Self]) -> None:
             self.component = component
             self._setup_non_rec()
+            self.wrapped_list: List[Self]
 
         def _setup_non_rec(self):
-            import random
-
             c = self.component
             self.real = c.has_trait(has_footprint) and c.has_trait(has_footprint_pinmap)
             self.properties = {}
@@ -53,13 +53,17 @@ def make_graph_from_components(components):
                     .get_trait(has_kicad_footprint)
                     .get_kicad_footprint()
                 )
-            if c.has_trait(has_kicad_ref):
-                self.name = c.get_trait(has_kicad_ref).get_ref()
+            if self.component.has_trait(has_overriden_name):
+                self.name = self.component.get_trait(has_overriden_name).get_name()
             else:
-                self.name = "COMP[{}:{}]@{:08X}".format(
+                self.name = "{}[{}:{}]".format(
+                    ".".join(
+                        [pname for parent, pname in self.component.get_hierarchy()]
+                    )
+                    if self.component.parent is not None
+                    else "",
                     type(self.component).__name__,
                     self.value if self.real else "virt",
-                    int(random.random() * 2**32),
                 )
             self._comp = {}
             self._update_comp()
@@ -136,9 +140,18 @@ def make_graph_from_components(components):
     for i in map(get_all_components, components):
         all_components.extend(i)
 
-    wrapped_list = list(map(wrapper, all_components))
-    for i in wrapped_list:
-        i.wrapped_list = wrapped_list
+    wrapped_list = []
+    wrapped_list += [wrapper(comp, wrapped_list) for comp in all_components]
+
+    names = groupby(wrapped_list, key=lambda w: w.name)
+    for name, _objs in names:
+        objs = list(_objs)
+        if len(objs) <= 1:
+            continue
+        for i, obj in enumerate(objs):
+            # TODO deterministic
+            # maybe prefix name of parent instead
+            obj.name += f"@{i}"
 
     logger.debug(
         "Making graph from components:\n\t{}".format(

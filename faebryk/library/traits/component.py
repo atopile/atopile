@@ -38,3 +38,8 @@ class can_bridge(ComponentTrait):
 
     def get_out(self):
         raise NotImplementedError(type(self))
+
+
+class has_overriden_name(ComponentTrait):
+    def get_name(self):
+        raise NotImplementedError

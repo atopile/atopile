@@ -11,6 +11,7 @@ from faebryk.library.traits.component import (
     can_bridge,
     has_footprint,
     has_footprint_pinmap,
+    has_overriden_name,
     has_type_description,
 )
 
@@ -56,3 +57,12 @@ class can_bridge_defined(can_bridge.impl()):
 
         self.get_in = lambda: in_if
         self.get_out = lambda: out_if
+
+
+class has_overriden_name_defined(has_overriden_name.impl()):
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self.name = name
+
+    def get_name(self):
+        return self.name

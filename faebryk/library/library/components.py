@@ -28,20 +28,24 @@ from faebryk.library.util import times, unit_map
 
 class Resistor(Component):
     def _setup_traits(self):
-        class _contructable_from_component(contructable_from_component.impl()):
-            @staticmethod
-            def from_component(comp: Component, resistance: Parameter) -> Resistor:
-                interfaces = comp.IFs.get_all()
-                assert len(interfaces) == 2
-                assert len([i for i in interfaces if type(i) is not Electrical]) == 0
+        # class _contructable_from_component(contructable_from_component.impl()):
+        #    @staticmethod
+        #    def from_component(comp: Component, resistance: Parameter) -> Resistor:
+        #        interfaces = comp.IFs.get_all()
+        #        assert len(interfaces) == 2
+        #        assert len([i for i in interfaces if type(i) is not Electrical]) == 0
 
-                r = Resistor.__new__(Resistor)
-                r.set_resistance(resistance)
-                r.IFs.add_all(interfaces)
+        #        r = Resistor.__new__(Resistor)
+        #        r.set_resistance(resistance)
+        #        class _IFs(Component.InterfacesCls()):
+        #            unnamed = interfaces
 
-                return r
+        #        r.IFs = _IFs(r)
 
-        self.add_trait(_contructable_from_component())
+        #        return r
+
+        # self.add_trait(_contructable_from_component())
+        pass
 
     def _setup_interfaces(self):
         class _IFs(Component.InterfacesCls()):

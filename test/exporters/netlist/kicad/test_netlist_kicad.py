@@ -4,6 +4,9 @@
 import logging
 import unittest
 
+from faebryk.library.trait_impl.component import has_overriden_name_defined
+from faebryk.library.util import times
+
 logger = logging.getLogger("test")
 
 # Netlists --------------------------------------------------------------------
@@ -32,12 +35,17 @@ def test_netlist_graph():
     # name
     resistor1.add_trait(has_defined_kicad_ref("R1"))
     resistor2.add_trait(has_defined_kicad_ref("R2"))
+    resistor1.add_trait(has_overriden_name_defined("R1"))
+    resistor2.add_trait(has_overriden_name_defined("R2"))
+
+    class _RIFs(Component.InterfacesCls()):
+        unnamed = times(2, Electrical)
 
     for r in [resistor1, resistor2]:
         # value
         r.add_trait(has_defined_type_description("R"))
         # interfaces
-        r.IFs.add_all([Electrical(), Electrical()])
+        r.IFs = _RIFs(r)
         # footprint
         fp = Footprint()
         fp.add_trait(has_kicad_manual_footprint("Resistor_SMD:R_0805_2012Metric"))
@@ -52,6 +60,8 @@ def test_netlist_graph():
             )
         )
 
+    assert isinstance(resistor1.IFs, _RIFs)
+    assert isinstance(resistor2.IFs, _RIFs)
     resistor1.IFs.unnamed[0].connect(vcc)
     resistor1.IFs.unnamed[1].connect(gnd)
     resistor2.IFs.unnamed[0].connect(resistor1.IFs.unnamed[0])
@@ -63,6 +73,7 @@ def test_netlist_graph():
         wrap = Component()
         wrap.IFs.to_wrap = i
         wrap.add_trait(has_defined_kicad_ref("+3V3" if i == vcc else "GND"))
+        wrap.add_trait(has_overriden_name_defined("+3V3" if i == vcc else "GND"))
         wrap.add_trait(has_defined_footprint_pinmap({1: i}))
         net_wrappers.append(wrap)
 
@@ -82,8 +93,8 @@ def test_netlist_graph():
     success = netlist == netlist_t1
     if not success:
         logger.error("Graph != T1")
-        logger.error("T1", netlist_t1)
-        logger.error("Graph", netlist)
+        logger.error("T1: %s", netlist_t1)
+        logger.error("Graph: %s", netlist)
 
     return success, netlist
 

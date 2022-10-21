@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, List, Type, TypeVar
+from typing import List, Tuple, Type, TypeVar
 
 from faebryk.libs.util import Holder
 
@@ -85,7 +85,8 @@ class FaebrykLibObject:
         return self
 
     def __init__(self) -> None:
-        pass
+        if not hasattr(self, "parent"):
+            self.parent = None
 
     def add_trait(self, trait: TraitImpl) -> None:
         assert isinstance(trait, TraitImpl), ("not a traitimpl:", trait)
@@ -135,6 +136,14 @@ class FaebrykLibObject:
         assert isinstance(out, trait)
         return out
 
+    def set_parent(self, parent: FaebrykLibObject, name: str) -> None:
+        self.parent = (parent, name)
+
+    def get_hierarchy(self) -> List[Tuple[FaebrykLibObject, str]]:
+        if self.parent is None:
+            return []
+        return self.parent[0].get_hierarchy() + [self.parent]
+
 
 # -----------------------------------------------------------------------------
 
@@ -161,6 +170,26 @@ class ParameterTrait(Trait):
 
 # -----------------------------------------------------------------------------
 
+from faebryk.libs.util import _wrapper
+
+T = TypeVar("T")
+P = TypeVar("P")
+
+
+def ParentContainer(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
+    assert issubclass(_ptype, FaebrykLibObject)
+    assert issubclass(_type, FaebrykLibObject)
+
+    class _(Holder(_type, _ptype)):
+        def handle_add(self, name: str, obj: T) -> None:
+            assert isinstance(obj, FaebrykLibObject)
+            parent: P = self.get_parent()
+            obj.set_parent(parent, name)
+            return super().handle_add(name, obj)
+
+    return _
+
+
 # FaebrykLibObjects -----------------------------------------------------------
 class Footprint(FaebrykLibObject):
     def __init__(self) -> None:
@@ -172,45 +201,32 @@ class Footprint(FaebrykLibObject):
 
 
 class Interface(FaebrykLibObject):
-    from faebryk.libs.util import NotifiesOnPropertyChange
-
     connections: List[Interface]
 
     @classmethod
     def InterfacesCls(cls):
-        class _Interfaces(Holder(Interface)):
-            def __init__(self, intf: Interface) -> None:
-                self._intf = intf
-                if not hasattr(self, "unnamed"):
-                    self.unnamed = ()
+        return ParentContainer(Interface, Interface)
 
-                super().__init__()
-
-            def handle_add(self, intf: Interface):
-                if self._intf.component is None:
-                    return
-                intf.set_component(self._intf.component)
-
-            # TODO this is blocking a nicer implementation of Holder
-            # due to not putting into the list, maybe just remove the whole thing
-            def add(self, intf: Interface):
-                self.unnamed += (intf,)
-                if self._intf.component is None:
-                    return
-                intf.set_component(self._intf.component)
-
-            def add_all(self, intfs: Iterable[Interface]):
-                for intf in intfs:
-                    self.add(intf)
-
-        return _Interfaces
-
-    def __new__(cls, *args, component=None, **kwargs):
+    def __new__(cls):
         self = super().__new__(cls)
         self.connections = []
-        self.component = None
-        if component is not None:
-            self.set_component(component)
+
+        from faebryk.library.traits.interface import is_part_of_component
+
+        # TODO we need to have a more dynamic way to check if a trait exists
+        class _(is_part_of_component.impl()):
+            @staticmethod
+            def get_component() -> Component | None:
+                if self.parent is None:
+                    return None
+                parent = self.parent[0]
+                if isinstance(parent, Component):
+                    return parent
+                assert isinstance(parent, Interface)
+                return parent.get_trait(is_part_of_component).get_component()
+
+        self.add_trait(_())
+
         return self
 
     def __init__(self) -> None:
@@ -249,72 +265,15 @@ class Interface(FaebrykLibObject):
             end = bridge.get_trait(can_bridge).get_out()
         end.connect(target)
 
-    def set_component(self, component):
-        from faebryk.library.traits.interface import is_part_of_component
-
-        self.component = component
-
-        class _(is_part_of_component.impl()):
-            @staticmethod
-            def get_component() -> Component:
-                return self.component
-
-        if component is None:
-            self.del_trait(is_part_of_component)
-        else:
-            self.add_trait(_())
-
-        # TODO I think its nicer to have a parent relationship to the other interface
-        #   instead of carrying the component through all compositions
-        for i in self.IFs.get_all():
-            assert i != self
-            i.set_component(component)
-
 
 class Component(FaebrykLibObject):
-    from faebryk.libs.util import NotifiesOnPropertyChange
-
     @classmethod
     def InterfacesCls(cls):
-        class _Interfaces(Holder(Interface)):
-            def __init__(self, comp: Component) -> None:
-                self._comp = comp
-                if not hasattr(self, "unnamed"):
-                    self.unnamed: List = []
-
-                super().__init__()
-
-            def handle_add(self, intf: Interface):
-                intf.set_component(self._comp)
-
-            def add(self, intf: Interface):
-                self.unnamed.append(intf)
-                intf.set_component(self._comp)
-
-            def add_all(self, intfs: Iterable[Interface]):
-                for intf in intfs:
-                    self.add(intf)
-
-        return _Interfaces
+        return ParentContainer(Interface, Component)
 
     @classmethod
     def ComponentsCls(cls):
-        class _Components(Holder(Component)):
-            def __init__(self, comp: Component) -> None:
-                self._comp = comp
-                if not hasattr(self, "unnamed"):
-                    self.unnamed = ()
-
-                super().__init__()
-
-            def add(self, cmp: Component):
-                self.unnamed += (cmp,)
-
-            def add_all(self, cmps: Iterable[Component]):
-                for cmp in cmps:
-                    self.add(cmp)
-
-        return _Components
+        return ParentContainer(Component, Component)
 
     def __init__(self) -> None:
         super().__init__()
