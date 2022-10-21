@@ -13,29 +13,31 @@ Netlist samples can be run directly.
 The netlist is printed to stdout.
 """
 import logging
-from pathlib import Path
+
+from common.buildutil import export_graph, export_netlist
+
+from faebryk.exporters.netlist import make_t2_netlist_from_t1
+from faebryk.exporters.netlist.graph import (
+    make_graph_from_components,
+    make_t1_netlist_from_graph,
+)
+from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
+from faebryk.library.core import Component, Footprint, Parameter
+from faebryk.library.kicad import has_kicad_manual_footprint
+from faebryk.library.library.components import CD4011, LED, NAND, Resistor, Switch
+from faebryk.library.library.footprints import DIP, SMDTwoPin
+from faebryk.library.library.interfaces import Electrical, Power
+from faebryk.library.library.parameters import TBD, Constant
+from faebryk.library.trait_impl.component import (
+    has_defined_footprint,
+    has_defined_footprint_pinmap,
+    has_symmetric_footprint_pinmap,
+)
 
 logger = logging.getLogger("main")
 
 
 def run_experiment():
-    from faebryk.exporters.netlist import make_t2_netlist_from_t1
-    from faebryk.exporters.netlist.graph import (
-        make_graph_from_components,
-        make_t1_netlist_from_graph,
-    )
-    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-    from faebryk.library.core import Component, Footprint, Parameter
-    from faebryk.library.kicad import has_kicad_manual_footprint
-    from faebryk.library.library.components import CD4011, LED, NAND, Resistor, Switch
-    from faebryk.library.library.footprints import DIP, SMDTwoPin
-    from faebryk.library.library.interfaces import Electrical, Power
-    from faebryk.library.library.parameters import TBD, Constant
-    from faebryk.library.trait_impl.component import (
-        has_defined_footprint,
-        has_defined_footprint_pinmap,
-        has_symmetric_footprint_pinmap,
-    )
 
     # levels
     high = Electrical()
@@ -162,13 +164,8 @@ def run_experiment():
     netlist = from_faebryk_t2_netlist(make_t2_netlist_from_t1(t1_))
     assert netlist is not None
 
-    path = Path("./build/faebryk.net")
-    logger.info("Writing Experiment netlist to {}".format(path.absolute()))
-    path.write_text(netlist)
-
-    from faebryk.exporters.netlist import render_graph
-
-    render_graph(t1_)
+    export_netlist(netlist)
+    export_graph(t1_, show=True)
 
 
 # Boilerplate -----------------------------------------------------------------

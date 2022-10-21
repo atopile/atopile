@@ -7,7 +7,6 @@ logger = logging.getLogger("netlist")
 
 import typing
 from dataclasses import dataclass
-from pathlib import Path
 
 import networkx as nx
 
@@ -204,6 +203,5 @@ def render_graph(t1_netlist):
         bbox=dict(fc="blue"),
         font_color="white",
     )
-    Path("./build").mkdir(parents=True, exist_ok=True)
-    plt.savefig("./build/graph.png", format="png", bbox_inches="tight")
-    plt.show()
+
+    return plt
