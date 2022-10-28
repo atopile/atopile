@@ -42,3 +42,8 @@ expand-star-imports = true
 # could add remove-rhs-for-unused-variables, but that might break a lot of stuff
 # so for now we keep this false
 remove-unused-variables = false
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]

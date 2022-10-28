@@ -136,7 +136,7 @@ Call your file with `python3 samples/<yourfile>.py`.
 Run
 
 ```bash
-> python3 test/test.py
+> pytest test
 ```
 
 ## Community Support
