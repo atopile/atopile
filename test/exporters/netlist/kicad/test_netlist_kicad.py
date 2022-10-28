@@ -11,7 +11,7 @@ logger = logging.getLogger("test")
 
 # Netlists --------------------------------------------------------------------
 def test_netlist_graph():
-    from faebryk.exporters.netlist import make_t2_netlist_from_t1
+    from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
     from faebryk.exporters.netlist.graph import (
         make_graph_from_components,
         make_t1_netlist_from_graph,
@@ -100,7 +100,7 @@ def test_netlist_graph():
 
 
 def test_netlist_t1():
-    from faebryk.exporters.netlist import make_t2_netlist_from_t1
+    from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
     from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 
     gnd = {
@@ -165,7 +165,7 @@ def test_netlist_t1():
 
 
 def test_netlist_t2():
-    from faebryk.exporters.netlist import Component, Net, Vertex
+    from faebryk.exporters.netlist.netlist import Component, Net, Vertex
     from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 
     # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]

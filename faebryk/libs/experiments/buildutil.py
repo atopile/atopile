@@ -14,7 +14,7 @@ def export_netlist(netlist):
 
 
 def export_graph(t1, show):
-    from faebryk.exporters.netlist import render_graph
+    from faebryk.exporters.netlist.netlist import render_graph
 
     plt = render_graph(t1)
 

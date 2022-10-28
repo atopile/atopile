@@ -29,7 +29,7 @@ logger = logging.getLogger("main")
 
 # function imports
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-from faebryk.exporters.netlist import make_t2_netlist_from_t1
+from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
 from faebryk.exporters.netlist.graph import (
     make_graph_from_components,
     make_t1_netlist_from_graph,
