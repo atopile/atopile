@@ -1,9 +1,8 @@
 # import sexp_parser
 import logging
 
-from sexpdata import SExpBase, loads
-
 from faebryk.libs.util import get_dict
+from sexpdata import SExpBase, loads
 
 logger = logging.getLogger("parse")
 
@@ -206,6 +205,7 @@ def parse_netlist(obj):
                     "property",
                     "libsource",
                     "datasheet",
+                    "fields",
                 ]:
                     pass
                 elif key in ["ref", "value", "footprint"]:
