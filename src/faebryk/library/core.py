@@ -276,7 +276,7 @@ class Interface(FaebrykLibObject):
 
         bridge.get_trait(can_bridge).bridge(self, target)
 
-    def connect_via_chain(self, bridges: list[Interface], target: Interface):
+    def connect_via_chain(self, bridges: list[Component], target: Interface):
         from faebryk.library.traits.component import can_bridge
 
         end = self

@@ -5,14 +5,25 @@ import sys
 
 import click
 
+from faebryk.libs.pycodegen import sanitize_name
+from faebryk.libs.util import groupby
+
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 logger = logging.getLogger("sym_gen")
 logger.setLevel(logging.DEBUG)
 
 
-def generate_component(symbol, annotation_properties, keep_source):
-    from faebryk.libs.pycodegen import sanitize_name
+def sanitize_pin_name(name: str, no: str):
+    if name == "~":
+        if no.isnumeric():
+            name = "unnamed"
+        else:
+            name = no
 
+    return sanitize_name(name)
+
+
+def generate_component(symbol, annotation_properties, keep_source):
     annotation = "\n    ".join(
         [f"{key}: {val}" for key, val in annotation_properties.items()]
     )
@@ -33,53 +44,36 @@ def generate_component(symbol, annotation_properties, keep_source):
         for no, pin in symbol_2.get("pins", {}).items()
     }
 
-    # not hidden pins
-    pins = {no: pin for no, pin in raw_pins.items() if not pin["hide"]}
-
-    # handle aliases
     for no, pin in raw_pins.items():
-        match = [
-            ppin
-            for ppin in pins.values()
-            if ppin["name"] == pin["name"] and ppin != pin
-        ]
-        if len(match) == 0:
-            continue
-        for ppin in match:
-            ppin["aliases"].append(no)
+        pname = sanitize_pin_name(pin["name"], no)
+        if type(pname) is tuple and pname[0] is None:  # TODO use exception
+            logger.error(
+                f"Unescapable pin name in pin {pin['name']}: [{pname[1]}] in symbol {name}"
+            )
+            return f"#Skipped invalid component {name}"
+        pin["sanitized"] = pname
 
-        if no in pins:  # == if pin not hidden/filtered
-            del pins[no]
+    # not hidden pins
+    # pins = {no: pin for no, pin in raw_pins.items() if not pin["hide"]}
 
     faebryk_if_map = {}
-    unnamed_if_cnt = 0
-    for no, pin in pins.items():
-        if pin["name"] == "~":
-            faebryk_if_map[no] = f"unnamed[{unnamed_if_cnt}]"
-            unnamed_if_cnt += 1
-        else:
-            pin_raw_name = pin["name"]
-            pin_name = sanitize_name(pin_raw_name)
-            if type(pin_name) is tuple and pin_name[0] is None:  # TODO use exception
-                logger.error(
-                    f"Unescapable pin name in pin {pin_raw_name}: [{pin_name[1]}] in symbol {name}"
-                )
-                return f"#Skipped invalid component {name}"
+    pins_grouped_by_names = groupby(raw_pins.items(), key=lambda x: x[1]["sanitized"])
 
-            faebryk_if_map[no] = pin_name
+    for pname, group in pins_grouped_by_names.items():
+        for i, (no, pin) in enumerate(group):
+            faebryk_if_map[no] = pname
+            if len(group) > 1:
+                faebryk_if_map[no] += f"[{i}]"
 
     ifs_exp = ("\n" + "    " * 3).join(
         [
-            f"{_if} = Electrical()"
-            for pinno, _if in faebryk_if_map.items()
-            if pins[pinno]["name"] != "~"
+            f"{pname} = "
+            + (f"times({len(group)}, Electrical)" if len(group) > 1 else "Electrical()")
+            for pname, group in pins_grouped_by_names.items()
         ]
     )
 
     pinmap = dict(faebryk_if_map)
-    for no, pin in faebryk_if_map.items():
-        for aliased_no in pins[no]["aliases"]:
-            pinmap[aliased_no] = pin
 
     # raw
     if keep_source:
@@ -144,14 +138,11 @@ def generate_component(symbol, annotation_properties, keep_source):
                 *(
                     [
                         f"        class _IFs(Component.InterfacesCls()):",
-                        f"            unnamed = times({unnamed_if_cnt}, Electrical)"
-                        if unnamed_if_cnt > 0
-                        else None,
                         f"            {ifs_exp}" if ifs_exp != "" else None,
                         f"",
                         f"        self.IFs = _IFs(self)",
                     ]
-                    if unnamed_if_cnt > 0 or ifs_exp != ""
+                    if ifs_exp != ""
                     else []
                 ),
                 f"        return",

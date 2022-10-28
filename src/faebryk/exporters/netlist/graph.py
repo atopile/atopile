@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from itertools import groupby
 from typing import List
 
 from typing_extensions import Self
 
 from faebryk.library.traits.component import has_overriden_name
+from faebryk.libs.util import groupby
 
 logger = logging.getLogger("netlist")
 
@@ -144,7 +144,7 @@ def make_graph_from_components(components):
     wrapped_list += [wrapper(comp, wrapped_list) for comp in all_components]
 
     names = groupby(wrapped_list, key=lambda w: w.name)
-    for name, _objs in names:
+    for name, _objs in names.items():
         objs = list(_objs)
         if len(objs) <= 1:
             continue

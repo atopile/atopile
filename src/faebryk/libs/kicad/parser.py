@@ -1,8 +1,9 @@
 # import sexp_parser
 import logging
 
-from faebryk.libs.util import get_dict
 from sexpdata import SExpBase, loads
+
+from faebryk.libs.util import get_dict
 
 logger = logging.getLogger("parse")
 
@@ -51,8 +52,7 @@ def parse_symbol(obj):
     symbol = {}
     name = obj[1]
     symbol["name"] = name
-    # symbol["_raw"] = obj
-    # TODO reenable
+    symbol["_raw"] = obj
 
     def parse_pin_name(obj):
         pin_names = {}
