@@ -99,6 +99,7 @@ Setup
 > . venv/bin/activate
 >
 > # requires pip version >= 21.3
+> pip install --require-hashes -r requirements-hash.txt
 > pip install -r requirements.txt
 > pip install --editable .
 ```

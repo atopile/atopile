@@ -62,7 +62,7 @@ class can_bridge_defined(can_bridge.impl()):
 class has_overriden_name_defined(has_overriden_name.impl()):
     def __init__(self, name: str) -> None:
         super().__init__()
-        self.name = name
+        self.component_name = name
 
     def get_name(self):
-        return self.name
+        return self.component_name

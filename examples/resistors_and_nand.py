@@ -84,6 +84,9 @@ def run_experiment():
     netlist = from_faebryk_t2_netlist(make_t2_netlist_from_t1(t1_))
     assert netlist is not None
 
+    # from pretty import pretty
+    # logger.info("Experiment components")
+    # logger.info("\n" + "\n".join(pretty(c) for c in comps))
     export_netlist(netlist)
     export_graph(t1_, show=True)
 

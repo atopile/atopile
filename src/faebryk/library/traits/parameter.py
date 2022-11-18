@@ -9,5 +9,8 @@ from faebryk.library.core import ParameterTrait
 
 
 class is_representable_by_single_value(ParameterTrait):
+    def __init__(self):
+        super().__init__(pretty_child_fns=[self.get_single_representing_value])
+
     def get_single_representing_value(self):
         return NotImplementedError

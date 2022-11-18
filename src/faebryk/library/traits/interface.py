@@ -16,5 +16,8 @@ class contructable_from_interface_list(InterfaceTrait):
 
 
 class is_part_of_component(InterfaceTrait):
+    def __init__(self):
+        super().__init__(pretty_child_fns=[self.get_component])
+
     def get_component(self) -> Component:
         raise NotImplementedError
