@@ -1,0 +1,51 @@
+bus i2c:
+    + sda
+    + scl
+    + gnd
+
+class SomeIC:
+    pins:
+        + 1: vcc, v3.3  # pin 1, alias "vcc"
+        + 2: gnd
+
+    limits:  # limits on the component
+        -0.5V < V[vcc:gnd] < 3.3V  # V[vcc:gnd] is the voltage between vcc and gnd
+        I[vcc] = 10mA  # I[vcc] is the default current flowing into vcc
+        I[gnd] = -10mA  # I[vcc] is the default current flowing into gnd
+
+    resources:
+        + some_resource  # some_resource is a shared resource that this component has
+
+    feature i2c1():  # allows the user to enable "i2c1" on this component
+        # if this feature is enabled
+        resources:
+            # uses up the resource "some_resource"
+            - some_resource
+
+        pins:
+            # adds an obligation to connect these pins to an i2c bus
+            + 3: sda ~ i2c.sda
+            + 4: scl ~ i2c.scl
+            + gnd ~ i2c.gnd
+
+        functions:
+            # add mathematical descriptions of the pin's behavior
+            # these pins are driven by the component between 0V to 3.3V
+            V[sda:gnd] = 0V -> 3.3V
+            V[scl:gnd] = 0V -> 3.3V
+
+    feature amp(gain):  # allows the user to enable "amp" on this component
+        # if this feature is enabled
+        pins:
+            # adds an obligation to connect these pins
+            + 7: amp_in
+            + 8: amp_out
+
+        functions:
+            V[amp_out:gnd] = {
+                if V[amp_in:gnd] < 0V then 0V
+                if V[amp_in:gnd] * gain < V[vcc:gnd] then V[amp_in:gnd] * gain
+                else V[vcc:gnd]
+            }
+
+some_ic = SomeIC(i2c1, amp(10))  # creates an instance of SomeIC with the features "i2c1" and "amp" enabled

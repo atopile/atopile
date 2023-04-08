@@ -1,0 +1,138 @@
+# some_ic.ato
+class SomeIC:
+    # create the nets named "vcc" and "gnd" attached to pins 1 and 2 on the package respectively
+    # nets that are created must have some connections
+    net vcc: 1
+    net gnd: 2
+
+    # voltage between vcc and gnd must be lower than 4V
+    # -> all of the voltages observed between vcc and gnd must be within limit
+    limit V[vcc:gnd] < 4V
+
+    # voltage between vcc and gnd must possibly be greater than 2.5V. eg.; to switch the device on
+    # -> some of the voltages observed must
+    limit V[vcc:gnd] ?> 2.5V
+
+    # the voltage between all nets (other than gnd) and gnd must be within spec'd range
+    limit -0.5V < V[*:gnd] < V[vcc:gnd] + 0.5V
+
+    # features are enabled optionally
+    # this feature is named "i2c"
+    # if enabled, the conditions spec'd inside the feature's scope are required
+    feature i2c from I2c:
+        """
+        This is a docstring
+        """
+
+        # all outer namespaces are inherited (vcc, gnd etc... from both outer scope and file)
+        net sda: 3
+        net scl: 4
+
+        limit V[sda:gnd].i2c.sda.on > 2.5V
+        limit V[sda:gnd].i2c.sda.off < 0.5V
+        limit V[scl:gnd].i2c.scl.on > 2.5V
+        limit V[scl:gnd].i2c.scl.off < 0.5V
+
+        # voltage/protocol assignments
+        V[sda:gnd].i2c.sda.on := (2.8V -> V[vcc:gnd]) + I[sda:gnd] * 20kR
+        V[sda:gnd].i2c.sda.off := (0V -> 0.5V) + I[sda:gnd] * 20kR
+        V[scl:gnd].i2c.scl.on := (2.8V -> V[vcc:gnd]) + I[scl:gnd] * 20kR
+        V[scl:gnd].i2c.scl.off := (0V -> 0.5V) + I[scl:gnd] * 20kR
+
+
+        # it feels like there should be an explicit definition of what states are available
+
+        # what about timing?
+        # this is okay because it's still "flat"(/fluffiness) in these axes and you can do flat maths with it
+        limit X[sda] < 10ps
+
+
+# std/i2c.ato
+# we need bettwe syntax to explicitly define the "state" and "space" dimensions, and what their heirachies look like
+# i2c:
+#   sda:
+#     on
+#     off
+#   scl:
+#     on
+#     off
+space V.i2c:
+    pass
+
+# some_ic.ato
+class SomeIC:
+    # create the nets named "vcc" and "gnd" attached to pins 1 and 2 on the package respectively
+    # nets that are created must have some connections
+    net vcc: 1
+    net gnd: 2
+
+    # voltage between vcc and gnd must be lower than 4V
+    # -> all of the voltages observed between vcc and gnd must be within limit
+    limit V[vcc:gnd] < 4V
+
+    # voltage between vcc and gnd must possibly be greater than 2.5V. eg.; to switch the device on
+    # -> some of the voltages observed must
+    limit V[vcc:gnd] ?> 2.5V
+
+    # the voltage between all nets (other than gnd) and gnd must be within spec'd range
+    limit -0.5V < V[*:gnd] < V[vcc:gnd] + 0.5V
+
+    # features are enabled optionally
+    # this feature is named "i2c"
+    # if enabled, the conditions spec'd inside the feature's scope are required
+    feature i2c from I2c:
+        """
+        This is a docstring
+        """
+        # all outer namespaces are inherited (vcc, gnd etc... from both outer scope and file)
+        net sda: 3
+        net scl: 4
+
+        state on:
+            V[sda:gnd].on := (2.8V -> V[vcc:gnd]) + I[sda:gnd] * 20kR
+            V[scl:gnd].on := (2.8V -> V[vcc:gnd]) + I[scl:gnd] * 20kR
+            limit V[sda:gnd].on > 2.5V
+            limit V[scl:gnd].on > 2.5V
+
+        state off:
+            V[scl:gnd] := (0V -> 0.5V) + I[scl:gnd] * 20kR
+            V[sda:gnd] := (0V -> 0.5V) + I[sda:gnd] * 20kR
+            limit V[sda:gnd] < 0.5V
+            limit V[scl:gnd] < 0.5V
+
+# SomeIC2
+
+class SomeIC:
+    net vcc: 1
+    net gnd: 2
+
+    feature spi:
+        net sda: 3
+        net scl: 4
+        V[scl:gnd].spi.clk.on := (2.8V -> V[vcc:gnd]) + I[scl:gnd] * 20kR
+
+
+# usage of SomeIC
+ic_a = SomeIC()
+ic_a.i2c ~ ic_b.spi  # this implicitly enables the i2c feature
+
+# what if you can reconfigure a pin?
+# you're basically saying explicitly two spaces within a V/I assignment do not conflict one another
+ic_a.i2c :!= ic_a.jtag
+
+# space conflicts
+# what about an extra dimension of "state" that can put spaces in parallel without conflicting, eg. jtag and i2c
+# how do you explain the range of "space" in the dimension "state"? eg.; does i2c occupy space in "sleep" and "programming" states?
+# device state space should be mapped to global states. eg.: a microcontroller is in either "sleep" or "wake" when a device is powered
+
+# what about time-domain issues? sequencing or timing/pulses?
+
+# feature reuse
+# maybe something like `feature i2c from std.i2c(vcc=V[vcc:gnd]):` where (executes configuration)
+
+class: defines a type of a discrete circuit element
+features: are an optionally selectable description of how a pin/group of pins functions
+net: defines a named eletrical connection point
+space: captures a reigm of operation
+limit: defines a constraint on voltage or current for a space
+assignment: defines the eletrical behaviour of a net for a given space
