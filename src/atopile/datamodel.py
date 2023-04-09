@@ -79,3 +79,8 @@ class ConcreteComponent(Component):
 class Net:
     name: str
     pins: List[Pin]
+
+@define
+class FeatureNet:
+    name: str
+    features: List[Feature]
