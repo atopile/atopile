@@ -1,3 +1,10 @@
+# TODO: should we make multiple "pins" for a single physical pin?
+# eg. there's the pin (pin 3 say on the package), there's the pin
+# that's jtag and there's the pin that's i2c, even though they're
+# all on the same net
+
+# TODO: we need to be able to define nets
+
 from attrs import define
 from typing import List
 
@@ -67,3 +74,8 @@ class Component(BaseConfigurable):
 class ConcreteComponent(Component):
     component: Component
     features: List[ConcreteFeature] # enabled features
+
+@define
+class Net:
+    name: str
+    pins: List[Pin]
