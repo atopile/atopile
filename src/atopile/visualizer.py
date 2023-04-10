@@ -84,9 +84,7 @@ def add_connector(root, source, target, label, style='edgeStyle=entityRelationEd
 
     return connector
 
-def visualize_circuit(components):
-    drawio_xml = create_drawio_xml()
-
+def add_components_to_drawio_xml(drawio_xml, components):
     component_positions = {}
     row = 1
     col = 1
@@ -107,20 +105,26 @@ def visualize_circuit(components):
             row = 1
             col += 1
 
-    # Calculate connections between components
-    connections = defaultdict(list)
+    return component_positions
+
+def build_connections(components):
+    connections = defaultdict(set)
     for component in components:
         for feature in component.features:
             for connected_feature in feature.connections:
-                connections[(component.id, feature.name)].append((connected_feature._parent.id, connected_feature.name))
+                connections[(component.id, feature.name)].add((connected_feature._parent.id, connected_feature.name))
 
-    # Draw connections
+    return connections
+
+def draw_connections(drawio_xml, component_positions, connections):
     processed_connections = set()
     for (component_id, feature_name), connected_component_feature_ids_names in connections.items():
         source_shape = component_positions[component_id]
 
         for connected_component_id, connected_feature_name in connected_component_feature_ids_names:
-            if (component_id, connected_component_id) not in processed_connections:
+            connection_tuple = (component_id, feature_name, connected_component_id, connected_feature_name)
+            reverse_connection_tuple = (connected_component_id, connected_feature_name, component_id, feature_name)
+            if connection_tuple not in processed_connections and reverse_connection_tuple not in processed_connections:
                 target_shape = component_positions[connected_component_id]
 
                 add_connector(
@@ -129,12 +133,16 @@ def visualize_circuit(components):
                     target_shape,
                     f"{feature_name} - {connected_feature_name}"
                 )
-                processed_connections.add((component_id, connected_component_id))
-                processed_connections.add((connected_component_id, component_id))
+                processed_connections.add(connection_tuple)
+                processed_connections.add(reverse_connection_tuple)
+
+def visualize_circuit(components):
+    drawio_xml = create_drawio_xml()
+    component_positions = add_components_to_drawio_xml(drawio_xml, components)
+    connections = build_connections(components)
+    draw_connections(drawio_xml, component_positions, connections)
 
     return drawio_xml
-
-
 
 def save_drawio_xml(diagram, filename):
     with open(filename, 'wb') as f:

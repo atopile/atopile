@@ -45,7 +45,7 @@ class Feature:
     pins: List[Pin]
     _parent: 'Component' = None
     connections: List['Feature'] = attr.field(factory=list)
-    
+
 @attr.define
 class Component:
     name: str
@@ -63,6 +63,26 @@ class Component:
                 return feature
         raise AttributeError(f"{self.__class__.__name__} object has no attribute {name}")
 
+def pins_match(feature1: Feature, feature2: Feature) -> bool:
+    if len(feature1.pins) != len(feature2.pins):
+        return False
+
+    feature1_pins = sorted([pin.name for pin in feature1.pins])
+    feature2_pins = sorted([pin.name for pin in feature2.pins])
+
+    return feature1_pins == feature2_pins
+
+
 def connect(feature1: Feature, feature2: Feature):
+    if not pins_match(feature1, feature2):
+        raise ValueError(f"Cannot connect {feature1._parent.name}.{feature1.name} and {feature2._parent.name}.{feature2.name}. Their pins do not match.")
+    
+    print(f"Connecting {feature1._parent.name}.{feature1.name} and {feature2._parent.name}.{feature2.name}.")
+    # Pins for feature1 and feature2 are the same
+    for pin in feature1.pins:
+        print(f"Connecting {pin.name} on {feature1._parent.name}.{feature1.name} to {pin.name} on {feature2._parent.name}.{feature2.name}.")
+    
     feature1.connections.append(feature2)
     feature2.connections.append(feature1)
+
+
