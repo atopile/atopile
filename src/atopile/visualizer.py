@@ -1,24 +1,20 @@
-# visualizer
-# functions:
-# inputs:
-#   - component objects
-#   - feature net list: a list of top level features (such as i2c, spi, analog)
-
-# outputs:
-#   - diagram of the component
-#   - connections between components that have the same feature
-
-# assumptions:
-#   - all components have a power feature?
-#   - features describe all the pins that are needed for the feature (eg: i2c feature would have sda,scl,gnd)
-
-
 from lxml import etree
 from typing import List
 import datamodel
-from collections import defaultdict
 import uuid
+from collections import defaultdict
 
+
+color_names = {
+    'primary_background': '#F5F5F5',  # Light Gray
+    'secondary_background': '#FFFFFF',  # White
+    'primary_text': '#333333',  # Dark Gray
+    'secondary_text': '#666666',  # Medium Gray
+    'accent_color_1': '#2E9CCA',  # Light Blue
+    'accent_color_2': '#F57C00',  # Orange
+    'accent_color_3': '#69AA35',  # Green
+    # Add more colors as needed
+}
 
 def create_drawio_xml():
     root = etree.Element('mxGraphModel')
@@ -88,8 +84,6 @@ def add_connector(root, source, target, label, style='edgeStyle=entityRelationEd
 
     return connector
 
-#bug: two connections are drawn between the same two components for each feature
-#bug: the connections are drawn based on component name, should use some sort of uuid
 def visualize_circuit(components):
     drawio_xml = create_drawio_xml()
 
@@ -98,8 +92,7 @@ def visualize_circuit(components):
     col = 1
 
     for component in components:
-        component_positions[component.name] = (col * 200, row * 100)
-        add_shape(
+        shape = add_shape(
             drawio_xml,
             component.name,
             col * 200,
@@ -108,6 +101,7 @@ def visualize_circuit(components):
             50,
             'accent_color_1'
         )
+        component_positions[component.id] = shape
         row += 1
         if row > 3:
             row = 1
@@ -118,46 +112,31 @@ def visualize_circuit(components):
     for component in components:
         for feature in component.features:
             for connected_feature in feature.connections:
-                connections[(component.name, feature.name)].append((connected_feature._parent.name, connected_feature.name))
+                connections[(component.id, feature.name)].append((connected_feature._parent.id, connected_feature.name))
 
     # Draw connections
-    for (component_name, feature_name), connected_component_feature_names in connections.items():
-        x1, y1 = component_positions[component_name]
-        source_shape = None
-        for elem in drawio_xml.findall('.//mxCell'):
-            if elem.get('value') == component_name:
-                source_shape = elem
-                break
+    processed_connections = set()
+    for (component_id, feature_name), connected_component_feature_ids_names in connections.items():
+        source_shape = component_positions[component_id]
 
-        for connected_component_name, connected_feature_name in connected_component_feature_names:
-            x2, y2 = component_positions[connected_component_name]
-            target_shape = None
-            for elem in drawio_xml.findall('.//mxCell'):
-                if elem.get('value') == connected_component_name:
-                    target_shape = elem
-                    break
+        for connected_component_id, connected_feature_name in connected_component_feature_ids_names:
+            if (component_id, connected_component_id) not in processed_connections:
+                target_shape = component_positions[connected_component_id]
 
-            add_connector(
-                drawio_xml,
-                source_shape,
-                target_shape,
-                feature_name
-            )
+                add_connector(
+                    drawio_xml,
+                    source_shape,
+                    target_shape,
+                    f"{feature_name} - {connected_feature_name}"
+                )
+                processed_connections.add((component_id, connected_component_id))
+                processed_connections.add((connected_component_id, component_id))
 
     return drawio_xml
+
+
 
 def save_drawio_xml(diagram, filename):
     with open(filename, 'wb') as f:
         f.write(etree.tostring(diagram, pretty_print=True, encoding='utf-8'))
 
-
-color_names = {
-    'primary_background': '#F5F5F5',  # Light Gray
-    'secondary_background': '#FFFFFF',  # White
-    'primary_text': '#333333',  # Dark Gray
-    'secondary_text': '#666666',  # Medium Gray
-    'accent_color_1': '#2E9CCA',  # Light Blue
-    'accent_color_2': '#F57C00',  # Orange
-    'accent_color_3': '#69AA35',  # Green
-    # Add more colors as needed
-}

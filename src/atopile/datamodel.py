@@ -7,16 +7,13 @@
 
 from attrs import define
 import attr
+import uuid
 from typing import List
 
 @define
 class Pin:
     name: str
-
-@define
-class ConcretePin(Pin):
-    ref: str
-
+    ref: str = None
 @define
 class TransferFunction:
     eqn: str
@@ -43,29 +40,18 @@ class Argument:
     unit: str
 
 @define
-class BaseConfigurable:
-    # args: List[Argument]
-    pass
-
-@define
-class Feature(BaseConfigurable):
+class Feature:
     name: str
     pins: List[Pin]
-    # transfer_functions: List[TransferFunction]
-    # limits: List[Limit]
-    # states: List[State]  # states are always concrete
-
-@define
-class ConcreteFeature(Feature):
-    pins: List[ConcretePin]
     _parent: 'Component' = None
-    connections: List['ConcreteFeature'] = attr.field(factory=list)
-    # types: List[Type]
-
+    connections: List['Feature'] = attr.field(factory=list)
+    
 @attr.define
 class Component:
     name: str
-    features: List[ConcreteFeature] = attr.field(factory=list)
+    features: List[Feature] = attr.field(factory=list)
+    id: str = attr.field(default=attr.Factory(lambda: str(uuid.uuid4())))
+    
 
     def __attrs_post_init__(self):
         for feature in self.features:
@@ -77,23 +63,6 @@ class Component:
                 return feature
         raise AttributeError(f"{self.__class__.__name__} object has no attribute {name}")
 
-
-
-
-@define
-class ConcreteComponent(Component):
-    component: Component
-    features: List[ConcreteFeature] # enabled features
-
-@define
-class Net:
-    name: str
-    pins: List[Pin]
-
-@define
-class FeatureNet(list):
-    pass
-
-def connect(feature1: ConcreteFeature, feature2: ConcreteFeature):
+def connect(feature1: Feature, feature2: Feature):
     feature1.connections.append(feature2)
     feature2.connections.append(feature1)
