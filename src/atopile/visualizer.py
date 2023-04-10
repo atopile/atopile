@@ -1,3 +1,18 @@
+# visualizer
+# functions:
+# inputs:
+#   - component objects
+#   - feature net list: a list of top level features (such as i2c, spi, analog)
+
+# outputs:
+#   - diagram of the component
+#   - connections between components that have the same feature
+
+# assumptions:
+#   - all components have a power feature?
+#   - features describe all the pins that are needed for the feature (eg: i2c feature would have sda,scl,gnd)
+
+
 from lxml import etree
 from typing import List
 import datamodel
@@ -92,55 +107,72 @@ def add_connector(root, source, target, label, style='edgeStyle=entityRelationEd
 
     return connector
 
+
+
 from collections import defaultdict
+# import drawio_builder
 
-def visualize_circuit(components, features):
-    diagram = create_drawio_xml()
+def visualize_circuit(components):
+    drawio_xml = create_drawio_xml()
 
-    x, y = 50, 50
     component_positions = {}
+    row = 1
+    col = 1
 
     for component in components:
-        component_positions[component.name] = (x, y)
-        add_shape(diagram, component.name, x, y, 100, 50, 'primary_background')
-        x += 150
+        component_positions[component.name] = (col * 200, row * 100)
+        add_shape(
+            drawio_xml,
+            component.name,
+            col * 200,
+            row * 100,
+            100,
+            50,
+            'accent_color_1'
+        )
+        row += 1
+        if row > 3:
+            row = 1
+            col += 1
 
-    # Iterate over features
-    for feature in features:
-        for component_feature in feature.features:
-            component = component_feature.component
-            for pin in component_feature.pins:
-                for connected_pin in pin.connected_pins:
-                    connected_component = connected_pin.component
-                    if connected_component != component:
-                        add_connector(
-                            root = diagram,
-                            source = component_positions[component.name],
-                            target = component_positions[connected_component.name],
-                            label = f"{component.name}.{pin.name} -> {connected_component.name}.{connected_pin.name}"
-                        )
+    # Calculate connections between components
+    connections = defaultdict(list)
+    for component in components:
+        for feature in component.features:
+            for connected_feature in feature.connections:
+                connections[(component.name, feature.name)].append((connected_feature._parent.name, connected_feature.name))
 
-    return diagram
+    # Draw connections
+    for (component_name, feature_name), connected_component_feature_names in connections.items():
+        x1, y1 = component_positions[component_name]
+        source_shape = None
+        for elem in drawio_xml.findall('.//mxCell'):
+            if elem.get('value') == component_name:
+                source_shape = elem
+                break
+
+        for connected_component_name, connected_feature_name in connected_component_feature_names:
+            x2, y2 = component_positions[connected_component_name]
+            target_shape = None
+            for elem in drawio_xml.findall('.//mxCell'):
+                if elem.get('value') == connected_component_name:
+                    target_shape = elem
+                    break
+
+            add_connector(
+                drawio_xml,
+                source_shape,
+                target_shape,
+                feature_name
+            )
+
+    return drawio_xml
+
+
  
-
-
-
-# diagram = create_drawio_xml()
-
-# esp32 = add_shape(diagram, 'ESP32', 50, 50, 100, 50, 'primary_background')
-# bms_ic = add_shape(diagram, 'BMS IC', 200, 50, 100, 50, 'primary_background')
-# power_supply = add_shape(diagram, 'Power Supply\n(12V to 3.3V)', 50, 150, 100, 50, 'primary_background')
-# usb_interface = add_shape(diagram, 'USB Interface', 200, 150, 100, 50, 'primary_background')
-# add_connector(diagram, esp32, "I2C" , bms_ic)
-# add_connector(diagram, esp32, "3.3V", power_supply)
-# add_connector(diagram, esp32, "USB" ,usb_interface)
-# add_connector(diagram, power_supply, "3.3V", bms_ic)
-# add_connector(diagram, power_supply, "5V", usb_interface)
-
 
 def save_drawio_xml(diagram, filename):
     with open(filename, 'wb') as f:
         f.write(etree.tostring(diagram, pretty_print=True, encoding='utf-8'))
 
-# save_drawio_xml(diagram, 'example_diagram.drawio')
 

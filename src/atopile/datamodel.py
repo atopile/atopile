@@ -6,6 +6,7 @@
 # TODO: we need to be able to define nets
 
 from attrs import define
+import attr
 from typing import List
 
 @define
@@ -43,32 +44,41 @@ class Argument:
 
 @define
 class BaseConfigurable:
-    args: List[Argument]
+    # args: List[Argument]
+    pass
 
 @define
 class Feature(BaseConfigurable):
     name: str
     pins: List[Pin]
-    transfer_functions: List[TransferFunction]
-    limits: List[Limit]
-    states: List[State]  # states are always concrete
+    # transfer_functions: List[TransferFunction]
+    # limits: List[Limit]
+    # states: List[State]  # states are always concrete
 
 @define
 class ConcreteFeature(Feature):
     pins: List[ConcretePin]
-    types: List[Type]
+    _parent: 'Component' = None
+    connections: List['ConcreteFeature'] = attr.field(factory=list)
+    # types: List[Type]
 
-@define
-class Component(BaseConfigurable):
+@attr.define
+class Component:
     name: str
-    pins: List[ConcretePin]
-    transfer_functions: List[TransferFunction]
-    types: List[Type]
-    limits: List[Limit]
-    states: List[State]
+    features: List[ConcreteFeature] = attr.field(factory=list)
 
-    # all available features for this component
-    features: List[ConcreteFeature]
+    def __attrs_post_init__(self):
+        for feature in self.features:
+            feature._parent = self
+
+    def __getattr__(self, name):
+        for feature in self.features:
+            if feature.name == name:
+                return feature
+        raise AttributeError(f"{self.__class__.__name__} object has no attribute {name}")
+
+
+
 
 @define
 class ConcreteComponent(Component):
@@ -81,6 +91,9 @@ class Net:
     pins: List[Pin]
 
 @define
-class FeatureNet:
-    name: str
-    features: List[Feature]
+class FeatureNet(list):
+    pass
+
+def connect(feature1: ConcreteFeature, feature2: ConcreteFeature):
+    feature1.connections.append(feature2)
+    feature2.connections.append(feature1)
