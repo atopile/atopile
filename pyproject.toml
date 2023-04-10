@@ -1,0 +1,142 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atopile"
+description = "A toolchain bringing the best of software development to the real-world!"
+readme = "README.md"
+requires-python = ">=3.9"
+license = ""
+authors = [
+    { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
+    { name = "Timothee Peter", email = "timothee.peter@mac.com" },
+    { name = "Narayan Powderly", email = "napowderly@gmail.com" },
+]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python",
+    "Typing :: Typed",
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11"
+]
+dependencies = [
+    "attrs"
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "http://gitlab.atopile.io/atopile/atopile"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    # "coverage[toml] >= 6.5.0,< 8.0",
+    # "mypy ==0.982",
+    # "ruff ==0.0.138",
+    # "black == 23.1.0",
+    # "isort >=5.0.6,<6.0.0",
+
+    # # types
+    # "types-ujson ==5.7.0.1",
+    # "types-orjson ==3.6.2",
+]
+# doc = [
+#     "mkdocs >=1.1.2,<2.0.0",
+#     "mkdocs-material >=8.1.4,<9.0.0",
+#     "mdx-include >=1.4.1,<2.0.0",
+#     "mkdocs-markdownextradata-plugin >=0.1.7,<0.3.0",
+#     "typer-cli >=0.0.13,<0.0.14",
+#     "typer[all] >=0.6.1,<0.8.0",
+#     "pyyaml >=5.3.1,<7.0.0",
+# ]
+dev = [
+    "ruff"
+]
+all = [
+    'attrs'
+]
+
+[tool.hatch.version]
+path = "src/atopile/__init__.py"
+
+[tool.isort]
+profile = "black"
+known_third_party = []
+
+# [tool.mypy]
+# strict = true
+# TODO: you made it roughly to here
+# [[tool.mypy.overrides]]
+# module = "fastapi.concurrency"
+# warn_unused_ignores = false
+# ignore_missing_imports = true
+
+# [[tool.mypy.overrides]]
+# module = "fastapi.tests.*"
+# ignore_missing_imports = true
+# check_untyped_defs = true
+
+# [tool.pytest.ini_options]
+# addopts = [
+#   "--strict-config",
+#   "--strict-markers",
+# ]
+# xfail_strict = true
+# junit_family = "xunit2"
+# filterwarnings = [
+#     "error",
+#     # TODO: needed by asyncio in Python 3.9.7 https://bugs.python.org/issue45097, try to remove on 3.9.8
+#     'ignore:The loop argument is deprecated since Python 3\.8, and scheduled for removal in Python 3\.10:DeprecationWarning:asyncio',
+#     'ignore:starlette.middleware.wsgi is deprecated and will be removed in a future release\..*:DeprecationWarning:starlette',
+#     # TODO: remove after upgrading HTTPX to a version newer than 0.23.0
+#     # Including PR: https://github.com/encode/httpx/pull/2309
+#     "ignore:'cgi' is deprecated:DeprecationWarning",
+#     # For passlib
+#     "ignore:'crypt' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
+#     # see https://trio.readthedocs.io/en/stable/history.html#trio-0-22-0-2022-09-28
+#     "ignore:You seem to already have a custom.*:RuntimeWarning:trio",
+#     "ignore::trio.TrioDeprecationWarning",
+#     # TODO remove pytest-cov
+#     'ignore::pytest.PytestDeprecationWarning:pytest_cov',
+# ]
+
+# [tool.coverage.run]
+# parallel = true
+# source = [
+#     "docs_src",
+#     "tests",
+#     "src/atopile"
+# ]
+# context = '${CONTEXT}'
+# omit = [
+#     "docs_src/response_model/tutorial003_04.py",
+#     "docs_src/response_model/tutorial003_04_py310.py",
+# ]
+
+[tool.ruff]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    # "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+
+# [tool.ruff.isort]
+# known-third-party = ["fastapi", "pydantic", "starlette"]
