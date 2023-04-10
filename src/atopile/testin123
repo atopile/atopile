@@ -1,0 +1,31 @@
+import attr
+from typing import List
+
+class Pin:
+    def __init__(self, name: str):
+        self.name = name
+
+@attr.s
+class Component:
+    name = attr.ib(type=str)
+    pins = attr.ib(type=List[Pin])
+    features = attr.ib(type=dict)
+
+    def __getattr__(self, attr_name: str):
+        if attr_name in self.features:
+            return self.features[attr_name]
+        else:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{attr_name}'")
+
+# Create some pins
+pin1 = Pin("pin1")
+pin2 = Pin("pin2")
+
+# Create a component with a feature called "i2c"
+component = Component("MyComponent", [pin1, pin2], {"i2c": "I2C Feature"})
+
+# Access the "i2c" feature using dot notation
+print(component.i2c)  # Output: I2C Feature
+
+# Try to access a non-existent feature
+# print(component.non_existent_feature)  # Raises AttributeError: 'Component' object has no attribute 'non_existent_feature'
