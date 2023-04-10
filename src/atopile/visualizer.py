@@ -16,6 +16,9 @@
 from lxml import etree
 from typing import List
 import datamodel
+from collections import defaultdict
+import uuid
+
 
 def create_drawio_xml():
     root = etree.Element('mxGraphModel')
@@ -46,27 +49,11 @@ def create_drawio_xml():
 
     return root
 
-
-
-import uuid
-
 def create_drawio_mxfile():
     mxfile = etree.Element('mxfile')
     mxfile.set('type', 'device')
     mxfile.set('version', '14.7.6')
     return mxfile
-
-
-color_names = {
-    'primary_background': '#F5F5F5',  # Light Gray
-    'secondary_background': '#FFFFFF',  # White
-    'primary_text': '#333333',  # Dark Gray
-    'secondary_text': '#666666',  # Medium Gray
-    'accent_color_1': '#2E9CCA',  # Light Blue
-    'accent_color_2': '#F57C00',  # Orange
-    'accent_color_3': '#69AA35',  # Green
-    # Add more colors as needed
-}
 
 def add_shape(root, label, x, y, width, height, fill_color_name, style='rounded=1;shape=rectangle;whiteSpace=wrap;html=1;'):
     fill_color = color_names.get(fill_color_name.lower(), fill_color_name)
@@ -86,12 +73,6 @@ def add_shape(root, label, x, y, width, height, fill_color_name, style='rounded=
 
     return shape
 
-
-# <mxCell id="2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C0C0C0;" vertex="1" parent="1">
-#       <mxGeometry x="10" y="10" width="100" height="50" as="geometry"/>
-#     </mxCell>
-
-
 def add_connector(root, source, target, label, style='edgeStyle=entityRelationEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;'):
     connector = etree.SubElement(root.find('root'), 'mxCell')
     connector.set('style', style)
@@ -107,11 +88,8 @@ def add_connector(root, source, target, label, style='edgeStyle=entityRelationEd
 
     return connector
 
-
-
-from collections import defaultdict
-# import drawio_builder
-
+#bug: two connections are drawn between the same two components for each feature
+#bug: the connections are drawn based on component name, should use some sort of uuid
 def visualize_circuit(components):
     drawio_xml = create_drawio_xml()
 
@@ -168,11 +146,18 @@ def visualize_circuit(components):
 
     return drawio_xml
 
-
- 
-
 def save_drawio_xml(diagram, filename):
     with open(filename, 'wb') as f:
         f.write(etree.tostring(diagram, pretty_print=True, encoding='utf-8'))
 
 
+color_names = {
+    'primary_background': '#F5F5F5',  # Light Gray
+    'secondary_background': '#FFFFFF',  # White
+    'primary_text': '#333333',  # Dark Gray
+    'secondary_text': '#666666',  # Medium Gray
+    'accent_color_1': '#2E9CCA',  # Light Blue
+    'accent_color_2': '#F57C00',  # Orange
+    'accent_color_3': '#69AA35',  # Green
+    # Add more colors as needed
+}
