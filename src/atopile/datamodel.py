@@ -16,7 +16,8 @@ from typing import List, Tuple, Optional
 @define
 class ASTNode:
     source: str
-    line_number: int
+    locn_start: int
+    locn_end: int
 
 @define
 class Pin(ASTNode):
@@ -77,3 +78,7 @@ class Component(ASTNode):
     connections: List[Tuple[str, str]]
     inherits_from: List['Component']
     package: Optional[Package]
+
+@define
+class Connection(ASTNode):
+    pins: List[Pin]
