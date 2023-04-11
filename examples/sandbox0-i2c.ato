@@ -7,12 +7,12 @@ feature i2c(Vsupply):
     type[scl] = new type(scl)
 
     state on:
-        V[sda:gnd] = (Vsupply/2 to Vsupply) + I[sda:gnd] * 0.1kR
+        function V[sda:gnd] = (Vsupply/2 to Vsupply) + I[sda:gnd] * 0.1kR
         limit -10mA < I[sda:gnd] < 10mA
 
 component:
-    pin vcc: 1
-    pin gnd: 2
+    pin vcc ~ 1
+    pin gnd ~ 2
 
     feature i2c() from i2c(Vsupply=V[vcc:gnd]):2
         pin gnd: gnd
@@ -20,3 +20,8 @@ component:
         pin scl: 4
 
         limit -10mA < I[sda:gnd] < 10mA
+
+component:
+    pin vcc ~ 1
+    pin gnd ~ 2
+    package = ''

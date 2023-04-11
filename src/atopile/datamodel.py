@@ -1,3 +1,8 @@
+"""
+This datamodel represents the lowest level of the circuit compilation chain, closest to the hardware.
+
+"""
+
 # TODO: should we make multiple "pins" for a single physical pin?
 # eg. there's the pin (pin 3 say on the package), there's the pin
 # that's jtag and there's the pin that's i2c, even though they're
@@ -6,76 +11,69 @@
 # TODO: we need to be able to define nets
 
 from attrs import define
-from typing import List
+from typing import List, Tuple, Optional
 
 @define
-class Pin:
+class ASTNode:
+    source: str
+    line_number: int
+
+@define
+class Pin(ASTNode):
     name: str
-
-@define
-class ConcretePin(Pin):
     ref: str
 
 @define
-class TransferFunction:
+class Function(ASTNode):
     eqn: str
 
 @define
-class Limit:
+class Limit(ASTNode):
     eqn: str
 
 @define
-class Type:
+class Type(ASTNode):
     name: str
-    pin: Pin
+    parents: List['Type']
 
 @define
-class State:
+class State(ASTNode):
     name: str
-    transfer_functions: List[TransferFunction]
+    functions: List[Function]
     limits: List[Limit]
     type: Type
 
 @define
-class Argument:
+class Argument(ASTNode):
     name: str
     unit: str
 
 @define
-class BaseConfigurable:
+class Feature(ASTNode):
+    name: str
     args: List[Argument]
-
-@define
-class Feature(BaseConfigurable):
-    name: str
     pins: List[Pin]
-    transfer_functions: List[TransferFunction]
-    limits: List[Limit]
-    states: List[State]  # states are always concrete
-
-@define
-class ConcreteFeature(Feature):
-    pins: List[ConcretePin]
     types: List[Type]
+    functions: List[Function]
+    limits: List[Limit]
+    states: List[State]
+    connections: List[Tuple[str, str]]
+    inherits_from: List['Feature']
 
 @define
-class Component(BaseConfigurable):
+class Package:
+    pass
+
+@define
+class Component(ASTNode):
     name: str
-    pins: List[ConcretePin]
-    transfer_functions: List[TransferFunction]
+    args: List[Argument]
+    pins: List[Pin]
+    functions: List[Function]
     types: List[Type]
     limits: List[Limit]
     states: List[State]
-
-    # all available features for this component
-    features: List[ConcreteFeature]
-
-@define
-class ConcreteComponent(Component):
-    component: Component
-    features: List[ConcreteFeature] # enabled features
-
-@define
-class Net:
-    name: str
-    pins: List[Pin]
+    features: List[Feature]
+    connections: List[Tuple[str, str]]
+    inherits_from: List['Component']
+    package: Optional[Package]
