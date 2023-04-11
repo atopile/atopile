@@ -82,3 +82,13 @@ class Component(ASTNode):
 @define
 class Connection(ASTNode):
     pins: List[Pin]
+
+@define
+class Circuit(ASTNode):
+    components: List[Component]
+    connections: List[Component]
+    features: List[Feature]
+    types: List[Type]
+    states: List[State]
+    functions: List[Function]
+    limits: List[Limit]
