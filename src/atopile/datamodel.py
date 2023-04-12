@@ -14,43 +14,43 @@ from attrs import define
 from typing import List, Tuple, Optional
 
 @define
-class ASTNode:
+class ModelNode:
     source: str
     locn_start: int
     locn_end: int
 
 @define
-class Pin(ASTNode):
+class Pin(ModelNode):
     name: str
     ref: str
 
 @define
-class Function(ASTNode):
+class Function(ModelNode):
     eqn: str
 
 @define
-class Limit(ASTNode):
+class Limit(ModelNode):
     eqn: str
 
 @define
-class Type(ASTNode):
+class Type(ModelNode):
     name: str
     parents: List['Type']
 
 @define
-class State(ASTNode):
+class State(ModelNode):
     name: str
     functions: List[Function]
     limits: List[Limit]
     type: Type
 
 @define
-class Argument(ASTNode):
+class Argument(ModelNode):
     name: str
     unit: str
 
 @define
-class Feature(ASTNode):
+class Feature(ModelNode):
     name: str
     args: List[Argument]
     pins: List[Pin]
@@ -66,7 +66,7 @@ class Package:
     pass
 
 @define
-class Component(ASTNode):
+class Component(ModelNode):
     name: str
     args: List[Argument]
     pins: List[Pin]
@@ -80,11 +80,11 @@ class Component(ASTNode):
     package: Optional[Package]
 
 @define
-class Connection(ASTNode):
+class Connection(ModelNode):
     pins: List[Pin]
 
 @define
-class Circuit(ASTNode):
+class Circuit(ModelNode):
     components: List[Component]
     connections: List[Component]
     features: List[Feature]
