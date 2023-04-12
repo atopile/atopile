@@ -1,0 +1,25 @@
+{
+  "name": "ato",
+  "displayName": "ato lang",
+  "description": "Syntax highlighting for ato lang",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.77.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "ato",
+      "aliases": ["ato", "ato"],
+      "extensions": [".ato"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "ato",
+      "scopeName": "source.ato",
+      "path": "./syntaxes/ato.tmLanguage.json"
+    }]
+  }
+}

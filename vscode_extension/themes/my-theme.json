@@ -1,0 +1,9 @@
+{
+    "name": "My Theme",
+    "colors": {
+      "keyword.feature.ato": "#ff0000",
+      "support.function.ato": "#00ffff",
+      "variable.other.ato": "#0000ff"
+    }
+  }
+  

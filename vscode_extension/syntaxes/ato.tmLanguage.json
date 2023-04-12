@@ -1,0 +1,41 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "ato",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.ato",
+				"match": "\\b(if|while|for|return)\\b"
+			},
+			{
+				"name": "keyword.feature.ato",
+				"match": "\\b(feature|pin|limit|package|component|state|type)\\b",
+				"captures": {
+					"1": {
+						"name": "keyword.feature.ato"
+					}
+				}
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.ato",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.ato",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.ato"
+}
