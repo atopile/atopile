@@ -51,7 +51,7 @@ def generate_netlist(components):
 # Example usage
 components = [psu, micro, sensor]
 netlist = generate_netlist(components)
-print(netlist)
+
 
 # musings:
 # you should only need to define features and their connections. 

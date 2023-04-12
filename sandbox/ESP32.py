@@ -55,7 +55,4 @@ for pin in gpio_pins:
 
 
 
-
-
-
 ESP32 = Component(name="ESP32", features=features)

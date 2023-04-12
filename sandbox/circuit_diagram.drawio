@@ -1,24 +1,28 @@
-<mxGraphModel dx="1190" dy="757" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" background="#ffffff">
-  <root>
-    <mxCell id="0"/>
-    <mxCell id="1" parent="0"/>
-    <mxCell id="e11ea481-0394-4402-a6fb-e148214c2dc7" value="PSU" style="rounded=1;shape=rectangle;whiteSpace=wrap;html=1;fillColor=#2E9CCA;" vertex="1" parent="1">
-      <mxGeometry x="200" y="100" width="100" height="50" as="geometry"/>
-    </mxCell>
-    <mxCell id="da0bd83e-9d96-4f36-bcf3-875392a5189b" value="ESP32" style="rounded=1;shape=rectangle;whiteSpace=wrap;html=1;fillColor=#2E9CCA;" vertex="1" parent="1">
-      <mxGeometry x="200" y="200" width="100" height="50" as="geometry"/>
-    </mxCell>
-    <mxCell id="d121d2be-c2ce-4fe6-8728-20d68f2d3f91" value="BME280" style="rounded=1;shape=rectangle;whiteSpace=wrap;html=1;fillColor=#2E9CCA;" vertex="1" parent="1">
-      <mxGeometry x="200" y="300" width="100" height="50" as="geometry"/>
-    </mxCell>
-    <mxCell style="edgeStyle=entityRelationEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;" value="power_out - power" edge="1" parent="1" source="e11ea481-0394-4402-a6fb-e148214c2dc7" target="d121d2be-c2ce-4fe6-8728-20d68f2d3f91">
-      <mxGeometry relative="1" as="geometry"/>
-    </mxCell>
-    <mxCell style="edgeStyle=entityRelationEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;" value="power_out - power" edge="1" parent="1" source="e11ea481-0394-4402-a6fb-e148214c2dc7" target="da0bd83e-9d96-4f36-bcf3-875392a5189b">
-      <mxGeometry relative="1" as="geometry"/>
-    </mxCell>
-    <mxCell style="edgeStyle=entityRelationEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;" value="i2c - i2c" edge="1" parent="1" source="da0bd83e-9d96-4f36-bcf3-875392a5189b" target="d121d2be-c2ce-4fe6-8728-20d68f2d3f91">
-      <mxGeometry relative="1" as="geometry"/>
-    </mxCell>
-  </root>
-</mxGraphModel>
+<mxfile host="65bd71144e">
+    <diagram id="IuGtAGJBjEGcUokxWqTr" name="Page-1">
+        <mxGraphModel dx="1039" dy="336" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" background="#ffffff" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="f0bc1be7-be40-4577-b914-f1e61beb39ad" value="PSU" style="rounded=1;shape=rectangle;whiteSpace=wrap;html=1;fillColor=#2E9CCA;" parent="1" vertex="1">
+                    <mxGeometry x="425" y="260" width="100" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="f20fa7bf-7d88-4e3e-b64f-f7b6a74e56b5" value="ESP32" style="rounded=1;shape=rectangle;whiteSpace=wrap;html=1;fillColor=#2E9CCA;" parent="1" vertex="1">
+                    <mxGeometry x="378" y="70" width="100" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="87d4372f-cd63-4d61-a4fe-4260938cb9bb" value="BME280" style="rounded=1;shape=rectangle;whiteSpace=wrap;html=1;fillColor=#2E9CCA;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="260" width="100" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="power_out - power" style="edgeStyle=entityRelationEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;" parent="1" source="f0bc1be7-be40-4577-b914-f1e61beb39ad" target="87d4372f-cd63-4d61-a4fe-4260938cb9bb" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="power_out - power" style="edgeStyle=entityRelationEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;" parent="1" source="f0bc1be7-be40-4577-b914-f1e61beb39ad" target="f20fa7bf-7d88-4e3e-b64f-f7b6a74e56b5" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="i2c - i2c" style="edgeStyle=entityRelationEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;" parent="1" source="f20fa7bf-7d88-4e3e-b64f-f7b6a74e56b5" target="87d4372f-cd63-4d61-a4fe-4260938cb9bb" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
