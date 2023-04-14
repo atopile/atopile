@@ -1,33 +1,39 @@
-<mxGraphModel dx="1190" dy="757" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" background="#ffffff">
-  <root>
-    <mxCell id="0"/>
-    <mxCell id="1" parent="0"/>
-    <mxCell id="a060f65b-e148-4f82-b51a-90c3ce38e08b" value="ESP32" style="shape=rectangle;whiteSpace=wrap;html=1;fillColor=#FF0000;" vertex="1" parent="1">
-      <mxGeometry x="50" y="50" width="100" height="50" as="geometry"/>
-    </mxCell>
-    <mxCell id="f88a8a61-7ba6-46f5-87e9-a73594c67a92" value="BMS IC" style="shape=rectangle;whiteSpace=wrap;html=1;fillColor=#008000;" vertex="1" parent="1">
-      <mxGeometry x="200" y="50" width="100" height="50" as="geometry"/>
-    </mxCell>
-    <mxCell id="b580d249-85c3-4706-9436-c4e738e860a1" value="Power Supply&#10;(12V to 3.3V)" style="shape=rectangle;whiteSpace=wrap;html=1;fillColor=#0000FF;" vertex="1" parent="1">
-      <mxGeometry x="50" y="150" width="100" height="50" as="geometry"/>
-    </mxCell>
-    <mxCell id="e83a65be-6ccd-44eb-838c-514b3a4d9b5d" value="USB Interface" style="shape=rectangle;whiteSpace=wrap;html=1;fillColor=#FFFF00;" vertex="1" parent="1">
-      <mxGeometry x="200" y="150" width="100" height="50" as="geometry"/>
-    </mxCell>
-    <mxCell style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" edge="1" value="I2C" parent="1" source="a060f65b-e148-4f82-b51a-90c3ce38e08b" target="f88a8a61-7ba6-46f5-87e9-a73594c67a92">
-      <mxGeometry relative="1" as="geometry"/>
-    </mxCell>
-    <mxCell style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" edge="1" value="3.3V" parent="1" source="a060f65b-e148-4f82-b51a-90c3ce38e08b" target="b580d249-85c3-4706-9436-c4e738e860a1">
-      <mxGeometry relative="1" as="geometry"/>
-    </mxCell>
-    <mxCell style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" edge="1" value="USB" parent="1" source="a060f65b-e148-4f82-b51a-90c3ce38e08b" target="e83a65be-6ccd-44eb-838c-514b3a4d9b5d">
-      <mxGeometry relative="1" as="geometry"/>
-    </mxCell>
-    <mxCell style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" edge="1" value="3.3V" parent="1" source="b580d249-85c3-4706-9436-c4e738e860a1" target="f88a8a61-7ba6-46f5-87e9-a73594c67a92">
-      <mxGeometry relative="1" as="geometry"/>
-    </mxCell>
-    <mxCell style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" edge="1" value="5V" parent="1" source="b580d249-85c3-4706-9436-c4e738e860a1" target="e83a65be-6ccd-44eb-838c-514b3a4d9b5d">
-      <mxGeometry relative="1" as="geometry"/>
-    </mxCell>
-  </root>
-</mxGraphModel>
+<mxfile host="65bd71144e">
+    <diagram id="8WlraxjB0dj8knEhsjat" name="Page-1">
+        <mxGraphModel dx="567" dy="375" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" background="#ffffff" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="a060f65b-e148-4f82-b51a-90c3ce38e08b" value="ESP32" style="shape=rectangle;whiteSpace=wrap;html=1;fillColor=#FF0000;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="110" width="100" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="f88a8a61-7ba6-46f5-87e9-a73594c67a92" value="BMS IC" style="shape=rectangle;whiteSpace=wrap;html=1;fillColor=#008000;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="110" width="100" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="b580d249-85c3-4706-9436-c4e738e860a1" value="Power Supply&#10;(12V to 3.3V)" style="shape=rectangle;whiteSpace=wrap;html=1;fillColor=#0000FF;" parent="1" vertex="1">
+                    <mxGeometry x="290" y="220" width="100" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="e83a65be-6ccd-44eb-838c-514b3a4d9b5d" value="USB Interface" style="shape=rectangle;whiteSpace=wrap;html=1;fillColor=#FFFF00;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="260" width="100" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="I2C" style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" parent="1" source="a060f65b-e148-4f82-b51a-90c3ce38e08b" target="f88a8a61-7ba6-46f5-87e9-a73594c67a92" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="3.3V" style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" parent="1" source="a060f65b-e148-4f82-b51a-90c3ce38e08b" target="b580d249-85c3-4706-9436-c4e738e860a1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="USB" style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" parent="1" source="a060f65b-e148-4f82-b51a-90c3ce38e08b" target="e83a65be-6ccd-44eb-838c-514b3a4d9b5d" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="5" value="3.3V" style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" parent="1" source="b580d249-85c3-4706-9436-c4e738e860a1" target="f88a8a61-7ba6-46f5-87e9-a73594c67a92" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="6" value="5V" style="edgeStyle=none;strokeWidth=2;strokeColor=#000000;html=1;endArrow=none;" parent="1" source="b580d249-85c3-4706-9436-c4e738e860a1" target="e83a65be-6ccd-44eb-838c-514b3a4d9b5d" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
