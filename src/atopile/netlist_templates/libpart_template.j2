@@ -1,0 +1,11 @@
+{% for libpart in libparts -%}
+(libpart (lib "{{ libpart.lib }}") (part "{{ libpart.part }}"){% if libpart.description %}
+  (description "{{ libpart.description }}"){% endif %}{% if libpart.docs %}
+  (docs "{{ libpart.docs }}"){% endif %}{% if libpart.footprints %}
+  (footprints {% for footprint in libpart.footprints %}
+    (fp "{{ footprint }}"){% endfor %}){% endif %}{% if libpart.fields %}
+  (fields {% for field in libpart.fields %}
+    (field (name "{{ field }}") "{{ libpart.fields[field] }}"){% endfor %}){% endif %}{% if libpart.pins %}
+  (pins {% for pin in libpart.pins %}
+    (pin (num "{{ pin.num }}") (name "{{ pin.name }}") (type "{{ pin.type }}")){% endfor %}{% endif %}{% if not loop.last %}
+{% endif %}){%- endfor %})

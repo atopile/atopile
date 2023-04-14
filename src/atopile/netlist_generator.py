@@ -1,64 +1,33 @@
-import os
-import yaml
-import string
+from jinja2 import Environment, FileSystemLoader
 
-class component:
-    def __init__(self) -> None:
-        self.value = None
-        self.characteristics = None
-        self.description = str
-        self.library = {}
-        self.sheetpath = {}
-        self.tstamp = None # probably have to delete this since it will be the uuid
+# Create a Jinja2 environment
+env = Environment(loader=FileSystemLoader('netlist_templates/'))
 
-class netlist:
-    def __init__(self) -> None:
-        self.version = "E"
-        self.date = None
-        self.tool = 'atopile'
-        self.sheets = {} # format uuid : sheet info
-        self.components = {} # format uuid : comp info 
-        self.nets = {}
-        self.netlist_data = {"version" : "completed"}
+# Load the component template and render
+comp_template = env.get_template('component_template.j2')
+comps = [ {'name' : 'test1', 'value' : 1, 'fields' : { "LCSC" : "C002" , 'a field' : 'test'}}, {'name' : 'test2' , 'value' : 2, 'fields' : { "LCSC" : "C001" }} ]
+components_string = comp_template.render(comps=comps)
 
+# Load the libpart template and render
+libpart_template = env.get_template('libpart_template.j2')
+libparts = [ {'lib' : 'library', 'part' : 'this is a template' , 'docs' : 'this is a doc' , 'footprints' : ['footprint1', 'footprint2'] , 'fields' : { "LCSC" : "C002" , 'a field' : 'test'}, 'pins' : [{'num' : '1' , 'name' : 'p1' , 'type' : 'passive'}]} ]
+libparts_string = libpart_template.render(libparts=libparts)
 
-    def populate_netlist(self, data) -> None:
-        def string_constructor(loader, node):
- 
-            t = string.Template(node.value)
-            value = t.substitute(data)
-            return value
- 
-        loader = yaml.SafeLoader
-        loader.add_constructor('tag:yaml.org,2002:str', string_constructor)
-    
-        token_re = string.Template.pattern
-        loader.add_implicit_resolver('tag:yaml.org,2002:str', token_re, None)
-        
-        with open('netlist_proto.yaml', 'r') as f:
-            netlist_proto = f.read()
-            
-        completed_netlist = yaml.load(netlist_proto, Loader=loader)
-        
-        return completed_netlist
-        
-    
-    def generate_netlist(self, name = str) -> None:
-        # Create a build directory
-        if not os.path.exists('../../build'):
-            os.makedirs('../../build')
-        
-        # generate the netlist or clean the previous version from build dir
-        output_loc = "../../build/" + name + ".yaml"
-        with open(output_loc, "w") as file:
-            file.write("")
-        
-        output_netlist = self.populate_netlist(self.netlist_data)
-        output_file = yaml.dump(output_netlist, sort_keys = False)
+# Load the net template and render
+net_template = env.get_template('net_template.j2')
+nets = [ {'code' : '1' , 'name' : '+1V1', 'nodes' : [ {'ref' : 'C10' , 'pin' : 1, 'pinfunction' : 'does smth' , 'pintype' : 'passive'}, {'ref' : 'C8' , 'pin' : 1, 'pintype' : 'passive'}] } , {'code' : '2' , 'name' : '+2V', 'nodes' : [ {'ref' : 'C10' , 'pin' : 1, 'pintype' : 'passive'}, {'ref' : 'C8' , 'pin' : 1, 'pintype' : 'passive'}] }]
+nets_string = net_template.render(nets=nets)
+print(nets_string)
 
-        with open(output_loc, "a") as file:
-            file.write(output_file)
+# Create the complete netlist
+template = env.get_template('netlist_template.j2')
+source = 'came from'
+date = 'today'
+tool = 'atopile'
+netlist = template.render(source=source, date=date, tool=tool, components=components_string, libparts=libparts_string, nets=nets_string)
 
-    
-net = netlist()
-net.generate_netlist(name = 'export')
+name = 'test'
+output_file = "../../build/" + name + ".net"
+
+with open(output_file, "w") as file:
+    file.write(netlist)
