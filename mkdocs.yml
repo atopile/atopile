@@ -1,3 +1,5 @@
 site_name: atopile
 theme:
   name: material
+plugins:
+  - drawio_file

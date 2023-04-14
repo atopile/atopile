@@ -9,3 +9,7 @@ These `.ato` files are human readable, and can be version controlled, so you can
 ## Development
 
 "gimme everything" `pip install -e ."[test,doc,dev]"`
+
+### Docs
+
+view docs nicely: `mkdocs serve`
