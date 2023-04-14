@@ -3,9 +3,9 @@
     (source "{{ source }}")
     (date "{{ date }}")
     (tool "{{ tool }}")
-  (components {% filter indent(width=4) %}
-{{ components }}){% endfilter %}
-(libparts {% filter indent(width=4) %}
-{{ libparts }}){% endfilter %}
-  (nets {% filter indent(width=4) %}
-{{ nets }}){% endfilter %}))
+{% if components %}  (components {% filter indent(width=4) %}
+{{ components }}){% endfilter %}{% endif %}
+{% if libparts %}  (libparts {% filter indent(width=4) %}
+{{ libparts }}){% endfilter %}{% endif %}
+{% if nets %}  (nets {% filter indent(width=4) %}
+{{ nets }}){% endfilter %})){% endif %}
