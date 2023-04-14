@@ -10,9 +10,9 @@ adc_1_pins = [
 features = []
 for pin in adc_1_pins:
     feature = Feature(name=pin.name, pins=[pin])
-    feature.type = Feature.adc
-    feature.bits = 12
-    feature.sample_rate = 1000
+    # feature.type = Feature.adc
+    # feature.bits = 12
+    # feature.sample_rate = 1000
     features.append(feature)
 
 gpio_pins = [
@@ -45,14 +45,24 @@ gpio_pins = [
 
 for pin in gpio_pins:
     feature = Feature(name=pin.name, pins=[pin])
-    feature.type = Feature.gpio
+    # feature.type = Feature.gpio
     features.append(feature)
 
+# define power pins
+vcc = Pin("vcc", ref="1")
+gnd = Pin("gnd", ref="2")
 
+# define i2c pins
+sda = Pin("sda", ref="3")
+scl = Pin("scl", ref="4")
+i2c_feature = Feature(name="i2c", pins=[sda, scl])
+features.append(i2c_feature)
+
+power = Feature(name="power", pins=[vcc, gnd])
+features.append(power)
 # define i2c interface
 # there are two interfaces, i2c0 and i2c1, each can use any of the gpio pins
 
-
-
-
 ESP32 = Component(name="ESP32", features=features)
+
+# print(ESP32.i2c.pins)
