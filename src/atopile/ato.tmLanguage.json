@@ -1,0 +1,42 @@
+{
+  "name": "ato",
+  "scopeName": "source.ato",
+  "fileTypes": ["ato"],
+  "patterns": [
+    {
+      "name": "keyword.feature.ato",
+      "match": "\\b(feature)\\b"
+    },
+    {
+      "name": "support.type.ato",
+      "match": "\\b(sda|scl|gnd|vcc|)\\b"
+    },
+    {
+      "name": "keyword.function.ato",
+      "match": "\\b(function)\\b"
+    },
+    {
+      "name": "constant.numeric.ato",
+      "match": "\\b(\\d+(\\.\\d+)?(kR|mA)?)\\b"
+    },
+    {
+      "name": "keyword.limit.ato",
+      "match": "\\b(limit)\\b"
+    },
+    {
+      "name": "keyword.component.ato",
+      "match": "\\b(component)\\b"
+    },
+    {
+      "name": "string.quoted.double.ato",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.ato",
+          "match": "\\\\."
+        }
+      ]
+    }
+  ]
+}
