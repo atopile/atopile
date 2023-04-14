@@ -10,8 +10,8 @@ This datamodel represents the lowest level of the circuit compilation chain, clo
 
 # TODO: we need to be able to define nets
 
-from attrs import define
-from typing import List, Tuple, Optional
+from attrs import define, field
+from typing import List, Tuple, Optional, Union
 
 @define
 class ModelNode:
@@ -20,9 +20,13 @@ class ModelNode:
     locn_end: int
 
 @define
+class Net(ModelNode):
+    name: str
+
+@define
 class Pin(ModelNode):
     name: str
-    ref: str
+    pad: str  # the reference of the copper pad on the board
 
 @define
 class Function(ModelNode):
@@ -35,60 +39,48 @@ class Limit(ModelNode):
 @define
 class Type(ModelNode):
     name: str
-    parents: List['Type']
+    parents: List['Type'] = field(factory=list)
 
 @define
 class State(ModelNode):
     name: str
-    functions: List[Function]
-    limits: List[Limit]
+    functions: List[Function] = field(factory=list)
+    limits: List[Limit] = field(factory=list)
     type: Type
-
-@define
-class Argument(ModelNode):
-    name: str
-    unit: str
 
 @define
 class Feature(ModelNode):
     name: str
-    args: List[Argument]
-    pins: List[Pin]
-    types: List[Type]
-    functions: List[Function]
-    limits: List[Limit]
-    states: List[State]
-    connections: List[Tuple[str, str]]
-    inherits_from: List['Feature']
+    nets: List[Pin] = field(factory=list)
+    types: List[Type] = field(factory=list)
+    functions: List[Function] = field(factory=list)
+    limits: List[Limit] = field(factory=list)
+    states: List[State] = field(factory=list)
+    connections: List[Tuple[str, str]] = field(factory=list)
+    inherits_from: List['Feature'] = field(factory=list)
 
 @define
 class Package:
-    pass
+    name: str
+    pins: List[Pin] = field(factory=list)
 
 @define
 class Component(ModelNode):
+    # name of the physical component or part
+    # eg. U1 or esp32...
     name: str
-    args: List[Argument]
-    pins: List[Pin]
-    functions: List[Function]
-    types: List[Type]
-    limits: List[Limit]
-    states: List[State]
-    features: List[Feature]
-    connections: List[Tuple[str, str]]
-    inherits_from: List['Component']
+
+    nets: List[Net] = field(factory=list)
+    functions: List[Function] = field(factory=list)
+    types: List[Type] = field(factory=list)
+    limits: List[Limit] = field(factory=list)
+    states: List[State] = field(factory=list)
+    features: List[Feature] = field(factory=list)
+    connections: List[Tuple[str, str]] = field(factory=list)
+    subcomponents: List['Component'] = field(factory=list)
+    inherits_from: List['Component'] = field(factory=list)
     package: Optional[Package]
 
 @define
 class Connection(ModelNode):
-    pins: List[Pin]
-
-@define
-class Circuit(ModelNode):
-    components: List[Component]
-    connections: List[Component]
-    features: List[Feature]
-    types: List[Type]
-    states: List[State]
-    functions: List[Function]
-    limits: List[Limit]
+    between: List[Union[Net, Pin]] = field(factory=list)
