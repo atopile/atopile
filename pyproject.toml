@@ -76,7 +76,10 @@ known_third_party = []
 # ignore_missing_imports = true
 # check_untyped_defs = true
 
-# [tool.pytest.ini_options]
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
 # addopts = [
 #   "--strict-config",
 #   "--strict-markers",
