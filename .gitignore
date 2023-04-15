@@ -167,3 +167,6 @@ cython_debug/
 
 # ide
 .vscode
+
+# generic outputs
+artifacts

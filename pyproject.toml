@@ -37,6 +37,7 @@ Homepage = "http://gitlab.atopile.io/atopile/atopile"
 [project.optional-dependencies]
 test = [
     "pytest",
+    "pytest-html",
     # "coverage[toml] >= 6.5.0,< 8.0",
     # "mypy ==0.982",
     # "ruff ==0.0.138",
@@ -79,6 +80,8 @@ known_third_party = []
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",
+    "--html=artifacts/test-report.html",
+    "--self-contained-html",
 ]
 # addopts = [
 #   "--strict-config",
