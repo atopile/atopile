@@ -1,7 +1,9 @@
 from jinja2 import Environment, FileSystemLoader
+from pathlib import Path
 
 # Create a Jinja2 environment
-env = Environment(loader=FileSystemLoader('netlist_templates/'))
+this_dir = Path(__file__).parent
+env = Environment(loader=FileSystemLoader(this_dir))
 
 # Load the component template and render
 comp_template = env.get_template('component_template.j2')
@@ -27,7 +29,7 @@ tool = 'atopile'
 netlist = template.render(source=source, date=date, tool=tool, components=components_string, libparts=libparts_string, nets=nets_string)
 
 name = 'test'
-output_file = "../../build/" + name + ".net"
+output_file = this_dir / (name + ".net")
 
-with open(output_file, "w") as file:
+with output_file.open("w") as file:
     file.write(netlist)

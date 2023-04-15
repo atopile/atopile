@@ -38,6 +38,7 @@ Homepage = "http://gitlab.atopile.io/atopile/atopile"
 test = [
     "pytest",
     "pytest-html",
+    "pytest-datafiles",
     # "coverage[toml] >= 6.5.0,< 8.0",
     # "mypy ==0.982",
     # "ruff ==0.0.138",
