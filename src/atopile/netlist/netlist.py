@@ -20,6 +20,46 @@ class kicad_node:
         self.pin_function = pin_function
         self.pin_type = pin_type
 
+class kicad_component:
+    def __init__(self, name, value, fields = [], lib = '', part = '', description = '', sheetpath_name = '', sheetpath_tstamp = '', tstamp = '') -> None:
+        self.name = name
+        self.value = value
+        self.fields = fields
+        self.lib = lib
+        self.part = part
+        self.description = description
+        self.sheetpath_name = sheetpath_name
+        self.sheetpath_tstamp = sheetpath_tstamp
+        self.tstamp = tstamp
+
+class kicad_component_prototype:
+    def __init__(self, lib, part, docs, footprint = [], fields = [], pins = []) -> None:
+        self.lib = lib
+        self.part = part
+        self.docs = docs
+        self.footprint = footprint
+        self.fields = fields
+        self.pins = pins
+
+class kicad_net:
+    def __init__(self, code, name, nodes) -> None:
+        self.code = code
+        self.name = name
+        self.nodes = nodes
+
+def add_field(object, field: kicad_field) -> None:
+    if hasattr(object, 'fields'):    
+        object.fields.append(field)
+    else:
+        print('error')
+
+def add_node(object, field: kicad_node) -> None:
+    if hasattr(object, 'nodes'):    
+        object.nodes.append(field)
+    else:
+        print('error')
+
+
 class kicad_netlist:
     def __init__(self) -> None:
         self.version = 'E'
@@ -39,12 +79,13 @@ class kicad_netlist:
         self.date = now
         self.tool = tool
 
-    def add_component_to_netlist(self, name: str, value: str, fields: list) -> None:
-        fields_dict = {}
-        for field in fields:
-            fields_dict[field.name] = field.value
+    def add_component_to_netlist(self, component: kicad_component) -> None:
+        # fields_dict = {}
+        # for field in fields:
+        #     fields_dict[field.name] = field.value
 
-        self.components.append({'name' : name, 'value' : value, 'fields' : fields_dict})
+        #self.components.append({'name' : name, 'value' : value, 'fields' : fields_dict})
+        self.components.append(component)
 
     def add_component_prototype_to_netlist(self, lib: str, part: str, docs: str, footprint: list, fields: list, pins: list) -> None:
         pin_list = []
@@ -109,14 +150,15 @@ a_netlist = kicad_netlist()
 
 test_field1 = kicad_field(name='field1', value='100pF')
 test_field2 = kicad_field(name='field2', value='20pF')
-print(test_field1.name)
 
 test_node1 = kicad_node(ref = '1', pin = 1, pin_function = 'passive', pin_type = 'type')
 test_node2 = kicad_node(ref = '2', pin = 2, pin_function = 'passive', pin_type = 'type')
 
 test_pin1 = kicad_pin(num = 1, name='pin1', pin_type = 'active')
 
-a_netlist.add_component_to_netlist(name='test1', value=1, fields=[test_field1, test_field2])
+test_component = kicad_component(name='test1', value=1, fields=[test_field1, test_field2])
+
+a_netlist.add_component_to_netlist(test_component)
 a_netlist.add_component_prototype_to_netlist(lib="lib", part='this is a part', docs='this is docs', footprint=['fp1', 'fp2'], fields=[test_field1, test_field2], pins = [test_pin1])
 a_netlist.add_net_to_netlist(code = 1, name = '+1v1',nodes = [test_node1, test_node2])
 a_netlist.generate_completed_netlist()

@@ -4,8 +4,8 @@
   (footprint "{{ comp.footprint }}"){% endif %}{% if comp.datasheet %}
   (datasheet "{{ comp.datasheet }}"){% endif %}{% if comp.fields %}
   (fields {% for field in comp.fields %}
-    (field (name "{{ field }}") "{{ comp.fields[field] }}"){% endfor %}){% endif %}
-  (libsource (lib {{ comp.lib }}) (part {{ comp.part }}))
+    (field (name "{{ field.name }}") "{{ field.value }}"){% endfor %}){% endif %}
+  (libsource (lib {{ comp.lib }}) (part {{ comp.part }}) (description {{ comp.description }}))
   (sheetpath (names /) (tstamps /))
   (tstamps "{{ comp.tstamp }}")){% if not loop.last %}
 {% endif %}{%- endfor %}
