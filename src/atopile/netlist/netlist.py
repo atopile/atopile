@@ -30,10 +30,10 @@ class kicad_netlist:
         self.components = []
         self.component_prototypes = []
         self.nets = []
-    
+
     def add_metadata_to_netlist(self, source: str, tool: str, version = 'E') -> None:
         now = datetime.datetime.now()
-        
+
         self.version = version
         self.source = source
         self.date = now
@@ -45,7 +45,7 @@ class kicad_netlist:
             fields_dict[field.name] = field.value
 
         self.components.append({'name' : name, 'value' : value, 'fields' : fields_dict})
-    
+
     def add_component_prototype_to_netlist(self, lib: str, part: str, docs: str, footprint: list, fields: list, pins: list) -> None:
         pin_list = []
         for pin in pins:
@@ -53,9 +53,9 @@ class kicad_netlist:
             pin_dict['num'] = pin.num
             pin_dict['name'] = pin.name
             pin_dict['pin_type'] = pin.type
-            
+
             pin_list.append(pin_dict)
-        
+
         fields_dict = {}
         for field in fields:
             fields_dict[field.name] = field.value
@@ -70,9 +70,9 @@ class kicad_netlist:
             node_dict['pin'] = node.pin
             node_dict['pinfunction'] = node.pin_function
             node_dict['pintype'] = node.pin_type
-            
+
             node_list.append(node_dict)
-        
+
         self.nets.append({'code' : code, 'name' : name, 'nodes' : node_list})
 
     def generate_completed_netlist(self) -> None:
@@ -91,7 +91,7 @@ class kicad_netlist:
         # Load the net template and render
         net_template = env.get_template('net_template.j2')
         nets_string = net_template.render(nets = self.nets)
-       
+
         # Create the complete netlist
         source = self.source
         date = self.date
