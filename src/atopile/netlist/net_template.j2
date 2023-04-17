@@ -1,4 +1,4 @@
 {% for net in nets -%}
 (net (code "{{ net.code }}") (name "{{ net.name }}") {% for node in net.nodes %}
-  (node (ref "{{ node.ref }}") (pin "{{ node.pin }}"){% if node.get('pinfunction') is not none %} (pinfunction "{{ node.pinfunction }}"){% endif %} (pintype "{{ node.pintype }}")){% if not loop.last %}{% endif %}{%- endfor %}{% if not loop.last %}
+  (node (ref "{{ node.ref }}") (pin "{{ node.pin }}") (pinfunction "{{ node.pinfunction }}") (pintype "{{ node.pintype }}")){% if not loop.last %}{% endif %}{%- endfor %}{% if not loop.last %}
 {% endif %}){%- endfor %}
