@@ -5,7 +5,7 @@
   (datasheet "{{ comp.datasheet }}"){% endif %}{% if comp.fields %}
   (fields {% for field in comp.fields %}
     (field (name "{{ field.name }}") "{{ field.value }}"){% endfor %}){% endif %}
-  (libsource (lib {{ comp.lib }}) (part {{ comp.part }}) (description {{ comp.description }}))
-  (sheetpath (names /) (tstamps /))
+  (libsource (lib "{{ comp.lib }}") (part "{{ comp.part }}") (description "{{ comp.description }}"))
+  (sheetpath (names "{{ comp.sheetpath_name}}") (tstamps "{{ comp.sheetpath_tstamp}}"))
   (tstamps "{{ comp.tstamp }}")){% if not loop.last %}
 {% endif %}{%- endfor %}

@@ -80,28 +80,23 @@ class kicad_netlist:
         self.tool = tool
 
     def add_component_to_netlist(self, component: kicad_component) -> None:
+        self.components.append(component)
+
+    def add_component_prototype_to_netlist(self, component_prototype: kicad_component_prototype) -> None:
+        # pin_list = []
+        # for pin in pins:
+        #     pin_dict = {}
+        #     pin_dict['num'] = pin.num
+        #     pin_dict['name'] = pin.name
+        #     pin_dict['pin_type'] = pin.type
+
+        #     pin_list.append(pin_dict)
+
         # fields_dict = {}
         # for field in fields:
         #     fields_dict[field.name] = field.value
 
-        #self.components.append({'name' : name, 'value' : value, 'fields' : fields_dict})
-        self.components.append(component)
-
-    def add_component_prototype_to_netlist(self, lib: str, part: str, docs: str, footprint: list, fields: list, pins: list) -> None:
-        pin_list = []
-        for pin in pins:
-            pin_dict = {}
-            pin_dict['num'] = pin.num
-            pin_dict['name'] = pin.name
-            pin_dict['pin_type'] = pin.type
-
-            pin_list.append(pin_dict)
-
-        fields_dict = {}
-        for field in fields:
-            fields_dict[field.name] = field.value
-
-        self.component_prototypes.append({'lib' : lib, 'part' : part, 'docs' : docs, 'footprints' : footprint, 'fields' : fields_dict, 'pins' : pin_list})
+        self.component_prototypes.append(component_prototype)
 
     def add_net_to_netlist(self, code: int, name: str, nodes: list) -> None:
         node_list = []
@@ -157,9 +152,10 @@ test_node2 = kicad_node(ref = '2', pin = 2, pin_function = 'passive', pin_type =
 test_pin1 = kicad_pin(num = 1, name='pin1', pin_type = 'active')
 
 test_component = kicad_component(name='test1', value=1, fields=[test_field1, test_field2])
+test_prototype_component = kicad_component_prototype(lib="lib", part='this is a part', docs='this is docs', footprint=['fp1', 'fp2'], fields=[test_field1, test_field2], pins = [test_pin1])
 
 a_netlist.add_component_to_netlist(test_component)
-a_netlist.add_component_prototype_to_netlist(lib="lib", part='this is a part', docs='this is docs', footprint=['fp1', 'fp2'], fields=[test_field1, test_field2], pins = [test_pin1])
+a_netlist.add_component_prototype_to_netlist(test_prototype_component)
 a_netlist.add_net_to_netlist(code = 1, name = '+1v1',nodes = [test_node1, test_node2])
 a_netlist.generate_completed_netlist()
 
