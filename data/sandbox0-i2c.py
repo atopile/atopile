@@ -1,4 +1,4 @@
-from atopile.model import Component, Net, Feature, Connection
+from atopile.model.model import Component, Net, Feature, Connection
 from copy import deepcopy
 
 def get_by_name(list, name):
