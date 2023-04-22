@@ -27,7 +27,8 @@ classifiers = [
     "Programming Language :: Python :: 3.11"
 ]
 dependencies = [
-    "attrs"
+    "attrs",
+    "igraph"
 ]
 dynamic = ["version"]
 
@@ -55,7 +56,8 @@ doc = [
     "mkdocs-drawio-file >= 1.5.2"
 ]
 dev = [
-    "ruff"
+    "ruff",
+    "antlr4-tools"
 ]
 
 [tool.hatch.version]
