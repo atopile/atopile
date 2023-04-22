@@ -1,7 +1,5 @@
 import igraph as ig
 from atopile import model
-import uuid
-import hashlib
 
 def generate_netlist_dict_from_graph(graph: ig) -> dict:
     # Generate the graph of electrical connectedness without removing other vertices
@@ -33,8 +31,3 @@ def generate_netlist_dict_from_graph(graph: ig) -> dict:
             net_index += 1
 
     return nets
-
-def generate_uuid_from_block_path(block_path: str) -> str:
-    path_as_bytes = block_path.encode('utf-8')
-    hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
-    return uuid.UUID(bytes=hashed_path)
