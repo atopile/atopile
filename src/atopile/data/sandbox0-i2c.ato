@@ -1,6 +1,6 @@
 pin gnd
 
-feature i2c(Vsupply):
+def i2c(Vsupply):
     pin gnd
     pin sda
     pin scl
@@ -12,25 +12,25 @@ feature i2c(Vsupply):
         function V[sda:gnd] = (Vsupply/2 to Vsupply) + I[sda:gnd] * 0.1kR
         limit -10mA < I[sda:gnd] < 10mA
 
-component micro:
+def micro():
     pin vcc ~ 1
     pin gnd ~ 2
 
-    feature i2c() from i2c(Vsupply=V[vcc:gnd]):2
+    def i2c() from i2c(Vsupply=V[vcc:gnd]):
         pin gnd: gnd
         pin sda: 3
         pin scl: 4
 
         limit -10mA < I[sda:gnd] < 10mA
 
-component:
+def:
     pin vcc ~ 1
     pin gnd ~ 2
     package = ''
 
 a = micro()
 
-component BrushlessMotorDriver(speed: int):
+def BrushlessMotorDriver(speed: int):
     micro = Esp32()
     fetA = Mosfet()
 
