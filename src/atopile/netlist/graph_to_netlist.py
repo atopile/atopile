@@ -31,8 +31,11 @@ def generate_netlist_dict_from_graph(graph: ig) -> dict:
             for pin in union_set:
                 pin_associated_package = model.whos_your_daddy(graph, pin)
                 pin_associated_block = model.whos_your_daddy(graph, pin_associated_package.index)
+                block_path = model.get_vertex_path(graph, pin_associated_block.index)
+                uid = model.generate_uid_from_path(block_path)
+                # TODO: place uid into stamp
                 nets[net_index][pin_associated_block.index] = pin
-            
+
             net_index += 1
             #TODO: find a better way to name nets
     
