@@ -1,4 +1,38 @@
-grammar ato;
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2014 by Bart Kiers
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * Project      : python3-parser; an ANTLR4 grammar for Python 3
+ *                https://github.com/bkiers/python3-parser
+ * Developed by : Bart Kiers, bart@big-o.nl
+ */
+grammar Python3;
+
+// An ANTLR4 grammar for Python 3, for Python3 target
+// All comments that start with "///" are copy-pasted from
+// The Python Language Reference: https://docs.python.org/3.3/reference/grammar.html
 
 tokens { INDENT, DEDENT }
 
@@ -117,7 +151,12 @@ single_input: NEWLINE | simple_stmt | compound_stmt NEWLINE;
 file_input: (NEWLINE | stmt)* EOF;
 eval_input: testlist NEWLINE* EOF;
 
-blockdef: 'def' NAME parameters ('->' test)? ':' suite;
+decorator: '@' dotted_name ( '(' (arglist)? ')' )? NEWLINE;
+decorators: decorator+;
+decorated: decorators (classdef | funcdef | async_funcdef);
+
+async_funcdef: ASYNC funcdef;
+funcdef: 'def' NAME parameters ('->' test)? ':' suite;
 
 parameters: '(' (typedargslist)? ')';
 typedargslist: (tfpdef ('=' test)? (',' tfpdef ('=' test)?)* (',' (
@@ -145,6 +184,14 @@ testlist_star_expr: (test|star_expr) (',' (test|star_expr))* (',')?;
 augassign: ('+=' | '-=' | '*=' | '@=' | '/=' | '%=' | '&=' | '|=' | '^=' |
             '<<=' | '>>=' | '**=' | '//=');
 // For normal and annotated assignments, additional restrictions enforced by the interpreter
+del_stmt: 'del' exprlist;
+pass_stmt: 'pass';
+flow_stmt: break_stmt | continue_stmt | return_stmt | raise_stmt | yield_stmt;
+break_stmt: 'break';
+continue_stmt: 'continue';
+return_stmt: 'return' (testlist)?;
+yield_stmt: yield_expr;
+raise_stmt: 'raise' (test ('from' test)?)?;
 import_stmt: import_name | import_from;
 import_name: 'import' dotted_as_names;
 // note below: the ('.' | '...') is necessary because '...' is tokenized as ELLIPSIS
@@ -159,7 +206,20 @@ global_stmt: 'global' NAME (',' NAME)*;
 nonlocal_stmt: 'nonlocal' NAME (',' NAME)*;
 assert_stmt: 'assert' test (',' test)?;
 
-compound_stmt: blockdef | classdef ;
+compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated | async_stmt;
+async_stmt: ASYNC (funcdef | with_stmt | for_stmt);
+if_stmt: 'if' test ':' suite ('elif' test ':' suite)* ('else' ':' suite)?;
+while_stmt: 'while' test ':' suite ('else' ':' suite)?;
+for_stmt: 'for' exprlist 'in' testlist ':' suite ('else' ':' suite)?;
+try_stmt: ('try' ':' suite
+           ((except_clause ':' suite)+
+            ('else' ':' suite)?
+            ('finally' ':' suite)? |
+           'finally' ':' suite));
+with_stmt: 'with' with_item (',' with_item)*  ':' suite;
+with_item: test ('as' expr)?;
+// NB compile.c makes sure that the default except clause is last
+except_clause: 'except' (test ('as' NAME)?)?;
 suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT;
 
 test: or_test ('if' or_test 'else' test)? | lambdef;
@@ -212,7 +272,14 @@ arglist: argument (',' argument)*  (',')?;
 // Illegal combinations and orderings are blocked in ast.c:
 // multiple (test comp_for) arguments are blocked; keyword unpackings
 // that precede iterable unpackings are blocked; etc.
-argument: ( test '=' test );
+argument: ( test (comp_for)? |
+            test '=' test |
+            '**' test |
+            '*' test );
+
+comp_iter: comp_for | comp_if;
+comp_for: (ASYNC)? 'for' exprlist 'in' or_test (comp_iter)?;
+comp_if: 'if' test_nocond (comp_iter)?;
 
 // not used in grammar, but may appear in "node" passed from Parser to Compiler
 encoding_decl: NAME;
@@ -243,10 +310,40 @@ INTEGER
  ;
 
 DEF : 'def';
+RETURN : 'return';
+RAISE : 'raise';
 FROM : 'from';
 IMPORT : 'import';
 AS : 'as';
 GLOBAL : 'global';
+NONLOCAL : 'nonlocal';
+ASSERT : 'assert';
+IF : 'if';
+ELIF : 'elif';
+ELSE : 'else';
+WHILE : 'while';
+FOR : 'for';
+IN : 'in';
+TRY : 'try';
+FINALLY : 'finally';
+WITH : 'with';
+EXCEPT : 'except';
+LAMBDA : 'lambda';
+OR : 'or';
+AND : 'and';
+NOT : 'not';
+IS : 'is';
+NONE : 'None';
+TRUE : 'True';
+FALSE : 'False';
+CLASS : 'class';
+YIELD : 'yield';
+DEL : 'del';
+PASS : 'pass';
+CONTINUE : 'continue';
+BREAK : 'break';
+ASYNC : 'async';
+AWAIT : 'await';
 
 NEWLINE
  : ( {self.atStartOfInput()}?   SPACES
@@ -352,7 +449,7 @@ MINUS : '-';
 DIV : '/';
 MOD : '%';
 IDIV : '//';
-CONNECT_OP : '~';
+NOT_OP : '~';
 OPEN_BRACE : '{' {self.opened += 1};
 CLOSE_BRACE : '}' {self.opened -= 1};
 LESS_THAN : '<';
