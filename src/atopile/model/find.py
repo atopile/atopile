@@ -33,3 +33,9 @@ def whos_your_daddy(g: ig.Graph, v: int):
     if len(parent) > 1:
         raise ValueError("Multiple logical parents found. Graph is invalid")
     return parent[0]
+
+def find_blocks_associated_to_package(g: ig.Graph):
+    """
+    Get all blocks associated to package
+    """
+    return g.vs.select(type_in='block', _degree_gt=0, type_ne="package")

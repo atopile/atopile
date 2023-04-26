@@ -10,3 +10,6 @@ def generate_uid_from_path(path: str) -> str:
 
 def get_vertex_path(g: ig.Graph, vid: int):
     return ".".join(g.vs[ancestory_dot_com(g, vid)[::-1]]['ref'])
+
+def get_vertex_index(vertices: ig.VertexSeq) -> list:
+    return vertices.indices

@@ -1,10 +1,7 @@
 import igraph as ig
 from atopile import model
 
-import igraph as ig
-from atopile import model
-
-def generate_netlist_dict_from_graph(graph: ig) -> dict:
+def generate_nets_dict_from_graph(graph: ig) -> dict:
     # Generate the graph of electrical connectedness without removing other vertices
     electrial_g = graph.subgraph_edges(graph.es.select(type_eq='connects_to'), delete_vertices=False)
 
@@ -34,9 +31,25 @@ def generate_netlist_dict_from_graph(graph: ig) -> dict:
                 block_path = model.get_vertex_path(graph, pin_associated_block.index)
                 uid = model.generate_uid_from_path(block_path)
                 # TODO: place uid into stamp
-                nets[net_index][pin_associated_block.index] = pin
+                nets[net_index][uid] = pin
 
             net_index += 1
             #TODO: find a better way to name nets
     
     return nets
+
+def generate_component_list_from_graph(graph: ig) -> dict:
+    # Select the component block in the graph
+    component_blocks = model.find_blocks_associated_to_package(graph)
+
+    component_block_indices = model.get_vertex_index(component_blocks)
+    #TODO: make sure that I'm only getting child blocks and not parents
+
+    components = []
+
+    for comp_block_index in component_block_indices:
+        block_path = model.get_vertex_path(graph, comp_block_index)
+        print(block_path)
+        components.append(model.generate_uid_from_path(block_path))
+
+    return components
