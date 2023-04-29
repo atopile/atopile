@@ -190,20 +190,42 @@ class Graph:
 
 g = Graph()
 g.add_vertex("resistor.ato", VertexType.block)
-g.add_vertex("resistor", VertexType.block, defined_by="resistor.ato")
-g.add_vertex("package", VertexType.package, part_of="resistor.ato/resistor")
-g.add_vertex("1", VertexType.ethereal_pin, part_of="resistor.ato/resistor")
-g.add_vertex("2", VertexType.ethereal_pin, part_of="resistor.ato/resistor")
-g.add_vertex("1", VertexType.pin, part_of="resistor.ato/resistor/package")
-g.add_vertex("2", VertexType.pin, part_of="resistor.ato/resistor/package")
-g.add_connection("resistor.ato/resistor/1", "resistor.ato/resistor/package/1")
-g.add_connection("resistor.ato/resistor/2", "resistor.ato/resistor/package/2")
+g.add_vertex("seed", VertexType.block, defined_by="resistor.ato")
+# g.add_vertex("block", VertexType.block, defined_by="resistor.ato/seed")
+g.add_vertex("package", VertexType.package, defined_by="resistor.ato/seed")
+g.add_vertex("ethereal_pin", VertexType.ethereal_pin, defined_by="resistor.ato/seed")
+g.add_vertex("pin", VertexType.pin, defined_by="resistor.ato/seed/package")
 
-g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
-g.create_instance("resistor.ato/resistor", "R2", part_of="resistor.ato")
+g.create_instance("resistor.ato/seed", "resistor", part_of="resistor.ato")
+g.create_instance("resistor.ato/resistor/package", "package", part_of="resistor.ato/resistor")
+g.create_instance("resistor.ato/resistor/ethereal_pin", "1", part_of="resistor.ato/resistor")
+g.create_instance("resistor.ato/resistor/ethereal_pin", "2", part_of="resistor.ato/resistor")
+g.create_instance("resistor.ato/resistor/package/pin", "1", part_of="resistor.ato/resistor/package")
+g.create_instance("resistor.ato/resistor/package/pin", "2", part_of="resistor.ato/resistor/package")
+# g.create_instance("resistor.ato/seed/pin", "2", part_of="resistor.ato/resistor/package")
+# g.add_connection("resistor.ato/resistor/1", "resistor.ato/resistor/package/1")
+# g.add_connection("resistor.ato/resistor/2", "resistor.ato/resistor/package/2")
 
-# g.plot()
+# g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
+# g.create_instance("resistor.ato/resistor", "R2", part_of="resistor.ato")
 
-# %%
 g.plot(debug=True)
 # %%
+ig.plot(g.graph)
+
+# resistor.ato
+
+def seed:
+    def ethereal_pin:
+        pass
+    def pin:
+        pass
+    def package:
+        pass
+
+def resistor:
+    package = seed.package()
+
+R1 = resistor()
+
+#%%
