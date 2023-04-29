@@ -8,3 +8,8 @@ As of writing, that lives in [mawildoer/antlr4](https://github.com/mawildoer/ant
 
 For now, clone the branch in the first link (eg. to your "repos" or "projects" directory), and then follow the [instructions](https://github.com/mawildoer/antlr4/tree/mawildoer/simplified-portable-docker/docker-simplified) on how to build it.
 
+## Building the Grammar
+
+`cd src/language`
+
+`/Users/mattwildoer/Projects/antlr4/docker-simplified/antlr4 -Dlanguage=Python3 -o generated -visitor Python3Parser.g4 Python3Lexer.g4`
