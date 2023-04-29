@@ -141,21 +141,31 @@ class Graph:
     def add_connection(self, from_path: str, to_path: str):
         self.graph.add_edge(self.graph.vs.find(path_eq=from_path).index, self.graph.vs.find(path_eq=to_path).index, type='connects_to')
 
-    def create_instance(self, instance_of_what: str, ref: str, part_of: Optional[str] = None):
-        block_start_index = len(g.vs)
-        block_root_index = find_root_vertex(instance_of_what).index + block_start_index
-        g += instance_of_what
-        g.vs[block_root_index]['ref'] = instance_ref
+    def create_instance(self, class_path: str, ref: str, part_of: Optional[str] = None):
+        sg = self.graph.subgraph(self.get_children(class_path))
+        new_path = part_of + "/" + ref or part_of
 
-        g.add_edge(block_root_index, find_vertex_at_path(g, part_of_what).index, type='part_of')
+        sg.vs["path"] = [p.replace(class_path, new_path) for p in sg.vs["path"]]
+        sg.vs.find(path_eq=new_path)["ref"] = ref
 
-        if part_of_what:
-            g.add_edge(block_root_index, find_vertex_at_path(g, part_of_what).index, type='part_of')
+        self.graph: ig.Graph = self.graph.disjoint_union(sg)
 
-        return g
+        self.graph.add_edge(
+            self.graph.vs.find(path_eq=new_path).index,
+            self.graph.vs.find(path_eq=class_path).index,
+            type='instance_of'
+        )
 
-    def plot(self, *args, **kwargs):
+        if part_of:
+            self.graph.add_edge(
+                self.graph.vs.find(path_eq=new_path).index,
+                self.graph.vs.find(path_eq=part_of).index,
+                type='part_of'
+            )
+
+    def plot(self, *args, debug=False, **kwargs):
         color_dict = {
+            None: "grey",
             "block": "red",
             "package": "green",
             "pin": "cyan",
@@ -165,14 +175,15 @@ class Graph:
             "defined_by": "green",
             "instance_of": "red",
         }
-        try:
-            self.graph.vs["type"]
-        except KeyError as ex:
-            raise KeyError("Graph is missing a 'type' vertex attribute. Is there enough data in this graph") from ex
+        assert all(t is not None for t in self.graph.vs["type"])
 
         kwargs["vertex_color"] = [color_dict.get(type_name, "grey") for type_name in self.graph.vs["type"]]
-        kwargs["vertex_label"] = [f"{i}: {ref}" for i, ref in enumerate(self.graph.vs["ref"])]
         kwargs["edge_color"] = [color_dict[type_name] for type_name in self.graph.es["type"]]
+        if debug:
+            kwargs["vertex_label"] = [f"{i}: {vs['path']}" for i, vs in enumerate(self.graph.vs)]
+            kwargs["edge_label"] = self.graph.es["type"]
+        else:
+            kwargs["vertex_label"] = self.graph.vs["ref"]
         return ig.plot(self.graph, *args, **kwargs)
 
 #%%
@@ -188,14 +199,11 @@ g.add_vertex("2", VertexType.pin, part_of="resistor.ato/resistor/package")
 g.add_connection("resistor.ato/resistor/1", "resistor.ato/resistor/package/1")
 g.add_connection("resistor.ato/resistor/2", "resistor.ato/resistor/package/2")
 
-g.plot()
+g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
+g.create_instance("resistor.ato/resistor", "R2", part_of="resistor.ato")
+
+# g.plot()
 
 # %%
-g.get_children("block")
-
-# %%
-g.plot()
-
-# %%
-print(g.graph.vs["path"])
+g.plot(debug=True)
 # %%
