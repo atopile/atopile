@@ -219,9 +219,16 @@ g.create_instance("resistor.ato/resistor/resistor_package/pin", "2", part_of="re
 g.create_instance("resistor.ato/seed", "vdiv", defined_by="resistor.ato")
 g.create_instance("resistor.ato/resistor", "vdiv_res_1", part_of="resistor.ato/vdiv")
 g.create_instance("resistor.ato/resistor", "vdiv_res_2", part_of="resistor.ato/vdiv")
-# g.create_instance("resistor.ato/seed/pin", "2", part_of="resistor.ato/resistor/package")
-# g.add_connection("resistor.ato/resistor/1", "resistor.ato/resistor/package/1")
-# g.add_connection("resistor.ato/resistor/2", "resistor.ato/resistor/package/2")
+g.create_instance("resistor.ato/vdiv/ethereal_pin", "INPUT", part_of="resistor.ato/vdiv")
+g.create_instance("resistor.ato/vdiv/ethereal_pin", "OUTPUT", part_of="resistor.ato/vdiv")
+g.create_instance("resistor.ato/vdiv/ethereal_pin", "GROUND", part_of="resistor.ato/vdiv")
+
+g.add_connection("resistor.ato/vdiv/INPUT", "resistor.ato/vdiv/vdiv_res_1/resistor_package/1")
+g.add_connection("resistor.ato/vdiv/OUTPUT", "resistor.ato/vdiv/vdiv_res_1/resistor_package/2")
+g.add_connection("resistor.ato/vdiv/GROUND", "resistor.ato/vdiv/vdiv_res_2/resistor_package/2")
+g.add_connection("resistor.ato/vdiv/vdiv_res_1/resistor_package/2", "resistor.ato/vdiv/vdiv_res_2/resistor_package/1")
+
+g.create_instance("resistor.ato/vdiv", "a_voltage_divider", part_of="resistor.ato")
 
 #g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
 #g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
