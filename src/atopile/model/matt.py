@@ -201,6 +201,43 @@ class Graph:
 
 #%%
 
+"""
+The code below is equivalent to:
+
+resistor.ato
+
+def seed:
+    def package:
+        def pin:
+            pass
+    def ethereal_pin:
+        pass
+
+def resistor:
+    resistor_package = package()
+
+    1 = ethereal_pin()
+    2 = ethereal_pin()
+
+    1 = resistor_package.pin() #maybe need to clean this
+    2 = resistor_package.pin()
+
+def vdiv:
+    vdiv_res_1 = resistor()
+    vdiv_res_2 = resistor()
+
+    INPUT = ethereal_pin()
+    OUTPUT = ethereal_pin()
+    GROUND = ethereal_pin()
+
+    INPUT ~ vdiv_res_1[0]
+    OUTPUT ~ vdiv_res_1[1]
+    GROUND ~ vdiv_res_2[1]
+    vdiv_res_1[1] ~ vdiv_res_2[0]
+
+a_voltage_divider = vdiv
+"""
+
 g = Graph()
 g.add_vertex("resistor.ato", VertexType.block)
 g.add_vertex("seed", VertexType.block, defined_by="resistor.ato")
