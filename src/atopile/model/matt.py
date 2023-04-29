@@ -141,9 +141,15 @@ class Graph:
     def add_connection(self, from_path: str, to_path: str):
         self.graph.add_edge(self.graph.vs.find(path_eq=from_path).index, self.graph.vs.find(path_eq=to_path).index, type='connects_to')
 
-    def create_instance(self, class_path: str, ref: str, part_of: Optional[str] = None):
+    def create_instance(self, class_path: str, ref: str, defined_by: Optional[str] = None, part_of: Optional[str] = None):
+        if defined_by and part_of:
+            raise ValueError("instantiation cannot be both defined_by and part_of")
+        
         sg = self.graph.subgraph(self.get_children(class_path))
-        new_path = part_of + "/" + ref or part_of
+        if part_of:
+            new_path = part_of + "/" + ref or part_of
+        elif defined_by:
+            new_path = defined_by + "/" + ref or defined_by
 
         sg.vs["path"] = [p.replace(class_path, new_path) for p in sg.vs["path"]]
         sg.vs.find(path_eq=new_path)["ref"] = ref
@@ -162,7 +168,12 @@ class Graph:
                 self.graph.vs.find(path_eq=part_of).index,
                 type='part_of'
             )
-
+        elif defined_by:
+            self.graph.add_edge(
+                self.graph.vs.find(path_eq=new_path).index,
+                self.graph.vs.find(path_eq=defined_by).index,
+                type='defined_by'
+            )
     def plot(self, *args, debug=False, **kwargs):
         color_dict = {
             None: "grey",
@@ -179,6 +190,8 @@ class Graph:
 
         kwargs["vertex_color"] = [color_dict.get(type_name, "grey") for type_name in self.graph.vs["type"]]
         kwargs["edge_color"] = [color_dict[type_name] for type_name in self.graph.es["type"]]
+        kwargs["vertex_label_size"] = 8
+        kwargs["edge_label_size"] = 8
         if debug:
             kwargs["vertex_label"] = [f"{i}: {vs['path']}" for i, vs in enumerate(self.graph.vs)]
             kwargs["edge_label"] = self.graph.es["type"]
@@ -196,17 +209,22 @@ g.add_vertex("package", VertexType.package, defined_by="resistor.ato/seed")
 g.add_vertex("ethereal_pin", VertexType.ethereal_pin, defined_by="resistor.ato/seed")
 g.add_vertex("pin", VertexType.pin, defined_by="resistor.ato/seed/package")
 
-g.create_instance("resistor.ato/seed", "resistor", part_of="resistor.ato")
-g.create_instance("resistor.ato/resistor/package", "package", part_of="resistor.ato/resistor")
-g.create_instance("resistor.ato/resistor/ethereal_pin", "1", part_of="resistor.ato/resistor")
-g.create_instance("resistor.ato/resistor/ethereal_pin", "2", part_of="resistor.ato/resistor")
-g.create_instance("resistor.ato/resistor/package/pin", "1", part_of="resistor.ato/resistor/package")
-g.create_instance("resistor.ato/resistor/package/pin", "2", part_of="resistor.ato/resistor/package")
+g.add_vertex("resistor", VertexType.block, defined_by="resistor.ato")
+g.create_instance("resistor.ato/seed/package", "resistor_package", part_of="resistor.ato/resistor")
+g.create_instance("resistor.ato/seed/ethereal_pin", "1", part_of="resistor.ato/resistor")
+g.create_instance("resistor.ato/seed/ethereal_pin", "2", part_of="resistor.ato/resistor")
+g.create_instance("resistor.ato/resistor/resistor_package/pin", "1", part_of="resistor.ato/resistor/resistor_package")
+g.create_instance("resistor.ato/resistor/resistor_package/pin", "2", part_of="resistor.ato/resistor/resistor_package")
+
+g.add_vertex("vdiv", VertexType.block, defined_by="resistor.ato")
+g.create_instance("resistor.ato/resistor", "vdiv_res_1", part_of="resistor.ato/vdiv")
+g.create_instance("resistor.ato/resistor", "vdiv_res_2", part_of="resistor.ato/vdiv")
 # g.create_instance("resistor.ato/seed/pin", "2", part_of="resistor.ato/resistor/package")
 # g.add_connection("resistor.ato/resistor/1", "resistor.ato/resistor/package/1")
 # g.add_connection("resistor.ato/resistor/2", "resistor.ato/resistor/package/2")
 
-# g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
+#g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
+#g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
 # g.create_instance("resistor.ato/resistor", "R2", part_of="resistor.ato")
 
 g.plot(debug=True)
