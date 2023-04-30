@@ -77,7 +77,7 @@ def ancestory_dot_com(g: ig.Graph, v: int) -> List[int]:
     connectedness = g.subgraph_edges(g.es.select(type_eq='part_of'), delete_vertices=False)
     return connectedness.dfs(v, mode='out')[0]
 
-def who_are_you_part_of(g: ig.Graph, v: int):
+def who_are_you_part_of(g: ig.Graph, path: str):
     """
     Get logical parent of a node
     """
@@ -88,6 +88,17 @@ def who_are_you_part_of(g: ig.Graph, v: int):
     elif len(parent) == 0:
         return None
     return parent[0]
+
+def get_parent_from_path(path: str):
+    """
+    Get logical parent of a vertex from path
+    """
+    path_parts = path.split('/')
+    # Remove last element of the list
+    path_parts.pop()
+    separator = '/'
+    parent_path = separator.join(path_parts)
+    return parent_path
 
 def find_blocks_associated_to_package(g: ig.Graph):
     """
@@ -299,69 +310,20 @@ def generate_nets_dict_from_graph(g: Graph, root_index: int) -> dict:
     # and that also has electical connections within that tree
     subgraph = entry.induced_subgraph(instance_graph)
     
-    # Intersect the entry graph with the subgraph
-    #graphs = [subgraph, entry]
-    # The union graph contains 
-    #union_graph = entry.intersection(graphs, byname=True)
-    
+    # Extract the electrical graph from the instance subgraph
     electrical_g = subgraph.subgraph_edges(subgraph.es.select(type_eq='connects_to'), delete_vertices=False)
     
     # Find all the vertex indices in the main graph that are associated to a pin
     pins = electrical_g.vs.select(type_in='pin').indices
     pin_set = set(pins)
     
+    # Extract all the clusters. The ones that contain pins are considered nets.
     clusters = electrical_g.connected_components(mode='weak')
-    print('pin_set', pin_set)
-    print('cluster_set', clusters)
-    print('node 0 of the graph', electrical_g.vs[4]['path'], ',', electrical_g.vs[4]['ref'])
-    # Instantiate the net dictionary and net names
+    
+    # Instantiate the net dictionary and net index
     nets = {}
     net_index = 0
     
-    for cluster in clusters:
-        cluster_set = set(cluster)
-        print('cluster_set:', cluster_set)
-
-        # Intersect the pins from the main graph with the vertices in that cluster
-        union_set = pin_set.intersection(cluster_set)
-
-        if len(union_set) > 0:# If pins are found in that net
-            print('intersection found:', union_set)
-            nets[net_index] = {}
-
-            for pin in union_set:
-                uid = get_vertex_path(electrical_g, pin)
-                nets[net_index][uid] = pin
-                # pin_associated_package = who_are_you_part_of(entry, pin)
-                # if pin_associated_package:
-                #     pin_associated_block = who_are_you_part_of(entry, pin_associated_package.index)
-                #     block_path = get_vertex_path(entry, pin_associated_block.index)
-                #     uid = generate_uid_from_path(block_path)
-                #     uid = pin_associated_block['ref']
-                #     # TODO: place uid into stamp
-                #     nets[net_index][uid] = pin
-
-            net_index += 1
-            #TODO: find a better way to name nets
-    
-    return nets
-    #g.graph = subgraph
-    return electrical_g
-
-    # Generate the graph of electrical connectedness without removing other vertices
-    electrial_g = graph.subgraph_edges(graph.es.select(type_eq='connects_to'), delete_vertices=False)
-
-    # Find all the vertex indices in the main graph that are associated to a pin
-    pins = graph.vs.select(type_in='pin').indices
-    pin_set = set(pins)
-
-    # Cluster the electrical graph into multiple nets
-    clusters = electrial_g.connected_components(mode='weak')
-
-    # Instantiate the net dictionary and net names
-    nets = {}
-    net_index = 0
-
     for cluster in clusters:
         cluster_set = set(cluster)
 
@@ -369,23 +331,18 @@ def generate_nets_dict_from_graph(g: Graph, root_index: int) -> dict:
         union_set = pin_set.intersection(cluster_set)
 
         if len(union_set) > 0:# If pins are found in that net
+            # Create a new dict entry
             nets[net_index] = {}
 
             for pin in union_set:
-                pin_associated_package = model.whos_your_daddy(graph, pin)
-                pin_associated_block = model.whos_your_daddy(graph, pin_associated_package.index)
-                block_path = model.get_vertex_path(graph, pin_associated_block.index)
-                uid = model.generate_uid_from_path(block_path)
-                # TODO: place uid into stamp
-                nets[net_index][uid] = pin
+                vertex_path = get_vertex_path(electrical_g, pin)
+                parent_path = get_parent_from_path(vertex_path)
+                nets[net_index][parent_path] = get_vertex_ref(electrical_g, pin)
 
             net_index += 1
             #TODO: find a better way to name nets
     
     return nets
 
-dict = Graph()
-#dict.graph = generate_nets_dict_from_graph(g, 0)
-#dict.plot(debug=False)
 print(generate_nets_dict_from_graph(g, 0))
 # %%
