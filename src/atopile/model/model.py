@@ -41,11 +41,18 @@ def generate_uid_from_path(path: str) -> str:
     hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
     return uuid.UUID(bytes=hashed_path)
 
-def get_vertex_path(g: ig.Graph, vid: int):
-    return ".".join(g.vs[ancestory_dot_com(g, vid)[::-1]]['ref'])
+# Deprecated
+# def get_vertex_path(g: ig.Graph, vid: int):
+#     return ".".join(g.vs[ancestory_dot_com(g, vid)[::-1]]['ref'])
 
 def get_vertex_index(vertices: ig.VertexSeq) -> list:
     return vertices.indices
+
+def get_vertex_ref(g: ig.Graph, vid: int):
+    return g.vs[vid]['ref']
+
+def get_vertex_path(g: ig.Graph, vid: int):
+    return g.vs[vid]['path']
 
 def find_vertex_at_path(g: ig.Graph, path: str):
     path_parts = path.split('.')
@@ -265,6 +272,9 @@ g.create_instance("resistor.ato/resistor", "vdiv_res_2", part_of="resistor.ato/v
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "INPUT", part_of="resistor.ato/vdiv")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "OUTPUT", part_of="resistor.ato/vdiv")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "GROUND", part_of="resistor.ato/vdiv")
+# Creating a random pin just to see if it shows up in the netlist (it should)
+# Note that pins are always dependent on packages, so connecting a pin as part_of a block should usually not be allowed
+g.create_instance("resistor.ato/vdiv/package/pin", "1", part_of="resistor.ato/vdiv")
 
 g.add_connection("resistor.ato/vdiv/INPUT", "resistor.ato/vdiv/vdiv_res_1/1")
 g.add_connection("resistor.ato/vdiv/OUTPUT", "resistor.ato/vdiv/vdiv_res_1/2")
@@ -280,31 +290,34 @@ def generate_nets_dict_from_graph(g: Graph, root_index: int) -> dict:
     entry = g.graph
     # Generate the part_of connectedness graph without removing other vertices
     part_of_g = g.graph.subgraph_edges(entry.es.select(type_eq='part_of'), delete_vertices=False)
+    # The delete vertices is required because the subgraph built below depends on the vertex indices
 
     # Select only the subgraph that contains the root
-    cluster = part_of_g.subcomponent(root_index)
+    instance_graph = part_of_g.subcomponent(root_index)
     
     # This subgraph contain the part_of connectedness tree that contains the root vertex
     # and that also has electical connections within that tree
-    subgraph = entry.induced_subgraph(cluster)
+    subgraph = entry.induced_subgraph(instance_graph)
     
     # Intersect the entry graph with the subgraph
-    graphs = [subgraph, entry]
+    #graphs = [subgraph, entry]
     # The union graph contains 
     #union_graph = entry.intersection(graphs, byname=True)
-    return subgraph
-    electrical_g = union_graph.subgraph_edges(union_graph.es.select(type_eq='connects_to'), delete_vertices=False)
-    # Find all the vertex indices in the main graph that are associated to a pin
     
-    pins = entry.vs.select(type_in='pin').indices
+    electrical_g = subgraph.subgraph_edges(subgraph.es.select(type_eq='connects_to'), delete_vertices=False)
+    
+    # Find all the vertex indices in the main graph that are associated to a pin
+    pins = electrical_g.vs.select(type_in='pin').indices
     pin_set = set(pins)
-
+    
     clusters = electrical_g.connected_components(mode='weak')
-    print(pin_set)
+    print('pin_set', pin_set)
+    print('cluster_set', clusters)
+    print('node 0 of the graph', electrical_g.vs[4]['path'], ',', electrical_g.vs[4]['ref'])
     # Instantiate the net dictionary and net names
     nets = {}
     net_index = 0
-
+    
     for cluster in clusters:
         cluster_set = set(cluster)
         print('cluster_set:', cluster_set)
@@ -313,17 +326,20 @@ def generate_nets_dict_from_graph(g: Graph, root_index: int) -> dict:
         union_set = pin_set.intersection(cluster_set)
 
         if len(union_set) > 0:# If pins are found in that net
+            print('intersection found:', union_set)
             nets[net_index] = {}
 
             for pin in union_set:
-                pin_associated_package = who_are_you_part_of(entry, pin)
-                if pin_associated_package:
-                    pin_associated_block = who_are_you_part_of(entry, pin_associated_package.index)
-                    block_path = get_vertex_path(entry, pin_associated_block.index)
-                    uid = generate_uid_from_path(block_path)
-                    uid = pin_associated_block['ref']
-                    # TODO: place uid into stamp
-                    nets[net_index][uid] = pin
+                uid = get_vertex_path(electrical_g, pin)
+                nets[net_index][uid] = pin
+                # pin_associated_package = who_are_you_part_of(entry, pin)
+                # if pin_associated_package:
+                #     pin_associated_block = who_are_you_part_of(entry, pin_associated_package.index)
+                #     block_path = get_vertex_path(entry, pin_associated_block.index)
+                #     uid = generate_uid_from_path(block_path)
+                #     uid = pin_associated_block['ref']
+                #     # TODO: place uid into stamp
+                #     nets[net_index][uid] = pin
 
             net_index += 1
             #TODO: find a better way to name nets
@@ -369,7 +385,7 @@ def generate_nets_dict_from_graph(g: Graph, root_index: int) -> dict:
     return nets
 
 dict = Graph()
-dict.graph = generate_nets_dict_from_graph(g, 0)
-dict.plot(debug=False)
-#print(generate_nets_dict_from_graph(g, 0))
+#dict.graph = generate_nets_dict_from_graph(g, 0)
+#dict.plot(debug=False)
+print(generate_nets_dict_from_graph(g, 0))
 # %%
