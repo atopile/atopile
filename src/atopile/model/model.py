@@ -70,7 +70,7 @@ def ancestory_dot_com(g: ig.Graph, v: int) -> List[int]:
     connectedness = g.subgraph_edges(g.es.select(type_eq='part_of'), delete_vertices=False)
     return connectedness.dfs(v, mode='out')[0]
 
-def whos_your_daddy(g: ig.Graph, v: int):
+def who_are_you_part_of(g: ig.Graph, v: int):
     """
     Get logical parent of a node
     """
@@ -78,6 +78,8 @@ def whos_your_daddy(g: ig.Graph, v: int):
     parent = connectedness.vs[v].neighbors(mode='out')
     if len(parent) > 1:
         raise ValueError("Multiple logical parents found. Graph is invalid")
+    elif len(parent) == 0:
+        return None
     return parent[0]
 
 def find_blocks_associated_to_package(g: ig.Graph):
@@ -200,20 +202,22 @@ class Graph:
         return ig.plot(self.graph, *args, **kwargs)
 
 #%%
-
 """
 The code below is equivalent to:
 
 resistor.ato
 
 def seed:
+    symbol = None
     def package:
+        package = None
         def pin:
             pass
     def ethereal_pin:
         pass
 
 def resistor:
+    symbol = resistor
     resistor_package = package()
 
     1 = ethereal_pin()
@@ -235,7 +239,7 @@ def vdiv:
     GROUND ~ vdiv_res_2[1]
     vdiv_res_1[1] ~ vdiv_res_2[0]
 
-a_voltage_divider = vdiv
+a_voltage_divider = vdiv()
 """
 
 g = Graph()
@@ -252,6 +256,8 @@ g.create_instance("resistor.ato/resistor/ethereal_pin", "1", part_of="resistor.a
 g.create_instance("resistor.ato/resistor/ethereal_pin", "2", part_of="resistor.ato/resistor")
 g.create_instance("resistor.ato/resistor/resistor_package/pin", "1", part_of="resistor.ato/resistor/resistor_package")
 g.create_instance("resistor.ato/resistor/resistor_package/pin", "2", part_of="resistor.ato/resistor/resistor_package")
+g.add_connection("resistor.ato/resistor/1", "resistor.ato/resistor/resistor_package/1")
+g.add_connection("resistor.ato/resistor/2", "resistor.ato/resistor/resistor_package/2")
 
 g.create_instance("resistor.ato/seed", "vdiv", defined_by="resistor.ato")
 g.create_instance("resistor.ato/resistor", "vdiv_res_1", part_of="resistor.ato/vdiv")
@@ -260,34 +266,110 @@ g.create_instance("resistor.ato/vdiv/ethereal_pin", "INPUT", part_of="resistor.a
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "OUTPUT", part_of="resistor.ato/vdiv")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "GROUND", part_of="resistor.ato/vdiv")
 
-g.add_connection("resistor.ato/vdiv/INPUT", "resistor.ato/vdiv/vdiv_res_1/resistor_package/1")
-g.add_connection("resistor.ato/vdiv/OUTPUT", "resistor.ato/vdiv/vdiv_res_1/resistor_package/2")
-g.add_connection("resistor.ato/vdiv/GROUND", "resistor.ato/vdiv/vdiv_res_2/resistor_package/2")
-g.add_connection("resistor.ato/vdiv/vdiv_res_1/resistor_package/2", "resistor.ato/vdiv/vdiv_res_2/resistor_package/1")
+g.add_connection("resistor.ato/vdiv/INPUT", "resistor.ato/vdiv/vdiv_res_1/1")
+g.add_connection("resistor.ato/vdiv/OUTPUT", "resistor.ato/vdiv/vdiv_res_1/2")
+g.add_connection("resistor.ato/vdiv/GROUND", "resistor.ato/vdiv/vdiv_res_2/2")
+g.add_connection("resistor.ato/vdiv/vdiv_res_1/2", "resistor.ato/vdiv/vdiv_res_2/1")
 
 g.create_instance("resistor.ato/vdiv", "a_voltage_divider", part_of="resistor.ato")
 
-#g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
-#g.create_instance("resistor.ato/resistor", "R1", part_of="resistor.ato")
-# g.create_instance("resistor.ato/resistor", "R2", part_of="resistor.ato")
-
 g.plot(debug=True)
-# %%
-ig.plot(g.graph)
-
-# resistor.ato
-
-def seed:
-    def ethereal_pin:
-        pass
-    def pin:
-        pass
-    def package:
-        pass
-
-def resistor:
-    package = seed.package()
-
-R1 = resistor()
 
 #%%
+def generate_nets_dict_from_graph(g: Graph, root_index: int) -> dict:
+    entry = g.graph
+    # Generate the part_of connectedness graph without removing other vertices
+    part_of_g = g.graph.subgraph_edges(entry.es.select(type_eq='part_of'), delete_vertices=False)
+
+    # Select only the subgraph that contains the root
+    cluster = part_of_g.subcomponent(root_index)
+    
+    # This subgraph contain the part_of connectedness tree that contains the root vertex
+    # and that also has electical connections within that tree
+    subgraph = entry.induced_subgraph(cluster)
+    
+    # Intersect the entry graph with the subgraph
+    graphs = [subgraph, entry]
+    # The union graph contains 
+    #union_graph = entry.intersection(graphs, byname=True)
+    return subgraph
+    electrical_g = union_graph.subgraph_edges(union_graph.es.select(type_eq='connects_to'), delete_vertices=False)
+    # Find all the vertex indices in the main graph that are associated to a pin
+    
+    pins = entry.vs.select(type_in='pin').indices
+    pin_set = set(pins)
+
+    clusters = electrical_g.connected_components(mode='weak')
+    print(pin_set)
+    # Instantiate the net dictionary and net names
+    nets = {}
+    net_index = 0
+
+    for cluster in clusters:
+        cluster_set = set(cluster)
+        print('cluster_set:', cluster_set)
+
+        # Intersect the pins from the main graph with the vertices in that cluster
+        union_set = pin_set.intersection(cluster_set)
+
+        if len(union_set) > 0:# If pins are found in that net
+            nets[net_index] = {}
+
+            for pin in union_set:
+                pin_associated_package = who_are_you_part_of(entry, pin)
+                if pin_associated_package:
+                    pin_associated_block = who_are_you_part_of(entry, pin_associated_package.index)
+                    block_path = get_vertex_path(entry, pin_associated_block.index)
+                    uid = generate_uid_from_path(block_path)
+                    uid = pin_associated_block['ref']
+                    # TODO: place uid into stamp
+                    nets[net_index][uid] = pin
+
+            net_index += 1
+            #TODO: find a better way to name nets
+    
+    return nets
+    #g.graph = subgraph
+    return electrical_g
+
+    # Generate the graph of electrical connectedness without removing other vertices
+    electrial_g = graph.subgraph_edges(graph.es.select(type_eq='connects_to'), delete_vertices=False)
+
+    # Find all the vertex indices in the main graph that are associated to a pin
+    pins = graph.vs.select(type_in='pin').indices
+    pin_set = set(pins)
+
+    # Cluster the electrical graph into multiple nets
+    clusters = electrial_g.connected_components(mode='weak')
+
+    # Instantiate the net dictionary and net names
+    nets = {}
+    net_index = 0
+
+    for cluster in clusters:
+        cluster_set = set(cluster)
+
+        # Intersect the pins from the main graph with the vertices in that cluster
+        union_set = pin_set.intersection(cluster_set)
+
+        if len(union_set) > 0:# If pins are found in that net
+            nets[net_index] = {}
+
+            for pin in union_set:
+                pin_associated_package = model.whos_your_daddy(graph, pin)
+                pin_associated_block = model.whos_your_daddy(graph, pin_associated_package.index)
+                block_path = model.get_vertex_path(graph, pin_associated_block.index)
+                uid = model.generate_uid_from_path(block_path)
+                # TODO: place uid into stamp
+                nets[net_index][uid] = pin
+
+            net_index += 1
+            #TODO: find a better way to name nets
+    
+    return nets
+
+dict = Graph()
+dict.graph = generate_nets_dict_from_graph(g, 0)
+dict.plot(debug=False)
+#print(generate_nets_dict_from_graph(g, 0))
+# %%
