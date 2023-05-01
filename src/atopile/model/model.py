@@ -157,6 +157,12 @@ class Graph:
             self.graph.add_edge(vertex.index, self.graph.vs.find(path_eq=defined_by).index, type='defined_by')
 
         return g
+    
+    def add_vertex_parameter(self, path: str, parameter_name: str):
+        self.graph.vs.find(path_eq=path)[parameter_name] = None
+    
+    def set_vertex_parameter(self, path: str, parameter_name: str, parameter_value: str):
+        self.graph.vs.find(path_eq=path)[parameter_name] = parameter_value
 
     def add_connection(self, from_path: str, to_path: str):
         self.graph.add_edge(self.graph.vs.find(path_eq=from_path).index, self.graph.vs.find(path_eq=to_path).index, type='connects_to')
@@ -233,16 +239,19 @@ def seed:
             pass
     def ethereal_pin:
         pass
+        
+from ... import 0402
 
-def resistor:
-    symbol = resistor
-    resistor_package = package()
+block resistor():
+    package:
+        actual_package: 0402 / &small_res
+        pin 1
+        pin 2
 
-    1 = ethereal_pin()
-    2 = ethereal_pin()
+    package res_package;
+    signal vcc ~ 1
+    signal gnd ~ 2
 
-    1 = resistor_package.pin() #maybe need to clean this
-    2 = resistor_package.pin()
 
 def vdiv:
     vdiv_res_1 = resistor()
@@ -259,17 +268,32 @@ def vdiv:
 
 a_voltage_divider = vdiv()
 """
-
+seed_graph = Graph()
 g = Graph()
+
+# Define the graph seed. The seed represents a prototype of the data structure.
+# The seed is explicit for now but will ultimately live within the compiler.
 g.add_vertex("resistor.ato", VertexType.block)
 g.add_vertex("seed", VertexType.block, defined_by="resistor.ato")
+g.add_vertex_parameter("resistor.ato/seed", "uid")
+g.add_vertex_parameter("resistor.ato/seed", "lib")
+g.add_vertex_parameter("resistor.ato/seed", "lib_part")
+g.add_vertex_parameter("resistor.ato/seed", "value")
+g.add_vertex_parameter("resistor.ato/seed", "description")
 # g.add_vertex("block", VertexType.block, defined_by="resistor.ato/seed")
 g.add_vertex("package", VertexType.package, defined_by="resistor.ato/seed")
+g.add_vertex_parameter("resistor.ato/seed/package", "footprint")
 g.add_vertex("ethereal_pin", VertexType.ethereal_pin, defined_by="resistor.ato/seed")
 g.add_vertex("pin", VertexType.pin, defined_by="resistor.ato/seed/package")
 
+# Define a resistor prototype
 g.create_instance("resistor.ato/seed", "resistor", defined_by="resistor.ato")
+g.set_vertex_parameter("resistor.ato/resistor", "uid", generate_uid_from_path("resistor.ato/resistor"))
+g.set_vertex_parameter("resistor.ato/resistor", "lib", "Device")
+g.set_vertex_parameter("resistor.ato/resistor", "lib_part", "R_Small")
+g.set_vertex_parameter("resistor.ato/resistor", "description", "Current can flow here if traded against voltage")
 g.create_instance("resistor.ato/resistor/package", "resistor_package", part_of="resistor.ato/resistor")
+g.set_vertex_parameter("resistor.ato/resistor/resistor_package", "footprint", "0402")
 g.create_instance("resistor.ato/resistor/ethereal_pin", "1", part_of="resistor.ato/resistor")
 g.create_instance("resistor.ato/resistor/ethereal_pin", "2", part_of="resistor.ato/resistor")
 g.create_instance("resistor.ato/resistor/resistor_package/pin", "1", part_of="resistor.ato/resistor/resistor_package")
@@ -279,7 +303,9 @@ g.add_connection("resistor.ato/resistor/2", "resistor.ato/resistor/resistor_pack
 
 g.create_instance("resistor.ato/seed", "vdiv", defined_by="resistor.ato")
 g.create_instance("resistor.ato/resistor", "vdiv_res_1", part_of="resistor.ato/vdiv")
+g.set_vertex_parameter("resistor.ato/vdiv/vdiv_res_1", "value", "1k")
 g.create_instance("resistor.ato/resistor", "vdiv_res_2", part_of="resistor.ato/vdiv")
+g.set_vertex_parameter("resistor.ato/vdiv/vdiv_res_2", "value", "2k")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "INPUT", part_of="resistor.ato/vdiv")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "OUTPUT", part_of="resistor.ato/vdiv")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "GROUND", part_of="resistor.ato/vdiv")
@@ -344,5 +370,38 @@ def generate_nets_dict_from_graph(g: Graph, root_index: int) -> dict:
     
     return nets
 
+import atopile.netlist.netlist_generator as nlg
+
+def generate_component_list_from_graph(graph: ig, netlist: nlg.KicadNetlist):
+    # Select the component block in the graph
+    component_blocks = model.find_blocks_associated_to_package(graph)
+
+    component_block_indices = model.get_vertex_index(component_blocks)
+    #TODO: make sure that I'm only getting child blocks and not parents
+
+    components = []
+
+    for comp_block_index in component_block_indices:
+        block_path = model.get_vertex_path(graph, comp_block_index)
+        print(block_path)
+        components.append(model.generate_uid_from_path(block_path))
+
+    return components
+
 print(generate_nets_dict_from_graph(g, 0))
+
+print('parameter: ', g.graph.vs.find(path_eq="resistor.ato/resistor/resistor_package")["footprint"])
+print('uid', g.graph.vs.find(path_eq="resistor.ato/resistor")["uid"])
+
+netlist = nlg.KicadNetlist()
+
+generate_component_list_from_graph(g, netlist)
+
+# %%
+
+
+a = 0
+
+def something(b):
+    return a + b
 # %%

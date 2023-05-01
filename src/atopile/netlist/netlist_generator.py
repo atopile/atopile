@@ -60,7 +60,7 @@ def add_node(object, field: kicad_node) -> None:
         print('error')
 
 
-class kicad_netlist:
+class KicadNetlist:
     def __init__(self) -> None:
         self.version = 'E'
         self.source = 'unknown'
@@ -121,22 +121,23 @@ class kicad_netlist:
         with output_file.open("w") as file:
             file.write(netlist)
 
-a_netlist = kicad_netlist()
+if __name__ == "__main__":
+    a_netlist = KicadNetlist()
 
-test_field1 = kicad_field(name='field1', value='100pF')
-test_field2 = kicad_field(name='field2', value='20pF')
+    test_field1 = kicad_field(name='field1', value='100pF')
+    test_field2 = kicad_field(name='field2', value='20pF')
 
-test_node1 = kicad_node(ref = '1', pin = 1, pin_function = 'passive', pin_type = 'type')
-test_node2 = kicad_node(ref = '2', pin = 2, pin_function = 'passive', pin_type = 'type')
+    test_node1 = kicad_node(ref = '1', pin = 1, pin_function = 'passive', pin_type = 'type')
+    test_node2 = kicad_node(ref = '2', pin = 2, pin_function = 'passive', pin_type = 'type')
 
-test_pin1 = kicad_pin(num = 1, name='pin1', pin_type = 'active')
+    test_pin1 = kicad_pin(num = 1, name='pin1', pin_type = 'active')
 
-test_component = kicad_component(name='test1', value=1, fields=[test_field1, test_field2])
-test_prototype_component = kicad_component_prototype(lib="lib", part='this is a part', docs='this is docs', footprint=['fp1', 'fp2'], fields=[test_field1, test_field2], pins = [test_pin1])
-test_net = kicad_net(code = 1, name = '+1v1',nodes = [test_node1, test_node2])
+    test_component = kicad_component(name='test1', value=1, fields=[test_field1, test_field2])
+    test_prototype_component = kicad_component_prototype(lib="lib", part='this is a part', docs='this is docs', footprint=['fp1', 'fp2'], fields=[test_field1, test_field2], pins = [test_pin1])
+    test_net = kicad_net(code = 1, name = '+1v1',nodes = [test_node1, test_node2])
 
-a_netlist.add_component_to_netlist(test_component)
-a_netlist.add_component_prototype_to_netlist(test_prototype_component)
-a_netlist.add_net_to_netlist(test_net)
+    a_netlist.add_component_to_netlist(test_component)
+    a_netlist.add_component_prototype_to_netlist(test_prototype_component)
+    a_netlist.add_net_to_netlist(test_net)
 
-a_netlist.generate_completed_netlist()
+    a_netlist.generate_completed_netlist()
