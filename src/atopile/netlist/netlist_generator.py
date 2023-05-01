@@ -2,29 +2,29 @@ from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
 import datetime
 
-class kicad_field:
+class KicadField:
     def __init__(self, name: str, value: str) -> None:
         self.name = name
         self.value = value
 
-class kicad_pin:
+class KicadPin:
     def __init__(self, num: int, name: str, pin_type: str) -> None:
         self.num = num
         self.name = name
         self.type = pin_type
 
-class kicad_node:
+class KicadNode:
     def __init__(self, ref: str, pin: int, pin_function: str, pin_type: str) -> None:
         self.ref = ref
         self.pin = pin
         self.pin_function = pin_function
         self.pin_type = pin_type
 
-class kicad_component:
-    def __init__(self, name, value, fields = [], lib = '', part = '', description = '', sheetpath_name = '', sheetpath_tstamp = '', tstamp = '') -> None:
+class KicadComponent:
+    def __init__(self, name, value, fields=None, lib = '', part = '', description = '', sheetpath_name = '', sheetpath_tstamp = '', tstamp = '') -> None:
         self.name = name
         self.value = value
-        self.fields = fields
+        self.fields = fields if fields is not None else []
         self.lib = lib
         self.part = part
         self.description = description
@@ -32,33 +32,33 @@ class kicad_component:
         self.sheetpath_tstamp = sheetpath_tstamp
         self.tstamp = tstamp
 
-class kicad_component_prototype:
-    def __init__(self, lib, part, docs, footprint = [], fields = [], pins = []) -> None:
+class KicadComponentPrototype:
+    def __init__(self, lib, part, docs, footprint=None, fields=None, pins=None) -> None:
         self.lib = lib
         self.part = part
         self.docs = docs
-        self.footprint = footprint
-        self.fields = fields
-        self.pins = pins
+        self.footprint = footprint if footprint is not None else []
+        self.fields = fields if fields is not None else []
+        self.pins = pins if pins is not None else []
 
-class kicad_net:
+class KicadNet:
     def __init__(self, code, name, nodes) -> None:
         self.code = code
         self.name = name
         self.nodes = nodes
 
-def add_field(object, field: kicad_field) -> None:
-    if hasattr(object, 'fields'):    
-        object.fields.append(field)
-    else:
-        print('error')
+# Deprecated -- I don't think these are used
+# def add_field(object, field: KicadField) -> None:
+#     if hasattr(object, 'fields'):
+#         object.fields.append(field)
+#     else:
+#         print('error')
 
-def add_node(object, field: kicad_node) -> None:
-    if hasattr(object, 'nodes'):    
-        object.nodes.append(field)
-    else:
-        print('error')
-
+# def add_node(object, field: KicadNode) -> None:
+#     if hasattr(object, 'nodes'):
+#         object.nodes.append(field)
+#     else:
+#         print('error')
 
 class KicadNetlist:
     def __init__(self) -> None:
@@ -79,15 +79,15 @@ class KicadNetlist:
         self.date = now
         self.tool = tool
 
-    def add_component_to_netlist(self, component: kicad_component) -> None:
-        
+    def add_component_to_netlist(self, component: KicadComponent) -> None:
+
         self.components.append(component)
 
-    def add_component_prototype_to_netlist(self, component_prototype: kicad_component_prototype) -> None:
+    def add_component_prototype_to_netlist(self, component_prototype: KicadComponentPrototype) -> None:
 
         self.component_prototypes.append(component_prototype)
 
-    def add_net_to_netlist(self, net: kicad_net) -> None:
+    def add_net_to_netlist(self, net: KicadNet) -> None:
 
         self.nets.append(net)
 
@@ -124,17 +124,17 @@ class KicadNetlist:
 if __name__ == "__main__":
     a_netlist = KicadNetlist()
 
-    test_field1 = kicad_field(name='field1', value='100pF')
-    test_field2 = kicad_field(name='field2', value='20pF')
+    test_field1 = KicadField(name='field1', value='100pF')
+    test_field2 = KicadField(name='field2', value='20pF')
 
-    test_node1 = kicad_node(ref = '1', pin = 1, pin_function = 'passive', pin_type = 'type')
-    test_node2 = kicad_node(ref = '2', pin = 2, pin_function = 'passive', pin_type = 'type')
+    test_node1 = KicadNode(ref = '1', pin = 1, pin_function = 'passive', pin_type = 'type')
+    test_node2 = KicadNode(ref = '2', pin = 2, pin_function = 'passive', pin_type = 'type')
 
-    test_pin1 = kicad_pin(num = 1, name='pin1', pin_type = 'active')
+    test_pin1 = KicadPin(num = 1, name='pin1', pin_type = 'active')
 
-    test_component = kicad_component(name='test1', value=1, fields=[test_field1, test_field2])
-    test_prototype_component = kicad_component_prototype(lib="lib", part='this is a part', docs='this is docs', footprint=['fp1', 'fp2'], fields=[test_field1, test_field2], pins = [test_pin1])
-    test_net = kicad_net(code = 1, name = '+1v1',nodes = [test_node1, test_node2])
+    test_component = KicadComponent(name='test1', value=1, fields=[test_field1, test_field2])
+    test_prototype_component = KicadComponentPrototype(lib="lib", part='this is a part', docs='this is docs', footprint=['fp1', 'fp2'], fields=[test_field1, test_field2], pins = [test_pin1])
+    test_net = KicadNet(code = 1, name = '+1v1',nodes = [test_node1, test_node2])
 
     a_netlist.add_component_to_netlist(test_component)
     a_netlist.add_component_prototype_to_netlist(test_prototype_component)

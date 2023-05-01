@@ -1,5 +1,5 @@
 import igraph as ig
-from atopile import model
+from atopile.model import model
 
 def generate_nets_dict_from_graph(graph: ig) -> dict:
     # Generate the graph of electrical connectedness without removing other vertices
@@ -35,7 +35,7 @@ def generate_nets_dict_from_graph(graph: ig) -> dict:
 
             net_index += 1
             #TODO: find a better way to name nets
-    
+
     return nets
 
 def generate_component_list_from_graph(graph: ig) -> dict:
