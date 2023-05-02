@@ -1,3 +1,4 @@
+#%%
 import igraph as ig
 from atopile.model.model import (
     Graph,
@@ -192,4 +193,6 @@ a = 0
 
 def something(b):
     return a + b
+# %%
+g.get_children_paths("resistor.ato/vdiv")
 # %%

@@ -12,4 +12,4 @@ For now, clone the branch in the first link (eg. to your "repos" or "projects" d
 
 `cd src/language`
 
-`/Users/mattwildoer/Projects/antlr4/docker-simplified/antlr4 -Dlanguage=Python3 -o generated -visitor Python3Parser.g4 Python3Lexer.g4`
+`/Users/mattwildoer/Projects/antlr4/docker-simplified/antlr4 -Dlanguage=Python3 -o generated -visitor Atopile.g4`
