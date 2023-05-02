@@ -9,7 +9,7 @@ from atopile.model.model import (
 
 import atopile.netlist.netlist_generator as nlg
 
-import atopile.netlist.graph_data_extraction as gde
+
 
 #%%
 """
@@ -108,122 +108,14 @@ g.create_instance("resistor.ato/vdiv", "a_voltage_divider", part_of="resistor.at
 
 g.plot(debug=True)
 
-#%%
-def generate_nets_dict_from_graph(g: Graph, root_index: Optional[int] = 0) -> dict:
-    instance_graph = Graph()
-    electrical_graph = Graph()
-    instance_graph.graph = g.get_instance_graph(root_vertex = 0)
-    # entry = g.graph
-    # # Generate the part_of connectedness graph without removing other vertices
-    # part_of_g = g.graph.subgraph_edges(entry.es.select(type_eq='part_of'), delete_vertices=False)
-    # # The delete vertices is required because the subgraph built below depends on the vertex indices
-
-    # # Select only the subgraph that contains the root
-    # instance_graph = part_of_g.subcomponent(root_index)
-
-    # # This subgraph contain the part_of connectedness tree that contains the root vertex
-    # # and that also has electical connections within that tree
-    # subgraph = entry.induced_subgraph(instance_graph)
-
-    # Extract the electrical graph from the instance subgraph
-    electrical_graph.graph = instance_graph.graph.subgraph_edges(instance_graph.graph.es.select(type_eq='connects_to'), delete_vertices=False)
-
-    # Find all the vertex indices in the main graph that are associated to a pin
-    pins = electrical_graph.graph.vs.select(type_in='pin').indices
-    pin_set = set(pins)
-
-    # Extract all the clusters. The ones that contain pins are considered nets.
-    clusters = electrical_graph.graph.connected_components(mode='weak')
-
-    # Instantiate the net dictionary and net index
-    nets = {}
-    net_index = 0
-
-    for cluster in clusters:
-        cluster_set = set(cluster)
-
-        # Intersect the pins from the main graph with the vertices in that cluster
-        union_set = pin_set.intersection(cluster_set)
-
-        if len(union_set) > 0: # If pins are found in that net
-            net = nlg.KicadNet(code=net_index, name=net_index)
-            # Create a new dict entry
-            nets[net_index] = {}
-
-            for pin in union_set:
-                vertex_path = electrical_graph.get_vertex_path(pin)
-                parent_path = gde.get_parent_from_path(vertex_path)
-                pin_number = electrical_graph.get_vertex_ref(pin)
-                node = nlg.KicadNode(ref=parent_path, pin=pin_number)
-                net.add_node_to_net(node)
-                nets[net_index][parent_path] = electrical_graph.get_vertex_ref(pin)
-
-            netlist.add_net_to_netlist(net)
-            net_index += 1
-            #TODO: find a better way to name nets
-
-    return nets
-
-import atopile.netlist.netlist_generator as nlg
-
-def generate_component_list_from_graph(g: Graph, netlist: nlg.KicadNetlist, root_index = 0):
-    instance_graph = Graph()
-    instance_graph.graph = g.get_instance_graph(root_vertex = 0)
-
-    # find all the packages within that graph
-    packages = gde.get_packages(instance_graph.graph)
-
-    for package in packages:
-        # Find the parent block
-        parent_block = gde.get_block_from_package(g, package)
-
-        name = gde.get_vertex_parameter(parent_block, "path") 
-        uid = gde.get_vertex_parameter(parent_block, "uid")
-        lib = gde.get_vertex_parameter(parent_block, "lib")
-        lib_part = gde.get_vertex_parameter(parent_block, "lib_part")
-        value = gde.get_vertex_parameter(parent_block, "value")
-        description = gde.get_vertex_parameter(parent_block, "description")
-        footprint = gde.get_vertex_parameter(package, "footprint")
-
-        component = nlg.KicadComponent(name=name,value=value,lib=lib,part=lib_part,description=description,tstamp=uid)
-        netlist.add_component_to_netlist(component)
     
-    
-    # For each component extract the data out of it
-
-
-    return g.graph
-
-    # Select the component block in the graph
-    component_blocks = model.find_blocks_associated_to_package(graph)
-
-    component_block_indices = model.get_vertex_index(component_blocks)
-    #TODO: make sure that I'm only getting child blocks and not parents
-
-    components = []
-
-    for comp_block_index in component_block_indices:
-        block_path = model.get_vertex_path(graph, comp_block_index)
-        print(block_path)
-        components.append(model.generate_uid_from_path(block_path))
-
-    return components
-
-
-#print(generate_nets_dict_from_graph(g, 0))
-
-print('parameter: ', g.graph.vs.find(path_eq="resistor.ato/resistor/resistor_package")["footprint"])
-print('uid', g.graph.vs.find(path_eq="resistor.ato/resistor")["uid"])
 
 netlist = nlg.KicadNetlist()
 
-test = Graph()
-test.graph = generate_component_list_from_graph(g, netlist)
-generate_nets_dict_from_graph(g, netlist)
+nlg.generate_component_list_from_graph(g, netlist)
+nlg.generate_nets_dict_from_graph(g, netlist)
 
 netlist.generate_completed_netlist()
-
-test.plot()
 
 # %%
 

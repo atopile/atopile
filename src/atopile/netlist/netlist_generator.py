@@ -5,6 +5,14 @@ import datetime
 from typing import Optional
 from attrs import define, field
 
+from atopile.model.model import (
+    Graph,
+    VertexType,
+    generate_uid_from_path,
+)
+
+import atopile.netlist.graph_data_extraction as graph_data_extract
+
 @define
 class KicadField:
     name: str
@@ -38,14 +46,15 @@ class KicadComponent:
     sheetpath_tstamp: str = ''
     tstamp: str = ''
 
+@define
 class KicadComponentPrototype:
-    def __init__(self, lib, part, docs, footprint=None, fields=None, pins=None) -> None:
-        self.lib = lib
-        self.part = part
-        self.docs = docs
-        self.footprint = footprint if footprint is not None else []
-        self.fields = fields if fields is not None else []
-        self.pins = pins if pins is not None else []
+    #def __init__(self, lib, part, docs, footprint=None, fields=None, pins=None) -> None:
+    lib: str
+    part: str
+    docs: str
+    footprint: list = field(factory=list)
+    fields: list = field(factory=list)
+    pins: list = field(factory=list)
 
 @define
 class KicadNet:
@@ -70,17 +79,17 @@ class KicadNet:
 #     else:
 #         print('error')
 
+@define
 class KicadNetlist:
-    def __init__(self) -> None:
-        self.version = 'E'
-        self.source = 'unknown'
-        self.date = 'unknown'
-        self.tool = 'atopile'
-
-        self.components = []
-        self.component_prototypes = []
-        self.nets = []
-
+    version: str = 'E'
+    source: str ='unknown'
+    date: str = 'unknown'
+    tool: str = 'atopile'
+    
+    components: list = field(factory=list)
+    component_prototypes: list = field(factory=list)
+    nets: list = field(factory=list)
+    
     def add_metadata_to_netlist(self, source: str, tool: str, version = 'E') -> None:
         now = datetime.datetime.now()
 
@@ -130,6 +139,77 @@ class KicadNetlist:
 
         with output_file.open("w") as file:
             file.write(netlist)
+
+
+
+def generate_nets_dict_from_graph(g: Graph, netlist: KicadNetlist, root_index: Optional[int] = 0) -> dict:
+    instance_graph = Graph()
+    electrical_graph = Graph()
+    instance_graph.graph = g.get_instance_graph(root_vertex = 0)
+
+    # Extract the electrical graph from the instance subgraph
+    electrical_graph.graph = instance_graph.graph.subgraph_edges(instance_graph.graph.es.select(type_eq='connects_to'), delete_vertices=False)
+
+    # Find all the vertex indices in the main graph that are associated to a pin
+    pins = electrical_graph.graph.vs.select(type_in='pin').indices
+    pin_set = set(pins)
+
+    # Extract all the clusters. The ones that contain pins are considered nets.
+    clusters = electrical_graph.graph.connected_components(mode='weak')
+
+    # Instantiate the net dictionary and net index
+    nets = {}
+    net_index = 0
+
+    for cluster in clusters:
+        cluster_set = set(cluster)
+
+        # Intersect the pins from the main graph with the vertices in that cluster
+        union_set = pin_set.intersection(cluster_set)
+
+        if len(union_set) > 0: # If pins are found in that net
+            net = KicadNet(code=net_index, name=net_index)
+            # Create a new dict entry
+            nets[net_index] = {}
+
+            for pin in union_set:
+                vertex_path = electrical_graph.get_vertex_path(pin)
+                parent_path = graph_data_extract.get_parent_from_path(vertex_path)
+                pin_number = electrical_graph.get_vertex_ref(pin)
+                node = KicadNode(ref=parent_path, pin=pin_number)
+                net.add_node_to_net(node)
+                nets[net_index][parent_path] = electrical_graph.get_vertex_ref(pin)
+
+            netlist.add_net_to_netlist(net)
+            net_index += 1
+            #TODO: find a better way to name nets
+
+    return nets
+
+def generate_component_list_from_graph(g: Graph, netlist: KicadNetlist, root_index = 0):
+    instance_graph = Graph()
+    instance_graph.graph = g.get_instance_graph(root_vertex = 0)
+
+    # find all the packages within that graph
+    packages = graph_data_extract.get_packages(instance_graph.graph)
+
+    for package in packages:
+        # Find the parent block
+        parent_block = graph_data_extract.get_block_from_package(g, package)
+
+        name = graph_data_extract.get_vertex_parameter(parent_block, "path") 
+        uid = graph_data_extract.get_vertex_parameter(parent_block, "uid")
+        lib = graph_data_extract.get_vertex_parameter(parent_block, "lib")
+        lib_part = graph_data_extract.get_vertex_parameter(parent_block, "lib_part")
+        value = graph_data_extract.get_vertex_parameter(parent_block, "value")
+        description = graph_data_extract.get_vertex_parameter(parent_block, "description")
+        footprint = graph_data_extract.get_vertex_parameter(package, "footprint")
+
+        component = KicadComponent(name=name,value=value,lib=lib,part=lib_part,description=description,tstamp=uid)
+        netlist.add_component_to_netlist(component)
+
+
+
 # %%
 if __name__ == "__main__":
     a_netlist = KicadNetlist()
@@ -151,5 +231,3 @@ if __name__ == "__main__":
     a_netlist.add_net_to_netlist(test_net)
 
     a_netlist.generate_completed_netlist()
-
-# %%
