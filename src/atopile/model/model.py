@@ -25,6 +25,16 @@ class Graph:
     def get_logical_graph(self) -> ig.Graph:
         sg = self.graph.subgraph_edges(self.graph.es.select(type_in=[EdgeType.part_of.name, EdgeType.defined_by.name]), delete_vertices=False)
         return sg
+    
+    def get_part_of_graph(self) -> ig.Graph:
+        sg = self.graph.subgraph_edges(self.graph.es.select(type_in=EdgeType.part_of.name), delete_vertices=False)
+        return sg
+    
+    def get_instance_graph(self, root_vertex) -> ig.Graph:
+        part_of_graph = self.get_part_of_graph()
+        instance_graph = part_of_graph.subcomponent(root_vertex)
+        subgraph = self.graph.induced_subgraph(instance_graph)
+        return subgraph
 
     def get_electical_graph(self) -> ig.Graph:
         return self.graph.subgraph_edges(self.graph.es.select(type_eg=EdgeType.connects_to), delete_vertices=False)
@@ -127,6 +137,12 @@ class Graph:
                 self.get_vertex_by_path(defined_by).index,
                 type='defined_by'
             )
+    
+    def get_vertex_ref(self, vid: int):
+        return self.graph.vs[vid]['ref']
+    
+    def get_vertex_path(self, vid: int):
+        return self.graph.vs[vid]['path']
 
     def plot(self, *args, debug=False, **kwargs):
         color_dict = {
@@ -191,12 +207,6 @@ def generate_uid_from_path(path: str) -> str:
 # def get_vertex_index(vertices: ig.VertexSeq) -> list:
 #     return vertices.indices
 
-def get_vertex_ref(g: ig.Graph, vid: int):
-    return g.vs[vid]['ref']
-
-def get_vertex_path(g: ig.Graph, vid: int):
-    return g.vs[vid]['path']
-
 # def find_vertex_at_path(g: ig.Graph, path: str):
 #     path_parts = path.split('.')
 #     candidates = g.vs.select(ref_eq=path_parts.pop(0))
@@ -232,16 +242,7 @@ def get_vertex_path(g: ig.Graph, vid: int):
 #         return None
 #     return parent[0]
 
-def get_parent_from_path(path: str):
-    """
-    Get logical parent of a vertex from path
-    """
-    path_parts = path.split('/')
-    # Remove last element of the list
-    path_parts.pop()
-    separator = '/'
-    parent_path = separator.join(path_parts)
-    return parent_path
+
 
 # def find_blocks_associated_to_package(g: ig.Graph):
 #     """
