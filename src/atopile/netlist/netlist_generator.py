@@ -56,6 +56,9 @@ class KicadComponentPrototype:
     fields: list = field(factory=list)
     pins: list = field(factory=list)
 
+    def add_pin(self, pin = KicadPin):
+        self.pins.append(pin)
+
 @define
 class KicadNet:
     # def __init__(self, code, name, nodes) -> None:
@@ -224,7 +227,13 @@ def generate_comp_proto_list_from_graph(g: Graph, netlist: KicadNetlist, root_in
         
         pins = graph_data_extract.get_pin_list_from_package(g, package)
         for pin in pins:
-            component_proto...
+            pin_num = graph_data_extract.get_vertex_parameter(pin, "ref")
+            pin_name = graph_data_extract.get_vertex_parameter(pin, "ref")
+            netlist_pin = KicadPin(num = pin_num, name = pin_name)
+
+            component_proto.add_pin(netlist_pin)
+        
+        netlist.add_component_prototype_to_netlist(component_proto)
 
 
 

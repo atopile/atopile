@@ -110,12 +110,9 @@ netlist = nlg.KicadNetlist()
 
 nlg.generate_component_list_from_graph(g, netlist)
 nlg.generate_nets_dict_from_graph(g, netlist)
+nlg.generate_comp_proto_list_from_graph(g, netlist)
 
 netlist.generate_completed_netlist()
 
-test = Graph()
-test.graph = nlg.generate_comp_proto_list_from_graph(g, netlist)
-
-test.plot()
 
 # %%
