@@ -26,11 +26,21 @@ class Graph:
         sg = self.graph.subgraph_edges(self.graph.es.select(type_in=[EdgeType.part_of.name, EdgeType.defined_by.name]), delete_vertices=False)
         return sg
     
+    def get_instance_of_graph(self) -> ig.Graph:
+        sg = self.graph.subgraph_edges(self.graph.es.select(type_in=EdgeType.instance_of.name), delete_vertices=False)
+        return sg
+    
+    def get_instance_of_sub_graph(self, root_vertex: int) -> ig.Graph:
+        instance_of_graph = self.get_instance_of_graph()
+        definition_graph = instance_of_graph.subcomponent(root_vertex)
+        subgraph = self.graph.induced_subgraph(definition_graph)
+        return subgraph
+
     def get_part_of_graph(self) -> ig.Graph:
         sg = self.graph.subgraph_edges(self.graph.es.select(type_in=EdgeType.part_of.name), delete_vertices=False)
         return sg
     
-    def get_instance_graph(self, root_vertex) -> ig.Graph:
+    def get_sub_part_of_graph(self, root_vertex) -> ig.Graph:
         part_of_graph = self.get_part_of_graph()
         instance_graph = part_of_graph.subcomponent(root_vertex)
         subgraph = self.graph.induced_subgraph(instance_graph)
@@ -72,8 +82,13 @@ class Graph:
         except ValueError as ex:
             raise KeyError(f"Vertex with path {path} not found") from ex
 
-    def get_vertex_type(self, path: str) -> VertexType:
-        return VertexType(self.get_vertex_by_path(path)["type"])
+    def get_vertex_type(self, path: Optional[str] = None, vid: Optional[int] = None) -> VertexType:
+        if (path and vid) or (not path and not vid):
+            raise ValueError("Provide a path or a vertex id")
+        if path:
+            return VertexType(self.get_vertex_by_path(path)["type"])
+        elif vid:
+            return VertexType(self.graph.vs[vid]["type"])
 
     def add_vertex(self, ref: str, vertex_type: Union[VertexType, str], defined_by: Optional[str] = None, part_of: Optional[str] = None, **kwargs):
         if defined_by and part_of:

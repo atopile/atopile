@@ -95,9 +95,6 @@ g.set_vertex_parameter("resistor.ato/vdiv/vdiv_res_2", "value", "2k")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "INPUT", part_of="resistor.ato/vdiv")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "OUTPUT", part_of="resistor.ato/vdiv")
 g.create_instance("resistor.ato/vdiv/ethereal_pin", "GROUND", part_of="resistor.ato/vdiv")
-# Creating a random pin just to see if it shows up in the netlist (it should)
-# Note that pins are always dependent on packages, so connecting a pin as part_of a block should usually not be allowed
-g.create_instance("resistor.ato/vdiv/package/pin", "1", part_of="resistor.ato/vdiv")
 
 g.add_connection("resistor.ato/vdiv/INPUT", "resistor.ato/vdiv/vdiv_res_1/1")
 g.add_connection("resistor.ato/vdiv/OUTPUT", "resistor.ato/vdiv/vdiv_res_1/2")
@@ -107,9 +104,8 @@ g.add_connection("resistor.ato/vdiv/vdiv_res_1/2", "resistor.ato/vdiv/vdiv_res_2
 g.create_instance("resistor.ato/vdiv", "a_voltage_divider", part_of="resistor.ato")
 
 g.plot(debug=True)
-
+#%%
     
-
 netlist = nlg.KicadNetlist()
 
 nlg.generate_component_list_from_graph(g, netlist)
@@ -117,13 +113,9 @@ nlg.generate_nets_dict_from_graph(g, netlist)
 
 netlist.generate_completed_netlist()
 
-# %%
+test = Graph()
+test.graph = nlg.generate_comp_proto_list_from_graph(g, netlist)
 
+test.plot()
 
-a = 0
-
-def something(b):
-    return a + b
-# %%
-g.get_children_paths("resistor.ato/vdiv")
 # %%

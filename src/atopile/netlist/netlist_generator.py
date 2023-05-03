@@ -141,11 +141,10 @@ class KicadNetlist:
             file.write(netlist)
 
 
-
 def generate_nets_dict_from_graph(g: Graph, netlist: KicadNetlist, root_index: Optional[int] = 0) -> dict:
     instance_graph = Graph()
     electrical_graph = Graph()
-    instance_graph.graph = g.get_instance_graph(root_vertex = 0)
+    instance_graph.graph = g.get_sub_part_of_graph(root_vertex = 0)
 
     # Extract the electrical graph from the instance subgraph
     electrical_graph.graph = instance_graph.graph.subgraph_edges(instance_graph.graph.es.select(type_eq='connects_to'), delete_vertices=False)
@@ -188,7 +187,7 @@ def generate_nets_dict_from_graph(g: Graph, netlist: KicadNetlist, root_index: O
 
 def generate_component_list_from_graph(g: Graph, netlist: KicadNetlist, root_index = 0):
     instance_graph = Graph()
-    instance_graph.graph = g.get_instance_graph(root_vertex = 0)
+    instance_graph.graph = g.get_sub_part_of_graph(root_vertex = 0)
 
     # find all the packages within that graph
     packages = graph_data_extract.get_packages(instance_graph.graph)
@@ -207,6 +206,25 @@ def generate_component_list_from_graph(g: Graph, netlist: KicadNetlist, root_ind
 
         component = KicadComponent(name=name,value=value,lib=lib,part=lib_part,description=description,tstamp=uid)
         netlist.add_component_to_netlist(component)
+
+def generate_comp_proto_list_from_graph(g: Graph, netlist: KicadNetlist, root_index = 0):
+    comp_proto_packages = graph_data_extract.get_package_instances_of_seed(g, root_index)
+
+    for package in comp_proto_packages:
+
+        parent_block = graph_data_extract.get_block_from_package(g, package)
+
+        name = graph_data_extract.get_vertex_parameter(parent_block, "path")
+        lib = graph_data_extract.get_vertex_parameter(parent_block, "lib")
+        lib_part = graph_data_extract.get_vertex_parameter(parent_block, "lib_part")
+        description = graph_data_extract.get_vertex_parameter(parent_block, "description")
+        footprint = graph_data_extract.get_vertex_parameter(package, "footprint")
+        
+        component_proto = KicadComponentPrototype(lib = lib, part = lib_part, docs = description)
+        
+        pins = graph_data_extract.get_pin_list_from_package(g, package)
+        for pin in pins:
+            component_proto...
 
 
 
