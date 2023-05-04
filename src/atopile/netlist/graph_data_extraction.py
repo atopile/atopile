@@ -1,9 +1,10 @@
 import igraph as ig
 from atopile.model.model import (
-    Graph,
+    Model,
     VertexType,
-    generate_uid_from_path,
 )
+
+from atopile.model.utils import generate_uid_from_path
 
 def get_packages(g: ig.Graph) -> ig.VertexSeq:
     return g.vs.select(type_in='package')
@@ -22,7 +23,7 @@ def get_parent_from_path(path: str) -> str:
     parent_path = separator.join(path_parts)
     return parent_path
 
-def get_block_from_package(g: Graph, package: ig.Vertex) -> ig.Vertex:
+def get_block_from_package(g: Model, package: ig.Vertex) -> ig.Vertex:
     parent_path = get_parent_from_path(package['path'])
     block = g.get_vertex_by_path(parent_path)
     
@@ -34,7 +35,7 @@ def find_blocks_associated_to_package(g: ig.Graph):
     """
     return g.vs.select(type_in='block', _degree_gt=0, type_ne="package")
 
-def get_package_instances_of_seed(g: Graph, root_index: int = 0) -> list:
+def get_package_instances_of_seed(g: Model, root_index: int = 0) -> list:
     component_prototype_package_list = []
     
     # Find the vertex from which to start
@@ -55,7 +56,7 @@ def get_package_instances_of_seed(g: Graph, root_index: int = 0) -> list:
     
     return component_prototype_package_list
 
-def get_pin_list_from_package(g: Graph, package: ig.Vertex) -> list:
+def get_pin_list_from_package(g: Model, package: ig.Vertex) -> list:
     pin_list = []
 
     part_of_graph = g.get_part_of_graph()

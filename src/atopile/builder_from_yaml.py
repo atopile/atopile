@@ -1,12 +1,12 @@
 #%%
 import yaml
-from atopile.model.model import Graph, VertexType
+from atopile.model.model import Model, VertexType
 from contextlib import contextmanager
 
 class GraphBuilderFromYaml:
     def __init__(self):
         self.source_file = None
-        self.graph = Graph()
+        self.graph = Model()
         self._parsed_files = []
         self._context_stack = []
 

@@ -6,10 +6,11 @@ from typing import Optional
 from attrs import define, field
 
 from atopile.model.model import (
-    Graph,
+    Model,
     VertexType,
-    generate_uid_from_path,
 )
+
+from atopile.model.utils import generate_uid_from_path
 
 import atopile.netlist.graph_data_extraction as graph_data_extract
 
@@ -144,9 +145,9 @@ class KicadNetlist:
             file.write(netlist)
 
 
-def generate_nets_dict_from_graph(g: Graph, netlist: KicadNetlist, root_index: Optional[int] = 0) -> dict:
-    instance_graph = Graph()
-    electrical_graph = Graph()
+def generate_nets_dict_from_graph(g: Model, netlist: KicadNetlist, root_index: Optional[int] = 0) -> dict:
+    instance_graph = Model()
+    electrical_graph = Model()
     instance_graph.graph = g.get_sub_part_of_graph(root_vertex = 0)
 
     # Extract the electrical graph from the instance subgraph
@@ -188,8 +189,8 @@ def generate_nets_dict_from_graph(g: Graph, netlist: KicadNetlist, root_index: O
 
     return nets
 
-def generate_component_list_from_graph(g: Graph, netlist: KicadNetlist, root_index = 0):
-    instance_graph = Graph()
+def generate_component_list_from_graph(g: Model, netlist: KicadNetlist, root_index = 0):
+    instance_graph = Model()
     instance_graph.graph = g.get_sub_part_of_graph(root_vertex = 0)
 
     # find all the packages within that graph
@@ -210,7 +211,7 @@ def generate_component_list_from_graph(g: Graph, netlist: KicadNetlist, root_ind
         component = KicadComponent(name=name,value=value,lib=lib,part=lib_part,description=description,tstamp=uid)
         netlist.add_component_to_netlist(component)
 
-def generate_comp_proto_list_from_graph(g: Graph, netlist: KicadNetlist, root_index = 0):
+def generate_comp_proto_list_from_graph(g: Model, netlist: KicadNetlist, root_index = 0):
     comp_proto_packages = graph_data_extract.get_package_instances_of_seed(g, root_index)
 
     for package in comp_proto_packages:
