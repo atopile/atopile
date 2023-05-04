@@ -1,15 +1,7 @@
 #%%
-import igraph as ig
-from typing import Optional
-from atopile.model.model import (
-    Graph,
-    VertexType,
-    generate_uid_from_path,
-)
-
 import atopile.netlist.netlist_generator as nlg
-
-
+from atopile.model.model import Graph, VertexType
+from atopile.model.utils import generate_uid_from_path
 
 #%%
 """
@@ -105,7 +97,7 @@ g.create_instance("resistor.ato/vdiv", "a_voltage_divider", part_of="resistor.at
 
 g.plot(debug=True)
 #%%
-    
+
 netlist = nlg.KicadNetlist()
 
 nlg.generate_component_list_from_graph(g, netlist)
