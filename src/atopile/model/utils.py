@@ -11,9 +11,9 @@ def generate_uid_from_path(path: str) -> str:
 VERTEX_COLOR_DICT = {
     "file": "red",
     "module": "green",
-    "component": "blue",
+    "component": "cyan",
     "feature": "magenta",
-    "pin": "cyan",
+    "pin": "yellow",
     "signal": "pink",
 }
 
