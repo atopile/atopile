@@ -11,12 +11,13 @@ async def api_root():
 
 @app.get("/api/graph")
 async def get_graph():
+    # call render.py to get a dict of the current circuit
     return {
         "cells": [{
             "id": 1,
             "type": 'standard.Rectangle',
             "position": {
-                "x": 100,
+                "x": 200,
                 "y": 100
             },
             "size": {
