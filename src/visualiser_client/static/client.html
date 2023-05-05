@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.6.2/joint.css" />
+</head>
+<body>
+    <!-- content -->
+    <div id="myholder"></div>
+
+    <!-- dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.1/jquery.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.4.1/backbone.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.6.5/joint.js"></script>
+
+    <!-- code -->
+    <script type="text/javascript">
+
+        var namespace = joint.shapes;
+
+        var graph = new joint.dia.Graph({}, { cellNamespace: namespace });
+
+        var paper = new joint.dia.Paper({
+            el: document.getElementById('myholder'),
+            model: graph,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            gridSize: 1,
+            cellViewNamespace: namespace
+        });
+
+        fetch("/api/graph")
+            .then(response => response.json())
+            .then(data => {
+                graph.fromJSON(data);
+            });
+
+    </script>
+</body>
+</html>

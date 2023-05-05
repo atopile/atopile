@@ -28,7 +28,8 @@ classifiers = [
 ]
 dependencies = [
     "attrs",
-    "igraph"
+    "igraph",
+    "fastapi",
 ]
 dynamic = ["version"]
 
@@ -58,6 +59,7 @@ doc = [
 dev = [
     "ruff",
     "antlr4-python3-runtime",
+    "uvicorn[standard]",
 ]
 
 [tool.hatch.version]
