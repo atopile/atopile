@@ -1,8 +1,12 @@
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional, Union, MutableSet
 from atopile.model import utils
+import logging
+import copy
 
 import igraph as ig
+
+log = logging.getLogger(__name__)
 
 class VertexType(Enum):
     file = "file"
@@ -38,34 +42,43 @@ class Model:
         Look at the graph from the perspective of the given edge types.
         """
         if not isinstance(edge_types, list):
-            edge_types = list(EdgeType(edge_types))
+            edge_types = [EdgeType(edge_types)]
         sg = self.graph.subgraph_edges(self.graph.es.select(type_in=edge_types), delete_vertices=False)
         return sg
 
-    def instantiate_block(self, class_path: str, parent_path: str) -> str:
+    def instantiate_block(self, class_path: str, instance_ref: str, part_of_path: str) -> str:
         """
         Take the feature, component or module and create an instance of it.
         """
-        class_block = self.graph.vs.find(path_eq=class_path)
-        assert class_block["type"] in block_types
+        class_root = self.graph.vs.find(path_eq=class_path)
+        featureless_part_of_graph = self.get_graph_view(EdgeType.part_of).subgraph(self.graph.vs.select(lambda v: v["type"] != VertexType.feature.name))
+        class_children_except_features = featureless_part_of_graph.vs[featureless_part_of_graph.subcomponent(class_root.index, mode="in") + [class_root.index]]
+        sg = self.graph.subgraph(class_children_except_features)
+        instance_path = part_of_path + "/" + instance_ref
 
-        graph_view_part_of = self.get_graph_view(EdgeType.part_of)
-        graph_view_inherits_from = self.get_graph_view(EdgeType.inherits_from)
+        # replace the paths and references of all the blocks/subcomponents
+        class_paths = copy.copy(sg.vs["path"])
+        sg.vs.find(path_eq=class_path)["ref"] = instance_path
+        sg.vs["path"] = [p.replace(class_path, instance_path) for p in class_paths]
 
-        # inheretance walk
-        for block_idx, layer, _ in graph_view_inherits_from.bfsiter(class_block.index, mode="in"):
-            # we're assuming that there aren't any conflicting keys in the various blocks
-            # if there are, we should probably raise an error
-            # consider using `layer` for that
+        self.graph: ig.Graph = self.graph.disjoint_union(sg)
 
-            # copy the subcomponents' (except features) graphs, schemas and datas of each of these blocks to the new instance
-            # if there's a key collision, ignore the new data
-            # in this case, earlier data is better, since it's lower down the tree of inheritance
-            pass
+        self.new_edge(
+            EdgeType.instance_of,
+            instance_path,
+            class_path,
+        )
 
-        # attach the new instance to the parent
+        self.new_edge(
+            EdgeType.part_of,
+            instance_path,
+            part_of_path,
+        )
 
-        # return the new instance path as a reference
+        # copy the data and schemas
+        for instance_vertex_path, class_vertex_path in zip(sg.vs["path"], class_paths):
+            self.data[instance_vertex_path] = copy.deepcopy(self.data.get(class_vertex_path, {}))
+            self.schemas[instance_vertex_path] = copy.deepcopy(self.schemas.get(class_vertex_path, {}))
 
     def new_vertex(self, vertex_type: VertexType, ref: str, part_of: Optional[str] = None) -> str:
         """
@@ -79,7 +92,7 @@ class Model:
         self.graph.add_vertex(ref=ref, type=vertex_type.name, path=path)
 
         if part_of is not None:
-            self.new_edge(EdgeType.part_of, part_of, path)
+            self.new_edge(EdgeType.part_of, path, part_of)
 
         return path
 
