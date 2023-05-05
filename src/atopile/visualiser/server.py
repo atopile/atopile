@@ -10,7 +10,7 @@ async def api_root():
     return {"message": "Hello World"}
 
 @app.get("/api/graph")
-async def graph():
+async def get_graph():
     return {
         "cells": [{
             "id": 1,

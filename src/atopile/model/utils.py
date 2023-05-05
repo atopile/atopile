@@ -12,7 +12,6 @@ VERTEX_COLOR_DICT = {
     "file": "red",
     "module": "green",
     "component": "cyan",
-    "feature": "magenta",
     "pin": "yellow",
     "signal": "pink",
 }
@@ -22,6 +21,7 @@ EDGE_COLOR_DICT = {
     "part_of": "black",
     "instance_of": "red",
     "inherits_from": "green",
+    "option_of": "magenta",
 }
 
 def plot(graph, *args, debug=False, **kwargs):

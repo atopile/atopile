@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional, Union, MutableSet
+from typing import List, Optional, Union
 from atopile.model import utils
 import logging
 import copy
@@ -12,16 +12,16 @@ class VertexType(Enum):
     file = "file"
     module = "module"
     component = "component"
-    feature = "feature"
     pin = "pin"
     signal = "signal"
 
-block_types = [VertexType.module, VertexType.component, VertexType.feature]
+block_types = [VertexType.module, VertexType.component]
 pin_types = [VertexType.pin, VertexType.signal]
 
 class EdgeType(Enum):
     connects_to = "connects_to"
     part_of = "part_of"
+    option_of = "option_of"
     instance_of = "instance_of"
     inherits_from = "inherits_from"
 
@@ -43,7 +43,8 @@ class Model:
         """
         if not isinstance(edge_types, list):
             edge_types = [EdgeType(edge_types)]
-        sg = self.graph.subgraph_edges(self.graph.es.select(type_in=edge_types), delete_vertices=False)
+        edge_type_names = [e.name for e in edge_types]
+        sg = self.graph.subgraph_edges(self.graph.es.select(type_in=edge_type_names), delete_vertices=False)
         return sg
 
     def instantiate_block(self, class_path: str, instance_ref: str, part_of_path: str) -> str:
@@ -51,9 +52,9 @@ class Model:
         Take the feature, component or module and create an instance of it.
         """
         class_root = self.graph.vs.find(path_eq=class_path)
-        featureless_part_of_graph = self.get_graph_view(EdgeType.part_of).subgraph(self.graph.vs.select(lambda v: v["type"] != VertexType.feature.name))
-        class_children_except_features = featureless_part_of_graph.vs[featureless_part_of_graph.subcomponent(class_root.index, mode="in") + [class_root.index]]
-        sg = self.graph.subgraph(class_children_except_features)
+        part_of_graph = self.get_graph_view(EdgeType.part_of)
+        class_children = part_of_graph.vs[part_of_graph.subcomponent(class_root.index, mode="in")]
+        sg = self.graph.subgraph(class_children)
         instance_path = part_of_path + "/" + instance_ref
 
         # replace the paths and references of all the blocks/subcomponents
@@ -80,19 +81,27 @@ class Model:
             self.data[instance_vertex_path] = copy.deepcopy(self.data.get(class_vertex_path, {}))
             self.schemas[instance_vertex_path] = copy.deepcopy(self.schemas.get(class_vertex_path, {}))
 
-    def new_vertex(self, vertex_type: VertexType, ref: str, part_of: Optional[str] = None) -> str:
+    def new_vertex(self, vertex_type: VertexType, ref: str, part_of: Optional[str] = None, option_of: Optional[str] = None) -> str:
         """
         Create a new vertex in the graph.
         """
-        if part_of is None:
+        if part_of and option_of:
+            raise ValueError("Cannot be both part_of and option_of")
+
+        if not (part_of or option_of):
             path = ref
-        else:
+        elif part_of:
             path = f"{part_of}/{ref}"
+        elif option_of:
+            path = f"{option_of}/{ref}"
+
         assert path not in self.graph.vs["path"]
         self.graph.add_vertex(ref=ref, type=vertex_type.name, path=path)
 
-        if part_of is not None:
+        if part_of:
             self.new_edge(EdgeType.part_of, path, part_of)
+        elif option_of:
+            self.new_edge(EdgeType.option_of, path, option_of)
 
         return path
 
