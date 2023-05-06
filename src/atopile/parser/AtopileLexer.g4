@@ -6,7 +6,7 @@ lexer grammar AtopileLexer;
 tokens { INDENT, DEDENT }
 
 options {
-    superClass = AtopileLexerBase;
+    superClass = AtopileLexerBase ;
 }
 
 /*
@@ -31,44 +31,51 @@ INTEGER
  | BIN_INTEGER
  ;
 
-AND : 'and';
-AS : 'as';
-ASSERT : 'assert';
-ASYNC : 'async';
-AWAIT : 'await';
-BREAK : 'break';
-CASE : 'case' ;
-CLASS : 'class';
-CONTINUE : 'continue';
-DEF : 'def';
-DEL : 'del';
-ELIF : 'elif';
-ELSE : 'else';
-EXCEPT : 'except';
-FALSE : 'False';
-FINALLY : 'finally';
-FOR : 'for';
-FROM : 'from';
-GLOBAL : 'global';
-IF : 'if';
-IMPORT : 'import';
-IN : 'in';
-IS : 'is';
-LAMBDA : 'lambda';
-MATCH : 'match' ;
-NONE : 'None';
-NONLOCAL : 'nonlocal';
-NOT : 'not';
-OR : 'or';
-PASS : 'pass';
-RAISE : 'raise';
-RETURN : 'return';
-TRUE : 'True';
-TRY : 'try';
-UNDERSCORE : '_' ;
-WHILE : 'while';
-WITH : 'with';
-YIELD : 'yield';
+COMPONENT : 'component';
+MODULE : 'module';
+PIN : 'pin';
+SIGNAL : 'signal';
+
+// python3 imports -- kept for reference
+// TODO: tidy up
+// AND : 'and';
+// AS : 'as';
+// ASSERT : 'assert';
+// ASYNC : 'async';
+// AWAIT : 'await';
+// BREAK : 'break';
+// CASE : 'case' ;
+// CLASS : 'class';
+// CONTINUE : 'continue';
+// DEF : 'def';
+// DEL : 'del';
+// ELIF : 'elif';
+// ELSE : 'else';
+// EXCEPT : 'except';
+// FALSE : 'False';
+// FINALLY : 'finally';
+// FOR : 'for';
+// FROM : 'from';
+// GLOBAL : 'global';
+// IF : 'if';
+// IMPORT : 'import';
+// IN : 'in';
+// IS : 'is';
+// LAMBDA : 'lambda';
+// MATCH : 'match' ;
+// NONE : 'None';
+// NONLOCAL : 'nonlocal';
+// NOT : 'not';
+// OR : 'or';
+// PASS : 'pass';
+// RAISE : 'raise';
+// RETURN : 'return';
+// TRUE : 'True';
+// TRY : 'try';
+// UNDERSCORE : '_' ;
+// WHILE : 'while';
+// WITH : 'with';
+// YIELD : 'yield';
 
 NEWLINE
  : ( {self.atStartOfInput()}?   SPACES

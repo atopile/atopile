@@ -1,0 +1,11 @@
+i_am_a_string = "stringy string"
+i_am_a_int = 1
+i_am_a_float = 1.0
+i_am_a_reference = i_am_a_string
+
+component i_am_a_component():
+    component_variable = "component variable"
+
+module i_am_a_module():
+    module_variable = "module variable"
+    module_component = i_am_a_component()

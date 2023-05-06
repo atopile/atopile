@@ -5,7 +5,7 @@ from typing import TextIO
 from antlr4 import InputStream, Lexer
 from antlr4.Token import CommonToken
 
-from AtopileParser import AtopileParser
+from .AtopileParser import AtopileParser
 
 
 class AtopileLexerBase(Lexer):
