@@ -7,7 +7,6 @@ def generate_uid_from_path(path: str) -> str:
     hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
     return uuid.UUID(bytes=hashed_path)
 
-
 VERTEX_COLOR_DICT = {
     "file": "red",
     "module": "green",
@@ -24,9 +23,15 @@ EDGE_COLOR_DICT = {
     "option_of": "magenta",
 }
 
+GRAPH_VISUALIZE_SETTINGS = {
+    'width': 1000,
+    'height': 400,
+}
+
 def plot(graph, *args, debug=False, **kwargs):
     assert all(t is not None for t in graph.vs["type"])
 
+    kwargs["bbox"] = (GRAPH_VISUALIZE_SETTINGS['width'], GRAPH_VISUALIZE_SETTINGS['height'])
     kwargs["vertex_color"] = [VERTEX_COLOR_DICT.get(type_name, "grey") for type_name in graph.vs["type"]]
     kwargs["edge_color"] = [EDGE_COLOR_DICT.get(type_name, "grey") for type_name in graph.es["type"]]
     kwargs["vertex_label_size"] = 8

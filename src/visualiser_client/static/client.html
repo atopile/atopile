@@ -12,29 +12,55 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.4.1/backbone.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.6.5/joint.js"></script>
-
+    
     <!-- code -->
     <script type="text/javascript">
+        let namespace = joint.shapes;
 
-        var namespace = joint.shapes;
+        let graph;
 
-        var graph = new joint.dia.Graph({}, { cellNamespace: namespace });
+        let paper;
 
-        var paper = new joint.dia.Paper({
-            el: document.getElementById('myholder'),
-            model: graph,
-            width: window.innerWidth,
-            height: window.innerHeight,
-            gridSize: 1,
-            cellViewNamespace: namespace
-        });
+        let visualizer_config;
 
-        // fetch("/api/graph")
-        fetch("graph.json")
+        function setup(visualizer_config) {
+            console.log("Visualizer is being setup");
+            graph = new joint.dia.Graph({}, { cellNamespace: namespace });
+
+            paper = new joint.dia.Paper({
+                el: document.getElementById('myholder'),
+                model: graph,
+                width: visualizer_config.window_width,
+                height: visualizer_config.window_height,
+                gridSize: visualizer_config.grid_size,
+                drawGrid: visualizer_config.draw_grid,
+                background: {
+                    color: visualizer_config.background_color
+                },
+                cellViewNamespace: namespace
+            });
+        }
+
+        fetch("visualizer_config.json")
             .then(response => response.json())
             .then(data => {
-                graph.fromJSON(data);
+                //visualizer_config = JSON.parse(JSON.stringify(data));
+                visualizer_config = data
+                console.log(visualizer_config.background_color);
+
+                setup(visualizer_config)
+
+                fetch("graph.json")
+                    .then(response => response.json())
+                    .then(data => {
+                        graph.fromJSON(data);
+                        console.log("graph is setup");
+                    });
             });
+
+        // fetch("/api/graph")
+        
+        
 
     </script>
 </body>

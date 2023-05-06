@@ -3,32 +3,66 @@ from atopile.data.toy_model import m as toy_model
 from atopile.model.utils import EDGE_COLOR_DICT, VERTEX_COLOR_DICT
 
 import json as json
+from attrs import define
 
-def igraph_to_render_coord_transform(coords):
+VISUALIZER_SETTINGS = {
+    'background_color': 'rgba(140, 146, 172, 0.3)',
+    'grid_size': 15,
+    'draw_grid': True,
+    'window_width': 1400,
+    'window_height': 900,
+    'margin_width': 100,
+    'margin_height': 100,
+}
+
+@define
+class WindowDimension:
+    x_max: float
+    x_min: float
+    y_max: float
+    y_min: float
+
+def generate_visualizer_window_config():
+    visualizer_config = VISUALIZER_SETTINGS
+
+    with open("src/visualiser_client/static/visualizer_config.json", "w") as f:
+    # Write the dictionary to the file as a JSON object
+        json.dump(visualizer_config, f)
+
+def window_coord_transform(coords: list, source_dimension: WindowDimension, target_dimension: WindowDimension):
     new_coords = []
-    for coord in coords:
-        new_coords.append(70 * (coord + 7))
-
+    new_coords.append((coords[0] - source_dimension.x_min) * (target_dimension.x_max - target_dimension.x_min) / (source_dimension.x_max - source_dimension.x_min) + target_dimension.x_min)
+    new_coords.append((coords[1] - source_dimension.y_min) * (target_dimension.y_max - target_dimension.y_min) / (source_dimension.y_max - source_dimension.y_min) + target_dimension.y_min)
     return new_coords
 
 ## in this file we should make a jointjs dict
 def render():
-    layout = toy_model.graph.layout()
+    graph_layout = toy_model.graph.layout()
 
-    # Get the position of vertex 0
-    pos = layout[0]
+    igraph_max_x_dim = max(sublist[0] for sublist in graph_layout)
+    igraph_min_x_dim = min(sublist[0] for sublist in graph_layout)
+    igraph_max_y_dim = max(sublist[1] for sublist in graph_layout)
+    igraph_min_y_dim = min(sublist[1] for sublist in graph_layout)
+    
+    igraph_dimension = WindowDimension(x_max = igraph_max_x_dim,
+                                       x_min = igraph_min_x_dim,
+                                       y_max = igraph_max_y_dim,
+                                       y_min = igraph_min_y_dim)
+    
+    
+    visualizer_dimension = WindowDimension(x_max = VISUALIZER_SETTINGS['window_width'] - VISUALIZER_SETTINGS['margin_width'],
+                                            x_min = VISUALIZER_SETTINGS['margin_width'],
+                                            y_max = VISUALIZER_SETTINGS['window_height'] - VISUALIZER_SETTINGS['margin_height'],
+                                            y_min = VISUALIZER_SETTINGS['margin_height'])
 
-    print(pos)
-    print('this is a test')
 
     verticies = toy_model.graph.vs
-    print(type(verticies))
 
     rendered_graph_json = {}
     rendered_graph_json['cells'] = []
 
     for vertex in verticies:
-        vertex_position = igraph_to_render_coord_transform(layout[vertex.index])
+        vertex_position = window_coord_transform(graph_layout[vertex.index], igraph_dimension, visualizer_dimension)
         vertex_color = VERTEX_COLOR_DICT[vertex['type']]
         vertex_json_dict = {
             "id": vertex.index+1,
@@ -101,4 +135,5 @@ def render():
 # an onject in the JSON. We then connect the edges together 
 
 if __name__ == "__main__":
+    generate_visualizer_window_config()
     render()
