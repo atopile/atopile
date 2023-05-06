@@ -1,6 +1,8 @@
 #%%
-%load_ext autoreload
-%autoreload 2
+# the two lines below are very useful in jupyter, because they auto-reload all the imports
+# but they make it an invlid python file, so they need to be commented out to make this importable
+# %load_ext autoreload
+# %autoreload 2
 from atopile.model.model2 import Model, VertexType, EdgeType
 from atopile.model.utils import plot
 
@@ -33,6 +35,7 @@ r2_2_path = m.new_vertex(VertexType.pin, "2", part_of=r2_path)
 # make a feature for the voltage divider module
 vdiv_feature = m.new_vertex(VertexType.module, "amazing_feature", option_of=vdiv_path)
 feature_signal = m.new_vertex(VertexType.signal, "magic_signal", part_of=vdiv_feature)
+m.new_edge(EdgeType.connects_to, feature_signal, r1_1_path)
 
 # connect the resistors to the module signals
 m.new_edge(EdgeType.connects_to, vdiv_a, r1_1_path)
@@ -47,3 +50,7 @@ m.instantiate_block(vdiv_path, "Vdiv1", file_path)
 m.plot(debug=True)
 
 # %%
+m.enable_option("toy.ato/Vdiv1/amazing_feature")
+# %%
+# see now that the feature "toy.ato/Vdiv1/amazing_feature" is enabled
+m.plot(debug=True)

@@ -52,7 +52,7 @@ class Model:
         Take the feature, component or module and create an instance of it.
         """
         class_root = self.graph.vs.find(path_eq=class_path)
-        part_of_graph = self.get_graph_view(EdgeType.part_of)
+        part_of_graph = self.get_graph_view([EdgeType.part_of, EdgeType.option_of])
         class_children = part_of_graph.vs[part_of_graph.subcomponent(class_root.index, mode="in")]
         sg = self.graph.subgraph(class_children)
         instance_path = part_of_path + "/" + instance_ref
@@ -80,6 +80,18 @@ class Model:
         for instance_vertex_path, class_vertex_path in zip(sg.vs["path"], class_paths):
             self.data[instance_vertex_path] = copy.deepcopy(self.data.get(class_vertex_path, {}))
             self.schemas[instance_vertex_path] = copy.deepcopy(self.schemas.get(class_vertex_path, {}))
+
+        return instance_path
+
+    def enable_option(self, option_path: str) -> str:
+        """
+        Enable an option in the graph
+        """
+        option_idx = self.graph.vs.find(path_eq=option_path).index
+        parent_edges = self.graph.es.select(type_eq=EdgeType.option_of.name, _from=option_idx)
+        parent_edges["type"] = EdgeType.part_of.name
+        return option_path
+
 
     def new_vertex(self, vertex_type: VertexType, ref: str, part_of: Optional[str] = None, option_of: Optional[str] = None) -> str:
         """
