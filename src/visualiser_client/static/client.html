@@ -29,7 +29,8 @@
             cellViewNamespace: namespace
         });
 
-        fetch("/api/graph")
+        // fetch("/api/graph")
+        fetch("graph.json")
             .then(response => response.json())
             .then(data => {
                 graph.fromJSON(data);
