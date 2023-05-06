@@ -1,8 +1,8 @@
 #%%
 # the two lines below are very useful in jupyter, because they auto-reload all the imports
 # but they make it an invlid python file, so they need to be commented out to make this importable
-%load_ext autoreload
-%autoreload 2
+# %load_ext autoreload
+# %autoreload 2
 from atopile.model.model2 import Model, VertexType, EdgeType
 
 #%%
@@ -50,3 +50,5 @@ m.enable_option("toy.ato/Vdiv1/amazing_feature")
 # %%
 # see now that the feature "toy.ato/Vdiv1/amazing_feature" is enabled
 m.plot(debug=True)
+
+# %%
