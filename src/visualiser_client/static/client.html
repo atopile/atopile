@@ -12,7 +12,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.4.1/backbone.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.6.5/joint.js"></script>
-    
+
     <!-- code -->
     <script type="text/javascript">
         let namespace = joint.shapes;
@@ -58,9 +58,12 @@
                     });
             });
 
-        // fetch("/api/graph")
-        
-        
+        const requestOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: 'Hello world!' }) // << data going the other way
+        };
+        fetch('/api/graph', requestOptions);
 
     </script>
 </body>
