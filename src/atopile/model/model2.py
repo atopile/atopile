@@ -53,7 +53,8 @@ class Model:
         """
         class_root = self.graph.vs.find(path_eq=class_path)
         part_of_graph = self.get_graph_view([EdgeType.part_of, EdgeType.option_of])
-        class_children = part_of_graph.vs[part_of_graph.subcomponent(class_root.index, mode="in")]
+        class_children_idxs = part_of_graph.subcomponent(class_root.index, mode="in")
+        class_children = part_of_graph.vs[class_children_idxs]
         sg = self.graph.subgraph(class_children)
         instance_path = part_of_path + "/" + instance_ref
 
@@ -64,6 +65,7 @@ class Model:
 
         self.graph: ig.Graph = self.graph.disjoint_union(sg)
 
+        # create new instance and part_of edges
         self.new_edge(
             EdgeType.instance_of,
             instance_path,
@@ -75,6 +77,18 @@ class Model:
             instance_path,
             part_of_path,
         )
+
+        # link existing instance edges to the new instance
+        # TODO: see if there's a better or more preformant way to do this, it's a bit unreadable
+        instance_edges = self.graph.es.select(_from_in=class_children_idxs, type_eq=EdgeType.instance_of.name)
+        class_instance_of_edge_tuples = [e.tuple for e in instance_edges]
+        class_instance_of_edge_from_idxs = [e[0] for e in class_instance_of_edge_tuples]
+        class_instance_of_from_paths = self.graph.vs[class_instance_of_edge_from_idxs]["path"]
+        instance_instance_of_from_paths = [p.replace(class_path, instance_path) for p in class_instance_of_from_paths]
+        instance_instance_of_edge_from_idxs = [self.graph.vs.find(path_eq=p).index for p in instance_instance_of_from_paths]
+        class_instance_of_edge_to_idxs = [e[1] for e in class_instance_of_edge_tuples]
+        instance_instance_of_edge_tuples = list(zip(instance_instance_of_edge_from_idxs, class_instance_of_edge_to_idxs))
+        self.graph.add_edges(instance_instance_of_edge_tuples, attributes={"type": [EdgeType.instance_of.name] * len(instance_instance_of_edge_tuples)})
 
         # copy the data and schemas
         for instance_vertex_path, class_vertex_path in zip(sg.vs["path"], class_paths):
