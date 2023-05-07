@@ -3,7 +3,7 @@ from atopile.model.model2 import Model
 from atopile.data.toy_model import m as toy_model
 from atopile.model.utils import EDGE_COLOR_DICT, VERTEX_COLOR_DICT, generate_uid_from_path
 
-from atopile.visualiser.utils import WindowDimension, WindowPosition, Component
+from atopile.visualiser.utils import WindowDimension, WindowPosition, Component, Module
 
 import json as json
 import yaml
@@ -196,85 +196,13 @@ def render_schematic():
 
     rendered_graph_json = {'cells': []}
 
-    vertex_json_dict = {
-        "id": 1,
-        "type": 'standard.Circle',
-        "position": {
-            "x": 100,
-            "y": 100
-        },
-        "size": {
-            "width": VISUALIZER_SETTINGS['vertex_size'],
-            "height": VISUALIZER_SETTINGS['vertex_size']
-        },
-        "attrs": {
-            "body": {
-            "fill": 'blue'
-            },
-            "label": {
-                "text": 'test',    
-                'font-family': VISUALIZER_SETTINGS['text']['font'],
-                'font-size': VISUALIZER_SETTINGS['text']['vertex_font_size']
-            }
-        }
-    }
-    rendered_graph_json['cells'].append(vertex_json_dict)
-    vertex_json_dict = {
-        "id": 2,
-        "type": 'standard.Rectangle',
-        "position": {
-            "x": 100,
-            "y": 100
-        },
-        "size": {
-            "width": VISUALIZER_SETTINGS['vertex_size'],
-            "height": VISUALIZER_SETTINGS['vertex_size']
-        },
-        "attrs": {
-            "body": {
-            "fill": 'blue'
-            },
-            "label": {
-                "text": 'test',    
-                'font-family': VISUALIZER_SETTINGS['text']['font'],
-                'font-size': VISUALIZER_SETTINGS['text']['vertex_font_size']
-            }
-        }
-    }
-    rendered_graph_json['cells'].append(vertex_json_dict)
+    component = Component(id = 6)
+    for i in range(6):
+        component.add_pin()
+    rendered_graph_json['cells'].append(component.generate_jointjs_rep())
 
-    edge_json_dict = {
-        "type": "standard.Link",
-        "source": {
-            "id": 1
-        },
-        "target": {
-            "id": 2
-        },
-        "labels": [{
-            "attrs": {
-                'text': {
-                    'text': 'test',
-                    'font-family': VISUALIZER_SETTINGS['text']['font'],
-                    'font-size': VISUALIZER_SETTINGS['text']['edge_font_size']
-
-                }}}],
-        "router": {
-                "name" : "orthogonal",
-        },
-        "attrs": {
-            "line": {
-                "stroke": 'black',
-                'stroke-width': 2
-            },
-        }
-    }
-
-    #rendered_graph_json['cells'].append(vertex_json_dict)
-    #rendered_graph_json['cells'].append(edge_json_dict)
-
-    component = Component(pin_number = 4, comp_id = 6, position = WindowPosition(10,10))
-    rendered_graph_json['cells'].append(component.comp_struct)
+    module = Module(id = 7)
+    rendered_graph_json['cells'].append(module.generate_jointjs_rep())
 
     # Save the graph
     with open("src/visualiser_client/static/graph.json", "w") as f:
