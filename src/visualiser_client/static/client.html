@@ -55,15 +55,19 @@
                     .then(data => {
                         graph.fromJSON(data);
                         console.log("graph is setup");
+                        paper.on('cell:pointerup', function(evt, x, y) {
+                            const requestOptions = {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(graph.toJSON()) // << data going the other way
+                            };
+                            fetch('/api/graph', requestOptions);
+                        });
                     });
             });
 
-        const requestOptions = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: 'Hello world!' }) // << data going the other way
-        };
-        fetch('/api/graph', requestOptions);
+
+        
 
     </script>
 </body>
