@@ -3,7 +3,7 @@ from atopile.model.model2 import Model
 from atopile.data.toy_model import m as toy_model
 from atopile.model.utils import EDGE_COLOR_DICT, VERTEX_COLOR_DICT, generate_uid_from_path
 
-from atopile.visualiser.utils import WindowDimension, WindowPosition, Component, Module
+from atopile.visualiser.utils import WindowDimension, WindowPosition, Component, Module, Signal
 
 import json as json
 import yaml
@@ -46,20 +46,20 @@ def get_coords_from_igraph(model: Model):
     igraph_positions = {}
     graph_layout = model.graph.layout()
 
-    igraph_max_x_dim = max(sublist[0] for sublist in graph_layout)
     igraph_min_x_dim = min(sublist[0] for sublist in graph_layout)
-    igraph_max_y_dim = max(sublist[1] for sublist in graph_layout)
+    igraph_max_x_dim = max(sublist[0] for sublist in graph_layout)
     igraph_min_y_dim = min(sublist[1] for sublist in graph_layout)
+    igraph_max_y_dim = max(sublist[1] for sublist in graph_layout)
 
-    igraph_dimension = WindowDimension(x_max = igraph_max_x_dim,
-                                       x_min = igraph_min_x_dim,
-                                       y_max = igraph_max_y_dim,
-                                       y_min = igraph_min_y_dim)
+    igraph_dimension = WindowDimension(x_min = igraph_min_x_dim,
+                                       x_max = igraph_max_x_dim,
+                                       y_min = igraph_min_y_dim,
+                                       y_max = igraph_max_y_dim)
     
-    visualizer_dimension = WindowDimension(x_max = VISUALIZER_SETTINGS['window_width'] - VISUALIZER_SETTINGS['margin_width'],
-                                            x_min = VISUALIZER_SETTINGS['margin_width'],
-                                            y_max = VISUALIZER_SETTINGS['window_height'] - VISUALIZER_SETTINGS['margin_height'],
-                                            y_min = VISUALIZER_SETTINGS['margin_height'])
+    visualizer_dimension = WindowDimension(x_min = VISUALIZER_SETTINGS['margin_width'],
+                                            x_max = VISUALIZER_SETTINGS['window_width'] - VISUALIZER_SETTINGS['margin_width'],
+                                            y_min = VISUALIZER_SETTINGS['margin_height'],
+                                            y_max = VISUALIZER_SETTINGS['window_height'] - VISUALIZER_SETTINGS['margin_height'])
     
     verticies = model.graph.vs
     for vertex in verticies:
@@ -196,12 +196,23 @@ def render_schematic():
 
     rendered_graph_json = {'cells': []}
 
-    component = Component(id = 6)
+    component1 = Component(id = 6)
     for i in range(6):
-        component.add_pin()
-    rendered_graph_json['cells'].append(component.generate_jointjs_rep())
+        component1.add_pin()
+    component1.update_position(WindowPosition(150, 350))
+    rendered_graph_json['cells'].append(component1.generate_jointjs_rep())
+
+    component2 = Component(id = 4)
+    for i in range(8):
+        component2.add_pin()
+    component2.update_position(WindowPosition(800, 600))
+    rendered_graph_json['cells'].append(component2.generate_jointjs_rep())
 
     module = Module(id = 7)
+    module.add_signal(Signal(name='sig_1'))
+    module.add_signal(Signal(name='sig_2'))
+    module.add_component(component1)
+    module.add_component(component2)
     rendered_graph_json['cells'].append(module.generate_jointjs_rep())
 
     # Save the graph
