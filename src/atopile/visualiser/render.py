@@ -3,9 +3,10 @@ from atopile.model.model2 import Model
 from atopile.data.toy_model import m as toy_model
 from atopile.model.utils import EDGE_COLOR_DICT, VERTEX_COLOR_DICT, generate_uid_from_path
 
+from atopile.visualiser.utils import WindowDimension, WindowPosition, Component
+
 import json as json
 import yaml
-from attrs import define
 import os
 
 VISUALIZER_SETTINGS = {
@@ -24,12 +25,6 @@ VISUALIZER_SETTINGS = {
     }
 }
 
-@define
-class WindowDimension:
-    x_max: float
-    x_min: float
-    y_max: float
-    y_min: float
 
 def generate_visualizer_window_config():
     visualizer_config = VISUALIZER_SETTINGS
@@ -95,10 +90,9 @@ def save_positions(return_data):
     
     render_debug(toy_model)
     
-    # #print(json_return_dict)
-    # with open("src/visualiser_client/static/return_data.json", "w") as f:
-    # # Write the dictionary to the file as a JSON object
-    #    json.dump(return_data, f)
+    # export the return json dict for convenience
+    with open("src/visualiser_client/static/return_data.json", "w") as f:
+        json.dump(return_data, f)
 
 
 def render_debug(model: Model):
@@ -194,13 +188,99 @@ def render_debug(model: Model):
         
         rendered_graph_json['cells'].append(edge_json_dict)
 
-
     # Save the graph
     with open("src/visualiser_client/static/graph.json", "w") as f:
         json.dump(rendered_graph_json, f)
         
-        
+def render_schematic():
+
+    rendered_graph_json = {'cells': []}
+
+    vertex_json_dict = {
+        "id": 1,
+        "type": 'standard.Circle',
+        "position": {
+            "x": 100,
+            "y": 100
+        },
+        "size": {
+            "width": VISUALIZER_SETTINGS['vertex_size'],
+            "height": VISUALIZER_SETTINGS['vertex_size']
+        },
+        "attrs": {
+            "body": {
+            "fill": 'blue'
+            },
+            "label": {
+                "text": 'test',    
+                'font-family': VISUALIZER_SETTINGS['text']['font'],
+                'font-size': VISUALIZER_SETTINGS['text']['vertex_font_size']
+            }
+        }
+    }
+    rendered_graph_json['cells'].append(vertex_json_dict)
+    vertex_json_dict = {
+        "id": 2,
+        "type": 'standard.Rectangle',
+        "position": {
+            "x": 100,
+            "y": 100
+        },
+        "size": {
+            "width": VISUALIZER_SETTINGS['vertex_size'],
+            "height": VISUALIZER_SETTINGS['vertex_size']
+        },
+        "attrs": {
+            "body": {
+            "fill": 'blue'
+            },
+            "label": {
+                "text": 'test',    
+                'font-family': VISUALIZER_SETTINGS['text']['font'],
+                'font-size': VISUALIZER_SETTINGS['text']['vertex_font_size']
+            }
+        }
+    }
+    rendered_graph_json['cells'].append(vertex_json_dict)
+
+    edge_json_dict = {
+        "type": "standard.Link",
+        "source": {
+            "id": 1
+        },
+        "target": {
+            "id": 2
+        },
+        "labels": [{
+            "attrs": {
+                'text': {
+                    'text': 'test',
+                    'font-family': VISUALIZER_SETTINGS['text']['font'],
+                    'font-size': VISUALIZER_SETTINGS['text']['edge_font_size']
+
+                }}}],
+        "router": {
+                "name" : "orthogonal",
+        },
+        "attrs": {
+            "line": {
+                "stroke": 'black',
+                'stroke-width': 2
+            },
+        }
+    }
+
+    #rendered_graph_json['cells'].append(vertex_json_dict)
+    #rendered_graph_json['cells'].append(edge_json_dict)
+
+    component = Component(pin_number = 4, comp_id = 6, position = WindowPosition(10,10))
+    rendered_graph_json['cells'].append(component.comp_struct)
+
+    # Save the graph
+    with open("src/visualiser_client/static/graph.json", "w") as f:
+        json.dump(rendered_graph_json, f)
 
 if __name__ == "__main__":
     generate_visualizer_window_config()
-    render_debug(toy_model)
+    #render_debug(toy_model)
+    render_schematic()
