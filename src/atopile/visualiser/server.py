@@ -5,7 +5,7 @@ from typing import Any, Dict
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from atopile.visualiser.render import render, save_positions
+from atopile.visualiser.render import render_debug, save_positions
 
 # FIXME: https://github.com/tiangolo/fastapi/issues/1508
 log = logging.Logger(__name__, level=logging.DEBUG)
