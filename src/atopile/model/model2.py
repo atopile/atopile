@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 from atopile.model import utils
 import logging
 import copy
@@ -60,7 +60,7 @@ class Model:
 
         # replace the paths and references of all the blocks/subcomponents
         class_paths = copy.copy(sg.vs["path"])
-        sg.vs.find(path_eq=class_path)["ref"] = instance_path
+        sg.vs.find(path_eq=class_path)["ref"] = instance_ref
         sg.vs["path"] = [p.replace(class_path, instance_path) for p in class_paths]
 
         self.graph: ig.Graph = self.graph.disjoint_union(sg)
@@ -131,15 +131,16 @@ class Model:
 
         return path
 
-    def new_block(self, block_type: VertexType, ref: str, part_of: str) -> str:
-        """
-        Create a new empty block in the graph.
-        """
-        assert block_type in block_types
-        path = self.new_vertex(block_type, ref, part_of)
-        self.data[path] = {}
-        self.schemas[path] = {}
-        return path
+    # DEPRECATED (in it's current form)
+    # def new_block(self, block_type: VertexType, ref: str, part_of: str) -> str:
+    #     """
+    #     Create a new empty block in the graph.
+    #     """
+    #     assert block_type in block_types
+    #     path = self.new_vertex(block_type, ref, part_of)
+    #     self.data[path] = {}
+    #     self.schemas[path] = {}
+    #     return path
 
     def new_edge(self, edge_type: EdgeType, from_path: str, to_path: str) -> None:
         """
@@ -151,3 +152,28 @@ class Model:
             self.graph.vs.find(path_eq=to_path),
             type=edge_type.name
         )
+
+    def find_ref(self, ref: str, context: str) -> Tuple[None, str]:
+        """
+        Find what reference means in the current context.
+        Returns a tuple of the return type and the path to the object.
+        """
+        context_vertex = self.graph.vs.find(path_eq=context)
+        part_of_view = self.get_graph_view([EdgeType.part_of, EdgeType.option_of])
+        ref_parts = ref.split(".")
+        for elder in part_of_view.bfsiter(context_vertex.index, mode="out"):
+            elder_direct_children = self.graph.vs[part_of_view.neighbors(elder.index, mode="in")]
+            if ref_parts[0] in elder_direct_children["ref"]:
+                break  # found the first element in the sequence
+        else:
+            raise KeyError(f"Could not find {ref_parts[0]} in context of {context}")
+
+        ref_vertex_trail = [elder]
+        for ref_part in ref_parts:
+            child_candidates = self.graph.vs[part_of_view.neighbors(ref_vertex_trail[-1].index, mode="in")]
+            try:
+                ref_vertex_trail.append(child_candidates.find(ref_eq=ref_part))
+            except ValueError as ex:
+                raise AttributeError(f"Could not find {ref_part} in context of {context}") from ex
+
+        return None, ref_vertex_trail[-1]["path"]
