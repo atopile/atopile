@@ -36,6 +36,10 @@ MODULE : 'module';
 PIN : 'pin';
 SIGNAL : 'signal';
 
+WITH : 'with';
+OPTIONAL : 'optional';
+NEW : 'new';
+
 // python3 imports -- kept for reference
 // TODO: tidy up
 // AND : 'and';

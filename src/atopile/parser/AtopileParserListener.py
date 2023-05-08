@@ -26,12 +26,30 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by AtopileParser#block_def.
-    def enterBlock_def(self, ctx:AtopileParser.Block_defContext):
+    # Enter a parse tree produced by AtopileParser#simple_stmts.
+    def enterSimple_stmts(self, ctx:AtopileParser.Simple_stmtsContext):
         pass
 
-    # Exit a parse tree produced by AtopileParser#block_def.
-    def exitBlock_def(self, ctx:AtopileParser.Block_defContext):
+    # Exit a parse tree produced by AtopileParser#simple_stmts.
+    def exitSimple_stmts(self, ctx:AtopileParser.Simple_stmtsContext):
+        pass
+
+
+    # Enter a parse tree produced by AtopileParser#simple_stmt.
+    def enterSimple_stmt(self, ctx:AtopileParser.Simple_stmtContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#simple_stmt.
+    def exitSimple_stmt(self, ctx:AtopileParser.Simple_stmtContext):
+        pass
+
+
+    # Enter a parse tree produced by AtopileParser#compound_stmt.
+    def enterCompound_stmt(self, ctx:AtopileParser.Compound_stmtContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#compound_stmt.
+    def exitCompound_stmt(self, ctx:AtopileParser.Compound_stmtContext):
         pass
 
 
@@ -41,6 +59,24 @@ class AtopileParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by AtopileParser#block.
     def exitBlock(self, ctx:AtopileParser.BlockContext):
+        pass
+
+
+    # Enter a parse tree produced by AtopileParser#componentdef.
+    def enterComponentdef(self, ctx:AtopileParser.ComponentdefContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#componentdef.
+    def exitComponentdef(self, ctx:AtopileParser.ComponentdefContext):
+        pass
+
+
+    # Enter a parse tree produced by AtopileParser#moduledef.
+    def enterModuledef(self, ctx:AtopileParser.ModuledefContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#moduledef.
+    def exitModuledef(self, ctx:AtopileParser.ModuledefContext):
         pass
 
 
@@ -62,30 +98,39 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by AtopileParser#def_stmt.
-    def enterDef_stmt(self, ctx:AtopileParser.Def_stmtContext):
+    # Enter a parse tree produced by AtopileParser#pindef_stmt.
+    def enterPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
         pass
 
-    # Exit a parse tree produced by AtopileParser#def_stmt.
-    def exitDef_stmt(self, ctx:AtopileParser.Def_stmtContext):
-        pass
-
-
-    # Enter a parse tree produced by AtopileParser#paramatised_stmt.
-    def enterParamatised_stmt(self, ctx:AtopileParser.Paramatised_stmtContext):
-        pass
-
-    # Exit a parse tree produced by AtopileParser#paramatised_stmt.
-    def exitParamatised_stmt(self, ctx:AtopileParser.Paramatised_stmtContext):
+    # Exit a parse tree produced by AtopileParser#pindef_stmt.
+    def exitPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
         pass
 
 
-    # Enter a parse tree produced by AtopileParser#assign_value.
-    def enterAssign_value(self, ctx:AtopileParser.Assign_valueContext):
+    # Enter a parse tree produced by AtopileParser#signaldef_stmt.
+    def enterSignaldef_stmt(self, ctx:AtopileParser.Signaldef_stmtContext):
         pass
 
-    # Exit a parse tree produced by AtopileParser#assign_value.
-    def exitAssign_value(self, ctx:AtopileParser.Assign_valueContext):
+    # Exit a parse tree produced by AtopileParser#signaldef_stmt.
+    def exitSignaldef_stmt(self, ctx:AtopileParser.Signaldef_stmtContext):
+        pass
+
+
+    # Enter a parse tree produced by AtopileParser#with_stmt.
+    def enterWith_stmt(self, ctx:AtopileParser.With_stmtContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#with_stmt.
+    def exitWith_stmt(self, ctx:AtopileParser.With_stmtContext):
+        pass
+
+
+    # Enter a parse tree produced by AtopileParser#new_element.
+    def enterNew_element(self, ctx:AtopileParser.New_elementContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#new_element.
+    def exitNew_element(self, ctx:AtopileParser.New_elementContext):
         pass
 
 

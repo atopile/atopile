@@ -8,21 +8,26 @@ options {
 
 file_input: (NEWLINE | stmt)* EOF;
 
-stmt: block_def | assign_stmt | connect_stmt | def_stmt;
+stmt: simple_stmts | compound_stmt;
+simple_stmts: simple_stmt (';' simple_stmt)* ';'? NEWLINE;
+simple_stmt: assign_stmt | connect_stmt | pindef_stmt | signaldef_stmt | with_stmt;
+compound_stmt: componentdef | moduledef;
+block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 
-block_def: (COMPONENT | MODULE) paramatised_stmt ':' block;
-block: NEWLINE INDENT stmt+ DEDENT;
+componentdef: ('optional')? 'component' name':' block;
+moduledef: ('optional')? 'module' name ':' block;
 
-assign_stmt: name_or_attr '=' assign_value;
+assign_stmt: name_or_attr '=' (STRING | NUMBER | name_or_attr | new_element);
 connect_stmt: name_or_attr '~' name_or_attr;
-def_stmt: (PIN | SIGNAL) name_or_attr;
+pindef_stmt: 'pin' name;
+signaldef_stmt: 'signal' name;
+with_stmt: 'with' name_or_attr;
 
-paramatised_stmt: name_or_attr '(' ')';
+new_element: 'new' name_or_attr;
 
-assign_value: STRING | NUMBER | name_or_attr | paramatised_stmt;
-name_or_attr: attr | name ;
-attr: name ('.' name)+ ;
-name : NAME ;
+name_or_attr: attr | name;
+attr: name ('.' name)+;
+name : NAME;
 
 // ##### -- from the example Python3 parser TODO: tidy up
 

@@ -19,13 +19,33 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#block_def.
-    def visitBlock_def(self, ctx:AtopileParser.Block_defContext):
+    # Visit a parse tree produced by AtopileParser#simple_stmts.
+    def visitSimple_stmts(self, ctx:AtopileParser.Simple_stmtsContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#simple_stmt.
+    def visitSimple_stmt(self, ctx:AtopileParser.Simple_stmtContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#compound_stmt.
+    def visitCompound_stmt(self, ctx:AtopileParser.Compound_stmtContext):
         return self.visitChildren(ctx)
 
 
     # Visit a parse tree produced by AtopileParser#block.
     def visitBlock(self, ctx:AtopileParser.BlockContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#componentdef.
+    def visitComponentdef(self, ctx:AtopileParser.ComponentdefContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#moduledef.
+    def visitModuledef(self, ctx:AtopileParser.ModuledefContext):
         return self.visitChildren(ctx)
 
 
@@ -39,18 +59,23 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#def_stmt.
-    def visitDef_stmt(self, ctx:AtopileParser.Def_stmtContext):
+    # Visit a parse tree produced by AtopileParser#pindef_stmt.
+    def visitPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#paramatised_stmt.
-    def visitParamatised_stmt(self, ctx:AtopileParser.Paramatised_stmtContext):
+    # Visit a parse tree produced by AtopileParser#signaldef_stmt.
+    def visitSignaldef_stmt(self, ctx:AtopileParser.Signaldef_stmtContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#assign_value.
-    def visitAssign_value(self, ctx:AtopileParser.Assign_valueContext):
+    # Visit a parse tree produced by AtopileParser#with_stmt.
+    def visitWith_stmt(self, ctx:AtopileParser.With_stmtContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#new_element.
+    def visitNew_element(self, ctx:AtopileParser.New_elementContext):
         return self.visitChildren(ctx)
 
 

@@ -1,0 +1,26 @@
+# this is a comment, it should be safely ignored
+
+component Resistor:
+    pin p1
+    pin p2
+
+module Vdiv:
+    signal a
+    signal center
+    signal b
+
+    R1 = new Resistor
+    R2 = new Resistor
+
+    R1.p1 ~ a
+    R1.p2 ~ center
+    R2.p1 ~ center
+    R2.p2 ~ b
+
+    optional module amazing_feature:
+        signal magic_signal
+        # jks, it also just connects to the center
+        magic_signal ~ center
+
+vdiv1 = new Vdiv
+with vdiv1.amazing_feature
