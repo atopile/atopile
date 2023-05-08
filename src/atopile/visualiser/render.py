@@ -2,7 +2,7 @@ from atopile.model.model2 import Model
 from atopile.data.toy_model import m as toy_model
 from atopile.model.utils import EDGE_COLOR_DICT, VERTEX_COLOR_DICT, generate_uid_from_path
 
-from atopile.visualiser.visualizer_model import UserInterface, UISchematic, UIModule, UIComponent, UISignal, UIVertexEdgeGraph
+from atopile.visualiser.visualizer_model import UserInterface, UISchematic, UIModule, UIComponent, UISignal, UIPin, UIConnection, UIVertexEdgeGraph
 import atopile.visualiser.utils as utils
 
 import json as json
@@ -19,6 +19,7 @@ def generate_visualizer_window_config(user_interface: UserInterface):
 def save_positions(return_data):
     
     #render_debug(toy_model, return_data)
+    render_schematic(return_data)
     
     # export the return json dict for convenience
     with open("src/visualiser_client/static/return_data.json", "w") as f:
@@ -61,28 +62,35 @@ def render_debug(model: Model, server_jointjs_return_data = None):
         json.dump(rendered_graph_json, f)
 
         
-def render_schematic():
+def render_schematic(server_jointjs_return_data = None):
     schematic = UISchematic()
 
-    component1 = UIComponent(id = 6)
+    component1 = UIComponent(uid = 6)
     for i in range(6):
-        component1.add_pin()
+        pin = UIPin(number = i, uid = 10+i)
+        component1.add_pin(pin)
     component1.update_position(utils.WindowPosition(150, 350))
     schematic.add_component(component1)
 
-    component2 = UIComponent(id = 4)
+    component2 = UIComponent(uid = 4)
     for i in range(8):
-        component2.add_pin()
+        pin = UIPin(number = i, uid = 20+i)
+        component2.add_pin(pin)
     component2.update_position(utils.WindowPosition(800, 600))
     schematic.add_component(component2)
 
-    module = UIModule(id = 7)
-    module.add_signal(UISignal(name='sig_1'))
-    module.add_signal(UISignal(name='sig_2'))
+    edge = UIConnection(source_comp=6,source_port=11,target_comp=4, target_port=21)
+    schematic.add_connection(edge)
+
+    module = UIModule(uid = 7)
+    module.add_signal(UISignal(name='sig_1', uid = 44))
+    module.add_signal(UISignal(name='sig_2', uid = 55))
     module.add_component(component1)
     module.add_component(component2)
 
     schematic.add_module(module)
+
+    schematic.update_position(server_jointjs_return_data)
 
     # Save the graph
     rendered_graph_json = {}

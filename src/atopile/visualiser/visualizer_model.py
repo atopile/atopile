@@ -9,15 +9,16 @@ from attrs import define, field
 @define
 class UISignal:
     name: str
-    connect_to_pin: int = None
+    uid: int
 
 @define
 class UIPin:
     number: int
+    uid: int
 
 @define
 class UIComponent:
-    id: str
+    uid: str
     position: utils.WindowPosition = field(init=False)
     dimension: utils.ObjectDimension = field(init=False)
     extent: utils.WindowDimension  = field(init=False)
@@ -29,8 +30,7 @@ class UIComponent:
         self.dimension = utils.ObjectDimension(width=40, height=10)
         self.extent = utils.get_extent_from_pos_and_dim(self.position, self.dimension)
 
-    def add_pin(self) -> None:
-        pin = UIPin(number = len(self.pins))
+    def add_pin(self, pin: UIPin) -> None:
         self.pins.append(pin)
         self.dimension.height = (len(self.pins) - len(self.pins)%2) * 20 if len(self.pins) > 1 else 20
         self.extent = utils.get_extent_from_pos_and_dim(self.position, self.dimension)
@@ -50,7 +50,7 @@ class UIComponent:
             group = 'right' if pin.number%2 else 'left'
 
             port = {
-                "id": pin.number,
+                "id": pin.uid,
                 "group": group,
                 "attrs": {
                     "portLabel": {
@@ -64,11 +64,11 @@ class UIComponent:
         for side in ['left', 'right']:
             port_groups[side] = utils.generate_port_group(side)
 
-        return utils.generate_rectangle_of_type('component', self.id, self.dimension, self.position, port_groups, ports)
+        return utils.generate_rectangle_of_type('component', self.uid, self.dimension, self.position, 3, port_groups, ports)
 
 @define
 class UIModule:
-    id: str
+    uid: str
     position: utils.WindowPosition = field(init=False)
     dimension: utils.ObjectDimension = field(init=False)
     extent: utils.WindowDimension  = field(init=False)
@@ -129,27 +129,61 @@ class UIModule:
             port_groups[side] = utils.generate_port_group(side)
 
 
-        return utils.generate_rectangle_of_type('module', self.id, self.dimension, self.position, port_groups, ports)
+        return utils.generate_rectangle_of_type('module', self.uid, self.dimension, self.position, port_groups, ports)
+
+@define
+class UIConnection:
+    source_comp: str
+    source_port: str
+    target_comp: str
+    target_port: str
+
+    def to_jointjs(self) -> dict:
+        return utils.generate_connection(source_comp = self.source_comp,
+                                     source_port = self.source_port,
+                                     target_comp = self.target_comp,
+                                     target_port = self.target_port)
 
 class UISchematic:
     def __init__(self) -> None:
         self.edges = []
         self.comps = []
         self.modules = []
+        self.connections = []
     
     def add_module(self, module: UIModule):
         self.modules.append(module)
     
     def add_component(self, comp: UIComponent):
         self.comps.append(comp)
+
+    def add_connection(self, connection: UIConnection):
+        self.connections.append(connection)
+    
+    def update_position(self, schematic_position_config):
+        if schematic_position_config is not None:
+            schematic_uid_list = []
+            for element in schematic_position_config['cells']:
+                schematic_uid_list.append(element['id'])
+            for element in schematic_position_config['cells']: 
+                for comp in self.comps:
+                    if comp.uid in schematic_uid_list:
+                        e_pos = utils.WindowPosition(x = element['position']['x'],
+                                                    y = element['position']['y'])
+                        comp.update_position(e_pos)
+        for module in self.modules:
+            module.update_pos_dim_ext()
+                        
     
     def to_jointjs(self) -> dict:
         jointjs_element_list = []
         
-        for comp in self.comps:
-            jointjs_element_list.append(comp.to_jointjs())
         for module in self.modules:
             jointjs_element_list.append(module.to_jointjs())
+        for comp in self.comps:
+            jointjs_element_list.append(comp.to_jointjs())
+        for connection in self.connections:
+            jointjs_element_list.append(connection.to_jointjs())
         
         return jointjs_element_list
 

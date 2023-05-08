@@ -109,7 +109,7 @@ def generate_port_group(position: str) -> dict:
                 }
             }
 
-def generate_rectangle_of_type(type: str, id: str, dimension: ObjectDimension, position: WindowPosition, port_groups: list = None, ports: list = None):
+def generate_rectangle_of_type(type: str, id: str, dimension: ObjectDimension, position: WindowPosition, z_layer: int = 0, port_groups: list = None, ports: list = None):
     return {
             "type": "standard.Rectangle",
             "position": {
@@ -151,7 +151,7 @@ def generate_rectangle_of_type(type: str, id: str, dimension: ObjectDimension, p
                 "items": ports
             },
             "id": id,
-            "z": 1,
+            "z": z_layer,
             "attrs": {
                 "body": {
                 "stroke": "#333333",
@@ -210,6 +210,37 @@ def generate_edge(source: str, target: str, type: str, color: str) -> dict:
             "attrs": {
                 "line": {
                     "stroke": color,
+                    'stroke-width': 2
+                },
+            }
+        }
+
+def generate_connection(source_comp: str, source_port: str, target_comp: str, target_port: str) -> dict:
+    return {
+            "type": "standard.Link",
+            "source": {
+                "port": source_port,
+                "id": source_comp
+            },
+            "target": {
+                "port": target_port,
+                "id": target_comp
+            },
+            "z": -1,
+            "labels": [{
+                "attrs": {
+                    'text': {
+                        'text': None,
+                        'font-family': VISUALIZER_SETTINGS['text']['font'],
+                        'font-size': VISUALIZER_SETTINGS['text']['edge_font_size']
+
+                    }}}],
+            "router": {
+                "name" : "orthogonal"
+            },
+            "attrs": {
+                "line": {
+                    "stroke": 'black',
                     'stroke-width': 2
                 },
             }
