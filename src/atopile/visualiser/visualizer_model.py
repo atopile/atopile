@@ -7,16 +7,16 @@ from attrs import define, field
 
 
 @define
-class Signal:
+class UISignal:
     name: str
     connect_to_pin: int = None
 
 @define
-class Pin:
+class UIPin:
     number: int
 
 @define
-class Component:
+class UIComponent:
     id: str
     position: utils.WindowPosition = field(init=False)
     dimension: utils.ObjectDimension = field(init=False)
@@ -30,19 +30,19 @@ class Component:
         self.extent = utils.get_extent_from_pos_and_dim(self.position, self.dimension)
 
     def add_pin(self) -> None:
-        pin = Pin(number = len(self.pins))
+        pin = UIPin(number = len(self.pins))
         self.pins.append(pin)
         self.dimension.height = (len(self.pins) - len(self.pins)%2) * 20 if len(self.pins) > 1 else 20
         self.extent = utils.get_extent_from_pos_and_dim(self.position, self.dimension)
     
-    def add_signal(self, signal: Signal) -> None: # Might have to delete this
+    def add_signal(self, signal: UISignal) -> None: # Might have to delete this
         self.signals.append(signal)
 
     def update_position(self, position: utils.WindowPosition) -> None:
         self.position = position
         self.extent = utils.get_extent_from_pos_and_dim(self.position, self.dimension)
 
-    def generate_jointjs_rep(self) -> dict:
+    def to_jointjs(self) -> dict:
         # Create the ports
         ports = []
         for pin in self.pins:
@@ -67,7 +67,7 @@ class Component:
         return utils.generate_rectangle_of_type('component', self.id, self.dimension, self.position, port_groups, ports)
 
 @define
-class Module:
+class UIModule:
     id: str
     position: utils.WindowPosition = field(init=False)
     dimension: utils.ObjectDimension = field(init=False)
@@ -80,10 +80,10 @@ class Module:
         self.dimension = utils.ObjectDimension(width=40, height=10)
         self.extent = utils.get_extent_from_pos_and_dim(self.position, self.dimension)
 
-    def add_signal(self, signal: Signal) -> None:
+    def add_signal(self, signal: UISignal) -> None:
         self.signals.append(signal)
     
-    def add_component(self, sub_component: Component) -> None:
+    def add_component(self, sub_component: UIComponent) -> None:
         self.sub_components.append(sub_component)
 
     def set_position(self, position: utils.WindowPosition) -> None:
@@ -105,7 +105,7 @@ class Module:
         self.position.x = self.extent.x_min
         self.position.y = self.extent.y_min
     
-    def generate_jointjs_rep(self) -> dict:
+    def to_jointjs(self) -> dict:
         self.update_pos_dim_ext()
         # Create the ports
         ports = []
@@ -130,6 +130,28 @@ class Module:
 
 
         return utils.generate_rectangle_of_type('module', self.id, self.dimension, self.position, port_groups, ports)
+
+class UISchematic:
+    def __init__(self) -> None:
+        self.edges = []
+        self.comps = []
+        self.modules = []
+    
+    def add_module(self, module: UIModule):
+        self.modules.append(module)
+    
+    def add_component(self, comp: UIComponent):
+        self.comps.append(comp)
+    
+    def to_jointjs(self) -> dict:
+        jointjs_element_list = []
+        
+        for comp in self.comps:
+            jointjs_element_list.append(comp.to_jointjs())
+        for module in self.modules:
+            jointjs_element_list.append(module.to_jointjs())
+        
+        return jointjs_element_list
 
 
 @define
