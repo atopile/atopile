@@ -1,5 +1,23 @@
-from attrs import define, field, Factory
-import attr
+from atopile.model.model2 import Model
+from atopile.model.utils import generate_uid_from_path
+
+from attrs import define, field
+
+VISUALIZER_SETTINGS = {
+    'background_color': 'rgba(140, 146, 172, 0.3)',
+    'grid_size': 15,
+    'draw_grid': True,
+    'window_width': 1400,
+    'window_height': 900,
+    'margin_width': 100,
+    'margin_height': 100,
+    'vertex_size': 40,
+    'text': {
+        'font': 'Helvetica',
+        'vertex_font_size': 10,
+        'edge_font_size': 7
+    }
+}
 
 RECTANGLE_TYPES = {
     "component": {
@@ -21,23 +39,52 @@ class WindowDimension:
 
 @define
 class WindowPosition:
-    x: float
-    y: float
+    x: float = 0
+    y: float = 0
 # TODO: enfore usage in older parts of the code
 
 @define
 class ObjectDimension:
-    width: float
-    height: float
+    width: float = 0
+    height: float = 0
 
-@define
-class Signal:
-    name: str
-    connect_to_pin: int = None
 
-@define
-class Pin:
-    number: int
+def map(value, input_min, input_max, output_min, output_max) -> float:
+    return (value - input_min) * (output_max - output_min) / (input_max - input_min) + output_min
+
+def window_coord_transform(coords: WindowPosition, source_dimension: WindowDimension, target_dimension: WindowDimension) -> WindowPosition:
+    new_coords = WindowPosition()
+    new_coords.x = map(coords.x, source_dimension.x_min, source_dimension.x_max, target_dimension.x_min, target_dimension.x_max)
+    new_coords.y = map(coords.y, source_dimension.y_min, source_dimension.y_max, target_dimension.y_min, target_dimension.y_max)
+    return new_coords
+
+def get_coords_from_igraph(model: Model) -> dict:
+    igraph_positions = {}
+    graph_layout = model.graph.layout()
+
+    igraph_min_x_dim = min(sublist[0] for sublist in graph_layout)
+    igraph_max_x_dim = max(sublist[0] for sublist in graph_layout)
+    igraph_min_y_dim = min(sublist[1] for sublist in graph_layout)
+    igraph_max_y_dim = max(sublist[1] for sublist in graph_layout)
+
+    igraph_dimension = WindowDimension(x_min = igraph_min_x_dim,
+                                       x_max = igraph_max_x_dim,
+                                       y_min = igraph_min_y_dim,
+                                       y_max = igraph_max_y_dim)
+    
+    visualizer_dimension = WindowDimension(x_min = VISUALIZER_SETTINGS['margin_width'],
+                                            x_max = VISUALIZER_SETTINGS['window_width'] - VISUALIZER_SETTINGS['margin_width'],
+                                            y_min = VISUALIZER_SETTINGS['margin_height'],
+                                            y_max = VISUALIZER_SETTINGS['window_height'] - VISUALIZER_SETTINGS['margin_height'])
+    
+    verticies = model.graph.vs
+    for vertex in verticies:
+        ig_vertex_pos = WindowPosition(x = graph_layout[vertex.index][0], y = graph_layout[vertex.index][1])
+        vertex_pos = window_coord_transform(ig_vertex_pos, igraph_dimension, visualizer_dimension)
+        vertex_uid = str(generate_uid_from_path(vertex['path']))
+        igraph_positions[vertex_uid] = vertex_pos
+    
+    return igraph_positions
 
 def generate_port_group(position: str) -> dict:
     return {
@@ -119,125 +166,58 @@ def generate_rectangle_of_type(type: str, id: str, dimension: ObjectDimension, p
             }
             }
 
+def generate_vertex(uid: str, ref: str, color: str, position: WindowPosition) -> dict:
+    return {
+            "id": uid,
+            "type": 'standard.Circle',
+            "position": {
+                "x": position.x,
+                "y": position.y
+            },
+            "size": {
+                "width": VISUALIZER_SETTINGS['vertex_size'],
+                "height": VISUALIZER_SETTINGS['vertex_size']
+            },
+            "attrs": {
+                "body": {
+                "fill": color
+                },
+                "label": {
+                    "text": ref,    
+                    'font-family': VISUALIZER_SETTINGS['text']['font'],
+                    'font-size': VISUALIZER_SETTINGS['text']['vertex_font_size']
+                }
+            }
+        }
+
+def generate_edge(source: str, target: str, type: str, color: str) -> dict:
+    return {
+            "type": "standard.Link",
+            "source": {
+                "id": source
+            },
+            "target": {
+                "id": target
+            },
+            "labels": [{
+                "attrs": {
+                    'text': {
+                        'text': type,
+                        'font-family': VISUALIZER_SETTINGS['text']['font'],
+                        'font-size': VISUALIZER_SETTINGS['text']['edge_font_size']
+
+                    }}}],
+            "attrs": {
+                "line": {
+                    "stroke": color,
+                    'stroke-width': 2
+                },
+            }
+        }
+
 def get_extent_from_pos_and_dim(position: WindowPosition, dimension: ObjectDimension) -> WindowDimension:
     return WindowDimension(x_min = position.x, 
                             x_max = position.x + dimension.width, 
                             y_min = position.y, 
                             y_max = position.y + dimension.height)
 
-@define
-class Component:
-    id: str
-    position: WindowPosition = field(init=False)
-    dimension: ObjectDimension = field(init=False)
-    extent: WindowDimension  = field(init=False)
-    pins: list = field(factory=list)
-    signals: list = field(factory=list) # Might have to delete this
-
-    def __attrs_post_init__(self):
-        self.position = WindowPosition(x = 10, y = 10)
-        self.dimension = ObjectDimension(width=40, height=10)
-        self.extent = get_extent_from_pos_and_dim(self.position, self.dimension)
-
-    def add_pin(self) -> None:
-        pin = Pin(number = len(self.pins))
-        self.pins.append(pin)
-        self.dimension.height = (len(self.pins) - len(self.pins)%2) * 20 if len(self.pins) > 1 else 20
-        self.extent = get_extent_from_pos_and_dim(self.position, self.dimension)
-    
-    def add_signal(self, signal: Signal) -> None: # Might have to delete this
-        self.signals.append(signal)
-
-    def update_position(self, position: WindowPosition) -> None:
-        self.position = position
-        self.extent = get_extent_from_pos_and_dim(self.position, self.dimension)
-
-    def generate_jointjs_rep(self) -> dict:
-        # Create the ports
-        ports = []
-        for pin in self.pins:
-
-            group = 'right' if pin.number%2 else 'left'
-
-            port = {
-                "id": pin.number,
-                "group": group,
-                "attrs": {
-                    "portLabel": {
-                        "text": pin.number
-                    }
-                }
-                }
-            ports.append(port)
-
-        port_groups = {}
-        for side in ['left', 'right']:
-            port_groups[side] = generate_port_group(side)
-
-        return generate_rectangle_of_type('component', self.id, self.dimension, self.position, port_groups, ports)
-
-@define
-class Module:
-    id: str
-    position: WindowPosition = field(init=False)
-    dimension: ObjectDimension = field(init=False)
-    extent: WindowDimension  = field(init=False)
-    signals: list = field(factory=list)
-    sub_components: list = field(factory=list)
-
-    def __attrs_post_init__(self):
-        self.position = WindowPosition(x = 10, y = 10)
-        self.dimension = ObjectDimension(width=40, height=10)
-        self.extent = get_extent_from_pos_and_dim(self.position, self.dimension)
-
-    def add_signal(self, signal: Signal) -> None:
-        self.signals.append(signal)
-    
-    def add_component(self, sub_component: Component) -> None:
-        self.sub_components.append(sub_component)
-
-    def set_position(self, position: WindowPosition) -> None:
-        self.position = position
-        self.extent = get_extent_from_pos_and_dim(self.position, self.dimension)
-    
-    def update_bounding_box(self) -> None:
-        # Calculate the position of the module
-        self.extent.x_min = min(component.extent.x_min for component in self.sub_components) - 40
-        self.extent.x_max = max(component.extent.x_max for component in self.sub_components) + 40
-        self.extent.y_min = min(component.extent.y_min for component in self.sub_components) - 40
-        self.extent.y_max = max(component.extent.y_max for component in self.sub_components) + 40
-
-        self.dimension.width = self.extent.x_max - self.extent.x_min
-        self.dimension.height = self.extent.y_max - self.extent.y_min
-    
-    def update_pos_dim_ext(self) -> None:
-        self.update_bounding_box()
-        self.position.x = self.extent.x_min
-        self.position.y = self.extent.y_min
-    
-    def generate_jointjs_rep(self) -> dict:
-        self.update_pos_dim_ext()
-        # Create the ports
-        ports = []
-        for signal_nb, signal in enumerate(self.signals):
-
-            group = 'right' if signal_nb%2 else 'left'
-
-            port = {
-                "id": signal.name,
-                "group": group,
-                "attrs": {
-                    "portLabel": {
-                        "text": signal.name
-                    }
-                }
-                }
-            ports.append(port)
-        
-        port_groups = {}
-        for side in ['left', 'right']:
-            port_groups[side] = generate_port_group(side)
-
-
-        return generate_rectangle_of_type('module', self.id, self.dimension, self.position, port_groups, ports)
-    
