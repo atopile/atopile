@@ -106,7 +106,6 @@ class Model:
         parent_edges["type"] = EdgeType.part_of.name
         return option_path
 
-
     def new_vertex(self, vertex_type: VertexType, ref: str, part_of: Optional[str] = None, option_of: Optional[str] = None) -> str:
         """
         Create a new vertex in the graph.
@@ -130,17 +129,6 @@ class Model:
             self.new_edge(EdgeType.option_of, path, option_of)
 
         return path
-
-    # DEPRECATED (in it's current form)
-    # def new_block(self, block_type: VertexType, ref: str, part_of: str) -> str:
-    #     """
-    #     Create a new empty block in the graph.
-    #     """
-    #     assert block_type in block_types
-    #     path = self.new_vertex(block_type, ref, part_of)
-    #     self.data[path] = {}
-    #     self.schemas[path] = {}
-    #     return path
 
     def new_edge(self, edge_type: EdgeType, from_path: str, to_path: str) -> None:
         """

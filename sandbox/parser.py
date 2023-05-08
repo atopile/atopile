@@ -97,15 +97,20 @@ class ModelBuildingVisitor(AtopileParserVisitor):
         return super().visitConnect_stmt(ctx)
 
     def visitWith_stmt(self, ctx):
+        with_ref = ctx.name_or_attr().getText()
+        _, with_path = self.model.find_ref(with_ref, self.current_parent)
+
+        self.model.enable_option(with_path)
+
         return super().visitWith_stmt(ctx)
 
     def visitNew_element(self, ctx):
         class_ref = ctx.name_or_attr().getText()
         instance_ref = ctx.parentCtx.name_or_attr(0).getText()
-
         _, class_path = self.model.find_ref(class_ref, self.current_parent)
 
         self.model.instantiate_block(class_path, instance_ref, self.current_parent)
+
         return super().visitNew_element(ctx)
 
 m = Model()
@@ -114,6 +119,10 @@ visitor.visit(tree)
 m.plot(debug=True)
 
 # %%
-m.plot(debug=True)
+from atopile.visualiser.render import UserInterface, generate_visualizer_window_config, render_debug, render_schematic
 
+ui = UserInterface()
+generate_visualizer_window_config(ui)
+render_debug(m)
+# render_schematic()
 # %%
