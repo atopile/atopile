@@ -1,184 +1,167 @@
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
+from atopile.model import utils
+import logging
+import copy
 
 import igraph as ig
 
+log = logging.getLogger(__name__)
 
 class VertexType(Enum):
-    block = "block"
-    package = "package"
+    file = "file"
+    module = "module"
+    component = "component"
     pin = "pin"
-    ethereal_pin = "ethereal_pin"
+    signal = "signal"
+
+block_types = [VertexType.module, VertexType.component]
+pin_types = [VertexType.pin, VertexType.signal]
 
 class EdgeType(Enum):
     connects_to = "connects_to"
     part_of = "part_of"
-    defined_by = "defined_by"
+    option_of = "option_of"
     instance_of = "instance_of"
+    inherits_from = "inherits_from"
 
 class Model:
     def __init__(self) -> None:
         self.graph = ig.Graph(directed=True)
+        self.graph.vs["type"] = []
+        self.graph.vs["path"] = []
+
         self.data = {}
+        self.schemas = {}
 
-    def get_logical_graph(self) -> ig.Graph:
-        sg = self.graph.subgraph_edges(self.graph.es.select(type_in=[EdgeType.part_of.name, EdgeType.defined_by.name]), delete_vertices=False)
+    def plot(self, *args, **kwargs):
+        return utils.plot(self.graph, *args, **kwargs)
+
+    def get_graph_view(self, edge_types: Union[EdgeType, List[EdgeType]]) -> ig.Graph:
+        """
+        Look at the graph from the perspective of the given edge types.
+        """
+        if not isinstance(edge_types, list):
+            edge_types = [EdgeType(edge_types)]
+        edge_type_names = [e.name for e in edge_types]
+        sg = self.graph.subgraph_edges(self.graph.es.select(type_in=edge_type_names), delete_vertices=False)
         return sg
 
-    def get_instance_of_graph(self) -> ig.Graph:
-        sg = self.graph.subgraph_edges(self.graph.es.select(type_in=EdgeType.instance_of.name), delete_vertices=False)
-        return sg
+    def instantiate_block(self, class_path: str, instance_ref: str, part_of_path: str) -> str:
+        """
+        Take the feature, component or module and create an instance of it.
+        """
+        class_root = self.graph.vs.find(path_eq=class_path)
+        part_of_graph = self.get_graph_view([EdgeType.part_of, EdgeType.option_of])
+        class_children_idxs = part_of_graph.subcomponent(class_root.index, mode="in")
+        class_children = part_of_graph.vs[class_children_idxs]
+        sg = self.graph.subgraph(class_children)
+        instance_path = part_of_path + "/" + instance_ref
 
-    def get_instance_of_sub_graph(self, root_vertex: int) -> ig.Graph:
-        instance_of_graph = self.get_instance_of_graph()
-        definition_graph = instance_of_graph.subcomponent(root_vertex)
-        subgraph = self.graph.induced_subgraph(definition_graph)
-        return subgraph
-
-    def get_part_of_graph(self) -> ig.Graph:
-        sg = self.graph.subgraph_edges(self.graph.es.select(type_in=EdgeType.part_of.name), delete_vertices=False)
-        return sg
-
-    def get_sub_part_of_graph(self, root_vertex) -> ig.Graph:
-        part_of_graph = self.get_part_of_graph()
-        instance_graph = part_of_graph.subcomponent(root_vertex)
-        subgraph = self.graph.induced_subgraph(instance_graph)
-        return subgraph
-
-    def get_electical_graph(self) -> ig.Graph:
-        return self.graph.subgraph_edges(self.graph.es.select(type_eg=EdgeType.connects_to), delete_vertices=False)
-
-    def get_idxs_from_paths(self, paths: List[str]) -> List[int]:
-        return [self.get_vertex_by_path(path).index for path in paths]
-
-    def get_paths_from_idxs(self, idxs: List[int]) -> List[str]:
-        return self.graph.vs[idxs]["path"]
-
-    # untested
-    def get_parents_idxs(self, id: int) -> List[int]:
-        sg = self.get_logical_graph()
-        parents, _, layers = sg.bfs(id, mode="out")
-        assert len(parents) == max(layers)  # this should be a single linear chain
-        return parents
-
-    # untested
-    def get_parents_paths(self, path: str) -> List[str]:
-        return self.get_parents_idxs(self.get_vertex_by_path(path).index)["path"]
-
-    # untested
-    def get_children_idx(self, idx: int) -> List[int]:
-        sg = self.get_logical_graph()
-        children = sg.subcomponent(idx, mode="in")
-        return children
-
-    # untested
-    def get_children_paths(self, path: str) -> List[str]:
-        return self.get_children_idx(self.get_vertex_by_path(path).index)["path"]
-
-    def get_vertex_by_path(self, path: str) -> ig.Vertex:
-        try:
-            return self.graph.vs.find(path_eq=path)
-        except ValueError as ex:
-            raise KeyError(f"Vertex with path {path} not found") from ex
-
-    def get_vertex_type(self, path: Optional[str] = None, vid: Optional[int] = None) -> VertexType:
-        if (path and vid) or (not path and not vid):
-            raise ValueError("Provide a path or a vertex id")
-        if path:
-            return VertexType(self.get_vertex_by_path(path)["type"])
-        elif vid:
-            return VertexType(self.graph.vs[vid]["type"])
-
-    def add_vertex(self, ref: str, vertex_type: Union[VertexType, str], defined_by: Optional[str] = None, part_of: Optional[str] = None, **kwargs):
-        if defined_by and part_of:
-            raise ValueError("Vertex cannot be both defined_by and part_of")
-        parent = defined_by or part_of  # will result in None if both are None
-
-        path = parent + "/" + ref if parent else ref
-        vertex_params = {
-            "path": path,
-            "ref": ref,
-            "type": VertexType(vertex_type).name,
-        }
-
-        vertex_params.update(kwargs)
-        vertex = self.graph.add_vertex(**vertex_params)
-
-        if part_of:
-            self.graph.add_edge(vertex.index, self.get_vertex_by_path(part_of).index, type='part_of')
-        elif defined_by:
-            self.graph.add_edge(vertex.index, self.get_vertex_by_path(defined_by).index, type='defined_by')
-
-    def add_vertex_parameter(self, path: str, parameter_name: str):
-        self.get_vertex_by_path(path)[parameter_name] = None
-
-    def set_vertex_parameter(self, path: str, parameter_name: str, parameter_value: str):
-        self.get_vertex_by_path(path)[parameter_name] = parameter_value
-
-    def add_connection(self, from_path: str, to_path: str):
-        self.graph.add_edge(self.get_vertex_by_path(from_path).index, self.get_vertex_by_path(to_path).index, type='connects_to')
-
-    def create_instance(self, class_path: str, ref: str, defined_by: Optional[str] = None, part_of: Optional[str] = None):
-        if defined_by and part_of:
-            raise ValueError("instantiation cannot be both defined_by and part_of")
-
-        sg = self.graph.subgraph(self.get_children_idx(self.get_vertex_by_path(class_path).index))
-        if part_of:
-            new_path = part_of + "/" + ref or part_of
-        elif defined_by:
-            new_path = defined_by + "/" + ref or defined_by
-
-        sg.vs["path"] = [p.replace(class_path, new_path) for p in sg.vs["path"]]
-        sg.vs.find(path_eq=new_path)["ref"] = ref
+        # replace the paths and references of all the blocks/subcomponents
+        class_paths = copy.copy(sg.vs["path"])
+        sg.vs.find(path_eq=class_path)["ref"] = instance_ref
+        sg.vs["path"] = [p.replace(class_path, instance_path) for p in class_paths]
 
         self.graph: ig.Graph = self.graph.disjoint_union(sg)
 
-        self.graph.add_edge(
-            self.get_vertex_by_path(new_path).index,
-            self.get_vertex_by_path(class_path).index,
-            type='instance_of'
+        # create new instance and part_of edges
+        self.new_edge(
+            EdgeType.instance_of,
+            instance_path,
+            class_path,
         )
 
+        self.new_edge(
+            EdgeType.part_of,
+            instance_path,
+            part_of_path,
+        )
+
+        # link existing instance edges to the new instance
+        # TODO: see if there's a better or more preformant way to do this, it's a bit unreadable
+        instance_edges = self.graph.es.select(_from_in=class_children_idxs, type_eq=EdgeType.instance_of.name)
+        class_instance_of_edge_tuples = [e.tuple for e in instance_edges]
+        class_instance_of_edge_from_idxs = [e[0] for e in class_instance_of_edge_tuples]
+        class_instance_of_from_paths = self.graph.vs[class_instance_of_edge_from_idxs]["path"]
+        instance_instance_of_from_paths = [p.replace(class_path, instance_path) for p in class_instance_of_from_paths]
+        instance_instance_of_edge_from_idxs = [self.graph.vs.find(path_eq=p).index for p in instance_instance_of_from_paths]
+        class_instance_of_edge_to_idxs = [e[1] for e in class_instance_of_edge_tuples]
+        instance_instance_of_edge_tuples = list(zip(instance_instance_of_edge_from_idxs, class_instance_of_edge_to_idxs))
+        self.graph.add_edges(instance_instance_of_edge_tuples, attributes={"type": [EdgeType.instance_of.name] * len(instance_instance_of_edge_tuples)})
+
+        # copy the data and schemas
+        for instance_vertex_path, class_vertex_path in zip(sg.vs["path"], class_paths):
+            self.data[instance_vertex_path] = copy.deepcopy(self.data.get(class_vertex_path, {}))
+            self.schemas[instance_vertex_path] = copy.deepcopy(self.schemas.get(class_vertex_path, {}))
+
+        return instance_path
+
+    def enable_option(self, option_path: str) -> str:
+        """
+        Enable an option in the graph
+        """
+        option_idx = self.graph.vs.find(path_eq=option_path).index
+        parent_edges = self.graph.es.select(type_eq=EdgeType.option_of.name, _from=option_idx)
+        parent_edges["type"] = EdgeType.part_of.name
+        return option_path
+
+    def new_vertex(self, vertex_type: VertexType, ref: str, part_of: Optional[str] = None, option_of: Optional[str] = None) -> str:
+        """
+        Create a new vertex in the graph.
+        """
+        if part_of and option_of:
+            raise ValueError("Cannot be both part_of and option_of")
+
+        if not (part_of or option_of):
+            path = ref
+        elif part_of:
+            path = f"{part_of}/{ref}"
+        elif option_of:
+            path = f"{option_of}/{ref}"
+
+        assert path not in self.graph.vs["path"]
+        self.graph.add_vertex(ref=ref, type=vertex_type.name, path=path)
+
         if part_of:
-            self.graph.add_edge(
-                self.get_vertex_by_path(new_path).index,
-                self.get_vertex_by_path(part_of).index,
-                type='part_of'
-            )
-        elif defined_by:
-            self.graph.add_edge(
-                self.get_vertex_by_path(new_path).index,
-                self.get_vertex_by_path(defined_by).index,
-                type='defined_by'
-            )
+            self.new_edge(EdgeType.part_of, path, part_of)
+        elif option_of:
+            self.new_edge(EdgeType.option_of, path, option_of)
 
-    def get_vertex_ref(self, vid: int):
-        return self.graph.vs[vid]['ref']
+        return path
 
-    def get_vertex_path(self, vid: int):
-        return self.graph.vs[vid]['path']
+    def new_edge(self, edge_type: EdgeType, from_path: str, to_path: str) -> None:
+        """
+        Create a new edge in the graph.
+        """
+        assert edge_type in EdgeType
+        self.graph.add_edge(
+            self.graph.vs.find(path_eq=from_path),
+            self.graph.vs.find(path_eq=to_path),
+            type=edge_type.name
+        )
 
-    def plot(self, *args, debug=False, **kwargs):
-        color_dict = {
-            None: "grey",
-            "block": "red",
-            "package": "green",
-            "pin": "cyan",
-            "ethereal_pin": "magenta",
-            "connects_to": "blue",
-            "part_of": "black",
-            "defined_by": "green",
-            "instance_of": "red",
-        }
-        assert all(t is not None for t in self.graph.vs["type"])
-
-        kwargs["vertex_color"] = [color_dict.get(type_name, "grey") for type_name in self.graph.vs["type"]]
-        kwargs["edge_color"] = [color_dict[type_name] for type_name in self.graph.es["type"]]
-        kwargs["vertex_label_size"] = 8
-        kwargs["edge_label_size"] = 8
-        if debug:
-            kwargs["vertex_label"] = [f"{i}: {vs['path']}" for i, vs in enumerate(self.graph.vs)]
-            kwargs["edge_label"] = self.graph.es["type"]
+    def find_ref(self, ref: str, context: str) -> Tuple[None, str]:
+        """
+        Find what reference means in the current context.
+        Returns a tuple of the return type and the path to the object.
+        """
+        context_vertex = self.graph.vs.find(path_eq=context)
+        part_of_view = self.get_graph_view([EdgeType.part_of, EdgeType.option_of])
+        ref_parts = ref.split(".")
+        for elder in part_of_view.bfsiter(context_vertex.index, mode="out"):
+            elder_direct_children = self.graph.vs[part_of_view.neighbors(elder.index, mode="in")]
+            if ref_parts[0] in elder_direct_children["ref"]:
+                break  # found the first element in the sequence
         else:
-            kwargs["vertex_label"] = self.graph.vs["ref"]
-        return ig.plot(self.graph, *args, **kwargs)
+            raise KeyError(f"Could not find {ref_parts[0]} in context of {context}")
+
+        ref_vertex_trail = [elder]
+        for ref_part in ref_parts:
+            child_candidates = self.graph.vs[part_of_view.neighbors(ref_vertex_trail[-1].index, mode="in")]
+            try:
+                ref_vertex_trail.append(child_candidates.find(ref_eq=ref_part))
+            except ValueError as ex:
+                raise AttributeError(f"Could not find {ref_part} in context of {context}") from ex
+
+        return None, ref_vertex_trail[-1]["path"]
