@@ -3,6 +3,7 @@ from typing import List, Optional, Union, Tuple
 from atopile.model import utils
 import logging
 import copy
+from schema import Schema
 
 import igraph as ig
 
@@ -32,7 +33,7 @@ class Model:
         self.graph.vs["path"] = []
 
         self.data = {}
-        self.schemas = {}
+        self.schema = Schema({})
 
     def plot(self, *args, **kwargs):
         return utils.plot(self.graph, *args, **kwargs)
@@ -93,7 +94,7 @@ class Model:
         # copy the data and schemas
         for instance_vertex_path, class_vertex_path in zip(sg.vs["path"], class_paths):
             self.data[instance_vertex_path] = copy.deepcopy(self.data.get(class_vertex_path, {}))
-            self.schemas[instance_vertex_path] = copy.deepcopy(self.schemas.get(class_vertex_path, {}))
+            # self.schemas[instance_vertex_path] = copy.deepcopy(self.schemas.get(class_vertex_path, {}))
 
         return instance_path
 
@@ -141,27 +142,57 @@ class Model:
             type=edge_type.name
         )
 
-    def find_ref(self, ref: str, context: str) -> Tuple[None, str]:
+    def find_ref(self, ref: str, context: str, return_unfound=False) -> Tuple[str, List[str], List[str]]:
         """
         Find what reference means in the current context.
-        Returns a tuple of the return type and the path to the object.
+        Returns a tuple of the graph-path, the data-path and an optional list of remaining parts that weren't found.
         """
         context_vertex = self.graph.vs.find(path_eq=context)
         part_of_view = self.get_graph_view([EdgeType.part_of, EdgeType.option_of])
         ref_parts = ref.split(".")
+        # 1. ascending loop
+        # TODO: we need to figure out scoping and whether we should be allowed to scope indefinately above our context
         for elder in part_of_view.bfsiter(context_vertex.index, mode="out"):
             elder_direct_children = self.graph.vs[part_of_view.neighbors(elder.index, mode="in")]
-            if ref_parts[0] in elder_direct_children["ref"]:
+            if ref_parts[0] in elder_direct_children["ref"] or ref_parts[0] in self.data.get(elder["path"], {}):
                 break  # found the first element in the sequence
         else:
-            raise KeyError(f"Could not find {ref_parts[0]} in context of {context}")
+            # otherwise, we're searching internally
+            # this should entirely skip the descending loop next up
+            elder = context_vertex
 
+        # 2. desecending loop
         ref_vertex_trail = [elder]
-        for ref_part in ref_parts:
+        for ref_parts_checked_in_graph, ref_part in enumerate(ref_parts):
             child_candidates = self.graph.vs[part_of_view.neighbors(ref_vertex_trail[-1].index, mode="in")]
             try:
                 ref_vertex_trail.append(child_candidates.find(ref_eq=ref_part))
-            except ValueError as ex:
-                raise AttributeError(f"Could not find {ref_part} in context of {context}") from ex
+            except ValueError:
+                break
+        else:
+            # completely a graph element
+            if return_unfound:
+                return ref_vertex_trail[-1]["path"], [], []
+            else:
+                return ref_vertex_trail[-1]["path"], []
 
-        return None, ref_vertex_trail[-1]["path"]
+        # 3. desecending data loop
+        # data trail, like the vertex trail, staring where the graph left off
+        ref_data_trail = [self.data[ref_vertex_trail[-1]["path"]]]
+        # if we're down here, it's because we didn't get to the end of our reference in the graph
+        # so let's check for data where the graph left off
+        remaining_ref_parts = ref_parts[ref_parts_checked_in_graph:]
+        for ref_parts_checked_in_data, ref_part in enumerate(remaining_ref_parts):
+            try:
+                ref_data_trail.append(ref_data_trail[-1][ref_part])
+            except KeyError as ex:
+                if return_unfound:
+                    return ref_vertex_trail[-1]["path"], remaining_ref_parts[:ref_parts_checked_in_data], remaining_ref_parts[ref_parts_checked_in_data:]
+                else:
+                    raise AttributeError(f"Could not find {ref} in {context}") from ex
+        else:
+            # found a complete match in the data
+            if return_unfound:
+                return ref_vertex_trail[-1]["path"], remaining_ref_parts, []
+            else:
+                return ref_vertex_trail[-1]["path"], remaining_ref_parts

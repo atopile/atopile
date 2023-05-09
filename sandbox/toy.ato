@@ -21,6 +21,8 @@ module Vdiv:
         signal magic_signal
         # jks, it also just connects to the center
         magic_signal ~ center
+        test = 12.3
+        test2 = "flooopasdasdaS"
 
 vdiv1 = new Vdiv
 with vdiv1.amazing_feature

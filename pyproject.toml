@@ -30,6 +30,7 @@ dependencies = [
     "attrs",
     "igraph",
     "fastapi",
+    "schema",
 ]
 dynamic = ["version"]
 
