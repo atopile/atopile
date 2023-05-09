@@ -1,26 +1,16 @@
-#%%
-%load_ext autoreload
-%autoreload 2
+import logging
+from pathlib import Path
+
 from antlr4 import CommonTokenStream, FileStream
+
+from atopile.model.model2 import EdgeType, Model, VertexType
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
-from atopile.model.model2 import Model, EdgeType, VertexType
 
-from pathlib import Path
+log = logging.getLogger(__name__)
 
-#%%
-# test_file = Path(__file__).parent / "test.ato"
-test_file = "/Users/mattwildoer/Projects/atopile/sandbox/toy.ato"
 
-input = FileStream(test_file)
-lexer = AtopileLexer(input)
-stream = CommonTokenStream(lexer)
-parser = AtopileParser(stream)
-tree = parser.file_input()
-print(tree.toStringTree(recog=parser))
-
-#%%
 class ModelBuildingVisitor(AtopileParserVisitor):
     def __init__(self, model: Model, filename: str) -> None:
         super().__init__()
@@ -106,23 +96,20 @@ class ModelBuildingVisitor(AtopileParserVisitor):
 
     def visitNew_element(self, ctx):
         class_ref = ctx.name_or_attr().getText()
-        instance_ref = ctx.parentCtx.name_or_attr(0).getText()
+        instance_ref = ctx.parentCtx.name_or_attr(0).getText()  # FIXME: this parent reference assumes there's only one way to instantiate a class
         _, class_path = self.model.find_ref(class_ref, self.current_parent)
 
         self.model.instantiate_block(class_path, instance_ref, self.current_parent)
 
         return super().visitNew_element(ctx)
 
-m = Model()
-visitor = ModelBuildingVisitor(m, "toy.ato")
-visitor.visit(tree)
-m.plot(debug=True)
-
-# %%
-from atopile.visualiser.render import UserInterface, generate_visualizer_window_config, render_debug, render_schematic
-
-ui = UserInterface()
-generate_visualizer_window_config(ui)
-render_debug(m)
-# render_schematic()
-# %%
+def parse_file(path: Path) -> Model:
+    input = FileStream(path)
+    lexer = AtopileLexer(input)
+    stream = CommonTokenStream(lexer)
+    parser = AtopileParser(stream)
+    tree = parser.file_input()
+    m = Model()
+    builder = ModelBuildingVisitor(m, str(path))
+    builder.visit(tree)
+    return m
