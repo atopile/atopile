@@ -1,11 +1,11 @@
-{% for comp in comps -%}
-(comp (ref "{{ comp.name }}")
-  (value "{{ comp.value }}"){% if comp.footprint %}
-  (footprint "{{ comp.footprint }}"){% endif %}{% if comp.datasheet %}
-  (datasheet "{{ comp.datasheet }}"){% endif %}{% if comp.fields %}
-  (fields {% for field in comp.fields %}
+{% for component in components -%}
+(comp (ref "{{ component.ref }}")
+  (value "{{ component.value }}"){% if component.footprint %}
+  (footprint "{{ component.footprint }}"){% endif %}{% if component.datasheet %}
+  (datasheet "{{ component.datasheet }}"){% endif %}{% if component.fields %}
+  (fields {% for field in component.fields %}
     (field (name "{{ field.name }}") "{{ field.value }}"){% endfor %}){% endif %}
-  (libsource (lib "{{ comp.lib }}") (part "{{ comp.part }}") (description "{{ comp.description }}"))
-  (sheetpath (names "{{ comp.sheetpath_name}}") (tstamps "{{ comp.sheetpath_tstamp}}"))
-  (tstamps "{{ comp.tstamp }}")){% if not loop.last %}
+  (libsource (lib "{{ component.libsource.lib }}") (part "{{ component.libsource.part }}") (description "{{ component.libsource.description }}"))
+  (sheetpath (names "{{ component.sheetpath.names}}") (tstamps "{{ component.sheetpath.tstamps}}"))
+  (tstamps "{{ component.tstamp }}")){% if not loop.last %}
 {% endif %}{%- endfor %}

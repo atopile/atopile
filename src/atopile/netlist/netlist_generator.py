@@ -1,261 +1,327 @@
-# %%
-from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
+from typing import List, Dict
 import datetime
-from typing import Optional
+
 from attrs import define, field
+from jinja2 import Environment, FileSystemLoader
 
-from atopile.model.model import (
-    Model,
-    VertexType,
-)
-
+from atopile.model.model import Model, VertexType, EdgeType
 from atopile.model.utils import generate_uid_from_path
-
-import atopile.netlist.graph_data_extraction as graph_data_extract
 
 @define
 class KicadField:
-    name: str
-    value: str
+    name: str  # eg?
+    value: str  # eg?
 
 @define
 class KicadPin:
-    # def __init__(self, num: int, name: str, pin_type: str) -> None:
+    """
+    eg. (pin (num "1") (name "") (type "passive"))
+    """
     num: str
-    name: str
-    pin_type: str = ''
+    name: str = ""
+    type: str = ""
 
 @define
-class KicadNode:
-    # def __init__(self, ref: str, pin: int, pin_function: Optional[str] = None, pin_type: str) -> None:
-    ref: str
-    pin: int
-    pin_function: str = ''
-    pin_type: str = ''
+class KicadLibpart:
+    """
+    eg.
+    (libpart (lib "Device") (part "R")
+      (description "Resistor")
+      (docs "~")
+      (footprints
+        (fp "R_*"))
+      (fields
+        (field (name "Reference") "R")
+        (field (name "Value") "R")
+        (field (name "Datasheet") "~"))
+      (pins
+        (pin (num "1") (name "") (type "passive"))
+        (pin (num "2") (name "") (type "passive"))))
+    """
+    lib: str
+    part: str
+    description: str
+    docs: str
+    footprints: List[str] = field(factory=list)
+    fields: List[KicadField] = field(factory=list)
+    pins: List[KicadPin] = field(factory=list)
+
+@define
+class KicadSheetpath:
+    """
+    eg. (sheetpath (names "/") (tstamps "/"))
+    """
+    names: str = "/" # module path, eg. toy.ato/Vdiv1
+    tstamps: str = "/" # module UID, eg. b1d41e3b-ef4b-4472-9aa4-7860376ef0ce
 
 @define
 class KicadComponent:
-    # def __init__(self, name, value, fields=None, lib = '', part = '', description = '', sheetpath_name = '', sheetpath_tstamp = '', tstamp = '') -> None:
-    name: str
-    value: str
-    fields: list = field(factory=list)
-    lib: str = ''
-    part: str = ''
-    description: str = ''
-    sheetpath_name: str = ''
-    sheetpath_tstamp: str = ''
-    tstamp: str = ''
+    """
+    eg.
+    (comp (ref "R4")
+      (value "R")
+      (libsource (lib "Device") (part "R") (description "Resistor"))
+      (property (name "Sheetname") (value ""))
+      (property (name "Sheetfile") (value "example.kicad_sch"))
+      (sheetpath (names "/") (tstamps "/"))
+      (tstamps "9c26a741-12df-4e56-baa6-794e6b3aa7cd")))
+    """
+    ref: str  # eg. "R1" -- should be unique, we should assign these here I think
+    value: str  # eg. "10k" -- seems to be an arbitary string
+    libsource: KicadLibpart
+    tstamp: str  # component UID, eg. b1d41e3b-ef4b-4472-9aa4-7860376ef0ce
+    footprint: str = "" # eg. "Resistor_SMD:R_0603_1608Metric"
+    properties: List[KicadField] = field(factory=list)
+    fields: List[KicadField] = field(factory=list)
+    sheetpath: KicadSheetpath = field(factory=KicadSheetpath)
+    # TODO: tstamp should be consistent across runs and ideally track with updates
 
-@define
-class KicadComponentPrototype:
-    #def __init__(self, lib, part, docs, footprint=None, fields=None, pins=None) -> None:
-    lib: str
-    part: str
-    docs: str
-    footprint: list = field(factory=list)
-    fields: list = field(factory=list)
-    pins: list = field(factory=list)
+class KicadNode:
+    """
+    eg. (node (ref "R1") (pin "1") (pintype "passive"))
+    """
+    def __init__(self, component: KicadComponent, pin: KicadPin) -> None:
+        self._component = component
+        self._pin = pin
 
-    def add_pin(self, pin = KicadPin):
-        self.pins.append(pin)
+    @property
+    def ref(self) -> str:
+        return self._component.ref
+
+    @property
+    def pin(self) -> str:
+        return self._pin.num
+
+    @property
+    def pintype(self) -> str:
+        return self._pin.type
 
 @define
 class KicadNet:
-    # def __init__(self, code, name, nodes) -> None:
-    code: str
-    name: str
-    nodes: list = field(factory=list)
+    """
+    eg.
+    (net (code "1") (name "Net-(R1-Pad1)")
+      (node (ref "R1") (pin "1") (pintype "passive"))
+      (node (ref "R2") (pin "1") (pintype "passive")))
+    """
+    code: str  # do these have to be numbers, or can they be more UIDs?
+    name: str  # TODO: how do we wanna name nets?
+    nodes: List[KicadNode] = field(factory=list)
 
-    def add_node_to_net(self, node: KicadNode) -> None:
-        self.nodes.append(node)
+class KicadLibraries:
+    """
+    eg.
+    (libraries
+    (library (logical "Device")
+      (uri "/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols//Device.kicad_sym")))
+    """
+    def __init__(self):
+        # don't believe these are mandatory and I don't think they're useful in the context of atopile
+        raise NotImplementedError
 
-# Deprecated -- I don't think these are used
-# def add_field(object, field: KicadField) -> None:
-#     if hasattr(object, 'fields'):
-#         object.fields.append(field)
-#     else:
-#         print('error')
-
-# def add_node(object, field: KicadNode) -> None:
-#     if hasattr(object, 'nodes'):
-#         object.nodes.append(field)
-#     else:
-#         print('error')
+# TODO: fuck this thing right off
+def designator_generator():
+    """
+    Spit out designators.
+    TODO: make them things other than "Ax"
+    """
+    i = 1
+    while True:
+        yield f"A{i}"
+        i += 1
 
 @define
 class KicadNetlist:
-    version: str = 'E'
-    source: str ='unknown'
-    date: str = 'unknown'
-    tool: str = 'atopile'
-    
-    components: list = field(factory=list)
-    component_prototypes: list = field(factory=list)
-    nets: list = field(factory=list)
-    
-    def add_metadata_to_netlist(self, source: str, tool: str, version = 'E') -> None:
-        now = datetime.datetime.now()
+    version: str = "E"  # What does this mean?
+    source: str = "unknown"  # eg. "/Users/mattwildoer/Projects/SizzleSack/schematic/sandbox.py" TODO: point this at the sourcefile
+    date: str = ""
+    tool: str = "atopile"  # TODO: add version in here too
 
-        self.version = version
-        self.source = source
-        self.date = now
-        self.tool = tool
+    components: List[KicadComponent] = field(factory=list)
+    libparts: List[KicadLibpart] = field(factory=list)
+    nets: List[KicadNet] = field(factory=list)
+    """
+    (net (code "3") (name "Net-(R2-Pad2)")
+      (node (ref "R2") (pin "2") (pintype "passive"))
+      (node (ref "R3") (pin "1") (pintype "passive"))
+      (node (ref "R4") (pin "1") (pintype "passive")))
+    """
 
-    def add_component_to_netlist(self, component: KicadComponent) -> None:
-
-        self.components.append(component)
-
-    def add_component_prototype_to_netlist(self, component_prototype: KicadComponentPrototype) -> None:
-
-        self.component_prototypes.append(component_prototype)
-
-    def add_net_to_netlist(self, net: KicadNet) -> None:
-
-        self.nets.append(net)
-
-    def generate_completed_netlist(self) -> None:
+    def to_file(self, path: Path) -> None:
         # Create a Jinja2 environment
-        this_dir = Path(__file__).parent
+        # this_dir = Path(__file__).parent
+        this_dir = Path("/Users/mattwildoer/Projects/atopile/src/atopile/netlist/netlist_generator.py").parent
         env = Environment(loader=FileSystemLoader(this_dir))
 
         # Load the component template and render
-        comp_template = env.get_template('component_template.j2')
-        components_string = comp_template.render(comps = self.components)
+        comp_template = env.get_template("component_template.j2")
+        components_string = comp_template.render(components=self.components)
 
         # Load the libpart template and render
-        libpart_template = env.get_template('libpart_template.j2')
-        libparts_string = libpart_template.render(libparts = self.component_prototypes)
+        libpart_template = env.get_template("libpart_template.j2")
+        libparts_string = libpart_template.render(libparts=self.libparts)
 
         # Load the net template and render
-        net_template = env.get_template('net_template.j2')
-        nets_string = net_template.render(nets = self.nets)
+        net_template = env.get_template("net_template.j2")
+        nets_string = net_template.render(nets=self.nets)
 
         # Create the complete netlist
-        source = self.source
-        date = self.date
-        tool = self.tool
-        template = env.get_template('netlist_template.j2')
-        netlist = template.render(source=source, date=date, tool=tool, components=components_string, libparts=libparts_string, nets=nets_string)
+        template = env.get_template("netlist_template.j2")
+        netlist_str = template.render(nl=self, components_string=components_string, libparts_string=libparts_string, nets_string=nets_string)
 
-        name = 'test'
-        output_file = this_dir / (name + ".net")
+        with path.open("w") as f:
+            f.write(netlist_str)
 
-        with output_file.open("w") as file:
-            file.write(netlist)
+    #TODO: I don't like this function living in the dataclass
+    @classmethod
+    def from_model(cls, model: Model, main: str) -> "KicadNetlist":
+        """
+        :param model: to generate the netlist from
+        :param main: path in the graph to compile from
+        """
+        netlist = cls()
 
+        # Extract the components under "main"
+        designator = designator_generator()
+        NON_FIELD_DATA = ["value", "footprint"]
 
-def generate_nets_dict_from_graph(g: Model, netlist: KicadNetlist, root_index: Optional[int] = 0) -> dict:
-    instance_graph = Model()
-    electrical_graph = Model()
-    instance_graph.graph = g.get_sub_part_of_graph(root_vertex = 0)
+        # Extract the components under "main"
+        # TODO: move at least large chunks of this elsewhere. It's too entangled with the guts of the Model class
+        part_of_view = model.get_graph_view([EdgeType.part_of])
+        instance_of_view = model.get_graph_view([EdgeType.instance_of])
+        main_vertex = model.graph.vs.find(path_eq=main)
+        vidxs_within_main = part_of_view.subcomponent(main_vertex.index, mode="in")
 
-    # Extract the electrical graph from the instance subgraph
-    electrical_graph.graph = instance_graph.graph.subgraph_edges(instance_graph.graph.es.select(type_eq='connects_to'), delete_vertices=False)
+        component_vs = model.graph.vs[vidxs_within_main].select(type_eq=VertexType.component.name)
+        component_class_vidxs: Dict[str, int] = {}  # by component path
+        for component_v in component_vs:
+            component_class_vidx = instance_of_view.neighbors(component_v.index, mode="out")
+            if len(component_class_vidx) < 1:
+                component_class_vidxs[component_v["path"]] = component_v.index
+            else:
+                component_class_vidxs[component_v["path"]] = component_class_vidx[0]
 
-    # Find all the vertex indices in the main graph that are associated to a pin
-    pins = electrical_graph.graph.vs.select(type_in='pin').indices
-    pin_set = set(pins)
+        unique_component_class_vidxs = set(component_class_vidxs.values())
 
-    # Extract all the clusters. The ones that contain pins are considered nets.
-    clusters = electrical_graph.graph.connected_components(mode='weak')
+        # Create all the pins under main
+        pins_by_path: Dict[str, KicadPin] = {}  # by component class's pin path
+        pins_by_ref_by_component: Dict[str, Dict[str, KicadPin]] = {}  # by component class's pin path
+        for component_class_idx in unique_component_class_vidxs:
+            component_class_v = model.graph.vs[component_class_idx]
+            component_class_path = component_class_v["path"]
+            vidxs_within_component_class = part_of_view.subcomponent(component_class_idx, mode="in")
+            pin_vs = model.graph.vs[vidxs_within_component_class].select(type_eq=VertexType.pin.name)
 
-    # Instantiate the net dictionary and net index
-    nets = {}
-    net_index = 0
+            for pin_v in pin_vs:
+                pin_ref = pin_v["ref"].lstrip("p")
+                pin = KicadPin(
+                    num=pin_ref,
+                    name=pin_ref,
+                    type="",   # TODO:
+                )
 
-    for cluster in clusters:
-        cluster_set = set(cluster)
+                pins_by_path[pin_v["path"]] = pin
+                pins_by_ref_by_component.setdefault(component_class_path, {})[pin_v["ref"]] = pin
 
-        # Intersect the pins from the main graph with the vertices in that cluster
-        union_set = pin_set.intersection(cluster_set)
+        # Create the libparts (~component_classes)
+        libparts: Dict[str, KicadLibpart] = {}  # by component class path
 
-        if len(union_set) > 0: # If pins are found in that net
-            net = KicadNet(code=net_index, name=net_index)
-            # Create a new dict entry
-            nets[net_index] = {}
+        for component_class_idx in unique_component_class_vidxs:
+            component_class_v = model.graph.vs[component_class_idx]
+            component_class_path = component_class_v["path"]
+            vidxs_within_component_class = part_of_view.subcomponent(component_class_v.index, mode="in")
 
-            for pin in union_set:
-                vertex_path = electrical_graph.get_vertex_path(pin)
-                parent_path = graph_data_extract.get_parent_from_path(vertex_path)
-                pin_number = electrical_graph.get_vertex_ref(pin)
-                node = KicadNode(ref=parent_path, pin=pin_number)
-                net.add_node_to_net(node)
-                nets[net_index][parent_path] = electrical_graph.get_vertex_ref(pin)
+            # Create the pins
+            pin_vs_within_component_class = model.graph.vs[vidxs_within_component_class].select(type_eq=VertexType.pin.name)
+            pin_paths_within_component_class = pin_vs_within_component_class["path"]
+            component_class_pins = [pins_by_path[p] for p in pin_paths_within_component_class]
 
-            netlist.add_net_to_netlist(net)
-            net_index += 1
-            #TODO: find a better way to name nets
+            fields = [KicadField(k, v) for k, v in model.data.get(component_class_path, {}).items() if k not in NON_FIELD_DATA]
 
-    return nets
+            # Create the libpart
+            libpart = KicadLibpart(
+                lib=component_class_path,  # FIXME: this may require sanitisation (eg. no slashes, for Kicad)
+                part=component_class_v["ref"],
+                description=component_class_v["ref"],  # recycle ref here. TODO: should we consdier python-like doc-strings?
+                fields=fields,
+                pins=component_class_pins,
+                # TODO: something better for these:
+                docs="~",
+                footprints=["*"],
+            )
 
-def generate_component_list_from_graph(g: Model, netlist: KicadNetlist, root_index = 0):
-    instance_graph = Model()
-    instance_graph.graph = g.get_sub_part_of_graph(root_vertex = 0)
+            libparts[component_class_path] = libpart
 
-    # find all the packages within that graph
-    packages = graph_data_extract.get_packages(instance_graph.graph)
+        # Create the component instances
+        components: Dict[str, KicadComponent] = {}  # by component path
+        nodes: Dict[str, KicadNode] = {}  # by component pin path
+        for component_v in component_vs:
+            component_path = component_v["path"]
+            component_class_idx = component_class_vidxs[component_path]
+            component_class_v = model.graph.vs[component_class_idx]
+            component_class_path = component_class_v["path"]
 
-    for package in packages:
-        # Find the parent block
-        parent_block = graph_data_extract.get_block_from_package(g, package)
+            component_data = model.data.get(component_path, {})
 
-        name = graph_data_extract.get_vertex_parameter(parent_block, "path") 
-        uid = graph_data_extract.get_vertex_parameter(parent_block, "uid")
-        lib = graph_data_extract.get_vertex_parameter(parent_block, "lib")
-        lib_part = graph_data_extract.get_vertex_parameter(parent_block, "lib_part")
-        value = graph_data_extract.get_vertex_parameter(parent_block, "value")
-        description = graph_data_extract.get_vertex_parameter(parent_block, "description")
-        footprint = graph_data_extract.get_vertex_parameter(package, "footprint")
+            fields = [KicadField(k, v) for k, v in component_data.items() if k not in NON_FIELD_DATA]
 
-        component = KicadComponent(name=name,value=value,lib=lib,part=lib_part,description=description,tstamp=uid)
-        netlist.add_component_to_netlist(component)
+            # there should always be at least one parent, even if only the file
+            component_parent_idx = part_of_view.neighbors(component_v.index, mode="out")[0]
+            component_parent_v = model.graph.vs[component_parent_idx]
+            # TODO: deal with the sheets, I'm pretty sure they also need to be defined in a header somewhere
+            # either way, I think there's more to it. Just chuck everything in root for now
+            sheetpath = KicadSheetpath()
 
-def generate_comp_proto_list_from_graph(g: Model, netlist: KicadNetlist, root_index = 0):
-    comp_proto_packages = graph_data_extract.get_package_instances_of_seed(g, root_index)
+            component = KicadComponent(
+                ref=next(designator),
+                value=component_data.get("value", ""),
+                libsource=libparts[component_class_path],
+                tstamp=generate_uid_from_path(component_path),
+                fields=fields,
+                sheetpath=sheetpath
+            )
 
-    for package in comp_proto_packages:
+            components[component_path] = component
 
-        parent_block = graph_data_extract.get_block_from_package(g, package)
+            # Generate the component's nodes
+            pins_by_ref = pins_by_ref_by_component[component_class_path]
+            for ref, pin in pins_by_ref.items():
+                nodes[f"{component_path}/{ref}"] = KicadNode(component=component, pin=pin)
 
-        name = graph_data_extract.get_vertex_parameter(parent_block, "path")
-        lib = graph_data_extract.get_vertex_parameter(parent_block, "lib")
-        lib_part = graph_data_extract.get_vertex_parameter(parent_block, "lib_part")
-        description = graph_data_extract.get_vertex_parameter(parent_block, "description")
-        footprint = graph_data_extract.get_vertex_parameter(package, "footprint")
-        
-        component_proto = KicadComponentPrototype(lib = lib, part = lib_part, docs = description)
-        
-        pins = graph_data_extract.get_pin_list_from_package(g, package)
-        for pin in pins:
-            pin_num = graph_data_extract.get_vertex_parameter(pin, "ref")
-            pin_name = graph_data_extract.get_vertex_parameter(pin, "ref")
-            netlist_pin = KicadPin(num = pin_num, name = pin_name)
+        # Create the nets
+        electrical_graph = model.get_graph_view([EdgeType.connects_to])
+        electrical_graph_within_main = electrical_graph.subgraph(vidxs_within_main)
+        clusters = electrical_graph_within_main.connected_components(mode="weak")
+        nets = []
+        for i, cluster in enumerate(clusters):
+            cluster_vs = electrical_graph_within_main.vs[cluster]
+            cluster_paths = cluster_vs["path"]
 
-            component_proto.add_pin(netlist_pin)
-        
-        netlist.add_component_prototype_to_netlist(component_proto)
+            # this works naturally to filter out signals, because only pins are present in the nodes dict
+            nodes_in_cluster = [nodes[path] for path in cluster_paths if path in nodes]
 
+            # let's find something to call this net
+            # how about we call it {lowest common module path}.{signal-name-1}-{signal-name-2}-{signal-name-3}...
+            # actually, fuck that, it sounds hard and it almost 11pm...
+            # let's just call it i for now. TODO: ^ that better thing
 
+            # the cluster only represents a net if it contains eletrical pins
+            if nodes_in_cluster:
+                net = KicadNet(
+                    code=str(len(nets)),
+                    name=str(i),
+                    nodes=nodes_in_cluster,
+                )
 
-# %%
-if __name__ == "__main__":
-    a_netlist = KicadNetlist()
+                nets.append(net)
 
-    test_field1 = KicadField(name='field1', value='100pF')
-    test_field2 = KicadField(name='field2', value='20pF')
+        netlist = KicadNetlist(
+            source=main,
+            date=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            components=list(components.values()),
+            libparts=list(libparts.values()),
+            nets=nets,
+        )
 
-    test_node1 = KicadNode(ref = '1', pin = 1, pin_function = 'passive', pin_type = 'type')
-    test_node2 = KicadNode(ref = '2', pin = 2, pin_function = 'passive', pin_type = 'type')
-
-    test_pin1 = KicadPin(num = 1, name='pin1', pin_type = 'active')
-
-    test_component = KicadComponent(name='test1', value=1)#, fields=[test_field1, test_field2])
-    test_prototype_component = KicadComponentPrototype(lib="lib", part='this is a part', docs='this is docs', footprint=['fp1', 'fp2'], fields=[test_field1, test_field2], pins = [test_pin1])
-    test_net = KicadNet(code = 1, name = '+1v1',nodes = [test_node1, test_node2])
-
-    a_netlist.add_component_to_netlist(test_component)
-    a_netlist.add_component_prototype_to_netlist(test_prototype_component)
-    a_netlist.add_net_to_netlist(test_net)
-
-    a_netlist.generate_completed_netlist()
+        return netlist

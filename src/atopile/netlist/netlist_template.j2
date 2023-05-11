@@ -1,11 +1,11 @@
 (export (version "E")
   (design
-    (source "{{ source }}")
-    (date "{{ date }}")
-    (tool "{{ tool }}")
-{% if components %}  (components {% filter indent(width=4) %}
-{{ components }}){% endfilter %}{% endif %}
-{% if libparts %}  (libparts {% filter indent(width=4) %}
-{{ libparts }}){% endfilter %}{% endif %}
-{% if nets %}  (nets {% filter indent(width=4) %}
-{{ nets }}){% endfilter %})){% endif %}
+    (source "{{ nl.source }}")
+    (date "{{ nl.date }}")
+    (tool "{{ nl.tool }}")
+{% if components_string %}  (components {% filter indent(width=4) %}
+{{ components_string }}){% endfilter %}{% endif %}
+{% if libparts_string %}  (libparts {% filter indent(width=4) %}
+{{ libparts_string }}){% endfilter %}{% endif %}
+{% if nets_string %}  (nets {% filter indent(width=4) %}
+{{ nets_string }}){% endfilter %})){% endif %}
