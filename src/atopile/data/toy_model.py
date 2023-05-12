@@ -3,7 +3,7 @@
 # but they make it an invlid python file, so they need to be commented out to make this importable
 #%load_ext autoreload
 #%autoreload 2
-from atopile.model.model2 import Model, VertexType, EdgeType
+from atopile.model.model import Model, VertexType, EdgeType
 
 #%%
 m = Model()

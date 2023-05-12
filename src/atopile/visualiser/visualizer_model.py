@@ -1,4 +1,4 @@
-from atopile.model.model2 import Model
+from atopile.model.model import Model
 from atopile.model.utils import EDGE_COLOR_DICT, VERTEX_COLOR_DICT, generate_uid_from_path
 
 import atopile.visualiser.utils as utils
