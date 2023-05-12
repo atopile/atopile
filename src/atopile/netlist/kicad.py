@@ -3,7 +3,7 @@ from typing import List, Dict
 import datetime
 
 from attrs import define, field
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from atopile.model.model import Model, VertexType, EdgeType
 from atopile.model.utils import generate_uid_from_path
@@ -152,23 +152,11 @@ class KicadNetlist:
         # Create a Jinja2 environment
         # this_dir = Path(__file__).parent
         this_dir = Path("/Users/mattwildoer/Projects/atopile/src/atopile/netlist/netlist_generator.py").parent
-        env = Environment(loader=FileSystemLoader(this_dir))
-
-        # Load the component template and render
-        comp_template = env.get_template("component_template.j2")
-        components_string = comp_template.render(components=self.components)
-
-        # Load the libpart template and render
-        libpart_template = env.get_template("libpart_template.j2")
-        libparts_string = libpart_template.render(libparts=self.libparts)
-
-        # Load the net template and render
-        net_template = env.get_template("net_template.j2")
-        nets_string = net_template.render(nets=self.nets)
+        env = Environment(loader=FileSystemLoader(this_dir), undefined=StrictUndefined)
 
         # Create the complete netlist
-        template = env.get_template("netlist_template.j2")
-        netlist_str = template.render(nl=self, components_string=components_string, libparts_string=libparts_string, nets_string=nets_string)
+        template = env.get_template("kicad.j2")
+        netlist_str = template.render(nl=self)
 
         with path.open("w") as f:
             f.write(netlist_str)
