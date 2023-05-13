@@ -79,7 +79,26 @@ let input_list = [{
             "links": []
         }
     ],
-    "ports" : [],
+    "ports" : [
+        {
+            "name": "input",
+            "location": "left",
+            "pins": [
+                {
+                    "name": "input",
+                }
+            ]
+        },
+        {
+            "name": "output",
+            "location": "right",
+            "pins": [
+                {
+                    "name": "output",
+                }
+            ]
+        },
+    ],
     "links": [
         {
             "source": "inner_comp_1.vcc",
@@ -159,18 +178,6 @@ class AtoComponent extends AtoElement {
         `;
     }
 
-    addConnection(name, port) {
-        this.addPort({ 
-            group: port,
-            attrs: { 
-                label: { 
-                    text: name,
-                    fontFamily: "sans-serif",
-                }
-            }
-        });
-    }
-
     fitAncestorElements() {
         var padding = 40;
         this.fitParent({
@@ -183,47 +190,6 @@ class AtoComponent extends AtoElement {
             }
         });
     }
-
-//     addPorts(port_list) {
-//         for (let port of port_list) {
-//             this.prop({ports: { // This section describes what a port looks like
-//                 groups: {
-//                     [port['name']]: {
-//                     position: {
-//                         name: 'right'
-//                     },
-//                     attrs: {
-//                         portBody: {
-//                             magnet: true,
-//                             r: 5,
-//                             fill: '#FFFFFF',
-//                             stroke:'#023047'
-//                         }
-//                     },
-//                     label: {
-//                         position: {
-//                             name: 'right',
-//                             args: { y: 0 }
-//                         },
-//                         markup: [{
-//                             tagName: 'text',
-//                             selector: 'label',
-//                             className: 'label-text'
-//                         }]
-//                     },
-//                     markup: [{
-//                         tagName: 'circle',
-//                         selector: 'portBody'
-//                     }]
-//                 }
-//                 }
-//                 }
-//             });
-//             for (let pin in port['pins']) {
-//                 this.addConnection(pin["name"], port["name"])
-//             }
-// }
- //       }
 }
 
 
@@ -348,15 +314,15 @@ function createComponent(title, ports_dict, x, y) {
             }
         }
     });
-    console.log('part name ' + title);
-    addPortsAndPins(component, ports_dict)
-    //component.prop({"ports": { "groups": createPorts(ports)}});
+
+    addPortsAndPins(component, ports_dict);
+
     component.addTo(graph);
     component.position(x, y, { parentRelative: true });
     return component;
 }
 
-function createModule(title, x, y) {
+function createModule(title, ports_dict, x, y) {
     const module = new AtoModule({
         attrs: {
             label: {
@@ -364,12 +330,15 @@ function createModule(title, x, y) {
             }
         }
     });
+
+    addPortsAndPins(module, ports_dict);
+
     module.addTo(graph);
     module.position(x, y, { parentRelative: false });
     return module;
 }
 
-function addModuleToModule(module_to_add, to_module) {
+function addElementToElement(module_to_add, to_module) {
     to_module.embed(module_to_add);
 }
 
@@ -381,31 +350,15 @@ function buildClassesFromDict(list) {
             list_of_elements.push(created_comp)
         }
         else if (element['type'] == 'module') {
-            let created_module = createModule(title = element['name'], 20, 20);
+            let created_module = createModule(title = element['name'], element['ports'], 20, 20);
             list_of_elements.push(created_module);
             returned_list = buildClassesFromDict(element['modules']);
             for (let nested_element of returned_list) {
-                addModuleToModule(nested_element, created_module);
+                addElementToElement(nested_element, created_module);
             }
         }
     }
     return list_of_elements;
-    // if (dict['type'] == 'component') {
-    //     let component = createComponent(title = dict['name'], x = 10, y = 10);
-    //     return component;
-    // }
-    // else {
-    //     let module = createModule(title = dict['name'], x = 10, x = 10);
-    // }
-    // let module = new Module(dict.info);
-    // for (let subModule of dict.modules) {
-    //     module.addModule(buildClassesFromDict(subModule));
-    // }
-    // for (let component of dict.components) {
-    //     module.addComponent(buildClassesFromDict(component, true));
-    // }
-    // return module;
-    
 }
 
 const graph = new dia.Graph({}, { cellNamespace });
@@ -433,6 +386,8 @@ const paper = new joint.dia.Paper({
     //     ).inflate(10);
     //   },
 });
+
+
 // module2 = createModule("module2", 100, 100)
 // module1 = createModule('this is a module', 10, 10)
 // test = createComponent('allo', 10, 10);
