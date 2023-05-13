@@ -6,6 +6,7 @@ let input_list = [{
     "ports": [
         {
             "name": "top",
+            "location": "top",
             "pins": [
                 {
                     "name": "vcc",
@@ -13,10 +14,11 @@ let input_list = [{
             ]
         },
         {
-            "name": "bottoms",
+            "name": "bottom",
+            "location": "bottom",
             "pins": [
                 {
-                    "name": "vcc",
+                    "name": "gnd",
                 }
             ]
         },
@@ -32,6 +34,7 @@ let input_list = [{
             "ports": [
                 {
                     "name": "top",
+                    "location": "left",
                     "pins": [
                         {
                             "name": "vcc",
@@ -39,10 +42,11 @@ let input_list = [{
                     ]
                 },
                 {
-                    "name": "bottoms",
+                    "name": "bottom",
+                    "location": "right",
                     "pins": [
                         {
-                            "name": "vcc",
+                            "name": "gnd",
                         }
                     ]
                 },
@@ -55,6 +59,7 @@ let input_list = [{
             "ports": [
                 {
                     "name": "top",
+                    "location": "left",
                     "pins": [
                         {
                             "name": "vcc",
@@ -62,10 +67,11 @@ let input_list = [{
                     ]
                 },
                 {
-                    "name": "bottoms",
+                    "name": "bottom",
+                    "location": "right",
                     "pins": [
                         {
-                            "name": "vcc",
+                            "name": "gnd",
                         }
                     ]
                 },
@@ -73,6 +79,7 @@ let input_list = [{
             "links": []
         }
     ],
+    "ports" : [],
     "links": [
         {
             "source": "inner_comp_1.vcc",
@@ -95,8 +102,6 @@ let settings_dict = {
         "fontSize": 10
     }
 }
-
-console.log(settings_dict["module"]["strokeWidth"]);
 
 class AtoElement extends dia.Element {
     defaults() {
@@ -179,41 +184,46 @@ class AtoComponent extends AtoElement {
         });
     }
 
-    addNewPort(groupName, side) {
-        this.prop({ports: { // This section describes what a port looks like
-                    groups: {
-                        [groupName]: {
-                        position: {
-                            name: side
-                        },
-                        attrs: {
-                            portBody: {
-                                magnet: true,
-                                r: 5,
-                                fill: '#FFFFFF',
-                                stroke:'#023047'
-                            }
-                        },
-                        label: {
-                            position: {
-                                name: side,
-                                args: { y: 0 }
-                            },
-                            markup: [{
-                                tagName: 'text',
-                                selector: 'label',
-                                className: 'label-text'
-                            }]
-                        },
-                        markup: [{
-                            tagName: 'circle',
-                            selector: 'portBody'
-                        }]
-                    }
-                    }
-                }
-            });
-    }
+//     addPorts(port_list) {
+//         for (let port of port_list) {
+//             this.prop({ports: { // This section describes what a port looks like
+//                 groups: {
+//                     [port['name']]: {
+//                     position: {
+//                         name: 'right'
+//                     },
+//                     attrs: {
+//                         portBody: {
+//                             magnet: true,
+//                             r: 5,
+//                             fill: '#FFFFFF',
+//                             stroke:'#023047'
+//                         }
+//                     },
+//                     label: {
+//                         position: {
+//                             name: 'right',
+//                             args: { y: 0 }
+//                         },
+//                         markup: [{
+//                             tagName: 'text',
+//                             selector: 'label',
+//                             className: 'label-text'
+//                         }]
+//                     },
+//                     markup: [{
+//                         tagName: 'circle',
+//                         selector: 'portBody'
+//                     }]
+//                 }
+//                 }
+//                 }
+//             });
+//             for (let pin in port['pins']) {
+//                 this.addConnection(pin["name"], port["name"])
+//             }
+// }
+ //       }
 }
 
 
@@ -282,7 +292,55 @@ const cellNamespace = {
     AtoModule
 };
 
-function createComponent(title, x, y) {
+function addPortsAndPins(element, port_list) {
+    let port_groups = {};
+    for (let port of port_list) {
+        port_groups[port['name']] = {
+            position: {
+                name: port['location'],
+            },
+            attrs: {
+                portBody: {
+                    magnet: true,
+                    r: 5,
+                    fill: '#FFFFFF',
+                    stroke:'#023047'
+                }
+            },
+            label: {
+                position: {
+                    name: port['location'],
+                    args: { y: 0 }
+                },
+                markup: [{
+                    tagName: 'text',
+                    selector: 'label',
+                    className: 'label-text'
+                }]
+            },
+            markup: [{
+                tagName: 'circle',
+                selector: 'portBody'
+            }]
+        };
+        for (let pin of port['pins']) {
+            element.addPort({ 
+                group: port['name'],
+                attrs: { 
+                    label: { 
+                        text: pin['name'],
+                        fontFamily: "sans-serif",
+                    }
+                }
+            });
+        }
+    };
+    element.prop({"ports": { "groups": port_groups}});
+
+    return port_groups;
+}
+
+function createComponent(title, ports_dict, x, y) {
     const component = new AtoComponent({
         attrs: {
             label: {
@@ -290,6 +348,9 @@ function createComponent(title, x, y) {
             }
         }
     });
+    console.log('part name ' + title);
+    addPortsAndPins(component, ports_dict)
+    //component.prop({"ports": { "groups": createPorts(ports)}});
     component.addTo(graph);
     component.position(x, y, { parentRelative: true });
     return component;
@@ -316,11 +377,11 @@ function buildClassesFromDict(list) {
     let list_of_elements = [];
     for (let element of list) {
         if (element['type'] == 'component') {
-            let created_comp = createComponent(title = element['name'], 20, 20);
+            let created_comp = createComponent(title = element['name'], element['ports'], x = 20, y = 20);
             list_of_elements.push(created_comp)
         }
         else if (element['type'] == 'module') {
-            let created_module = createComponent(title = element['name'], 20, 20);
+            let created_module = createModule(title = element['name'], 20, 20);
             list_of_elements.push(created_module);
             returned_list = buildClassesFromDict(element['modules']);
             for (let nested_element of returned_list) {
