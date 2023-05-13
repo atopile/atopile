@@ -1,6 +1,28 @@
 const { shapes, util, dia, anchors } = joint;
 
-let input_dict = {
+let input_list = [{
+    "name": "outer_comp_1",
+    "type": "component",
+    "ports": [
+        {
+            "name": "top",
+            "pins": [
+                {
+                    "name": "vcc",
+                }
+            ]
+        },
+        {
+            "name": "bottoms",
+            "pins": [
+                {
+                    "name": "vcc",
+                }
+            ]
+        },
+    ],
+    "links": []},
+    {
     "name": "main_module",
     "type": "module",
     "modules": [
@@ -57,17 +79,20 @@ let input_dict = {
             "target": "inner_comp_2.gnd"
         }
     ]
-}
+    }
+]
 
 let settings_dict = {
-    "default": {
-        "strokeWidth": 2
+    "paper": {
+        "backgroundColor": 'rgba(0, 255, 0, 0.3)'
     },
     "component" : {
-        "strokeWidth": 6
+        "strokeWidth": 6,
+        "fontSize": 10
     },
     "module" : {
-        "strokeWidth": 4
+        "strokeWidth": 4,
+        "fontSize": 10
     }
 }
 
@@ -101,7 +126,7 @@ class AtoComponent extends AtoElement {
                     fill: "white",
                     z: 10,
                     stroke: "black",
-                    strokeWidth: settings_dict["default"]["strokeWidth"],
+                    strokeWidth: settings_dict["component"]["strokeWidth"],
                     width: "calc(w)",
                     height: "calc(h)",
                     rx: 5,
@@ -110,7 +135,7 @@ class AtoComponent extends AtoElement {
                 label: {
                     text: "Component",
                     fill: "black",
-                    fontSize: 12,
+                    fontSize: settings_dict["component"]["fontSize"],
                     fontWeight: "bold",
                     textVerticalAnchor: "middle",
                     textAnchor: "middle",
@@ -210,7 +235,7 @@ class AtoModule extends dia.Element {
           label: {
             text: "Module",
             fill: "#333",
-            fontSize: 12,
+            fontSize: settings_dict["module"]["strokeWidth"],
             fontWeight: "bold",
             textVerticalAnchor: "middle",
             textAnchor: "middle",
@@ -250,18 +275,6 @@ class AtoModule extends dia.Element {
 
 
 
-function buildClassesFromDict(dict) {
-    let module = new Module(dict.info);
-    for (let subModule of dict.modules) {
-        module.addModule(buildClassesFromDict(subModule));
-    }
-    for (let component of dict.components) {
-        module.addComponent(buildClassesFromDict(component, true));
-    }
-    return module;
-    
-}
-
 const cellNamespace = {
     ...shapes,
     AtoElement,
@@ -299,16 +312,51 @@ function addModuleToModule(module_to_add, to_module) {
     to_module.embed(module_to_add);
 }
 
+function buildClassesFromDict(list) {
+    let list_of_elements = [];
+    for (let element of list) {
+        if (element['type'] == 'component') {
+            let created_comp = createComponent(title = element['name'], 20, 20);
+            list_of_elements.push(created_comp)
+        }
+        else if (element['type'] == 'module') {
+            let created_module = createComponent(title = element['name'], 20, 20);
+            list_of_elements.push(created_module);
+            returned_list = buildClassesFromDict(element['modules']);
+            for (let nested_element of returned_list) {
+                addModuleToModule(nested_element, created_module);
+            }
+        }
+    }
+    return list_of_elements;
+    // if (dict['type'] == 'component') {
+    //     let component = createComponent(title = dict['name'], x = 10, y = 10);
+    //     return component;
+    // }
+    // else {
+    //     let module = createModule(title = dict['name'], x = 10, x = 10);
+    // }
+    // let module = new Module(dict.info);
+    // for (let subModule of dict.modules) {
+    //     module.addModule(buildClassesFromDict(subModule));
+    // }
+    // for (let component of dict.components) {
+    //     module.addComponent(buildClassesFromDict(component, true));
+    // }
+    // return module;
+    
+}
+
 const graph = new dia.Graph({}, { cellNamespace });
 const paper = new joint.dia.Paper({
-    el: document.getElementById('myholder'),
+    el: document.getElementById('atopilePaper'),
     model: graph,
     width: 600,
     height: 600,
     gridSize: 10,
     drawGrid: true,
     background: {
-        color: 'rgba(0, 255, 0, 0.3)'
+        color: settings_dict["paper"]["backgroundColor"]
     },
     cellViewNamespace: cellNamespace,
     // restrictTranslate: (elementView) => {
@@ -324,46 +372,44 @@ const paper = new joint.dia.Paper({
     //     ).inflate(10);
     //   },
 });
-module2 = createModule("module2", 100, 100)
-module1 = createModule('this is a module', 10, 10)
-test = createComponent('allo', 10, 10);
-test.addNewPort('port 1', 'right');
-test.addConnection('pin 1', 'port 1');
-test.addConnection('pin 3', 'port 1');
-test.addNewPort('port 2', 'left');
-test.addConnection('pin 2', 'port 2');
-test.addConnection('pin 4', 'port 2');
+// module2 = createModule("module2", 100, 100)
+// module1 = createModule('this is a module', 10, 10)
+// test = createComponent('allo', 10, 10);
+// test.addNewPort('port 1', 'right');
+// test.addConnection('pin 1', 'port 1');
+// test.addConnection('pin 3', 'port 1');
+// test.addNewPort('port 2', 'left');
+// test.addConnection('pin 2', 'port 2');
+// test.addConnection('pin 4', 'port 2');
 
-comp2 = createComponent('comp2', 10, 10);
-
-
-
-addModuleToModule(module1, module2)
-
-
-addModuleToModule(test, module1);
-addModuleToModule(comp2, module1);
-
-var ports = test.getPorts();
-console.log(ports);
-console.log(typeof ports);
-ports.forEach(element => {
-    console.log(element);
-});
-
-console.log(test.getGroupPorts('port 1'));
-console.log('new stuff');
-
-let result = test.prop('ports/groups');
-console.log(result);
-console.log(typeof result);
+// comp2 = createComponent('comp2', 10, 10);
 
 
 
+// addModuleToModule(module1, module2)
+
+
+// addModuleToModule(test, module1);
+// addModuleToModule(comp2, module1);
+
+// var ports = test.getPorts();
+// console.log(ports);
+// console.log(typeof ports);
+// ports.forEach(element => {
+//     console.log(element);
+// });
+
+// console.log(test.getGroupPorts('port 1'));
+// console.log('new stuff');
+
+// let result = test.prop('ports/groups');
+// console.log(result);
+// console.log(typeof result);
 
 
 
-test.resize(100, 100);
+buildClassesFromDict(list = input_list)
+
 
 paper.on('cell:pointerup', function(evt, x, y) {
     const requestOptions = {
