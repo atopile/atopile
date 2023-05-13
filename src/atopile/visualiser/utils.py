@@ -1,4 +1,4 @@
-from atopile.model.model2 import Model
+from atopile.model.model import Model
 from atopile.model.utils import generate_uid_from_path
 
 from attrs import define, field
