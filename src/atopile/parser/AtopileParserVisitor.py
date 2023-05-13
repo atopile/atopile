@@ -49,6 +49,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#import_stmt.
+    def visitImport_stmt(self, ctx:AtopileParser.Import_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#assign_stmt.
     def visitAssign_stmt(self, ctx:AtopileParser.Assign_stmtContext):
         return self.visitChildren(ctx)

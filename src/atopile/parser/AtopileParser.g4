@@ -10,13 +10,15 @@ file_input: (NEWLINE | stmt)* EOF;
 
 stmt: simple_stmts | compound_stmt;
 simple_stmts: simple_stmt (';' simple_stmt)* ';'? NEWLINE;
-simple_stmt: assign_stmt | connect_stmt | pindef_stmt | signaldef_stmt | with_stmt;
+simple_stmt: import_stmt | assign_stmt | connect_stmt | pindef_stmt | signaldef_stmt | with_stmt;
 compound_stmt: componentdef | moduledef;
 block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
+
 
 componentdef: ('optional')? 'component' name':' block;
 moduledef: ('optional')? 'module' name ':' block;
 
+import_stmt: 'import' name_or_attr 'from' STRING;
 assign_stmt: name_or_attr '=' (STRING | NUMBER | name_or_attr | new_element);
 connect_stmt: name_or_attr '~' name_or_attr;
 pindef_stmt: 'pin' name;

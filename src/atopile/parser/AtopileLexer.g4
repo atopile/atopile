@@ -39,6 +39,8 @@ SIGNAL : 'signal';
 WITH : 'with';
 OPTIONAL : 'optional';
 NEW : 'new';
+FROM : 'from';
+IMPORT : 'import';
 
 // python3 imports -- kept for reference
 // TODO: tidy up
@@ -59,10 +61,8 @@ NEW : 'new';
 // FALSE : 'False';
 // FINALLY : 'finally';
 // FOR : 'for';
-// FROM : 'from';
 // GLOBAL : 'global';
 // IF : 'if';
-// IMPORT : 'import';
 // IN : 'in';
 // IS : 'is';
 // LAMBDA : 'lambda';

@@ -1,8 +1,5 @@
 # this is a comment, it should be safely ignored
-
-component Resistor:
-    pin p1
-    pin p2
+import Resistor from "resistor.ato"
 
 module Vdiv:
     signal a

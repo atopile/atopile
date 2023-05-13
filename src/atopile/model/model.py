@@ -25,6 +25,7 @@ class EdgeType(Enum):
     option_of = "option_of"
     instance_of = "instance_of"
     inherits_from = "inherits_from"
+    imported_to = "imported_to"
 
 class Model:
     def __init__(self) -> None:
@@ -148,7 +149,7 @@ class Model:
         Returns a tuple of the graph-path, the data-path and an optional list of remaining parts that weren't found.
         """
         context_vertex = self.graph.vs.find(path_eq=context)
-        part_of_view = self.get_graph_view([EdgeType.part_of, EdgeType.option_of])
+        part_of_view = self.get_graph_view([EdgeType.part_of, EdgeType.option_of, EdgeType.imported_to])
         ref_parts = ref.split(".")
         # 1. ascending loop
         # TODO: we need to figure out scoping and whether we should be allowed to scope indefinately above our context

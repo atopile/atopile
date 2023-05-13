@@ -1,12 +1,18 @@
 #%%
+%load_ext autoreload
+%autoreload 2
 from pathlib import Path
-from atopile.parser.parser import parse_file
-from atopile.netlist.netlist_generator import KicadNetlist
+from atopile.parser.parser import AtoFrontend
+from atopile.netlist.kicad import KicadNetlist
+from atopile.model.model import Model
 
 #%%
-m = parse_file("/Users/mattwildoer/Projects/atopile/sandbox/toy.ato")
-m.plot(debug=True)
+ato_frontend = AtoFrontend(model=Model())
+ato_frontend.seed(Path("/Users/mattwildoer/Projects/atopile/sandbox/toy.ato"))
+ato_frontend.model.plot(debug=True)
 
 #%%
-netlist = KicadNetlist.from_model(m, "/Users/mattwildoer/Projects/atopile/sandbox/toy.ato/vdiv1")
+netlist = KicadNetlist.from_model(ato_frontend.model, "toy.ato/vdiv1")
 netlist.to_file(Path("/Users/mattwildoer/Projects/atopile/sandbox/toy.net"))
+
+# %%

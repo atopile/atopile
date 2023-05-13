@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from contextlib import contextmanager
 
 from antlr4 import CommonTokenStream, FileStream
 
@@ -11,22 +12,86 @@ from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 log = logging.getLogger(__name__)
 
 
-class ModelBuildingVisitor(AtopileParserVisitor):
-    def __init__(self, model: Model, filename: str) -> None:
+class AtoFrontend(AtopileParserVisitor):
+    def __init__(self, model: Model) -> None:
         super().__init__()
         self._been_run = False
         self.model = model
+        self.current_parent = None
+        self.build_root_path: Path = None
+        self.parsed_files = {}
 
-        # start the build from the first file passed in
-        self.model.new_vertex(VertexType.file, filename)
-        self.model.data[filename] = {}
-        self.current_parent = filename
+    @staticmethod
+    def parse_file(path: Path) -> Model:
+        input = FileStream(path)
+        lexer = AtopileLexer(input)
+        stream = CommonTokenStream(lexer)
+        parser = AtopileParser(stream)
+        tree = parser.file_input()
+        return tree
+
+    @contextmanager
+    def parent(self, ref: str):
+        old_parent = self.current_parent
+        self.current_parent = ref
+        yield
+        self.current_parent = old_parent
+
+    def seed(self, path: Path):
+        """
+        Start the build from the specified file.
+        """
+        if not path.exists():
+            raise FileNotFoundError(path)
+        ref = path.name
+        self.build_root_path = path.parent
+
+        tree = self.parse_file(path)
+        self.parsed_files[path] = tree
+
+        self.model.new_vertex(VertexType.file, ref)
+        self.model.data[ref] = {}
+
+        self.current_parent = ref
+        self.visit(tree)
 
     def visit(self, tree):
         if self._been_run:
             raise RuntimeError("Visitor has already been used")
         self._been_run = True
         return super().visit(tree)
+
+    def visitImport_stmt(self, ctx: AtopileParser.Import_stmtContext):
+        import_filename = ctx.STRING().getText().strip('"')
+
+        path = self.build_root_path / import_filename
+        if not path.exists():
+            raise FileNotFoundError(path)
+
+        if path in self.parsed_files:
+            tree = self.parsed_files[path]
+        else:
+            tree = self.parse_file(path)
+            self.parsed_files[path] = tree
+
+            self.model.new_vertex(VertexType.file, import_filename)
+            self.model.data[import_filename] = {}
+
+        with self.parent(import_filename):
+            import_ = super().visit(tree)
+
+        to_import = ctx.name_or_attr().getText()
+        graph_path, data_path = self.model.find_ref(to_import, import_filename)
+        if data_path:
+            raise RuntimeError(f"Cannot import data path {data_path}")
+
+        self.model.new_edge(
+            EdgeType.imported_to,
+            graph_path,
+            self.current_parent
+        )
+
+        return import_
 
     def define_block(self, ctx, block_type: VertexType):
         original_parent = self.current_parent
@@ -128,14 +193,3 @@ class ModelBuildingVisitor(AtopileParserVisitor):
             data[data_path[-1]] = value
 
         return super().visitAssign_stmt(ctx)
-
-def parse_file(path: Path) -> Model:
-    input = FileStream(path)
-    lexer = AtopileLexer(input)
-    stream = CommonTokenStream(lexer)
-    parser = AtopileParser(stream)
-    tree = parser.file_input()
-    m = Model()
-    builder = ModelBuildingVisitor(m, str(path))
-    builder.visit(tree)
-    return m

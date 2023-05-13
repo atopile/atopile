@@ -80,6 +80,15 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by AtopileParser#import_stmt.
+    def enterImport_stmt(self, ctx:AtopileParser.Import_stmtContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#import_stmt.
+    def exitImport_stmt(self, ctx:AtopileParser.Import_stmtContext):
+        pass
+
+
     # Enter a parse tree produced by AtopileParser#assign_stmt.
     def enterAssign_stmt(self, ctx:AtopileParser.Assign_stmtContext):
         pass

@@ -21,6 +21,7 @@ EDGE_COLOR_DICT = {
     "instance_of": "red",
     "inherits_from": "green",
     "option_of": "magenta",
+    "imported_to": "green",
 }
 
 GRAPH_VISUALIZE_SETTINGS = {
