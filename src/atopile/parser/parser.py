@@ -12,7 +12,7 @@ from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 log = logging.getLogger(__name__)
 
 
-class AtoFrontend(AtopileParserVisitor):
+class FromAtoBuilder(AtopileParserVisitor):
     def __init__(self, model: Model) -> None:
         super().__init__()
         self._been_run = False
