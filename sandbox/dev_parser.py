@@ -1,9 +1,8 @@
 #%%
-%load_ext autoreload
-%autoreload 2
+# %load_ext autoreload
+# %autoreload 2
 from pathlib import Path
 
-from atopile.model.model import Model
 from atopile.parser.parser import Builder
 from atopile.project.project import Project
 from atopile.utils import get_project_root
