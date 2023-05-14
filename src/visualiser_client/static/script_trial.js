@@ -606,6 +606,7 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         let created_block = null
         console.log('made it')
         if (is_root == false) {
+            console.log(element['name'])
             created_block = createBlock(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
         }
         if (parent) {
