@@ -144,20 +144,187 @@ let input_dict = {
 
 }
 
+let generated_dict = {
+    "name": "root",
+    "type": "module",
+    "uuid": "6dff5805-b5dd-4cb5-a091-2592ab75cb1c",
+    "blocks": [
+      {
+        "name": "vdiv1",
+        "type": "module",
+        "uuid": "cc8fb500-8632-4912-9f87-7d9978e33a34",
+        "blocks": [
+          {
+            "name": "R1",
+            "type": "component",
+            "uuid": "fe17f5d6-085b-4870-abe6-b8dab54df304",
+            "blocks": [
+              
+            ],
+            "ports": [
+              {
+                "name": "test",
+                "uuid": "d84c783f-fa1c-42e4-b493-e3983c090046",
+                "location": "top",
+                "pins": [
+                  {
+                    "name": "p1",
+                    "uuid": "024c699c-4daf-40d7-bd7a-84344ff77b4d",
+                    "index": 0
+                  }
+                ]
+              },
+              {
+                "name": "test2",
+                "uuid": "d84c783f-fa1c-42e4-b493-e3983c090046",
+                "location": "bottom",
+                "pins": [
+                  {
+                    "name": "p2",
+                    "uuid": "27136ec0-38ab-455a-854a-99108de0b3a3",
+                    "index": 1
+                  }
+                ]
+              }
+            ],
+            "links": [
+              
+            ]
+          },
+          {
+            "name": "R2",
+            "type": "component",
+            "uuid": "3d67aaab-15ce-4ef5-b516-1d8e9df8b951",
+            "blocks": [
+              
+            ],
+            "ports": [
+              {
+                "name": "test",
+                "uuid": "46f6824d-321a-4356-b324-c100fbd29300",
+                "location": "top",
+                "pins": [
+                  {
+                    "name": "p1",
+                    "uuid": "898ff967-099a-4e86-b7fe-dfb6f91606ea",
+                    "index": 0
+                  }
+                ]
+              },
+              {
+                "name": "test2",
+                "uuid": "46f6824d-321a-4356-b324-c100fbd29300",
+                "location": "bottom",
+                "pins": [
+                  {
+                    "name": "p2",
+                    "uuid": "1afd78a9-aaa4-44aa-9f59-6903b835d4d9",
+                    "index": 1
+                  }
+                ]
+              }
+            ],
+            "links": [
+              
+            ]
+          }
+        ],
+        "ports": [
+          {
+            "name": "test",
+            "uuid": "a09e26c8-7408-4a5c-ae4c-be7a60cef65d",
+            "location": "top",
+            "pins": [
+              {
+                "name": "a",
+                "uuid": "b4e2cf2a-5a9e-47f8-966c-b8e9c8483576",
+                "index": 0
+              }
+            ]
+          },
+          {
+            "name": "test2",
+            "uuid": "1",
+            "location": "left",
+            "pins": [
+              {
+                "name": "center",
+                "uuid": "05a26e8f-9c2d-4fee-a47f-6d05da5d9ef1",
+                "index": 1
+              }
+            ]
+          },
+          {
+            "name": "test3",
+            "uuid": "2",
+            "location": "bottom",
+            "pins": [
+              {
+                "name": "b",
+                "uuid": "114f8508-4c78-4ac8-8040-ee9e45c199e3",
+                "index": 2
+              }
+            ]
+          }
+        ],
+        "links": [
+          {
+            "name": "test",
+            "uuid": "05b57934-029d-4eeb-af00-d067a36ce96e",
+            "source": "024c699c-4daf-40d7-bd7a-84344ff77b4d",
+            "target": "b4e2cf2a-5a9e-47f8-966c-b8e9c8483576"
+          },
+          {
+            "name": "test",
+            "uuid": "555c2026-69d5-401b-9eec-88e6a300356c",
+            "source": "27136ec0-38ab-455a-854a-99108de0b3a3",
+            "target": "05a26e8f-9c2d-4fee-a47f-6d05da5d9ef1"
+          },
+          {
+            "name": "test",
+            "uuid": "e3f0122b-232e-47e0-b237-f32bb451264e",
+            "source": "898ff967-099a-4e86-b7fe-dfb6f91606ea",
+            "target": "05a26e8f-9c2d-4fee-a47f-6d05da5d9ef1"
+          },
+          {
+            "name": "test",
+            "uuid": "e860c60b-d5ef-475d-bce9-8d1857705b54",
+            "source": "1afd78a9-aaa4-44aa-9f59-6903b835d4d9",
+            "target": "114f8508-4c78-4ac8-8040-ee9e45c199e3"
+          }
+        ]
+      }
+    ],
+    "ports": [
+      
+    ],
+    "links": [
+      
+    ]
+  }
+
 // Visual settings for the visualizer
 let settings_dict = {
-    "paper": {
-        "backgroundColor": 'rgba(224, 233, 227, 0.3)'
+    "common": {
+        "backgroundColor": 'rgba(224, 233, 227, 0.3)',
+        "pinLabelFontSize": 12,
+        "pinLabelPadding": 5,
+        "parentPadding": 40
     },
     "component" : {
         "strokeWidth": 2,
         "fontSize": 10,
         "defaultWidth": 60,
-        "defaultHeight": 60,
+        "defaultHeight": 80,
     },
-    "module" : {
+    "block" : {
         "strokeWidth": 2,
+        strokeDasharray: '4,4',
         "fontSize": 10
+    },
+    "link": {
+        "strokeWidth": 1,
+        "color": "blue"
     }
 }
 
@@ -221,7 +388,7 @@ class AtoComponent extends AtoElement {
     }
 
     fitAncestorElements() {
-        var padding = 40;
+        var padding = settings_dict['common']['parentPadding'];
         this.fitParent({
             deep: true,
             padding: {
@@ -234,28 +401,29 @@ class AtoComponent extends AtoElement {
     }
 }
 
-// Class for a module
-// For the moment, modules and components are separate.
+// Class for a block
+// For the moment, blocks and components are separate.
 // We might want to combine them in the future.
-class AtoModule extends dia.Element {
+class AtoBlock extends dia.Element {
     defaults() {
       return {
         ...super.defaults,
-        type: "AtoModule",
-        size: { width: 200, height: 200 },
+        type: "AtoBlock",
+        size: { width: 10, height: 10 },
         collapsed: false,
         attrs: {
           body: {
             fill: "transparent",
             stroke: "#333",
-            strokeWidth: settings_dict["module"]["strokeWidth"],
+            strokeWidth: settings_dict["block"]["strokeWidth"],
+            strokeDasharray: settings_dict["block"]["strokeDasharray"],
             width: "calc(w)",
             height: "calc(h)"
           },
           label: {
-            text: "Module",
+            text: "Block",
             fill: "#333",
-            fontSize: settings_dict["module"]["strokeWidth"],
+            fontSize: settings_dict["block"]["strokeWidth"],
             fontWeight: "bold",
             textVerticalAnchor: "middle",
             textAnchor: "middle",
@@ -297,7 +465,7 @@ const cellNamespace = {
     ...shapes,
     AtoElement,
     AtoComponent,
-    AtoModule
+    AtoBlock
 };
 
 function addPortsAndPins(element, port_list) {
@@ -320,7 +488,7 @@ function addPortsAndPins(element, port_list) {
             },
             label: {
                 position: {
-                    name: "outside",
+                    name: "inside",
                     args: { y: 0 }
                 },
                 markup: [{
@@ -344,6 +512,7 @@ function addPortsAndPins(element, port_list) {
                     label: { 
                         text: pin['name'],
                         fontFamily: "sans-serif",
+                        fontSize: settings_dict['common']['pinLabelFontSize'],
                     }
                 }
             });
@@ -370,10 +539,11 @@ function addLinks(links) {
         });
         added_link.attr({
             line: {
-                stroke: 'grey',
-                'stroke-width': 3,
+                'stroke': settings_dict['link']['color'],
+                'stroke-width': settings_dict['link']['strokeWidth'],
                 targetMarker: {'type': 'none'}
-            }
+            },
+            z: 0
           });
         added_link.addTo(graph);
         //console.log('link added. src ' + link['source'] + ' parent ' + pin_to_element_association[link['source']] + ' tgt ' + link['target'])
@@ -397,8 +567,8 @@ function createComponent(title, uuid, ports_dict, x, y) {
     return component;
 }
 
-function createModule(title, uuid, ports_dict, x, y) {
-    const module = new AtoModule({
+function createBlock(title, uuid, ports_dict, x, y) {
+    const block = new AtoBlock({
         id: uuid,
         attrs: {
             label: {
@@ -407,15 +577,15 @@ function createModule(title, uuid, ports_dict, x, y) {
         }
     });
 
-    addPortsAndPins(module, ports_dict);
+    addPortsAndPins(block, ports_dict);
 
-    module.addTo(graph);
-    module.position(x, y, { parentRelative: false });
-    return module;
+    block.addTo(graph);
+    block.position(x, y, { parentRelative: false });
+    return block;
 }
 
-function addElementToElement(module_to_add, to_module) {
-    to_module.embed(module_to_add);
+function addElementToElement(block_to_add, to_block) {
+    to_block.embed(block_to_add);
 }
 
 function visulatizationFromDict(element, is_root = true, parent = null) {
@@ -431,21 +601,22 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         //console.log('dict of element' + JSON.stringify(dict_of_elements[element['uuid']]));
     }
 
-    // If it is a module, create it
+    // If it is a block, create it
     else if (element['type'] == 'module') {
-        let created_module = null
+        let created_block = null
+        console.log('made it')
         if (is_root == false) {
-            created_module = createModule(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
+            created_block = createBlock(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
         }
         if (parent) {
-            addElementToElement(created_module, parent);
+            addElementToElement(created_block, parent);
         }
-        dict_of_elements[element['uuid']] = created_module;
+        dict_of_elements[element['uuid']] = created_block;
         // Itterate over the included elements to create them
-        for (nested_element of element['modules']) {
-            let returned_dict = visulatizationFromDict(nested_element, is_root = false, created_module);
+        for (let nested_element of element['blocks']) {
+            let returned_dict = visulatizationFromDict(nested_element, is_root = false, created_block);
             console.log('returned dict keys ' + Object.keys(returned_dict) );//+ ' from ' + nested_element)
-            //addElementsToElement(returned_dict, created_module);
+            //addElementsToElement(returned_dict, created_block);
             // Add the returned list to the element list and add all sub-elements to it's parent
             dict_of_elements = { ...dict_of_elements, ...returned_dict };
         }
@@ -465,7 +636,7 @@ const paper = new joint.dia.Paper({
     gridSize: 10,
     drawGrid: true,
     background: {
-        color: settings_dict["paper"]["backgroundColor"]
+        color: settings_dict["common"]["backgroundColor"]
     },
     defaultRouter: { name: 'manhattan'},
     cellViewNamespace: cellNamespace,
@@ -486,27 +657,8 @@ const paper = new joint.dia.Paper({
 let pin_to_element_association = {};
 
 
-let element_dict = visulatizationFromDict(list = input_dict)
+let element_dict = visulatizationFromDict(generated_dict)
 
-
-
-
-// var link = new shapes.standard.Link({
-//     source: {
-//         id: '111', //element_dict['111']['id'],
-//         port: '1111'
-//     },
-//     target: {
-//         id: '333',//element_dict['333']['id'],
-//         port: '3311'
-//     }
-// });
-// link.addTo(graph);
-
-// let link2 = new shapes.standard.Link();
-// link2.source('2211');
-// link2.target('3311');
-// link2.addTo(graph)
 
 
 paper.on('cell:pointerup', function(evt, x, y) {
