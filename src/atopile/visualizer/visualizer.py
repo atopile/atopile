@@ -87,7 +87,14 @@ class Bob(ModelVisitor):
         super().__init__(model)
 
     def build(self, main: ModelVertex) -> Block:
-        root = self.generic_visit_block(main)
+        root = Block(
+            name="root",
+            type="module",
+            uuid=str(uuid.uuid4()),
+            blocks=[self.generic_visit_block(main)],
+            ports=[],
+            links=[],
+        )
 
         connections = self.model.graph.es.select(type_eq=EdgeType.connects_to.name)
         for connection in connections:
