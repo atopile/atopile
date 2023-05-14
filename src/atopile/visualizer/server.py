@@ -5,8 +5,6 @@ from typing import Any, Dict
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from atopile.visualiser.render import render_debug, save_positions
-
 # FIXME: https://github.com/tiangolo/fastapi/issues/1508
 log = logging.Logger(__name__, level=logging.DEBUG)
 log.warning("Test!")  # FIXME: this should be debug, but can't be because the logs don't output otherwise
@@ -23,7 +21,7 @@ async def api_root():
 async def post_graph(data: Dict[Any, Any]):
     # this is where the `data` comes back to!
     #log.warning(str(data))  # FIXME:
-    save_positions(data)
+    #ssave_positions(data)
     return {"message": "OK"}
 # @app.get("/api/graph")
 # async def get_graph():
