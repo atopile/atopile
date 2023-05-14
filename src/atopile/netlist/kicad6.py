@@ -155,7 +155,7 @@ class KicadNetlist:
         env = Environment(loader=FileSystemLoader(this_dir), undefined=StrictUndefined)
 
         # Create the complete netlist
-        template = env.get_template("kicad.j2")
+        template = env.get_template("kicad6.j2")
         netlist_str = template.render(nl=self)
 
         with path.open("w") as f:
