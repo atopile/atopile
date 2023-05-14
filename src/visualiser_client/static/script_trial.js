@@ -1,127 +1,167 @@
 const { shapes, util, dia, anchors } = joint;
 
-let input_list = [{
-    "name": "outer_comp_1",
-    "type": "component",
-    "ports": [
-        {
-            "name": "top",
-            "location": "top",
-            "pins": [
-                {
-                    "name": "vcc",
-                }
-            ]
-        },
-        {
-            "name": "bottom",
-            "location": "bottom",
-            "pins": [
-                {
-                    "name": "gnd",
-                }
-            ]
-        },
-    ],
-    "links": []},
-    {
-    "name": "main_module",
+// Example input dict
+let input_dict = {
+    "name": "main",
     "type": "module",
+    "uuid": 9,
+    "ports": [],
     "modules": [
         {
-            "name": "inner_comp_1",
-            "type": "component",
-            "ports": [
-                {
-                    "name": "top",
-                    "location": "left",
-                    "pins": [
-                        {
-                            "name": "vcc",
-                        }
-                    ]
-                },
-                {
-                    "name": "bottom",
-                    "location": "right",
-                    "pins": [
-                        {
-                            "name": "gnd",
-                        }
-                    ]
-                },
-            ],
-            "links": []
+        "name": "outer_comp_1",
+        "uuid": 111,
+        "type": "component",
+        "ports": [
+            {
+                "name": "top",
+                "uuid": 11,
+                "location": "top",
+                "pins": [
+                    {
+                        "name": "vcc",
+                        "uuid": 1111,
+                    }
+                ]
+            },
+            {
+                "name": "bottom",
+                "uuid": 22,
+                "location": "bottom",
+                "pins": [
+                    {
+                        "name": "gnd",
+                        "uuid": 2211,
+                    }
+                ]
+            },
+        ],
+        "links": []
         },
         {
-            "name": "inner_comp_2",
-            "type": "component",
-            "ports": [
+        "name": "main_module",
+        "uuid": 3334,
+        "type": "module",
+        "modules": [
+            {
+                "name": "inner_comp_1",
+                "uuid": 333,
+                "type": "component",
+                "ports": [
+                    {
+                        "name": "top",
+                        "uuid": 33,
+                        "location": "left",
+                        "pins": [
+                            {
+                                "name": "vcc",
+                                "uuid": 3311,
+                            }
+                        ]
+                    },
+                    {
+                        "name": "bottom",
+                        "uuid": 44,
+                        "location": "right",
+                        "pins": [
+                            {
+                                "name": "gnd",
+                                "uuid": 4411,
+                            }
+                        ]
+                    },
+                ],
+                "links": []
+            },
+            {
+                "name": "inner_comp_2",
+                "uuid": 555,
+                "type": "component",
+                "ports": [
+                    {
+                        "name": "top",
+                        "uuid": 55,
+                        "location": "left",
+                        "pins": [
+                            {
+                                "name": "vcc",
+                                "uuid": 5511,
+                            }
+                        ]
+                    },
+                    {
+                        "name": "bottom",
+                        "uuid": 66,
+                        "location": "right",
+                        "pins": [
+                            {
+                                "name": "gnd",
+                                "uuid": 6611,
+                            }
+                        ]
+                    },
+                ],
+                "links": []
+            }
+        ],
+        "ports" : [
+            {
+                "name": "input",
+                "uuid": 77,
+                "location": "left",
+                "pins": [
+                    {
+                        "name": "input",
+                        "uuid": 7711,
+                    }
+                ]
+            },
+            {
+                "name": "output",
+                "uuid": 88,
+                "location": "right",
+                "pins": [
+                    {
+                        "name": "output",
+                        "uuid": 8811,
+                    }
+                ]
+            },
+        ],
+        "links": [
                 {
-                    "name": "top",
-                    "location": "left",
-                    "pins": [
-                        {
-                            "name": "vcc",
-                        }
-                    ]
+                    "source": "7711",
+                    "target": "6611"
                 },
-                {
-                    "name": "bottom",
-                    "location": "right",
-                    "pins": [
-                        {
-                            "name": "gnd",
-                        }
-                    ]
-                },
-            ],
-            "links": []
+        ]
         }
-    ],
-    "ports" : [
-        {
-            "name": "input",
-            "location": "left",
-            "pins": [
-                {
-                    "name": "input",
-                }
-            ]
-        },
-        {
-            "name": "output",
-            "location": "right",
-            "pins": [
-                {
-                    "name": "output",
-                }
-            ]
-        },
     ],
     "links": [
         {
-            "source": "inner_comp_1.vcc",
-            "target": "inner_comp_2.gnd"
+        "source": "1111",
+        "target": "7711"
         }
     ]
-    }
-]
 
+}
+
+// Visual settings for the visualizer
 let settings_dict = {
     "paper": {
-        "backgroundColor": 'rgba(0, 255, 0, 0.3)'
+        "backgroundColor": 'rgba(224, 233, 227, 0.3)'
     },
     "component" : {
-        "strokeWidth": 6,
-        "fontSize": 10
+        "strokeWidth": 2,
+        "fontSize": 10,
+        "defaultWidth": 60,
+        "defaultHeight": 60,
     },
     "module" : {
-        "strokeWidth": 4,
+        "strokeWidth": 2,
         "fontSize": 10
     }
 }
 
+// Base class for the visual elements
 class AtoElement extends dia.Element {
     defaults() {
         return {
@@ -139,12 +179,14 @@ class AtoElement extends dia.Element {
     }
 }
 
+// Class for a component
 class AtoComponent extends AtoElement {
     defaults() {
         return {
             ...super.defaults(),
             type: "AtoComponent",
-            size: { width: 200, height: 50 },
+            size: { width: settings_dict["component"]["defaultWidth"], 
+                    height: settings_dict["component"]["defaultHeight"] },
             attrs: {
                 body: {
                     fill: "white",
@@ -192,7 +234,9 @@ class AtoComponent extends AtoElement {
     }
 }
 
-
+// Class for a module
+// For the moment, modules and components are separate.
+// We might want to combine them in the future.
 class AtoModule extends dia.Element {
     defaults() {
       return {
@@ -249,8 +293,6 @@ class AtoModule extends dia.Element {
   }
 
 
-
-
 const cellNamespace = {
     ...shapes,
     AtoElement,
@@ -259,7 +301,10 @@ const cellNamespace = {
 };
 
 function addPortsAndPins(element, port_list) {
+    // Dict of all the port for the element
     let port_groups = {};
+
+    // Create the different ports
     for (let port of port_list) {
         port_groups[port['name']] = {
             position: {
@@ -275,7 +320,7 @@ function addPortsAndPins(element, port_list) {
             },
             label: {
                 position: {
-                    name: port['location'],
+                    name: "outside",
                     args: { y: 0 }
                 },
                 markup: [{
@@ -289,8 +334,11 @@ function addPortsAndPins(element, port_list) {
                 selector: 'portBody'
             }]
         };
+
+        // While we are creating the port, add the pins in the element
         for (let pin of port['pins']) {
             element.addPort({ 
+                id: pin["uuid"],
                 group: port['name'],
                 attrs: { 
                     label: { 
@@ -299,15 +347,42 @@ function addPortsAndPins(element, port_list) {
                     }
                 }
             });
+            pin_to_element_association[pin["uuid"]] = element["id"];
+            //console.log('pin_uuid ' + pin["uuid"] + ' element ' + element["id"])
         }
     };
-    element.prop({"ports": { "groups": port_groups}});
 
-    return port_groups;
+    // Add the ports list to the element
+    element.prop({"ports": { "groups": port_groups}});
 }
 
-function createComponent(title, ports_dict, x, y) {
+function addLinks(links) {
+    for (let link of links) {
+        var added_link = new shapes.standard.Link({
+            source: {
+                id: pin_to_element_association[link['source']],
+                port: link['source']
+            },
+            target: {
+                id: pin_to_element_association[link['target']],
+                port: link['target']
+            }
+        });
+        added_link.attr({
+            line: {
+                stroke: 'grey',
+                'stroke-width': 3,
+                targetMarker: {'type': 'none'}
+            }
+          });
+        added_link.addTo(graph);
+        //console.log('link added. src ' + link['source'] + ' parent ' + pin_to_element_association[link['source']] + ' tgt ' + link['target'])
+    }
+}
+
+function createComponent(title, uuid, ports_dict, x, y) {
     const component = new AtoComponent({
+        id: uuid,
         attrs: {
             label: {
                 text: title
@@ -322,8 +397,9 @@ function createComponent(title, ports_dict, x, y) {
     return component;
 }
 
-function createModule(title, ports_dict, x, y) {
+function createModule(title, uuid, ports_dict, x, y) {
     const module = new AtoModule({
+        id: uuid,
         attrs: {
             label: {
                 text: title
@@ -342,36 +418,56 @@ function addElementToElement(module_to_add, to_module) {
     to_module.embed(module_to_add);
 }
 
-function buildClassesFromDict(list) {
-    let list_of_elements = [];
-    for (let element of list) {
-        if (element['type'] == 'component') {
-            let created_comp = createComponent(title = element['name'], element['ports'], x = 20, y = 20);
-            list_of_elements.push(created_comp)
+function visulatizationFromDict(element, is_root = true, parent = null) {
+    // Create the list of all the created elements
+    let dict_of_elements = {};
+
+    if (element['type'] == 'component') {
+        let created_comp = createComponent(title = element['name'], uuid = element['uuid'], element['ports'], x = 100, y = 100);
+        dict_of_elements[element['uuid']] = created_comp;
+        if (parent) {
+            addElementToElement(created_comp, parent);
         }
-        else if (element['type'] == 'module') {
-            let created_module = createModule(title = element['name'], element['ports'], 20, 20);
-            list_of_elements.push(created_module);
-            returned_list = buildClassesFromDict(element['modules']);
-            for (let nested_element of returned_list) {
-                addElementToElement(nested_element, created_module);
-            }
-        }
+        //console.log('dict of element' + JSON.stringify(dict_of_elements[element['uuid']]));
     }
-    return list_of_elements;
+
+    // If it is a module, create it
+    else if (element['type'] == 'module') {
+        let created_module = null
+        if (is_root == false) {
+            created_module = createModule(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
+        }
+        if (parent) {
+            addElementToElement(created_module, parent);
+        }
+        dict_of_elements[element['uuid']] = created_module;
+        // Itterate over the included elements to create them
+        for (nested_element of element['modules']) {
+            let returned_dict = visulatizationFromDict(nested_element, is_root = false, created_module);
+            console.log('returned dict keys ' + Object.keys(returned_dict) );//+ ' from ' + nested_element)
+            //addElementsToElement(returned_dict, created_module);
+            // Add the returned list to the element list and add all sub-elements to it's parent
+            dict_of_elements = { ...dict_of_elements, ...returned_dict };
+        }
+
+        addLinks(element['links']);
+    }
+    
+    return dict_of_elements;
 }
 
 const graph = new dia.Graph({}, { cellNamespace });
 const paper = new joint.dia.Paper({
     el: document.getElementById('atopilePaper'),
     model: graph,
-    width: 600,
+    width: 1000,
     height: 600,
     gridSize: 10,
     drawGrid: true,
     background: {
         color: settings_dict["paper"]["backgroundColor"]
     },
+    defaultRouter: { name: 'manhattan'},
     cellViewNamespace: cellNamespace,
     // restrictTranslate: (elementView) => {
     //     const parent = elementView.model.getParentCell();
@@ -387,44 +483,30 @@ const paper = new joint.dia.Paper({
     //   },
 });
 
+let pin_to_element_association = {};
 
-// module2 = createModule("module2", 100, 100)
-// module1 = createModule('this is a module', 10, 10)
-// test = createComponent('allo', 10, 10);
-// test.addNewPort('port 1', 'right');
-// test.addConnection('pin 1', 'port 1');
-// test.addConnection('pin 3', 'port 1');
-// test.addNewPort('port 2', 'left');
-// test.addConnection('pin 2', 'port 2');
-// test.addConnection('pin 4', 'port 2');
 
-// comp2 = createComponent('comp2', 10, 10);
+let element_dict = visulatizationFromDict(list = input_dict)
 
 
 
-// addModuleToModule(module1, module2)
 
-
-// addModuleToModule(test, module1);
-// addModuleToModule(comp2, module1);
-
-// var ports = test.getPorts();
-// console.log(ports);
-// console.log(typeof ports);
-// ports.forEach(element => {
-//     console.log(element);
+// var link = new shapes.standard.Link({
+//     source: {
+//         id: '111', //element_dict['111']['id'],
+//         port: '1111'
+//     },
+//     target: {
+//         id: '333',//element_dict['333']['id'],
+//         port: '3311'
+//     }
 // });
+// link.addTo(graph);
 
-// console.log(test.getGroupPorts('port 1'));
-// console.log('new stuff');
-
-// let result = test.prop('ports/groups');
-// console.log(result);
-// console.log(typeof result);
-
-
-
-buildClassesFromDict(list = input_list)
+// let link2 = new shapes.standard.Link();
+// link2.source('2211');
+// link2.target('3311');
+// link2.addTo(graph)
 
 
 paper.on('cell:pointerup', function(evt, x, y) {
