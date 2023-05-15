@@ -1,6 +1,6 @@
-# ato README
+# atopile README
 
-This is the README for your extension "ato". After writing up a brief description, we recommend including the following sections.
+This is the README for your extension "atopile". After writing up a brief description, we recommend including the following sections.
 
 ## Features
 

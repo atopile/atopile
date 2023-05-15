@@ -1,28 +1,67 @@
 {
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-	"name": "ato",
+	"name": "atopile",
 	"patterns": [
 		{
 			"include": "#keywords"
 		},
 		{
 			"include": "#strings"
+		},
+        {
+            "include": "#comments"
+        },
+		{
+			"include": "#import"
+		},
+		{
+			"name": "keyword.control.statement.ato",
+			"match": "\\b(with)\\b"
+		},
+		{
+			"begin": "^\\s*(module|component)\\s+([a-zA-Z_][a-zA-Z_0-9]*)",
+			"beginCaptures": {
+			  "1": {
+				"name": "storage.type.class.ato"
+			  },
+			  "2": {
+				"name": "entity.name.type.class.ato"
+			  }
+			},
+			"end": "(\\s*$\\n?|#.*$\\n?)",
+			"endCaptures": {
+			  "1": {
+				"name": "invalid.illegal.missing-inheritance.ato"
+			  }
+			},
+			"name": "meta.class.ato"
+		},
+		{
+			"captures": {
+				"1": {
+					"name": "keyword.operator.new.ato"
+				},
+				"2": {
+					"name": "entity.name.type.instance.ato"
+				}
+			},
+			"match": "(new)\\s+(\\w+(?:\\.\\w*)?)",
+			"name": "meta.class.instance.constructor"
+		},
+		{
+			"match": "\\b(pin|signal)\\b",
+			"name": "storage.type.c"
+		},
+		{
+			"match": "\\b[a-zA-Z_][a-zA-Z_0-9]*\\b",
+  			"name": "variable.other.ato"
 		}
 	],
 	"repository": {
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.ato",
-				"match": "\\b(if|while|for|return)\\b"
-			},
-			{
-				"name": "keyword.feature.ato",
-				"match": "\\b(feature|pin|limit|package|component|state|type)\\b",
-				"captures": {
-					"1": {
-						"name": "keyword.feature.ato"
-					}
-				}
+				"match": "\\b(if|while|for|return|optional)\\b"
 			}]
 		},
 		"strings": {
@@ -35,6 +74,14 @@
 					"match": "\\\\."
 				}
 			]
+		},
+        "comments": {
+            "name": "comment.line.number-sign.ato",
+            "match": "#.*"
+        },
+		"import": {
+			"name": "keyword.control.import.ato",
+			"match": "\\b(?:(import)|(from))\\b"
 		}
 	},
 	"scopeName": "source.ato"

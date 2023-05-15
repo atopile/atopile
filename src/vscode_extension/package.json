@@ -1,10 +1,10 @@
 {
-  "name": "ato",
-  "displayName": "ato lang",
-  "description": "Syntax highlighting for ato lang",
+  "name": "atopile",
+  "displayName": ".ato",
+  "description": "atopile synthax highlighting",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.77.0"
+    "vscode": "^1.78.0"
   },
   "categories": [
     "Programming Languages"
@@ -12,7 +12,7 @@
   "contributes": {
     "languages": [{
       "id": "ato",
-      "aliases": ["ato", "ato"],
+      "aliases": ["atopile", "ato"],
       "extensions": [".ato"],
       "configuration": "./language-configuration.json"
     }],
