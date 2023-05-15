@@ -190,3 +190,7 @@ class Bob(ModelVisitor):
 
     def visit_signal(self, vertex: ModelVertex) -> Pin:
         return self.generic_visit_pin(vertex)
+
+def build_dict(model: Model, main: str) -> dict:
+    root = Block.from_model(model, main)
+    return root.to_dict()

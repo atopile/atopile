@@ -30,7 +30,6 @@ class Builder(AtopileParserVisitor):
         self._file_stack = []
 
         # if something's in parsed files, we must skip building it a second time
-        self.parsed_files = []
         super().__init__()
 
     @property
@@ -54,7 +53,7 @@ class Builder(AtopileParserVisitor):
         with self.working_block(str(std_path)):
             yield
         self._file_stack.pop()
-        self.parsed_files.append(std_path)
+        self.model.src_files.append(std_path)
 
     def build(self, path: Path) -> Model:
         """
@@ -86,7 +85,7 @@ class Builder(AtopileParserVisitor):
         if std_path in self._file_stack:
             raise RuntimeError(f"Circular import detected: {std_path}")
 
-        if std_path not in self.parsed_files:
+        if std_path not in self.model.src_files:
             # do the actual import, parsing etc...
             with self.working_file(abs_path):
                 tree = parse_file(abs_path)

@@ -31,6 +31,9 @@ dependencies = [
     "igraph",
     "fastapi",
     "schema",
+    "uvicorn[standard]",
+    "click",
+    "watchfiles",
 ]
 dynamic = ["version"]
 
@@ -60,8 +63,10 @@ doc = [
 dev = [
     "ruff",
     "antlr4-python3-runtime",
-    "uvicorn[standard]",
 ]
+
+[project.scripts]
+ato = "atopile.cli.cli:cli"
 
 [tool.hatch.version]
 path = "src/atopile/__init__.py"

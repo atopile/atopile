@@ -36,6 +36,8 @@ class Model:
         self.data = {}
         self.schema = Schema({})
 
+        self.src_files = []
+
     def plot(self, *args, **kwargs):
         return utils.plot(self.graph, *args, **kwargs)
 

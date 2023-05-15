@@ -10,8 +10,9 @@ def resolve_project_dir(path: Path):
     Resolve the project directory from the specified path.
     """
     for p in [path] + list(path.parents):
-        if (p / CONFIG_FILENAME).exists():
-            return p
+        clean_path = p.resolve().absolute()
+        if (clean_path / CONFIG_FILENAME).exists():
+            return clean_path
 
 class Project:
     def __init__(self, root: Path) -> None:
