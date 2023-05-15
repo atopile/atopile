@@ -1,323 +1,10 @@
 const { shapes, util, dia, anchors } = joint;
 
-// Example input dict
-let input_dict = {
-    "name": "main",
-    "type": "module",
-    "uuid": 9,
-    "ports": [],
-    "modules": [
-        {
-        "name": "outer_comp_1",
-        "uuid": 111,
-        "type": "component",
-        "ports": [
-            {
-                "name": "top",
-                "uuid": 11,
-                "location": "top",
-                "pins": [
-                    {
-                        "name": "vcc",
-                        "uuid": 1111,
-                    }
-                ]
-            },
-            {
-                "name": "bottom",
-                "uuid": 22,
-                "location": "bottom",
-                "pins": [
-                    {
-                        "name": "gnd",
-                        "uuid": 2211,
-                    }
-                ]
-            },
-        ],
-        "links": []
-        },
-        {
-        "name": "main_module",
-        "uuid": 3334,
-        "type": "module",
-        "modules": [
-            {
-                "name": "inner_comp_1",
-                "uuid": 333,
-                "type": "component",
-                "ports": [
-                    {
-                        "name": "top",
-                        "uuid": 33,
-                        "location": "left",
-                        "pins": [
-                            {
-                                "name": "vcc",
-                                "uuid": 3311,
-                            }
-                        ]
-                    },
-                    {
-                        "name": "bottom",
-                        "uuid": 44,
-                        "location": "right",
-                        "pins": [
-                            {
-                                "name": "gnd",
-                                "uuid": 4411,
-                            }
-                        ]
-                    },
-                ],
-                "links": []
-            },
-            {
-                "name": "inner_comp_2",
-                "uuid": 555,
-                "type": "component",
-                "ports": [
-                    {
-                        "name": "top",
-                        "uuid": 55,
-                        "location": "left",
-                        "pins": [
-                            {
-                                "name": "vcc",
-                                "uuid": 5511,
-                            }
-                        ]
-                    },
-                    {
-                        "name": "bottom",
-                        "uuid": 66,
-                        "location": "right",
-                        "pins": [
-                            {
-                                "name": "gnd",
-                                "uuid": 6611,
-                            }
-                        ]
-                    },
-                ],
-                "links": []
-            }
-        ],
-        "ports" : [
-            {
-                "name": "input",
-                "uuid": 77,
-                "location": "left",
-                "pins": [
-                    {
-                        "name": "input",
-                        "uuid": 7711,
-                    }
-                ]
-            },
-            {
-                "name": "output",
-                "uuid": 88,
-                "location": "right",
-                "pins": [
-                    {
-                        "name": "output",
-                        "uuid": 8811,
-                    }
-                ]
-            },
-        ],
-        "links": [
-                {
-                    "source": "7711",
-                    "target": "6611"
-                },
-        ]
-        }
-    ],
-    "links": [
-        {
-        "source": "1111",
-        "target": "7711"
-        }
-    ]
-
-}
-
-let generated_dict = {
-    "name": "root",
-    "type": "module",
-    "uuid": "6dff5805-b5dd-4cb5-a091-2592ab75cb1c",
-    "blocks": [
-      {
-        "name": "vdiv1",
-        "type": "module",
-        "uuid": "cc8fb500-8632-4912-9f87-7d9978e33a34",
-        "blocks": [
-          {
-            "name": "R1",
-            "type": "component",
-            "uuid": "fe17f5d6-085b-4870-abe6-b8dab54df304",
-            "blocks": [
-              
-            ],
-            "ports": [
-              {
-                "name": "test",
-                "uuid": "d84c783f-fa1c-42e4-b493-e3983c090046",
-                "location": "top",
-                "pins": [
-                  {
-                    "name": "p1",
-                    "uuid": "024c699c-4daf-40d7-bd7a-84344ff77b4d",
-                    "index": 0
-                  },
-                  {
-                    "name": "p2",
-                    "uuid": "333333",
-                    "index": 1
-                  },
-                  {
-                    "name": "p3",
-                    "uuid": "44sf",
-                    "index": 2
-                  }
-                ]
-              },
-              {
-                "name": "test2",
-                "uuid": "d84c783f-fa1c-42e4-b493-e3983c090046",
-                "location": "bottom",
-                "pins": [
-                  {
-                    "name": "p2",
-                    "uuid": "27136ec0-38ab-455a-854a-99108de0b3a3",
-                    "index": 1
-                  }
-                ]
-              }
-            ],
-            "links": [
-              
-            ]
-          },
-          {
-            "name": "R2",
-            "type": "component",
-            "uuid": "3d67aaab-15ce-4ef5-b516-1d8e9df8b951",
-            "blocks": [
-              
-            ],
-            "ports": [
-              {
-                "name": "test",
-                "uuid": "46f6824d-321a-4356-b324-c100fbd29300",
-                "location": "top",
-                "pins": [
-                  {
-                    "name": "p1",
-                    "uuid": "898ff967-099a-4e86-b7fe-dfb6f91606ea",
-                    "index": 0
-                  }
-                ]
-              },
-              {
-                "name": "test2",
-                "uuid": "46f6824d-321a-4356-b324-c100fbd29300",
-                "location": "bottom",
-                "pins": [
-                  {
-                    "name": "p2",
-                    "uuid": "1afd78a9-aaa4-44aa-9f59-6903b835d4d9",
-                    "index": 1
-                  }
-                ]
-              }
-            ],
-            "links": [
-              
-            ]
-          }
-        ],
-        "ports": [
-          {
-            "name": "test",
-            "uuid": "a09e26c8-7408-4a5c-ae4c-be7a60cef65d",
-            "location": "top",
-            "pins": [
-              {
-                "name": "a",
-                "uuid": "b4e2cf2a-5a9e-47f8-966c-b8e9c8483576",
-                "index": 0
-              }
-            ]
-          },
-          {
-            "name": "test2",
-            "uuid": "1",
-            "location": "left",
-            "pins": [
-              {
-                "name": "center",
-                "uuid": "05a26e8f-9c2d-4fee-a47f-6d05da5d9ef1",
-                "index": 1
-              }
-            ]
-          },
-          {
-            "name": "test3",
-            "uuid": "2",
-            "location": "bottom",
-            "pins": [
-              {
-                "name": "b",
-                "uuid": "114f8508-4c78-4ac8-8040-ee9e45c199e3",
-                "index": 2
-              }
-            ]
-          }
-        ],
-        "links": [
-          {
-            "name": "test",
-            "uuid": "05b57934-029d-4eeb-af00-d067a36ce96e",
-            "source": "024c699c-4daf-40d7-bd7a-84344ff77b4d",
-            "target": "b4e2cf2a-5a9e-47f8-966c-b8e9c8483576"
-          },
-          {
-            "name": "test",
-            "uuid": "555c2026-69d5-401b-9eec-88e6a300356c",
-            "source": "27136ec0-38ab-455a-854a-99108de0b3a3",
-            "target": "05a26e8f-9c2d-4fee-a47f-6d05da5d9ef1"
-          },
-          {
-            "name": "test",
-            "uuid": "e3f0122b-232e-47e0-b237-f32bb451264e",
-            "source": "898ff967-099a-4e86-b7fe-dfb6f91606ea",
-            "target": "05a26e8f-9c2d-4fee-a47f-6d05da5d9ef1"
-          },
-          {
-            "name": "test",
-            "uuid": "e860c60b-d5ef-475d-bce9-8d1857705b54",
-            "source": "1afd78a9-aaa4-44aa-9f59-6903b835d4d9",
-            "target": "114f8508-4c78-4ac8-8040-ee9e45c199e3"
-          }
-        ]
-      }
-    ],
-    "ports": [
-      
-    ],
-    "links": [
-      
-    ]
-  }
-
 // Visual settings for the visualizer
 let settings_dict = {
     "common": {
         "backgroundColor": 'rgba(224, 233, 227, 0.3)',
-        gridSize: 1, 
+        gridSize: 1,
         "pinLabelFontSize": 12,
         "pinLabelPadding": 5,
         "parentPadding": 50
@@ -365,7 +52,7 @@ class AtoComponent extends AtoElement {
         return {
             ...super.defaults(),
             type: "AtoComponent",
-            size: { width: settings_dict["component"]["defaultWidth"], 
+            size: { width: settings_dict["component"]["defaultWidth"],
                     height: settings_dict["component"]["defaultHeight"] },
             attrs: {
                 body: {
@@ -448,14 +135,14 @@ class AtoBlock extends dia.Element {
         }
       };
     }
-  
+
     preinitialize(...args) {
       this.markup = util.svg`
               <rect @selector="body" />
               <text @selector="label" />
           `;
     }
-  
+
     updateChildrenVisibility() {
       const collapsed = this.isCollapsed();
       this.getEmbeddedCells().forEach((child) => child.set("hidden", collapsed));
@@ -490,7 +177,7 @@ function addPortsAndPins(element, port_list) {
     let pin_nb_by_port = {};
     // Create the different ports
     for (let port of port_list) {
-        
+
         pin_nb_by_port[port['location']] = 0;
 
         port_groups[port['name']] = {
@@ -525,11 +212,11 @@ function addPortsAndPins(element, port_list) {
         // While we are creating the port, add the pins in the element
         for (let pin of port['pins']) {
             pin_nb_by_port[port['location']] += 1;
-            element.addPort({ 
+            element.addPort({
                 id: pin["uuid"],
                 group: port['name'],
-                attrs: { 
-                    label: { 
+                attrs: {
+                    label: {
                         text: pin['name'],
                         fontFamily: "sans-serif",
                         fontSize: settings_dict['common']['pinLabelFontSize'],
@@ -545,7 +232,7 @@ function addPortsAndPins(element, port_list) {
     let bottom_pin_number = 'bottom' in pin_nb_by_port ? pin_nb_by_port.bottom : undefined;
     let left_pin_number = 'left' in pin_nb_by_port ? pin_nb_by_port.left : undefined;
     let right_pin_number = 'right' in pin_nb_by_port ? pin_nb_by_port.right : undefined;
-    
+
     let max_width = Math.max(top_pin_number || -Infinity, bottom_pin_number || -Infinity);
     let max_height = Math.max(left_pin_number || -Infinity, right_pin_number || -Infinity);
 
@@ -597,7 +284,7 @@ function addLinks(links) {
         var linkView = added_link.findView(paper);
         linkView.addTools(toolsView);
         linkView.showTools();
-        
+
     }
 }
 
@@ -675,7 +362,7 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
 
         addLinks(element['links']);
     }
-    
+
     return dict_of_elements;
 }
 
@@ -693,27 +380,10 @@ const paper = new joint.dia.Paper({
     defaultRouter: {name: 'manhattan'},
     interactive: true,
     cellViewNamespace: cellNamespace,
-    // restrictTranslate: (elementView) => {
-    //     const parent = elementView.model.getParentCell();
-    //     if (!parent) return null; // No restriction
-    //     // Activity movement is constrained by the parent area
-    //     const { x, y, width, height } = parent.getBBox();
-    //     return new g.Rect(
-    //       x,
-    //       y,
-    //       width,
-    //       height
-    //     ).inflate(10);
-    //   },
 });
 
-
 let pin_to_element_association = {};
-
-
-let element_dict = visulatizationFromDict(generated_dict);
-
-
+let element_dict = {};
 
 paper.on('link:mouseenter', function(linkView) {
     linkView.showTools();
@@ -740,5 +410,12 @@ paper.on('element:pointermove', function(elementView) {
     element.fitAncestorElements();
 });
 
+async function loadData() {
+    const response = await fetch('/api/graph');
+    const vis_dict = await response.json();
 
+    console.log(vis_dict);
+    element_dict = visulatizationFromDict(vis_dict);
+}
 
+loadData();

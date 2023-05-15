@@ -1,8 +1,9 @@
 import asyncio
 import logging
+import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import click
 import uvicorn
@@ -42,9 +43,6 @@ class AtoWatcher:
 
     @entrypoint_block.setter
     def entrypoint_block(self, value):
-        if value not in self._model.graph.vs["paths"]:
-            self._entrypoint_block = None
-            raise ValueError(f"Block {value} not found in model")
         self._entrypoint_block = value
 
     @property
@@ -140,10 +138,8 @@ def visualize(file: str, entrypoint: str):
     watcher.project = Project.from_path(watcher.entrypoint_file)
     if entrypoint is not None:
         watcher.entrypoint_block = entrypoint
-    try:
-        uvicorn.run(app, host="0.0.0.0", port=80)
-    finally:
-        watcher.stop_watching()
+    webbrowser.open("http://localhost/static/client.html")
+    uvicorn.run(app, host="0.0.0.0", port=80)
 
 # let's goooooo
 if __name__ == "__main__":
