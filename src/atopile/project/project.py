@@ -16,7 +16,7 @@ def resolve_project_dir(path: Path):
 
 class Project:
     def __init__(self, root: Path) -> None:
-        self.root = root
+        self.root = root.resolve().absolute()
 
     @property
     def project_config_path(self):
@@ -47,7 +47,7 @@ class Project:
         return [self.module_dir]
 
     def standardise_import_path(self, path: Path) -> Path:
-        return path.relative_to(self.root)
+        return path.resolve().absolute().relative_to(self.root)
 
     def resolve_import(self, name: str, cwp: Optional[Path] = None) -> Tuple[Path, Path]:
         non_relative_paths = []
