@@ -171,6 +171,16 @@ let generated_dict = {
                     "name": "p1",
                     "uuid": "024c699c-4daf-40d7-bd7a-84344ff77b4d",
                     "index": 0
+                  },
+                  {
+                    "name": "p2",
+                    "uuid": "333333",
+                    "index": 1
+                  },
+                  {
+                    "name": "p3",
+                    "uuid": "44sf",
+                    "index": 2
                   }
                 ]
               },
@@ -307,20 +317,23 @@ let generated_dict = {
 let settings_dict = {
     "common": {
         "backgroundColor": 'rgba(224, 233, 227, 0.3)',
+        gridSize: 1, 
         "pinLabelFontSize": 12,
         "pinLabelPadding": 5,
-        "parentPadding": 40
+        "parentPadding": 50
     },
     "component" : {
         "strokeWidth": 2,
         "fontSize": 10,
-        "defaultWidth": 60,
-        "defaultHeight": 80,
+        "defaultWidth": 40,
+        portPitch: 20,
+        "defaultHeight": 40,
     },
     "block" : {
-        "strokeWidth": 2,
+        strokeWidth: 2,
+        boxRadius: 5,
         strokeDasharray: '4,4',
-        "fontSize": 10
+        fontSize: 10,
     },
     "link": {
         "strokeWidth": 1,
@@ -333,7 +346,7 @@ class AtoElement extends dia.Element {
     defaults() {
         return {
             ...super.defaults,
-            hidden: false
+            hidden: false,
         };
     }
 
@@ -418,7 +431,9 @@ class AtoBlock extends dia.Element {
             strokeWidth: settings_dict["block"]["strokeWidth"],
             strokeDasharray: settings_dict["block"]["strokeDasharray"],
             width: "calc(w)",
-            height: "calc(h)"
+            height: "calc(h)",
+            rx: settings_dict["block"]["boxRadius"],
+            ry: settings_dict["block"]["boxRadius"],
           },
           label: {
             text: "Block",
@@ -472,8 +487,12 @@ function addPortsAndPins(element, port_list) {
     // Dict of all the port for the element
     let port_groups = {};
 
+    let pin_nb_by_port = {};
     // Create the different ports
     for (let port of port_list) {
+        
+        pin_nb_by_port[port['location']] = 0;
+
         port_groups[port['name']] = {
             position: {
                 name: port['location'],
@@ -505,6 +524,7 @@ function addPortsAndPins(element, port_list) {
 
         // While we are creating the port, add the pins in the element
         for (let pin of port['pins']) {
+            pin_nb_by_port[port['location']] += 1;
             element.addPort({ 
                 id: pin["uuid"],
                 group: port['name'],
@@ -520,6 +540,25 @@ function addPortsAndPins(element, port_list) {
             //console.log('pin_uuid ' + pin["uuid"] + ' element ' + element["id"])
         }
     };
+
+    let top_pin_number = 'top' in pin_nb_by_port ? pin_nb_by_port.top : undefined;
+    let bottom_pin_number = 'bottom' in pin_nb_by_port ? pin_nb_by_port.bottom : undefined;
+    let left_pin_number = 'left' in pin_nb_by_port ? pin_nb_by_port.left : undefined;
+    let right_pin_number = 'right' in pin_nb_by_port ? pin_nb_by_port.right : undefined;
+    
+    let max_width = Math.max(top_pin_number || -Infinity, bottom_pin_number || -Infinity);
+    let max_height = Math.max(left_pin_number || -Infinity, right_pin_number || -Infinity);
+
+    let component_width = settings_dict['component']['defaultWidth'];
+    if (max_width > 0) {
+        component_width += settings_dict['component']['portPitch'] * max_width;
+    }
+    let component_height = settings_dict['component']['defaultHeight'];
+    if (max_height > 0) {
+        component_height += settings_dict['component']['portPitch'] * max_height;
+    }
+    console.log('max width ', component_width, ' max height ', component_height);
+    element.resize(component_width, component_height);
 
     // Add the ports list to the element
     element.prop({"ports": { "groups": port_groups}});
@@ -546,7 +585,19 @@ function addLinks(links) {
             z: 0
           });
         added_link.addTo(graph);
-        //console.log('link added. src ' + link['source'] + ' parent ' + pin_to_element_association[link['source']] + ' tgt ' + link['target'])
+
+        var verticesTool = new joint.linkTools.Vertices();
+        var segmentsTool = new joint.linkTools.Segments();
+        var boundaryTool = new joint.linkTools.Boundary();
+
+        var toolsView = new joint.dia.ToolsView({
+            tools: [verticesTool, boundaryTool]
+        });
+
+        var linkView = added_link.findView(paper);
+        linkView.addTools(toolsView);
+        linkView.showTools();
+        
     }
 }
 
@@ -606,6 +657,7 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         let created_block = null
         console.log('made it')
         if (is_root == false) {
+            console.log(element['name'])
             created_block = createBlock(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
         }
         if (parent) {
@@ -633,12 +685,13 @@ const paper = new joint.dia.Paper({
     model: graph,
     width: 1000,
     height: 600,
-    gridSize: 10,
+    gridSize: settings_dict['common']['gridSize'],
     drawGrid: true,
     background: {
         color: settings_dict["common"]["backgroundColor"]
     },
-    defaultRouter: { name: 'manhattan'},
+    defaultRouter: {name: 'manhattan'},
+    interactive: true,
     cellViewNamespace: cellNamespace,
     // restrictTranslate: (elementView) => {
     //     const parent = elementView.model.getParentCell();
@@ -654,12 +707,23 @@ const paper = new joint.dia.Paper({
     //   },
 });
 
+
 let pin_to_element_association = {};
 
 
-let element_dict = visulatizationFromDict(generated_dict)
+let element_dict = visulatizationFromDict(generated_dict);
 
 
+
+paper.on('link:mouseenter', function(linkView) {
+    linkView.showTools();
+    linkView.highlight();
+});
+
+paper.on('link:mouseleave', function(linkView) {
+    linkView.hideTools();
+    linkView.unhighlight();
+});
 
 paper.on('cell:pointerup', function(evt, x, y) {
     const requestOptions = {
