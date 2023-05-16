@@ -10,6 +10,7 @@ class Pin:
     source_vid: int
     block_uuid_stack: List[str]
     uuid: str
+    location: str
     index: int
 
     def to_dict(self) -> dict:
@@ -141,14 +142,18 @@ class Bob(ModelVisitor):
             vertex_type=[VertexType.pin, VertexType.signal]
         )
 
-        ports = [
-            Port(
-                name="test",
+        pin_locations = {}
+        for pin in pins:
+            pin_locations.setdefault(pin.location, []).append(pin)
+
+        ports: List[Port] = []
+        for location, pins in pin_locations.items():
+            ports.append(Port(
+                name=location,
                 uuid=str(uuid.uuid4()),
-                location="top",
+                location=location,
                 pins=pins
-            )
-        ]
+            ))
 
         for i, pin in enumerate(pins):
             pin.index = i
@@ -178,6 +183,7 @@ class Bob(ModelVisitor):
             source_vid=vertex.index,
             uuid=str(uuid.uuid4()),
             block_uuid_stack=self.block_uuid_stack.copy(),
+            location=self.model.data[vertex.path].get("visualizer", {}).get("location", "top"),
             index=None
         )
 
