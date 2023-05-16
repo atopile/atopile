@@ -1,4 +1,5 @@
 component Resistor:
     pin p1
     pin p2
-    some_custom_value = 12.3
+    footprint = "Resistor_SMD:R_0603_1608Metric"
+    designator_prefix = "R"

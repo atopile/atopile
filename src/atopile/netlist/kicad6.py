@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 import datetime
 
 from attrs import define, field
@@ -71,7 +71,7 @@ class KicadComponent:
     value: str  # eg. "10k" -- seems to be an arbitary string
     libsource: KicadLibpart
     tstamp: str  # component UID, eg. b1d41e3b-ef4b-4472-9aa4-7860376ef0ce
-    footprint: str = "" # eg. "Resistor_SMD:R_0603_1608Metric"
+    footprint: Optional[str] = None # eg. "Resistor_SMD:R_0603_1608Metric"
     properties: List[KicadField] = field(factory=list)
     fields: List[KicadField] = field(factory=list)
     sheetpath: KicadSheetpath = field(factory=KicadSheetpath)
@@ -120,17 +120,6 @@ class KicadLibraries:
         # don't believe these are mandatory and I don't think they're useful in the context of atopile
         raise NotImplementedError
 
-# TODO: fuck this thing right off
-def designator_generator():
-    """
-    Spit out designators.
-    TODO: make them things other than "Ax"
-    """
-    i = 1
-    while True:
-        yield f"A{i}"
-        i += 1
-
 @define
 class KicadNetlist:
     version: str = "E"  # What does this mean?
@@ -171,8 +160,8 @@ class KicadNetlist:
         netlist = cls()
 
         # Extract the components under "main"
-        designator = designator_generator()
-        NON_FIELD_DATA = ["value", "footprint"]
+        used_designators = {}
+        NON_FIELD_DATA = ["value", "footprint", "designator_prefix"]
 
         # Extract the components under "main"
         # TODO: move at least large chunks of this elsewhere. It's too entangled with the guts of the Model class
@@ -261,9 +250,17 @@ class KicadNetlist:
             # either way, I think there's more to it. Just chuck everything in root for now
             sheetpath = KicadSheetpath()
 
+            # figure out the designators
+            designator_prefix = component_data.get("designator_prefix", "A")
+            designator_number = max(used_designators.get(designator_prefix, [0])) + 1
+            used_designators.setdefault(designator_prefix, []).append(designator_number)
+            designator = str(designator_prefix) + str(designator_number)
+
+            # make the component of your dreams
             component = KicadComponent(
-                ref=next(designator),
+                ref=designator,
                 value=component_data.get("value", ""),
+                footprint=component_data.get("footprint"),
                 libsource=libparts[component_class_path],
                 tstamp=generate_uid_from_path(component_path),
                 fields=fields,
