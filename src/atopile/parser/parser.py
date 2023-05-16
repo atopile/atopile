@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 
 def parse_file(path: Path):
-    input = FileStream(path)
+    input = FileStream(path, encoding="utf-8")
     lexer = AtopileLexer(input)
     stream = CommonTokenStream(lexer)
     parser = AtopileParser(stream)
