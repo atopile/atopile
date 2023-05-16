@@ -4,40 +4,117 @@
 # LED: https://www.mouser.com/ProductDetail/Cree-LED/XMLBWT-00-0000-0000U2051?qs=5YqktSXERiqXrROjAy0YHg%3D%3D
 # Driver LT3477: https://datasheet.lcsc.com/lcsc/2205191145_Analog-Devices-LT3477IUF-TRPBF_C670655.pdf
 
-import Resistor from "resistor.ato"
+import Resistor from "jelly_beans.ato" # FIXME: Would be nice to import multiple classes on a single line
+import Capacitor from "jelly_beans.ato"
 
-component LT3477:
+component LT3477: # This comment needs to be fixed
+    #FIXME: need synthax highlighting for components
     # pin fucntion (QFN/TSSOP)
     signal vin # (Pin 3/Pin 1): input voltage
     signal rt # (Pin 4/Pin 2): Timing Resistor Pin
-    signal shdn #(Pin 5/Pin 3): Shutdown.
+    signal shdn # (Pin 5/Pin 3): Shutdown.
+    signal ss # (Pin 6/Pin 4): Soft-Start.
+    signal vc # (Pin 7/Pin 5): Compensation Pin for Error Amplifier
+    signal fbn # (Pin 8/Pin 6): The Inverting Input to the Error Amplifier
+    signal fbp # (Pin 9/Pin 7): The Noninverting Input to the Error Amplifier
+    signal vref # (Pin 10/Pin 8): Bandgap Voltage Reference
+    signal iadj2 # (Pin 11/Pin 9): Second Current Sense Adjustment
+    signal iadj1 # (Pin 12/Pin 10): First Current Sense Adjustment
+    signal isp2 # (Pin 13/Pin 11): Second Current Sense (+) Pin
+    signal isn2 # (Pin 14/Pin 12): Second Current Sense (–) Pin
+    signal isp1 # (Pin 15/Pin 13): First Current Sense (+) Pin
+    signal isn1 # (Pin 16/Pin 14): First Current Sense (–) Pin
+    signal gnd # (Pins 17/Pin 15): Ground, (Pin 21/Pin 21): Power Ground
+    signal sw # (Pins 18, 19/Pins 16, 17): Switch Pins.
 
-    signal isp1
-    signal isn1
-    signal sw
-    signal fbn
-    signal isp2
+    pin p1
+    pin p2
+    pin p3
+    pin p4
+    pin p5
+    pin p6
+    pin p7
+    pin p8
+    pin p9
+    pin p10
+    pin p11
+    pin p12
+    pin p13
+    pin p14
+    pin p15
+    pin p16
+    pin p17
+    pin p18
+    pin p19
+    pin p20
+
+    vin ~ p3
+    rt ~ p4
+    shdn ~ p5
+    ss ~ p6
+    vc ~ p7
+    fbn ~ p8
+    fbp ~ p9
+    vref ~ p10
+    iadj2 ~ p11
+    iadj1 ~ p12
+    isp2 ~ p13
+    isn2 ~ p14
+    isp1 ~ p15
+    isn1 ~ p16
+    gnd ~ p17
+    sw ~ p18
+
+    footprint = "Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm_EP2.5x2.5mm_ThermalVias"
+    designator_prefix = "U"
+
+module LedDriver:
+
+    signal vin
+    signal gnd
+
+    led_driver = new LT3477
+    led = ...
+
+    c_bypass_input = new Capacitor
+
+    inductor = new Inductor # suggest inductor using IFSC1008ABER2R2M01
+    inductor = "10uH"
+
+    r_fb_high = new Resistor
+    r_fb_low = new Resistor
+    r_fb_high = "200k"
+    r_fb_low = "10k"
+
+    r_error = new Resistor
+    r_error = "1k" #FIXME: sythax highlighting for single '' as well as ""
+
+    c_error = new Capacitor
+    c_error = "4.7nF"
+
+    c_soft_start = new Capacitor
+    c_soft_start = "33nF"
+
+    r_timing = new Resistor
+    r_timing.value = "22k" #FIXME: need synthax highlighting for numbers
+
+    # diode, suggest using C91072
+
+    # Connect stuff together
+
+    vin ~ c_bypass_input.p1
+    vin ~ led_driver.vin
+    vin ~ led_driver.iadj1
+    vin ~ led_driver.iadj2
+
+    vin ~ led_driver.isp1
+    vin ~ led_driver.isn1
+
+    vin ~ inductor.p1
+
+    inductor.p2 ~ led_driver.sw
 
 
-module Vdiv:
-    signal a
-    signal center
-    signal b
 
-    R1 = new Resistor
-    R2 = new Resistor
 
-    R1.p1 ~ a
-    R1.p2 ~ center
-    R2.p1 ~ center
-    R2.p2 ~ b
 
-    optional module amazing_feature:
-        signal magic_signal
-        # jks, it also just connects to the center
-        magic_signal ~ center
-        test = 12.3
-        test2 = "flooopasdasdaS"
-
-vdiv1 = new Vdiv
-with vdiv1.amazing_feature

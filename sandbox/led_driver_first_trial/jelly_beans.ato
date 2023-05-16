@@ -13,5 +13,4 @@ component Capacitor:
 component Inductor:
     pin p1
     pin p2
-    footprint = "Capacitor_SMD:C_0603_1608Metric"
-    designator_prefix = "C"
+    designator_prefix = "L"

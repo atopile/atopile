@@ -1,4 +1,0 @@
-component Resistor:
-    pin p1
-    pin p2
-    some_custom_value = 12.3
