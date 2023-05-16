@@ -59,13 +59,18 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#assignable.
+    def visitAssignable(self, ctx:AtopileParser.AssignableContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#connect_stmt.
     def visitConnect_stmt(self, ctx:AtopileParser.Connect_stmtContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#pindef_stmt.
-    def visitPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
+    # Visit a parse tree produced by AtopileParser#connectable.
+    def visitConnectable(self, ctx:AtopileParser.ConnectableContext):
         return self.visitChildren(ctx)
 
 
@@ -74,13 +79,18 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#pindef_stmt.
+    def visitPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#with_stmt.
     def visitWith_stmt(self, ctx:AtopileParser.With_stmtContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#new_element.
-    def visitNew_element(self, ctx:AtopileParser.New_elementContext):
+    # Visit a parse tree produced by AtopileParser#new_stmt.
+    def visitNew_stmt(self, ctx:AtopileParser.New_stmtContext):
         return self.visitChildren(ctx)
 
 

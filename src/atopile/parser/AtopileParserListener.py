@@ -98,6 +98,15 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by AtopileParser#assignable.
+    def enterAssignable(self, ctx:AtopileParser.AssignableContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#assignable.
+    def exitAssignable(self, ctx:AtopileParser.AssignableContext):
+        pass
+
+
     # Enter a parse tree produced by AtopileParser#connect_stmt.
     def enterConnect_stmt(self, ctx:AtopileParser.Connect_stmtContext):
         pass
@@ -107,12 +116,12 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by AtopileParser#pindef_stmt.
-    def enterPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
+    # Enter a parse tree produced by AtopileParser#connectable.
+    def enterConnectable(self, ctx:AtopileParser.ConnectableContext):
         pass
 
-    # Exit a parse tree produced by AtopileParser#pindef_stmt.
-    def exitPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
+    # Exit a parse tree produced by AtopileParser#connectable.
+    def exitConnectable(self, ctx:AtopileParser.ConnectableContext):
         pass
 
 
@@ -125,6 +134,15 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by AtopileParser#pindef_stmt.
+    def enterPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#pindef_stmt.
+    def exitPindef_stmt(self, ctx:AtopileParser.Pindef_stmtContext):
+        pass
+
+
     # Enter a parse tree produced by AtopileParser#with_stmt.
     def enterWith_stmt(self, ctx:AtopileParser.With_stmtContext):
         pass
@@ -134,12 +152,12 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by AtopileParser#new_element.
-    def enterNew_element(self, ctx:AtopileParser.New_elementContext):
+    # Enter a parse tree produced by AtopileParser#new_stmt.
+    def enterNew_stmt(self, ctx:AtopileParser.New_stmtContext):
         pass
 
-    # Exit a parse tree produced by AtopileParser#new_element.
-    def exitNew_element(self, ctx:AtopileParser.New_elementContext):
+    # Exit a parse tree produced by AtopileParser#new_stmt.
+    def exitNew_stmt(self, ctx:AtopileParser.New_stmtContext):
         pass
 
 

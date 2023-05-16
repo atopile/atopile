@@ -78,7 +78,7 @@ class Builder(AtopileParserVisitor):
         return self.model
 
     def visitImport_stmt(self, ctx: AtopileParser.Import_stmtContext):
-        import_filename = ctx.STRING().getText().strip('"')
+        import_filename = ctx.STRING().getText().strip('"\'')
 
         abs_path, std_path = self.project.resolve_import(import_filename, self.current_file)
 
@@ -156,15 +156,24 @@ class Builder(AtopileParserVisitor):
 
         return super().visitSignaldef_stmt(ctx)
 
+    def deref_connectable(self, ctx: AtopileParser.ConnectableContext) -> str:
+        if ctx.name_or_attr():
+            ref = ctx.name_or_attr().getText()
+        elif ctx.signaldef_stmt():
+            ref = ctx.signaldef_stmt().name().getText()
+        elif ctx.pindef_stmt():
+            ref = ctx.pindef_stmt().name().getText()
+        else:
+            raise TypeError("Cannot connect to this type of object")
+
+        cn_path, cn_data = self.model.find_ref(ctx.name_or_attr().getText(), self.current_block)
+        if cn_data:
+            raise TypeError(f"Cannot connect to data object {ref}")
+        return cn_path
+
     def visitConnect_stmt(self, ctx: AtopileParser.Connect_stmtContext):
-        from_ref = ctx.name_or_attr(0).getText()
-        to_ref = ctx.name_or_attr(1).getText()
-
-        from_path, from_data_path = self.model.find_ref(from_ref, self.current_block)
-        to_path, to_data_path = self.model.find_ref(to_ref, self.current_block)
-
-        if from_data_path or to_data_path:
-            raise AttributeError("Cannot connect to data object")
+        from_path = self.deref_connectable(ctx.connectable(0))
+        to_path = self.deref_connectable(ctx.connectable(1))
 
         self.model.new_edge(EdgeType.connects_to, from_path, to_path)
 
@@ -178,20 +187,23 @@ class Builder(AtopileParserVisitor):
 
         return super().visitWith_stmt(ctx)
 
-    def visitAssign_stmt(self, ctx:AtopileParser.Assign_stmtContext):
-        assignee = ctx.name_or_attr(0).getText()
-        if ctx.new_element():
-            class_ref = ctx.new_element().name_or_attr().getText()
+    def visitAssign_stmt(self, ctx: AtopileParser.Assign_stmtContext):
+        assignee = ctx.name_or_attr().getText()
+        assignable: AtopileParser.AssignableContext = ctx.assignable()
+
+        if assignable.new_stmt():
+            class_ref = assignable.new_stmt().name_or_attr().getText()
             class_path, _ = self.model.find_ref(class_ref, self.current_block)
             # FIXME: this probably throws a dud error if the name is an attr
-            instance_name = ctx.name_or_attr(0).name().getText()
+            # NOTE: we're not using the assignee here because we actually want that error until this is fixed properly
+            instance_name = ctx.name_or_attr().name().getText()
             self.model.instantiate_block(class_path, instance_name, self.current_block)
         else:
-            if ctx.STRING():
-                value = ctx.STRING().getText().strip("\"\'")
+            if assignable.STRING():
+                value = ctx.assignable().getText().strip("\"\'")
 
-            elif ctx.NUMBER():
-                value = float(ctx.NUMBER().getText())
+            elif assignable.NUMBER():
+                value = float(assignable.NUMBER().getText())
             else:
                 raise NotImplementedError("Only strings and numbers are supported")
 

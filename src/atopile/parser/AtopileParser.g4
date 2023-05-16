@@ -14,22 +14,26 @@ simple_stmt: import_stmt | assign_stmt | connect_stmt | pindef_stmt | signaldef_
 compound_stmt: componentdef | moduledef;
 block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 
-
 componentdef: ('optional')? 'component' name':' block;
 moduledef: ('optional')? 'module' name ':' block;
 
 import_stmt: 'import' name_or_attr 'from' STRING;
-assign_stmt: name_or_attr '=' (STRING | NUMBER | name_or_attr | new_element);
-connect_stmt: name_or_attr '~' name_or_attr;
-pindef_stmt: 'pin' name;
+assign_stmt: name_or_attr '=' assignable;
+assignable: STRING | NUMBER | name_or_attr | new_stmt;
+
+connect_stmt: connectable '~' connectable;
+connectable: name_or_attr | signaldef_stmt | pindef_stmt;
+
 signaldef_stmt: 'signal' name;
+pindef_stmt: 'pin' name;
 with_stmt: 'with' name_or_attr;
 
-new_element: 'new' name_or_attr;
+new_stmt: 'new' name_or_attr;
 
 name_or_attr: attr | name;
 attr: name ('.' name)+;
 name : NAME;
+// TODO: make a parser string that helps strip the quotes off
 
 // ##### -- from the example Python3 parser TODO: tidy up
 
