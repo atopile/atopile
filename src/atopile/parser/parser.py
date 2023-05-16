@@ -91,7 +91,7 @@ class Builder(AtopileParserVisitor):
                 tree = parse_file(abs_path)
                 self.model.new_vertex(VertexType.file, import_filename)
                 self.model.data[import_filename] = {}
-                import_ = super().visit(tree)
+                super().visit(tree)
 
         # link the import to the current block
         to_import = ctx.name_or_attr().getText()
@@ -105,7 +105,9 @@ class Builder(AtopileParserVisitor):
             self.current_block
         )
 
-        return import_
+        # the super().visit() in the new file import section should
+        # handle all depth required. From here, we always want to go back up
+        return None
 
     def define_block(self, ctx, block_type: VertexType):
         name = ctx.name().getText()
@@ -166,18 +168,20 @@ class Builder(AtopileParserVisitor):
         else:
             raise TypeError("Cannot connect to this type of object")
 
-        cn_path, cn_data = self.model.find_ref(ctx.name_or_attr().getText(), self.current_block)
+        cn_path, cn_data = self.model.find_ref(ref, self.current_block)
         if cn_data:
             raise TypeError(f"Cannot connect to data object {ref}")
         return cn_path
 
     def visitConnect_stmt(self, ctx: AtopileParser.Connect_stmtContext):
+        # visit the connectables now before attempting to make a connection
+        result = self.visitChildren(ctx)
         from_path = self.deref_connectable(ctx.connectable(0))
         to_path = self.deref_connectable(ctx.connectable(1))
-
         self.model.new_edge(EdgeType.connects_to, from_path, to_path)
 
-        return super().visitConnect_stmt(ctx)
+        # children are already vistited
+        return result
 
     def visitWith_stmt(self, ctx: AtopileParser.With_stmtContext):
         with_ref = ctx.name_or_attr().getText()
