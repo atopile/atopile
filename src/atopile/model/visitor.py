@@ -19,7 +19,7 @@ class ModelVertex:
         return self.graph.vs[self.index]
 
     @property
-    def type(self) -> VertexType:
+    def vertex_type(self) -> VertexType:
         return VertexType(self.vertex["type"])
 
     @property
@@ -30,10 +30,12 @@ class ModelVertex:
     def path(self) -> str:
         return self.vertex["path"]
 
-    def get_edges(self, mode: str, edge_type: Union[EdgeType, List[EdgeType]] = None) -> List[ig.Edge]:
-        if mode not in ["in", "out"]:
-            raise ValueError(f"Invalid mode: {mode}")
+    @property
+    def parent(self) -> str:
+        parent_vidx = self.model.graph.es.find(_source=self.index, type_eq=EdgeType.part_of.name).target
+        return self.model.graph.vs[parent_vidx]["path"]
 
+    def get_edges(self, mode: str, edge_type: Union[EdgeType, List[EdgeType]] = None) -> ig.EdgeSeq:
         selector = {}
         if edge_type is not None:
             if isinstance(edge_type, list):
@@ -43,8 +45,10 @@ class ModelVertex:
 
         if mode == "in":
             selector["_target"] = self.index
-        else:
+        elif mode == "out":
             selector["_source"] = self.index
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
 
         return self.graph.es.select(**selector)
 
@@ -73,7 +77,7 @@ class ModelVisitor:
         """
         Execture a visit on the given vertex.
         """
-        type_specific_method_name = f"visit_{vertex.type.name}"
+        type_specific_method_name = f"visit_{vertex.vertex_type.name}"
         if hasattr(self, type_specific_method_name):
             return getattr(self, type_specific_method_name)(vertex)
         return self.visit(vertex)
@@ -107,7 +111,7 @@ class ModelVisitor:
             else:
                 next = ModelVertex(self.model, edge.target)
 
-            if vertex_type is not None and next.type not in vertex_type:
+            if vertex_type is not None and next.vertex_type not in vertex_type:
                 continue
 
             if (edge, next) in self._stack:

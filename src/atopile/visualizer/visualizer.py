@@ -1,6 +1,6 @@
 import attrs
 import uuid
-from typing import List, Dict
+from typing import List, Dict, Optional
 from atopile.model.model import Model, EdgeType, VertexType
 from atopile.model.visitor import ModelVisitor, ModelVertex
 
@@ -142,6 +142,7 @@ class Bob(ModelVisitor):
             edge_type=EdgeType.part_of,
             vertex_type=[VertexType.pin, VertexType.signal]
         )
+        pins = [p for p in pins if p is not None]
 
         pin_locations = {}
         for pin in pins:
@@ -161,7 +162,7 @@ class Bob(ModelVisitor):
 
         block = Block(
             name=vertex.ref,
-            type=vertex.type.name,
+            type=vertex.vertex_type.name,
             uuid=uuid_to_be,
             blocks=blocks,
             ports=ports,
@@ -192,7 +193,19 @@ class Bob(ModelVisitor):
 
         return pin
 
-    def visit_pin(self, vertex: ModelVertex) -> Pin:
+    def visit_pin(self, vertex: ModelVertex) -> Optional[Pin]:
+        # filter out pins that have a single connection to a signal within the same block
+        connections_in = vertex.get_edges(mode="in", edge_type=EdgeType.connects_to)
+        connections_out = vertex.get_edges(mode="out", edge_type=EdgeType.connects_to)
+        if len(connections_in) + len(connections_out) == 1:
+            if len(connections_in) == 1:
+                target = ModelVertex(self.model, connections_in[0].source)
+            if len(connections_out) == 1:
+                target = ModelVertex(self.model, connections_out[0].target)
+            if target.vertex_type == VertexType.signal:
+                if target.parent == vertex.parent:
+                    return None
+
         return self.generic_visit_pin(vertex)
 
     def visit_signal(self, vertex: ModelVertex) -> Pin:
