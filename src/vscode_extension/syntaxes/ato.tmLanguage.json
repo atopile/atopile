@@ -34,6 +34,18 @@
 			"name": "meta.class.ato"
 		},
 		{
+			"captures": {
+				"1": {
+					"name": "keyword.operator.new.ato"
+				},
+				"2": {
+					"name": "entity.name.type.instance.ato"
+				}
+			},
+			"match": "(new)\\s+(\\w+(?:\\.\\w*)?)",
+			"name": "meta.class.instance.constructor"
+		},
+		{
 			"match": "\\b(pin|signal)\\b",
 			"name": "storage.type.c"
 		},
