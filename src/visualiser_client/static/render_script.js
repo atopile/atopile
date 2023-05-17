@@ -370,8 +370,8 @@ const graph = new dia.Graph({}, { cellNamespace });
 const paper = new joint.dia.Paper({
     el: document.getElementById('atopilePaper'),
     model: graph,
-    width: 1000,
-    height: 600,
+    width: '100%',
+    height: '100%',
     gridSize: settings_dict['common']['gridSize'],
     drawGrid: true,
     background: {
@@ -381,6 +381,13 @@ const paper = new joint.dia.Paper({
     interactive: true,
     cellViewNamespace: cellNamespace,
 });
+
+function fill_paper() {
+    paper.setDimensions(window.innerWidth, window.innerHeight);
+}
+
+window.onload = fill_paper;
+window.onresize = fill_paper;
 
 let pin_to_element_association = {};
 let element_dict = {};
