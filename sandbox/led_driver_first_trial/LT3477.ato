@@ -31,6 +31,23 @@ component LT3477: # This comment needs to be fixed
     footprint = "Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm_EP2.5x2.5mm_ThermalVias"
     designator_prefix = "U"
 
+    vin.visualizer.location = "left" #TODO: don't show the pins once connected to signal
+    iadj1.visualizer.location = "left"
+    iadj2.visualizer.location = "left"
+    shdn.visualizer.location = "left"
+    ss.visualizer.location = "left"
+    vc.visualizer.location = "left"
+    gnd.visualizer.location = "bottom"
+    isp1.visualizer.location = "top"
+    isn1.visualizer.location = "top"
+    sw.visualizer.location = "top"
+    fbn.visualizer.location = "right"
+    fbp.visualizer.location = "right"
+    vref.visualizer.location = "right"
+    isp2.visualizer.location = "right"
+    isn2.visualizer.location = "right"
+    rt.visualizer.location = "right"
+
 module LedDriver:
     signal vin
     signal gnd
