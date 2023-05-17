@@ -5,13 +5,13 @@ let settings_dict = {
     "common": {
         "backgroundColor": 'rgba(224, 233, 227, 0.3)',
         gridSize: 1,
-        "pinLabelFontSize": 12,
+        "pinLabelFontSize": 8,
         "pinLabelPadding": 5,
         "parentPadding": 50
     },
     "component" : {
         "strokeWidth": 2,
-        "fontSize": 10,
+        "fontSize": 12,
         "defaultWidth": 40,
         portPitch: 20,
         "defaultHeight": 40,
@@ -187,15 +187,15 @@ function addPortsAndPins(element, port_list) {
             attrs: {
                 portBody: {
                     magnet: true,
-                    r: 5,
+                    r: 2,
                     fill: '#FFFFFF',
                     stroke:'#023047'
                 }
             },
             label: {
                 position: {
-                    name: "inside",
-                    args: { y: 0 }
+                    args: { x: 0 }, // Can't use inside/outside in combination
+                    name: 'outside'
                 },
                 markup: [{
                     tagName: 'text',
@@ -224,7 +224,6 @@ function addPortsAndPins(element, port_list) {
                 }
             });
             pin_to_element_association[pin["uuid"]] = element["id"];
-            //console.log('pin_uuid ' + pin["uuid"] + ' element ' + element["id"])
         }
     };
 
