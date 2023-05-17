@@ -1,5 +1,5 @@
 # this is a comment, it should be safely ignored
-import Resistor from "resistor.ato"
+import Resistor from "std/resistor.ato"
 
 module Vdiv:
     signal a
