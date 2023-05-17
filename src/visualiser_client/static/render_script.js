@@ -5,7 +5,7 @@ let settings_dict = {
     "common": {
         "backgroundColor": 'rgba(224, 233, 227, 0.3)',
         gridSize: 1,
-        "pinLabelFontSize": 8,
+        "pinLabelFontSize": 10,
         "pinLabelPadding": 5,
         "parentPadding": 50
     },
@@ -13,7 +13,7 @@ let settings_dict = {
         "strokeWidth": 2,
         "fontSize": 12,
         "defaultWidth": 40,
-        portPitch: 20,
+        portPitch: 16,
         "defaultHeight": 40,
     },
     "block" : {
@@ -282,7 +282,7 @@ function addLinks(links) {
 
         var linkView = added_link.findView(paper);
         linkView.addTools(toolsView);
-        linkView.showTools();
+        linkView.hideTools();
 
     }
 }
