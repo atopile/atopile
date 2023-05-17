@@ -7,6 +7,10 @@
 import Resistor from "std/resistor.ato"
 import Capacitor from "std/capacitor.ato"
 import Inductor from "std/inductor.ato"
+import Diode from "std/diode.ato"
+import Nmos from "std/nmos.ato"
+
+import Led from "XL-C3570P8S11-62C3C2.ato"
 
 component LT3477: # This comment needs to be fixed
     #FIXME: need synthax highlighting for components
@@ -49,8 +53,10 @@ component LT3477: # This comment needs to be fixed
     rt.visualizer.location = "right"
 
 module LedDriver:
-    signal vin
-    signal gnd
+    signal vin #TODO: would be nice to be able to publish some signals but not the other
+    signal gnd # The published signals would end up on the outside edge of the module
+    signal out # Signal would appear like arrows within the module
+    signal pwm
 
     led_driver = new LT3477
     # led = ...
@@ -77,14 +83,42 @@ module LedDriver:
     r_timing = new Resistor
     r_timing.value = "22k" #FIXME: need synthax highlighting for numbers
 
-    # diode, suggest using C91072
+    # boost diode, suggest using C91072
+    diode_boost = new Diode
+    diode_boost.footprint = "Diode_SMD:D_SOD-123"
+
+    # pwm diode
+    diode_pwm = new Diode
+
+    # Feedback negative
+    r_fb_top = new Resistor
+    r_fb_bt = new Resistor
+
+    # Sense resistor
+    r_sens = new Resistor
+
+    # LED
+    led = new Led
+
+    # led nmos, suggest using: C145552
+    nmos_led = new Nmos
+
+    nmos_pwm = new Nmos
+    r_comp = new Resistor
+    c_comp = new Capacitor
+
+    # Resistance pwm input
+    r_pwm = new Resistor
 
     # Connect stuff together
 
     vin ~ c_bypass_input.p1
+    gnd ~ c_bypass_input.p2
+
     vin ~ led_driver.vin
     vin ~ led_driver.iadj1
     vin ~ led_driver.iadj2
+    vin ~ led_driver.shdn
 
     vin ~ led_driver.isp1
     vin ~ led_driver.isn1
@@ -92,3 +126,37 @@ module LedDriver:
     vin ~ inductor.p1
 
     inductor.p2 ~ led_driver.sw
+
+    led_driver.sw ~ diode_boost.pp
+    diode_boost.pn ~ out
+
+    out ~ r_fb_top.p1
+    led_driver.fbn ~ r_fb_top.p2
+    led_driver.fbn ~ r_fb_bt.p1
+    r_fb_bt.p2 ~ gnd
+
+    led_driver.fbp ~ led_driver.vref
+
+    led_driver.isp2 ~ out
+
+    r_sens.p1 ~ out
+    led_driver.isn2 ~ r_sens.p2
+
+    led.positive ~ r_sens.p2
+    led.negative ~ nmos_led.drain
+
+    nmos_led.source ~ gnd
+
+    nmos_led.gate ~ pwm
+
+    pwm ~ r_pwm.p1
+    r_pwm.p2 ~ gnd
+
+    led_driver.vc ~ diode_pwm.pp
+    diode_pwm.pn ~ pwm
+
+    led_driver.vc ~ nmos_pwm.source
+    pwm ~ nmos_pwm.gate
+    r_comp.p1 ~ nmos_pwm.drain
+    r_comp.p2 ~ c_comp.p1
+    c_comp.p2 ~ gnd
