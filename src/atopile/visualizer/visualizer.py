@@ -110,6 +110,7 @@ class Bob(ModelVisitor):
                     if i < 0:
                         raise RuntimeError("No common ancestor found -- how are these two things even linked..?")
                     lowest_common_ancestor = source_pin.block_uuid_stack[i-1]
+                    break
             else:
                 lowest_common_ancestor = source_pin.block_uuid_stack[i]
 
@@ -147,12 +148,12 @@ class Bob(ModelVisitor):
             pin_locations.setdefault(pin.location, []).append(pin)
 
         ports: List[Port] = []
-        for location, pins in pin_locations.items():
+        for location, pins_at_location in pin_locations.items():
             ports.append(Port(
                 name=location,
                 uuid=str(uuid.uuid4()),
                 location=location,
-                pins=pins
+                pins=pins_at_location
             ))
 
         for i, pin in enumerate(pins):

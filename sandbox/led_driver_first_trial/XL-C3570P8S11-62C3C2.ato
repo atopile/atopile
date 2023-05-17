@@ -8,6 +8,6 @@ component Led:
     # metadata
     designator_prefix = "D"
     positive.visualizer.location = "top"
+    p2.visualizer.location = "top"
     negative.visualizer.location = "bottom"
-    p1.visualizer.location = "top"
-    p2.visualizer.location = "bottom"
+    p1.visualizer.location = "bottom"
