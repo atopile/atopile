@@ -4,9 +4,9 @@
 # LED: https://www.mouser.com/ProductDetail/Cree-LED/XMLBWT-00-0000-0000U2051?qs=5YqktSXERiqXrROjAy0YHg%3D%3D
 # Driver LT3477: https://datasheet.lcsc.com/lcsc/2205191145_Analog-Devices-LT3477IUF-TRPBF_C670655.pdf
 
-import Resistor from "jelly_beans.ato" # FIXME: Would be nice to import multiple classes on a single line
-import Capacitor from "jelly_beans.ato"
-import Inductor from "jelly_beans.ato"
+import Resistor from "std/resistor.ato"
+import Capacitor from "std/capacitor.ato"
+import Inductor from "std/inductor.ato"
 
 component LT3477: # This comment needs to be fixed
     #FIXME: need synthax highlighting for components
