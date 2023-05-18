@@ -5,3 +5,7 @@ component Nmos:
     drain ~ pin p4
 
     designator_prefix = "U"
+
+    drain.visualizer.location = "top"
+    gate.visualizer.location = "left"
+    source.visualizer.location = "bottom"
