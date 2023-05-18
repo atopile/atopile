@@ -78,7 +78,7 @@ class Builder(AtopileParserVisitor):
         return self.model
 
     def visitImport_stmt(self, ctx: AtopileParser.Import_stmtContext):
-        import_filename = ctx.STRING().getText().strip('"\'')
+        import_filename = self.get_string(ctx.string())
 
         abs_path, std_path = self.project.resolve_import(import_filename, self.current_file)
 
@@ -203,8 +203,8 @@ class Builder(AtopileParserVisitor):
             instance_name = ctx.name_or_attr().name().getText()
             self.model.instantiate_block(class_path, instance_name, self.current_block)
         else:
-            if assignable.STRING():
-                value = ctx.assignable().getText().strip("\"\'")
+            if assignable.string():
+                value = self.get_string(assignable.string())
 
             elif assignable.NUMBER():
                 value = float(assignable.NUMBER().getText())
@@ -220,3 +220,6 @@ class Builder(AtopileParserVisitor):
             data[data_path[-1]] = value
 
         return super().visitAssign_stmt(ctx)
+
+    def get_string(self, ctx:AtopileParser.StringContext) -> str:
+        return ctx.getText().strip("\"\'")

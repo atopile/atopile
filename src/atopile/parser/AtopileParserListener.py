@@ -188,5 +188,14 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by AtopileParser#string.
+    def enterString(self, ctx:AtopileParser.StringContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#string.
+    def exitString(self, ctx:AtopileParser.StringContext):
+        pass
+
+
 
 del AtopileParser

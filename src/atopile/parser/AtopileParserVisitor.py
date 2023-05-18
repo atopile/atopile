@@ -109,5 +109,10 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#string.
+    def visitString(self, ctx:AtopileParser.StringContext):
+        return self.visitChildren(ctx)
+
+
 
 del AtopileParser
