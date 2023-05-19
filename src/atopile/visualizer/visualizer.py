@@ -7,17 +7,35 @@ from atopile.model.visitor import ModelVisitor, ModelVertex
 @attrs.define
 class Pin:
     name: str
+    uuid: str
+    index: int
+
+    # internal properties used downstream for generation
+    location: str
     source_vid: int
     block_uuid_stack: List[str]
-    uuid: str
-    location: str
-    index: int
+    connection_stubbed: bool = False
 
     def to_dict(self) -> dict:
         return {
             "name": self.name,
             "uuid": self.uuid,
             "index": self.index,
+        }
+
+@attrs.define
+class Stub:
+    name: str
+    source: Pin
+    uuid: str
+    direction: str
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "source": self.source,
+            "uuid": self.uuid,
+            "direction": self.direction,
         }
 
 @attrs.define
@@ -58,6 +76,7 @@ class Block:
     blocks: List["Block"]
     ports: List[Port]
     links: List[Link]
+    stubs: List[Stub]
 
     def to_dict(self) -> dict:
         return {
@@ -67,6 +86,7 @@ class Block:
             "blocks": [block.to_dict() for block in self.blocks],
             "ports": [port.to_dict() for port in self.ports],
             "links": [link.to_dict() for link in self.links],
+            "stubs": [stub.to_dict() for stub in self.stubs],
         }
 
     def from_model(model: Model, main: str) -> "Block":
@@ -74,6 +94,15 @@ class Block:
         bob = Bob(model)
         root = bob.build(main)
         return root
+
+pin_location_stub_direction_map = {
+    "top": "up",
+    "bottom": "down",
+    "left": "left",
+    "right": "right",
+}
+
+default_stub_direction = list(pin_location_stub_direction_map.values())[0]
 
 class Bob(ModelVisitor):
     """
@@ -87,6 +116,25 @@ class Bob(ModelVisitor):
         self.pin_directory: Dict[int, Pin] = {}
         super().__init__(model)
 
+    def find_lowest_common_ancestor(self, pins: List[Pin]) -> str:
+        if len(pins) == 0:
+            raise RuntimeError("No pins to check for lowest common ancestor")
+        if len(pins) == 1:
+            return pins[0].uuid
+        for i in range(min(len(p.block_uuid_stack) for p in pins)):
+            # descend into the block stack
+
+            uuids: List[str] = [p.block_uuid_stack[i] for p in pins]
+            if not all(uuids[0] == puuid for puuid in uuids):
+                # if all the blocks aren't the same, then our last check was... well our last
+                if i < 0:
+                    raise RuntimeError("No common ancestor found -- how are these two things even linked..?")
+                lowest_common_ancestor = pins[0].block_uuid_stack[i-1]
+                break
+        else:
+            lowest_common_ancestor = pins[0].block_uuid_stack[i]
+        return lowest_common_ancestor
+
     def build(self, main: ModelVertex) -> Block:
         root = Block(
             name="root",
@@ -95,7 +143,10 @@ class Bob(ModelVisitor):
             blocks=[self.generic_visit_block(main)],
             ports=[],
             links=[],
+            stubs=[],
         )
+
+        stubbed_pins_vids: List[int] = []
 
         connections = self.model.graph.es.select(type_eq=EdgeType.connects_to.name)
         for connection in connections:
@@ -104,24 +155,48 @@ class Bob(ModelVisitor):
             if source_pin is None or target_pin is None:
                 # assume the pin isn't within the scope of the main block
                 continue
+            lowest_common_ancestor = self.find_lowest_common_ancestor([source_pin, target_pin])
 
-            for i in range(min(len(source_pin.block_uuid_stack), len(target_pin.block_uuid_stack))):
-                if source_pin.block_uuid_stack[i] != target_pin.block_uuid_stack[i]:
-                    if i < 0:
-                        raise RuntimeError("No common ancestor found -- how are these two things even linked..?")
-                    lowest_common_ancestor = source_pin.block_uuid_stack[i-1]
-                    break
+            if source_pin.connection_stubbed or target_pin.connection_stubbed:
+                if source_pin.connection_stubbed and target_pin.connection_stubbed:
+                    raise NotImplementedError(f"Both pins {source_pin.uuid} and {target_pin.uuid} are stubbed")
+                if source_pin.connection_stubbed:
+                    stubbed_pin = source_pin
+                    connecting_pin = target_pin
+                else:
+                    stubbed_pin = target_pin
+                    connecting_pin = source_pin
+
+
+                if stubbed_pin.source_vid not in stubbed_pins_vids:
+                    direction = pin_location_stub_direction_map.get(stubbed_pin.location, default_stub_direction)
+                    stubbed_pin_stub = Stub(
+                        name=stubbed_pin.name,
+                        source=source_pin.uuid,
+                        uuid=str(uuid.uuid4()),
+                        direction=direction,
+                    )
+                    self.block_directory[stubbed_pin.block_uuid_stack[-1]].stubs.append(stubbed_pin_stub)
+                    stubbed_pins_vids.append(stubbed_pin.source_vid)
+
+
+                direction = pin_location_stub_direction_map.get(connecting_pin.location, default_stub_direction)
+                Stub(
+                    name=stubbed_pin.name,
+                    source=target_pin.uuid,
+                    uuid=str(uuid.uuid4()),
+                    direction=direction,
+                )
+
             else:
-                lowest_common_ancestor = source_pin.block_uuid_stack[i]
-
-            block = self.block_directory[lowest_common_ancestor]
-            link = Link(
-                name="test",
-                uuid=str(uuid.uuid4()),
-                source=source_pin,
-                target=target_pin,
-            )
-            block.links.append(link)
+                block = self.block_directory[lowest_common_ancestor]
+                link = Link(
+                    name="test",
+                    uuid=str(uuid.uuid4()),
+                    source=source_pin,
+                    target=target_pin,
+                )
+                block.links.append(link)
 
         return root
 
@@ -142,6 +217,7 @@ class Bob(ModelVisitor):
             edge_type=EdgeType.part_of,
             vertex_type=[VertexType.pin, VertexType.signal]
         )
+        # filter out Nones
         pins = [p for p in pins if p is not None]
 
         pin_locations = {}
@@ -166,7 +242,8 @@ class Bob(ModelVisitor):
             uuid=uuid_to_be,
             blocks=blocks,
             ports=ports,
-            links=[]
+            links=[],
+            stubs=[],
         )
 
         self.block_directory[uuid_to_be] = block
@@ -182,11 +259,12 @@ class Bob(ModelVisitor):
     def generic_visit_pin(self, vertex: ModelVertex) -> Pin:
         pin = Pin(
             name=vertex.ref,
-            source_vid=vertex.index,
             uuid=str(uuid.uuid4()),
-            block_uuid_stack=self.block_uuid_stack.copy(),
+            index=None,
             location=self.model.data[vertex.path].get("visualizer", {}).get("location", "top"),
-            index=None
+            source_vid=vertex.index,
+            block_uuid_stack=self.block_uuid_stack.copy(),
+            connection_stubbed=self.model.data[vertex.path].get("visualizer", {}).get("stub", False),
         )
 
         self.pin_directory[vertex.index] = pin
