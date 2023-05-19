@@ -102,7 +102,7 @@ module LedDriver:
     r_pwm = new Resistor
 
     # Connect stuff together
-
+    
     vin ~ c_bypass_input.p1
     gnd ~ c_bypass_input.p2
 

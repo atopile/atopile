@@ -266,10 +266,11 @@ function addLinks(links) {
             line: {
                 'stroke': settings_dict['link']['color'],
                 'stroke-width': settings_dict['link']['strokeWidth'],
-                targetMarker: {'type': 'none'}
+                targetMarker: {'type': 'none'},
             },
             z: 0
-          });
+        });
+
         added_link.addTo(graph);
 
         var verticesTool = new joint.linkTools.Vertices();
@@ -283,8 +284,43 @@ function addLinks(links) {
         var linkView = added_link.findView(paper);
         linkView.addTools(toolsView);
         linkView.hideTools();
-
     }
+}
+
+function addStubs(stubs) {
+    for (let stub of stubs) {
+        var link_test = new shapes.standard.Link();
+        link_test.prop('source', {
+            id: pin_to_element_association[stub['source']],
+            port: stub['source']});
+        link_test.prop('target', { x: 0, y: 0 },);
+        link_test.router('manhattan', {
+            endDirections: ['bottom'],
+            perpendicular: true,
+            step: 40//settings_dict['common']['gridSize'],
+        });
+        link_test.attr('root/title', 'joint.shapes.standard.Link');
+        link_test.attr('line/stroke', '#fe854f');
+        link_test.appendLabel({
+            attrs: {
+                text: {
+                    text: 'VCC'
+                }
+            },
+            position: {
+                distance: 1,
+                offset: {
+                    x: 0,
+                    y: -10
+                },
+                angle: 0,
+                args: {
+                    keepGradient: false
+                }
+            }
+        });
+        link_test.addTo(graph);
+    };
 }
 
 function createComponent(title, uuid, ports_dict, x, y) {
@@ -360,6 +396,7 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         }
 
         addLinks(element['links']);
+        //addStubs(element['links']);
     }
 
     return dict_of_elements;
@@ -376,7 +413,9 @@ const paper = new joint.dia.Paper({
     background: {
         color: settings_dict["common"]["backgroundColor"]
     },
-    defaultRouter: {name: 'manhattan'},
+    defaultRouter: {
+        name: 'manhattan',
+        },
     interactive: true,
     cellViewNamespace: cellNamespace,
 });
