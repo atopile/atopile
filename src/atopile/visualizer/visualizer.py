@@ -169,9 +169,10 @@ class Bob(ModelVisitor):
                     stubbed_pin = target_pin
                     connecting_pin = source_pin
 
+                stub_name = stubbed_pin.source_path[len(main.path)+1:]
                 if stubbed_pin.source_vid not in stubbed_pins_vids:
                     block.stubs.append(Stub(
-                        name=stubbed_pin.source_path[len(main.path)+1:],
+                        name=stub_name,
                         source=stubbed_pin.uuid,
                         uuid=str(uuid.uuid4()),
                         direction=pin_location_stub_direction_map.get(stubbed_pin.location, default_stub_direction),
@@ -179,7 +180,7 @@ class Bob(ModelVisitor):
                     stubbed_pins_vids.append(stubbed_pin.source_vid)
 
                 block.stubs.append(Stub(
-                    name=connecting_pin.source_path[len(main.path)+1:],
+                    name=stub_name,
                     source=connecting_pin.uuid,
                     uuid=str(uuid.uuid4()),
                     direction=pin_location_stub_direction_map.get(connecting_pin.location, default_stub_direction),
