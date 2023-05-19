@@ -96,11 +96,13 @@ class Block:
         root = bob.build(main)
         return root
 
+# FIXME: this should go to something intelligent instead of this jointjs hack
+# eg. up, down, left, right
 pin_location_stub_direction_map = {
-    "top": "up",
-    "bottom": "down",
-    "left": "left",
-    "right": "right",
+    "top": "bottm",
+    "bottom": "top",
+    "left": "right",
+    "right": "left",
 }
 
 default_stub_direction = list(pin_location_stub_direction_map.values())[0]
