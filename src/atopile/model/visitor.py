@@ -31,6 +31,10 @@ class ModelVertex:
         return self.vertex["path"]
 
     @property
+    def data(self) -> dict:
+        return self.model.data.get(self.path, {})
+
+    @property
     def parent(self) -> str:
         parent_vidx = self.model.graph.es.find(_source=self.index, type_eq=EdgeType.part_of.name).target
         return self.model.graph.vs[parent_vidx]["path"]
