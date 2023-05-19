@@ -243,7 +243,6 @@ function addPortsAndPins(element, port_list) {
     if (max_height > 0) {
         component_height += settings_dict['component']['portPitch'] * max_height;
     }
-    console.log('max width ', component_width, ' max height ', component_height);
     element.resize(component_width, component_height);
 
     // Add the ports list to the element
@@ -269,6 +268,11 @@ function addLinks(links) {
                 targetMarker: {'type': 'none'},
             },
             z: 0
+        });
+        added_link.router('manhattan', {
+            endDirections: ['bottom'],
+            perpendicular: true,
+            step: settings_dict['common']['gridSize'],
         });
 
         added_link.addTo(graph);
@@ -377,9 +381,7 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
     // If it is a block, create it
     else if (element['type'] == 'module') {
         let created_block = null
-        console.log('made it')
         if (is_root == false) {
-            console.log(element['name'])
             created_block = createBlock(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
         }
         if (parent) {
@@ -389,7 +391,6 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         // Itterate over the included elements to create them
         for (let nested_element of element['blocks']) {
             let returned_dict = visulatizationFromDict(nested_element, is_root = false, created_block);
-            console.log('returned dict keys ' + Object.keys(returned_dict) );//+ ' from ' + nested_element)
             //addElementsToElement(returned_dict, created_block);
             // Add the returned list to the element list and add all sub-elements to it's parent
             dict_of_elements = { ...dict_of_elements, ...returned_dict };

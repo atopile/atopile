@@ -58,19 +58,25 @@ module LedDriver:
     signal out # Signal would appear like arrows within the module
     signal pwm #TODO: choose if can be stub or not
 
+    gnd.visualizer.stub = True
+
     led_driver = new LT3477
     # led = ...
 
     c_bypass_input = new Capacitor
+    c_bypass_input.value = "3.3uF"
+
+    c_bypass_output = new Capacitor
+    c_bypass_output.value = "10uF"
 
     inductor = new Inductor # suggest inductor using IFSC1008ABER2R2M01
-    inductor.value = "10uH"  # FIXME: this was inductor = ... -> we need better behaviour on reassignment
+    inductor.value = "2uH"  # FIXME: this was inductor = ... -> we need better behaviour on reassignment
 
     c_soft_start = new Capacitor
     c_soft_start.value = "33nF"
 
     r_timing = new Resistor
-    r_timing.value = "22k" #FIXME: need synthax highlighting for numbers
+    r_timing.value = "6.81k" #FIXME: need synthax highlighting for numbers
 
     # boost diode, suggest using C91072
     diode_boost = new Diode
@@ -81,12 +87,14 @@ module LedDriver:
 
     # Feedback negative
     r_fb_top = new Resistor
-    r_fb_bt = new Resistor
     r_fb_top.value = "1M" #FIXME: sythax highlighting for single '' as well as ""
+
+    r_fb_bt = new Resistor
     r_fb_low.value = "75k"
 
     # Sense resistor
     r_sens = new Resistor
+    r_sens.value = "0.33R"
 
     # LED
     led = new Led
@@ -96,13 +104,18 @@ module LedDriver:
 
     nmos_pwm = new Nmos
     r_comp = new Resistor
+    r_comp.value = "2.4k"
+
     c_comp = new Capacitor
+    c_comp.value = "10nF"
 
     # Resistance pwm input
     r_pwm = new Resistor
+    r_pwm.value = "100k"
 
     # Connect stuff together
-    
+
+    # Vin
     vin ~ c_bypass_input.p1
     gnd ~ c_bypass_input.p2
 
@@ -116,18 +129,22 @@ module LedDriver:
 
     vin ~ inductor.p1
 
+    # Boost
     inductor.p2 ~ led_driver.sw
 
     led_driver.sw ~ diode_boost.pp
     diode_boost.pn ~ out
 
+    # Negative feedback
     out ~ r_fb_top.p1
     led_driver.fbn ~ r_fb_top.p2
     led_driver.fbn ~ r_fb_bt.p1
     r_fb_bt.p2 ~ gnd
 
-    led_driver.fbp ~ led_driver.vref
+    # Vref
+    led_driver.fbp ~ led_driver.vref # This seems to be broken in the visualizer? -> due to connection in context of component
 
+    # LED
     led_driver.isp2 ~ out
 
     r_sens.p1 ~ out
@@ -151,3 +168,9 @@ module LedDriver:
     r_comp.p1 ~ nmos_pwm.drain
     r_comp.p2 ~ c_comp.p1
     c_comp.p2 ~ gnd
+
+    c_soft_start ~ led_driver.ss
+
+    r_timing ~ gnd
+
+    led_driver ~ gnd
