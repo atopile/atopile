@@ -58,7 +58,10 @@ module LedDriver:
     signal out # Signal would appear like arrows within the module
     signal pwm #TODO: choose if can be stub or not
 
+    vin.visualizer.stub = True
     gnd.visualizer.stub = True
+    out.visualizer.stub = True
+    pwm.visualizer.stub = True
 
     led_driver = new LT3477
     # led = ...
@@ -169,8 +172,12 @@ module LedDriver:
     r_comp.p2 ~ c_comp.p1
     c_comp.p2 ~ gnd
 
-    c_soft_start ~ led_driver.ss
+    c_soft_start.p1 ~ led_driver.ss
+    c_soft_start.p2 ~ gnd
+
+    r_timing.p1 ~ led_driver.rt
+    r_timing.p2 ~ gnd
 
     r_timing ~ gnd
 
-    led_driver ~ gnd
+    led_driver.gnd ~ gnd

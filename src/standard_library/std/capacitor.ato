@@ -3,3 +3,6 @@ component Capacitor:
     pin p2
     footprint = "Capacitor_SMD:C_0603_1608Metric"
     designator_prefix = "C"
+
+    p1.visualizer.location = "top"
+    p2.visualizer.location = "bottom"
