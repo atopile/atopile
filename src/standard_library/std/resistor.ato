@@ -3,3 +3,6 @@ component Resistor:
     pin p2
     footprint = "Resistor_SMD:R_0603_1608Metric"
     designator_prefix = "R"
+
+    p1.visualizer.location = "top"
+    p2.visualizer.location = "bottom"

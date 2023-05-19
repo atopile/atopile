@@ -56,7 +56,7 @@ module LedDriver:
     signal vin #TODO: would be nice to be able to publish some signals but not the other
     signal gnd # The published signals would end up on the outside edge of the module
     signal out # Signal would appear like arrows within the module
-    signal pwm
+    signal pwm #TODO: choose if can be stub or not
 
     led_driver = new LT3477
     # led = ...
@@ -65,17 +65,6 @@ module LedDriver:
 
     inductor = new Inductor # suggest inductor using IFSC1008ABER2R2M01
     inductor.value = "10uH"  # FIXME: this was inductor = ... -> we need better behaviour on reassignment
-
-    r_fb_high = new Resistor
-    r_fb_low = new Resistor
-    r_fb_high.value = "200k"
-    r_fb_low.value = "10k"
-
-    r_error = new Resistor
-    r_error.value = "1k" #FIXME: sythax highlighting for single '' as well as ""
-
-    c_error = new Capacitor
-    c_error.value = "4.7nF"
 
     c_soft_start = new Capacitor
     c_soft_start.value = "33nF"
@@ -93,6 +82,8 @@ module LedDriver:
     # Feedback negative
     r_fb_top = new Resistor
     r_fb_bt = new Resistor
+    r_fb_top.value = "1M" #FIXME: sythax highlighting for single '' as well as ""
+    r_fb_low.value = "75k"
 
     # Sense resistor
     r_sens = new Resistor
@@ -111,7 +102,7 @@ module LedDriver:
     r_pwm = new Resistor
 
     # Connect stuff together
-
+    
     vin ~ c_bypass_input.p1
     gnd ~ c_bypass_input.p2
 

@@ -3,3 +3,6 @@ component Diode:
     signal pn ~ pin p2
 
     designator_prefix = "D"
+
+    pp.visualizer.location = "top"
+    pn.visualizer.location = "bottom"

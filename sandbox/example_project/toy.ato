@@ -13,7 +13,6 @@ module Vdiv:
     R1.p2 ~ center
     R2.p1 ~ center
     R2.p2 ~ b
-    R2.p1.visualizer.location = "bottom"
 
     optional module amazing_feature:
         signal magic_signal
