@@ -35,7 +35,7 @@ component LT3477: # This comment needs to be fixed
     footprint = "Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm_EP2.5x2.5mm_ThermalVias"
     designator_prefix = "U"
 
-    vin.visualizer.location = "left" #TODO: don't show the pins once connected to signal
+    vin.visualizer.location = "left"
     iadj1.visualizer.location = "left"
     iadj2.visualizer.location = "left"
     shdn.visualizer.location = "left"

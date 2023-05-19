@@ -1,10 +1,12 @@
 import logging
-from pathlib import Path
 from contextlib import contextmanager
+from pathlib import Path
+from typing import List
 
 from antlr4 import CommonTokenStream, FileStream
 
 from atopile.model.model import EdgeType, Model, VertexType
+from atopile.model.utils import generate_edge_uid
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
@@ -26,14 +28,14 @@ class Builder(AtopileParserVisitor):
         self.model = Model()
         self.project = project
 
-        self._block_stack = []
-        self._file_stack = []
+        self._block_stack: List[str] = []
+        self._file_stack: List[str] = []
 
         # if something's in parsed files, we must skip building it a second time
         super().__init__()
 
     @property
-    def current_block(self):
+    def current_block(self) -> str:
         return self._block_stack[-1]
 
     @property
@@ -178,7 +180,11 @@ class Builder(AtopileParserVisitor):
         result = self.visitChildren(ctx)
         from_path = self.deref_connectable(ctx.connectable(0))
         to_path = self.deref_connectable(ctx.connectable(1))
-        self.model.new_edge(EdgeType.connects_to, from_path, to_path)
+        uid = generate_edge_uid(from_path, to_path, self.current_block)
+        self.model.new_edge(EdgeType.connects_to, from_path, to_path, uid=uid)
+        self.model.data[uid] = {
+            "defining_block": self.current_block,
+        }
 
         # children are already vistited
         return result

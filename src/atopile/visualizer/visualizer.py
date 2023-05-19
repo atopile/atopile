@@ -13,6 +13,7 @@ class Pin:
     # internal properties used downstream for generation
     location: str
     source_vid: int
+    source_path: str
     block_uuid_stack: List[str]
     connection_stubbed: bool = False
 
@@ -112,7 +113,8 @@ class Bob(ModelVisitor):
     def __init__(self, model: Model) -> None:
         self.model = model
         self.block_uuid_stack: List[str] = []
-        self.block_directory: Dict[str, Block] = {}
+        self.block_directory_by_uuid: Dict[str, Block] = {}
+        self.block_directory_by_path: Dict[str, Block] = {}
         self.pin_directory: Dict[int, Pin] = {}
         super().__init__(model)
 
@@ -152,10 +154,10 @@ class Bob(ModelVisitor):
         for connection in connections:
             source_pin = self.pin_directory.get(connection.source)
             target_pin = self.pin_directory.get(connection.target)
+            block = self.block_directory_by_path.get(self.model.data.get(connection["uid"], {}).get("defining_block"), root)
             if source_pin is None or target_pin is None:
                 # assume the pin isn't within the scope of the main block
                 continue
-            lowest_common_ancestor = self.find_lowest_common_ancestor([source_pin, target_pin])
 
             if source_pin.connection_stubbed or target_pin.connection_stubbed:
                 if source_pin.connection_stubbed and target_pin.connection_stubbed:
@@ -167,31 +169,25 @@ class Bob(ModelVisitor):
                     stubbed_pin = target_pin
                     connecting_pin = source_pin
 
-
                 if stubbed_pin.source_vid not in stubbed_pins_vids:
-                    direction = pin_location_stub_direction_map.get(stubbed_pin.location, default_stub_direction)
-                    stubbed_pin_stub = Stub(
-                        name=stubbed_pin.name,
-                        source=source_pin.uuid,
+                    block.stubs.append(Stub(
+                        name=stubbed_pin.source_path[len(main.path)+1:],
+                        source=stubbed_pin.uuid,
                         uuid=str(uuid.uuid4()),
-                        direction=direction,
-                    )
-                    self.block_directory[stubbed_pin.block_uuid_stack[-1]].stubs.append(stubbed_pin_stub)
+                        direction=pin_location_stub_direction_map.get(stubbed_pin.location, default_stub_direction),
+                    ))
                     stubbed_pins_vids.append(stubbed_pin.source_vid)
 
-
-                direction = pin_location_stub_direction_map.get(connecting_pin.location, default_stub_direction)
-                Stub(
-                    name=stubbed_pin.name,
-                    source=target_pin.uuid,
+                block.stubs.append(Stub(
+                    name=connecting_pin.source_path[len(main.path)+1:],
+                    source=connecting_pin.uuid,
                     uuid=str(uuid.uuid4()),
-                    direction=direction,
-                )
+                    direction=pin_location_stub_direction_map.get(connecting_pin.location, default_stub_direction),
+                ))
 
             else:
-                block = self.block_directory[lowest_common_ancestor]
                 link = Link(
-                    name="test",
+                    name="test",  # TODO: give these better names
                     uuid=str(uuid.uuid4()),
                     source=source_pin,
                     target=target_pin,
@@ -246,7 +242,8 @@ class Bob(ModelVisitor):
             stubs=[],
         )
 
-        self.block_directory[uuid_to_be] = block
+        self.block_directory_by_uuid[uuid_to_be] = block
+        self.block_directory_by_path[vertex.path] = block
         self.block_uuid_stack.pop()
         return block
 
@@ -263,6 +260,7 @@ class Bob(ModelVisitor):
             index=None,
             location=self.model.data[vertex.path].get("visualizer", {}).get("location", "top"),
             source_vid=vertex.index,
+            source_path=vertex.path,
             block_uuid_stack=self.block_uuid_stack.copy(),
             connection_stubbed=self.model.data[vertex.path].get("visualizer", {}).get("stub", False),
         )

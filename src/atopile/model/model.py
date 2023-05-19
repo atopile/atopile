@@ -32,6 +32,7 @@ class Model:
         self.graph = ig.Graph(directed=True)
         self.graph.vs["type"] = []
         self.graph.vs["path"] = []
+        self.graph.es["uid"] = []
 
         self.data = {}
         self.schema = Schema({})
@@ -134,7 +135,7 @@ class Model:
 
         return path
 
-    def new_edge(self, edge_type: EdgeType, from_path: str, to_path: str) -> None:
+    def new_edge(self, edge_type: EdgeType, from_path: str, to_path: str, uid: Optional[str] = None) -> None:
         """
         Create a new edge in the graph.
         """
@@ -142,7 +143,8 @@ class Model:
         self.graph.add_edge(
             self.graph.vs.find(path_eq=from_path),
             self.graph.vs.find(path_eq=to_path),
-            type=edge_type.name
+            type=edge_type.name,
+            uid=uid,
         )
 
     def find_ref(self, ref: str, context: str, return_unfound=False) -> Tuple[str, List[str], List[str]]:
