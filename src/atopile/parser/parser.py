@@ -205,9 +205,10 @@ class Builder(AtopileParserVisitor):
         else:
             if assignable.string():
                 value = self.get_string(assignable.string())
-
             elif assignable.NUMBER():
                 value = float(assignable.NUMBER().getText())
+            elif assignable.boolean():
+                value = bool(assignable.boolean().getText())
             else:
                 raise NotImplementedError("Only strings and numbers are supported")
 

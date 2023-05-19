@@ -19,7 +19,7 @@ moduledef: ('optional')? 'module' name ':' block;
 
 import_stmt: 'import' name_or_attr 'from' string;
 assign_stmt: name_or_attr '=' assignable;
-assignable: string | NUMBER | name_or_attr | new_stmt;
+assignable: string | NUMBER | name_or_attr | new_stmt | boolean;
 
 connect_stmt: connectable '~' connectable;
 connectable: name_or_attr | signaldef_stmt | pindef_stmt;
@@ -34,6 +34,8 @@ name_or_attr: attr | name;
 attr: name ('.' name)+;
 name : NAME;
 string : STRING;
+boolean : ('True' | 'False');
+
 
 // TODO: make a parser string that helps strip the quotes off
 

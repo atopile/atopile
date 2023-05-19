@@ -42,6 +42,9 @@ NEW : 'new';
 FROM : 'from';
 IMPORT : 'import';
 
+TRUE : 'True';
+FALSE : 'False';
+
 // python3 imports -- kept for reference
 // TODO: tidy up
 // AND : 'and';
@@ -58,7 +61,6 @@ IMPORT : 'import';
 // ELIF : 'elif';
 // ELSE : 'else';
 // EXCEPT : 'except';
-// FALSE : 'False';
 // FINALLY : 'finally';
 // FOR : 'for';
 // GLOBAL : 'global';
@@ -74,7 +76,6 @@ IMPORT : 'import';
 // PASS : 'pass';
 // RAISE : 'raise';
 // RETURN : 'return';
-// TRUE : 'True';
 // TRY : 'try';
 // UNDERSCORE : '_' ;
 // WHILE : 'while';
