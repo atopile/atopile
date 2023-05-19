@@ -4,7 +4,7 @@ const { shapes, util, dia, anchors } = joint;
 let settings_dict = {
     "common": {
         "backgroundColor": 'rgba(224, 233, 227, 0.3)',
-        gridSize: 1,
+        gridSize: 10,
         "pinLabelFontSize": 10,
         "pinLabelPadding": 5,
         "parentPadding": 50
@@ -26,6 +26,13 @@ let settings_dict = {
         "strokeWidth": 1,
         "color": "blue"
     }
+}
+
+let opposite_direction = {
+    "top": "bottom",
+    "bottom": "top",
+    "left": "right",
+    "right": "left"
 }
 
 // Base class for the visual elements
@@ -270,7 +277,6 @@ function addLinks(links) {
             z: 0
         });
         added_link.router('manhattan', {
-            endDirections: ['bottom'],
             perpendicular: true,
             step: settings_dict['common']['gridSize'],
         });
@@ -293,29 +299,40 @@ function addLinks(links) {
 
 function addStubs(stubs) {
     for (let stub of stubs) {
-        var link_test = new shapes.standard.Link();
-        link_test.prop('source', {
+        var added_stub = new shapes.standard.Link();
+        added_stub.prop('source', {
             id: pin_to_element_association[stub['source']],
             port: stub['source']});
-        link_test.prop('target', { x: 0, y: 0 },);
-        link_test.router('manhattan', {
-            endDirections: ['bottom'],
+        added_stub.prop('target', { x: 10, y: 10 },);
+        added_stub.router('manhattan', {
+            startDirections: [stub['direction']],
+            endDirections: [opposite_direction[stub['direction']]],
             perpendicular: true,
-            step: 40//settings_dict['common']['gridSize'],
+            //step: 40//settings_dict['common']['gridSize'],
         });
-        link_test.attr('root/title', 'joint.shapes.standard.Link');
-        link_test.attr('line/stroke', '#fe854f');
-        link_test.appendLabel({
+        added_stub.attr('root/title', 'joint.shapes.standard.Link');
+        added_stub.attr({
+            line: {
+                'stroke': settings_dict['link']['color'],
+                'stroke-width': settings_dict['link']['strokeWidth'],
+                //targetMarker: {'type': 'none'},
+            },
+            z: 0
+        });
+        let label_offset;
+        console.log(stub['direction']);
+        (stub['direction'] == 'bottom') ? label_offset = 10 : label_offset = -10;
+        added_stub.appendLabel({
             attrs: {
                 text: {
-                    text: 'VCC'
+                    text: stub['name']
                 }
             },
             position: {
                 distance: 1,
                 offset: {
                     x: 0,
-                    y: -10
+                    y: label_offset
                 },
                 angle: 0,
                 args: {
@@ -323,7 +340,7 @@ function addStubs(stubs) {
                 }
             }
         });
-        link_test.addTo(graph);
+        added_stub.addTo(graph);
     };
 }
 
@@ -397,7 +414,7 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         }
 
         addLinks(element['links']);
-        //addStubs(element['links']);
+        addStubs(element['stubs']);
     }
 
     return dict_of_elements;
@@ -414,9 +431,6 @@ const paper = new joint.dia.Paper({
     background: {
         color: settings_dict["common"]["backgroundColor"]
     },
-    defaultRouter: {
-        name: 'manhattan',
-        },
     interactive: true,
     cellViewNamespace: cellNamespace,
 });
