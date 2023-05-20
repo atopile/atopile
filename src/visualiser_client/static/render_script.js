@@ -2,30 +2,43 @@ const { shapes, util, dia, anchors } = joint;
 
 // Visual settings for the visualizer
 let settings_dict = {
-    "common": {
-        "backgroundColor": 'rgba(224, 233, 227, 0.3)',
-        gridSize: 1,
-        "pinLabelFontSize": 10,
-        "pinLabelPadding": 5,
-        "parentPadding": 50
+    common: {
+        backgroundColor: 'rgba(224, 233, 227, 0.3)',
+        gridSize: 10,
+        parentPadding: 50,
+        fontFamily: "sans-serif",
     },
-    "component" : {
-        "strokeWidth": 2,
-        "fontSize": 12,
-        "defaultWidth": 40,
+    component : {
+        strokeWidth: 2,
+        fontSize: 12,
+        defaultWidth: 40,
         portPitch: 16,
-        "defaultHeight": 40,
+        defaultHeight: 40,
+        pin: {
+            labelPadding: 5, // currently not being used
+            labelFontSize: 10,
+        }
     },
-    "block" : {
+    block : {
         strokeWidth: 2,
         boxRadius: 5,
         strokeDasharray: '4,4',
         fontSize: 10,
     },
-    "link": {
-        "strokeWidth": 1,
-        "color": "blue"
+    link: {
+        strokeWidth: 1,
+        color: "blue"
+    },
+    stubs: {
+        fontSize: 10,
     }
+}
+
+let opposite_direction = {
+    "top": "bottom",
+    "bottom": "top",
+    "left": "right",
+    "right": "left"
 }
 
 // Base class for the visual elements
@@ -72,7 +85,7 @@ class AtoComponent extends AtoElement {
                     fontWeight: "bold",
                     textVerticalAnchor: "middle",
                     textAnchor: "middle",
-                    fontFamily: "sans-serif",
+                    fontFamily: settings_dict["common"]["fontFamily"],
                     x: "calc(w/2)",
                     y: "calc(h/2)"
                 }
@@ -129,7 +142,7 @@ class AtoBlock extends dia.Element {
             fontWeight: "bold",
             textVerticalAnchor: "middle",
             textAnchor: "middle",
-            fontFamily: "sans-serif",
+            fontFamily: settings_dict['common']['fontFamily'],
             x: "calc(w / 2)"
           }
         }
@@ -218,8 +231,8 @@ function addPortsAndPins(element, port_list) {
                 attrs: {
                     label: {
                         text: pin['name'],
-                        fontFamily: "sans-serif",
-                        fontSize: settings_dict['common']['pinLabelFontSize'],
+                        fontFamily: settings_dict['common']['fontFamily'],
+                        fontSize: settings_dict['component']['pin']['labelFontSize'],
                     }
                 }
             });
@@ -270,7 +283,6 @@ function addLinks(links) {
             z: 0
         });
         added_link.router('manhattan', {
-            endDirections: ['bottom'],
             perpendicular: true,
             step: settings_dict['common']['gridSize'],
         });
@@ -293,29 +305,41 @@ function addLinks(links) {
 
 function addStubs(stubs) {
     for (let stub of stubs) {
-        var link_test = new shapes.standard.Link();
-        link_test.prop('source', {
+        var added_stub = new shapes.standard.Link();
+        added_stub.prop('source', {
             id: pin_to_element_association[stub['source']],
             port: stub['source']});
-        link_test.prop('target', { x: 0, y: 0 },);
-        link_test.router('manhattan', {
-            endDirections: ['bottom'],
+        added_stub.prop('target', { x: 10, y: 10 },);
+        added_stub.router('manhattan', {
+            startDirections: [stub['direction']],
+            endDirections: [opposite_direction[stub['direction']]],
             perpendicular: true,
-            step: 40//settings_dict['common']['gridSize'],
+            step: settings_dict['common']['gridSize'],
         });
-        link_test.attr('root/title', 'joint.shapes.standard.Link');
-        link_test.attr('line/stroke', '#fe854f');
-        link_test.appendLabel({
+        added_stub.attr('root/title', 'joint.shapes.standard.Link');
+        added_stub.attr({
+            line: {
+                'stroke': settings_dict['link']['color'],
+                'stroke-width': settings_dict['link']['strokeWidth'],
+                //targetMarker: {'type': 'none'},
+            },
+            z: 0
+        });
+        let label_offset;
+        (stub['direction'] == 'bottom') ? label_offset = 10 : label_offset = -10;
+        added_stub.appendLabel({
             attrs: {
                 text: {
-                    text: 'VCC'
+                    text: stub['name'],
+                    fontFamily: settings_dict['common']['fontFamily'],
+                    fontSize: settings_dict['stubs']['fontSize'],
                 }
             },
             position: {
                 distance: 1,
                 offset: {
                     x: 0,
-                    y: -10
+                    y: label_offset
                 },
                 angle: 0,
                 args: {
@@ -323,7 +347,7 @@ function addStubs(stubs) {
                 }
             }
         });
-        link_test.addTo(graph);
+        added_stub.addTo(graph);
     };
 }
 
@@ -366,6 +390,7 @@ function addElementToElement(block_to_add, to_block) {
 }
 
 function visulatizationFromDict(element, is_root = true, parent = null) {
+
     // Create the list of all the created elements
     let dict_of_elements = {};
 
@@ -375,31 +400,32 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         if (parent) {
             addElementToElement(created_comp, parent);
         }
-        //console.log('dict of element' + JSON.stringify(dict_of_elements[element['uuid']]));
     }
 
     // If it is a block, create it
     else if (element['type'] == 'module') {
         let created_block = null
+        // do not create a block for the root block
         if (is_root == false) {
             created_block = createBlock(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
         }
+        dict_of_elements[element['uuid']] = created_block;
+
+        // if it has a parent, add the element to the parent
         if (parent) {
             addElementToElement(created_block, parent);
         }
-        dict_of_elements[element['uuid']] = created_block;
+
         // Itterate over the included elements to create them
         for (let nested_element of element['blocks']) {
-            let returned_dict = visulatizationFromDict(nested_element, is_root = false, created_block);
-            //addElementsToElement(returned_dict, created_block);
+            let returned_dict = visulatizationFromDict(nested_element, false, created_block);
             // Add the returned list to the element list and add all sub-elements to it's parent
             dict_of_elements = { ...dict_of_elements, ...returned_dict };
         }
 
         addLinks(element['links']);
-        //addStubs(element['links']);
+        addStubs(element['stubs']);
     }
-
     return dict_of_elements;
 }
 
@@ -414,9 +440,6 @@ const paper = new joint.dia.Paper({
     background: {
         color: settings_dict["common"]["backgroundColor"]
     },
-    defaultRouter: {
-        name: 'manhattan',
-        },
     interactive: true,
     cellViewNamespace: cellNamespace,
 });
@@ -441,19 +464,19 @@ paper.on('link:mouseleave', function(linkView) {
     linkView.unhighlight();
 });
 
-paper.on('cell:pointerup', function(cellview, evt, x, y) {
-    const requestOptions = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            id: cellview.model.attributes.id,
-            x: cellview.model.attributes.position.x,
-            y: cellview.model.attributes.position.y,
-        })
-    };
-    fetch('/api/view/move', requestOptions);
-    console.log(requestOptions);
-});
+// paper.on('cell:pointerup', function(cellview, evt, x, y) {
+//     const requestOptions = {
+//         method: 'POST',
+//         headers: { 'Content-Type': 'application/json' },
+//         body: JSON.stringify({
+//             id: cellview.model.attributes.id,
+//             x: cellview.model.attributes.position.x,
+//             y: cellview.model.attributes.position.y,
+//         })
+//     };
+//     fetch('/api/view/move', requestOptions);
+//     console.log(requestOptions);
+// });
 
 graph.on('change:position', function(cell) {
     // `fitAncestorElements()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`

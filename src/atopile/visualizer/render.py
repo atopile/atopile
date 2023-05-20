@@ -119,10 +119,10 @@ class Block:
 # FIXME: this should go to something intelligent instead of this jointjs hack
 # eg. up, down, left, right
 pin_location_stub_direction_map = {
-    "top": "bottm",
-    "bottom": "top",
-    "left": "right",
-    "right": "left",
+    "top": "top",
+    "bottom": "bottom",
+    "left": "left",
+    "right": "right",
 }
 
 default_stub_direction = list(pin_location_stub_direction_map.values())[0]

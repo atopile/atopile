@@ -1,0 +1,17 @@
+# We are goiing to build the first compiled atopile project
+# This will be an LED driver
+# Components:
+# LED: https://www.mouser.com/ProductDetail/Cree-LED/XMLBWT-00-0000-0000U2051?qs=5YqktSXERiqXrROjAy0YHg%3D%3D
+
+import Led from "XL-C3570P8S11-62C3C2.ato"
+import LedDriver from "LT3477.ato"
+
+module BikeLight:
+    # LED
+    led = new Led
+
+    led_driver = new LedDriver
+
+    led_driver.led_positive ~ led.positive
+    led_driver.led_negative ~ led.negative
+
