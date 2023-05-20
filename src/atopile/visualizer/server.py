@@ -42,13 +42,13 @@ async def api_root():
 
 @app.get("/api/view")
 async def get_view():
-    return watcher.visualizer_dict
+    return watcher.current_vision
 
 @app.websocket("/ws/view")
 async def websocket_view(websocket: WebSocket):
     await websocket.accept()
     log.info("Websocket accepted")
-    await websocket.send_json(watcher.visualizer_dict)
+    await websocket.send_json(watcher.current_vision)
     async for vision in watcher.emit_visions():
         await websocket.send_json(vision)
 
@@ -67,6 +67,7 @@ def visualize(file: str, entrypoint: str, browser: bool):
     watcher.project = Project.from_path(watcher.entrypoint_file)
     if entrypoint is not None:
         watcher.entrypoint_block = entrypoint
+    watcher.rebuild_all()
     if browser:
         webbrowser.open("http://localhost/static/client.html")
     uvicorn.run(app, host="0.0.0.0", port=80)
