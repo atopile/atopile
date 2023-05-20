@@ -326,7 +326,6 @@ function addStubs(stubs) {
             z: 0
         });
         let label_offset;
-        console.log(stub['direction']);
         (stub['direction'] == 'bottom') ? label_offset = 10 : label_offset = -10;
         added_stub.appendLabel({
             attrs: {
@@ -391,6 +390,7 @@ function addElementToElement(block_to_add, to_block) {
 }
 
 function visulatizationFromDict(element, is_root = true, parent = null) {
+
     // Create the list of all the created elements
     let dict_of_elements = {};
 
@@ -400,23 +400,25 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         if (parent) {
             addElementToElement(created_comp, parent);
         }
-        //console.log('dict of element' + JSON.stringify(dict_of_elements[element['uuid']]));
     }
 
     // If it is a block, create it
     else if (element['type'] == 'module') {
         let created_block = null
+        // do not create a block for the root block
         if (is_root == false) {
             created_block = createBlock(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
         }
+        dict_of_elements[element['uuid']] = created_block;
+
+        // if it has a parent, add the element to the parent
         if (parent) {
             addElementToElement(created_block, parent);
         }
-        dict_of_elements[element['uuid']] = created_block;
+
         // Itterate over the included elements to create them
         for (let nested_element of element['blocks']) {
-            let returned_dict = visulatizationFromDict(nested_element, is_root = false, created_block);
-            //addElementsToElement(returned_dict, created_block);
+            let returned_dict = visulatizationFromDict(nested_element, false, created_block);
             // Add the returned list to the element list and add all sub-elements to it's parent
             dict_of_elements = { ...dict_of_elements, ...returned_dict };
         }
@@ -424,7 +426,6 @@ function visulatizationFromDict(element, is_root = true, parent = null) {
         addLinks(element['links']);
         addStubs(element['stubs']);
     }
-
     return dict_of_elements;
 }
 
