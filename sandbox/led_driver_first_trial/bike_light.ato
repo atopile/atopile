@@ -5,8 +5,17 @@
 
 import Led from "XL-C3570P8S11-62C3C2.ato"
 import LedDriver from "LT3477.ato"
+import Usbc from "std/usbc.ato"
+import PinHeader2 from "pin_header_2.ato"
 
 module BikeLight:
+
+    signal vin
+    signal gnd
+
+    vin.visualizer.stub = True
+    gnd.visualizer.stub = True
+
     # LED
     led = new Led
 
@@ -15,3 +24,13 @@ module BikeLight:
     led_driver.led_positive ~ led.positive
     led_driver.led_negative ~ led.negative
 
+    usbc = new Usbc
+
+    usbc.vbus ~ vin
+    usbc.gnd ~ gnd
+    usbc.shell ~ gnd
+
+    pwm_header = new PinHeader2
+
+    pwm_header.p1 ~ led_driver.pwm
+    pwm_header.p2 ~ gnd
