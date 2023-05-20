@@ -143,7 +143,7 @@ class Bob(ModelVisitor):
         root = Block(
             name="root",
             type="module",
-            uuid=str(uuid.uuid4()),
+            uuid="root",
             blocks=[self.generic_visit_block(main)],
             ports=[],
             links=[],
@@ -200,7 +200,7 @@ class Bob(ModelVisitor):
         return root
 
     def generic_visit_block(self, vertex: ModelVertex) -> Block:
-        uuid_to_be = str(uuid.uuid4())
+        uuid_to_be = vertex.path
         self.block_uuid_stack.append(uuid_to_be)
 
         blocks: List[Block] = self.wander(
@@ -227,7 +227,7 @@ class Bob(ModelVisitor):
         for location, pins_at_location in pin_locations.items():
             ports.append(Port(
                 name=location,
-                uuid=str(uuid.uuid4()),
+                uuid=f"{uuid_to_be}/port@{location}",
                 location=location,
                 pins=pins_at_location
             ))
@@ -259,7 +259,7 @@ class Bob(ModelVisitor):
     def generic_visit_pin(self, vertex: ModelVertex) -> Pin:
         pin = Pin(
             name=vertex.ref,
-            uuid=str(uuid.uuid4()),
+            uuid=vertex.path,
             index=None,
             location=self.model.data[vertex.path].get("visualizer", {}).get("location", "top"),
             source_vid=vertex.index,
@@ -290,6 +290,6 @@ class Bob(ModelVisitor):
     def visit_signal(self, vertex: ModelVertex) -> Pin:
         return self.generic_visit_pin(vertex)
 
-def build_dict(model: Model, main: str) -> dict:
+def build_visualisation(model: Model, main: str) -> dict:
     root = Block.from_model(model, main)
     return root.to_dict()
