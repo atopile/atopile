@@ -61,9 +61,6 @@ module LedDriver:
     out.visualizer.stub = True
     pwm.visualizer.stub = True
 
-    led_positive.visualizer.stub = True
-    led_negative.visualizer.stub = True
-
     vin.visualizer.location = "left"
     gnd.visualizer.location = "left"
 
