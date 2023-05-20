@@ -140,7 +140,7 @@ class KicadNetlist:
     def to_file(self, path: Path) -> None:
         # Create a Jinja2 environment
         # this_dir = Path(__file__).parent
-        this_dir = Path("/Users/mattwildoer/Projects/atopile/src/atopile/netlist/netlist_generator.py").parent
+        this_dir = Path(__file__).parent
         env = Environment(loader=FileSystemLoader(this_dir), undefined=StrictUndefined)
 
         # Create the complete netlist
