@@ -389,43 +389,61 @@ function addElementToElement(block_to_add, to_block) {
     to_block.embed(block_to_add);
 }
 
-function visulatizationFromDict(element, is_root = true, parent = null) {
+function renderDataFromBackend(data, is_root = true, parent = null) {
 
     // Create the list of all the created elements
     let dict_of_elements = {};
 
-    if (element['type'] == 'component') {
-        let created_comp = createComponent(title = element['name'], uuid = element['uuid'], element['ports'], x = 100, y = 100);
-        dict_of_elements[element['uuid']] = created_comp;
-        if (parent) {
-            addElementToElement(created_comp, parent);
-        }
-    }
+    for (let element of data) {
+        // FIXME: this default positioning is shit
+        let x = 100;
+        let y = 100;
 
-    // If it is a block, create it
-    else if (element['type'] == 'module') {
-        let created_block = null
-        // do not create a block for the root block
-        if (is_root == false) {
-            created_block = createBlock(title = element['name'], uuid = element['uuid'], element['ports'], 100, 100);
-        }
-        dict_of_elements[element['uuid']] = created_block;
-
-        // if it has a parent, add the element to the parent
-        if (parent) {
-            addElementToElement(created_block, parent);
+        if (element['position']) {
+            x = element['position']['x'];
+            y = element['position']['y'];
         }
 
-        // Itterate over the included elements to create them
-        for (let nested_element of element['blocks']) {
-            let returned_dict = visulatizationFromDict(nested_element, false, created_block);
+        var created_element = null;
+
+        if (element['type'] == 'component') {
+            created_element = createComponent(element['name'], element['uuid'], element['ports'], x, y);
+            dict_of_elements[element['uuid']] = created_element;
+            // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
+            created_element.fitAncestorElements();
+        }
+
+        // If it is a block, create it
+        else if (element['type'] == 'module') {
+            created_element = createBlock(element['name'], element['uuid'], element['ports'], x, y);
+            dict_of_elements[element['uuid']] = created_element;
+
+            // Iterate over the included elements to create them
+            let returned_dict = renderDataFromBackend(element['blocks'], false, created_element);
             // Add the returned list to the element list and add all sub-elements to it's parent
             dict_of_elements = { ...dict_of_elements, ...returned_dict };
+
+            addLinks(element['links']);
+            addStubs(element['stubs']);
+            created_element.fitAncestorElements();
         }
 
-        addLinks(element['links']);
-        addStubs(element['stubs']);
+        else {
+            // raise an error because we don't know what to do with this element
+            // TODO: raise an error
+            console.log('Unknown element type:'+ element['type']);
+        }
+
+        if (parent) {
+            addElementToElement(created_element, parent);
+        }
     }
+
+    for (let e_name in dict_of_elements) {
+        // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
+        dict_of_elements[e_name].fitAncestorElements();
+    }
+
     return dict_of_elements;
 }
 
@@ -464,19 +482,21 @@ paper.on('link:mouseleave', function(linkView) {
     linkView.unhighlight();
 });
 
-// paper.on('cell:pointerup', function(cellview, evt, x, y) {
-//     const requestOptions = {
-//         method: 'POST',
-//         headers: { 'Content-Type': 'application/json' },
-//         body: JSON.stringify({
-//             id: cellview.model.attributes.id,
-//             x: cellview.model.attributes.position.x,
-//             y: cellview.model.attributes.position.y,
-//         })
-//     };
-//     fetch('/api/view/move', requestOptions);
-//     console.log(requestOptions);
-// });
+paper.on('cell:pointerup', function(cell, evt, x, y) {
+    if (cell.model instanceof AtoComponent) {
+        console.log("might've moved component");
+        const requestOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: cell.model.attributes.id,
+                x: cell.model.attributes.position.x,
+                y: cell.model.attributes.position.y,
+            })
+        };
+        fetch('/api/view/move', requestOptions);
+    }
+});
 
 graph.on('change:position', function(cell) {
     // `fitAncestorElements()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
@@ -488,7 +508,7 @@ async function loadData() {
     const vis_dict = await response.json();
 
     console.log(vis_dict);
-    element_dict = visulatizationFromDict(vis_dict);
+    element_dict = renderDataFromBackend(vis_dict);
 }
 
 loadData();

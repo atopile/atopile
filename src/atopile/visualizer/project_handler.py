@@ -28,6 +28,7 @@ class ProjectHandler:
         self._task: asyncio.Task = None
         self._watchers: List[asyncio.Queue] = []
         self._ignore_files: List[Path] = []
+        self._request_requires_rebuild = False
 
     @property
     def entrypoint_block(self):
@@ -41,13 +42,13 @@ class ProjectHandler:
 
     @property
     def visualizer_dict(self):
-        if self._visualizer_dict is None:
+        if self._visualizer_dict is None or self._request_requires_rebuild:
             self.rebuild()
         return self._visualizer_dict
 
     @property
     def model(self) -> Model:
-        if self._model is None:
+        if self._model is None or self._request_requires_rebuild:
             self.rebuild()
         return self._model
 
@@ -67,6 +68,7 @@ class ProjectHandler:
         # build the vision
         self._visualizer_dict = build_visualisation(self._model, self.entrypoint_block, self._vis_data)
         log.info(f"Rebuilt in {time.time() - start_time}s")
+        self._request_requires_rebuild = False
 
     async def _watch_files(self):
         try:
@@ -136,3 +138,4 @@ class ProjectHandler:
         with self.vis_file_path.open('w') as f:
             yaml.dump(self._vis_data, f)
         self._ignore_files.append(self.vis_file_path)
+        self._request_requires_rebuild = True

@@ -110,12 +110,6 @@ class Block:
             "position": self.position.to_dict() if self.position is not None else None,
         }
 
-    def from_model(model: Model, main: str, vis_data: dict) -> "Block":
-        main = ModelVertex.from_path(model, main)
-        bob = Bob(model, vis_data)
-        root = bob.build(main)
-        return root
-
 # FIXME: this should go to something intelligent instead of this jointjs hack
 # eg. up, down, left, right
 pin_location_stub_direction_map = {
@@ -167,15 +161,7 @@ class Bob(ModelVisitor):
         return lowest_common_ancestor
 
     def build(self, main: ModelVertex) -> Block:
-        root = Block(
-            name="root",
-            type="module",
-            uuid="root",
-            blocks=[self.generic_visit_block(main)],
-            ports=[],
-            links=[],
-            stubs=[],
-        )
+        root = self.generic_visit_block(main)
 
         stubbed_pins_vids: List[int] = []
 
@@ -331,6 +317,8 @@ class Bob(ModelVisitor):
     def visit_signal(self, vertex: ModelVertex) -> Pin:
         return self.generic_visit_pin(vertex)
 
-def build_visualisation(model: Model, main: str, vis_data: dict) -> dict:
-    root = Block.from_model(model, main, vis_data)
-    return root.to_dict()
+def build_visualisation(model: Model, main: str, vis_data: dict) -> list:
+    main = ModelVertex.from_path(model, main)
+    bob = Bob(model, vis_data)
+    root = bob.build(main)
+    return [root.to_dict()]
