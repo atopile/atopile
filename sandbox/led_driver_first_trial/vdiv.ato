@@ -1,0 +1,19 @@
+# this is a comment, it should be safely ignored
+import Resistor from "std/resistor.ato"
+
+module Vdiv:
+    signal input
+    signal output
+    signal gnd
+
+    input.visualizer.location = "top"
+    output.visualizer.location = "left"
+    gnd.visualizer.location = "bottom"
+
+    r_top = new Resistor
+    r_bt = new Resistor
+
+    r_top.p1 ~ input
+    r_top.p2 ~ output
+    r_bt.p1 ~ output
+    r_bt.p2 ~ gnd

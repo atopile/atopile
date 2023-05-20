@@ -1,7 +1,3 @@
-# We are goiing to build the first compiled atopile project
-# This will be an LED driver
-# Components:
-# LED: https://www.mouser.com/ProductDetail/Cree-LED/XMLBWT-00-0000-0000U2051?qs=5YqktSXERiqXrROjAy0YHg%3D%3D
 # Driver LT3477: https://datasheet.lcsc.com/lcsc/2205191145_Analog-Devices-LT3477IUF-TRPBF_C670655.pdf
 
 import Resistor from "std/resistor.ato"
@@ -9,8 +5,7 @@ import Capacitor from "std/capacitor.ato"
 import Inductor from "std/inductor.ato"
 import Diode from "std/diode.ato"
 import Nmos from "std/nmos.ato"
-
-import Led from "XL-C3570P8S11-62C3C2.ato"
+import Vdiv from "vdiv.ato"
 
 component LT3477: # This comment needs to be fixed
     #FIXME: need synthax highlighting for components
@@ -53,15 +48,24 @@ component LT3477: # This comment needs to be fixed
     rt.visualizer.location = "right"
 
 module LedDriver:
-    signal vin #TODO: would be nice to be able to publish some signals but not the other
+    signal vin #TODO: would be nice to make some signals private
     signal gnd # The published signals would end up on the outside edge of the module
     signal out # Signal would appear like arrows within the module
     signal pwm #TODO: choose if can be stub or not
+
+    signal led_positive # To be used outside the module to connect the LED
+    signal led_negative
 
     vin.visualizer.stub = True
     gnd.visualizer.stub = True
     out.visualizer.stub = True
     pwm.visualizer.stub = True
+
+    vin.visualizer.location = "left"
+    gnd.visualizer.location = "left"
+
+    led_positive.visualizer.location = "right"
+    led_negative.visualizer.location = "right"
 
     led_driver = new LT3477
     # led = ...
@@ -88,19 +92,9 @@ module LedDriver:
     # pwm diode
     diode_pwm = new Diode
 
-    # Feedback negative
-    r_fb_top = new Resistor
-    r_fb_top.value = "1M" #FIXME: sythax highlighting for single '' as well as ""
-
-    r_fb_bt = new Resistor
-    r_fb_low.value = "75k"
-
     # Sense resistor
     r_sens = new Resistor
     r_sens.value = "0.33R"
-
-    # LED
-    led = new Led
 
     # led nmos, suggest using: C145552
     nmos_led = new Nmos
@@ -115,6 +109,10 @@ module LedDriver:
     # Resistance pwm input
     r_pwm = new Resistor
     r_pwm.value = "100k"
+
+    feedback_vdiv = new Vdiv
+    feedback_vdiv.r_top.value = "1M" #FIXME: sythax highlighting for single '' as well as ""
+    feedback_vdiv.r_bt.value = "75k"
 
     # Connect stuff together
 
@@ -139,10 +137,9 @@ module LedDriver:
     diode_boost.pn ~ out
 
     # Negative feedback
-    out ~ r_fb_top.p1
-    led_driver.fbn ~ r_fb_top.p2
-    led_driver.fbn ~ r_fb_bt.p1
-    r_fb_bt.p2 ~ gnd
+    out ~ feedback_vdiv.input
+    led_driver.fbn ~ feedback_vdiv.output
+    feedback_vdiv.gnd ~ gnd
 
     # Vref
     led_driver.fbp ~ led_driver.vref # This seems to be broken in the visualizer? -> due to connection in context of component
@@ -150,14 +147,14 @@ module LedDriver:
     # LED
     c_bypass_output.p1 ~ out
     c_bypass_output.p2 ~ gnd
-    
+
     led_driver.isp2 ~ out
 
     r_sens.p1 ~ out
     led_driver.isn2 ~ r_sens.p2
 
-    led.positive ~ r_sens.p2
-    led.negative ~ nmos_led.drain
+    led_positive ~ r_sens.p2
+    led_negative ~ nmos_led.drain
 
     nmos_led.source ~ gnd
 
