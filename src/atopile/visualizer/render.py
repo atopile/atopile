@@ -1,8 +1,15 @@
-import attrs
 import uuid
-from typing import List, Dict, Optional
-from atopile.model.model import Model, EdgeType, VertexType
-from atopile.model.visitor import ModelVisitor, ModelVertex
+from contextlib import contextmanager
+from typing import Dict, List, Optional, Tuple
+
+import attrs
+import logging
+
+from atopile.model.model import EdgeType, Model, VertexType
+from atopile.model.visitor import ModelVertex, ModelVisitor
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 @attrs.define
 class Pin:
@@ -70,6 +77,17 @@ class Link:
         }
 
 @attrs.define
+class Position:
+    x: int
+    y: int
+
+    def to_dict(self) -> dict:
+        return {
+            "x": self.x,
+            "y": self.y,
+        }
+
+@attrs.define
 class Block:
     name: str
     type: str
@@ -78,6 +96,7 @@ class Block:
     ports: List[Port]
     links: List[Link]
     stubs: List[Stub]
+    position: Optional[Position] = None
 
     def to_dict(self) -> dict:
         return {
@@ -88,11 +107,12 @@ class Block:
             "ports": [port.to_dict() for port in self.ports],
             "links": [link.to_dict() for link in self.links],
             "stubs": [stub.to_dict() for stub in self.stubs],
+            "position": self.position.to_dict() if self.position is not None else None,
         }
 
-    def from_model(model: Model, main: str) -> "Block":
+    def from_model(model: Model, main: str, vis_data: dict) -> "Block":
         main = ModelVertex.from_path(model, main)
-        bob = Bob(model)
+        bob = Bob(model, vis_data)
         root = bob.build(main)
         return root
 
@@ -112,13 +132,20 @@ class Bob(ModelVisitor):
     The builder... obviously
     """
 
-    def __init__(self, model: Model) -> None:
+    def __init__(self, model: Model, vis_data: dict) -> None:
         self.model = model
+        self.vis_data = vis_data
         self.block_uuid_stack: List[str] = []
         self.block_directory_by_uuid: Dict[str, Block] = {}
         self.block_directory_by_path: Dict[str, Block] = {}
         self.pin_directory: Dict[int, Pin] = {}
         super().__init__(model)
+
+    @contextmanager
+    def block_context(self, block: str):
+        self.block_uuid_stack.append(block)
+        yield
+        self.block_uuid_stack.pop()
 
     def find_lowest_common_ancestor(self, pins: List[Pin]) -> str:
         if len(pins) == 0:
@@ -201,53 +228,67 @@ class Bob(ModelVisitor):
 
     def generic_visit_block(self, vertex: ModelVertex) -> Block:
         uuid_to_be = vertex.path
-        self.block_uuid_stack.append(uuid_to_be)
+        with self.block_context(uuid_to_be):
+            # find subelements
+            blocks: List[Block] = self.wander(
+                vertex=vertex,
+                mode="in",
+                edge_type=EdgeType.part_of,
+                vertex_type=[VertexType.component, VertexType.module]
+            )
 
-        blocks: List[Block] = self.wander(
-            vertex=vertex,
-            mode="in",
-            edge_type=EdgeType.part_of,
-            vertex_type=[VertexType.component, VertexType.module]
-        )
+            pins: List[Pin] = self.wander(
+                vertex=vertex,
+                mode="in",
+                edge_type=EdgeType.part_of,
+                vertex_type=[VertexType.pin, VertexType.signal]
+            )
+            # filter out Nones
+            pins = [p for p in pins if p is not None]
 
-        pins: List[Pin] = self.wander(
-            vertex=vertex,
-            mode="in",
-            edge_type=EdgeType.part_of,
-            vertex_type=[VertexType.pin, VertexType.signal]
-        )
-        # filter out Nones
-        pins = [p for p in pins if p is not None]
+            # pin locations specify ports they'll belong to
+            pin_locations = {}
+            for pin in pins:
+                pin_locations.setdefault(pin.location, []).append(pin)
 
-        pin_locations = {}
-        for pin in pins:
-            pin_locations.setdefault(pin.location, []).append(pin)
+            ports: List[Port] = []
+            for location, pins_at_location in pin_locations.items():
+                ports.append(Port(
+                    name=location,
+                    uuid=f"{uuid_to_be}/port@{location}",
+                    location=location,
+                    pins=pins_at_location
+                ))
 
-        ports: List[Port] = []
-        for location, pins_at_location in pin_locations.items():
-            ports.append(Port(
-                name=location,
-                uuid=f"{uuid_to_be}/port@{location}",
-                location=location,
-                pins=pins_at_location
-            ))
+            for i, pin in enumerate(pins):
+                pin.index = i
 
-        for i, pin in enumerate(pins):
-            pin.index = i
+            # check if there's position data for this block
+            block_vis_data = self.vis_data.get(vertex.path, {})
+            try:
+                position = Position(
+                    x=block_vis_data["position"]["x"],
+                    y=block_vis_data["position"]["y"]
+                )
+            except KeyError as ex:
+                log.warning(f"Got exception {ex} while trying to get position for {vertex.path}")
+                position = None
 
-        block = Block(
-            name=vertex.ref,
-            type=vertex.vertex_type.name,
-            uuid=uuid_to_be,
-            blocks=blocks,
-            ports=ports,
-            links=[],
-            stubs=[],
-        )
+            # do block build
+            block = Block(
+                name=vertex.ref,
+                type=vertex.vertex_type.name,
+                uuid=uuid_to_be,
+                blocks=blocks,
+                ports=ports,
+                links=[],
+                stubs=[],
+                position=position
+            )
 
-        self.block_directory_by_uuid[uuid_to_be] = block
-        self.block_directory_by_path[vertex.path] = block
-        self.block_uuid_stack.pop()
+            self.block_directory_by_uuid[uuid_to_be] = block
+            self.block_directory_by_path[vertex.path] = block
+
         return block
 
     def visit_component(self, vertex: ModelVertex) -> Block:
@@ -290,6 +331,6 @@ class Bob(ModelVisitor):
     def visit_signal(self, vertex: ModelVertex) -> Pin:
         return self.generic_visit_pin(vertex)
 
-def build_visualisation(model: Model, main: str) -> dict:
-    root = Block.from_model(model, main)
+def build_visualisation(model: Model, main: str, vis_data: dict) -> dict:
+    root = Block.from_model(model, main, vis_data)
     return root.to_dict()

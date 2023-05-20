@@ -14,10 +14,11 @@ from atopile.project.project import Project
 from atopile.visualizer.project_handler import ProjectHandler
 
 # configure logging
-log = logging.Logger(__name__, level=logging.DEBUG)
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 stream_handler = logging.StreamHandler()
 stream_handler.formatter = ColourizedFormatter(fmt="%(levelprefix)s %(message)s", use_colors=None)
-log.addHandler(stream_handler)
+logging.root.addHandler(stream_handler)
 
 watcher = ProjectHandler()
 
@@ -54,17 +55,20 @@ async def websocket_view(websocket: WebSocket):
 @app.post("/api/view/move")
 async def post_move(move: Dict[Any, Any]):
     log.info(f"Posted move: {move}")
+    watcher.do_move(move["id"], move["x"], move["y"])
 
 # configure UI
 @click.command()
 @click.argument("file", type=click.Path(exists=True, dir_okay=False))
 @click.argument("entrypoint", type=str, required=False)
-def visualize(file: str, entrypoint: str):
+@click.option('--browser/--no-browser', default=False)
+def visualize(file: str, entrypoint: str, browser: bool):
     watcher.entrypoint_file = Path(file).resolve().absolute()
     watcher.project = Project.from_path(watcher.entrypoint_file)
     if entrypoint is not None:
         watcher.entrypoint_block = entrypoint
-    webbrowser.open("http://localhost/static/client.html")
+    if browser:
+        webbrowser.open("http://localhost/static/client.html")
     uvicorn.run(app, host="0.0.0.0", port=80)
 
 # let's goooooo

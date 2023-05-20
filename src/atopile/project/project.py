@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from atopile.utils import get_project_root
 
@@ -19,6 +19,7 @@ def resolve_project_dir(path: Path):
 class Project:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve().absolute()
+        self._std_import_to_abs: Dict[Path, Path] = {}
 
     @property
     def project_config_path(self):
@@ -56,12 +57,26 @@ class Project:
         return search_paths
 
     def standardise_import_path(self, path: Path) -> Path:
+        abs_path = path.resolve().absolute()
         if path.is_relative_to(self.root):
-            return path.resolve().absolute().relative_to(self.root)
+            std_path = abs_path.relative_to(self.root)
         elif path.is_relative_to(self.get_std_lib_path()):
-            return path.resolve().absolute().relative_to(self.get_std_lib_path())
+            std_path = abs_path.relative_to(self.get_std_lib_path())
         else:
             raise ImportError("Import is outside the project directory and isn't part of the std lib")
+        if std_path in self._std_import_to_abs:
+            if self._std_import_to_abs[std_path] != abs_path:
+                # not sure we can ever hit this, but I wanna know about it if we can
+                raise ImportError(f"Import path {std_path} is ambiguous. This is a core SW bug. Please report it.")
+        else:
+            self._std_import_to_abs[std_path] = abs_path
+        return std_path
+
+    def get_abs_import_path_from_std_path(self, std_path: Path) -> Path:
+        if std_path in self._std_import_to_abs:
+            return self._std_import_to_abs[std_path]
+        else:
+            raise ImportError(f"Import path {std_path} is not imported (or at least standardised).")
 
     def resolve_import(self, name: str, cwp: Optional[Path] = None) -> Tuple[Path, Path]:
         non_relative_paths = []
