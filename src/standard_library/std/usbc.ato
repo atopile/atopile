@@ -1,0 +1,59 @@
+component Usbc:
+
+    signal gnd ~ pin a1
+    gnd ~ pin a12
+    gnd ~ pin b1
+    gnd ~ pin b12
+
+    signal vbus ~ pin a4
+    vbus ~ pin a9
+    vbus ~ pin b4
+    vbus ~ pin b9
+
+    signal dp ~ pin a6
+    dp ~ pin b6
+
+    signal dm ~ pin a7
+    dm ~ pin b7
+
+    signal cc ~ pin a5
+    cc ~ pin b5
+
+    signal sbu ~ pin a8
+    sbu ~ pin b8
+
+    signal txp ~ pin b2
+    txp~ pin a2
+
+    signal txm ~ pin a3
+    txm ~ pin b3
+
+    signal rxp ~ pin a11
+    rxp ~ pin b11
+
+    signal rxm ~ pin a10
+    rxm ~ pin b10
+
+    signal shell ~ pin p1
+    shell ~ pin p2
+    shell ~ pin p3
+    shell ~ pin p4
+
+    footprint = "footprint:USB-C-SMD_TYPE-C-6PIN-2MD-073"
+    designator_prefix = "J"
+
+    vbus.visualizer.location = "top"
+
+    txp.visualizer.location = "right"
+    txm.visualizer.location = "right"
+    rxp.visualizer.location = "right"
+    rxm.visualizer.location = "right"
+
+    dp.visualizer.location = "right"
+    dm.visualizer.location = "right"
+
+    cc.visualizer.location = "left"
+    cc.visualizer.location = "left"
+
+    gnd.visualizer.location = "bottom"
+    shell.visualizer.location = "bottom"
