@@ -441,23 +441,27 @@ paper.on('link:mouseleave', function(linkView) {
     linkView.unhighlight();
 });
 
-paper.on('cell:pointerup', function(evt, x, y) {
+paper.on('cell:pointerup', function(cellview, evt, x, y) {
     const requestOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(graph.toJSON()) // << data going the other way
+        body: JSON.stringify({
+            id: cellview.model.attributes.id,
+            x: cellview.model.attributes.position.x,
+            y: cellview.model.attributes.position.y,
+        })
     };
-    fetch('/api/graph', requestOptions);
+    fetch('/api/view/move', requestOptions);
+    console.log(requestOptions);
 });
 
-paper.on('element:pointermove', function(elementView) {
-    var element = elementView.model;
+graph.on('change:position', function(cell) {
     // `fitAncestorElements()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
-    element.fitAncestorElements();
+    cell.fitAncestorElements();
 });
 
 async function loadData() {
-    const response = await fetch('/api/graph');
+    const response = await fetch('/api/view');
     const vis_dict = await response.json();
 
     console.log(vis_dict);
