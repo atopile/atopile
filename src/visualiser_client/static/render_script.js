@@ -464,19 +464,19 @@ paper.on('link:mouseleave', function(linkView) {
     linkView.unhighlight();
 });
 
-paper.on('cell:pointerup', function(cellview, evt, x, y) {
-    const requestOptions = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            id: cellview.model.attributes.id,
-            x: cellview.model.attributes.position.x,
-            y: cellview.model.attributes.position.y,
-        })
-    };
-    fetch('/api/view/move', requestOptions);
-    console.log(requestOptions);
-});
+// paper.on('cell:pointerup', function(cellview, evt, x, y) {
+//     const requestOptions = {
+//         method: 'POST',
+//         headers: { 'Content-Type': 'application/json' },
+//         body: JSON.stringify({
+//             id: cellview.model.attributes.id,
+//             x: cellview.model.attributes.position.x,
+//             y: cellview.model.attributes.position.y,
+//         })
+//     };
+//     fetch('/api/view/move', requestOptions);
+//     console.log(requestOptions);
+// });
 
 graph.on('change:position', function(cell) {
     // `fitAncestorElements()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
