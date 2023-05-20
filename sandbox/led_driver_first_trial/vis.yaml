@@ -1,0 +1,76 @@
+bike_light.ato/BikeLight/led:
+  position:
+    x: 1590
+    y: 580
+bike_light.ato/BikeLight/led_driver/c_bypass_input:
+  position:
+    x: 630
+    y: 330
+bike_light.ato/BikeLight/led_driver/c_bypass_output:
+  position:
+    x: 1430
+    y: 470
+bike_light.ato/BikeLight/led_driver/c_comp:
+  position:
+    x: 680
+    y: 750
+bike_light.ato/BikeLight/led_driver/c_soft_start:
+  position:
+    x: 810
+    y: 540
+bike_light.ato/BikeLight/led_driver/diode_boost:
+  position:
+    x: 1100
+    y: 410
+bike_light.ato/BikeLight/led_driver/diode_pwm:
+  position:
+    x: 870
+    y: 750
+bike_light.ato/BikeLight/led_driver/feedback_vdiv/r_bt:
+  position:
+    x: 1280
+    y: 500
+bike_light.ato/BikeLight/led_driver/feedback_vdiv/r_top:
+  position:
+    x: 1280
+    y: 420
+bike_light.ato/BikeLight/led_driver/inductor:
+  position:
+    x: 980
+    y: 440
+bike_light.ato/BikeLight/led_driver/led_driver:
+  position:
+    x: 990
+    y: 580
+bike_light.ato/BikeLight/led_driver/nmos_led:
+  position:
+    x: 1410
+    y: 740
+bike_light.ato/BikeLight/led_driver/nmos_pwm:
+  position:
+    x: 790
+    y: 650
+bike_light.ato/BikeLight/led_driver/r_comp:
+  position:
+    x: 680
+    y: 660
+bike_light.ato/BikeLight/led_driver/r_pwm:
+  position:
+    x: 800
+    y: 820
+bike_light.ato/BikeLight/led_driver/r_sens:
+  position:
+    x: 1240
+    y: 640
+bike_light.ato/BikeLight/led_driver/r_timing:
+  position:
+    x: 1130
+    y: 530
+bike_light.ato/BikeLight/pwm_header:
+  position:
+    x: 250
+    y: 310
+bike_light.ato/BikeLight/usbc:
+  position:
+    x: 230
+    y: 570
