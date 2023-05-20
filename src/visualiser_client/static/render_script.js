@@ -2,29 +2,35 @@ const { shapes, util, dia, anchors } = joint;
 
 // Visual settings for the visualizer
 let settings_dict = {
-    "common": {
-        "backgroundColor": 'rgba(224, 233, 227, 0.3)',
+    common: {
+        backgroundColor: 'rgba(224, 233, 227, 0.3)',
         gridSize: 10,
-        "pinLabelFontSize": 10,
-        "pinLabelPadding": 5,
-        "parentPadding": 50
+        parentPadding: 50,
+        fontFamily: "sans-serif",
     },
-    "component" : {
-        "strokeWidth": 2,
-        "fontSize": 12,
-        "defaultWidth": 40,
+    component : {
+        strokeWidth: 2,
+        fontSize: 12,
+        defaultWidth: 40,
         portPitch: 16,
-        "defaultHeight": 40,
+        defaultHeight: 40,
+        pin: {
+            labelPadding: 5, // currently not being used
+            labelFontSize: 10,
+        }
     },
-    "block" : {
+    block : {
         strokeWidth: 2,
         boxRadius: 5,
         strokeDasharray: '4,4',
         fontSize: 10,
     },
-    "link": {
-        "strokeWidth": 1,
-        "color": "blue"
+    link: {
+        strokeWidth: 1,
+        color: "blue"
+    },
+    stubs: {
+        fontSize: 10,
     }
 }
 
@@ -79,7 +85,7 @@ class AtoComponent extends AtoElement {
                     fontWeight: "bold",
                     textVerticalAnchor: "middle",
                     textAnchor: "middle",
-                    fontFamily: "sans-serif",
+                    fontFamily: settings_dict["common"]["fontFamily"],
                     x: "calc(w/2)",
                     y: "calc(h/2)"
                 }
@@ -136,7 +142,7 @@ class AtoBlock extends dia.Element {
             fontWeight: "bold",
             textVerticalAnchor: "middle",
             textAnchor: "middle",
-            fontFamily: "sans-serif",
+            fontFamily: settings_dict['common']['fontFamily'],
             x: "calc(w / 2)"
           }
         }
@@ -225,8 +231,8 @@ function addPortsAndPins(element, port_list) {
                 attrs: {
                     label: {
                         text: pin['name'],
-                        fontFamily: "sans-serif",
-                        fontSize: settings_dict['common']['pinLabelFontSize'],
+                        fontFamily: settings_dict['common']['fontFamily'],
+                        fontSize: settings_dict['component']['pin']['labelFontSize'],
                     }
                 }
             });
@@ -308,7 +314,7 @@ function addStubs(stubs) {
             startDirections: [stub['direction']],
             endDirections: [opposite_direction[stub['direction']]],
             perpendicular: true,
-            //step: 40//settings_dict['common']['gridSize'],
+            step: settings_dict['common']['gridSize'],
         });
         added_stub.attr('root/title', 'joint.shapes.standard.Link');
         added_stub.attr({
@@ -325,7 +331,9 @@ function addStubs(stubs) {
         added_stub.appendLabel({
             attrs: {
                 text: {
-                    text: stub['name']
+                    text: stub['name'],
+                    fontFamily: settings_dict['common']['fontFamily'],
+                    fontSize: settings_dict['stubs']['fontSize'],
                 }
             },
             position: {
