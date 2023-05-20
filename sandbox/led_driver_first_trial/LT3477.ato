@@ -148,6 +148,9 @@ module LedDriver:
     led_driver.fbp ~ led_driver.vref # This seems to be broken in the visualizer? -> due to connection in context of component
 
     # LED
+    c_bypass_output.p1 ~ out
+    c_bypass_output.p2 ~ gnd
+    
     led_driver.isp2 ~ out
 
     r_sens.p1 ~ out
