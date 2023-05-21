@@ -41,6 +41,7 @@ OPTIONAL : 'optional';
 NEW : 'new';
 FROM : 'from';
 IMPORT : 'import';
+PRIVATE : 'private';
 
 TRUE : 'True';
 FALSE : 'False';

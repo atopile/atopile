@@ -151,12 +151,20 @@ class Builder(AtopileParserVisitor):
 
     def visitSignaldef_stmt(self, ctx: AtopileParser.Signaldef_stmtContext):
         name = ctx.name().getText()
+
+        if ctx.PRIVATE():
+            private = True
+        else:
+            private = False
+
         signal_path = self.model.new_vertex(
             VertexType.signal,
             name,
             part_of=self.current_block
         )
-        self.model.data[signal_path] = {}
+        self.model.data[signal_path] = {
+            "private": private,
+        }
 
         return super().visitSignaldef_stmt(ctx)
 
@@ -213,8 +221,8 @@ class Builder(AtopileParserVisitor):
                 value = self.get_string(assignable.string())
             elif assignable.NUMBER():
                 value = float(assignable.NUMBER().getText())
-            elif assignable.boolean():
-                value = bool(assignable.boolean().getText())
+            elif assignable.boolean_():
+                value = bool(assignable.boolean_().getText())
             else:
                 raise NotImplementedError("Only strings and numbers are supported")
 

@@ -114,8 +114,8 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#boolean.
-    def visitBoolean(self, ctx:AtopileParser.BooleanContext):
+    # Visit a parse tree produced by AtopileParser#boolean_.
+    def visitBoolean_(self, ctx:AtopileParser.Boolean_Context):
         return self.visitChildren(ctx)
 
 
