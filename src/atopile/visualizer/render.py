@@ -100,6 +100,7 @@ class Block:
     ports: List[Port]
     links: List[Link]
     stubs: List[Stub]
+    instance_of: Optional[str] = None
     position: Optional[Position] = None
 
     def to_dict(self) -> dict:
@@ -111,6 +112,7 @@ class Block:
             "ports": [port.to_dict() for port in self.ports],
             "links": [link.to_dict() for link in self.links],
             "stubs": [stub.to_dict() for stub in self.stubs],
+            "instance_of": self.instance_of,
             "position": self.position.to_dict() if self.position is not None else None,
         }
 
@@ -275,6 +277,13 @@ class Bob(ModelVisitor):
             # check if there's position data for this block
             position = self.get_position(uuid_to_be)
 
+            # check the type of this block
+            instance_ofs = vertex.get_adjacents("out", EdgeType.instance_of)
+            if len(instance_ofs) > 0:
+                instance_of = instance_ofs[0].ref
+            else:
+                instance_of = None
+
             # do block build
             block = Block(
                 name=vertex.ref,
@@ -284,7 +293,8 @@ class Bob(ModelVisitor):
                 ports=ports,
                 links=[],
                 stubs=[],
-                position=position
+                instance_of=instance_of,
+                position=position,
             )
 
             self.block_directory_by_uuid[uuid_to_be] = block
@@ -324,7 +334,7 @@ class Bob(ModelVisitor):
             if len(connections_out) == 1:
                 target = ModelVertex(self.model, connections_out[0].target)
             if target.vertex_type == VertexType.signal:
-                if target.parent == vertex.parent:
+                if target.parent_path == vertex.parent_path:
                     return None
 
         return self.generic_visit_pin(vertex)

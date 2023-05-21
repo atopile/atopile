@@ -4,6 +4,7 @@ import igraph as ig
 
 from atopile.model.model import EdgeType, Model, VertexType
 
+EdgeIterable = Union[ig.EdgeSeq, List[ig.Edge]]
 
 class ModelVertex:
     def __init__(self, model: Model, index: int) -> None:
@@ -35,9 +36,16 @@ class ModelVertex:
         return self.model.data.get(self.path, {})
 
     @property
-    def parent(self) -> str:
-        parent_vidx = self.model.graph.es.find(_source=self.index, type_eq=EdgeType.part_of.name).target
-        return self.model.graph.vs[parent_vidx]["path"]
+    def parent_vidx(self) -> int:
+        return self.model.graph.es.find(_source=self.index, type_eq=EdgeType.part_of.name).target
+
+    @property
+    def parent_path(self) -> str:
+        return self.model.graph.vs[self.parent_vidx]["path"]
+
+    @property
+    def parent(self) -> "ModelVertex":
+        return ModelVertex(self.model, self.parent_vidx)
 
     def get_edges(self, mode: str, edge_type: Union[EdgeType, List[EdgeType]] = None) -> ig.EdgeSeq:
         selector = {}
@@ -59,6 +67,19 @@ class ModelVertex:
     @classmethod
     def from_path(cls, model: Model, path: str) -> "ModelVertex":
         return cls(model, model.graph.vs.find(path_eq=path).index)
+
+    @classmethod
+    def from_edges(cls, model: Model, mode: str, edges: EdgeIterable) -> List["ModelVertex"]:
+        if mode == "out":
+            return [cls(model, e.target) for e in edges]
+        elif mode == "in":
+            return [cls(model, e.source) for e in edges]
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
+
+    def get_adjacents(self, mode: str, edge_type: Union[EdgeType, List]) -> List["ModelVertex"]:
+        edges = self.get_edges(mode, edge_type)
+        return self.from_edges(self.model, mode, edges)
 
 class ModelVisitor:
     """

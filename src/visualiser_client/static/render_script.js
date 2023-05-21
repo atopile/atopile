@@ -398,6 +398,14 @@ function addElementToElement(block_to_add, to_block) {
     to_block.embed(block_to_add);
 }
 
+function getElementTitle(element) {
+    if (element['instance_of'] != null) {
+        return`${element['name']} (${element['instance_of']})`;
+    } else {
+        return element['name'];;
+    }
+}
+
 function renderDataFromBackend(data, is_root = true, parent = null) {
 
     // Create the list of all the created elements
@@ -416,7 +424,8 @@ function renderDataFromBackend(data, is_root = true, parent = null) {
         var created_element = null;
 
         if (element['type'] == 'component') {
-            created_element = createComponent(element['name'], element['uuid'], element['ports'], x, y);
+            let title = getElementTitle(element);
+            created_element = createComponent(title, element['uuid'], element['ports'], x, y);
             dict_of_elements[element['uuid']] = created_element;
             // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
             created_element.fitAncestorElements();
@@ -424,7 +433,8 @@ function renderDataFromBackend(data, is_root = true, parent = null) {
 
         // If it is a block, create it
         else if (element['type'] == 'module') {
-            created_element = createBlock(element['name'], element['uuid'], element['ports'], x, y);
+            let title = getElementTitle(element);
+            created_element = createBlock(title, element['uuid'], element['ports'], x, y);
             dict_of_elements[element['uuid']] = created_element;
 
             // Iterate over the included elements to create them
@@ -504,14 +514,15 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
             x: cell.model.attributes.position.x,
             y: cell.model.attributes.position.y,
         });
+        fetch('/api/view/move', requestOptions);
     } else if (cell.model instanceof shapes.standard.Link) {
         requestOptions.body = JSON.stringify({
             id: cell.model.attributes.id,
             x: cell.targetPoint.x,
             y: cell.targetPoint.y,
         });
+        fetch('/api/view/move', requestOptions);
     }
-    fetch('/api/view/move', requestOptions);
 });
 
 graph.on('change:position', function(cell) {
