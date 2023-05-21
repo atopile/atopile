@@ -1,11 +1,111 @@
+0d877c7c-4147-a5a0-391d-3a9d2b9270be:
+  position:
+    x: 690
+    y: 860
+0e9f1c38-f3d2-48cf-c838-3bfa3629bdf8:
+  position:
+    x: 1450
+    y: 370
+17e326cd-3949-899f-4d44-121bda22a761:
+  position:
+    x: 1450
+    y: 530
+2c0a140f-8ccc-34e3-7487-e80011c94ae1:
+  position:
+    x: 790
+    y: 590
+38e3d0e2-c266-7c1a-cb9a-7d1cdc73d738:
+  position:
+    x: 660
+    y: 590
+42158089-a4c0-0d07-c410-953e52148f3f:
+  position:
+    x: 900
+    y: 640
+518a9a50-b457-fba2-b5fe-7b07b382b513:
+  position:
+    x: 830
+    y: 930
+5800d389-bbc4-c6c4-b0d0-8cc4f3ac95ee:
+  position:
+    x: 430
+    y: 410
+5cc6d75d-7dbf-42ea-84b6-fc65d2fe754e:
+  position:
+    x: 1040
+    y: 760
+67c50d54-396c-60e2-9894-2e4c725bf5c3:
+  position:
+    x: 1130
+    y: 490
+69e34f22-5a42-b090-392a-3c3280af2f08:
+  position:
+    x: 1430
+    y: 850
+6ef079bf-0e75-cc95-fd34-804d2ad716b5:
+  position:
+    x: 1320
+    y: 770
+7020247f-a25b-0392-1b11-47d11e041115:
+  position:
+    x: 900
+    y: 850
+738ca230-e46a-c09c-4ec1-01f56f63efd8:
+  position:
+    x: 940
+    y: 530
+787b8820-4866-237c-e1ea-1d1661482c4a:
+  position:
+    x: 1060
+    y: 850
+84993f81-4071-e0eb-d248-22e21e66d828:
+  position:
+    x: 640
+    y: 640
+907fb48e-b895-ccaa-739e-bff292d2be11:
+  position:
+    x: 930
+    y: 720
+9a1ba500-4a5d-ea3c-e2b2-52c5aecc613c:
+  position:
+    x: 670
+    y: 400
+9f78b46c-2bdf-5a29-7650-fc36f0fe665a:
+  position:
+    x: 650
+    y: 180
+abd046b8-8c0f-8392-e2c4-c0377ba8a921:
+  position:
+    x: 990
+    y: 380
+b6d5e1a7-42f7-ca21-c0d4-ad44b0491b75:
+  position:
+    x: 1160
+    y: 680
+b8ec38ad-f276-6fec-3f0f-a0bceda02eb8:
+  position:
+    x: 820
+    y: 410
+b949e8da-afa4-3284-2136-840b167e0220:
+  position:
+    x: 1250
+    y: 340
+bcfa5ba9-35f3-db93-f0f1-f97c4d76d107:
+  position:
+    x: 910
+    y: 600
+bdd2dba5-fae4-6d89-5797-66ab03f2ace8:
+  position:
+    x: 800
+    y: 790
 bike_light.ato/BikeLight/led:
   position:
     x: 1590
     y: 580
 bike_light.ato/BikeLight/led_driver/c_bypass_input:
   position:
-    x: 550
-    y: 350
+    x: 640
+    y: 460
 bike_light.ato/BikeLight/led_driver/c_bypass_output:
   position:
     x: 1420
@@ -81,4 +181,36 @@ bike_light.ato/BikeLight/pwm_header:
 bike_light.ato/BikeLight/usbc:
   position:
     x: 320
+    y: 620
+c9e2852e-af0b-5908-6fc8-249161c7f721:
+  position:
+    x: 1020
+    y: 530
+d04d9b94-d20d-9f3b-9a8c-be5272c84671:
+  position:
+    x: 1390
+    y: 300
+db3d6299-61ea-2e19-fc3f-06c8699d1d40:
+  position:
+    x: 1260
+    y: 600
+dc776b50-6c94-b60d-3633-7db4ddce1faa:
+  position:
+    x: 870
+    y: 600
+e3caad0b-4a19-18d8-14d1-09f34c0eb394:
+  position:
+    x: 750
+    y: 660
+f43e192d-bb9d-c642-d1ad-4670600c8530:
+  position:
+    x: 1320
+    y: 630
+f74f76bc-7c8c-14a8-9be7-957346de6393:
+  position:
+    x: 1340
+    y: 360
+fe8d3c44-ed63-ea51-0e18-14168ec91bff:
+  position:
+    x: 1160
     y: 620
