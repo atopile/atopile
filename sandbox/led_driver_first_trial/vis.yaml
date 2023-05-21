@@ -4,12 +4,12 @@ bike_light.ato/BikeLight/led:
     y: 580
 bike_light.ato/BikeLight/led_driver/c_bypass_input:
   position:
-    x: 580
-    y: 330
+    x: 550
+    y: 350
 bike_light.ato/BikeLight/led_driver/c_bypass_output:
   position:
-    x: 1430
-    y: 470
+    x: 1400
+    y: 480
 bike_light.ato/BikeLight/led_driver/c_comp:
   position:
     x: 680
@@ -66,6 +66,14 @@ bike_light.ato/BikeLight/led_driver/r_timing:
   position:
     x: 1130
     y: 530
+bike_light.ato/BikeLight/led_driver/vdiv_2/r_bt:
+  position:
+    x: 520
+    y: 280
+bike_light.ato/BikeLight/led_driver/vdiv_2/r_top:
+  position:
+    x: 520
+    y: 190
 bike_light.ato/BikeLight/pwm_header:
   position:
     x: 310
