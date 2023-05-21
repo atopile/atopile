@@ -264,7 +264,7 @@ def _defaulted_comp(ref, value, footprint, tstamp, fields, properties):
 
 
 # Test stuff ------------------------------------------------------------------
-def from_faebryk_t2_netlist(netlist):
+def from_faebryk_t2_netlist(netlist, extra_comps=None):
     tstamp = itertools.count(1)
     net_code = itertools.count(1)
 
@@ -299,7 +299,10 @@ def from_faebryk_t2_netlist(netlist):
                 out_unique.append(x)
         return out_unique
 
-    pre_comps = unique([vertex.component for net in netlist for vertex in net.vertices])
+    pre_comps = unique(
+        [vertex.component for net in netlist for vertex in net.vertices] + extra_comps
+        or []
+    )
 
     comps = [
         _defaulted_comp(
