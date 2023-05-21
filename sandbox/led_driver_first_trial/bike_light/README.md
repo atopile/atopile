@@ -1,0 +1,1 @@
+To add lib components: https://pypi.org/project/easyeda2kicad/

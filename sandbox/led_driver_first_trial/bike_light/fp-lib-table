@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "bike_light_lib")(type "KiCad")(uri "${KIPRJMOD}/libs/bike_light_lib.pretty")(options "")(descr ""))
+)
