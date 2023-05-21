@@ -4,8 +4,9 @@ from typing import Dict, Optional, Tuple
 from atopile.utils import get_project_root
 
 CONFIG_FILENAME = 'ato.yaml'
-ATO_DIR_NAME = 'ato'
-MODULE_DIR_NAME = 'ato.yaml'
+ATO_DIR_NAME = '.ato'
+MODULE_DIR_NAME = 'modules'
+BUILD_DIR_NAME = 'build'
 
 def resolve_project_dir(path: Path):
     """
@@ -33,6 +34,10 @@ class Project:
     def module_dir(self):
         return self.ato_dir / MODULE_DIR_NAME
 
+    @property
+    def build_dir(self):
+        return self.root / BUILD_DIR_NAME
+
     @classmethod
     def from_path(cls, path: Path):
         """
@@ -40,6 +45,9 @@ class Project:
         """
         project_dir = resolve_project_dir(path)
         return cls(project_dir)
+
+    def ensure_build_dir(self):
+        self.build_dir.mkdir(parents=True, exist_ok=True)
 
     def get_std_lib_path(self):
         # TODO: this will only work for editable installs
