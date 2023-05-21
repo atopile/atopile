@@ -23,7 +23,9 @@ let settings_dict = {
         strokeWidth: 2,
         boxRadius: 5,
         strokeDasharray: '4,4',
-        fontSize: 10,
+        label: {
+            fontSize: 12,
+        }
     },
     link: {
         strokeWidth: 1,
@@ -119,32 +121,34 @@ class AtoComponent extends AtoElement {
 // We might want to combine them in the future.
 class AtoBlock extends dia.Element {
     defaults() {
-      return {
-        ...super.defaults,
-        type: "AtoBlock",
-        size: { width: 10, height: 10 },
-        collapsed: false,
-        attrs: {
-          body: {
-            fill: "transparent",
-            stroke: "#333",
-            strokeWidth: settings_dict["block"]["strokeWidth"],
-            strokeDasharray: settings_dict["block"]["strokeDasharray"],
-            width: "calc(w)",
-            height: "calc(h)",
-            rx: settings_dict["block"]["boxRadius"],
-            ry: settings_dict["block"]["boxRadius"],
-          },
-          label: {
-            text: "Block",
-            fill: "#333",
-            fontSize: settings_dict["block"]["strokeWidth"],
-            fontWeight: "bold",
-            textVerticalAnchor: "middle",
-            textAnchor: "middle",
-            fontFamily: settings_dict['common']['fontFamily'],
-            x: "calc(w / 2)"
-          }
+        return {
+            ...super.defaults,
+            type: "AtoBlock",
+            size: { width: 10, height: 10 },
+            collapsed: false,
+            attrs: {
+            body: {
+                fill: "transparent",
+                stroke: "#333",
+                strokeWidth: settings_dict["block"]["strokeWidth"],
+                strokeDasharray: settings_dict["block"]["strokeDasharray"],
+                width: "calc(w)",
+                height: "calc(h)",
+                rx: settings_dict["block"]["boxRadius"],
+                ry: settings_dict["block"]["boxRadius"],
+            },
+            label: {
+                text: "Block",
+                fill: "#333",
+                fontSize: settings_dict["block"]["strokeWidth"],
+                fontWeight: "bold",
+                textVerticalAnchor: "top",
+                fontFamily: settings_dict['common']['fontFamily'],
+                fontSize: settings_dict['block']['label']['fontSize'],
+                textAnchor: 'start',
+                x: 8,
+                y: 8
+            }
         }
       };
     }
@@ -378,7 +382,7 @@ function createBlock(title, uuid, ports_dict, x, y) {
         id: uuid,
         attrs: {
             label: {
-                text: title
+                text: title,
             }
         }
     });

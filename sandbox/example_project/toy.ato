@@ -6,6 +6,10 @@ module Vdiv:
     signal center
     signal b
 
+    a.visualizer.location = "top"
+    center.visualizer.location = "right"
+    b.visualizer.location = "bottom"
+
     R1 = new Resistor
     R2 = new Resistor
 
