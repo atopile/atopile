@@ -13,7 +13,7 @@ from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 from atopile.project.project import Project
 
 log = logging.getLogger(__name__)
-
+log.setLevel(logging.INFO)
 
 def parse_file(path: Path):
     input = FileStream(path, encoding="utf-8")
@@ -230,3 +230,24 @@ class Builder(AtopileParserVisitor):
 
     def get_string(self, ctx:AtopileParser.StringContext) -> str:
         return ctx.getText().strip("\"\'")
+
+def build(project: Project, path: Path) -> Model:
+    log.info("Building model")
+    if log.getEffectiveLevel() <= logging.DEBUG:
+        import cProfile
+        import pstats
+        from atopile.utils import StreamToLogger
+
+        prof = cProfile.Profile()
+        prof.enable()
+
+    bob = Builder(project)
+    model = bob.build(path)
+
+    if log.getEffectiveLevel() <= logging.DEBUG:
+        prof.disable()
+        s = StreamToLogger(log, logging.DEBUG)
+        stats = pstats.Stats(prof, stream=s).sort_stats("cumtime")
+        stats.print_stats(20)
+
+    return model

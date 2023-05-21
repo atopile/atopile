@@ -16,9 +16,9 @@ from atopile.visualizer.project_handler import ProjectHandler
 
 # configure logging
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+log.setLevel(logging.DEBUG)
 stream_handler = logging.StreamHandler()
-stream_handler.formatter = ColourizedFormatter(fmt="%(levelprefix)s %(message)s", use_colors=None)
+stream_handler.formatter = ColourizedFormatter(fmt="%(levelprefix)s %(name)s %(message)s", use_colors=None)
 logging.root.addHandler(stream_handler)
 
 watcher = ProjectHandler()
@@ -68,9 +68,14 @@ async def post_move(move: ElementMovement):
 @click.argument("file", type=click.Path(exists=True, dir_okay=False))
 @click.argument("entrypoint", type=str, required=False)
 @click.option('--browser/--no-browser', default=True)
-def visualize(file: str, entrypoint: str, browser: bool):
+@click.option('--debug/--no-debug', default=False)
+def visualize(file: str, entrypoint: str, browser: bool, debug: bool):
     watcher.entrypoint_file = Path(file).resolve().absolute()
     watcher.project = Project.from_path(watcher.entrypoint_file)
+    if debug:
+        # FIXME: fuck... talk about pasghetti code
+        import atopile.parser.parser
+        atopile.parser.parser.log.setLevel(logging.DEBUG)
     if entrypoint is not None:
         watcher.entrypoint_block = entrypoint
     watcher.rebuild_all()

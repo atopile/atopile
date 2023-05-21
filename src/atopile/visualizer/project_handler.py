@@ -8,7 +8,7 @@ import time
 import watchfiles
 
 from atopile.model.model import Model
-from atopile.parser.parser import Builder
+from atopile.parser.parser import build as build_model
 from atopile.project.project import Project
 from atopile.visualizer.render import build_visualisation
 
@@ -73,7 +73,7 @@ class ProjectHandler:
     def rebuild_model(self):
         start_time = time.time()
         log.info("Building model...")
-        self._model = Builder(self.project).build(self.entrypoint_file)
+        self._model = build_model(self.project, self.entrypoint_file)
         log.info(f"Rebuilt in {time.time() - start_time}s")
 
     def rebuild_vision(self):
