@@ -300,8 +300,8 @@ def from_faebryk_t2_netlist(netlist, extra_comps=None):
         return out_unique
 
     pre_comps = unique(
-        [vertex.component for net in netlist for vertex in net.vertices] + extra_comps
-        or []
+        [vertex.component for net in netlist for vertex in net.vertices]
+        + (extra_comps or [])
     )
 
     comps = [
