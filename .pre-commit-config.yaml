@@ -1,21 +1,21 @@
 repos:
   - repo: https://github.com/PyCQA/autoflake
-    rev: v1.7.6
+    rev: v2.1.1
     hooks:
     -   id: autoflake
         args:
           - "--in-place"
           # for the other args use pyproject.toml
   - repo: https://github.com/pycqa/isort
-    rev: 5.6.4
+    rev: 5.12.0
     hooks:
       - id: isort
   - repo: https://github.com/psf/black
-    rev: 22.10.0
+    rev: 23.3.0
     hooks:
       - id: black
         # It is recommended to specify the latest version of Python
         # supported by your project here, or alternatively use
         # pre-commit's default_language_version, see
         # https://pre-commit.com/#top_level-default_language_version
-        language_version: python3.10
+        language_version: python3.11

@@ -105,7 +105,7 @@ def make_t2_netlist_from_t1(t1_netlist):
             ]
         )
         if virtual_name != "":
-            return virtual_name
+            return virtual_name[: min(len(virtual_name), 100)]
 
         comp_name = "-".join(vertex.node["name"] for vertex in net)
         if comp_name != "":

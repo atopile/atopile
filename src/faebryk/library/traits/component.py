@@ -75,3 +75,11 @@ class has_overriden_name(ComponentTrait):
 
     def get_name(self):
         raise NotImplementedError
+
+
+class has_descriptive_properties(ComponentTrait):
+    def get_properties(self) -> dict[str, str]:
+        raise NotImplementedError()
+
+    def add_properties(self, propertis: dict[str, str]):
+        raise NotImplementedError()

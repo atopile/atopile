@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from itertools import groupby
 from typing import List
 
 from typing_extensions import Self
 
+from faebryk.library.trait_impl.component import has_overriden_name_defined
 from faebryk.library.traits.component import has_overriden_name
-from faebryk.libs.util import groupby
 
 logger = logging.getLogger("netlist")
 
@@ -26,6 +27,7 @@ def make_graph_from_components(components):
     from faebryk.library.core import Component
     from faebryk.library.kicad import has_kicad_footprint
     from faebryk.library.traits.component import (
+        has_descriptive_properties,
         has_footprint,
         has_footprint_pinmap,
         has_type_description,
@@ -53,18 +55,29 @@ def make_graph_from_components(components):
                     .get_trait(has_kicad_footprint)
                     .get_kicad_footprint()
                 )
-            if self.component.has_trait(has_overriden_name):
-                self.name = self.component.get_trait(has_overriden_name).get_name()
-            else:
-                self.name = "{}[{}:{}]".format(
-                    ".".join(
-                        [pname for parent, pname in self.component.get_hierarchy()]
+                if c.has_trait(has_descriptive_properties):
+                    self.properties.update(
+                        c.get_trait(has_descriptive_properties).get_properties()
                     )
-                    if self.component.parent is not None
-                    else "",
-                    type(self.component).__name__,
-                    self.value if self.real else "virt",
+            if not self.component.has_trait(has_overriden_name):
+                self.component.add_trait(
+                    has_overriden_name_defined(
+                        "{}[{}:{}]".format(
+                            ".".join(
+                                [
+                                    pname
+                                    for parent, pname in self.component.get_hierarchy()
+                                ]
+                            )
+                            if self.component.parent is not None
+                            else "",
+                            type(self.component).__name__,
+                            self.value if self.real else "virt",
+                        )
+                    )
                 )
+
+            self.name = self.component.get_trait(has_overriden_name).get_name()
             self._comp = {}
             self._update_comp()
 
@@ -144,7 +157,7 @@ def make_graph_from_components(components):
     wrapped_list += [wrapper(comp, wrapped_list) for comp in all_components]
 
     names = groupby(wrapped_list, key=lambda w: w.name)
-    for name, _objs in names.items():
+    for name, _objs in names:
         objs = list(_objs)
         if len(objs) <= 1:
             continue

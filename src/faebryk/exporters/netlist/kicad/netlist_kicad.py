@@ -56,6 +56,10 @@ def _gen_pin(num, name, type):
     }
 
 
+def _gen_property(name, value):
+    return {"property": {"name": name, "value": value}}
+
+
 def _gen_libpart(lib, part, description, docs, footprints, fields, pins):
     return {
         "libpart": {
@@ -74,6 +78,7 @@ def _gen_comp(
     ref,
     value,
     footprint,
+    properties,
     datasheet,
     fields,
     libsource_lib,
@@ -84,20 +89,24 @@ def _gen_comp(
     tstamp,
 ):
     return {
-        "comp": {
-            "ref": ref,
-            "value": value,
-            "footprint": footprint,
-            "datasheet": datasheet,
-            "fields": sexp.multi_key_dict(*fields),
-            "libsource": {
-                "lib": libsource_lib,
-                "part": libsource_part,
-                "description": libsource_description,
-            },
-            "sheetpath": {"names": sheetpath_names, "tstamps": sheetpath_tstamps},
-            "tstamp": tstamp,
-        }
+        "comp": sexp.multi_key_dict(
+            ("ref", ref),
+            ("value", value),
+            ("footprint", footprint),
+            ("datasheet", datasheet),
+            ("fields", [_gen_field(k, v) for k, v in fields]),
+            (
+                "libsource",
+                {
+                    "lib": libsource_lib,
+                    "part": libsource_part,
+                    "description": libsource_description,
+                },
+            ),
+            ("sheetpath", {"names": sheetpath_names, "tstamps": sheetpath_tstamps}),
+            ("tstamp", tstamp),
+            *[_gen_property(k, v) for k, v in properties.items()],
+        )
     }
 
 
@@ -129,7 +138,6 @@ def _gen_netlist(
     libraries,
     nets,
 ):
-
     return _clean_none_and_empty(
         {
             "export": {
@@ -238,13 +246,14 @@ def _defaulted_netlist(components, nets):
     )
 
 
-def _defaulted_comp(ref, value, footprint, tstamp):
+def _defaulted_comp(ref, value, footprint, tstamp, fields, properties):
     return _gen_comp(
         ref=ref,
         value=value,
         footprint=footprint,
         datasheet=None,
-        fields=[],
+        fields=fields,
+        properties=properties,
         libsource_lib=None,
         libsource_part=None,
         libsource_description=None,
@@ -297,7 +306,9 @@ def from_faebryk_t2_netlist(netlist):
             ref=comp.name,
             value=comp.value,
             footprint=kicad_fp(comp.properties["footprint"]),
+            properties={k: v for k, v in comp.properties.items() if k != "footprint"},
             tstamp=next(tstamp),
+            fields=list(comp.properties.get("fields", [])),
         )
         for comp in sorted(pre_comps, key=lambda comp: comp.name)  # pre_comps
         # sort because tstamp determined by pos

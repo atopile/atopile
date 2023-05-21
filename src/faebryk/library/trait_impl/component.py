@@ -9,6 +9,7 @@ from faebryk.library.core import Footprint, Interface
 from faebryk.library.library.interfaces import Electrical
 from faebryk.library.traits.component import (
     can_bridge,
+    has_descriptive_properties,
     has_footprint,
     has_footprint_pinmap,
     has_overriden_name,
@@ -66,3 +67,15 @@ class has_overriden_name_defined(has_overriden_name.impl()):
 
     def get_name(self):
         return self.component_name
+
+
+class has_defined_descriptive_properties(has_descriptive_properties.impl()):
+    def __init__(self, properties: dict[str, str]) -> None:
+        super().__init__()
+        self.properties = properties
+
+    def add_properties(self, properties: dict[str, str]):
+        self.properties.update(properties)
+
+    def get_properties(self) -> dict[str, str]:
+        return self.properties
