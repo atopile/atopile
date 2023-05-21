@@ -10,7 +10,8 @@ let settings_dict = {
     },
     component : {
         strokeWidth: 2,
-        fontSize: 12,
+        fontSize: 10,
+        fontWeight: "normal",
         defaultWidth: 40,
         portPitch: 16,
         defaultHeight: 40,
@@ -25,6 +26,7 @@ let settings_dict = {
         strokeDasharray: '4,4',
         label: {
             fontSize: 12,
+            fontWeight: "normal",
         }
     },
     link: {
@@ -84,7 +86,7 @@ class AtoComponent extends AtoElement {
                     text: "Component",
                     fill: "black",
                     fontSize: settings_dict["component"]["fontSize"],
-                    fontWeight: "bold",
+                    fontWeight: settings_dict["component"]["fontWeight"],
                     textVerticalAnchor: "middle",
                     textAnchor: "middle",
                     fontFamily: settings_dict["common"]["fontFamily"],
@@ -140,11 +142,10 @@ class AtoBlock extends dia.Element {
             label: {
                 text: "Block",
                 fill: "#333",
-                fontSize: settings_dict["block"]["strokeWidth"],
-                fontWeight: "bold",
                 textVerticalAnchor: "top",
                 fontFamily: settings_dict['common']['fontFamily'],
                 fontSize: settings_dict['block']['label']['fontSize'],
+                fontWeight: settings_dict["block"]["fontWeight"],
                 textAnchor: 'start',
                 x: 8,
                 y: 8
@@ -400,7 +401,7 @@ function addElementToElement(block_to_add, to_block) {
 
 function getElementTitle(element) {
     if (element['instance_of'] != null) {
-        return`${element['name']} (${element['instance_of']})`;
+        return`${element['name']} \n(${element['instance_of']})`;
     } else {
         return element['name'];;
     }
