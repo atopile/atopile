@@ -294,7 +294,7 @@ class KicadNetlist:
             # the cluster only represents a net if it contains eletrical pins
             if nodes_in_cluster:
                 net = KicadNet(
-                    code=str(len(nets)),
+                    code=str(len(nets) + 1), #code has to start at 1 and increment
                     name=str(i),
                     nodes=nodes_in_cluster,
                 )
