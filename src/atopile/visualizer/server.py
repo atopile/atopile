@@ -8,6 +8,7 @@ import click
 import uvicorn
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from uvicorn.logging import ColourizedFormatter
 
 from atopile.project.project import Project
@@ -52,10 +53,15 @@ async def websocket_view(websocket: WebSocket):
     async for vision in watcher.emit_visions():
         await websocket.send_json(vision)
 
+class ElementMovement(BaseModel):
+    id: str
+    x: int
+    y: int
+
 @app.post("/api/view/move")
-async def post_move(move: Dict[Any, Any]):
+async def post_move(move: ElementMovement):
     log.info(f"Posted move: {move}")
-    watcher.do_move(move["id"], move["x"], move["y"])
+    watcher.do_move(move.id, move.x, move.y)
 
 # configure UI
 @click.command()

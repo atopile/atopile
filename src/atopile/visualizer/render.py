@@ -1,80 +1,17 @@
 import uuid
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import attrs
 import logging
 
 from atopile.model.model import EdgeType, Model, VertexType
+from atopile.model.utils import generate_uid_from_path
 from atopile.model.visitor import ModelVertex, ModelVisitor
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-@attrs.define
-class Pin:
-    name: str
-    uuid: str
-    index: int
-
-    # internal properties used downstream for generation
-    location: str
-    source_vid: int
-    source_path: str
-    block_uuid_stack: List[str]
-    connection_stubbed: bool = False
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "uuid": self.uuid,
-            "index": self.index,
-        }
-
-@attrs.define
-class Stub:
-    name: str
-    source: Pin
-    uuid: str
-    direction: str
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "source": self.source,
-            "uuid": self.uuid,
-            "direction": self.direction,
-        }
-
-@attrs.define
-class Port:
-    name: str
-    uuid: str
-    location: str
-    pins: List[Pin]
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "uuid": self.uuid,
-            "location": self.location,
-            "pins": [pin.to_dict() for pin in self.pins],
-        }
-
-@attrs.define
-class Link:
-    name: str
-    uuid: str
-    source: Pin
-    target: Pin
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "uuid": self.uuid,
-            "source": self.source.uuid,
-            "target": self.target.uuid,
-        }
 
 @attrs.define
 class Position:
@@ -88,10 +25,77 @@ class Position:
         }
 
 @attrs.define
+class Pin:
+    name: str
+    id: str
+    index: int
+
+    # internal properties used downstream for generation
+    location: str
+    source_vid: int
+    source_path: str
+    block_uuid_stack: List[str]
+    connection_stubbed: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "uuid": self.id,
+            "index": self.index,
+        }
+
+@attrs.define
+class Stub:
+    name: str
+    source: Pin
+    id: str
+    direction: str
+    position: Optional[Position] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "source": self.source,
+            "uuid": self.id,
+            "direction": self.direction,
+            "position": self.position.to_dict() if self.position is not None else None,
+        }
+
+@attrs.define
+class Port:
+    name: str
+    id: str
+    location: str
+    pins: List[Pin]
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "uuid": self.id,
+            "location": self.location,
+            "pins": [pin.to_dict() for pin in self.pins],
+        }
+
+@attrs.define
+class Link:
+    name: str
+    id: str
+    source: Pin
+    target: Pin
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "uuid": self.id,
+            "source": self.source.id,
+            "target": self.target.id,
+        }
+
+@attrs.define
 class Block:
     name: str
     type: str
-    uuid: str
+    id: str
     blocks: List["Block"]
     ports: List[Port]
     links: List[Link]
@@ -102,7 +106,7 @@ class Block:
         return {
             "name": self.name,
             "type": self.type,
-            "uuid": self.uuid,
+            "uuid": self.id,
             "blocks": [block.to_dict() for block in self.blocks],
             "ports": [port.to_dict() for port in self.ports],
             "links": [link.to_dict() for link in self.links],
@@ -120,6 +124,9 @@ pin_location_stub_direction_map = {
 }
 
 default_stub_direction = list(pin_location_stub_direction_map.values())[0]
+
+def generate_stub_id(connection_id: str, endpoint: str) -> str:
+    return generate_uid_from_path(connection_id + endpoint)
 
 class Bob(ModelVisitor):
     """
@@ -141,11 +148,23 @@ class Bob(ModelVisitor):
         yield
         self.block_uuid_stack.pop()
 
+    def get_position(self, path: str) -> Optional[Position]:
+        # TODO: move this to the class responsible for handling visualisation configs
+        # check if there's position data for this entity
+        block_vis_data = self.vis_data.get(path, {})
+        try:
+            return Position(
+                x=block_vis_data["position"]["x"],
+                y=block_vis_data["position"]["y"]
+            )
+        except KeyError:
+            log.debug("No position data for block %s", path)
+
     def find_lowest_common_ancestor(self, pins: List[Pin]) -> str:
         if len(pins) == 0:
             raise RuntimeError("No pins to check for lowest common ancestor")
         if len(pins) == 1:
-            return pins[0].uuid
+            return pins[0].id
         for i in range(min(len(p.block_uuid_stack) for p in pins)):
             # descend into the block stack
 
@@ -176,7 +195,7 @@ class Bob(ModelVisitor):
 
             if source_pin.connection_stubbed or target_pin.connection_stubbed:
                 if source_pin.connection_stubbed and target_pin.connection_stubbed:
-                    raise NotImplementedError(f"Both pins {source_pin.uuid} and {target_pin.uuid} are stubbed")
+                    raise NotImplementedError(f"Both pins {source_pin.id} and {target_pin.id} are stubbed")
                 if source_pin.connection_stubbed:
                     stubbed_pin = source_pin
                     connecting_pin = target_pin
@@ -186,25 +205,29 @@ class Bob(ModelVisitor):
 
                 stub_name = stubbed_pin.source_path[len(main.path)+1:]
                 if stubbed_pin.source_vid not in stubbed_pins_vids:
+                    stubbed_id = generate_stub_id(connection["uid"], stubbed_pin.source_path)
                     block.stubs.append(Stub(
                         name=stub_name,
-                        source=stubbed_pin.uuid,
-                        uuid=str(uuid.uuid4()),
+                        source=stubbed_pin.id,
+                        id=stubbed_id,
                         direction=pin_location_stub_direction_map.get(stubbed_pin.location, default_stub_direction),
+                        position=self.get_position(stubbed_id),
                     ))
                     stubbed_pins_vids.append(stubbed_pin.source_vid)
 
+                connecting_id = generate_stub_id(connection["uid"], connecting_pin.source_path)
                 block.stubs.append(Stub(
                     name=stub_name,
-                    source=connecting_pin.uuid,
-                    uuid=str(uuid.uuid4()),
+                    source=connecting_pin.id,
+                    id=connecting_id,
                     direction=pin_location_stub_direction_map.get(connecting_pin.location, default_stub_direction),
+                    position=self.get_position(connecting_id),
                 ))
 
             else:
                 link = Link(
                     name="test",  # TODO: give these better names
-                    uuid=str(uuid.uuid4()),
+                    id=connection["uid"],
                     source=source_pin,
                     target=target_pin,
                 )
@@ -241,7 +264,7 @@ class Bob(ModelVisitor):
             for location, pins_at_location in pin_locations.items():
                 ports.append(Port(
                     name=location,
-                    uuid=f"{uuid_to_be}/port@{location}",
+                    id=f"{uuid_to_be}/port@{location}",
                     location=location,
                     pins=pins_at_location
                 ))
@@ -250,21 +273,13 @@ class Bob(ModelVisitor):
                 pin.index = i
 
             # check if there's position data for this block
-            block_vis_data = self.vis_data.get(vertex.path, {})
-            try:
-                position = Position(
-                    x=block_vis_data["position"]["x"],
-                    y=block_vis_data["position"]["y"]
-                )
-            except KeyError as ex:
-                log.warning(f"Got exception {ex} while trying to get position for {vertex.path}")
-                position = None
+            position = self.get_position(uuid_to_be)
 
             # do block build
             block = Block(
                 name=vertex.ref,
                 type=vertex.vertex_type.name,
-                uuid=uuid_to_be,
+                id=uuid_to_be,
                 blocks=blocks,
                 ports=ports,
                 links=[],
@@ -286,7 +301,7 @@ class Bob(ModelVisitor):
     def generic_visit_pin(self, vertex: ModelVertex) -> Pin:
         pin = Pin(
             name=vertex.ref,
-            uuid=vertex.path,
+            id=vertex.path,
             index=None,
             location=self.model.data[vertex.path].get("visualizer", {}).get("location", "top"),
             source_vid=vertex.index,

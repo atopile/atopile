@@ -1,4 +1,3 @@
-(@matt) save stub location
 (@tim) module titles
 (@tim) fixing netlist output (there are brackets missing)
 (@tim) layout light

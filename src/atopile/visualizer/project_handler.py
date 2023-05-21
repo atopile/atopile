@@ -15,6 +15,7 @@ from atopile.visualizer.render import build_visualisation
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+
 class ProjectHandler:
     def __init__(self):
         self.project: Project = None
@@ -106,7 +107,9 @@ class ProjectHandler:
 
                 if self.vis_file_path in updated_files:
                     self.reload_vis_data()
-                self.rebuild_vision()
+
+                if updated_files:
+                    self.rebuild_vision()
 
                 # empty the ignore list
                 self._ignore_files.clear()
@@ -142,6 +145,7 @@ class ProjectHandler:
     def vis_file_path(self) -> Path:
         return self.project.root / "vis.yaml"
 
+    # TODO: move this to the class responsible for handling vis configs
     def do_move(self, elementid, x, y):
         # as of writing, the elementid is the element's path
         # so just use that

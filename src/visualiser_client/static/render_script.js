@@ -305,11 +305,16 @@ function addLinks(links) {
 
 function addStubs(stubs) {
     for (let stub of stubs) {
-        var added_stub = new shapes.standard.Link();
+        console.log(stub);
+        var added_stub = new shapes.standard.Link({id: stub['uuid']});
         added_stub.prop('source', {
             id: pin_to_element_association[stub['source']],
             port: stub['source']});
-        added_stub.prop('target', { x: 10, y: 10 },);
+        if (stub['position']) {
+            added_stub.prop('target', stub['position']);
+        } else {
+            added_stub.prop('target', { x: 10, y: 10 });
+        }
         added_stub.router('manhattan', {
             startDirections: [stub['direction']],
             endDirections: [opposite_direction[stub['direction']]],
@@ -483,19 +488,26 @@ paper.on('link:mouseleave', function(linkView) {
 });
 
 paper.on('cell:pointerup', function(cell, evt, x, y) {
+    console.log(cell);
+    let requestOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: {}
+    };
     if (cell.model instanceof AtoComponent) {
-        console.log("might've moved component");
-        const requestOptions = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: cell.model.attributes.id,
-                x: cell.model.attributes.position.x,
-                y: cell.model.attributes.position.y,
-            })
-        };
-        fetch('/api/view/move', requestOptions);
+        requestOptions.body = JSON.stringify({
+            id: cell.model.attributes.id,
+            x: cell.model.attributes.position.x,
+            y: cell.model.attributes.position.y,
+        });
+    } else if (cell.model instanceof shapes.standard.Link) {
+        requestOptions.body = JSON.stringify({
+            id: cell.model.attributes.id,
+            x: cell.targetPoint.x,
+            y: cell.targetPoint.y,
+        });
     }
+    fetch('/api/view/move', requestOptions);
 });
 
 graph.on('change:position', function(cell) {

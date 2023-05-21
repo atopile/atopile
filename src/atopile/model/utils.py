@@ -5,7 +5,7 @@ import igraph as ig
 def generate_uid_from_path(path: str) -> str:
     path_as_bytes = path.encode('utf-8')
     hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
-    return uuid.UUID(bytes=hashed_path)
+    return str(uuid.UUID(bytes=hashed_path))
 
 def generate_edge_uid(from_path: str, to_path: str, defining_path: str) -> str:
     return generate_uid_from_path(f"{from_path}{to_path}{defining_path}")
