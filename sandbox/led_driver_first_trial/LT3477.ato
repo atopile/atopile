@@ -76,6 +76,7 @@ module LedDriver:
     c_bypass_output.value = "10uF"
 
     inductor = new Inductor # suggest inductor using IFSC1008ABER2R2M01
+    inductor.footprint = "bike_light_lib:IND-SMD_L2.5-W2.0_SLW252012P"
     inductor.value = "2uH"  # FIXME: this was inductor = ... -> we need better behaviour on reassignment
 
     c_soft_start = new Capacitor
@@ -98,8 +99,11 @@ module LedDriver:
 
     # led nmos, suggest using: C145552
     nmos_led = new Nmos
+    nmos_led.footprint = "bike_light_lib:SOT-223_L6.5-W3.5-P2.30-LS7.0-BR"
 
     nmos_pwm = new Nmos
+    nmos_pwm.footprint = "bike_light_lib:SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
+
     r_comp = new Resistor
     r_comp.value = "2.4k"
 

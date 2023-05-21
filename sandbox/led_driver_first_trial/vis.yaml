@@ -102,6 +102,18 @@ bike_light.ato/BikeLight/led:
   position:
     x: 1590
     y: 580
+bike_light.ato/BikeLight/led1:
+  position:
+    x: 1610
+    y: 490
+bike_light.ato/BikeLight/led2:
+  position:
+    x: 1610
+    y: 590
+bike_light.ato/BikeLight/led3:
+  position:
+    x: 1610
+    y: 690
 bike_light.ato/BikeLight/led_driver/c_bypass_input:
   position:
     x: 640
