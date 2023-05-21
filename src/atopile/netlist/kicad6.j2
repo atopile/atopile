@@ -49,8 +49,8 @@
       {%- for pin in libpart.pins %}
         (pin (num "{{ pin.num }}") (name "{{ pin.name }}") (type "{{ pin.type }}"))
       {%- endfor %}
-    {%- endif %})
-  {%- endfor %}))
+    {%- endif %}))
+  {%- endfor %})
 {%- endif %}
 {%- if nl.nets %}
   (nets
