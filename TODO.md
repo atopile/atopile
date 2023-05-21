@@ -1,5 +1,6 @@
 (@matt) save stub location
-(@tim) module titles
+(@tim) module titles -> Done
+(@matt) add module and component types for visualizer
 (@tim) fixing netlist output (there are brackets missing)
 (@tim) layout light
 don't display stubs for signals within a module
