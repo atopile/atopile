@@ -61,7 +61,7 @@ async def post_move(move: Dict[Any, Any]):
 @click.command()
 @click.argument("file", type=click.Path(exists=True, dir_okay=False))
 @click.argument("entrypoint", type=str, required=False)
-@click.option('--browser/--no-browser', default=False)
+@click.option('--browser/--no-browser', default=True)
 def visualize(file: str, entrypoint: str, browser: bool):
     watcher.entrypoint_file = Path(file).resolve().absolute()
     watcher.project = Project.from_path(watcher.entrypoint_file)
