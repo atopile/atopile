@@ -1,45 +1,45 @@
 component Usbc:
 
-    signal gnd ~ pin a1
-    gnd ~ pin a12
-    gnd ~ pin b1
-    gnd ~ pin b12
+    signal gnd ~ pin A1
+    gnd ~ pin A12
+    gnd ~ pin B1
+    gnd ~ pin B12
 
-    signal vbus ~ pin a4
-    vbus ~ pin a9
-    vbus ~ pin b4
-    vbus ~ pin b9
+    signal vbus ~ pin A4
+    vbus ~ pin A9
+    vbus ~ pin B4
+    vbus ~ pin B9
 
-    signal dp ~ pin a6
-    dp ~ pin b6
+    signal dp ~ pin A6
+    dp ~ pin B6
 
-    signal dm ~ pin a7
-    dm ~ pin b7
+    signal dm ~ pin A7
+    dm ~ pin B7
 
-    signal cc ~ pin a5
-    cc ~ pin b5
+    signal cc ~ pin A5
+    cc ~ pin B5
 
-    signal sbu ~ pin a8
-    sbu ~ pin b8
+    signal sbu ~ pin A8
+    sbu ~ pin B8
 
-    signal txp ~ pin b2
-    txp~ pin a2
+    signal txp ~ pin B2
+    txp~ pin A2
 
-    signal txm ~ pin a3
-    txm ~ pin b3
+    signal txm ~ pin A3
+    txm ~ pin B3
 
-    signal rxp ~ pin a11
-    rxp ~ pin b11
+    signal rxp ~ pin A11
+    rxp ~ pin B11
 
-    signal rxm ~ pin a10
-    rxm ~ pin b10
+    signal rxm ~ pin A10
+    rxm ~ pin B10
 
     signal shell ~ pin p1
     shell ~ pin p2
     shell ~ pin p3
     shell ~ pin p4
 
-    footprint = "footprint:USB-C-SMD_TYPE-C-6PIN-2MD-073"
+    footprint = "bike_light_lib:USB-C-SMD_KH-TYPE-C-16P"
     designator_prefix = "J"
 
     vbus.visualizer.location = "top"

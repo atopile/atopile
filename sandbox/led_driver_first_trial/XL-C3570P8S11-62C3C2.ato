@@ -3,7 +3,7 @@ component Led:
     signal positive ~ pin p2
 
     # pacakge is pre-ordained
-    package = "LED-SMD_3P-L7.0-W3.5_XL-C3570P5S10-62C3C2:LED-SMD_3P-L7.0-W3.5_XL-C3570P5S10-62C3C2"
+    footprint = "bike_light_lib:LED-SMD_3P-L7.0-W3.5_XL-C3570P5S10-62C3C2"
 
     # metadata
     designator_prefix = "D"

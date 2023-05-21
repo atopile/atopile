@@ -90,6 +90,7 @@ module LedDriver:
 
     # pwm diode
     diode_pwm = new Diode
+    diode_pwm.footprint = "Diode_SMD:D_SOD-123"
 
     # Sense resistor
     r_sens = new Resistor
