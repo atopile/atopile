@@ -3,7 +3,7 @@ from pathlib import Path
 
 import click
 
-from atopile.netlist.kicad6 import KicadNetlist
+from atopile.netlist.kicad6 import KicadNetlist, export_reference_to_path_map
 from atopile.parser.parser import build as build_model
 from atopile.project.project import Project
 
@@ -16,7 +16,8 @@ log.setLevel(logging.INFO)
 @click.argument("entrypoint", type=str, required=False)
 @click.option("--output", type=click.Path(exists=False))
 @click.option("--debug/--no-debug", default=False)
-def build(path, entrypoint, output, debug: bool):
+@click.option("--references/--no-references", default=True)
+def build(path, entrypoint, output, debug: bool, references: bool):
     if debug:
         import atopile.parser.parser
         atopile.parser.parser.log.setLevel(logging.DEBUG)
@@ -36,3 +37,8 @@ def build(path, entrypoint, output, debug: bool):
 
     netlist.to_file(output)
     log.info(f"Wrote netlist to {output}")
+
+    if references:
+        reference_path = output.with_suffix(".reference_map.txt")
+        export_reference_to_path_map(netlist, reference_path)
+        log.info(f"Wrote reference map to {reference_path}")

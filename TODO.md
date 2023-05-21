@@ -9,4 +9,4 @@ collapsing modules in visualizer
 symbols for stubs
 labels should be inside blocks (components/modules)
 symbols for blocks
-improve compiler performance
+improve compiler performance (see mawildoer/build-caching)
