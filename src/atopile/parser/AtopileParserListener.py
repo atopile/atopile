@@ -1,6 +1,6 @@
-# Generated from AtopileParser.g4 by ANTLR 4.12.0
+# Generated from AtopileParser.g4 by ANTLR 4.13.0
 from antlr4 import *
-if __name__ is not None and "." in __name__:
+if "." in __name__:
     from .AtopileParser import AtopileParser
 else:
     from AtopileParser import AtopileParser
