@@ -35,6 +35,7 @@ dependencies = [
     "click",
     "watchfiles",
     "jinja2",
+    "antlr4-python3-runtime==4.13.0",
 ]
 dynamic = ["version"]
 
@@ -63,7 +64,6 @@ doc = [
 ]
 dev = [
     "ruff",
-    "antlr4-python3-runtime==4.13.0",
 ]
 
 [project.scripts]
