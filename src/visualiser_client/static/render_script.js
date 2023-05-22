@@ -4,7 +4,7 @@ const { shapes, util, dia, anchors } = joint;
 let settings_dict = {
     common: {
         backgroundColor: 'rgba(224, 233, 227, 0.3)',
-        gridSize: 10,
+        gridSize: 5,
         parentPadding: 50,
         fontFamily: "sans-serif",
     },
@@ -12,9 +12,9 @@ let settings_dict = {
         strokeWidth: 2,
         fontSize: 10,
         fontWeight: "normal",
-        defaultWidth: 40,
-        portPitch: 16,
-        defaultHeight: 40,
+        defaultWidth: 60,
+        portPitch: 20,
+        defaultHeight: 50,
         pin: {
             labelPadding: 5, // currently not being used
             labelFontSize: 10,
@@ -188,6 +188,36 @@ const cellNamespace = {
     AtoBlock
 };
 
+function getPortLabelPosition(port) {
+    switch (port['location']) {
+        case "top":
+            return [0, 8];
+        case "bottom":
+            return [0, -8];
+        case "left":
+            return [5, 0];
+        case "right":
+            return [-5, 0];
+        default:
+            return [0, 0];
+    };
+}
+
+function getPortLabelAnchor(port) {
+    switch (port['location']) {
+        case "top":
+            return 'middle';
+        case "bottom":
+            return 'middle';
+        case "left":
+            return 'start';
+        case "right":
+            return 'end';
+        default:
+            return 'middle';
+    }
+}
+
 function addPortsAndPins(element, port_list) {
     // Dict of all the port for the element
     let port_groups = {};
@@ -195,6 +225,11 @@ function addPortsAndPins(element, port_list) {
     let pin_nb_by_port = {};
     // Create the different ports
     for (let port of port_list) {
+
+        let port_position = [];
+        port_position = getPortLabelPosition(port);
+        port_anchor = getPortLabelAnchor(port);
+        console.log(port_anchor)
 
         pin_nb_by_port[port['location']] = 0;
 
@@ -208,12 +243,15 @@ function addPortsAndPins(element, port_list) {
                     r: 2,
                     fill: '#FFFFFF',
                     stroke:'#023047'
-                }
+                },
             },
             label: {
                 position: {
-                    args: { x: 0 }, // Can't use inside/outside in combination
-                    name: 'outside'
+                    args: {
+                        x: port_position[0],
+                        y: port_position[1],
+                    }, // Can't use inside/outside in combination
+                    //name: 'inside'
                 },
                 markup: [{
                     tagName: 'text',
@@ -238,8 +276,9 @@ function addPortsAndPins(element, port_list) {
                         text: pin['name'],
                         fontFamily: settings_dict['common']['fontFamily'],
                         fontSize: settings_dict['component']['pin']['labelFontSize'],
-                    }
-                }
+                        textAnchor: port_anchor,
+                    },
+                },
             });
             pin_to_element_association[pin["uuid"]] = element["id"];
         }
