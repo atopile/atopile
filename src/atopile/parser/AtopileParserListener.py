@@ -197,12 +197,12 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by AtopileParser#boolean.
-    def enterBoolean(self, ctx:AtopileParser.BooleanContext):
+    # Enter a parse tree produced by AtopileParser#boolean_.
+    def enterBoolean_(self, ctx:AtopileParser.Boolean_Context):
         pass
 
-    # Exit a parse tree produced by AtopileParser#boolean.
-    def exitBoolean(self, ctx:AtopileParser.BooleanContext):
+    # Exit a parse tree produced by AtopileParser#boolean_.
+    def exitBoolean_(self, ctx:AtopileParser.Boolean_Context):
         pass
 
 

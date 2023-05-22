@@ -26,15 +26,21 @@ class Position:
 
 @attrs.define
 class Pin:
+    # mandatory external
     name: str
     id: str
     index: int
 
-    # internal properties used downstream for generation
+    # mandatory internal
     location: str
     source_vid: int
     source_path: str
     block_uuid_stack: List[str]
+
+    # optional external
+    private: bool = False
+
+    # optional internal
     connection_stubbed: bool = False
 
     def to_dict(self) -> dict:
@@ -42,6 +48,7 @@ class Pin:
             "name": self.name,
             "uuid": self.id,
             "index": self.index,
+            "private": self.private,
         }
 
 @attrs.define
@@ -309,15 +316,17 @@ class Bob(ModelVisitor):
         return self.generic_visit_block(vertex)
 
     def generic_visit_pin(self, vertex: ModelVertex) -> Pin:
+        vertex_data = self.model.data[vertex.path]
         pin = Pin(
             name=vertex.ref,
             id=vertex.path,
             index=None,
-            location=self.model.data[vertex.path].get("visualizer", {}).get("location", "top"),
+            location=vertex_data.get("visualizer", {}).get("location", "top"),
             source_vid=vertex.index,
             source_path=vertex.path,
             block_uuid_stack=self.block_uuid_stack.copy(),
-            connection_stubbed=self.model.data[vertex.path].get("visualizer", {}).get("stub", False),
+            connection_stubbed=vertex_data.get("visualizer", {}).get("stub", False),
+            private=vertex_data.get("private", False),
         )
 
         self.pin_directory[vertex.index] = pin

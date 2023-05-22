@@ -15,7 +15,7 @@ else:
 
 def serializedATN():
     return [
-        4,1,75,165,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
+        4,1,76,168,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
         6,2,7,7,7,2,8,7,8,2,9,7,9,2,10,7,10,2,11,7,11,2,12,7,12,2,13,7,13,
         2,14,7,14,2,15,7,15,2,16,7,16,2,17,7,17,2,18,7,18,2,19,7,19,2,20,
         7,20,2,21,7,21,1,0,1,0,5,0,47,8,0,10,0,12,0,50,9,0,1,0,1,0,1,1,1,
@@ -25,50 +25,51 @@ def serializedATN():
         3,6,96,8,6,1,6,1,6,1,6,1,6,1,6,1,7,3,7,104,8,7,1,7,1,7,1,7,1,7,1,
         7,1,8,1,8,1,8,1,8,1,8,1,9,1,9,1,9,1,9,1,10,1,10,1,10,1,10,1,10,3,
         10,125,8,10,1,11,1,11,1,11,1,11,1,12,1,12,1,12,3,12,134,8,12,1,13,
-        1,13,1,13,1,14,1,14,1,14,1,15,1,15,1,15,1,16,1,16,1,16,1,17,1,17,
-        3,17,150,8,17,1,18,1,18,1,18,4,18,155,8,18,11,18,12,18,156,1,19,
-        1,19,1,20,1,20,1,21,1,21,1,21,0,0,22,0,2,4,6,8,10,12,14,16,18,20,
-        22,24,26,28,30,32,34,36,38,40,42,0,1,1,0,15,16,165,0,48,1,0,0,0,
-        2,55,1,0,0,0,4,57,1,0,0,0,6,76,1,0,0,0,8,80,1,0,0,0,10,92,1,0,0,
-        0,12,95,1,0,0,0,14,103,1,0,0,0,16,110,1,0,0,0,18,115,1,0,0,0,20,
-        124,1,0,0,0,22,126,1,0,0,0,24,133,1,0,0,0,26,135,1,0,0,0,28,138,
-        1,0,0,0,30,141,1,0,0,0,32,144,1,0,0,0,34,149,1,0,0,0,36,151,1,0,
-        0,0,38,158,1,0,0,0,40,160,1,0,0,0,42,162,1,0,0,0,44,47,5,17,0,0,
-        45,47,3,2,1,0,46,44,1,0,0,0,46,45,1,0,0,0,47,50,1,0,0,0,48,46,1,
-        0,0,0,48,49,1,0,0,0,49,51,1,0,0,0,50,48,1,0,0,0,51,52,5,0,0,1,52,
-        1,1,0,0,0,53,56,3,4,2,0,54,56,3,8,4,0,55,53,1,0,0,0,55,54,1,0,0,
-        0,56,3,1,0,0,0,57,62,3,6,3,0,58,59,5,34,0,0,59,61,3,6,3,0,60,58,
-        1,0,0,0,61,64,1,0,0,0,62,60,1,0,0,0,62,63,1,0,0,0,63,66,1,0,0,0,
-        64,62,1,0,0,0,65,67,5,34,0,0,66,65,1,0,0,0,66,67,1,0,0,0,67,68,1,
-        0,0,0,68,69,5,17,0,0,69,5,1,0,0,0,70,77,3,16,8,0,71,77,3,18,9,0,
-        72,77,3,22,11,0,73,77,3,28,14,0,74,77,3,26,13,0,75,77,3,30,15,0,
-        76,70,1,0,0,0,76,71,1,0,0,0,76,72,1,0,0,0,76,73,1,0,0,0,76,74,1,
-        0,0,0,76,75,1,0,0,0,77,7,1,0,0,0,78,81,3,12,6,0,79,81,3,14,7,0,80,
-        78,1,0,0,0,80,79,1,0,0,0,81,9,1,0,0,0,82,93,3,4,2,0,83,84,5,17,0,
-        0,84,86,5,1,0,0,85,87,3,2,1,0,86,85,1,0,0,0,87,88,1,0,0,0,88,86,
-        1,0,0,0,88,89,1,0,0,0,89,90,1,0,0,0,90,91,5,2,0,0,91,93,1,0,0,0,
-        92,82,1,0,0,0,92,83,1,0,0,0,93,11,1,0,0,0,94,96,5,11,0,0,95,94,1,
-        0,0,0,95,96,1,0,0,0,96,97,1,0,0,0,97,98,5,6,0,0,98,99,3,38,19,0,
-        99,100,5,33,0,0,100,101,3,10,5,0,101,13,1,0,0,0,102,104,5,11,0,0,
-        103,102,1,0,0,0,103,104,1,0,0,0,104,105,1,0,0,0,105,106,5,7,0,0,
-        106,107,3,38,19,0,107,108,5,33,0,0,108,109,3,10,5,0,109,15,1,0,0,
-        0,110,111,5,14,0,0,111,112,3,34,17,0,112,113,5,13,0,0,113,114,3,
-        40,20,0,114,17,1,0,0,0,115,116,3,34,17,0,116,117,5,36,0,0,117,118,
-        3,20,10,0,118,19,1,0,0,0,119,125,3,40,20,0,120,125,5,4,0,0,121,125,
-        3,34,17,0,122,125,3,32,16,0,123,125,3,42,21,0,124,119,1,0,0,0,124,
-        120,1,0,0,0,124,121,1,0,0,0,124,122,1,0,0,0,124,123,1,0,0,0,125,
-        21,1,0,0,0,126,127,3,24,12,0,127,128,5,49,0,0,128,129,3,24,12,0,
-        129,23,1,0,0,0,130,134,3,34,17,0,131,134,3,26,13,0,132,134,3,28,
-        14,0,133,130,1,0,0,0,133,131,1,0,0,0,133,132,1,0,0,0,134,25,1,0,
-        0,0,135,136,5,9,0,0,136,137,3,38,19,0,137,27,1,0,0,0,138,139,5,8,
-        0,0,139,140,3,38,19,0,140,29,1,0,0,0,141,142,5,10,0,0,142,143,3,
-        34,17,0,143,31,1,0,0,0,144,145,5,12,0,0,145,146,3,34,17,0,146,33,
-        1,0,0,0,147,150,3,36,18,0,148,150,3,38,19,0,149,147,1,0,0,0,149,
-        148,1,0,0,0,150,35,1,0,0,0,151,154,3,38,19,0,152,153,5,27,0,0,153,
-        155,3,38,19,0,154,152,1,0,0,0,155,156,1,0,0,0,156,154,1,0,0,0,156,
-        157,1,0,0,0,157,37,1,0,0,0,158,159,5,18,0,0,159,39,1,0,0,0,160,161,
-        5,3,0,0,161,41,1,0,0,0,162,163,7,0,0,0,163,43,1,0,0,0,15,46,48,55,
-        62,66,76,80,88,92,95,103,124,133,149,156
+        3,13,137,8,13,1,13,1,13,1,13,1,14,1,14,1,14,1,15,1,15,1,15,1,16,
+        1,16,1,16,1,17,1,17,3,17,153,8,17,1,18,1,18,1,18,4,18,158,8,18,11,
+        18,12,18,159,1,19,1,19,1,20,1,20,1,21,1,21,1,21,0,0,22,0,2,4,6,8,
+        10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,0,1,1,0,16,17,
+        169,0,48,1,0,0,0,2,55,1,0,0,0,4,57,1,0,0,0,6,76,1,0,0,0,8,80,1,0,
+        0,0,10,92,1,0,0,0,12,95,1,0,0,0,14,103,1,0,0,0,16,110,1,0,0,0,18,
+        115,1,0,0,0,20,124,1,0,0,0,22,126,1,0,0,0,24,133,1,0,0,0,26,136,
+        1,0,0,0,28,141,1,0,0,0,30,144,1,0,0,0,32,147,1,0,0,0,34,152,1,0,
+        0,0,36,154,1,0,0,0,38,161,1,0,0,0,40,163,1,0,0,0,42,165,1,0,0,0,
+        44,47,5,18,0,0,45,47,3,2,1,0,46,44,1,0,0,0,46,45,1,0,0,0,47,50,1,
+        0,0,0,48,46,1,0,0,0,48,49,1,0,0,0,49,51,1,0,0,0,50,48,1,0,0,0,51,
+        52,5,0,0,1,52,1,1,0,0,0,53,56,3,4,2,0,54,56,3,8,4,0,55,53,1,0,0,
+        0,55,54,1,0,0,0,56,3,1,0,0,0,57,62,3,6,3,0,58,59,5,35,0,0,59,61,
+        3,6,3,0,60,58,1,0,0,0,61,64,1,0,0,0,62,60,1,0,0,0,62,63,1,0,0,0,
+        63,66,1,0,0,0,64,62,1,0,0,0,65,67,5,35,0,0,66,65,1,0,0,0,66,67,1,
+        0,0,0,67,68,1,0,0,0,68,69,5,18,0,0,69,5,1,0,0,0,70,77,3,16,8,0,71,
+        77,3,18,9,0,72,77,3,22,11,0,73,77,3,28,14,0,74,77,3,26,13,0,75,77,
+        3,30,15,0,76,70,1,0,0,0,76,71,1,0,0,0,76,72,1,0,0,0,76,73,1,0,0,
+        0,76,74,1,0,0,0,76,75,1,0,0,0,77,7,1,0,0,0,78,81,3,12,6,0,79,81,
+        3,14,7,0,80,78,1,0,0,0,80,79,1,0,0,0,81,9,1,0,0,0,82,93,3,4,2,0,
+        83,84,5,18,0,0,84,86,5,1,0,0,85,87,3,2,1,0,86,85,1,0,0,0,87,88,1,
+        0,0,0,88,86,1,0,0,0,88,89,1,0,0,0,89,90,1,0,0,0,90,91,5,2,0,0,91,
+        93,1,0,0,0,92,82,1,0,0,0,92,83,1,0,0,0,93,11,1,0,0,0,94,96,5,11,
+        0,0,95,94,1,0,0,0,95,96,1,0,0,0,96,97,1,0,0,0,97,98,5,6,0,0,98,99,
+        3,38,19,0,99,100,5,34,0,0,100,101,3,10,5,0,101,13,1,0,0,0,102,104,
+        5,11,0,0,103,102,1,0,0,0,103,104,1,0,0,0,104,105,1,0,0,0,105,106,
+        5,7,0,0,106,107,3,38,19,0,107,108,5,34,0,0,108,109,3,10,5,0,109,
+        15,1,0,0,0,110,111,5,14,0,0,111,112,3,34,17,0,112,113,5,13,0,0,113,
+        114,3,40,20,0,114,17,1,0,0,0,115,116,3,34,17,0,116,117,5,37,0,0,
+        117,118,3,20,10,0,118,19,1,0,0,0,119,125,3,40,20,0,120,125,5,4,0,
+        0,121,125,3,34,17,0,122,125,3,32,16,0,123,125,3,42,21,0,124,119,
+        1,0,0,0,124,120,1,0,0,0,124,121,1,0,0,0,124,122,1,0,0,0,124,123,
+        1,0,0,0,125,21,1,0,0,0,126,127,3,24,12,0,127,128,5,50,0,0,128,129,
+        3,24,12,0,129,23,1,0,0,0,130,134,3,34,17,0,131,134,3,26,13,0,132,
+        134,3,28,14,0,133,130,1,0,0,0,133,131,1,0,0,0,133,132,1,0,0,0,134,
+        25,1,0,0,0,135,137,5,15,0,0,136,135,1,0,0,0,136,137,1,0,0,0,137,
+        138,1,0,0,0,138,139,5,9,0,0,139,140,3,38,19,0,140,27,1,0,0,0,141,
+        142,5,8,0,0,142,143,3,38,19,0,143,29,1,0,0,0,144,145,5,10,0,0,145,
+        146,3,34,17,0,146,31,1,0,0,0,147,148,5,12,0,0,148,149,3,34,17,0,
+        149,33,1,0,0,0,150,153,3,36,18,0,151,153,3,38,19,0,152,150,1,0,0,
+        0,152,151,1,0,0,0,153,35,1,0,0,0,154,157,3,38,19,0,155,156,5,28,
+        0,0,156,158,3,38,19,0,157,155,1,0,0,0,158,159,1,0,0,0,159,157,1,
+        0,0,0,159,160,1,0,0,0,160,37,1,0,0,0,161,162,5,19,0,0,162,39,1,0,
+        0,0,163,164,5,3,0,0,164,41,1,0,0,0,165,166,7,0,0,0,166,43,1,0,0,
+        0,16,46,48,55,62,66,76,80,88,92,95,103,124,133,136,152,159
     ]
 
 class AtopileParser ( AtopileParserBase ):
@@ -84,33 +85,34 @@ class AtopileParser ( AtopileParserBase ):
     literalNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
                      "<INVALID>", "<INVALID>", "'component'", "'module'", 
                      "'pin'", "'signal'", "'with'", "'optional'", "'new'", 
-                     "'from'", "'import'", "'True'", "'False'", "<INVALID>", 
+                     "'from'", "'import'", "'private'", "'True'", "'False'", 
                      "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
                      "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
-                     "<INVALID>", "'.'", "'...'", "'*'", "'('", "')'", "','", 
-                     "':'", "';'", "'**'", "'='", "'['", "']'", "'|'", "'^'", 
-                     "'&'", "'<<'", "'>>'", "'+'", "'-'", "'/'", "'%'", 
-                     "'//'", "'~'", "'{'", "'}'", "'<'", "'>'", "'=='", 
-                     "'>='", "'<='", "'<>'", "'!='", "'@'", "'->'", "'+='", 
-                     "'-='", "'*='", "'@='", "'/='", "'%='", "'&='", "'|='", 
-                     "'^='", "'<<='", "'>>='", "'**='", "'//='" ]
+                     "<INVALID>", "<INVALID>", "'.'", "'...'", "'*'", "'('", 
+                     "')'", "','", "':'", "';'", "'**'", "'='", "'['", "']'", 
+                     "'|'", "'^'", "'&'", "'<<'", "'>>'", "'+'", "'-'", 
+                     "'/'", "'%'", "'//'", "'~'", "'{'", "'}'", "'<'", "'>'", 
+                     "'=='", "'>='", "'<='", "'<>'", "'!='", "'@'", "'->'", 
+                     "'+='", "'-='", "'*='", "'@='", "'/='", "'%='", "'&='", 
+                     "'|='", "'^='", "'<<='", "'>>='", "'**='", "'//='" ]
 
     symbolicNames = [ "<INVALID>", "INDENT", "DEDENT", "STRING", "NUMBER", 
                       "INTEGER", "COMPONENT", "MODULE", "PIN", "SIGNAL", 
-                      "WITH", "OPTIONAL", "NEW", "FROM", "IMPORT", "TRUE", 
-                      "FALSE", "NEWLINE", "NAME", "STRING_LITERAL", "BYTES_LITERAL", 
-                      "DECIMAL_INTEGER", "OCT_INTEGER", "HEX_INTEGER", "BIN_INTEGER", 
-                      "FLOAT_NUMBER", "IMAG_NUMBER", "DOT", "ELLIPSIS", 
-                      "STAR", "OPEN_PAREN", "CLOSE_PAREN", "COMMA", "COLON", 
-                      "SEMI_COLON", "POWER", "ASSIGN", "OPEN_BRACK", "CLOSE_BRACK", 
-                      "OR_OP", "XOR", "AND_OP", "LEFT_SHIFT", "RIGHT_SHIFT", 
-                      "ADD", "MINUS", "DIV", "MOD", "IDIV", "NOT_OP", "OPEN_BRACE", 
-                      "CLOSE_BRACE", "LESS_THAN", "GREATER_THAN", "EQUALS", 
-                      "GT_EQ", "LT_EQ", "NOT_EQ_1", "NOT_EQ_2", "AT", "ARROW", 
-                      "ADD_ASSIGN", "SUB_ASSIGN", "MULT_ASSIGN", "AT_ASSIGN", 
-                      "DIV_ASSIGN", "MOD_ASSIGN", "AND_ASSIGN", "OR_ASSIGN", 
-                      "XOR_ASSIGN", "LEFT_SHIFT_ASSIGN", "RIGHT_SHIFT_ASSIGN", 
-                      "POWER_ASSIGN", "IDIV_ASSIGN", "SKIP_", "UNKNOWN_CHAR" ]
+                      "WITH", "OPTIONAL", "NEW", "FROM", "IMPORT", "PRIVATE", 
+                      "TRUE", "FALSE", "NEWLINE", "NAME", "STRING_LITERAL", 
+                      "BYTES_LITERAL", "DECIMAL_INTEGER", "OCT_INTEGER", 
+                      "HEX_INTEGER", "BIN_INTEGER", "FLOAT_NUMBER", "IMAG_NUMBER", 
+                      "DOT", "ELLIPSIS", "STAR", "OPEN_PAREN", "CLOSE_PAREN", 
+                      "COMMA", "COLON", "SEMI_COLON", "POWER", "ASSIGN", 
+                      "OPEN_BRACK", "CLOSE_BRACK", "OR_OP", "XOR", "AND_OP", 
+                      "LEFT_SHIFT", "RIGHT_SHIFT", "ADD", "MINUS", "DIV", 
+                      "MOD", "IDIV", "NOT_OP", "OPEN_BRACE", "CLOSE_BRACE", 
+                      "LESS_THAN", "GREATER_THAN", "EQUALS", "GT_EQ", "LT_EQ", 
+                      "NOT_EQ_1", "NOT_EQ_2", "AT", "ARROW", "ADD_ASSIGN", 
+                      "SUB_ASSIGN", "MULT_ASSIGN", "AT_ASSIGN", "DIV_ASSIGN", 
+                      "MOD_ASSIGN", "AND_ASSIGN", "OR_ASSIGN", "XOR_ASSIGN", 
+                      "LEFT_SHIFT_ASSIGN", "RIGHT_SHIFT_ASSIGN", "POWER_ASSIGN", 
+                      "IDIV_ASSIGN", "SKIP_", "UNKNOWN_CHAR" ]
 
     RULE_file_input = 0
     RULE_stmt = 1
@@ -133,14 +135,14 @@ class AtopileParser ( AtopileParserBase ):
     RULE_attr = 18
     RULE_name = 19
     RULE_string = 20
-    RULE_boolean = 21
+    RULE_boolean_ = 21
 
     ruleNames =  [ "file_input", "stmt", "simple_stmts", "simple_stmt", 
                    "compound_stmt", "block", "componentdef", "moduledef", 
                    "import_stmt", "assign_stmt", "assignable", "connect_stmt", 
                    "connectable", "signaldef_stmt", "pindef_stmt", "with_stmt", 
                    "new_stmt", "name_or_attr", "attr", "name", "string", 
-                   "boolean" ]
+                   "boolean_" ]
 
     EOF = Token.EOF
     INDENT=1
@@ -157,67 +159,68 @@ class AtopileParser ( AtopileParserBase ):
     NEW=12
     FROM=13
     IMPORT=14
-    TRUE=15
-    FALSE=16
-    NEWLINE=17
-    NAME=18
-    STRING_LITERAL=19
-    BYTES_LITERAL=20
-    DECIMAL_INTEGER=21
-    OCT_INTEGER=22
-    HEX_INTEGER=23
-    BIN_INTEGER=24
-    FLOAT_NUMBER=25
-    IMAG_NUMBER=26
-    DOT=27
-    ELLIPSIS=28
-    STAR=29
-    OPEN_PAREN=30
-    CLOSE_PAREN=31
-    COMMA=32
-    COLON=33
-    SEMI_COLON=34
-    POWER=35
-    ASSIGN=36
-    OPEN_BRACK=37
-    CLOSE_BRACK=38
-    OR_OP=39
-    XOR=40
-    AND_OP=41
-    LEFT_SHIFT=42
-    RIGHT_SHIFT=43
-    ADD=44
-    MINUS=45
-    DIV=46
-    MOD=47
-    IDIV=48
-    NOT_OP=49
-    OPEN_BRACE=50
-    CLOSE_BRACE=51
-    LESS_THAN=52
-    GREATER_THAN=53
-    EQUALS=54
-    GT_EQ=55
-    LT_EQ=56
-    NOT_EQ_1=57
-    NOT_EQ_2=58
-    AT=59
-    ARROW=60
-    ADD_ASSIGN=61
-    SUB_ASSIGN=62
-    MULT_ASSIGN=63
-    AT_ASSIGN=64
-    DIV_ASSIGN=65
-    MOD_ASSIGN=66
-    AND_ASSIGN=67
-    OR_ASSIGN=68
-    XOR_ASSIGN=69
-    LEFT_SHIFT_ASSIGN=70
-    RIGHT_SHIFT_ASSIGN=71
-    POWER_ASSIGN=72
-    IDIV_ASSIGN=73
-    SKIP_=74
-    UNKNOWN_CHAR=75
+    PRIVATE=15
+    TRUE=16
+    FALSE=17
+    NEWLINE=18
+    NAME=19
+    STRING_LITERAL=20
+    BYTES_LITERAL=21
+    DECIMAL_INTEGER=22
+    OCT_INTEGER=23
+    HEX_INTEGER=24
+    BIN_INTEGER=25
+    FLOAT_NUMBER=26
+    IMAG_NUMBER=27
+    DOT=28
+    ELLIPSIS=29
+    STAR=30
+    OPEN_PAREN=31
+    CLOSE_PAREN=32
+    COMMA=33
+    COLON=34
+    SEMI_COLON=35
+    POWER=36
+    ASSIGN=37
+    OPEN_BRACK=38
+    CLOSE_BRACK=39
+    OR_OP=40
+    XOR=41
+    AND_OP=42
+    LEFT_SHIFT=43
+    RIGHT_SHIFT=44
+    ADD=45
+    MINUS=46
+    DIV=47
+    MOD=48
+    IDIV=49
+    NOT_OP=50
+    OPEN_BRACE=51
+    CLOSE_BRACE=52
+    LESS_THAN=53
+    GREATER_THAN=54
+    EQUALS=55
+    GT_EQ=56
+    LT_EQ=57
+    NOT_EQ_1=58
+    NOT_EQ_2=59
+    AT=60
+    ARROW=61
+    ADD_ASSIGN=62
+    SUB_ASSIGN=63
+    MULT_ASSIGN=64
+    AT_ASSIGN=65
+    DIV_ASSIGN=66
+    MOD_ASSIGN=67
+    AND_ASSIGN=68
+    OR_ASSIGN=69
+    XOR_ASSIGN=70
+    LEFT_SHIFT_ASSIGN=71
+    RIGHT_SHIFT_ASSIGN=72
+    POWER_ASSIGN=73
+    IDIV_ASSIGN=74
+    SKIP_=75
+    UNKNOWN_CHAR=76
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
@@ -281,15 +284,15 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 48
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 413632) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 839616) != 0):
                 self.state = 46
                 self._errHandler.sync(self)
                 token = self._input.LA(1)
-                if token in [17]:
+                if token in [18]:
                     self.state = 44
                     self.match(AtopileParser.NEWLINE)
                     pass
-                elif token in [6, 7, 8, 9, 10, 11, 14, 18]:
+                elif token in [6, 7, 8, 9, 10, 11, 14, 15, 19]:
                     self.state = 45
                     self.stmt()
                     pass
@@ -354,7 +357,7 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 55
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [8, 9, 10, 14, 18]:
+            if token in [8, 9, 10, 14, 15, 19]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 53
                 self.simple_stmts()
@@ -444,7 +447,7 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 66
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==34:
+            if _la==35:
                 self.state = 65
                 self.match(AtopileParser.SEMI_COLON)
 
@@ -686,12 +689,12 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 92
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [8, 9, 10, 14, 18]:
+            if token in [8, 9, 10, 14, 15, 19]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 82
                 self.simple_stmts()
                 pass
-            elif token in [17]:
+            elif token in [18]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 83
                 self.match(AtopileParser.NEWLINE)
@@ -706,7 +709,7 @@ class AtopileParser ( AtopileParserBase ):
                     self.state = 88 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 282560) != 0)):
+                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 577472) != 0)):
                         break
 
                 self.state = 90
@@ -1021,8 +1024,8 @@ class AtopileParser ( AtopileParserBase ):
             return self.getTypedRuleContext(AtopileParser.New_stmtContext,0)
 
 
-        def boolean(self):
-            return self.getTypedRuleContext(AtopileParser.BooleanContext,0)
+        def boolean_(self):
+            return self.getTypedRuleContext(AtopileParser.Boolean_Context,0)
 
 
         def getRuleIndex(self):
@@ -1063,7 +1066,7 @@ class AtopileParser ( AtopileParserBase ):
                 self.state = 120
                 self.match(AtopileParser.NUMBER)
                 pass
-            elif token in [18]:
+            elif token in [19]:
                 self.enterOuterAlt(localctx, 3)
                 self.state = 121
                 self.name_or_attr()
@@ -1073,10 +1076,10 @@ class AtopileParser ( AtopileParserBase ):
                 self.state = 122
                 self.new_stmt()
                 pass
-            elif token in [15, 16]:
+            elif token in [16, 17]:
                 self.enterOuterAlt(localctx, 5)
                 self.state = 123
-                self.boolean()
+                self.boolean_()
                 pass
             else:
                 raise NoViableAltException(self)
@@ -1195,12 +1198,12 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 133
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [18]:
+            if token in [19]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 130
                 self.name_or_attr()
                 pass
-            elif token in [9]:
+            elif token in [9, 15]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 131
                 self.signaldef_stmt()
@@ -1236,6 +1239,9 @@ class AtopileParser ( AtopileParserBase ):
             return self.getTypedRuleContext(AtopileParser.NameContext,0)
 
 
+        def PRIVATE(self):
+            return self.getToken(AtopileParser.PRIVATE, 0)
+
         def getRuleIndex(self):
             return AtopileParser.RULE_signaldef_stmt
 
@@ -1260,11 +1266,20 @@ class AtopileParser ( AtopileParserBase ):
 
         localctx = AtopileParser.Signaldef_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 26, self.RULE_signaldef_stmt)
+        self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 135
-            self.match(AtopileParser.SIGNAL)
             self.state = 136
+            self._errHandler.sync(self)
+            _la = self._input.LA(1)
+            if _la==15:
+                self.state = 135
+                self.match(AtopileParser.PRIVATE)
+
+
+            self.state = 138
+            self.match(AtopileParser.SIGNAL)
+            self.state = 139
             self.name()
         except RecognitionException as re:
             localctx.exception = re
@@ -1315,9 +1330,9 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 28, self.RULE_pindef_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 138
+            self.state = 141
             self.match(AtopileParser.PIN)
-            self.state = 139
+            self.state = 142
             self.name()
         except RecognitionException as re:
             localctx.exception = re
@@ -1368,9 +1383,9 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 30, self.RULE_with_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 141
+            self.state = 144
             self.match(AtopileParser.WITH)
-            self.state = 142
+            self.state = 145
             self.name_or_attr()
         except RecognitionException as re:
             localctx.exception = re
@@ -1421,9 +1436,9 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 32, self.RULE_new_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 144
+            self.state = 147
             self.match(AtopileParser.NEW)
-            self.state = 145
+            self.state = 148
             self.name_or_attr()
         except RecognitionException as re:
             localctx.exception = re
@@ -1474,18 +1489,18 @@ class AtopileParser ( AtopileParserBase ):
         localctx = AtopileParser.Name_or_attrContext(self, self._ctx, self.state)
         self.enterRule(localctx, 34, self.RULE_name_or_attr)
         try:
-            self.state = 149
+            self.state = 152
             self._errHandler.sync(self)
-            la_ = self._interp.adaptivePredict(self._input,13,self._ctx)
+            la_ = self._interp.adaptivePredict(self._input,14,self._ctx)
             if la_ == 1:
                 self.enterOuterAlt(localctx, 1)
-                self.state = 147
+                self.state = 150
                 self.attr()
                 pass
 
             elif la_ == 2:
                 self.enterOuterAlt(localctx, 2)
-                self.state = 148
+                self.state = 151
                 self.name()
                 pass
 
@@ -1546,20 +1561,20 @@ class AtopileParser ( AtopileParserBase ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 151
+            self.state = 154
             self.name()
-            self.state = 154 
+            self.state = 157 
             self._errHandler.sync(self)
             _la = self._input.LA(1)
             while True:
-                self.state = 152
+                self.state = 155
                 self.match(AtopileParser.DOT)
-                self.state = 153
+                self.state = 156
                 self.name()
-                self.state = 156 
+                self.state = 159 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if not (_la==27):
+                if not (_la==28):
                     break
 
         except RecognitionException as re:
@@ -1607,7 +1622,7 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 38, self.RULE_name)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 158
+            self.state = 161
             self.match(AtopileParser.NAME)
         except RecognitionException as re:
             localctx.exception = re
@@ -1654,7 +1669,7 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 40, self.RULE_string)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 160
+            self.state = 163
             self.match(AtopileParser.STRING)
         except RecognitionException as re:
             localctx.exception = re
@@ -1665,7 +1680,7 @@ class AtopileParser ( AtopileParserBase ):
         return localctx
 
 
-    class BooleanContext(ParserRuleContext):
+    class Boolean_Context(ParserRuleContext):
         __slots__ = 'parser'
 
         def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
@@ -1679,35 +1694,35 @@ class AtopileParser ( AtopileParserBase ):
             return self.getToken(AtopileParser.FALSE, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_boolean
+            return AtopileParser.RULE_boolean_
 
         def enterRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "enterBoolean" ):
-                listener.enterBoolean(self)
+            if hasattr( listener, "enterBoolean_" ):
+                listener.enterBoolean_(self)
 
         def exitRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "exitBoolean" ):
-                listener.exitBoolean(self)
+            if hasattr( listener, "exitBoolean_" ):
+                listener.exitBoolean_(self)
 
         def accept(self, visitor:ParseTreeVisitor):
-            if hasattr( visitor, "visitBoolean" ):
-                return visitor.visitBoolean(self)
+            if hasattr( visitor, "visitBoolean_" ):
+                return visitor.visitBoolean_(self)
             else:
                 return visitor.visitChildren(self)
 
 
 
 
-    def boolean(self):
+    def boolean_(self):
 
-        localctx = AtopileParser.BooleanContext(self, self._ctx, self.state)
-        self.enterRule(localctx, 42, self.RULE_boolean)
+        localctx = AtopileParser.Boolean_Context(self, self._ctx, self.state)
+        self.enterRule(localctx, 42, self.RULE_boolean_)
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 162
+            self.state = 165
             _la = self._input.LA(1)
-            if not(_la==15 or _la==16):
+            if not(_la==16 or _la==17):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)

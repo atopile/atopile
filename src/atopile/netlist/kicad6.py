@@ -71,11 +71,11 @@ class KicadComponent:
     value: str  # eg. "10k" -- seems to be an arbitary string
     libsource: KicadLibpart
     tstamp: str  # component UID, eg. b1d41e3b-ef4b-4472-9aa4-7860376ef0ce
+    src_path: str
     footprint: Optional[str] = None # eg. "Resistor_SMD:R_0603_1608Metric"
     properties: List[KicadField] = field(factory=list)
     fields: List[KicadField] = field(factory=list)
     sheetpath: KicadSheetpath = field(factory=KicadSheetpath)
-    # TODO: tstamp should be consistent across runs and ideally track with updates
 
 class KicadNode:
     """
@@ -150,7 +150,6 @@ class KicadNetlist:
         with path.open("w") as f:
             f.write(netlist_str)
 
-    #TODO: I don't like this function living in the dataclass
     @classmethod
     def from_model(cls, model: Model, main: str) -> "KicadNetlist":
         """
@@ -264,7 +263,8 @@ class KicadNetlist:
                 libsource=libparts[component_class_path],
                 tstamp=generate_uid_from_path(component_path),
                 fields=fields,
-                sheetpath=sheetpath
+                sheetpath=sheetpath,
+                src_path=component_path,
             )
 
             components[component_path] = component
@@ -310,3 +310,17 @@ class KicadNetlist:
         )
 
         return netlist
+
+def export_netlist(netlist: KicadNetlist, path: Path) -> None:
+    netlist.to_file(path)
+
+def export_reference_to_path_map(netlist: KicadNetlist, output: Path) -> None:
+    refs_to_paths: List[str, str] = []
+    for component in netlist.components:
+        refs_to_paths.append((component.ref, component.src_path))
+
+    max_ref_len = max(len(ref) for ref, _ in refs_to_paths)
+    with output.open("w") as f:
+        for ref, path in refs_to_paths:
+            padded_ref = ref.ljust(max_ref_len)
+            f.write(f"{padded_ref} : {path}\n")
