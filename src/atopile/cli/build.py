@@ -34,6 +34,8 @@ def build(path, entrypoint, output, debug: bool, references: bool):
     if not output:
         project.ensure_build_dir()
         output = (project.build_dir / path.name).with_suffix(".net")
+    else:
+        output = Path(output)
 
     netlist.to_file(output)
     log.info(f"Wrote netlist to {output}")
