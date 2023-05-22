@@ -13,6 +13,7 @@ from uvicorn.logging import ColourizedFormatter
 
 from atopile.project.project import Project
 from atopile.visualizer.project_handler import ProjectHandler
+from atopile.utils import get_project_root
 
 # configure logging
 log = logging.getLogger(__name__)
@@ -34,7 +35,8 @@ async def lifespan(app: FastAPI):
         watcher.stop_vision_emission()
 
 app = FastAPI(lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="src/visualiser_client/static"), name="static")
+static_dir = get_project_root() / "src/visualiser_client/static"
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.get("/api/")
 async def api_root():

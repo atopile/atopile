@@ -1,4 +1,4 @@
-# Generated from AtopileParser.g4 by ANTLR 4.12.0
+# Generated from AtopileParser.g4 by ANTLR 4.13.0
 # encoding: utf-8
 from antlr4 import *
 from io import StringIO
@@ -8,7 +8,7 @@ if sys.version_info[1] > 5:
 else:
 	from typing.io import TextIO
 
-if __name__ is not None and "." in __name__:
+if "." in __name__:
     from .AtopileParserBase import AtopileParserBase
 else:
     from AtopileParserBase import AtopileParserBase
@@ -224,7 +224,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
-        self.checkVersion("4.12.0")
+        self.checkVersion("4.13.0")
         self._interp = ParserATNSimulator(self, self.atn, self.decisionsToDFA, self.sharedContextCache)
         self._predicates = None
 
