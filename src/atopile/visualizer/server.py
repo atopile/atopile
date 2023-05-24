@@ -71,7 +71,7 @@ async def post_move(move: ElementMovement):
 @click.argument("entrypoint", type=str, required=False)
 @click.option('--browser/--no-browser', default=True)
 @click.option('--debug/--no-debug', default=False)
-def visualize(file: str, entrypoint: str, browser: bool, debug: bool):
+def viewer(file: str, entrypoint: str, browser: bool, debug: bool):
     watcher.entrypoint_file = Path(file).resolve().absolute()
     watcher.project = Project.from_path(watcher.entrypoint_file)
     if debug:
@@ -87,4 +87,4 @@ def visualize(file: str, entrypoint: str, browser: bool, debug: bool):
 
 # let's goooooo
 if __name__ == "__main__":
-    visualize()
+    viewer()
