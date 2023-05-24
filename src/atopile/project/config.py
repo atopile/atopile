@@ -30,8 +30,8 @@ class BaseSubConfig:
 
 class Paths(BaseSubConfig):
     @property
-    def build_dir(self) -> Path:
-        build_dir = self._config_data.get("build-dir")
+    def build(self) -> Path:
+        build_dir = self._config_data.get("build")
         if build_dir is None:
             return (self.project.root / "build").resolve().absolute()
 

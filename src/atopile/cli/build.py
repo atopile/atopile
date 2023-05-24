@@ -67,7 +67,7 @@ def build(project: str, config: str, root_file, root_node, output: str, targets:
 
     # figure out where to put everything
     if output is None:
-        output: Path = project.config.paths.build_dir
+        output: Path = project.config.paths.build
     else:
         output: Path = Path(output)
     if output.exists():
@@ -89,7 +89,7 @@ def build(project: str, config: str, root_file, root_node, output: str, targets:
         netlist = KicadNetlist.from_model(model, root_node)
         netlist_output = output.with_name(root_file.name).with_suffix(".net")
         netlist.to_file(netlist_output)
-        log.info(f"Wrote netlist to {output}")
+        log.info(f"Wrote netlist to {netlist_output}")
 
     if "ref-map" in targets:
         reference_path = output.with_name(root_file.name).with_suffix(".reference_map.txt")
