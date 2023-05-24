@@ -18,6 +18,7 @@ def resolve_project_dir(path: Path):
         clean_path = p.resolve().absolute()
         if (clean_path / CONFIG_FILENAME).exists():
             return clean_path
+    raise FileNotFoundError(f"Could not find {CONFIG_FILENAME} in {path} or any parents")
 
 class Project:
     def __init__(self, root: Path, config_data: dict) -> None:

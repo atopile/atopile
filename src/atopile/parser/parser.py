@@ -12,6 +12,7 @@ from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 from atopile.project.project import Project
+from atopile.utils import profile
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -85,7 +86,7 @@ class Builder(AtopileParserVisitor):
             except KeyError:
                 log.error(f"{k} from data-layer {data_path} not found in model. Data will not be applied.")
 
-    def build(self, path: Path) -> Model:
+    def build(self, path: Path, data_layers: List[Path]) -> Model:
         """
         Start the build from the specified file.
         """
@@ -106,7 +107,7 @@ class Builder(AtopileParserVisitor):
             self.visit(tree)
 
         # apply data-layers
-        for data_path in self.project.config.data_layers:
+        for data_path in data_layers:
             data_path = Path(data_path)
             self.apply_data_layer(data_path)
 
@@ -272,24 +273,15 @@ class Builder(AtopileParserVisitor):
     def get_string(self, ctx:AtopileParser.StringContext) -> str:
         return ctx.getText().strip("\"\'")
 
-def build_model(project: Project, path: Path) -> Model:
+def build_model(project: Project, path: Path, data_layers: List[Path]=None) -> Model:
     log.info("Building model")
-    if log.getEffectiveLevel() <= logging.DEBUG:
-        import cProfile
-        import pstats
+    skip_profiler = log.getEffectiveLevel() > logging.DEBUG
 
-        from atopile.utils import StreamToLogger
+    if data_layers is None:
+        data_layers = []
 
-        prof = cProfile.Profile()
-        prof.enable()
-
-    bob = Builder(project)
-    model = bob.build(path)
-
-    if log.getEffectiveLevel() <= logging.DEBUG:
-        prof.disable()
-        s = StreamToLogger(log, logging.DEBUG)
-        stats = pstats.Stats(prof, stream=s).sort_stats("cumtime")
-        stats.print_stats(20)
+    with profile(profile_log=log, skip=skip_profiler):
+        bob = Builder(project)
+        model = bob.build(path, data_layers)
 
     return model
