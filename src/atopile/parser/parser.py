@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import List
 
-from antlr4 import CommonTokenStream, FileStream
+from antlr4 import CommonTokenStream, FileStream, InputStream
 
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_edge_uid
@@ -55,7 +55,11 @@ class Builder(AtopileParserVisitor):
     def parse_file(self, abs_path: Path):
         if str(abs_path) in self._tree_cache:
             return self._tree_cache[str(abs_path)]
-        input = FileStream(abs_path, encoding="utf-8")
+
+        # FIXME: hacky performance improvement by avoiding jittery read
+        with abs_path.open("r", encoding="utf-8") as f:
+            input = InputStream(f.read())
+        # input = FileStream(abs_path, encoding="utf-8")
         lexer = AtopileLexer(input)
         stream = CommonTokenStream(lexer)
         parser = AtopileParser(stream)
