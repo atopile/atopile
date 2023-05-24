@@ -1,12 +1,14 @@
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from atopile.utils import get_project_root
+import yaml
 
-CONFIG_FILENAME = 'ato.yaml'
-ATO_DIR_NAME = '.ato'
-MODULE_DIR_NAME = 'modules'
-BUILD_DIR_NAME = 'build'
+from atopile.utils import get_project_root
+from .config import Config
+
+CONFIG_FILENAME = "ato.yaml"
+ATO_DIR_NAME = ".ato"
+MODULE_DIR_NAME = "modules"
 
 def resolve_project_dir(path: Path):
     """
@@ -18,33 +20,29 @@ def resolve_project_dir(path: Path):
             return clean_path
 
 class Project:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, config_data: dict) -> None:
         self.root = root.resolve().absolute()
         self._std_import_to_abs: Dict[Path, Path] = {}
 
-    @property
-    def project_config_path(self):
-        return self.root / CONFIG_FILENAME
+        self.config_path = self.root / CONFIG_FILENAME
+        self.config_data = config_data or {}
+        self.config = Config(self.config_data, self)
 
-    @property
-    def ato_dir(self):
-        return self.root / ATO_DIR_NAME
-
-    @property
-    def module_dir(self):
-        return self.ato_dir / MODULE_DIR_NAME
-
-    @property
-    def build_dir(self):
-        return self.root / BUILD_DIR_NAME
+        self.ato_dir    = self.root / ATO_DIR_NAME
+        self.module_dir = self.ato_dir / MODULE_DIR_NAME
 
     @classmethod
-    def from_path(cls, path: Path):
+    def from_path(cls, path: Path) -> 'Project':
         """
         Create a Project from the specified path.
         """
+        path = Path(path)
         project_dir = resolve_project_dir(path)
-        return cls(project_dir)
+        config_path = project_dir / CONFIG_FILENAME
+        with config_path.open() as f:
+            config = yaml.safe_load(f)
+
+        return cls(project_dir, config)
 
     def ensure_build_dir(self):
         self.build_dir.mkdir(parents=True, exist_ok=True)
