@@ -12,8 +12,9 @@ class Config:
         return Paths(self.config_data.get("paths", {}), self.project)
 
     @property
-    def data_layers(self) -> List[str]:
-        return self.config_data.get("data_layers", [])
+    def data_layers(self) -> List[Path]:
+        paths = self.config_data.get("data-layers", [])
+        return [self.project.root / p for p in paths]
 
 class BaseSubConfig:
     def __init__(self, config_data: dict, project) -> None:
@@ -23,7 +24,7 @@ class BaseSubConfig:
 class Paths(BaseSubConfig):
     @property
     def build_dir(self) -> Path:
-        build_dir = self._config_data.get("build_dir")
+        build_dir = self._config_data.get("build-dir")
         if build_dir is None:
             return (self.project.root / "build").resolve().absolute()
 

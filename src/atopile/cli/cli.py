@@ -6,7 +6,6 @@ from . import build
 def cli():
     pass
 
-
 cli.add_command(viewer)
 cli.add_command(build.build)
 

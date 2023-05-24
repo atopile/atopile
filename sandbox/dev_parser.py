@@ -13,3 +13,6 @@ model = Builder(project).build(Path(get_project_root() / "sandbox/example_projec
 model.plot(debug=True)
 
 # %%
+model.data["toy.ato/vdiv1"]
+
+# %%
