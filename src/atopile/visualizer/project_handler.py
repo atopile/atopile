@@ -8,7 +8,7 @@ import time
 import watchfiles
 
 from atopile.model.model import Model
-from atopile.parser.parser import build as build_model
+from atopile.parser.parser import build_model as build_model
 from atopile.project.project import Project
 from atopile.visualizer.render import build_visualisation
 

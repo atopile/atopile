@@ -4,7 +4,7 @@ from pathlib import Path
 import click
 
 from atopile.netlist.kicad6 import KicadNetlist, export_reference_to_path_map
-from atopile.parser.parser import build as build_model
+from atopile.parser.parser import build_model as build_model
 from atopile.project.project import Project
 
 log = logging.getLogger(__name__)

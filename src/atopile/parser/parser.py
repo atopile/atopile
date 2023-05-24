@@ -15,13 +15,6 @@ from atopile.project.project import Project
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-def parse_file(path: Path):
-    input = FileStream(path, encoding="utf-8")
-    lexer = AtopileLexer(input)
-    stream = CommonTokenStream(lexer)
-    parser = AtopileParser(stream)
-    tree = parser.file_input()
-    return tree
 
 class Builder(AtopileParserVisitor):
     def __init__(self, project: Project) -> None:
@@ -30,6 +23,8 @@ class Builder(AtopileParserVisitor):
 
         self._block_stack: List[str] = []
         self._file_stack: List[str] = []
+
+        self._tree_cache = {}
 
         # if something's in parsed files, we must skip building it a second time
         super().__init__()
@@ -57,6 +52,17 @@ class Builder(AtopileParserVisitor):
         self._file_stack.pop()
         self.model.src_files.append(std_path)
 
+    def parse_file(self, abs_path: Path):
+        if str(abs_path) in self._tree_cache:
+            return self._tree_cache[str(abs_path)]
+        input = FileStream(abs_path, encoding="utf-8")
+        lexer = AtopileLexer(input)
+        stream = CommonTokenStream(lexer)
+        parser = AtopileParser(stream)
+        tree = parser.file_input()
+        self._tree_cache[str(abs_path)] = tree
+        return tree
+
     def build(self, path: Path) -> Model:
         """
         Start the build from the specified file.
@@ -69,7 +75,7 @@ class Builder(AtopileParserVisitor):
         std_path = self.project.standardise_import_path(abs_path)
         std_path_str = str(std_path)
 
-        tree = parse_file(abs_path)
+        tree = self.parse_file(abs_path)
 
         self.model.new_vertex(VertexType.file, std_path_str)
         self.model.data[std_path_str] = {}
@@ -90,7 +96,7 @@ class Builder(AtopileParserVisitor):
         if std_path not in self.model.src_files:
             # do the actual import, parsing etc...
             with self.working_file(abs_path):
-                tree = parse_file(abs_path)
+                tree = self.parse_file(abs_path)
                 self.model.new_vertex(VertexType.file, import_filename)
                 self.model.data[import_filename] = {}
                 super().visit(tree)
@@ -239,11 +245,12 @@ class Builder(AtopileParserVisitor):
     def get_string(self, ctx:AtopileParser.StringContext) -> str:
         return ctx.getText().strip("\"\'")
 
-def build(project: Project, path: Path) -> Model:
+def build_model(project: Project, path: Path) -> Model:
     log.info("Building model")
     if log.getEffectiveLevel() <= logging.DEBUG:
         import cProfile
         import pstats
+
         from atopile.utils import StreamToLogger
 
         prof = cProfile.Profile()
