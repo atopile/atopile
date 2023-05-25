@@ -6,6 +6,9 @@ Show what CI looks like for hardware
 Show what a PR looks like
 
 ## nitty gritty
+update viewer command to match build
+create BOM generator
+
 (@matt) when you give a signal name, make sure that the net has the same name
     Gonna require some inteligence on which name takes precedence
 when you stub something, it's assumed to be stubbed within the module it's defined

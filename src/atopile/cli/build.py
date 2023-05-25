@@ -87,11 +87,11 @@ def build(project: str, config: str, root_file, root_node, output: str, targets:
     if "netlist" in targets:
         targets.remove("netlist")
         netlist = KicadNetlist.from_model(model, root_node)
-        netlist_output = output.with_name(root_file.name).with_suffix(".net")
+        netlist_output = (output / root_file.name).with_suffix(".net")
         netlist.to_file(netlist_output)
         log.info(f"Wrote netlist to {netlist_output}")
 
     if "ref-map" in targets:
-        reference_path = output.with_name(root_file.name).with_suffix(".reference_map.txt")
+        reference_path = (output / root_file.name).with_suffix(".reference_map.txt")
         export_reference_to_path_map(netlist, reference_path)
         log.info(f"Wrote reference map to {reference_path}")
