@@ -2,7 +2,6 @@
 
 Demonstrate a revision on a PCB
 Show what CI looks like for hardware
- - add githash
 Show what a PR looks like
 
 ## nitty gritty

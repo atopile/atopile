@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import List, Any
+from typing import Any, List
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -81,10 +81,30 @@ class BuildConfig(BaseSubConfig):
 
     @property
     def data_layers(self) -> List[Path]:
-        paths = self.config_data.get("data-layers", [])
+        paths = self._config_data.get("data-layers", [])
         return [self.project.root / p for p in paths]
 
 class DefaultBuildConfig(BuildConfig):
     @property
     def name(self) -> str:
         return "default"
+
+class CustomBuildConfig(BuildConfig):
+    def __init__(self, root_file, root_node, targets, data_layers) -> None:
+        self.root_file = root_file
+        self.root_node = root_node
+        self.targets = targets
+        self.data_layers = data_layers
+
+    @property
+    def name(self) -> str:
+        return "custom"
+
+    @staticmethod
+    def from_build_config(build_config: BuildConfig) -> "CustomBuildConfig":
+        return CustomBuildConfig(
+            root_file=build_config.root_file,
+            root_node=build_config.root_node,
+            targets=build_config.targets,
+            data_layers=build_config.data_layers,
+        )

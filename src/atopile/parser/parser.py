@@ -11,6 +11,7 @@ from atopile.model.utils import generate_edge_uid
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
+from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 from atopile.utils import profile
 
@@ -273,15 +274,12 @@ class Builder(AtopileParserVisitor):
     def get_string(self, ctx:AtopileParser.StringContext) -> str:
         return ctx.getText().strip("\"\'")
 
-def build_model(project: Project, path: Path, data_layers: List[Path]=None) -> Model:
+def build_model(project: Project, config: BuildConfig) -> Model:
     log.info("Building model")
     skip_profiler = log.getEffectiveLevel() > logging.DEBUG
 
-    if data_layers is None:
-        data_layers = []
-
     with profile(profile_log=log, skip=skip_profiler):
         bob = Builder(project)
-        model = bob.build(path, data_layers)
+        model = bob.build(config.root_file, config.data_layers)
 
     return model
