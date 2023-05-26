@@ -1,26 +1,17 @@
 import logging
-import webbrowser
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import Any, Dict
 
-import click
-import uvicorn
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from uvicorn.logging import ColourizedFormatter
 
-from atopile.project.project import Project
 from atopile.visualizer.project_handler import ProjectHandler
 from atopile.utils import get_project_root
 
 # configure logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
-stream_handler = logging.StreamHandler()
-stream_handler.formatter = ColourizedFormatter(fmt="%(levelprefix)s %(name)s %(message)s", use_colors=None)
-logging.root.addHandler(stream_handler)
+
 
 watcher = ProjectHandler()
 
@@ -45,13 +36,13 @@ async def api_root():
 
 @app.get("/api/view")
 async def get_view():
-    return watcher.current_vision
+    return watcher.current_view
 
 @app.websocket("/ws/view")
 async def websocket_view(websocket: WebSocket):
     await websocket.accept()
     log.info("Websocket accepted")
-    await websocket.send_json(watcher.current_vision)
+    await websocket.send_json(watcher.current_view)
     async for vision in watcher.emit_visions():
         await websocket.send_json(vision)
 
@@ -64,27 +55,3 @@ class ElementMovement(BaseModel):
 async def post_move(move: ElementMovement):
     log.info(f"Posted move: {move}")
     watcher.do_move(move.id, move.x, move.y)
-
-# configure UI
-@click.command()
-@click.argument("file", type=click.Path(exists=True, dir_okay=False))
-@click.argument("entrypoint", type=str, required=False)
-@click.option('--browser/--no-browser', default=True)
-@click.option('--debug/--no-debug', default=False)
-def viewer(file: str, entrypoint: str, browser: bool, debug: bool):
-    watcher.entrypoint_file = Path(file).resolve().absolute()
-    watcher.project = Project.from_path(watcher.entrypoint_file)
-    if debug:
-        # FIXME: fuck... talk about pasghetti code
-        import atopile.parser.parser
-        atopile.parser.parser.log.setLevel(logging.DEBUG)
-    if entrypoint is not None:
-        watcher.entrypoint_block = entrypoint
-    watcher.rebuild_all()
-    if browser:
-        webbrowser.open("http://localhost/static/client.html")
-    uvicorn.run(app, host="0.0.0.0", port=80)
-
-# let's goooooo
-if __name__ == "__main__":
-    viewer()

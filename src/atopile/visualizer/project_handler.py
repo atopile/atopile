@@ -10,7 +10,8 @@ import watchfiles
 from atopile.model.model import Model
 from atopile.parser.parser import build_model as build_model
 from atopile.project.project import Project
-from atopile.visualizer.render import build_visualisation
+from atopile.project.config import BuildConfig
+from atopile.visualizer.render import build_view
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -19,12 +20,11 @@ log.setLevel(logging.INFO)
 class ProjectHandler:
     def __init__(self):
         self.project: Project = None
-        self.entrypoint_file = None
-        self._entrypoint_block = None
+        self.build_config: BuildConfig = None
 
         # TODO: these need mutexes
         self._model: Model = None
-        self._current_vision = None
+        self._current_view = None
         self._vis_data: dict = None
 
         self._task: asyncio.Task = None
@@ -32,20 +32,10 @@ class ProjectHandler:
         self._ignore_files: List[Path] = []
 
     @property
-    def entrypoint_block(self):
-        if self._entrypoint_block is None:
-            return str(self.project.standardise_import_path(self.entrypoint_file))
-        return self._entrypoint_block
-
-    @entrypoint_block.setter
-    def entrypoint_block(self, value):
-        self._entrypoint_block = value
-
-    @property
-    def current_vision(self):
-        if self._current_vision is None:
-            self.rebuild_vision()
-        return self._current_vision
+    def current_view(self):
+        if self._current_view is None:
+            self.rebuild_view()
+        return self._current_view
 
     @property
     def vis_data(self) -> dict:
@@ -73,19 +63,19 @@ class ProjectHandler:
     def rebuild_model(self):
         start_time = time.time()
         log.info("Building model...")
-        self._model = build_model(self.project, self.entrypoint_file)
+        self._model = build_model(self.project, self.build_config)
         log.info(f"Rebuilt in {time.time() - start_time}s")
 
-    def rebuild_vision(self):
+    def rebuild_view(self):
         start_time = time.time()
         log.info("Building visualisation...")
-        self._current_vision = build_visualisation(self.model, self.entrypoint_block, self.vis_data)
+        self._current_view = build_view(self.model, self.build_config.root_node, self.vis_data)
         log.info(f"Rebuilt in {time.time() - start_time}s")
 
     def rebuild_all(self):
         self.reload_vis_data()
         self.rebuild_model()
-        self.rebuild_vision()
+        self.rebuild_view()
 
     async def _watch_files(self):
         try:
@@ -109,7 +99,7 @@ class ProjectHandler:
                     self.reload_vis_data()
 
                 if updated_files:
-                    self.rebuild_vision()
+                    self.rebuild_view()
 
                 # empty the ignore list
                 self._ignore_files.clear()
@@ -153,4 +143,4 @@ class ProjectHandler:
         with self.vis_file_path.open('w') as f:
             yaml.dump(self._vis_data, f)
         self._ignore_files.append(self.vis_file_path)
-        asyncio.get_event_loop().call_soon(self.rebuild_vision)
+        asyncio.get_event_loop().call_soon(self.rebuild_view)

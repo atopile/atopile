@@ -2,10 +2,10 @@
 # %load_ext autoreload
 # %autoreload 2
 
-from atopile.visualizer.render import build_visualisation
+from atopile.visualizer.render import build_view
 from toy import model, project
 
 #%%
-vis_model = build_visualisation(model, "toy.ato/vdiv1", {})
+vis_model = build_view(model, "toy.ato/vdiv1", {})
 
 # %%

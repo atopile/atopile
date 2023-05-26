@@ -1,4 +1,3 @@
-import uuid
 from contextlib import contextmanager
 from typing import Dict, List, Optional
 
@@ -351,8 +350,9 @@ class Bob(ModelVisitor):
     def visit_signal(self, vertex: ModelVertex) -> Pin:
         return self.generic_visit_pin(vertex)
 
-def build_visualisation(model: Model, main: str, vis_data: dict) -> list:
-    main = ModelVertex.from_path(model, main)
+# TODO: resolve the API between this and build_model
+def build_view(model: Model, root_node: str, vis_data: dict) -> list:
+    root_node = ModelVertex.from_path(model, root_node)
     bob = Bob(model, vis_data)
-    root = bob.build(main)
+    root = bob.build(root_node)
     return [root.to_dict()]

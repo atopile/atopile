@@ -1,4 +1,3 @@
-import functools
 import logging
 from pathlib import Path
 from typing import List, Tuple
@@ -9,15 +8,12 @@ from atopile.netlist.kicad6 import KicadNetlist, export_reference_to_path_map
 from atopile.parser.parser import build_model as build_model
 from atopile.project.config import BuildConfig
 from atopile.project.project import Project
+
 from .common import ingest_config_hat
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-
-@click.group()
-def cli():
-    pass
 
 @click.command()
 @ingest_config_hat
