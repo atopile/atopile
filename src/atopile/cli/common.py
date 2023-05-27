@@ -20,7 +20,7 @@ def project_argument(f):
             project_path = Path(value)
 
         try:
-            project: Project = Project.from_path(value)
+            project: Project = Project.from_path(project_path)
         except FileNotFoundError as e:
             raise click.BadParameter(f"Could not find project at {project_path}.") from e
         log.info(f"Using project {project.root}")
