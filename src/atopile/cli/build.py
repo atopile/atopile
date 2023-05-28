@@ -1,10 +1,11 @@
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Set
 
 import click
 
-from atopile.netlist.kicad6 import KicadNetlist, export_reference_to_path_map
+from atopile.resolvers.resolver import find_resolver, Resolver
+from atopile.targets.targets import find_target, TargetNotFoundError, Target
 from atopile.parser.parser import build_model as build_model
 from atopile.project.config import BuildConfig
 from atopile.project.project import Project
@@ -20,7 +21,7 @@ log.setLevel(logging.INFO)
 @click.option("--output", default=None)
 @click.option("--target", multiple=True, default=None)
 @click.option("--debug/--no-debug", default=None)
-def build(project: Project, build_config: BuildConfig, output: str, target: Tuple[str], debug: bool):
+def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool):
     if debug:
         import atopile.parser.parser
         atopile.parser.parser.log.setLevel(logging.DEBUG)
@@ -28,33 +29,45 @@ def build(project: Project, build_config: BuildConfig, output: str, target: Tupl
     model = build_model(project, build_config)
 
     # figure out where to put everything
-    if output is None:
-        output: Path = project.config.paths.build
-    else:
-        output: Path = Path(output)
-    if output.exists():
-        if not output.is_dir():
-            raise click.ClickException(f"{output} exists, but is not a directory")
-    else:
-        output.mkdir(parents=True, exist_ok=True)
-    log.info(f"Writing build output to {output}")
+    # TODO: reinstate this functionality
+    # if output is None:
+    #     output: Path = project.config.paths.build
+    # else:
+    #     output: Path = Path(output)
+    # if output.exists():
+    #     if not output.is_dir():
+    #         raise click.ClickException(f"{output} exists, but is not a directory")
+    # else:
+    log.info(f"Writing build output to {project.config.paths.build}")
+    project.ensure_build_dir()
 
     # ensure targets
-    if not target:
-        target: List[str] = build_config.targets
-    targets_string = ", ".join(target)
-    log.info(f"Generating targets {targets_string}")
+    target_names = target
+    if not target_names:
+        target_names: List[str] = build_config.targets
+
+    # find targets
+    targets: List[Target] = []
+    for target_name in target_names:
+        try:
+            targets.append(find_target(target_name)(project, model, build_config))
+        except TargetNotFoundError:
+            log.error(f"Target {target_name} not found. Attempting to generate remaining targets.")
+
+    # do resolution
+    resolvers: Set[Resolver] = set()
+    for target in targets:
+        assert isinstance(target, Target)
+        for resolver_name in target.required_resolvers:
+            resolvers.add(find_resolver(resolver_name)(project, model, build_config))
+
+    for resolver in resolvers:
+        assert isinstance(resolver, Resolver)
+        resolver.run()
 
     # generate targets
-    output_base = (output / build_config.root_file.name).with_suffix('')
-    if "netlist" in target:
-        target.remove("netlist")
-        netlist = KicadNetlist.from_model(model, build_config.root_node)
-        netlist_output = output_base.with_suffix(".net")
-        netlist.to_file(netlist_output)
-        log.info(f"Wrote netlist to {netlist_output}")
-
-    if "ref-map" in target:
-        reference_path = output_base.with_suffix(".reference_map.txt")
-        export_reference_to_path_map(netlist, reference_path)
-        log.info(f"Wrote reference map to {reference_path}")
+    targets_string = ", ".join(target_names)
+    log.info(f"Generating targets {targets_string}")
+    for target in targets:
+        assert isinstance(target, Target)
+        target.generate()

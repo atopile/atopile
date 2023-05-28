@@ -9,7 +9,7 @@ from atopile.utils import get_project_root
 
 #%%
 project = Project.from_path(get_project_root() / "sandbox/example_project")
-model = build_model(project, project.config.build.default_config)
+model = build_model(project, project.config.builds.default)
 model.plot(debug=True)
 
 # %%

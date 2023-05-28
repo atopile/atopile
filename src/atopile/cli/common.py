@@ -44,7 +44,7 @@ def ingest_config_hat(f):
     @functools.wraps(f)
     def wrapper(*args, project: Project, build_config: str, root_file: str, root_node: str, **kwargs):
         if build_config is None:
-            build_config: BuildConfig = project.config.build.default_config
+            build_config: BuildConfig = project.config.build.default
         else:
             for build_config in project.config.build.configs:
                 if build_config.name == build_config:

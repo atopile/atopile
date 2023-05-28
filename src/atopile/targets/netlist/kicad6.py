@@ -1,12 +1,14 @@
-from pathlib import Path
-from typing import List, Dict, Optional
 import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
 
 from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from atopile.model.model import Model, VertexType, EdgeType
+from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
+from atopile.targets.targets import Target
+
 
 @define
 class KicadField:
@@ -151,7 +153,7 @@ class KicadNetlist:
             f.write(netlist_str)
 
     @classmethod
-    def from_model(cls, model: Model, main: str) -> "KicadNetlist":
+    def from_model(cls, model: Model, root_node: str) -> "KicadNetlist":
         """
         :param model: to generate the netlist from
         :param main: path in the graph to compile from
@@ -166,7 +168,7 @@ class KicadNetlist:
         # TODO: move at least large chunks of this elsewhere. It's too entangled with the guts of the Model class
         part_of_view = model.get_graph_view([EdgeType.part_of])
         instance_of_view = model.get_graph_view([EdgeType.instance_of])
-        main_vertex = model.graph.vs.find(path_eq=main)
+        main_vertex = model.graph.vs.find(path_eq=root_node)
         vidxs_within_main = part_of_view.subcomponent(main_vertex.index, mode="in")
 
         component_vs = model.graph.vs[vidxs_within_main].select(type_eq=VertexType.component.name)
@@ -302,7 +304,7 @@ class KicadNetlist:
                 nets.append(net)
 
         netlist = KicadNetlist(
-            source=main,
+            source=root_node,
             date=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             components=list(components.values()),
             libparts=list(libparts.values()),
@@ -311,16 +313,10 @@ class KicadNetlist:
 
         return netlist
 
-def export_netlist(netlist: KicadNetlist, path: Path) -> None:
-    netlist.to_file(path)
+class Kicad6NetlistTarget(Target):
+    def generate(self) -> None:
+        netlist = KicadNetlist.from_model(self.model, root_node=self.build_config.root_node)
+        output_file = self.project.config.paths.build / self.build_config.root_file.with_suffix(".net").name
+        netlist.to_file(output_file)
 
-def export_reference_to_path_map(netlist: KicadNetlist, output: Path) -> None:
-    refs_to_paths: List[str, str] = []
-    for component in netlist.components:
-        refs_to_paths.append((component.ref, component.src_path))
-
-    max_ref_len = max(len(ref) for ref, _ in refs_to_paths)
-    with output.open("w") as f:
-        for ref, path in refs_to_paths:
-            padded_ref = ref.ljust(max_ref_len)
-            f.write(f"{padded_ref} : {path}\n")
+    required_resolvers = ["designators"]

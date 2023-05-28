@@ -6,7 +6,8 @@ import logging
 
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
-from atopile.model.visitor import ModelVertex, ModelVisitor
+from atopile.model.accessors import ModelVertexView
+from atopile.model.visitor import ModelVisitor
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -187,7 +188,7 @@ class Bob(ModelVisitor):
             lowest_common_ancestor = pins[0].block_uuid_stack[i]
         return lowest_common_ancestor
 
-    def build(self, main: ModelVertex) -> Block:
+    def build(self, main: ModelVertexView) -> Block:
         root = self.generic_visit_block(main)
 
         stubbed_pins_vids: List[int] = []
@@ -243,7 +244,7 @@ class Bob(ModelVisitor):
 
         return root
 
-    def generic_visit_block(self, vertex: ModelVertex) -> Block:
+    def generic_visit_block(self, vertex: ModelVertexView) -> Block:
         uuid_to_be = vertex.path
         with self.block_context(uuid_to_be):
             # find subelements
@@ -308,13 +309,13 @@ class Bob(ModelVisitor):
 
         return block
 
-    def visit_component(self, vertex: ModelVertex) -> Block:
+    def visit_component(self, vertex: ModelVertexView) -> Block:
         return self.generic_visit_block(vertex)
 
-    def visit_module(self, vertex: ModelVertex) -> Block:
+    def visit_module(self, vertex: ModelVertexView) -> Block:
         return self.generic_visit_block(vertex)
 
-    def generic_visit_pin(self, vertex: ModelVertex) -> Pin:
+    def generic_visit_pin(self, vertex: ModelVertexView) -> Pin:
         vertex_data = self.model.data[vertex.path]
         pin = Pin(
             name=vertex.ref,
@@ -332,27 +333,27 @@ class Bob(ModelVisitor):
 
         return pin
 
-    def visit_pin(self, vertex: ModelVertex) -> Optional[Pin]:
+    def visit_pin(self, vertex: ModelVertexView) -> Optional[Pin]:
         # filter out pins that have a single connection to a signal within the same block
         connections_in = vertex.get_edges(mode="in", edge_type=EdgeType.connects_to)
         connections_out = vertex.get_edges(mode="out", edge_type=EdgeType.connects_to)
         if len(connections_in) + len(connections_out) == 1:
             if len(connections_in) == 1:
-                target = ModelVertex(self.model, connections_in[0].source)
+                target = ModelVertexView(self.model, connections_in[0].source)
             if len(connections_out) == 1:
-                target = ModelVertex(self.model, connections_out[0].target)
+                target = ModelVertexView(self.model, connections_out[0].target)
             if target.vertex_type == VertexType.signal:
                 if target.parent_path == vertex.parent_path:
                     return None
 
         return self.generic_visit_pin(vertex)
 
-    def visit_signal(self, vertex: ModelVertex) -> Pin:
+    def visit_signal(self, vertex: ModelVertexView) -> Pin:
         return self.generic_visit_pin(vertex)
 
 # TODO: resolve the API between this and build_model
 def build_view(model: Model, root_node: str, vis_data: dict) -> list:
-    root_node = ModelVertex.from_path(model, root_node)
+    root_node = ModelVertexView.from_path(model, root_node)
     bob = Bob(model, vis_data)
     root = bob.build(root_node)
     return [root.to_dict()]
