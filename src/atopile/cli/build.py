@@ -10,7 +10,7 @@ from atopile.parser.parser import build_model as build_model
 from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 
-from .common import ingest_config_hat
+from atopile.cli.common import ingest_config_hat
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -18,7 +18,7 @@ log.setLevel(logging.INFO)
 
 @click.command()
 @ingest_config_hat
-@click.option("--output", default=None)
+# @click.option("--output", default=None)
 @click.option("--target", multiple=True, default=None)
 @click.option("--debug/--no-debug", default=None)
 def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool):

@@ -1,3 +1,9 @@
+"""
+The concept of this file is to enforce to provide access to our config yaml while providing some structure, type checking and defaulting behaviour.
+It has become a mess. It needs a tearup, but it can't be a priority right now.
+TODO: tear this up and make it good.
+"""
+
 import logging
 from pathlib import Path
 from typing import Any, List, Dict, TYPE_CHECKING
@@ -120,16 +126,20 @@ class DefaultBuildConfig(BuildConfig):
         super().__init__("default", config_data, project)
 
 class CustomBuildConfig(BuildConfig):
-    def __init__(self, root_file, root_node, targets, data_layers) -> None:
-        self.name = "custom"
-        self.root_file = root_file
-        self.root_node = root_node
-        self.targets = targets
-        self.data_layers = data_layers
+    def __init__(self, project: "Project", root_file, root_node, targets, data_layers) -> None:
+        self._name = "custom"
+        self.project = project
+        self._config_data = {
+            "root-file": root_file,
+            "root-node": root_node,
+            "targets": targets,
+            "data-layers": data_layers,
+        }
 
     @staticmethod
     def from_build_config(build_config: BuildConfig) -> "CustomBuildConfig":
         return CustomBuildConfig(
+            project=build_config.project,
             root_file=build_config.root_file,
             root_node=build_config.root_node,
             targets=build_config.targets,

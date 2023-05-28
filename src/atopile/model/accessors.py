@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Optional
 
 import igraph as ig
 
@@ -66,7 +66,11 @@ class ModelVertexView:
 
     @classmethod
     def from_path(cls, model: Model, path: str) -> "ModelVertexView":
-        return cls(model, model.graph.vs.find(path_eq=path).index)
+        try:
+            root_node = model.graph.vs.find(path_eq=path)
+        except ValueError as ex:
+            raise ValueError(f"Path {path} not found in model") from ex
+        return cls(model, root_node.index)
 
     @classmethod
     def from_edges(cls, model: Model, mode: str, edges: EdgeIterable) -> List["ModelVertexView"]:
@@ -81,14 +85,19 @@ class ModelVertexView:
         edges = self.get_edges(mode, edge_type)
         return self.from_edges(self.model, mode, edges)
 
+    def get_descendants(self, vertex_type: Union[VertexType, List]) -> List["ModelVertexView"]:
+        if isinstance(vertex_type, VertexType):
+            vertex_type = [vertex_type]
+        vertex_type_names: List[str] = [v.name for v in vertex_type]
+
+        type_matched_vids = {v.index for v in self.model.graph.vs.select(type_in=vertex_type_names)}
+        part_of_view = self.model.get_graph_view([EdgeType.part_of])
+        descendant_vids = set(part_of_view.subcomponent(self.index, mode="in"))
+        return [ModelVertexView(self.model, vid) for vid in type_matched_vids & descendant_vids]
+
     @classmethod
     def from_view(cls, view: "ModelVertexView"):
         return cls(view.model, view.index)
-
-class ComponentVertexView(ModelVertexView):
-    @property
-    def vertex_type(self) -> VertexType:
-        return VertexType.component
 
 def get_all_idx(model: Model, vertex_type: VertexType) -> List[int]:
     return model.graph.vs.select(type_eq=vertex_type.name)

@@ -5,13 +5,13 @@ from typing import Dict, List
 
 import yaml
 
-from atopile.model.accessors import ComponentVertexView as BaseComponentView
+from atopile.model.accessors import ModelVertexView
 from atopile.model.accessors import get_all_as
 from atopile.model.model import VertexType
 from atopile.project.config import ResolverConfig
 from atopile.project.project import Project
 
-from .resolver import Resolver
+from atopile.resolvers.resolver import Resolver
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -21,10 +21,10 @@ class DesignatorConfig(ResolverConfig):
         super().__init__("designators", config_data, project)
 
     @property
-    def designators_file(self) -> Path:
-        return self.project.root / self._config_data.get("designators-file", "designators.yaml")
+    def designators_file_template(self) -> str:
+        return self._config_data.get("designators-file", "{build-config}-designators.yaml")
 
-class ComponentView(BaseComponentView):
+class ComponentView(ModelVertexView):
     @property
     def designator(self) -> str:
         return self.data.get("designator")
@@ -41,12 +41,6 @@ class ComponentView(BaseComponentView):
     def designator_prefix(self, designator_str: str) -> None:
         self.data["designator_prefix"] = designator_str
 
-class DesignatorSource(enum.Enum):
-    # TODO: I don't think we really need this anymore
-    model = "model"
-    designators_file = "designators_file"
-    generated = "generated"
-
 class DesignatorResolver(Resolver):
     @property
     def resolver_config(self) -> DesignatorConfig:
@@ -58,60 +52,57 @@ class DesignatorResolver(Resolver):
     def run(self):
         assert isinstance(self.resolver_config, DesignatorConfig)
 
-        if self.resolver_config.designators_file.exists():
-            with self.resolver_config.designators_file.open() as f:
+        designators_file = self.project.root / self.resolver_config.designators_file_template.format(**{"build-config": self.build_config.name})
+        if designators_file.exists():
+            with designators_file.open() as f:
                 designator_data: Dict[str, str] = yaml.safe_load(f)
         else:
             designator_data = {}
 
-        components: List[ComponentView] = get_all_as(self.model, VertexType.component, ComponentView)
+        root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
+        generic_descendants = root_node.get_descendants(VertexType.component)
+        components: List[ComponentView] = [ComponentView(v.model, v.index) for v in generic_descendants]
 
-        designator_sources: Dict[str, DesignatorSource] = {}
-        designator_values: Dict[str, str] = {}
+        # apply existing designators to components
         for component in components:
-            if component.designator is not None:
-                if component.designator_prefix:
-                    if not component.designator.startswith(component.designator_prefix):
-                        log.warning(f"Designator {component.designator} assigned for {component.path} does not match assigned prefix {component.designator_prefix}")
+            if component.designator is None:
+                if component.path in designator_data:
+                    component.designator = designator_data[component.path]
 
-                if component.designator in designator_values.values():
-                    log.warning(f"Designator {component.designator} assigned for {component.path} is not unique. Auto-assigning a new one.")
-                    continue
+        # find all the components still missing designators
+        components_to_designate: List[ComponentView] = []
+        consumed_designators: List[str] = []
 
-                designator_sources[component.path] = DesignatorSource.model
-                designator_values[component.path] = component.designator
+        for component in components:
+            if component.designator is None:
+                components_to_designate.append(component)
                 continue
 
-            if component.path in designator_data:
-                if component.designator_prefix and designator_data[component.path].startswith(component.designator_prefix):
-                    if designator_data[component.path] in designator_values.values():
-                        log.warning(f"The existing designator for {component.path} is not unique. Auto-generating a new one")
-                        continue
-                    designator_sources[component.path] = DesignatorSource.designators_file
-                    designator_values[component.path] = component.designator
-
-        # create a designator from scratch
-        paths_with_designators = set(designator_values.keys())
-        for component in components:
-            if component.path in paths_with_designators:
+            if component.designator in consumed_designators:
+                components_to_designate.append(component)
                 continue
 
-            designator_prefix = component.designator_prefix or "U"
-            # TODO: this sucks, why the hell are we looping here?
-            # well, we're looping because we want to find a unique designator
-            # without doing string parsing (removing the letters)
-            for i in range (1, 10000):
-                designator_value = designator_prefix + str(i)
-                if designator_value in designator_values.values():
-                    continue
-                break
+            if not component.designator.startswith(component.designator_prefix):
+                components_to_designate.append(component)
+                log.warning(f"{component.path} has a designator-prefix mis-match. Regenerating designator.")
+                continue
 
-            designator_values[component.path] = designator_value
-            designator_sources[component.path] = DesignatorSource.generated
+            # if none of the above, then we're cool with the existing designator. Let's roll.
+            consumed_designators.append(component.designator)
 
-        # finally, back-assign everything to the model
-        for component in components:
-            component.designator = designator_values[component.path]
+        # generate designators and back-assign everything to the model
+        for component in components_to_designate:
+            MAX_DESIGNATOR = 10000
+            for i in range(1, 10000):
+                designator = component.designator_prefix + str(i)
+                if designator not in consumed_designators:
+                    consumed_designators.append(designator)
+                    component.designator = designator
+                    break
+            else:
+                raise ValueError(f"Exceeded the limit of {MAX_DESIGNATOR} on a board! Eeek!")
 
-        with self.resolver_config.designators_file.open("w") as f:
-            yaml.safe_dump(designator_values, f)
+        # finally, save all designators for next time
+        designator_dict = {c.path: c.designator for c in components}
+        with designators_file.open("w") as f:
+            yaml.safe_dump(designator_dict, f)

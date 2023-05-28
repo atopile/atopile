@@ -6,7 +6,7 @@ import click
 import uvicorn
 from atopile.project.project import Project
 from atopile.project.config import BuildConfig
-from .common import ingest_config_hat
+from atopile.cli.common import ingest_config_hat
 
 # configure logging
 log = logging.getLogger(__name__)
