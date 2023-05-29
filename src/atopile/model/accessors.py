@@ -47,6 +47,14 @@ class ModelVertexView:
     def parent(self) -> "ModelVertexView":
         return ModelVertexView(self.model, self.parent_vidx)
 
+    @property
+    def instance_of(self) -> "ModelVertexView":
+        try:
+            class_vidx = self.model.graph.es.find(_source=self.index, type_eq=EdgeType.instance_of.name).target
+        except ValueError:
+            return None
+        return ModelVertexView(self.model, class_vidx)
+
     def get_edges(self, mode: str, edge_type: Union[EdgeType, List[EdgeType]] = None) -> ig.EdgeSeq:
         selector = {}
         if edge_type is not None:

@@ -19,6 +19,9 @@ def find_target(target_name: str) -> "Target":
     if target_name == "ref-map":
         import atopile.targets.ref_map
         return atopile.targets.ref_map.RefMapTarget
+    if target_name == "bom-jlcpcb":
+        import atopile.targets.bom_jlcpcb
+        return atopile.targets.bom_jlcpcb.BomJlcpcbTarget
     raise TargetNotFoundError(target_name)
 
 class Target:
