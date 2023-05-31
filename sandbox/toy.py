@@ -11,8 +11,7 @@ build_config = CustomBuildConfig(
     project=project,
     root_file=project.root / "toy.ato",
     root_node="toy.ato/vdiv1",
-    targets="",
-    data_layers=[],
+    targets=""
 )
 
 model = build_model(project, build_config)

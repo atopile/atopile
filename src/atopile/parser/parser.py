@@ -70,24 +70,7 @@ class Builder(AtopileParserVisitor):
         self._tree_cache[str(abs_path)] = tree
         return tree
 
-    def apply_data_layer(self, data_path: Path):
-        with data_path.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-
-        if not isinstance(data, dict):
-            log.error(f"{data_path} is not a valid data-layer because it doesn't evaluate to a dictionary. Skipping.")
-            return
-
-        for k, v in data.items():
-            if not isinstance(data, dict):
-                log.error(f"{k} from data-layer {data_path} is not a valid data-layer because it doesn't evaluate to a dictionary. Skipping.")
-                continue
-            try:
-                self.model.data[k].update(v)
-            except KeyError:
-                log.error(f"{k} from data-layer {data_path} not found in model. Data will not be applied.")
-
-    def build(self, path: Path, data_layers: List[Path]) -> Model:
+    def build(self, path: Path) -> Model:
         """
         Start the build from the specified file.
         """
@@ -106,11 +89,6 @@ class Builder(AtopileParserVisitor):
 
         with self.working_file(abs_path):
             self.visit(tree)
-
-        # apply data-layers
-        for data_path in data_layers:
-            data_path = Path(data_path)
-            self.apply_data_layer(data_path)
 
         return self.model
 
@@ -280,6 +258,6 @@ def build_model(project: Project, config: BuildConfig) -> Model:
 
     with profile(profile_log=log, skip=skip_profiler):
         bob = Builder(project)
-        model = bob.build(config.root_file, config.data_layers)
+        model = bob.build(config.root_file)
 
     return model
