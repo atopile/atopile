@@ -28,10 +28,10 @@ class DesignatorConfig(BaseConfig):
 class Designators(Target):
     name = "designators"
 
-    def __init__(self, project: Project, model: Model, build_config: BuildConfig) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         self._designator_map: Dict[str, str] = None
         self._check_result: TargetCheckResult = None
-        super().__init__(project, model, build_config)
+        super().__init__(*args, **kwargs)
 
     @property
     def config(self) -> DesignatorConfig:

@@ -1,10 +1,14 @@
-from typing import List, Any, Dict
 import enum
+import logging
+from typing import Any, Iterable, List
 
 from atopile.model.model import Model
-from atopile.project.config import BuildConfig, BaseConfig
+from atopile.project.config import BaseConfig, BuildConfig
 from atopile.project.project import Project
 
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 class TargetNotFoundError(Exception):
     """
@@ -25,6 +29,35 @@ def find_target(target_name: str) -> "Target":
         return atopile.targets.bom_jlcpcb.BomJlcpcbTarget
     raise TargetNotFoundError(target_name)
 
+class TargetMuster:
+    def __init__(self, project: Project, model: Model, build_config: BuildConfig) -> None:
+        self.project = project
+        self.model = model
+        self.build_config = build_config
+        # using a list rather than a dict so we can preserve order
+        # TODO: consider an ordered dict
+        self._targets: List[Target] = []
+
+    @property
+    def target_names(self) -> List[str]:
+        return [t.name for t in self.targets]
+
+    @property
+    def targets(self) -> Iterable["Target"]:
+        return self._targets
+
+    def make_target(self, target_name: str) -> "Target":
+        if target_name not in self.target_names:
+            new_target = find_target(target_name)(self)
+            self._targets.append(new_target)
+
+    def try_add_targets(self, target_names: List[str]) -> None:
+        for target_name in target_names:
+            try:
+                self.make_target(target_name)
+            except TargetNotFoundError:
+                log.error(f"Target {target_name} not found. Attempting to generate remaining targets.")
+
 class TargetCheckResult(enum.IntEnum):
     # data is fully specified so anything
     # untouched between revs will be the same
@@ -42,10 +75,20 @@ class TargetCheckResult(enum.IntEnum):
     UNSOLVABLE = 3
 
 class Target:
-    def __init__(self, project: Project, model: Model, build_config: BuildConfig) -> None:
-        self.project = project
-        self.model = model
-        self.build_config = build_config
+    def __init__(self, muster: TargetMuster) -> None:
+        self.muster = muster
+
+    @property
+    def project(self) -> Project:
+        return self.muster.project
+
+    @property
+    def model(self) -> Model:
+        return self.muster.model
+
+    @property
+    def build_config(self) -> BuildConfig:
+        return self.muster.build_config
 
     @property
     def name(self) -> str:

@@ -10,6 +10,7 @@ from atopile.project.project import Project
 from atopile.targets.targets import (
     Target,
     TargetCheckResult,
+    TargetMuster,
     TargetNotFoundError,
     find_target,
 )
@@ -24,29 +25,23 @@ log.setLevel(logging.INFO)
 @click.option("--debug/--no-debug", default=None)
 @click.option("--clean/--no-clean", default=None)
 def resolve(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool, clean: bool):
+    # input sanitisation
     if debug:
         import atopile.parser.parser
         atopile.parser.parser.log.setLevel(logging.DEBUG)
 
-    model = build_model(project, build_config)
-
-    log.info(f"Writing build output to {project.config.paths.build}")
-    project.ensure_build_dir()
-
-    # ensure targets
     target_names = target
     if not target_names:
         target_names: List[str] = build_config.targets
 
-    # find targets
-    targets: List[Target] = []
-    for target_name in target_names:
-        try:
-            targets.append(find_target(target_name)(project, model, build_config))
-        except TargetNotFoundError:
-            log.error(f"Target {target_name} not found. Attempting to generate remaining targets.")
+    # build core model
+    model = build_model(project, build_config)
+
+    # generate targets
+    target_muster = TargetMuster(project, model, build_config)
+    target_muster.try_add_targets(target_names)
 
     # check targets
-    for target in targets:
+    for target in target_muster.targets:
         assert isinstance(target, Target)
         target.resolve(clean=clean)
