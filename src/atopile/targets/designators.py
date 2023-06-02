@@ -127,9 +127,14 @@ class Designators(Target):
             for designator, path in sorted_designators:
                 f.write(f"{designator}: {path}\n")
 
-    def resolve(self, *args, **kwargs) -> None:
+    def resolve(self, *args, clean=None , **kwargs) -> None:
+        # TODO: better caching?
         if self._designator_map is None:
             self.generate()
+
+        # input sanitisation
+        if clean is None:
+            clean = False
 
         # using ruamel.yaml to preserve quotes, comments, etc...
         yaml = ruamel.yaml.YAML()
@@ -151,6 +156,13 @@ class Designators(Target):
                 else:
                     target[k] = v
         update_dict(designator_file_data, self._designator_map)
+
+        if clean:
+            # remove any designators that are no longer in the designator map
+            for k in list(designator_file_data.keys()):
+                if k not in self._designator_map:
+                    designator_file_data.pop(k)
+                    log.warning(f"Removing designator {k} from {designators_file} as it is no longer in the designator map.")
 
         with designators_file.open("w") as f:
             yaml.dump(designator_file_data, f)

@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import click
 
@@ -24,8 +24,7 @@ log.setLevel(logging.INFO)
 @click.option("--target", multiple=True, default=None)
 @click.option("--debug/--no-debug", default=None)
 @click.option("--strict/--no-strict", default=None)
-def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool, strict: bool):
-    # input sanitisation
+def check(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool, strict: bool):
     if debug:
         import atopile.parser.parser
         atopile.parser.parser.log.setLevel(logging.DEBUG)
@@ -33,13 +32,12 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
     if strict is None:
         strict = False
 
+    model = build_model(project, build_config)
+
+    # ensure targets
     target_names = target
     if not target_names:
         target_names: List[str] = build_config.targets
-
-    # build core circuit model
-    model = build_model(project, build_config)
-    exit_code = 0
 
     # find targets
     targets: List[Target] = []
@@ -47,20 +45,14 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
         try:
             targets.append(find_target(target_name)(project, model, build_config))
         except TargetNotFoundError:
-            exit_code = 1
             log.error(f"Target {target_name} not found. Attempting to generate remaining targets.")
 
     # check targets
-    if strict:
-        passable_check_level = TargetCheckResult.UNTIDY
-    else:
-        passable_check_level = TargetCheckResult.SOLVABLE
-
+    check_results: Dict[Target, TargetCheckResult] = {}
     for target in targets:
         assert isinstance(target, Target)
-        result = target.check()
-        if result > passable_check_level:
-            exit_code = 1
+        result = check_results[target] = target.check()
+        # TODO: move this repeated code somewhere common
         if result == TargetCheckResult.UNSOLVABLE:
             log.error(f"Target {target.name} is unsolvable. Attempting to generate remaining targets.")
             targets.remove(target)
@@ -71,18 +63,15 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
         elif result == TargetCheckResult.COMPLETE:
             log.info(f"Target {target.name} passes check.")
 
-    # generate targets
-    log.info(f"Writing build output to {project.config.paths.build}")
-    project.ensure_build_dir()
-    targets_string = ", ".join(target_names)
-    log.info(f"Generating targets {targets_string}")
-    for target in targets:
-        assert isinstance(target, Target)
-        target.build()
+    # exit with code reflecting checks
+    if strict:
+        passable_check_level = TargetCheckResult.UNTIDY
+    else:
+        passable_check_level = TargetCheckResult.SOLVABLE
 
-    if exit_code == 0:
+    if all(r <= passable_check_level for r in check_results.values()):
         log.info("All checks passed.")
         sys.exit(0)
     else:
-        log.error("Targets {failed_checks_str} failed checks.")
+        log.error(f"Targets failed {'strict' if strict else 'lenient'} checks.")
         sys.exit(1)

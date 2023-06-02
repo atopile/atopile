@@ -22,7 +22,8 @@ log.setLevel(logging.INFO)
 @ingest_config_hat
 @click.option("--target", multiple=True, default=None)
 @click.option("--debug/--no-debug", default=None)
-def resolve(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool):
+@click.option("--clean/--no-clean", default=None)
+def resolve(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool, clean: bool):
     if debug:
         import atopile.parser.parser
         atopile.parser.parser.log.setLevel(logging.DEBUG)
@@ -48,4 +49,4 @@ def resolve(project: Project, build_config: BuildConfig, target: Tuple[str], deb
     # check targets
     for target in targets:
         assert isinstance(target, Target)
-        target.resolve()
+        target.resolve(clean=clean)

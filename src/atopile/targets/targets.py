@@ -62,7 +62,7 @@ class Target:
         """
         raise NotImplementedError
 
-    def resolve(self, *args, **kwargs) -> None:
+    def resolve(self, *args, clean=None, **kwargs) -> None:
         """
         Interactively solve for missing data, potentially:
         - prompting the user for more info
