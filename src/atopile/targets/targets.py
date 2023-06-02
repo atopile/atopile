@@ -1,6 +1,6 @@
 import enum
 import logging
-from typing import Any, Iterable, List
+from typing import Any, List
 
 from atopile.model.model import Model
 from atopile.project.config import BaseConfig, BuildConfig
@@ -43,7 +43,7 @@ class TargetMuster:
         return [t.name for t in self.targets]
 
     @property
-    def targets(self) -> Iterable["Target"]:
+    def targets(self) -> List["Target"]:
         return self._targets
 
     def make_target(self, target_name: str) -> "Target":

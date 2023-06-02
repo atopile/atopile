@@ -8,12 +8,7 @@ from atopile.cli.common import ingest_config_hat
 from atopile.parser.parser import build_model as build_model
 from atopile.project.config import BuildConfig
 from atopile.project.project import Project
-from atopile.targets.targets import (
-    Target,
-    TargetCheckResult,
-    TargetNotFoundError,
-    find_target,
-)
+from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -37,18 +32,13 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
     if not target_names:
         target_names: List[str] = build_config.targets
 
-    # build core circuit model
+    # build core model
     model = build_model(project, build_config)
     exit_code = 0
 
-    # find targets
-    targets: List[Target] = []
-    for target_name in target_names:
-        try:
-            targets.append(find_target(target_name)(project, model, build_config))
-        except TargetNotFoundError:
-            exit_code = 1
-            log.error(f"Target {target_name} not found. Attempting to generate remaining targets.")
+    # generate targets
+    target_muster = TargetMuster(project, model, build_config)
+    target_muster.try_add_targets(target_names)
 
     # check targets
     if strict:
@@ -56,14 +46,14 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
     else:
         passable_check_level = TargetCheckResult.SOLVABLE
 
-    for target in targets:
+    for target in target_muster.targets:
         assert isinstance(target, Target)
         result = target.check()
         if result > passable_check_level:
             exit_code = 1
         if result == TargetCheckResult.UNSOLVABLE:
             log.error(f"Target {target.name} is unsolvable. Attempting to generate remaining targets.")
-            targets.remove(target)
+            target_muster.targets.remove(target)
         elif result == TargetCheckResult.SOLVABLE:
             log.warning(f"Target {target.name} is solvable, but is unstable. Use `ato resolve {target.name}` to stabalise as desired.")
         elif result == TargetCheckResult.UNTIDY:
@@ -76,7 +66,7 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
     project.ensure_build_dir()
     targets_string = ", ".join(target_names)
     log.info(f"Generating targets {targets_string}")
-    for target in targets:
+    for target in target_muster.targets:
         assert isinstance(target, Target)
         target.build()
 
@@ -84,5 +74,5 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
         log.info("All checks passed.")
         sys.exit(0)
     else:
-        log.error("Targets {failed_checks_str} failed checks.")
+        log.error("Targets failed.")
         sys.exit(1)

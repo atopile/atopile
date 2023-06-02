@@ -9,10 +9,7 @@ from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 from atopile.targets.targets import (
     Target,
-    TargetCheckResult,
     TargetMuster,
-    TargetNotFoundError,
-    find_target,
 )
 
 log = logging.getLogger(__name__)
