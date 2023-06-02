@@ -20,6 +20,10 @@ class BaseConfig:
     def name(self) -> str:
         return self._name
 
+    @classmethod
+    def from_config(cls, config: "BaseConfig") -> "BaseConfig":
+        return cls(config._config_data, config.project, config.name)
+
     def _return_subconfig(self, key: str, return_type) -> "BaseConfig":
         return return_type(self._config_data.get(key, {}), self.project, name=key)
 
@@ -27,7 +31,7 @@ class BaseConfig:
         return [return_type(d, self.project) for d in self._config_data.get(list_key, [])]
 
     def _return_dict_of(self, dict_key: str, return_type) -> dict:
-        return {return_type(v, self.project, name=k) for k, v in self._config_data.get(dict_key, {}).items()}
+        return {k: return_type(v, self.project, name=k) for k, v in self._config_data.get(dict_key, {}).items()}
 
 class Config(BaseConfig):
     @property
@@ -75,7 +79,7 @@ class BuildConfig(BaseConfig):
 
     @property
     def targets(self) -> List[str]:
-        return self._config_data.get("targets") or ["netlist-kicad6", "ref-map", "bom-jlcpcb"]
+        return self._config_data.get("targets") or ["designators", "netlist-kicad6", "bom-jlcpcb"]
 
 class CustomBuildConfig(BuildConfig):
     def __init__(self, project: "Project", root_file, root_node, targets) -> None:

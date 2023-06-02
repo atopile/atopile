@@ -3,8 +3,7 @@ import logging
 import click
 from uvicorn.logging import ColourizedFormatter
 
-from atopile.cli import view
-from atopile.cli import build
+from atopile.cli import build, resolve, view
 
 # configure logging
 log = logging.getLogger(__name__)
@@ -18,8 +17,9 @@ logging.root.addHandler(stream_handler)
 def cli():
     pass
 
-cli.add_command(view.view)
 cli.add_command(build.build)
+cli.add_command(resolve.resolve)
+cli.add_command(view.view)
 
 if __name__ == "__main__":
     cli()

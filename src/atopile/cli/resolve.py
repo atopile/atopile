@@ -22,7 +22,7 @@ log.setLevel(logging.INFO)
 @ingest_config_hat
 @click.option("--target", multiple=True, default=None)
 @click.option("--debug/--no-debug", default=None)
-def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool):
+def resolve(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool):
     if debug:
         import atopile.parser.parser
         atopile.parser.parser.log.setLevel(logging.DEBUG)
@@ -48,20 +48,4 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
     # check targets
     for target in targets:
         assert isinstance(target, Target)
-        result = target.check()
-        if result == TargetCheckResult.UNSOLVABLE:
-            log.error(f"Target {target.name} is unsolvable. Attempting to generate remaining targets.")
-            targets.remove(target)
-        elif result == TargetCheckResult.SOLVABLE:
-            log.warning(f"Target {target.name} is solvable, but is unstable. Use `ato resolve {target.name}` to stabalise is desired.")
-        elif result == TargetCheckResult.UNTIDY:
-            log.warning(f"Target {target.name} is solvable, but is untidy.")
-        elif result == TargetCheckResult.COMPLETE:
-            log.info(f"Target {target.name} passes check.")
-
-    # generate targets
-    targets_string = ", ".join(target_names)
-    log.info(f"Generating targets {targets_string}")
-    for target in targets:
-        assert isinstance(target, Target)
-        target.build()
+        target.resolve()
