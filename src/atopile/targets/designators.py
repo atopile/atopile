@@ -46,6 +46,10 @@ class Designators(Target):
         self.generate()
         return self._check_result
 
+    @property
+    def check_has_been_run(self) -> bool:
+        return self._check_result is not None
+
     def generate(self) -> Dict[str, str]:
         # cache previous builds
         # designators are common enough that we're likely to call a few times during other targets

@@ -1,6 +1,7 @@
+import collections
 import enum
 import logging
-from typing import Any, List
+from typing import Any, List, Union
 
 from atopile.model.model import Model
 from atopile.project.config import BaseConfig, BuildConfig
@@ -34,27 +35,32 @@ class TargetMuster:
         self.project = project
         self.model = model
         self.build_config = build_config
-        # using a list rather than a dict so we can preserve order
-        # TODO: consider an ordered dict
-        self._targets: List[Target] = []
+        self._targets: collections.OrderedDict[str, Target] = collections.OrderedDict()
 
     @property
     def target_names(self) -> List[str]:
-        return [t.name for t in self.targets]
+        return list(self._targets.keys())
 
     @property
     def targets(self) -> List["Target"]:
-        return self._targets
+        return list(self._targets.values())
 
-    def make_target(self, target_name: str) -> "Target":
-        if target_name not in self.target_names:
-            new_target = find_target(target_name)(self)
-            self._targets.append(new_target)
+    def ensure_target(self, target: Union[str, "Target"]):
+        if target is Target:
+            new_target_type = target
+        else:
+            new_target_type = find_target(target)
+
+        if new_target_type.name not in self._targets:
+            new_target: Target = new_target_type(self)
+            self._targets[new_target.name] = new_target
+            return new_target
+        return self._targets[new_target_type.name]
 
     def try_add_targets(self, target_names: List[str]) -> None:
         for target_name in target_names:
             try:
-                self.make_target(target_name)
+                self.ensure_target(target_name)
             except TargetNotFoundError:
                 log.error(f"Target {target_name} not found. Attempting to generate remaining targets.")
 
@@ -121,6 +127,10 @@ class Target:
         Check whether all the data required to build this target is available and valid.
         This is what's run with the `ato check <target>` command.
         """
+        raise NotImplementedError
+
+    @property
+    def check_has_been_run(self) -> bool:
         raise NotImplementedError
 
     def generate(self) -> Any:

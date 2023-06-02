@@ -1,4 +1,5 @@
 import datetime
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -7,8 +8,11 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
-from atopile.targets.targets import Target
+from atopile.targets.targets import Target, TargetMuster, TargetCheckResult
 
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 @define
 class KicadField:
@@ -314,9 +318,28 @@ class KicadNetlist:
         return netlist
 
 class Kicad6NetlistTarget(Target):
-    def generate(self) -> None:
-        netlist = KicadNetlist.from_model(self.model, root_node=self.build_config.root_node)
+    name = "netlist-kicad6"
+    def __init__(self, muster: TargetMuster) -> None:
+        self._netlist: Optional[KicadNetlist] = None
+        self._designator_target = muster.ensure_target("designators")
+        super().__init__(muster)
+
+    def generate(self) -> KicadNetlist:
+        if self._netlist is None:
+            self._netlist = KicadNetlist.from_model(self.model, root_node=self.build_config.root_node)
+        return self._netlist
+
+    def check(self) -> TargetCheckResult:
+        return self._designator_target.check()
+
+    @property
+    def check_has_been_run(self) -> bool:
+        return self._designator_target.check_has_been_run
+
+    def build(self) -> None:
+        netlist = self.generate()
         output_file = self.project.config.paths.build / self.build_config.root_file.with_suffix(".net").name
         netlist.to_file(output_file)
 
-    required_resolvers = ["designators"]
+    def resolve(self, *args, clean=None, **kwargs) -> None:
+        log.info(f"No direct resolve action for {self.name}")
