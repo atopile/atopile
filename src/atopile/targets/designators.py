@@ -7,9 +7,8 @@ import ruamel.yaml
 import yaml
 
 from atopile.model.accessors import ModelVertexView
-from atopile.model.model import Model, VertexType
-from atopile.project.config import BaseConfig, BuildConfig
-from atopile.project.project import Project
+from atopile.model.model import VertexType
+from atopile.project.config import BaseConfig
 from atopile.targets.targets import Target, TargetCheckResult
 from atopile.utils import update_dict
 
