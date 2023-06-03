@@ -11,6 +11,7 @@ from atopile.model.model import Model, VertexType
 from atopile.project.config import BaseConfig, BuildConfig
 from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult
+from atopile.utils import update_dict
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -151,14 +152,6 @@ class Designators(Target):
         else:
             designator_file_data: Dict[str, str] = {}
 
-        def update_dict(target: dict, source: dict):
-            for k, v in source.items():
-                if isinstance(v, dict):
-                    if k not in target:
-                        target[k] = {}
-                    update_dict(target[k], v)
-                else:
-                    target[k] = v
         update_dict(designator_file_data, self._designator_map)
 
         if clean:
