@@ -1,10 +1,10 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union, Set
+from typing import Any, Dict, List, Optional, Tuple, Union, Set, Iterable
 from collections import OrderedDict
 from pathlib import Path
 
 import ruamel.yaml
-from attrs import define, field
+from attrs import define, field, frozen
 
 from atopile.model.accessors import ModelVertexView
 from atopile.model.model import Model, VertexType
@@ -16,130 +16,58 @@ from atopile.utils import update_dict
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-
-@define
-class ImplicitComponent:
-    src_index: int
-    footprint: str
-    value: str
-    instance_of: str
-    mfg_part: str
-
-    def to_dict(self) -> OrderedDict:
-        result = OrderedDict()
-        result["footprint"] = self.footprint
-        result["value"] = self.value
-        result["instance-of"] = self.instance_of
-        result["mfg-part"] = self.mfg_part
-        return result
-
-    @staticmethod
-    def from_dict(data: dict) -> "ImplicitComponent":
-        return ImplicitComponent(
-            footprint=data["footprint"],
-            value=data["value"],
-            instance_of=data["instance-of"],
-            mfg_part=data["mfg-part"]
-        )
-
-    @staticmethod
-    def from_component(src_index: int, component: ModelVertexView) -> "ImplicitComponent":
-        return ImplicitComponent(
-            src_index=src_index,
-            footprint=component.data.get("footprint"),
-            value=component.data.get("value"),
-            instance_of=component.instance_of.path,
-            mfg_part=None
-        )
-
-@define
-class ExplicitComponent:
-    src_index: int
-    path: str
-    mfg_part: str
-
-    def to_dict(self) -> OrderedDict:
-        result = OrderedDict()
-        result["path"] = self.path
-        result["mfg-part"] = self.mfg_part
-        return result
-
-    @staticmethod
-    def from_dict(src_index: int, data: dict) -> "ExplicitComponent":
-        return ExplicitComponent(
-            src_index=src_index,
-            path=data["path"],
-            mfg_part=data["mfg-part"]
-        )
-
-class ComponentNotFoundError(Exception):
-        """The component you are looking for does not exist in the map."""
-
-@define
-class MfgPartMap:
-    # a component is assumed to be the same the same part if all:
-    # - it has the same footprint
-    # - it has the same value
-    # - it's an instance of the same class
-    # - it's not explicitly stated otherwise
-
-    implicit: List[ImplicitComponent]
-    explicit: List[ExplicitComponent]
-
-    implicit_map: Dict[Tuple[str, str, str], ImplicitComponent] = field(init=False)
-    explicit_map: Dict[str, str] = field(init=False)
-
-    def __attrs_post_init__(self) -> None:
-        self.implicit_map = {}
-        for component_group in self.implicit:
-            key = (component_group.footprint, component_group.value, component_group.instance_of)
-            self.implicit_map[key] = component_group
-        self.explicit_map = {c.path: c for c in self.explicit}
-
-    @staticmethod
-    def from_dict(data: dict) -> "MfgPartMap":
-        return MfgPartMap(
-            implicit=[ImplicitComponent.from_dict(i, v) for i, v in enumerate(data.get("implicit", []))],
-            explicit=[ExplicitComponent.from_dict(i, v) for i, v in enumerate(data.get("explicit", []))]
-        )
-
-    def to_dict(self) -> OrderedDict:
-        result = OrderedDict()
-        result["implicit"] = [v.to_dict() for v in self.implicit]
-        result["explicit"] = [v.to_dict() for v in self.explicit]
-        return result
-
-    def find_component(self, component: ModelVertexView, raise_unfound = True) -> Union[ExplicitComponent, ImplicitComponent]:
-        if component.path in self.explicit:
-            return self.explicit[component.path]
-
-        key = (component.data.get("footprint"), component.data.get("value"), component.instance_of.path)
-        if key in self.implicit_map:
-            return self.implicit_map[key]
-
-        if component.path in self.explicit_map:
-            return self.explicit_map[component.path]
-
-        if raise_unfound:
-            raise ComponentNotFoundError
-
-    def add_component(self, component: ModelVertexView) -> None:
-        pass
-
+yaml = ruamel.yaml.YAML()
+yaml.preserve_quotes = True
 
 class ComponentSelectionConfig(BaseConfig):
     @property
     def component_selection_file_template(self) -> str:
         return self._config_data.get("component-selection-file", "{build-config}-components.yaml")
 
+@frozen
+class ImplicitPartSpec:
+    instance_of: str
+    footprint: Optional[str]
+    value: Optional[str]
+    part: Optional[str]
 
-class MfgPartMapTarget(Target):
-    name = "component-selection"
+    def matches_component(self, component: ModelVertexView) -> bool:
+        if self.instance_of != component.instance_of.path:
+            return False
+        if self.footprint and self.footprint != component.data.get("footprint"):
+            return False
+        if self.value and self.value != component.data.get("value"):
+            return False
+        return True
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "ImplicitPartSpec":
+        return ImplicitPartSpec(data["instance_of"], data.get("footprint"), data.get("value"), data.get("part"))
+
+    @staticmethod
+    def from_component(component: ModelVertexView) -> "ImplicitPartSpec":
+        return ImplicitPartSpec(component.instance_of.path, component.data.get("footprint"), component.data.get("value"), component.data.get("part"))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"instance_of": self.instance_of, "footprint": self.footprint, "value": self.value, "part": self.part}
+
+class PartMapTarget(Target):
+    name = "part-map"
 
     def __init__(self, muster: TargetMuster) -> None:
-        self._mfg_map: Optional[MfgPartMap] = None
-        self._idea_mfg_map: Optional[MfgPartMap] = None
+        # cached outputs
+        self._component_path_to_part_number: Optional[Dict[str, str]] = None
         self._check_result: Optional[TargetCheckResult] = None
+
+        # cached inputs
+        self._components: Optional[List[ModelVertexView]] = None
+        self._implict_part_specs: Optional[List[ImplicitPartSpec]] = None
+
+        # cached intermediate results
+        self._unused_implicit_specs: Optional[Set[ImplicitPartSpec]] = None
+        self._unused_explicit_specs: Optional[Set[str]] = None
+        self._unspecd_components: Optional[List[ModelVertexView]] = None
+
         super().__init__(muster)
 
     @property
@@ -149,84 +77,156 @@ class MfgPartMapTarget(Target):
     def get_mfg_map_file(self) -> Path:
         return self.project.root / self.config.component_selection_file_template.format(**{"build-config": self.build_config.name})
 
+    def get_components(self) -> List[ModelVertexView]:
+        if self._components is not None:
+            return self._components
+
+        root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
+        self._components = root_node.get_descendants(VertexType.component)
+        return self._components
+
     def build(self) -> None:
-        log.info(f"Nothing to build {self.name} target.")
+        part_map_path = self.project.config.paths.build / self.build_config.root_file.with_suffix(".part-map.yaml").name
+        with part_map_path.open("w") as f:
+            f.write(yaml.dump(self.generate()))
 
     def resolve(self, *args, clean=None, **kwargs) -> None:
+        # skip this if there's nothing to do
         if self.check() == TargetCheckResult.COMPLETE:
             log.info(f"Nothing to resolve for {self.name} target.")
             return
 
+        # ensure generate has been run
+        self.generate()
+
         mfg_map_file = self.get_mfg_map_file()
+
         if mfg_map_file.exists():
             with mfg_map_file.open() as f:
-                existing_file_data = ruamel.yaml.safe_load(f)
+                existing_file_data = yaml.load(f)
         else:
-            # TODO: make this a ruamel.yaml dict so we can add comments?
-            existing_file_data = OrderedDict()
+            existing_file_data = yaml.load("{}")
 
-        missing_components = 
+        if not isinstance(existing_file_data, dict):
+            log.warning(f"Existing {self.get_mfg_map_file()} is not in the correct format. Rewriting.")
+            existing_file_data = yaml.load("{}")
 
+        missing_specs: Set[ImplicitPartSpec] = set()
+        for unspecd_component in self._unspecd_components:
+            missing_specs.add(ImplicitPartSpec.from_component(unspecd_component))
+
+        if missing_specs:
+            log.warning(f"Missing part numbers for {len(missing_specs)} parts. You need to manually add these to {self.get_mfg_map_file()}.")
+            for missing_spec in missing_specs:
+                existing_file_data.setdefault("implicit", []).append(missing_spec.to_dict())
+
+        if clean:
+            for unused_implicit_spec in self._unused_implicit_specs:
+                log.info(f"Removing unused implicit spec {unused_implicit_spec.to_dict()} from {self.get_mfg_map_file()}.")
+                existing_file_data["implicit"].remove(unused_implicit_spec.to_dict())
+            for unused_explicit_spec in self._unused_explicit_specs:
+                log.info(f"Removing unused explicit spec {unused_explicit_spec} from {self.get_mfg_map_file()}.")
+                existing_file_data["explicit"].pop(unused_explicit_spec)
+
+        with mfg_map_file.open("w") as f:
+            yaml.dump(existing_file_data, f)
 
     def check(self) -> TargetCheckResult:
         # cache previous checks
-        if self._check_result is not None:
-            return self._check_result
-
-        mfg_map = self.generate()
-
-        # get all components in the build
-        root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
-        generic_descendants = root_node.get_descendants(VertexType.component)
-
-        # make sure all components are in the mfg part map
-        self._idea_mfg_map = MfgPartMap([], [])
-        for component in generic_descendants:
-            try:
-                component_map = mfg_map.find_component(component)
-            except ComponentNotFoundError:
-                log.error(f"Component {component.path} isn't in the mfg part map.")
-                self._check_result = TargetCheckResult.UNSOLVABLE
-                component_map = ImplicitComponent.from_component(component)
-            self._idea_mfg_map.implicit.append(component_map)
-
-        # if we've already failed, return early
-        if self._check_result == TargetCheckResult.UNSOLVABLE:
-            log.error(f"Component selection is unsolvable, because there are parts missing from {self.get_mfg_map_file()}. Run `ato resolve {self.name}` to fix this.")
-            return self._check_result
-
-        if set(self._idea_mfg_map.implicit) | set(self._idea_mfg_map.explicit) != set(mfg_map.implicit) | set(mfg_map.explicit):
-            log.warning(f"There are unused components in {self.get_mfg_map_file()}. Run `ato resolve --clean {self.name}` to fix this.")
-            self._check_result = TargetCheckResult.UNTIDY
-        else:
-            self._check_result = TargetCheckResult.COMPLETE
-
+        if self._check_result is None:
+            self.generate()
         return self._check_result
 
     @property
     def check_has_been_run(self) -> bool:
-        raise NotImplementedError
+        if self._check_result is None:
+            return False
+        return True
 
-    def generate(self) -> MfgPartMap:
+    def generate(self) -> Dict[str, str]:
         # cache previous builds
-        if self._mfg_map is not None:
-            return self._mfg_map
+        if self._component_path_to_part_number is not None:
+            return self._component_path_to_part_number
 
         # get existing data
         component_selection_file = self.get_mfg_map_file()
         if component_selection_file.exists():
             with component_selection_file.open() as f:
-                file_data: Dict[str, str] = ruamel.yaml.safe_load(f)
+                file_data = yaml.load(f)
         else:
             file_data = {}
 
-        existing_mfg_part_map = MfgPartMap.from_dict(file_data)
-        return existing_mfg_part_map
+        if not isinstance(file_data, dict):
+            log.warning(f"Existing {self.get_mfg_map_file()} is not in the correct format. Ignoring.")
+            # TODO: danger of overwriting the check?
+            # consider creating a helper function `elevate_check_result` or something
+            self._check_result = TargetCheckResult.UNSOLVABLE
 
+        self._implict_part_specs: List[ImplicitPartSpec] = []
+        for key_data in file_data.get("implicit", []):
+            self._implict_part_specs.append(ImplicitPartSpec.from_dict(key_data))
 
-class BomJlcpcbTarget(Target):
+        components = self.get_components()
+
+        component_path_to_part_number = {}
+        undefined_components = []
+        used_implicit_specs = []
+        used_explicit_specs = []
+        for c in components:
+            # embedded in the ato file
+            # TODO: not sure this is a great idea
+            # TODO: we should at least be able to glob match these or something
+            if c.data.get("mfg_part_number"):
+                log.info(f"Using mfg part number {c.data.get('mfg_part_number')} from ato code for {c.path}.")
+                component_path_to_part_number[c.path] = c.data.get("mfg_part_number")
+                continue
+
+            # explicitly defined in the part map file
+            if c.path in file_data.get("explicit", {}):
+                log.info(f"Using explicit mfg part number {file_data['explicit'][c.path]} for {c.path}.")
+                used_explicit_specs.append(c.path)
+                component_path_to_part_number[c.path] = file_data["explicit"][c.path]
+                continue
+
+            # implicitly defined in the part map file
+            matching_specs: List[ImplicitPartSpec] = [s for s in self._implict_part_specs if s.matches_component(c)]
+            if len(matching_specs) == 1:
+                if matching_specs[0].part is not None:
+                    log.info(f"Using implicit mfg part number {matching_specs[0].part} for {c.path}.")
+                    component_path_to_part_number[c.path] = matching_specs[0].part
+                    used_implicit_specs.append(matching_specs[0])
+                    continue
+            elif len(matching_specs) > 1:
+                log.error(f"Multiple implicit part specs match {c.path}.")
+                continue
+
+            log.error(f"No part number for {c.path}.")
+            undefined_components.append(c)
+
+        self._unused_implicit_specs = set(self._implict_part_specs) - set(used_implicit_specs)
+        self._unused_explicit_specs = set(file_data.get("explicit", {}).keys()) - set(used_explicit_specs)
+        self._unspecd_components = undefined_components
+
+        if undefined_components:
+            log.error(f"Unable to generate {self.name} target.")
+            self._check_result = TargetCheckResult.UNSOLVABLE
+            return
+
+        if self._unused_implicit_specs or self._unused_explicit_specs:
+            log.warning(f"There are extraneous specs in {self.get_mfg_map_file()}. Run `ato resolve --clean {self.name}` to fix this.")
+            self._check_result = TargetCheckResult.UNTIDY
+
+        self._check_result = TargetCheckResult.COMPLETE
+        self._component_path_to_part_number = component_path_to_part_number
+
+        return self._component_path_to_part_number
+
+class DefunctBomJlcpcbTarget(Target):
+    name = "bom-jlcpcb"
+
     def __init__(self, muster: TargetMuster) -> None:
-        self._bom: Optional[MfgPartMap] = None
+        self._designator_target = muster.ensure_target("designators")
+        self._part_map_target = muster.ensure_target("part-map")
         super().__init__(muster)
 
     def generate(self) -> None:
@@ -272,104 +272,64 @@ class BomJlcpcbTarget(Target):
             for row in csv_data:
                 f.write(",".join(row) + "\n")
 
-    required_resolvers = []
-
-
-class BomResolverConfig(BaseConfig):
-    def __init__(self, config_data: dict, project: Project) -> None:
-        super().__init__("bom-jlcpcb", config_data, project)
-
-    @property
-    def bom_file_template(self) -> str:
-        return self._config_data.get("bom-file", "{build-config}-bom-jlcpcb.yaml")
-
-class BomJlcPcbResolver(Resolver):
+class BomJlcpcbTarget(Target):
     name = "bom-jlcpcb"
+    def __init__(self, muster: TargetMuster) -> None:
+        self.muster = muster
 
     @property
-    def config(self) -> BomResolverConfig:
-        generic_config = self.project.config.resolvers.get("designators")
-        if generic_config is None:
-            return BomResolverConfig({}, self.project)
-        return BomResolverConfig(generic_config._config_data, self.project)
+    def project(self) -> Project:
+        return self.muster.project
 
-    def run(self):
-        assert isinstance(self.config, BomResolverConfig)
+    @property
+    def model(self) -> Model:
+        return self.muster.model
 
-        bomjlcpcb_file = self.project.root / self.config.bom_file_template.format(**{"build-config": self.build_config.name})
-        if bomjlcpcb_file.exists():
-            with bomjlcpcb_file.open() as f:
-                bomjlcpcb_data: Dict[str, str] = yaml.safe_load(f)
-        else:
-            bomjlcpcb_data = {}
+    @property
+    def build_config(self) -> BuildConfig:
+        return self.muster.build_config
 
-        root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
-        components = root_node.get_descendants(VertexType.component)
+    @property
+    def name(self) -> str:
+        raise NotImplementedError
 
-        # check everything has a designator and footprint assigned
-        missing_designators = False
-        missing_footprints = False
-        for component in components:
-            if component.data.get("designator") is None:
-                log.error(f"{component.path} is missing a designator.")
-                missing_designators = True
-            if component.data.get("footprint") is None:
-                log.error(f"{component.path} is missing a footprint.")
-                missing_footprints = True
+    @property
+    def config(self) -> BaseConfig:
+        return self.project.config.targets.get(self.name, BaseConfig({}, self.project, self.name))
 
-        # raise and exception if there's a problem
-        if missing_designators:
-            log.error("Components are missing designators. Please assign designators to all components, consider the designators resolver, before running this resolver.")
-        if missing_footprints:
-            log.error("Components are missing footprints. Please assign footprints to all components, consider the footprints resolver, before running this resolver.")
+    def build(self) -> None:
+        """
+        Build this targets output and save it to the build directory.
+        What gets called when you run `ato build <target>`
+        """
+        raise NotImplementedError
 
-        if missing_designators or missing_footprints:
-            raise ValueError("Data missing for target bom-jlcpcb")
+    def resolve(self, *args, clean=None, **kwargs) -> None:
+        """
+        Interactively solve for missing data, potentially:
+        - prompting the user for more info
+        - outputting template files for a user to fill out
+        This function is expected to be called manually, and is
+        therefore allowed to write to version controlled files.
+        This is what's run with the `ato resolve <target>` command.
+        """
+        raise NotImplementedError
 
-        # bom-jlcpcb has nested keys of: class-path, footprint, value
-        # there's an additional key for "ungrouped components"
-        # group up components by the bom-jlcpcb structure
-        component_groups: Dict[str, Dict[str, Dict[str, List[ModelVertexView]]]] = {}
-        ungrouped_components: List[ModelVertexView] = []
+    def check(self) -> TargetCheckResult:
+        """
+        Check whether all the data required to build this target is available and valid.
+        This is what's run with the `ato check <target>` command.
+        """
+        raise NotImplementedError
 
-        # apply LCSC part numbers from exsiting bom-jlcpcb data
-        for component in components:
-            # if you're working with something that's not a component instance, I'm not quite sure what's going on, but I can't help...
-            if component.instance_of:
-                component_groups.setdefault(component.instance_of.path, {}).setdefault(component.data.get("footprint"), {}).setdefault(component.data.get("value"), []).append(component)
-            else:
-                ungrouped_components.append(component)
+    @property
+    def check_has_been_run(self) -> bool:
+        raise NotImplementedError
 
-        # apply LCSC part numbers from existing bom-jlcpcb data
-        for component_path, lcsc in bomjlcpcb_data.get("ungrouped", {}).items():
-            ModelVertexView.from_path(self.model, component_path).data["lcsc"] = lcsc
-        for class_path, footprints in component_groups.items():
-            for footprint, values in footprints.items():
-                for value, group_components in values.items():
-                    bomjlcpcb_data = bomjlcpcb_data.get(class_path, {}).get(footprint, {}).get(value)
-                    if bomjlcpcb_data is not None:
-                        for component in group_components:
-                            component.data["lcsc"] = bomjlcpcb_data["lcsc"]
-
-        # find component groups with more than one unique lcsc part number
-        # if there are multiple unique lcsc part numbers, then we dump all the components into the ungrouped_components list
-        # if there's only one unique lcsc part number, then we assign that lcsc part number to all the components
-        for class_path, footprints in component_groups.items():
-            for footprint, values in footprints.items():
-                for value, group_components in values.items():
-                    lcsc_part_numbers = set()
-                    for component in group_components:
-                        if component.data.get("lcsc"):
-                            lcsc_part_numbers.add(component.data.get("lcsc"))
-                    if len(lcsc_part_numbers) == 1:
-                        lcsc_part_number = list(lcsc_part_numbers)[0]
-                        for component in group_components:
-                            component.data["lcsc"] = lcsc_part_number
-                    elif len(lcsc_part_numbers) > 1:
-                        ungrouped_components.extend(group_components)
-                        component_groups[class_path][footprint][value].clear()
-
-        # finally, save all designators for next time
-        designator_dict = {c.path: c.designator for c in components}
-        with bomjlcpcb_file.open("w") as f:
-            yaml.safe_dump(designator_dict, f)
+    def generate(self) -> Any:
+        """
+        Generate and return the underlying data behind the target.
+        This isn't available from the command-line and is instead only used internally.
+        It provides other targets with access to the data generated by this target.
+        """
+        raise NotImplementedError
