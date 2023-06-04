@@ -1,7 +1,7 @@
 import collections
 import enum
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Optional
 
 from atopile.model.model import Model
 from atopile.project.config import BaseConfig, BuildConfig
@@ -97,6 +97,7 @@ class TargetCheckResult(enum.IntEnum):
 class Target:
     def __init__(self, muster: TargetMuster) -> None:
         self.muster = muster
+        self._check_result: Optional[TargetCheckResult] = None
 
     @property
     def project(self) -> Project:
@@ -148,6 +149,10 @@ class Target:
         if self._check_result is None:
             return False
         return True
+
+    def elevate_check_result(self, result: TargetCheckResult) -> None:
+        if self._check_result is None or result > self._check_result:
+            self._check_result = result
 
     def generate(self) -> Any:
         """

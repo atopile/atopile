@@ -22,7 +22,6 @@ class PartMapConfig(BaseConfig):
     def component_selection_file_template(self) -> str:
         return self._config_data.get("component-selection-file", "{build-config}-components.yaml")
 
-
 @frozen
 class ImplicitPartSpec:
     instance_of: str
