@@ -1,12 +1,11 @@
 import collections
 import enum
 import logging
-from typing import Any, List, Union
+from typing import Any, Dict, List, Union
 
 from atopile.model.model import Model
 from atopile.project.config import BaseConfig, BuildConfig
 from atopile.project.project import Project
-
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -26,11 +25,11 @@ def find_target(target_name: str) -> "Target":
         import atopile.targets.designators
         return atopile.targets.designators.Designators
     if target_name == "bom-jlcpcb":
-        import atopile.targets.bom_jlcpcb
-        return atopile.targets.bom_jlcpcb.BomJlcpcbTarget
+        import atopile.targets.bom.bom_jlcpcb
+        return atopile.targets.bom.bom_jlcpcb.BomJlcpcbTarget
     if target_name == "part-map":
-        import atopile.targets.bom_jlcpcb
-        return atopile.targets.bom_jlcpcb.PartMapTarget
+        import atopile.targets.part_map
+        return atopile.targets.part_map.PartMapTarget
     raise TargetNotFoundError(target_name)
 
 class TargetMuster:
@@ -48,6 +47,10 @@ class TargetMuster:
     def targets(self) -> List["Target"]:
         return list(self._targets.values())
 
+    @property
+    def target_dict(self) -> Dict[str, "Target"]:
+        return self._targets
+
     def ensure_target(self, target: Union[str, "Target"]):
         if target is Target:
             new_target_type = target
@@ -59,6 +62,14 @@ class TargetMuster:
             self._targets[new_target.name] = new_target
             return new_target
         return self._targets[new_target_type.name]
+
+    def reset_target(self, target: Union[str, "Target"]):
+        if target is Target:
+            new_target_type = target
+        else:
+            new_target_type = find_target(target)
+
+        self._targets[new_target_type.name] = new_target_type(self)
 
     def try_add_targets(self, target_names: List[str]) -> None:
         for target_name in target_names:
