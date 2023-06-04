@@ -1,0 +1,36 @@
+stages:
+  - build
+  - deploy
+
+docs-build:
+  stage: build
+  image:
+    name: python:latest
+  script:
+    - pip install -e.[docs]
+    - mkdocs build --site-dir build/docs/public
+  artifacts:
+    paths:
+      - build/docs/public
+  rules:
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    changes:
+      paths:
+        - docs/*
+
+docs-deploy:
+  stage: deploy
+  image: alpine
+  before_script:
+    - apk add openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$WWW_SSH_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  script:
+    - scp -o StrictHostKeyChecking=no -r build/docs/public deploy-www@atopile.io:/var/www/docs
+  rules:
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    changes:
+      paths:
+        - docs/*

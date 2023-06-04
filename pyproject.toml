@@ -57,9 +57,9 @@ test = [
     # "types-ujson ==5.7.0.1",
     # "types-orjson ==3.6.2",
 ]
-doc = [
-    "mkdocs >=1.1.2,<2.0.0",
-    "mkdocs-material >=8.1.4,<9.0.0",
+docs = [
+    "mkdocs",
+    "mkdocs-material",
     "mkdocs-drawio-file >= 1.5.2"
 ]
 dev = [
