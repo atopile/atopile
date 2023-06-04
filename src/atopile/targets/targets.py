@@ -28,6 +28,9 @@ def find_target(target_name: str) -> "Target":
     if target_name == "bom-jlcpcb":
         import atopile.targets.bom_jlcpcb
         return atopile.targets.bom_jlcpcb.BomJlcpcbTarget
+    if target_name == "part-map":
+        import atopile.targets.bom_jlcpcb
+        return atopile.targets.bom_jlcpcb.PartMapTarget
     raise TargetNotFoundError(target_name)
 
 class TargetMuster:
@@ -131,7 +134,9 @@ class Target:
 
     @property
     def check_has_been_run(self) -> bool:
-        raise NotImplementedError
+        if self._check_result is None:
+            return False
+        return True
 
     def generate(self) -> Any:
         """

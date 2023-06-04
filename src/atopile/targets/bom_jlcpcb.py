@@ -1,7 +1,7 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union, Set, Iterable
 from collections import OrderedDict
 from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import ruamel.yaml
 from attrs import define, field, frozen
@@ -48,8 +48,8 @@ class ImplicitPartSpec:
     def from_component(component: ModelVertexView) -> "ImplicitPartSpec":
         return ImplicitPartSpec(component.instance_of.path, component.data.get("footprint"), component.data.get("value"), component.data.get("part"))
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {"instance_of": self.instance_of, "footprint": self.footprint, "value": self.value, "part": self.part}
+    def to_dict(self, missing_part: str) -> Dict[str, Any]:
+        return {"instance_of": self.instance_of, "footprint": self.footprint, "value": self.value, "part": self.part or missing_part}
 
 class PartMapTarget(Target):
     name = "part-map"
@@ -118,12 +118,13 @@ class PartMapTarget(Target):
         if missing_specs:
             log.warning(f"Missing part numbers for {len(missing_specs)} parts. You need to manually add these to {self.get_mfg_map_file()}.")
             for missing_spec in missing_specs:
-                existing_file_data.setdefault("implicit", []).append(missing_spec.to_dict())
+                existing_file_data.setdefault("implicit", []).append(missing_spec.to_dict("<fill-me>"))
 
         if clean:
-            for unused_implicit_spec in self._unused_implicit_specs:
-                log.info(f"Removing unused implicit spec {unused_implicit_spec.to_dict()} from {self.get_mfg_map_file()}.")
-                existing_file_data["implicit"].remove(unused_implicit_spec.to_dict())
+            for spec in existing_file_data.get("implicit", []):
+                if spec in self._unused_implicit_specs:
+                    log.info(f"Removing unused implicit spec {spec} from {self.get_mfg_map_file()}.")
+                    existing_file_data["implicit"].remove(spec)
             for unused_explicit_spec in self._unused_explicit_specs:
                 log.info(f"Removing unused explicit spec {unused_explicit_spec} from {self.get_mfg_map_file()}.")
                 existing_file_data["explicit"].pop(unused_explicit_spec)
@@ -136,12 +137,6 @@ class PartMapTarget(Target):
         if self._check_result is None:
             self.generate()
         return self._check_result
-
-    @property
-    def check_has_been_run(self) -> bool:
-        if self._check_result is None:
-            return False
-        return True
 
     def generate(self) -> Dict[str, str]:
         # cache previous builds
@@ -160,7 +155,8 @@ class PartMapTarget(Target):
             log.warning(f"Existing {self.get_mfg_map_file()} is not in the correct format. Ignoring.")
             # TODO: danger of overwriting the check?
             # consider creating a helper function `elevate_check_result` or something
-            self._check_result = TargetCheckResult.UNSOLVABLE
+            self._check_result = TargetCheckResult.UNTIDY
+            file_data = {}
 
         self._implict_part_specs: List[ImplicitPartSpec] = []
         for key_data in file_data.get("implicit", []):
@@ -221,115 +217,139 @@ class PartMapTarget(Target):
 
         return self._component_path_to_part_number
 
-class DefunctBomJlcpcbTarget(Target):
-    name = "bom-jlcpcb"
 
-    def __init__(self, muster: TargetMuster) -> None:
-        self._designator_target = muster.ensure_target("designators")
-        self._part_map_target = muster.ensure_target("part-map")
-        super().__init__(muster)
-
-    def generate(self) -> None:
-        output_file = self.project.config.paths.build / self.build_config.root_file.with_suffix(".ref-map.yaml").name
-        root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
-        generic_descendants = root_node.get_descendants(VertexType.component)
-
-        csv_data = []
-        csv_data.append(("Comment", "Designator", "Footprint", "LCSC"))
-        for component_group in component_groups.values():
-            component_sample = component_group[0]
-            # figure out what to put in the "value" column
-            # start with a "value"
-            if component_sample.data.get("value"):
-                comment = component_sample.data.get("value")
-            # otherwise, try to use the thing it's an instance of
-            elif component_sample.instance_of:
-                comment = component_sample.instance_of.ref
-            else:
-                log.warning(f"No clear comment for {component_sample.path}.")
-                comment = ""
-
-            # designators
-            designators = [c.data.get("designator") for c in component_group]
-            designator = "\"" + ",".join(designators) + "\""
-
-            # footprints
-            # already grouped by component footprint
-            footprint = component_sample.data.get("footprint")
-
-            # figure out what to put in the "LCSC" column
-            # TODO: strict component selection? eg. force outputtting only completely specified components?
-            if component_sample.data.get("lcsc"):
-                lcsc = component_sample.data.get("lcsc")
-            else:
-                log.warning(f"No LCSC part number specified for {component_sample.path}.")
-                lcsc = ""
-
-            csv_data.append((comment, designator, footprint, lcsc))
-
-        with output_file.open("w") as f:
-            # TODO: pretty-print? pad our columns?
-            for row in csv_data:
-                f.write(",".join(row) + "\n")
+class BomJlcpcbTargetConfig(BaseConfig):
+    @property
+    def jlcpcb_map_file_template(self) -> str:
+        return self._config_data.get("jlcpcb-file", "{build-config}-bom-jlcpcb.yaml")
 
 class BomJlcpcbTarget(Target):
     name = "bom-jlcpcb"
     def __init__(self, muster: TargetMuster) -> None:
-        self.muster = muster
+        # dependant targets
+        self._designator_target = muster.ensure_target("designators")
+        self._part_map_target = muster.ensure_target("part-map")
+
+        # cached intermediates
+        self._missing_part_numbers: Optional[Set[str]] = None
+        self._extra_part_numbers: Optional[Set[str]] = None
+
+        # cached outputs
+        self._check_result: Optional[TargetCheckResult] = None
+        self._bom: Optional[str] = None
+
+        super().__init__(muster)
 
     @property
-    def project(self) -> Project:
-        return self.muster.project
+    def config(self) -> BomJlcpcbTargetConfig:
+        return BomJlcpcbTargetConfig.from_config(super().config)
 
-    @property
-    def model(self) -> Model:
-        return self.muster.model
-
-    @property
-    def build_config(self) -> BuildConfig:
-        return self.muster.build_config
-
-    @property
-    def name(self) -> str:
-        raise NotImplementedError
-
-    @property
-    def config(self) -> BaseConfig:
-        return self.project.config.targets.get(self.name, BaseConfig({}, self.project, self.name))
+    def get_jlcpcb_map_file(self) -> Path:
+        return self.project.root / self.config.jlcpcb_map_file_template.format(**{"build-config": self.build_config.name})
 
     def build(self) -> None:
-        """
-        Build this targets output and save it to the build directory.
-        What gets called when you run `ato build <target>`
-        """
-        raise NotImplementedError
+        if self._bom is None:
+            self.generate()
+
+        bom_path = self.project.config.paths.build / self.build_config.root_file.with_suffix(".bom.csv").name
+        with bom_path.open("w") as f:
+            f.write(self._bom)
 
     def resolve(self, *args, clean=None, **kwargs) -> None:
-        """
-        Interactively solve for missing data, potentially:
-        - prompting the user for more info
-        - outputting template files for a user to fill out
-        This function is expected to be called manually, and is
-        therefore allowed to write to version controlled files.
-        This is what's run with the `ato resolve <target>` command.
-        """
-        raise NotImplementedError
+        if self.check() == TargetCheckResult.COMPLETE:
+            log.info(f"Nothing to resolve for {self.name} target.")
+            return
+
+        if clean:
+            target_level = TargetCheckResult.COMPLETE
+        else:
+            target_level = TargetCheckResult.UNTIDY
+
+        if self._designator_target.check() > target_level:
+            self._designator_target.resolve(*args, clean=clean, **kwargs)
+
+        if self._part_map_target.check() > target_level:
+            self._part_map_target.resolve(*args, clean=clean, **kwargs)
+
+        map_file = self.get_jlcpcb_map_file()
+        if map_file.exists():
+            with map_file.open() as f:
+                existing_map = yaml.load(f)
+        else:
+            existing_map = yaml.load("{}")
+
+        if not isinstance(existing_map, dict):
+            log.warning(f"Existing {self.get_jlcpcb_map_file()} is not in the correct format. Rewriting.")
+            existing_map = yaml.load("{}")
+
+        for part_number in self._missing_part_numbers:
+            existing_map[part_number] = "<fill-me>"
+
+        if clean:
+            for part_number in self._extra_part_numbers:
+                log.info(f"Removing extraneous part number {part_number} from {self.get_jlcpcb_map_file()}.")
+                existing_map.pop(part_number)
+
+        with map_file.open("w") as f:
+            yaml.dump(existing_map, f)
 
     def check(self) -> TargetCheckResult:
-        """
-        Check whether all the data required to build this target is available and valid.
-        This is what's run with the `ato check <target>` command.
-        """
-        raise NotImplementedError
+        if self._check_result is None:
+            self.generate()
+        return max(self._check_result, self._designator_target.check(), self._part_map_target.check())
 
-    @property
-    def check_has_been_run(self) -> bool:
-        raise NotImplementedError
+    def generate(self) -> None:
+        if self._bom is not None:
+            return
 
-    def generate(self) -> Any:
-        """
-        Generate and return the underlying data behind the target.
-        This isn't available from the command-line and is instead only used internally.
-        It provides other targets with access to the data generated by this target.
-        """
-        raise NotImplementedError
+        component_to_designator_map = self._designator_target.generate()
+        component_to_part_map = self._part_map_target.generate()
+
+        part_to_components_map = {}
+        for component_path, part_number in component_to_part_map.items():
+            part_to_components_map.setdefault(part_number, []).append(component_path)
+
+        if self.get_jlcpcb_map_file().exists():
+            with self.get_jlcpcb_map_file().open() as f:
+                jlcpcb_map = yaml.load(f)
+        else:
+            log.error(f"Missing {self.get_jlcpcb_map_file()}. Cannot continue. Run `ato resolve {self.name}` to fix this.")
+            self._check_result = TargetCheckResult.UNSOLVABLE
+            return
+
+        if not isinstance(jlcpcb_map, dict):
+            log.error(f"Existing {self.get_jlcpcb_map_file()} is not in the correct format. Cannot continue. Run `ato resolve {self.name}` to fix this.")
+            self._check_result = TargetCheckResult.UNSOLVABLE
+            return
+
+        part_numbers_needed = set(part_to_components_map.keys())
+        part_numbers_available = set(jlcpcb_map.keys())
+        self._missing_part_numbers = part_numbers_needed - part_numbers_available
+
+        if self._missing_part_numbers:
+            log.error(f"Missing part numbers for {len(part_numbers_needed - part_numbers_available)} parts. Cannot continue. Run `ato resolve {self.name}` to fix this.")
+            self._check_result = TargetCheckResult.UNSOLVABLE
+            return
+
+        self._extra_part_numbers = part_numbers_available - part_numbers_needed
+        if self._extra_part_numbers:
+            log.warning(f"Extraneous part numbers for {len(part_numbers_available - part_numbers_needed)} parts. Run `ato resolve --clean {self.name}` to fix this.")
+            self._check_result = TargetCheckResult.UNTIDY
+        else:
+            self._check_result = TargetCheckResult.COMPLETE
+
+        bom_rows = ["Comment,Designator,Footprint,LCSC"]
+        for part_number, component_paths in part_to_components_map.items():
+            component_view = ModelVertexView.from_path(self.model, component_path)
+            comment = component_view.data.get("value", "")
+
+            designators = ",".join([component_to_designator_map[p] for p in component_paths])
+            if len(component_paths) > 1:
+                designators = "\"" + designators + "\""
+
+            footprint = component_view.data.get("footprint", "")
+            lcsc = jlcpcb_map[part_number]
+            row = ",".join([comment, designators, footprint, lcsc])
+            bom_rows.append(row)
+
+        self._bom = "\n".join(bom_rows)
