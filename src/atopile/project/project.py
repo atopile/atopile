@@ -4,7 +4,7 @@ from typing import Dict, Optional, Tuple
 import yaml
 
 from atopile.utils import get_project_root
-from .config import Config
+from atopile.project.config import Config
 
 CONFIG_FILENAME = "ato.yaml"
 ATO_DIR_NAME = ".ato"
@@ -46,7 +46,7 @@ class Project:
         return cls(project_dir, config)
 
     def ensure_build_dir(self):
-        self.build_dir.mkdir(parents=True, exist_ok=True)
+        self.config.paths.build.mkdir(parents=True, exist_ok=True)
 
     def get_std_lib_path(self):
         # TODO: this will only work for editable installs

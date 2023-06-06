@@ -57,3 +57,12 @@ def profile(profile_log: logging.Logger, entries: int=20, sort_stats="cumtime", 
     s = StreamToLogger(profile_log, logging.DEBUG)
     stats = pstats.Stats(prof, stream=s).sort_stats(sort_stats)
     stats.print_stats(entries)
+
+def update_dict(target: dict, source: dict):
+    for k, v in source.items():
+        if isinstance(v, dict):
+            if k not in target:
+                target[k] = {}
+            update_dict(target[k], v)
+        else:
+            target[k] = v

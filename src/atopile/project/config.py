@@ -1,34 +1,55 @@
 import logging
 from pathlib import Path
-from typing import Any, List
+from typing import TYPE_CHECKING, Dict, List
+
+if TYPE_CHECKING:
+    # See: https://adamj.eu/tech/2021/05/13/python-type-hints-how-to-fix-circular-imports/
+    from atopile.project.project import Project
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-class Config:
-    def __init__(self, config_data: dict, project) -> None:
-        self.config_data = config_data
+class BaseConfig:
+    def __init__(self, config_data: dict, project: "Project", name=None) -> None:
+        self._config_data = config_data
         self.project = project
+        self._name = name
 
-    def _return_subconfig(self, key: str, return_type) -> "BaseSubConfig":
-        return return_type(self.config_data.get(key, {}), self.project, self)
+    @property
+    def name(self) -> str:
+        return self._name
 
+    @classmethod
+    def from_config(cls, config: "BaseConfig") -> "BaseConfig":
+        return cls(config._config_data, config.project, config.name)
+
+    def _return_subconfig(self, key: str, return_type) -> "BaseConfig":
+        return return_type(self._config_data.get(key, {}), self.project, name=key)
+
+    def _return_list_of(self, list_key: str, return_type) -> list:
+        return [return_type(d, self.project) for d in self._config_data.get(list_key, [])]
+
+    def _return_dict_of(self, dict_key: str, return_type) -> dict:
+        return {k: return_type(v, self.project, name=k) for k, v in self._config_data.get(dict_key, {}).items()}
+
+class Config(BaseConfig):
     @property
     def paths(self) -> "Paths":
         return self._return_subconfig("paths", Paths)
 
     @property
-    def build(self) -> "Build":
-        return self._return_subconfig("build", Build)
+    def builds(self) -> Dict[str, "BuildConfig"]:
+        build_dict = self._return_dict_of("builds", BuildConfig)
+        if "default" not in build_dict:
+            build_dict["default"] = BuildConfig("default", {}, self.project)
+        return build_dict
 
-class BaseSubConfig:
-    def __init__(self, config_data: dict, project, parent: "BaseSubConfig") -> None:
-        self._config_data = config_data
-        self.project = project
-        self.parent = parent
+    @property
+    def targets(self) -> Dict[str, "BaseConfig"]:
+        return self._return_dict_of("targets", BaseConfig)
 
-class Paths(BaseSubConfig):
+class Paths(BaseConfig):
     @property
     def build(self) -> Path:
         build_dir = self._config_data.get("build")
@@ -41,70 +62,40 @@ class Paths(BaseSubConfig):
 
         return build_dir.resolve().absolute()
 
-class Build(BaseSubConfig):
+class BuildConfig(BaseConfig):
     @property
-    def configs(self) -> List["BuildConfig"]:
-        configs = self._config_data.get("configs", [])
-        if not isinstance(configs, list):
-            log.error("Build configs must be a list")
-            return []
-        return [BuildConfig(c, self.project, self) for c in configs]
-
-    @property
-    def default_config(self) -> "BuildConfig":
-        return DefaultBuildConfig(self._config_data.get("default", {}), self.project, self)
-
-class BuildConfig(BaseSubConfig):
-    def _get_or_default(self, key: str) -> Any:
-        if key not in self._config_data:
-            if self.name == "default":
-                log.warning(f"No value for {key} in default config")
-                return None
-            return self.parent.default_config._get_or_default(key)
-        return self._config_data[key]
-
-    @property
-    def name(self) -> str:
-        return self._get_or_default("name")
+    def default(self) -> "BuildConfig":
+        return self.project.config.builds["default"]
 
     @property
     def root_file(self) -> Path:
-        return self.project.root / self._get_or_default("root-file")
+        if "root-file" not in self._config_data:
+            return
+        return self.project.root / self._config_data["root-file"]
 
     @property
     def root_node(self) -> str:
-        return self._get_or_default("root-node")
+        return self._config_data.get("root-node", self._config_data.get("root-file"))
 
     @property
     def targets(self) -> List[str]:
-        return self._get_or_default("targets") or ["netlist", "ref-map"]
-
-    @property
-    def data_layers(self) -> List[Path]:
-        paths = self._config_data.get("data-layers", [])
-        return [self.project.root / p for p in paths]
-
-class DefaultBuildConfig(BuildConfig):
-    @property
-    def name(self) -> str:
-        return "default"
+        return self._config_data.get("targets") or ["designators", "netlist-kicad6", "bom-jlcpcb"]
 
 class CustomBuildConfig(BuildConfig):
-    def __init__(self, root_file, root_node, targets, data_layers) -> None:
-        self.root_file = root_file
-        self.root_node = root_node
-        self.targets = targets
-        self.data_layers = data_layers
-
-    @property
-    def name(self) -> str:
-        return "custom"
+    def __init__(self, project: "Project", root_file, root_node, targets) -> None:
+        self._name = "custom"
+        self.project = project
+        self._config_data = {
+            "root-file": root_file,
+            "root-node": root_node,
+            "targets": targets,
+        }
 
     @staticmethod
     def from_build_config(build_config: BuildConfig) -> "CustomBuildConfig":
         return CustomBuildConfig(
+            project=build_config.project,
             root_file=build_config.root_file,
             root_node=build_config.root_node,
             targets=build_config.targets,
-            data_layers=build_config.data_layers,
         )
