@@ -77,6 +77,9 @@ class BomJlcpcbTarget(Target):
         # self._spec_by_component: Optional[Dict[str, ImplicitPartSpec]] = None
         # self._missing_part_numbers: Optional[Set[str]] = None
         # self._extra_part_numbers: Optional[Set[str]] = None
+        self._component_to_jlcpcb_map: Dict = None
+        self._missing_part_to_jlcpcb: Set = None
+        self._missing_spec_to_jlcpcb: Set = None
 
         # cached outputs
         self._check_result: Optional[TargetCheckResult] = None
@@ -95,6 +98,10 @@ class BomJlcpcbTarget(Target):
         if self._bom is None:
             self.generate()
 
+        if self._check_result >= TargetCheckResult.UNSOLVABLE:
+            log.error(f"Cannot build {self.name} target due to missing translations. Run `ato resolve {self.name}` to fix this.")
+            return
+
         bom_path = self.project.config.paths.build / self.build_config.root_file.with_suffix(".bom.csv").name
         with bom_path.open("w") as f:
             f.write(self._bom)
@@ -104,39 +111,29 @@ class BomJlcpcbTarget(Target):
             log.info(f"Nothing to resolve for {self.name} target.")
             return
 
-        if clean:
-            target_level = TargetCheckResult.COMPLETE
+        # get jlcpcb map
+        if self.get_jlcpcb_map_file().exists():
+            with self.get_jlcpcb_map_file().open() as f:
+                jlcpcb_map = yaml.load(f)
+            if not isinstance(jlcpcb_map, dict):
+                # TODO: better schema enofrcement
+                log.error(f"Existing {self.get_jlcpcb_map_file()} is not in the correct format. Rewriting it.")
+                self.elevate_check_result(TargetCheckResult.UNTIDY)
+                jlcpcb_map = yaml.load("{}")
         else:
-            target_level = TargetCheckResult.UNTIDY
+            log.warning(f"Missing {self.get_jlcpcb_map_file()}.")
+            jlcpcb_map = yaml.load("{}")
 
-        # given the designator targets are critical, this must be resolved
-        if self._designator_target.check() > target_level:
-            self._designator_target.resolve(*args, clean=clean, **kwargs)
+        for part_number in self._missing_part_to_jlcpcb:
+            jlcpcb_map.setdefault("by-part", {})[part_number] = "<fill-me>"
 
-        map_file = self.get_jlcpcb_map_file()
-        if map_file.exists():
-            with map_file.open() as f:
-                existing_map = yaml.load(f)
-        else:
-            existing_map = yaml.load("{}")
+        for spec in self._missing_spec_to_jlcpcb:
+            spec_dict = spec.to_dict()
+            spec_dict["jlcpcb"] = "<fill-me>"
+            jlcpcb_map.setdefault("by-spec", []).append(spec_dict)
 
-        if not isinstance(existing_map, dict):
-            log.warning(f"Existing {self.get_jlcpcb_map_file()} is not in the correct format. Rewriting.")
-            existing_map = yaml.load("{}")
-
-        for part_number in self._missing_part_numbers:
-            existing_map[part_number] = "<fill-me>"
-
-        if clean:
-            for part_number in self._extra_part_numbers:
-                log.info(f"Removing extraneous part number {part_number} from {self.get_jlcpcb_map_file()}.")
-                existing_map.pop(part_number)
-
-        with map_file.open("w") as f:
-            yaml.dump(existing_map, f)
-
-        # reload self
-        self.muster.reset_target(self.name)
+        with self.get_jlcpcb_map_file().open("w") as f:
+            yaml.dump(jlcpcb_map, f)
 
     def check(self) -> TargetCheckResult:
         if self._check_result is None:
@@ -144,18 +141,22 @@ class BomJlcpcbTarget(Target):
         return max(self._check_result, self._designator_target.check())
 
     def generate(self) -> None:
-        if self._bom is not None:
-            return
+        if self._component_to_jlcpcb_map is not None:
+            return self._component_to_jlcpcb_map
 
         component_to_designator_map = self._designator_target.generate()
 
         # get part map
-        part_to_components_map = {}
-        components_in_part_map = set()
-        if self._part_map_target is not None:
-            for component_path, part_number in self._part_map_target.generate().items():
-                part_to_components_map.setdefault(part_number, []).append(component_path)
-                components_in_part_map.add(component_path)
+        # part_to_components_map = {}
+        # components_in_part_map = set()
+        # if self._part_map_target is not None:
+        #     for component_path, part_number in self._part_map_target.generate().items():
+        #         part_to_components_map.setdefault(part_number, []).append(component_path)
+        #         components_in_part_map.add(component_path)
+        if self._part_map_target is None:
+            component_to_part_map = {}
+        else:
+            component_to_part_map = self._part_map_target.generate()
 
         # get jlcpcb map
         if self.get_jlcpcb_map_file().exists():
@@ -170,43 +171,63 @@ class BomJlcpcbTarget(Target):
             log.warning(f"Missing {self.get_jlcpcb_map_file()}.")
             jlcpcb_map = yaml.load("{}")
 
-        # get implicit parts
-        components, components_by_spec, spec_by_component = part_spec_groups(self.model, self.build_config.root_node)
+        # get implicit part specs
+        components, _, spec_by_component = part_spec_groups(self.model, self.build_config.root_node)
+
+        # get implicit spec-to-jlcpcb map
+        specs_to_jlcpcb = {}
+        for data in jlcpcb_map.get("by-spec", []):
+            if data.get("jlcpcb", "<fill-me>") != "<fill-me>":
+                specs_to_jlcpcb[ImplicitPartSpec.from_dict(data)] = data["jlcpcb"]
+            else:
+                log.warning(f"Missing jlcpcb part number for {data}.")
 
         # build up component to jlcpcb map
         component_to_jlcpcb_map = {}
-        missing_part_to_component = set()
-        missing_spec_to_component = set()
+        self._missing_part_to_jlcpcb = set()
+        self._missing_spec_to_jlcpcb = set()
         for component in components:
+            if component.path in jlcpcb_map.get("explicit", {}):
+                component_to_jlcpcb_map[component.path] = jlcpcb_map.get("explicit", {}).get(component.path)
+                continue
 
+            if component.path in component_to_part_map:
+                part_number = component_to_part_map[component.path]
+                if part_number in jlcpcb_map.get("by-part", {}):
+                    component_to_jlcpcb_map[component.path] = jlcpcb_map["by-part"][part_number]
+                    continue
+                else:
+                    self._missing_part_to_jlcpcb.add(part_number)
+                    continue
 
+            component_spec = spec_by_component[component.path]
+            if component_spec in specs_to_jlcpcb:
+                component_to_jlcpcb_map[component.path] = specs_to_jlcpcb[component_spec]
+                continue
 
+            self._missing_spec_to_jlcpcb.add(component_spec)
+            log.error(f"Missing jlcpcb part number for {component.path}.")
 
+        if self._missing_part_to_jlcpcb or self._missing_spec_to_jlcpcb:
+            log.error(f"Missing translations. Cannot continue. Run `ato resolve {self.name}` to fix this.")
+            self.elevate_check_result(TargetCheckResult.UNSOLVABLE)
+            return {}
 
+        self._component_to_jlcpcb_map = component_to_jlcpcb_map
+        self.elevate_check_result(TargetCheckResult.COMPLETE)
 
-        self._components_by_spec, self._spec_by_component = part_spec_groups(self.model, self.build_config.root_node)
-        part_numbers_expected = set(part_to_components_map.keys())
-        self._missing_part_numbers = part_numbers_expected
-        self._components_missing = set()
-        self._extra_part_numbers = set()
+        # combine like components
+        jlcpcb_to_component_map = {}
+        for component_path, jlcpcb_part_number in component_to_jlcpcb_map.items():
+            jlcpcb_to_component_map.setdefault(jlcpcb_part_number, []).append(component_path)
 
-        part_numbers_available = set(jlcpcb_map.get("by-part-number", {}).keys())
-        self._missing_part_numbers = part_numbers_expected - part_numbers_available
-        self._extra_part_numbers = part_numbers_available - part_numbers_expected
-
-        if self._missing_part_numbers:
-            log.error(f"Missing part numbers for {len(part_numbers_expected - part_numbers_available)} parts. Cannot continue. Run `ato resolve {self.name}` to fix this.")
-            self._check_result = TargetCheckResult.UNSOLVABLE
-            return
-
-        if self._extra_part_numbers:
-            log.warning(f"Extraneous part numbers for {len(part_numbers_available - part_numbers_expected)} parts. Run `ato resolve --clean {self.name}` to fix this.")
-            self._check_result = TargetCheckResult.UNTIDY
-        else:
-            self._check_result = TargetCheckResult.COMPLETE
-
+        # build up bom
         bom_rows = ["Comment,Designator,Footprint,LCSC"]
-        for part_number, component_paths in part_to_components_map.items():
+        for jlcpcb_number, component_paths in jlcpcb_to_component_map.items():
+            if jlcpcb_number == "ignore":
+                continue
+
+            component_path = component_paths[0]
             component_view = ModelVertexView.from_path(self.model, component_path)
             comment = component_view.data.get("value", "")
 
@@ -214,9 +235,11 @@ class BomJlcpcbTarget(Target):
             if len(component_paths) > 1:
                 designators = "\"" + designators + "\""
 
-            footprint = component_view.data.get("footprint", "")
-            lcsc = jlcpcb_map[part_number]
+            footprint = component_view.data.get("footprint", "").split(":")[-1]
+            lcsc = jlcpcb_number
             row = ",".join([comment, designators, footprint, lcsc])
             bom_rows.append(row)
 
         self._bom = "\n".join(bom_rows)
+
+        return self._component_to_jlcpcb_map
