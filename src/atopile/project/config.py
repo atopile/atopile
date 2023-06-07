@@ -81,15 +81,13 @@ class BuildConfig(BaseConfig):
     def targets(self) -> List[str]:
         return self._config_data.get("targets") or ["designators", "netlist-kicad6", "bom-jlcpcb"]
 
-class CustomBuildConfig(BuildConfig):
+class CustomBuildConfig:
     def __init__(self, project: "Project", root_file, root_node, targets) -> None:
         self._name = "custom"
         self.project = project
-        self._config_data = {
-            "root-file": root_file,
-            "root-node": root_node,
-            "targets": targets,
-        }
+        self.root_file = root_file
+        self.root_node = root_node
+        self.targets = targets
 
     @staticmethod
     def from_build_config(build_config: BuildConfig) -> "CustomBuildConfig":
