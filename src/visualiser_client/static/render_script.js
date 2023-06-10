@@ -7,6 +7,8 @@ let settings_dict = {
         gridSize: 5,
         parentPadding: 50,
         fontFamily: "sans-serif",
+        labelHorizontalMargin: 80,
+        labelVerticalMargin: 40,
     },
     component : {
         strokeWidth: 2,
@@ -16,7 +18,6 @@ let settings_dict = {
         portPitch: 20,
         defaultHeight: 50,
         pin: {
-            labelPadding: 5, // currently not being used
             labelFontSize: 10,
         }
     },
@@ -69,8 +70,8 @@ class AtoComponent extends AtoElement {
         return {
             ...super.defaults(),
             type: "AtoComponent",
-            size: { width: settings_dict["component"]["defaultWidth"],
-                    height: settings_dict["component"]["defaultHeight"] },
+            size: { width: 2 * settings_dict["common"]["labelHorizontalMargin"],
+                    height: 2 * settings_dict["common"]["labelVerticalMargin"] },
             attrs: {
                 body: {
                     fill: "white",
@@ -206,9 +207,9 @@ function getPortLabelPosition(port) {
 function getPortLabelAnchor(port) {
     switch (port['location']) {
         case "top":
-            return 'middle';
+            return 'end';
         case "bottom":
-            return 'middle';
+            return 'start';
         case "left":
             return 'start';
         case "right":
@@ -216,7 +217,61 @@ function getPortLabelAnchor(port) {
         default:
             return 'middle';
     }
-}
+};
+
+function getPortLabelAngle(port) {
+    switch (port['location']) {
+        case "top":
+            return -90;
+        case "bottom":
+            return -90;
+        case "left":
+            return 0;
+        case "right":
+            return 0;
+        default:
+            return 0;
+    };
+};
+
+function getPortPosition(port) {
+    switch (port['location']) {
+        case "top":
+            return {
+                name: 'line',
+                args: {
+                    start: { x: settings_dict['common']['labelHorizontalMargin'], y: 0 },
+                    end: { x: ('calc(w - ' + settings_dict['common']['labelHorizontalMargin'] + ')'), y: 0 }
+                },
+            };
+        case "bottom":
+            return {
+                name: 'line',
+                args: {
+                    start: { x: settings_dict['common']['labelHorizontalMargin'], y: 'calc(h)' },
+                    end: { x: ('calc(w - ' + settings_dict['common']['labelHorizontalMargin'] + ')'), y: 'calc(h)' }
+                },
+            };
+        case "left":
+            return {
+                name: 'line',
+                args: {
+                    start: { x: 0, y: settings_dict['common']['labelVerticalMargin']},
+                    end: { x: 0, y: ('calc(h - ' + settings_dict['common']['labelVerticalMargin'] + ')')}
+                },
+            };
+        case "right":
+            return {
+                name: 'line',
+                args: {
+                    start: { x: 'calc(w)', y: settings_dict['common']['labelVerticalMargin'] },
+                    end: { x: 'calc(w)', y: ('calc(h - ' + settings_dict['common']['labelVerticalMargin'] + ')')}
+                },
+            };
+        default:
+            return 0;
+    };
+};
 
 function addPortsAndPins(element, port_list) {
     // Dict of all the port for the element
@@ -226,30 +281,34 @@ function addPortsAndPins(element, port_list) {
     // Create the different ports
     for (let port of port_list) {
 
-        let port_position = [];
-        port_position = getPortLabelPosition(port);
+        let port_label_position = [];
+        let port_anchor = "";
+        let port_angle = 0;
+        let port_position = {};
+        port_label_position = getPortLabelPosition(port);
         port_anchor = getPortLabelAnchor(port);
-        console.log(port_anchor)
+        port_angle = getPortLabelAngle(port);
+        port_position = getPortPosition(port);
+
 
         pin_nb_by_port[port['location']] = 0;
 
         port_groups[port['name']] = {
-            position: {
-                name: port['location'],
-            },
+            position: port_position,
             attrs: {
                 portBody: {
                     magnet: true,
                     r: 2,
                     fill: '#FFFFFF',
-                    stroke:'#023047'
+                    stroke:'#023047',
                 },
             },
             label: {
                 position: {
                     args: {
-                        x: port_position[0],
-                        y: port_position[1],
+                        x: port_label_position[0],
+                        y: port_label_position[1],
+                        angle: port_angle,
                     }, // Can't use inside/outside in combination
                     //name: 'inside'
                 },
@@ -292,7 +351,7 @@ function addPortsAndPins(element, port_list) {
     let max_width = Math.max(top_pin_number || -Infinity, bottom_pin_number || -Infinity);
     let max_height = Math.max(left_pin_number || -Infinity, right_pin_number || -Infinity);
 
-    let component_width = settings_dict['component']['defaultWidth'];
+    let component_width = 2 * settings_dict['common']['labelHorizontalMargin'];
     if (max_width > 0) {
         component_width += settings_dict['component']['portPitch'] * max_width;
     }
