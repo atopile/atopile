@@ -6,9 +6,7 @@ let settings_dict = {
         backgroundColor: 'rgba(224, 233, 227, 0.3)',
         gridSize: 5,
         parentPadding: 50,
-        fontFamily: "sans-serif",
-        labelHorizontalMargin: 80,
-        labelVerticalMargin: 40,
+        fontFamily: "monospace",
     },
     component : {
         strokeWidth: 2,
@@ -17,6 +15,9 @@ let settings_dict = {
         defaultWidth: 60,
         portPitch: 20,
         defaultHeight: 50,
+        labelHorizontalMargin: 40,
+        labelVerticalMargin: 10,
+        titleMargin: 15,
         pin: {
             labelFontSize: 10,
         }
@@ -70,8 +71,6 @@ class AtoComponent extends AtoElement {
         return {
             ...super.defaults(),
             type: "AtoComponent",
-            size: { width: 2 * settings_dict["common"]["labelHorizontalMargin"],
-                    height: 2 * settings_dict["common"]["labelVerticalMargin"] },
             attrs: {
                 body: {
                     fill: "white",
@@ -91,6 +90,9 @@ class AtoComponent extends AtoElement {
                     textVerticalAnchor: "middle",
                     textAnchor: "middle",
                     fontFamily: settings_dict["common"]["fontFamily"],
+                    textWrap: {
+                        width: 100,
+                    },
                     x: "calc(w/2)",
                     y: "calc(h/2)"
                 }
@@ -202,7 +204,7 @@ function getPortLabelPosition(port) {
         default:
             return [0, 0];
     };
-}
+};
 
 function getPortLabelAnchor(port) {
     switch (port['location']) {
@@ -240,32 +242,32 @@ function getPortPosition(port) {
             return {
                 name: 'line',
                 args: {
-                    start: { x: settings_dict['common']['labelHorizontalMargin'], y: 0 },
-                    end: { x: ('calc(w - ' + settings_dict['common']['labelHorizontalMargin'] + ')'), y: 0 }
+                    start: { x: settings_dict['component']['labelHorizontalMargin'], y: 0 },
+                    end: { x: ('calc(w - ' + settings_dict['component']['labelHorizontalMargin'] + ')'), y: 0 }
                 },
             };
         case "bottom":
             return {
                 name: 'line',
                 args: {
-                    start: { x: settings_dict['common']['labelHorizontalMargin'], y: 'calc(h)' },
-                    end: { x: ('calc(w - ' + settings_dict['common']['labelHorizontalMargin'] + ')'), y: 'calc(h)' }
+                    start: { x: settings_dict['component']['labelHorizontalMargin'], y: 'calc(h)' },
+                    end: { x: ('calc(w - ' + settings_dict['component']['labelHorizontalMargin'] + ')'), y: 'calc(h)' }
                 },
             };
         case "left":
             return {
                 name: 'line',
                 args: {
-                    start: { x: 0, y: settings_dict['common']['labelVerticalMargin']},
-                    end: { x: 0, y: ('calc(h - ' + settings_dict['common']['labelVerticalMargin'] + ')')}
+                    start: { x: 0, y: settings_dict['component']['labelVerticalMargin']},
+                    end: { x: 0, y: ('calc(h - ' + settings_dict['component']['labelVerticalMargin'] + ')')}
                 },
             };
         case "right":
             return {
                 name: 'line',
                 args: {
-                    start: { x: 'calc(w)', y: settings_dict['common']['labelVerticalMargin'] },
-                    end: { x: 'calc(w)', y: ('calc(h - ' + settings_dict['common']['labelVerticalMargin'] + ')')}
+                    start: { x: 'calc(w)', y: settings_dict['component']['labelVerticalMargin'] },
+                    end: { x: 'calc(w)', y: ('calc(h - ' + settings_dict['component']['labelVerticalMargin'] + ')')}
                 },
             };
         default:
@@ -273,13 +275,68 @@ function getPortPosition(port) {
     };
 };
 
-function addPortsAndPins(element, port_list) {
+function measureText(text, text_size, direction) {
+    var lines = text.split("\n");
+    var width = 0;
+    for (let line of lines) {
+        var length = line.length;
+        if (length > width) {
+            width = length;
+        };
+    };
+    if (direction == 'length') {
+        // divide by 3 to go from font size to pxl, will have to fix
+        return width * text_size / 2;
+    }
+    else if (direction == 'height') {
+        return lines.length * text_size * 1.5;
+    }
+    else {
+        return 0;
+    }
+};
+
+function resizeBasedOnLabels(element, ports_list) {
+    // Largest text for each port
+    let text_length_by_port = {
+        'top': 0,
+        'left': 0,
+        'right': 0,
+        'bottom': 0,
+    };
+
+    for (let port of ports_list) {
+        for (let pin of port['pins']) {
+            label_length = measureText(pin['name'], settings_dict['component']['fontSize'], 'length');
+            if (label_length > text_length_by_port[port['name']]) {
+                console.log(label_length);
+                text_length_by_port[port['location']] = label_length;
+            };
+        };
+    };
+
+    // width of the component with text only
+    max_label_text_width = Math.max(text_length_by_port['left'], text_length_by_port['right']);
+    max_label_text_height = Math.max(text_length_by_port['top'], text_length_by_port['bottom']);
+
+    let comp_width_by_text = element.getBBox().width + 2 * max_label_text_width;
+    let comp_height_by_text = element.getBBox().height + 2 * max_label_text_height;
+
+    console.log(text_length_by_port['top'] + " " + text_length_by_port['bottom'])
+    console.log('height');
+    console.log(comp_height_by_text);
+    element.resize(comp_width_by_text, comp_height_by_text);
+};
+
+function addPortsAndPins(element, ports_list) {
     // Dict of all the port for the element
     let port_groups = {};
 
+    // Number of pins on each port
     let pin_nb_by_port = {};
-    // Create the different ports
-    for (let port of port_list) {
+
+    // Create the different ports from the list
+    for (let port of ports_list) {
 
         let port_label_position = [];
         let port_anchor = "";
@@ -289,7 +346,6 @@ function addPortsAndPins(element, port_list) {
         port_anchor = getPortLabelAnchor(port);
         port_angle = getPortLabelAngle(port);
         port_position = getPortPosition(port);
-
 
         pin_nb_by_port[port['location']] = 0;
 
@@ -348,6 +404,7 @@ function addPortsAndPins(element, port_list) {
     let left_pin_number = 'left' in pin_nb_by_port ? pin_nb_by_port.left : undefined;
     let right_pin_number = 'right' in pin_nb_by_port ? pin_nb_by_port.right : undefined;
 
+    // Check the maximum number of pins on the horizontal and vertical line
     let max_width = Math.max(top_pin_number || -Infinity, bottom_pin_number || -Infinity);
     let max_height = Math.max(left_pin_number || -Infinity, right_pin_number || -Infinity);
 
@@ -355,11 +412,10 @@ function addPortsAndPins(element, port_list) {
     if (max_width > 0) {
         component_width += settings_dict['component']['portPitch'] * max_width;
     }
-    let component_height = settings_dict['component']['defaultHeight'];
+    let component_height = 2 * settings_dict['common']['labelVerticalMargin'];
     if (max_height > 0) {
         component_height += settings_dict['component']['portPitch'] * max_height;
     }
-    element.resize(component_width, component_height);
 
     // Add the ports list to the element
     element.prop({"ports": { "groups": port_groups}});
@@ -408,7 +464,6 @@ function addLinks(links) {
 
 function addStubs(stubs) {
     for (let stub of stubs) {
-        console.log(stub);
         var added_stub = new shapes.standard.Link({id: stub['uuid']});
         added_stub.prop('source', {
             id: pin_to_element_association[stub['source']],
@@ -460,16 +515,21 @@ function addStubs(stubs) {
 }
 
 function createComponent(title, uuid, ports_dict, x, y) {
+    comp_width = measureText(title, settings_dict['component']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
+    comp_height = measureText(title, settings_dict['component']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     const component = new AtoComponent({
         id: uuid,
+        size: { width: comp_width,
+                height: comp_height},
         attrs: {
             label: {
-                text: title
+                text: title,
             }
         }
     });
 
     addPortsAndPins(component, ports_dict);
+    resizeBasedOnLabels(component, ports_dict);
 
     component.addTo(graph);
     component.position(x, y, { parentRelative: true });
@@ -590,6 +650,7 @@ window.onresize = fill_paper;
 let pin_to_element_association = {};
 let element_dict = {};
 
+
 paper.on('link:mouseenter', function(linkView) {
     linkView.showTools();
     linkView.highlight();
@@ -601,7 +662,6 @@ paper.on('link:mouseleave', function(linkView) {
 });
 
 paper.on('cell:pointerup', function(cell, evt, x, y) {
-    console.log(cell);
     let requestOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
