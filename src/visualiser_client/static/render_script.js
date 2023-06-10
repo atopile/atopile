@@ -7,6 +7,8 @@ let settings_dict = {
         gridSize: 5,
         parentPadding: 50,
         fontFamily: "monospace",
+        fontHeightToPxRatio: 1.6,
+        fontLengthToPxRatio: 0.7,
     },
     component : {
         strokeWidth: 2,
@@ -17,7 +19,7 @@ let settings_dict = {
         defaultHeight: 50,
         labelHorizontalMargin: 40,
         labelVerticalMargin: 10,
-        titleMargin: 15,
+        titleMargin: 10,
         pin: {
             labelFontSize: 10,
         }
@@ -286,16 +288,17 @@ function measureText(text, text_size, direction) {
     };
     if (direction == 'length') {
         // divide by 3 to go from font size to pxl, will have to fix
-        return width * text_size / 2;
+        return width * text_size * settings_dict['common']['fontLengthToPxRatio'];
     }
     else if (direction == 'height') {
-        return lines.length * text_size * 1.5;
+        return lines.length * text_size * settings_dict['common']['fontHeightToPxRatio'];
     }
     else {
         return 0;
     }
 };
 
+// This function resizes a component based on the size of the labels
 function resizeBasedOnLabels(element, ports_list) {
     // Largest text for each port
     let text_length_by_port = {
@@ -309,7 +312,6 @@ function resizeBasedOnLabels(element, ports_list) {
         for (let pin of port['pins']) {
             label_length = measureText(pin['name'], settings_dict['component']['fontSize'], 'length');
             if (label_length > text_length_by_port[port['name']]) {
-                console.log(label_length);
                 text_length_by_port[port['location']] = label_length;
             };
         };
@@ -322,10 +324,36 @@ function resizeBasedOnLabels(element, ports_list) {
     let comp_width_by_text = element.getBBox().width + 2 * max_label_text_width;
     let comp_height_by_text = element.getBBox().height + 2 * max_label_text_height;
 
-    console.log(text_length_by_port['top'] + " " + text_length_by_port['bottom'])
-    console.log('height');
-    console.log(comp_height_by_text);
     element.resize(comp_width_by_text, comp_height_by_text);
+};
+
+// This function resizes components based on the number of ports on each side.
+function resizeBasedOnPorts(element, ports_list) {
+    let component_port_nb = {
+        'top': 0,
+        'left': 0,
+        'right': 0,
+        'bottom': 0,
+    };
+    for (let port of ports_list) {
+        component_port_nb[port['location']] = port['pins'].length;
+    };
+    console.log(component_port_nb);
+
+    width_with_ports = 2 * settings_dict['component']['labelHorizontalMargin'] +
+                        Math.max(component_port_nb['top'], component_port_nb['bottom']) * (settings_dict['component']['portPitch'] - 1);
+    height_with_ports = 2 * settings_dict['component']['labelVerticalMargin'] +
+                        Math.max(component_port_nb['left'], component_port_nb['right']) * (settings_dict['component']['portPitch'] - 1);
+
+    if (width_with_ports > element.getBBox().width) {
+        element.resize(width_with_ports, element.getBBox().height);
+        console.log('width changed');
+    };
+    if (height_with_ports > element.getBBox().height) {
+        element.resize(element.getBBox().width, height_with_ports);
+        console.log('height changed');
+    };
+
 };
 
 function addPortsAndPins(element, ports_list) {
@@ -530,6 +558,7 @@ function createComponent(title, uuid, ports_dict, x, y) {
 
     addPortsAndPins(component, ports_dict);
     resizeBasedOnLabels(component, ports_dict);
+    resizeBasedOnPorts(component, ports_dict);
 
     component.addTo(graph);
     component.position(x, y, { parentRelative: true });
