@@ -360,9 +360,6 @@ function addPortsAndPins(element, ports_list) {
     // Dict of all the port for the element
     let port_groups = {};
 
-    // Number of pins on each port
-    let pin_nb_by_port = {};
-
     // Create the different ports from the list
     for (let port of ports_list) {
 
@@ -410,7 +407,6 @@ function addPortsAndPins(element, ports_list) {
 
         // While we are creating the port, add the pins in the element
         for (let pin of port['pins']) {
-            pin_nb_by_port[port['location']] += 1;
             element.addPort({
                 id: pin["uuid"],
                 group: port['name'],
@@ -426,24 +422,6 @@ function addPortsAndPins(element, ports_list) {
             pin_to_element_association[pin["uuid"]] = element["id"];
         }
     };
-
-    let top_pin_number = 'top' in pin_nb_by_port ? pin_nb_by_port.top : undefined;
-    let bottom_pin_number = 'bottom' in pin_nb_by_port ? pin_nb_by_port.bottom : undefined;
-    let left_pin_number = 'left' in pin_nb_by_port ? pin_nb_by_port.left : undefined;
-    let right_pin_number = 'right' in pin_nb_by_port ? pin_nb_by_port.right : undefined;
-
-    // Check the maximum number of pins on the horizontal and vertical line
-    let max_width = Math.max(top_pin_number || -Infinity, bottom_pin_number || -Infinity);
-    let max_height = Math.max(left_pin_number || -Infinity, right_pin_number || -Infinity);
-
-    let component_width = 2 * settings_dict['common']['labelHorizontalMargin'];
-    if (max_width > 0) {
-        component_width += settings_dict['component']['portPitch'] * max_width;
-    }
-    let component_height = 2 * settings_dict['common']['labelVerticalMargin'];
-    if (max_height > 0) {
-        component_height += settings_dict['component']['portPitch'] * max_height;
-    }
 
     // Add the ports list to the element
     element.prop({"ports": { "groups": port_groups}});
