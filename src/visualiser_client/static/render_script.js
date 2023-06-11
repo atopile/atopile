@@ -12,8 +12,8 @@ let settings_dict = {
     },
     component : {
         strokeWidth: 2,
-        fontSize: 10,
-        fontWeight: "normal",
+        fontSize: 8,
+        fontWeight: "bold",
         defaultWidth: 60,
         portPitch: 20,
         defaultHeight: 50,
@@ -21,16 +21,17 @@ let settings_dict = {
         labelVerticalMargin: 10,
         titleMargin: 10,
         pin: {
-            labelFontSize: 10,
-        }
+            fontSize: 8,
+            fontWeight: "normal",
+        },
     },
     block : {
         strokeWidth: 2,
         boxRadius: 5,
         strokeDasharray: '4,4',
         label: {
-            fontSize: 12,
-            fontWeight: "normal",
+            fontSize: 10,
+            fontWeight: "bold",
         }
     },
     link: {
@@ -150,7 +151,7 @@ class AtoBlock extends dia.Element {
                 textVerticalAnchor: "top",
                 fontFamily: settings_dict['common']['fontFamily'],
                 fontSize: settings_dict['block']['label']['fontSize'],
-                fontWeight: settings_dict["block"]["fontWeight"],
+                fontWeight: settings_dict["block"]['label']["fontWeight"],
                 textAnchor: 'start',
                 x: 8,
                 y: 8
@@ -310,7 +311,7 @@ function resizeBasedOnLabels(element, ports_list) {
 
     for (let port of ports_list) {
         for (let pin of port['pins']) {
-            label_length = measureText(pin['name'], settings_dict['component']['fontSize'], 'length');
+            label_length = measureText(pin['name'], settings_dict["component"]['pin']["fontSize"], 'length');
             if (label_length > text_length_by_port[port['name']]) {
                 text_length_by_port[port['location']] = label_length;
             };
@@ -372,8 +373,6 @@ function addPortsAndPins(element, ports_list) {
         port_angle = getPortLabelAngle(port);
         port_position = getPortPosition(port);
 
-        pin_nb_by_port[port['location']] = 0;
-
         port_groups[port['name']] = {
             position: port_position,
             attrs: {
@@ -414,7 +413,8 @@ function addPortsAndPins(element, ports_list) {
                     label: {
                         text: pin['name'],
                         fontFamily: settings_dict['common']['fontFamily'],
-                        fontSize: settings_dict['component']['pin']['labelFontSize'],
+                        fontSize: settings_dict['component']['pin']['fontSize'],
+                        fontWeight: settings_dict["component"]['pin']["fontWeight"],
                         textAnchor: port_anchor,
                     },
                 },
@@ -521,8 +521,8 @@ function addStubs(stubs) {
 }
 
 function createComponent(title, uuid, ports_dict, x, y) {
-    comp_width = measureText(title, settings_dict['component']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
-    comp_height = measureText(title, settings_dict['component']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
+    comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
+    comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     const component = new AtoComponent({
         id: uuid,
         size: { width: comp_width,
