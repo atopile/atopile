@@ -1,0 +1,65 @@
+# Additional language features to support richer information pass-down
+# Let's take the exmaple of the NMOS component currently causing us headaches
+# 1. it sucks to make a completely seperate component for NMOS part, when they've all for the same params
+# 2. without a good top-level abstraction you can't readily switch out the parts with valid alternatives
+
+# we can borrow from some more strictly typed languages here and define some additional keywords
+# abstract -> this variable is forward-declared, but must be defined somewhere properly
+# module <name> from <super> -> this module is a specialization of another module, and inherits all of its properties, but can override or append to them
+
+component NMOS:
+    signal gate
+    signal drain
+    signal source
+
+    required uFarads gate_charge
+    optional mOhm gate_resistance
+
+    # base type examples
+    required str footprint
+    optional int example1
+
+    # compound declaration and definition
+    # optional/required ir redundent here, because it's already defined and
+    # therefore there's no way it could be missing
+    # the var keyword isn't critical, but it's useful to ensure typos aren't declaring
+    # new variable that were intended as definitions
+    var example2 = 10uF +/- 10%
+
+# well, apparently that was clear enough that Copilot picked up on it well because all I typed below was `component SomeNMOS`
+component SomeNMOS from NMOS:
+    pin 1 ~ gate
+    pin 2 ~ drain
+    pin 3 ~ source
+    pin 4 ~ ground
+
+    gate_charge = 1pF
+    gate_resistance = 1kOhm
+    footprint = "SOT-23"
+
+    # if we spec'd, we should get a compiler type error
+    gate = 1V
+
+# now, how does this all solve our problem of configurability?
+# say we've got a half bridge driver
+
+module HalfBridge:
+    high_fet = abstract NMOS
+    low_fet = abstract NMOS
+
+    # configure the current limiting resistor on the FET's gate
+    # (yes, I'm aware 10kOhm is a terrible value for this, but it's just an example)
+    r_gate = new Resistor
+    r_gate.value = 10kOhm - high_fet.gate_resistance
+
+    # ... other stuff
+
+module TopLevelModule:
+    phase_a = new HalfBridge
+    phase_b = new HalfBridge
+    phase_c = new HalfBridge
+
+    # this is entirely placeholder syntax, but gist is "all of the NMOS components in this module should become SomeNMOS"
+    # with that, this module is now concretely defined and compileable
+    [HalfBridge][NMOS] -> SomeNMOS
+    # ... other stuff
