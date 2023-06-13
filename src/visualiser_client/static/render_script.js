@@ -299,7 +299,7 @@ function measureText(text, text_size, direction) {
     }
 };
 
-// This function resizes a component based on the size of the labels
+// This function resizes a component based on the size of the labels and the number of ports
 function resizeBasedOnLabels(element, ports_list) {
     // Largest text for each port
     let text_length_by_port = {
@@ -308,8 +308,18 @@ function resizeBasedOnLabels(element, ports_list) {
         'right': 0,
         'bottom': 0,
     };
+    let component_port_nb = {
+        'top': 0,
+        'left': 0,
+        'right': 0,
+        'bottom': 0,
+    };
 
     for (let port of ports_list) {
+        // Check how many pins in each port
+        component_port_nb[port['location']] = port['pins'].length;
+
+        // For each port, find the longest label
         for (let pin of port['pins']) {
             label_length = measureText(pin['name'], settings_dict["component"]['pin']["fontSize"], 'length');
             if (label_length > text_length_by_port[port['name']]) {
@@ -326,20 +336,6 @@ function resizeBasedOnLabels(element, ports_list) {
     let comp_height_by_text = element.getBBox().height + 2 * max_label_text_height;
 
     element.resize(comp_width_by_text, comp_height_by_text);
-};
-
-// This function resizes components based on the number of ports on each side.
-function resizeBasedOnPorts(element, ports_list) {
-    let component_port_nb = {
-        'top': 0,
-        'left': 0,
-        'right': 0,
-        'bottom': 0,
-    };
-    for (let port of ports_list) {
-        component_port_nb[port['location']] = port['pins'].length;
-    };
-    console.log(component_port_nb);
 
     width_with_ports = 2 * settings_dict['component']['labelHorizontalMargin'] +
                         Math.max(component_port_nb['top'], component_port_nb['bottom']) * (settings_dict['component']['portPitch'] - 1);
@@ -354,8 +350,8 @@ function resizeBasedOnPorts(element, ports_list) {
         element.resize(element.getBBox().width, height_with_ports);
         console.log('height changed');
     };
-
 };
+
 
 function addPortsAndPins(element, ports_list) {
     // Dict of all the port for the element
@@ -536,7 +532,7 @@ function createComponent(title, uuid, ports_dict, x, y) {
 
     addPortsAndPins(component, ports_dict);
     resizeBasedOnLabels(component, ports_dict);
-    resizeBasedOnPorts(component, ports_dict);
+    //resizeBasedOnPorts(component, ports_dict);
 
     component.addTo(graph);
     component.position(x, y, { parentRelative: true });
