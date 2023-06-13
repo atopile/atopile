@@ -8,6 +8,7 @@ from atopile.utils import get_project_root
 
 project = Project.from_path(get_project_root() / "sandbox/example_project")
 build_config = CustomBuildConfig(
+    name="default",
     project=project,
     root_file=project.root / "toy.ato",
     root_node="toy.ato/vdiv1",
