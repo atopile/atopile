@@ -12,7 +12,7 @@ component NMOS:
     signal drain
     signal source
 
-    required uFarads gate_charge
+    required uF gate_charge
     optional mOhm gate_resistance
 
     # base type examples
