@@ -17,7 +17,7 @@ Install atopiole with `pip install -e ."[dev,test,docs]'`
 ## Syntax highlighting is pretty nice...
 
 Copy `src/vscode_extension` to `~/.vscode/extensions/`
-eg. `cp -r src/vscode_extension ~/.vscode/extensions/atopile`
+eg. `cp -r src/vscode_extension ~/.vscode/extensions/atopile-0.0.1`
 
 ## Creating a new project
 
