@@ -68,4 +68,4 @@ To pull in a footprint, we've been using the wonderful tool [easyeda2kicad](http
 
 Add it to your python environment with `pip install easyeda2kicad`
 
-Then you can download JLCPCB/EasyEDA/LCSC footprints with `easyeda2kicad --full --lcsc_id=<footprint> --output ../lib/`
+Then you can download JLCPCB/EasyEDA/LCSC footprints with `easyeda2kicad --full --lcsc_id=<footprint> --output ../lib/lib`
