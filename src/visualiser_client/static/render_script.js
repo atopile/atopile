@@ -6,27 +6,32 @@ let settings_dict = {
         backgroundColor: 'rgba(224, 233, 227, 0.3)',
         gridSize: 5,
         parentPadding: 50,
-        fontFamily: "sans-serif",
+        fontFamily: "monospace",
+        fontHeightToPxRatio: 1.6,
+        fontLengthToPxRatio: 0.7,
     },
     component : {
         strokeWidth: 2,
-        fontSize: 10,
-        fontWeight: "normal",
+        fontSize: 8,
+        fontWeight: "bold",
         defaultWidth: 60,
         portPitch: 20,
         defaultHeight: 50,
+        labelHorizontalMargin: 40,
+        labelVerticalMargin: 10,
+        titleMargin: 10,
         pin: {
-            labelPadding: 5, // currently not being used
-            labelFontSize: 10,
-        }
+            fontSize: 8,
+            fontWeight: "normal",
+        },
     },
     block : {
         strokeWidth: 2,
         boxRadius: 5,
         strokeDasharray: '4,4',
         label: {
-            fontSize: 12,
-            fontWeight: "normal",
+            fontSize: 10,
+            fontWeight: "bold",
         }
     },
     link: {
@@ -69,8 +74,6 @@ class AtoComponent extends AtoElement {
         return {
             ...super.defaults(),
             type: "AtoComponent",
-            size: { width: settings_dict["component"]["defaultWidth"],
-                    height: settings_dict["component"]["defaultHeight"] },
             attrs: {
                 body: {
                     fill: "white",
@@ -90,6 +93,9 @@ class AtoComponent extends AtoElement {
                     textVerticalAnchor: "middle",
                     textAnchor: "middle",
                     fontFamily: settings_dict["common"]["fontFamily"],
+                    textWrap: {
+                        width: 100,
+                    },
                     x: "calc(w/2)",
                     y: "calc(h/2)"
                 }
@@ -145,7 +151,7 @@ class AtoBlock extends dia.Element {
                 textVerticalAnchor: "top",
                 fontFamily: settings_dict['common']['fontFamily'],
                 fontSize: settings_dict['block']['label']['fontSize'],
-                fontWeight: settings_dict["block"]["fontWeight"],
+                fontWeight: settings_dict["block"]['label']["fontWeight"],
                 textAnchor: 'start',
                 x: 8,
                 y: 8
@@ -201,14 +207,14 @@ function getPortLabelPosition(port) {
         default:
             return [0, 0];
     };
-}
+};
 
 function getPortLabelAnchor(port) {
     switch (port['location']) {
         case "top":
-            return 'middle';
+            return 'end';
         case "bottom":
-            return 'middle';
+            return 'start';
         case "left":
             return 'start';
         case "right":
@@ -216,40 +222,169 @@ function getPortLabelAnchor(port) {
         default:
             return 'middle';
     }
-}
+};
 
-function addPortsAndPins(element, port_list) {
+function getPortLabelAngle(port) {
+    switch (port['location']) {
+        case "top":
+            return -90;
+        case "bottom":
+            return -90;
+        case "left":
+            return 0;
+        case "right":
+            return 0;
+        default:
+            return 0;
+    };
+};
+
+function getPortPosition(port) {
+    switch (port['location']) {
+        case "top":
+            return {
+                name: 'line',
+                args: {
+                    start: { x: settings_dict['component']['labelHorizontalMargin'], y: 0 },
+                    end: { x: ('calc(w - ' + settings_dict['component']['labelHorizontalMargin'] + ')'), y: 0 }
+                },
+            };
+        case "bottom":
+            return {
+                name: 'line',
+                args: {
+                    start: { x: settings_dict['component']['labelHorizontalMargin'], y: 'calc(h)' },
+                    end: { x: ('calc(w - ' + settings_dict['component']['labelHorizontalMargin'] + ')'), y: 'calc(h)' }
+                },
+            };
+        case "left":
+            return {
+                name: 'line',
+                args: {
+                    start: { x: 0, y: settings_dict['component']['labelVerticalMargin']},
+                    end: { x: 0, y: ('calc(h - ' + settings_dict['component']['labelVerticalMargin'] + ')')}
+                },
+            };
+        case "right":
+            return {
+                name: 'line',
+                args: {
+                    start: { x: 'calc(w)', y: settings_dict['component']['labelVerticalMargin'] },
+                    end: { x: 'calc(w)', y: ('calc(h - ' + settings_dict['component']['labelVerticalMargin'] + ')')}
+                },
+            };
+        default:
+            return 0;
+    };
+};
+
+function measureText(text, text_size, direction) {
+    var lines = text.split("\n");
+    var width = 0;
+    for (let line of lines) {
+        var length = line.length;
+        if (length > width) {
+            width = length;
+        };
+    };
+    if (direction == 'length') {
+        // divide by 3 to go from font size to pxl, will have to fix
+        return width * text_size * settings_dict['common']['fontLengthToPxRatio'];
+    }
+    else if (direction == 'height') {
+        return lines.length * text_size * settings_dict['common']['fontHeightToPxRatio'];
+    }
+    else {
+        return 0;
+    }
+};
+
+// This function resizes a component based on the size of the labels and the number of ports
+function resizeBasedOnLabels(element, ports_list) {
+    // Largest text for each port
+    let text_length_by_port = {
+        'top': 0,
+        'left': 0,
+        'right': 0,
+        'bottom': 0,
+    };
+    let component_port_nb = {
+        'top': 0,
+        'left': 0,
+        'right': 0,
+        'bottom': 0,
+    };
+
+    for (let port of ports_list) {
+        // Check how many pins in each port
+        component_port_nb[port['location']] = port['pins'].length;
+
+        // For each port, find the longest label
+        for (let pin of port['pins']) {
+            label_length = measureText(pin['name'], settings_dict["component"]['pin']["fontSize"], 'length');
+            if (label_length > text_length_by_port[port['name']]) {
+                text_length_by_port[port['location']] = label_length;
+            };
+        };
+    };
+
+    // width of the component with text only
+    max_label_text_width = Math.max(text_length_by_port['left'], text_length_by_port['right']);
+    max_label_text_height = Math.max(text_length_by_port['top'], text_length_by_port['bottom']);
+
+    let comp_width_by_text = element.getBBox().width + 2 * max_label_text_width;
+    let comp_height_by_text = element.getBBox().height + 2 * max_label_text_height;
+
+    element.resize(comp_width_by_text, comp_height_by_text);
+
+    width_with_ports = 2 * settings_dict['component']['labelHorizontalMargin'] +
+                        Math.max(component_port_nb['top'], component_port_nb['bottom']) * (settings_dict['component']['portPitch'] - 1);
+    height_with_ports = 2 * settings_dict['component']['labelVerticalMargin'] +
+                        Math.max(component_port_nb['left'], component_port_nb['right']) * (settings_dict['component']['portPitch'] - 1);
+
+    if (width_with_ports > element.getBBox().width) {
+        element.resize(width_with_ports, element.getBBox().height);
+        console.log('width changed');
+    };
+    if (height_with_ports > element.getBBox().height) {
+        element.resize(element.getBBox().width, height_with_ports);
+        console.log('height changed');
+    };
+};
+
+
+function addPortsAndPins(element, ports_list) {
     // Dict of all the port for the element
     let port_groups = {};
 
-    let pin_nb_by_port = {};
-    // Create the different ports
-    for (let port of port_list) {
+    // Create the different ports from the list
+    for (let port of ports_list) {
 
-        let port_position = [];
-        port_position = getPortLabelPosition(port);
+        let port_label_position = [];
+        let port_anchor = "";
+        let port_angle = 0;
+        let port_position = {};
+        port_label_position = getPortLabelPosition(port);
         port_anchor = getPortLabelAnchor(port);
-        console.log(port_anchor)
-
-        pin_nb_by_port[port['location']] = 0;
+        port_angle = getPortLabelAngle(port);
+        port_position = getPortPosition(port);
 
         port_groups[port['name']] = {
-            position: {
-                name: port['location'],
-            },
+            position: port_position,
             attrs: {
                 portBody: {
                     magnet: true,
                     r: 2,
                     fill: '#FFFFFF',
-                    stroke:'#023047'
+                    stroke:'#023047',
                 },
             },
             label: {
                 position: {
                     args: {
-                        x: port_position[0],
-                        y: port_position[1],
+                        x: port_label_position[0],
+                        y: port_label_position[1],
+                        angle: port_angle,
                     }, // Can't use inside/outside in combination
                     //name: 'inside'
                 },
@@ -267,7 +402,6 @@ function addPortsAndPins(element, port_list) {
 
         // While we are creating the port, add the pins in the element
         for (let pin of port['pins']) {
-            pin_nb_by_port[port['location']] += 1;
             element.addPort({
                 id: pin["uuid"],
                 group: port['name'],
@@ -275,7 +409,8 @@ function addPortsAndPins(element, port_list) {
                     label: {
                         text: pin['name'],
                         fontFamily: settings_dict['common']['fontFamily'],
-                        fontSize: settings_dict['component']['pin']['labelFontSize'],
+                        fontSize: settings_dict['component']['pin']['fontSize'],
+                        fontWeight: settings_dict["component"]['pin']["fontWeight"],
                         textAnchor: port_anchor,
                     },
                 },
@@ -283,24 +418,6 @@ function addPortsAndPins(element, port_list) {
             pin_to_element_association[pin["uuid"]] = element["id"];
         }
     };
-
-    let top_pin_number = 'top' in pin_nb_by_port ? pin_nb_by_port.top : undefined;
-    let bottom_pin_number = 'bottom' in pin_nb_by_port ? pin_nb_by_port.bottom : undefined;
-    let left_pin_number = 'left' in pin_nb_by_port ? pin_nb_by_port.left : undefined;
-    let right_pin_number = 'right' in pin_nb_by_port ? pin_nb_by_port.right : undefined;
-
-    let max_width = Math.max(top_pin_number || -Infinity, bottom_pin_number || -Infinity);
-    let max_height = Math.max(left_pin_number || -Infinity, right_pin_number || -Infinity);
-
-    let component_width = settings_dict['component']['defaultWidth'];
-    if (max_width > 0) {
-        component_width += settings_dict['component']['portPitch'] * max_width;
-    }
-    let component_height = settings_dict['component']['defaultHeight'];
-    if (max_height > 0) {
-        component_height += settings_dict['component']['portPitch'] * max_height;
-    }
-    element.resize(component_width, component_height);
 
     // Add the ports list to the element
     element.prop({"ports": { "groups": port_groups}});
@@ -349,7 +466,6 @@ function addLinks(links) {
 
 function addStubs(stubs) {
     for (let stub of stubs) {
-        console.log(stub);
         var added_stub = new shapes.standard.Link({id: stub['uuid']});
         added_stub.prop('source', {
             id: pin_to_element_association[stub['source']],
@@ -401,16 +517,22 @@ function addStubs(stubs) {
 }
 
 function createComponent(title, uuid, ports_dict, x, y) {
+    comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
+    comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     const component = new AtoComponent({
         id: uuid,
+        size: { width: comp_width,
+                height: comp_height},
         attrs: {
             label: {
-                text: title
+                text: title,
             }
         }
     });
 
     addPortsAndPins(component, ports_dict);
+    resizeBasedOnLabels(component, ports_dict);
+    //resizeBasedOnPorts(component, ports_dict);
 
     component.addTo(graph);
     component.position(x, y, { parentRelative: true });
@@ -531,6 +653,7 @@ window.onresize = fill_paper;
 let pin_to_element_association = {};
 let element_dict = {};
 
+
 paper.on('link:mouseenter', function(linkView) {
     linkView.showTools();
     linkView.highlight();
@@ -542,7 +665,6 @@ paper.on('link:mouseleave', function(linkView) {
 });
 
 paper.on('cell:pointerup', function(cell, evt, x, y) {
-    console.log(cell);
     let requestOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
