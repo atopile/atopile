@@ -1,6 +1,6 @@
 component Diode:
-    signal pp ~ pin p2
-    signal pn ~ pin p1
+    signal anode
+    signal cathode
 
     designator_prefix = "D"
 
