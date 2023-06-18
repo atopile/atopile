@@ -43,14 +43,14 @@ def ingest_config_hat(f):
     @click.option("--root-node", default=None)
     @functools.wraps(f)
     def wrapper(*args, project: Project, build_config: str, root_file: str, root_node: str, **kwargs):
-        if build_config is None:
+        build_config_name = build_config
+        if build_config_name is None:
             build_config: BuildConfig = project.config.builds["default"]
         else:
-            for build_config in project.config.builds:
-                if build_config.name == build_config:
-                    break
+            if build_config_name in project.config.builds:
+                build_config = project.config.builds[build_config_name]
             else:
-                raise click.BadParameter(f"Could not find build-config \"{build_config}\".")
+                raise click.BadParameter(f"Could not find build-config \"{build_config_name}\".")
         log.info(f"Using build config {build_config.name}")
 
         # root-file
