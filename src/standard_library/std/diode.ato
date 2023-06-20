@@ -4,5 +4,5 @@ component Diode:
 
     designator_prefix = "D"
 
-    pp.visualizer.location = "top"
-    pn.visualizer.location = "bottom"
+    anode.visualizer.location = "top"
+    cathode.visualizer.location = "bottom"
