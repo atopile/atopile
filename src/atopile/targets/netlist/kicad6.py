@@ -157,7 +157,7 @@ class KicadNetlist:
             f.write(netlist_str)
 
     @classmethod
-    def from_model(cls, model: Model, root_node: str) -> "KicadNetlist":
+    def from_model(cls, model: Model, root_node: str, designators: Dict[str, str]) -> "KicadNetlist":
         """
         :param model: to generate the netlist from
         :param main: path in the graph to compile from
@@ -165,7 +165,6 @@ class KicadNetlist:
         netlist = cls()
 
         # Extract the components under "main"
-        used_designators = {}
         NON_FIELD_DATA = ["value", "footprint", "designator_prefix"]
 
         # Extract the components under "main"
@@ -256,10 +255,7 @@ class KicadNetlist:
             sheetpath = KicadSheetpath()
 
             # figure out the designators
-            designator_prefix = component_data.get("designator_prefix", "A")
-            designator_number = max(used_designators.get(designator_prefix, [0])) + 1
-            used_designators.setdefault(designator_prefix, []).append(designator_number)
-            designator = str(designator_prefix) + str(designator_number)
+            designator = designators[component_path]
 
             # make the component of your dreams
             component = KicadComponent(
@@ -326,7 +322,11 @@ class Kicad6NetlistTarget(Target):
 
     def generate(self) -> KicadNetlist:
         if self._netlist is None:
-            self._netlist = KicadNetlist.from_model(self.model, root_node=self.build_config.root_node)
+            self._netlist = KicadNetlist.from_model(
+                self.model,
+                root_node=self.build_config.root_node,
+                designators=self._designator_target.generate()
+            )
         return self._netlist
 
     def check(self) -> TargetCheckResult:

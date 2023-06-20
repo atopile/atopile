@@ -66,6 +66,7 @@ class BomJlcpcbTargetConfig(BaseConfig):
 
 class BomJlcpcbTarget(Target):
     name = "bom-jlcpcb"
+
     def __init__(self, muster: TargetMuster) -> None:
         # designators is critical
         # part-map is optional
