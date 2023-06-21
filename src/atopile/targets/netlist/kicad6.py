@@ -6,10 +6,10 @@ from typing import Dict, List, Optional
 from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from atopile.model.accessors import ModelVertexView
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
-from atopile.targets.targets import Target, TargetMuster, TargetCheckResult
-
+from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -248,11 +248,12 @@ class KicadNetlist:
             fields = [KicadField(k, v) for k, v in component_data.items() if k not in NON_FIELD_DATA]
 
             # there should always be at least one parent, even if only the file
-            component_parent_idx = part_of_view.neighbors(component_v.index, mode="out")[0]
-            component_parent_v = model.graph.vs[component_parent_idx]
-            # TODO: deal with the sheets, I'm pretty sure they also need to be defined in a header somewhere
-            # either way, I think there's more to it. Just chuck everything in root for now
-            sheetpath = KicadSheetpath()
+            component_parent_v = ModelVertexView(model, component_v.index).parent
+
+            sheetpath = KicadSheetpath(
+                names=component_parent_v.path,
+                tstamps=generate_uid_from_path(component_parent_v.path),
+            )
 
             # figure out the designators
             designator = designators[component_path]
