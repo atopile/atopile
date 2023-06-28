@@ -35,10 +35,30 @@ docs-deploy:
         paths:
           - docs/*
 
-tag-test:
+docker-build:
   stage: build
-  image: alpine
+  image:
+    # consider upgrading to a newer version of kaniko?
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [""]
   script:
-    - echo "I'm so triggered"
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}:0.0.4"
+      --destination "${CI_REGISTRY_IMAGE}:latest"
+      --build-arg SETUPTOOLS_SCM_PRETEND_VERSION="0.0.4"
+      # --destination "${CI_REGISTRY_IMAGE}:$CI_COMMIT_TAG"
+      # --build-arg SETUPTOOLS_SCM_PRETEND_VERSION="$CI_COMMIT_TAG"
+  # rules:
+  #   - if: $CI_COMMIT_TAG
+
+python-build:
+  stage: build
+  image: python:latest
+  script:
+    - pip install build twine
+    - python -m build
+    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
   rules:
     - if: $CI_COMMIT_TAG
