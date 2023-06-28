@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -73,7 +73,7 @@ dev = [
 ato = "atopile.cli.cli:cli"
 
 [tool.hatch.version]
-path = "src/atopile/__init__.py"
+source = "vcs"
 
 [tool.isort]
 profile = "black"
