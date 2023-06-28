@@ -45,13 +45,11 @@ docker-build:
     - /kaniko/executor
       --context "${CI_PROJECT_DIR}"
       --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
-      --destination "${CI_REGISTRY_IMAGE}:0.0.4"
       --destination "${CI_REGISTRY_IMAGE}:latest"
-      --build-arg SETUPTOOLS_SCM_PRETEND_VERSION="0.0.4"
-      # --destination "${CI_REGISTRY_IMAGE}:$CI_COMMIT_TAG"
-      # --build-arg SETUPTOOLS_SCM_PRETEND_VERSION="$CI_COMMIT_TAG"
-  # rules:
-  #   - if: $CI_COMMIT_TAG
+      --destination "${CI_REGISTRY_IMAGE}:$CI_COMMIT_TAG"
+      --build-arg SETUPTOOLS_SCM_PRETEND_VERSION="$CI_COMMIT_TAG"
+  rules:
+    - if: $CI_COMMIT_TAG
 
 python-build:
   stage: build
