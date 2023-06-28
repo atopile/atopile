@@ -16,9 +16,10 @@ log.setLevel(logging.DEBUG)
 # configure UI
 @click.command()
 @ingest_config_hat
+@click.option('--port', default=2860)  # ato0 -> 2860 on an old phone
 @click.option('--browser/--no-browser', default=True)
 @click.option('--debug/--no-debug', default=False)
-def view(project: Project, build_config: BuildConfig, browser: bool, debug: bool):
+def view(project: Project, build_config: BuildConfig, port: int, browser: bool, debug: bool):
     # defer import because it's kinda expensive?
     import atopile.visualizer.server as s
     s.watcher.project = project
@@ -29,5 +30,5 @@ def view(project: Project, build_config: BuildConfig, browser: bool, debug: bool
         atopile.parser.parser.log.setLevel(logging.DEBUG)
     s.watcher.rebuild_all()
     if browser:
-        webbrowser.open("http://localhost/static/client.html")
-    uvicorn.run(s.app, host="0.0.0.0", port=80)
+        webbrowser.open(f"http://localhost:{port}/static/client.html")
+    uvicorn.run(s.app, host="0.0.0.0", port=port)
