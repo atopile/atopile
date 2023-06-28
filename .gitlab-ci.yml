@@ -30,10 +30,10 @@ docs-deploy:
   script:
     - scp -o StrictHostKeyChecking=no -r build/docs/public deploy-www@atopile.io:/var/www/docs
   rules:
-  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    changes:
-      paths:
-        - docs/*
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        paths:
+          - docs/*
 
 tag-test:
   stage: build
@@ -41,4 +41,4 @@ tag-test:
   script:
     - echo "I'm so triggered"
   rules:
-    - if: CI_COMMIT_TAG
+    - if: $CI_COMMIT_TAG
