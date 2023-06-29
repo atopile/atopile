@@ -1,0 +1,112 @@
+[
+    {
+        "name": "vdiv1",
+        "parent": "my_design.ato:RootDesign",
+        "instance_of": "vdiv.ato:Vdiv",
+        "type": "module"
+    },
+    {
+        "name": "r1",
+        "parent": "my_design.ato:RootDesign/vdiv1",
+        "instance_of": "std/resistor.ato:Resistor",
+        "type": "component"
+    },
+    {
+        "name": "r2",
+        "parent": "my_design.ato:RootDesign/vdiv1",
+        "instance_of": "std/resistor.ato:Resistor",
+        "type": "component"
+    }
+]
+
+[
+    {
+        "name": "my_design.ato",
+        "type": "file",
+        "children": [
+            {
+                {
+                    "name": "RootDesign",
+                    "instance_of": "vdiv.ato:Vdiv",
+                    "type": "module",
+                    "children": [
+                        {
+                            "name": "vdiv1",
+                            "instance_of": "vdiv.ato:Vdiv",
+                            "type": "module",
+                            "children": [
+                                {
+                                    "name": "r1",
+                                    "instance_of": "std/resistor.ato:Resistor",
+                                    "type": "component"
+                                },
+                                {
+                                    "name": "r2",
+                                    "instance_of": "std/resistor.ato:Resistor",
+                                    "type": "component"
+                                }
+                            ]
+                        }
+                    ],
+                    "links": [
+                        {"abc": "xyz"}
+                    ]
+                }
+
+            }
+        ]
+    }
+    {
+        "name": "vdiv.ato",
+        "type": "file",
+        "children": [
+            {
+                "name": "Vdiv",
+                "type": "module",
+                "children": [
+                    {
+                        "name": "r1",
+                        "instance_of": "std/resistor.ato:Resistor",
+                        "type": "component"
+                    },
+                    {
+                        "name": "r2",
+                        "instance_of": "std/resistor.ato:Resistor",
+                        "type": "component"
+                    }
+                ],
+                "links": [
+                    {"abc": "xyz"}
+                ]
+            }
+        ]
+    }
+]
+
+{
+    "name": "RootDesign",
+    "instance_of": "vdiv.ato:Vdiv",
+    "type": "module",
+    "children": [
+        {
+            "name": "vdiv1",
+            "instance_of": "vdiv.ato:Vdiv",
+            "type": "module",
+            "children": [
+                {
+                    "name": "r1",
+                    "instance_of": "std/resistor.ato:Resistor",
+                    "type": "component"
+                },
+                {
+                    "name": "r2",
+                    "instance_of": "std/resistor.ato:Resistor",
+                    "type": "component"
+                }
+            ]
+        }
+    ],
+    "links": [
+        {"abc": "xyz"}
+    ]
+}
