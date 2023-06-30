@@ -1,0 +1,44 @@
+{
+    "name": "bike_light.ato",
+    "type": "file",
+    "blocks": [
+        {
+            "name": "BikeLight",
+            "type": "module",
+            "fields": {
+                "k1": "v1",
+                "k1": "v1",
+            }
+            "blocks": [
+                {
+                    "name": "led_driver",
+                    "type": "module",
+                    // fields
+                    "blocks": [
+                        {
+                            "name": "c_bypass_input",
+                            "type": "component",
+                            // fields
+                            "blocks": [],
+                            "pins": [
+                                // preserve order of pins based on order of definition
+                                {
+                                    "name": "p1",
+                                    // fields
+                                },
+                                {
+                                    "name": "p2",
+                                    // fields
+                                }
+                            ],
+                            "links": [],
+                            "instance_of": "std/capcitor.ato:Capacitor",
+                        }
+                    ],
+                    "links": [],
+                    "instance_of": "led_driver.ato:LedDriver",
+                },
+            ]
+        }
+    ]
+}
