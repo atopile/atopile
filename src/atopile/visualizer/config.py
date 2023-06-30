@@ -10,12 +10,23 @@ It shall:
     - update -> yaml
 """
 
-# eg. update this junk
-def do_move(self, elementid, x, y):
-    # as of writing, the elementid is the element's path
-    # so just use that
-    self._vis_data.setdefault(elementid, {})['position'] = {"x": x, "y": y}
-    with self.vis_file_path.open('w') as f:
-        yaml.dump(self._vis_data, f)
-    self._ignore_files.append(self.vis_file_path)
-    asyncio.get_event_loop().call_soon(self.rebuild_view)
+class VisConfigManager:
+    def __init__(self) -> None:
+        pass
+
+    def load(self, ato_file: str):
+        """
+        Load the contents of a config matching an .ato file to the cache
+        """
+
+    def save(self, ato_file: str):
+        """
+        Save the cached config file to disk
+        TODO: consider rate limiting
+        """
+
+    def do_update(self, ato_file: str, content: dict):
+        """
+        Update the YAML file based on the given content, and save to disk
+        """
+        raise NotImplementedError
