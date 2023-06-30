@@ -7,37 +7,125 @@
             "type": "module",
             "fields": {
                 "k1": "v1",
-                "k1": "v1",
-            }
+                "k2": "v2"
+            },
             "blocks": [
                 {
                     "name": "led_driver",
                     "type": "module",
-                    // fields
+                    "fields": {
+                        "k1": "v1",
+                        "k2": "v2"
+                    },
                     "blocks": [
                         {
-                            "name": "c_bypass_input",
-                            "type": "component",
-                            // fields
-                            "blocks": [],
-                            "pins": [
-                                // preserve order of pins based on order of definition
+                            "name": "vdiv",
+                            "type": "module",
+                            "fields": {
+                                "k1": "v1",
+                                "k2": "v2"
+                            },
+                            "blocks": [
                                 {
-                                    "name": "p1",
-                                    // fields
+                                    "name": "r_top",
+                                    "type": "component",
+                                    "fields": {
+                                        "k1": "v1",
+                                        "k2": "v2"
+                                    },
+                                    "blocks": [],
+                                    "pins": [
+                                        {
+                                            "name": "p1",
+                                            "fields": {}
+                                        },
+                                        {
+                                            "name": "p2",
+                                            "fields": {
+                                                "test": "test"
+                                            }
+                                        }
+                                    ],
+                                    "links": [],
+                                    "instance_of": "std/capcitor.ato:Capacitor"
                                 },
                                 {
-                                    "name": "p2",
-                                    // fields
+                                    "name": "r_bt",
+                                    "type": "module",
+                                    "fields": {
+                                        "k1": "v1",
+                                        "k2": "v2"
+                                    },
+                                    "blocks": [],
+                                    "pins": [
+                                        {
+                                            "name": "p1",
+                                            "fields": {}
+                                        },
+                                        {
+                                            "name": "p2",
+                                            "fields": {
+                                                "test": "test"
+                                            }
+                                        }
+                                    ],
+                                    "links": [],
+                                    "instance_of": "std/capcitor.ato:Capacitor"
                                 }
                             ],
-                            "links": [],
-                            "instance_of": "std/capcitor.ato:Capacitor",
+                            "pins": [
+                                {
+                                    "name": "input",
+                                    "fields": {}
+                                },
+                                {
+                                    "name": "output",
+                                    "fields": {
+                                        "test": "test"
+                                    }
+                                },
+                                {
+                                    "name": "ground",
+                                    "fields": {
+                                        "test": "test"
+                                    }
+                                }
+                            ],
+                            "links": [
+                                {
+                                    "net": "test",
+                                    "source": "pwm_header/p3",
+                                    "target": "vin"
+                                },
+                                {
+                                    "net": "test2",
+                                    "source": "pwm_header/p1",
+                                    "target": "gnd"
+                                },
+                                {
+                                    "net": "test",
+                                    "source": "pwm_header/p3",
+                                    "target": "vin"
+                                }
+                            ],
+                            "instance_of": "std/capcitor.ato:Capacitor"
                         }
                     ],
-                    "links": [],
-                    "instance_of": "led_driver.ato:LedDriver",
-                },
+                    "pins": [],
+                    "links": [
+                        {
+                            "net": "test",
+                            "source": "pwm_header/p3",
+                            "target": "vin"
+                        },
+                        {
+                            "net": "test2",
+                            "source": "pwm_header/p1",
+                            "target": "gnd"
+                        }
+                    ],
+                    "instance_of": "led_driver.ato:LedDriver"
+                }
             ]
         }
     ]
