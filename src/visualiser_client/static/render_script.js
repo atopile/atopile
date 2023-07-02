@@ -609,6 +609,14 @@ function renderDataFromBackend(data, is_root = true, parent = null) {
             created_element.fitAncestorElements();
         }
 
+        else if (element['type'] == 'file') {
+            console.log('okay')
+            let file = getElementTitle(element);
+            // TODO: instantiate file information
+            //created_file = createFile(title, )
+            let file_visual_config = loadConfig('test.ato')
+        }
+
         else {
             // raise an error because we don't know what to do with this element
             // TODO: raise an error
@@ -651,8 +659,8 @@ window.onload = fill_paper;
 window.onresize = fill_paper;
 
 let pin_to_element_association = {};
-let element_dict = {};
-
+let circuit_dict = {};
+let visual_config = {};
 
 paper.on('link:mouseenter', function(linkView) {
     linkView.showTools();
@@ -692,12 +700,23 @@ graph.on('change:position', function(cell) {
     cell.fitAncestorElements();
 });
 
-async function loadData() {
-    const response = await fetch('/api/view');
-    const vis_dict = await response.json();
+async function loadConfig(file_name) {
+    //const response = await fetch('/api/view');
+    const response = await fetch('/static/config.json');
+    const config_data = await response.json();
 
-    console.log(vis_dict);
-    element_dict = renderDataFromBackend(vis_dict);
+    console.log(config_data);
+    return config_data;
 }
 
-loadData();
+
+async function loadCircuit() {
+    //const response = await fetch('/api/view');
+    const response = await fetch('/static/circuit2.json');
+    const circuit_data = await response.json();
+
+    console.log(circuit_data);
+    circuit_dict = renderDataFromBackend(circuit_data);
+}
+
+loadCircuit();
