@@ -516,7 +516,7 @@ function addStubs(stubs) {
     };
 }
 
-function createComponent(title, uuid, ports_dict, x, y) {
+function createComponent(title, uuid, x, y) {
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     const component = new AtoComponent({
@@ -530,8 +530,8 @@ function createComponent(title, uuid, ports_dict, x, y) {
         }
     });
 
-    addPortsAndPins(component, ports_dict);
-    resizeBasedOnLabels(component, ports_dict);
+    //addPortsAndPins(component, ports_dict);
+    //resizeBasedOnLabels(component, ports_dict);
     //resizeBasedOnPorts(component, ports_dict);
 
     component.addTo(graph);
@@ -539,7 +539,7 @@ function createComponent(title, uuid, ports_dict, x, y) {
     return component;
 }
 
-function createBlock(title, uuid, ports_dict, x, y) {
+function createBlock(title, uuid, x, y) {
     const block = new AtoBlock({
         id: uuid,
         attrs: {
@@ -549,7 +549,7 @@ function createBlock(title, uuid, ports_dict, x, y) {
         }
     });
 
-    addPortsAndPins(block, ports_dict);
+    //addPortsAndPins(block, ports_dict);
 
     block.addTo(graph);
     block.position(x, y, { parentRelative: false });
@@ -568,10 +568,18 @@ function getElementTitle(element) {
     }
 }
 
-function renderDataFromBackend(data, is_root = true, parent = null) {
+function returnFileModuleName(string) {
+    if (string) {
+        const [file, module] = string.split(":");
+        return {"file": file, "module": module}
+    }
+    else return null;
+}
+
+async function renderDataFromBackend(data, is_root = true, parent = null) {
 
     // Create the list of all the created elements
-    let dict_of_elements = {};
+    //let dict_of_elements = {};
 
     for (let element of data) {
         // FIXME: this default positioning is shit
@@ -587,26 +595,43 @@ function renderDataFromBackend(data, is_root = true, parent = null) {
 
         if (element['type'] == 'component') {
             let title = getElementTitle(element);
-            created_element = createComponent(title, element['uuid'], element['ports'], x, y);
-            dict_of_elements[element['uuid']] = created_element;
+            created_element = createComponent(title, element['uuid'], x, y);
+            element['jointObject'] = created_element;
             // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
-            created_element.fitAncestorElements();
+            //created_element.fitAncestorElements();
         }
 
         // If it is a block, create it
         else if (element['type'] == 'module') {
             let title = getElementTitle(element);
-            created_element = createBlock(title, element['uuid'], element['ports'], x, y);
-            dict_of_elements[element['uuid']] = created_element;
+            created_element = createBlock(title, element['uuid'], x, y);
+            element['jointObject'] = created_element;
+
+            // Extract file and module name from class
+            file_module_name = returnFileModuleName(element['instance_of']);
+            if (file_module_name) {
+                element['visual_config'] = await loadModuleConfig(file_module_name['file'], file_module_name['module']);
+            }
+            // If no class provided, leave the vis config blank
+            else {
+                element['visual_config'] = null;
+            }
 
             // Iterate over the included elements to create them
-            let returned_dict = renderDataFromBackend(element['blocks'], false, created_element);
+            renderDataFromBackend(element['blocks'], false, created_element);
             // Add the returned list to the element list and add all sub-elements to it's parent
-            dict_of_elements = { ...dict_of_elements, ...returned_dict };
+            //dict_of_elements = { ...dict_of_elements, ...returned_dict };
 
-            addLinks(element['links']);
-            addStubs(element['stubs']);
-            created_element.fitAncestorElements();
+            //addLinks(element['links']);
+            //addStubs(element['stubs']);
+            //created_element.fitAncestorElements();
+        }
+
+        else if (element['type'] == 'file') {
+            //let file = getElementTitle(element);
+            renderDataFromBackend(element['blocks'], false);
+
+            element['visual_config'] = await loadFileConfig(element['name'])
         }
 
         else {
@@ -620,12 +645,10 @@ function renderDataFromBackend(data, is_root = true, parent = null) {
         }
     }
 
-    for (let e_name in dict_of_elements) {
-        // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
-        dict_of_elements[e_name].fitAncestorElements();
-    }
-
-    return dict_of_elements;
+    // for (let e_name in dict_of_elements) {
+    //     // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
+    //     dict_of_elements[e_name].fitAncestorElements();
+    // }
 }
 
 const graph = new dia.Graph({}, { cellNamespace });
@@ -651,8 +674,8 @@ window.onload = fill_paper;
 window.onresize = fill_paper;
 
 let pin_to_element_association = {};
-let element_dict = {};
-
+let circuit_dict = {};
+let visual_config = {};
 
 paper.on('link:mouseenter', function(linkView) {
     linkView.showTools();
@@ -692,12 +715,36 @@ graph.on('change:position', function(cell) {
     cell.fitAncestorElements();
 });
 
-async function loadData() {
-    const response = await fetch('/api/view');
-    const vis_dict = await response.json();
+// Fetch a file visual config from the server
+async function loadFileConfig(file_name) {
+    //const response = await fetch('/api/view');
+    const response = await fetch('/static/config.json');
+    const config_data = await response.json();
 
-    console.log(vis_dict);
-    element_dict = renderDataFromBackend(vis_dict);
+    console.log(config_data);
+    return config_data;
 }
 
-loadData();
+// Fetch a module visual config from a file config
+async function loadModuleConfig(file_name, module_name) {
+    const response = await loadFileConfig(file_name);
+    const module_config = response[module_name];
+
+    console.log(module_config);
+    return module_config;
+}
+
+// Fetch a circuit dict from the server
+async function loadCircuit() {
+    //const response = await fetch('/api/view');
+    const response = await fetch('/static/circuit2.json');
+    const circuit_data = await response.json();
+    // Place the dict in a global variable
+    circuit_dict = circuit_data;
+
+    renderDataFromBackend(circuit_dict);
+    console.log('Filled dict');
+    console.log(circuit_dict);
+}
+
+loadCircuit();

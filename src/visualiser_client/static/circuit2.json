@@ -1,0 +1,150 @@
+[
+    {
+        "name": "bike_light.ato",
+        "type": "file",
+        "blocks": [
+            {
+                "name": "BikeLight",
+                "type": "module",
+                "fields": {
+                    "k1": "v1",
+                    "k2": "v2"
+                },
+                "blocks": [
+                    {
+                        "name": "led_driver",
+                        "type": "module",
+                        "fields": {
+                            "k1": "v1",
+                            "k2": "v2"
+                        },
+                        "blocks": [
+                            {
+                                "name": "voltage_divider",
+                                "type": "module",
+                                "fields": {
+                                    "k1": "v1",
+                                    "k2": "v2"
+                                },
+                                "blocks": [
+                                    {
+                                        "name": "r_top",
+                                        "type": "component",
+                                        "fields": {
+                                            "k1": "v1",
+                                            "k2": "v2"
+                                        },
+                                        "blocks": [],
+                                        "pins": [
+                                            {
+                                                "name": "p1",
+                                                "fields": {}
+                                            },
+                                            {
+                                                "name": "p2",
+                                                "fields": {
+                                                    "test": "test"
+                                                }
+                                            }
+                                        ],
+                                        "links": [],
+                                        "instance_of": "std/capcitor.ato:Capacitor"
+                                    },
+                                    {
+                                        "name": "r_bt",
+                                        "type": "component",
+                                        "fields": {
+                                            "k1": "v1",
+                                            "k2": "v2"
+                                        },
+                                        "blocks": [],
+                                        "pins": [
+                                            {
+                                                "name": "p1",
+                                                "fields": {}
+                                            },
+                                            {
+                                                "name": "p2",
+                                                "fields": {
+                                                    "test": "test"
+                                                }
+                                            }
+                                        ],
+                                        "links": [],
+                                        "instance_of": "std/capcitor.ato:Capacitor"
+                                    }
+                                ],
+                                "pins": [
+                                    {
+                                        "name": "input",
+                                        "fields": {}
+                                    },
+                                    {
+                                        "name": "output",
+                                        "fields": {
+                                            "test": "test"
+                                        }
+                                    },
+                                    {
+                                        "name": "ground",
+                                        "fields": {
+                                            "test": "test"
+                                        }
+                                    }
+                                ],
+                                "links": [
+                                    {
+                                        "net": "test",
+                                        "source": "voltage_divider/input",
+                                        "target": "vin"
+                                    },
+                                    {
+                                        "net": "test2",
+                                        "source": "voltage_divider/output",
+                                        "target": "gnd"
+                                    },
+                                    {
+                                        "net": "test",
+                                        "source": "voltage_divider/gnd",
+                                        "target": "gnd"
+                                    }
+                                ],
+                                "instance_of": "std/vdiv.ato:vdiv"
+                            }
+                        ],
+                        "pins": [
+                            {
+                                "name": "vin",
+                                "fields": {}
+                            },
+                            {
+                                "name": "gnd",
+                                "fields": {}
+                            }
+
+                        ],
+                        "links": [
+                            {
+                                "net": "test",
+                                "source": "pwm_header/p3",
+                                "target": "vin"
+                            },
+                            {
+                                "net": "test2",
+                                "source": "pwm_header/p1",
+                                "target": "gnd"
+                            }
+                        ],
+                        "instance_of": "led_driver.ato:LedDriver"
+                    }
+                ],
+                "pins": [],
+                "links": [],
+                "instance_of": "bike_light.ato:BikeLight"
+            }
+        ],
+        "pins": [],
+        "links": [],
+        "instance_of": null
+    }
+]
