@@ -1,5 +1,32 @@
 {
-    "vdiv": "visual config for vdiv",
-    "BikeLight": "visual config for bike light",
-    "other": "visual config for other"
+    "vdiv": {
+        "r_top": {
+            "position": {
+                "x": 100,
+                "y": 100
+            }
+        },
+        "r_bt": {
+            "position": {
+                "x": 200,
+                "y": 200
+            }
+        }
+    },
+    "BikeLight": {
+        "led_driver": {
+            "position": {
+                "x": 600,
+                "y": 600
+            }
+        }
+    },
+    "LedDriver": {
+        "vdiv": {
+            "position": {
+                "x": 300,
+                "y": 300
+            }
+        }
+    }
 }

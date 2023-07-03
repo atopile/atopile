@@ -576,7 +576,31 @@ function returnFileModuleName(string) {
     else return null;
 }
 
-async function renderDataFromBackend(data, is_root = true, parent = null) {
+function getElementPosition(visual_config_dict, element_name) {
+    console.log('data received with name ' + element_name);
+    console.log(visual_config_dict);
+
+    // If the visual dict is defined
+    if (visual_config_dict) {
+        // If that specific element is in the dict
+        if (element_name in visual_config_dict) {
+            position = visual_config_dict[element_name]['position'];
+        }
+        else{
+            console.log('Element ' + element_name + ' position not defined.')
+            position['x'] = 100;
+            position['y'] = 100;
+        }
+        console.log(position)
+    }
+    else {
+        position['x'] = 600;
+        position['y'] = 600;
+    }
+    return position;
+}
+
+async function loadDataFromBackend(data, is_root = true, parent = null) {
 
     // Create the list of all the created elements
     //let dict_of_elements = {};
@@ -597,8 +621,12 @@ async function renderDataFromBackend(data, is_root = true, parent = null) {
             let title = getElementTitle(element);
             created_element = createComponent(title, element['uuid'], x, y);
             element['jointObject'] = created_element;
+            element['jointObject'].position(2,2);
             // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
             //created_element.fitAncestorElements();
+            if (parent) {
+                addElementToElement(created_element, parent);
+            }
         }
 
         // If it is a block, create it
@@ -618,18 +646,22 @@ async function renderDataFromBackend(data, is_root = true, parent = null) {
             }
 
             // Iterate over the included elements to create them
-            renderDataFromBackend(element['blocks'], false, created_element);
+            await loadDataFromBackend(element['blocks'], false, created_element);
             // Add the returned list to the element list and add all sub-elements to it's parent
             //dict_of_elements = { ...dict_of_elements, ...returned_dict };
 
             //addLinks(element['links']);
             //addStubs(element['stubs']);
             //created_element.fitAncestorElements();
+            if (parent) {
+                addElementToElement(created_element, parent);
+            }
+            applyConfig(element);
         }
 
         else if (element['type'] == 'file') {
             //let file = getElementTitle(element);
-            renderDataFromBackend(element['blocks'], false);
+            loadDataFromBackend(element['blocks'], false);
 
             element['visual_config'] = await loadFileConfig(element['name'])
         }
@@ -639,16 +671,24 @@ async function renderDataFromBackend(data, is_root = true, parent = null) {
             // TODO: raise an error
             console.log('Unknown element type:'+ element['type']);
         }
-
-        if (parent) {
-            addElementToElement(created_element, parent);
-        }
     }
-
     // for (let e_name in dict_of_elements) {
     //     // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
     //     dict_of_elements[e_name].fitAncestorElements();
     // }
+}
+
+function applyConfig(data) {
+    console.log('config data');
+    console.log(data);
+    // If a visual config is provided
+    if (data['visual_config']) {
+        for (let element of data['blocks']) {
+            position = getElementPosition(data['visual_config'], element['name']);
+            console.log('moving a component ' + position['x'] + ' ' + position['y']);
+            element['jointObject'].position(position['x'], position['y'], { parentRelative: true });
+        }
+    }
 }
 
 const graph = new dia.Graph({}, { cellNamespace });
@@ -721,7 +761,7 @@ async function loadFileConfig(file_name) {
     const response = await fetch('/static/config.json');
     const config_data = await response.json();
 
-    console.log(config_data);
+    // console.log(config_data);
     return config_data;
 }
 
@@ -730,7 +770,7 @@ async function loadModuleConfig(file_name, module_name) {
     const response = await loadFileConfig(file_name);
     const module_config = response[module_name];
 
-    console.log(module_config);
+    // console.log(module_config);
     return module_config;
 }
 
@@ -742,9 +782,8 @@ async function loadCircuit() {
     // Place the dict in a global variable
     circuit_dict = circuit_data;
 
-    renderDataFromBackend(circuit_dict);
-    console.log('Filled dict');
-    console.log(circuit_dict);
+    loadDataFromBackend(circuit_dict);
+    //applyConfig(circuit_dict);
 }
 
 loadCircuit();
