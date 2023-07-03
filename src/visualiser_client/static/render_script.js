@@ -516,7 +516,7 @@ function addStubs(stubs) {
     };
 }
 
-function createComponent(title, uuid, x, y) {
+function createComponent(title, uuid) {
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     const component = new AtoComponent({
@@ -535,11 +535,10 @@ function createComponent(title, uuid, x, y) {
     //resizeBasedOnPorts(component, ports_dict);
 
     component.addTo(graph);
-    component.position(x, y, { parentRelative: true });
     return component;
 }
 
-function createBlock(title, uuid, x, y) {
+function createBlock(title, uuid) {
     const block = new AtoBlock({
         id: uuid,
         attrs: {
@@ -552,7 +551,6 @@ function createBlock(title, uuid, x, y) {
     //addPortsAndPins(block, ports_dict);
 
     block.addTo(graph);
-    block.position(x, y, { parentRelative: false });
     return block;
 }
 
@@ -606,20 +604,11 @@ async function loadDataFromBackend(data, is_root = true, parent = null) {
     //let dict_of_elements = {};
 
     for (let element of data) {
-        // FIXME: this default positioning is shit
-        let x = 100;
-        let y = 100;
-
-        if (element['position']) {
-            x = element['position']['x'];
-            y = element['position']['y'];
-        }
-
         var created_element = null;
 
         if (element['type'] == 'component') {
             let title = getElementTitle(element);
-            created_element = createComponent(title, element['uuid'], x, y);
+            created_element = createComponent(title, element['uuid']);
             element['jointObject'] = created_element;
             element['jointObject'].position(2,2);
             // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
@@ -632,7 +621,7 @@ async function loadDataFromBackend(data, is_root = true, parent = null) {
         // If it is a block, create it
         else if (element['type'] == 'module') {
             let title = getElementTitle(element);
-            created_element = createBlock(title, element['uuid'], x, y);
+            created_element = createBlock(title, element['uuid']);
             element['jointObject'] = created_element;
 
             // Extract file and module name from class
