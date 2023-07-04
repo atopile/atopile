@@ -66,6 +66,66 @@ class AtoElement extends dia.Element {
     static isAtoElement(shape) {
         return shape instanceof AtoElement;
     }
+
+    addPortWithPins(port_name, port_location, pin_list) {
+        let port_label_position = getPortLabelPosition(port_location);
+        let port_anchor = getPortLabelAnchor(port_location);
+        let port_angle = getPortLabelAngle(port_location);
+        let port_position = getPortPosition(port_location);
+
+        let port_group = {};
+
+        port_group[port_name] = {
+            position: port_position,
+            attrs: {
+                portBody: {
+                    magnet: true,
+                    r: 2,
+                    fill: '#FFFFFF',
+                    stroke:'#023047',
+                },
+            },
+            label: {
+                position: {
+                    args: {
+                        x: port_label_position[0],
+                        y: port_label_position[1],
+                        angle: port_angle,
+                    }, // Can't use inside/outside in combination
+                    //name: 'inside'
+                },
+                markup: [{
+                    tagName: 'text',
+                    selector: 'label',
+                    className: 'label-text'
+                }]
+            },
+            markup: [{
+                tagName: 'circle',
+                selector: 'portBody'
+            }]
+        };
+
+        // While we are creating the port, add the pins in the element
+        for (let pin of pin_list) {
+            this.addPort({
+                id: pin["uuid"],
+                group: port_name,
+                attrs: {
+                    label: {
+                        text: pin['name'],
+                        fontFamily: settings_dict['common']['fontFamily'],
+                        fontSize: settings_dict['component']['pin']['fontSize'],
+                        fontWeight: settings_dict["component"]['pin']["fontWeight"],
+                        textAnchor: port_anchor,
+                    },
+                },
+            });
+        }
+
+        // Add the ports list to the element
+        this.prop({"ports": { "groups": port_group}});
+    }
 }
 
 // Class for a component
@@ -194,8 +254,8 @@ const cellNamespace = {
     AtoBlock
 };
 
-function getPortLabelPosition(port) {
-    switch (port['location']) {
+function getPortLabelPosition(location) {
+    switch (location) {
         case "top":
             return [0, 8];
         case "bottom":
@@ -209,8 +269,8 @@ function getPortLabelPosition(port) {
     };
 };
 
-function getPortLabelAnchor(port) {
-    switch (port['location']) {
+function getPortLabelAnchor(location) {
+    switch (location) {
         case "top":
             return 'end';
         case "bottom":
@@ -224,8 +284,8 @@ function getPortLabelAnchor(port) {
     }
 };
 
-function getPortLabelAngle(port) {
-    switch (port['location']) {
+function getPortLabelAngle(location) {
+    switch (location) {
         case "top":
             return -90;
         case "bottom":
@@ -239,8 +299,8 @@ function getPortLabelAngle(port) {
     };
 };
 
-function getPortPosition(port) {
-    switch (port['location']) {
+function getPortPosition(location) {
+    switch (location) {
         case "top":
             return {
                 name: 'line',
@@ -353,76 +413,6 @@ function resizeBasedOnLabels(element, ports_list) {
 };
 
 
-function addPortsAndPins(element, ports_list) {
-    // Dict of all the port for the element
-    let port_groups = {};
-
-    // Create the different ports from the list
-    for (let port of ports_list) {
-
-        let port_label_position = [];
-        let port_anchor = "";
-        let port_angle = 0;
-        let port_position = {};
-        port_label_position = getPortLabelPosition(port);
-        port_anchor = getPortLabelAnchor(port);
-        port_angle = getPortLabelAngle(port);
-        port_position = getPortPosition(port);
-
-        port_groups[port['name']] = {
-            position: port_position,
-            attrs: {
-                portBody: {
-                    magnet: true,
-                    r: 2,
-                    fill: '#FFFFFF',
-                    stroke:'#023047',
-                },
-            },
-            label: {
-                position: {
-                    args: {
-                        x: port_label_position[0],
-                        y: port_label_position[1],
-                        angle: port_angle,
-                    }, // Can't use inside/outside in combination
-                    //name: 'inside'
-                },
-                markup: [{
-                    tagName: 'text',
-                    selector: 'label',
-                    className: 'label-text'
-                }]
-            },
-            markup: [{
-                tagName: 'circle',
-                selector: 'portBody'
-            }]
-        };
-
-        // While we are creating the port, add the pins in the element
-        for (let pin of port['pins']) {
-            element.addPort({
-                id: pin["uuid"],
-                group: port['name'],
-                attrs: {
-                    label: {
-                        text: pin['name'],
-                        fontFamily: settings_dict['common']['fontFamily'],
-                        fontSize: settings_dict['component']['pin']['fontSize'],
-                        fontWeight: settings_dict["component"]['pin']["fontWeight"],
-                        textAnchor: port_anchor,
-                    },
-                },
-            });
-            pin_to_element_association[pin["uuid"]] = element["id"];
-        }
-    };
-
-    // Add the ports list to the element
-    element.prop({"ports": { "groups": port_groups}});
-}
-
 function addLinks(links) {
     for (let link of links) {
         var added_link = new shapes.standard.Link({
@@ -524,6 +514,10 @@ function getElementTitle(element) {
     }
 }
 
+function addPorts(element) {
+
+}
+
 function createComponent(element, parent) {
     let title = getElementTitle(element);
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
@@ -539,7 +533,6 @@ function createComponent(element, parent) {
         }
     });
 
-    //addPortsAndPins(component, ports_dict);
     //resizeBasedOnLabels(component, ports_dict);
     //resizeBasedOnPorts(component, ports_dict);
 
@@ -594,7 +587,7 @@ function getElementPosition(element_name, config) {
     return position;
 }
 
-async function generateJointjsGraph(circuit, parent = null, path = null) {
+async function generateJointjsGraph(circuit, parent = null) {
     let jointJSCircuit = [];
 
     for (let element of circuit) {
