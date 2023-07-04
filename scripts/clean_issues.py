@@ -7,7 +7,7 @@ import logging
 import re
 import subprocess
 
-logger = logging.getLogger("script")
+logger = logging.getLogger(__name__)
 
 # Expects a csv file in the format: issue_number,title
 # Can be generated with gh issue list and some manual editing

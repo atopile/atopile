@@ -31,6 +31,7 @@ def to_faebryk_t2_netlist(kicad_schematic, file_loader=None):
 
     path = Path("./build/faebryk_sch")
     path.write_text(pprint.pformat(schematic, indent=4))
+
     # -------------------------------------------------------------------------
     def load_sheet_nets(sheet_schematic):
         def subname_to_tpl(subname: str):
@@ -192,8 +193,11 @@ def to_faebryk_t2_netlist(kicad_schematic, file_loader=None):
                     # a = (pts[1][1]-pts[0][1])/(pts[1][0]-pts[0][0]) #dy/dx
                     # matches = (lpt[0]-pts[0][0])*a + pts[0][1] == lpt[1]
                     # matches = (lpt[0]-pts[0][0])*a == lpt[1] - pts[0][1]
-                    # matches = (lpt[0]-pts[0][0])*(pts[1][1]-pts[0][1])/(pts[1][0]-pts[0][0]) == lpt[1] - pts[0][1]
-                    # matches = (lpt[0]-pts[0][0])*(pts[1][1]-pts[0][1]) == (lpt[1] - pts[0][1]) * (pts[1][0]-pts[0][0])
+                    # matches = (lpt[0]-pts[0][0])
+                    #   *(pts[1][1]-pts[0][1])/(pts[1][0]-pts[0][0])
+                    #   == lpt[1] - pts[0][1]
+                    # matches = (lpt[0]-pts[0][0])*(pts[1][1]-pts[0][1])
+                    #   == (lpt[1] - pts[0][1]) * (pts[1][0]-pts[0][0])
                     matches = round(
                         (lpt[0] - pts[0][0]) * (pts[1][1] - pts[0][1]), 2
                     ) == round((lpt[1] - pts[0][1]) * (pts[1][0] - pts[0][0]), 2)

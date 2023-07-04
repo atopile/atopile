@@ -4,7 +4,7 @@
 import logging
 import re
 
-logger = logging.getLogger("pycodegen")
+logger = logging.getLogger(__name__)
 
 
 def sanitize_name(raw):

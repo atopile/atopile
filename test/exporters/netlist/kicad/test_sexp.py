@@ -6,12 +6,11 @@ import os
 import re
 import unittest
 
-import sexpdata
-
 import faebryk.exporters.netlist.kicad.sexp as sexp_gen
+import sexpdata
 from faebryk.exporters.netlist.kicad.sexp import multi_key_dict
 
-logger = logging.getLogger("test")
+logger = logging.getLogger(__name__)
 
 """
     Converts python dict to format which can be recovered by sexp without
@@ -82,7 +81,7 @@ def _test_py2net2py(obj):
     parsed = sexpdata.loads(sexp)
     try:
         cleaned = _cleanparsed(parsed)
-    except Exception as e:
+    except Exception:
         logger.error("Source:%s", sexp)
         logger.error("Died:%s", parsed)
         return False

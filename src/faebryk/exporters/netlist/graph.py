@@ -2,174 +2,210 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from itertools import groupby
-from typing import List
+from abc import abstractmethod
+from dataclasses import dataclass
+from typing import Any
 
-from typing_extensions import Self
+import networkx as nx
+from faebryk.core.core import (
+    Footprint,
+    FootprintTrait,
+    GraphInterfaceSelf,
+    LinkDirect,
+    Node,
+)
+from faebryk.core.graph import Graph
+from faebryk.library.Electrical import Electrical
+from faebryk.library.has_descriptive_properties import has_descriptive_properties
+from faebryk.library.has_footprint import has_footprint
+from faebryk.library.has_kicad_footprint import has_kicad_footprint
+from faebryk.library.has_overriden_name import has_overriden_name
+from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
+from faebryk.library.has_type_description import has_type_description
 
-from faebryk.library.trait_impl.component import has_overriden_name_defined
-from faebryk.library.traits.component import has_overriden_name
-
-logger = logging.getLogger("netlist")
+logger = logging.getLogger(__name__)
 
 
-def make_t1_netlist_from_graph(comps):
-    t1_netlist = [comp.get_comp() for comp in comps]
+class can_represent_kicad_footprint(FootprintTrait):
+    @dataclass
+    class kicad_footprint:
+        @dataclass
+        class neighbor:
+            fp: Footprint
+            pin: str
 
-    return t1_netlist
+        name: str
+        properties: dict[str, Any]
+        neighbors: dict[str, list[neighbor]]
+        value: str
+
+    @abstractmethod
+    def get_name_and_value(self) -> tuple[str, str]:
+        ...
+
+    @abstractmethod
+    def get_kicad_obj(self) -> kicad_footprint:
+        ...
 
 
-# This method is a temporary solution to convert high-level faebryk relations
-#   as a netlist graph
-# In the future we will generate a high-level graph which the netlist can be
-#   built from directly
-def make_graph_from_components(components):
-    from faebryk.library.core import Component
-    from faebryk.library.kicad import has_kicad_footprint
-    from faebryk.library.traits.component import (
-        has_descriptive_properties,
-        has_footprint,
-        has_footprint_pinmap,
-        has_type_description,
-    )
-    from faebryk.library.traits.interface import is_part_of_component
-    from faebryk.library.util import get_all_components
-    from faebryk.libs.exceptions import FaebrykException
+def get_or_set_name_and_value_of_node(c: Node):
+    # TODO rename that trait
+    value = c.get_trait(has_type_description).get_type_description()
 
-    class wrapper:
-        def __init__(self, component: Component, wrapped_list: List[Self]) -> None:
-            self.component = component
-            self._setup_non_rec()
-            self.wrapped_list: List[Self]
-
-        def _setup_non_rec(self):
-            c = self.component
-            self.real = c.has_trait(has_footprint) and c.has_trait(has_footprint_pinmap)
-            self.properties = {}
-            self.neighbors = {}
-            if self.real:
-                self.value = c.get_trait(has_type_description).get_type_description()
-                self.properties["footprint"] = (
-                    c.get_trait(has_footprint)
-                    .get_footprint()
-                    .get_trait(has_kicad_footprint)
-                    .get_kicad_footprint()
+    if not c.has_trait(has_overriden_name):
+        c.add_trait(
+            has_overriden_name_defined(
+                "{}[{}:{}]".format(
+                    c.get_full_name(),
+                    type(c).__name__,
+                    value,
                 )
-                if c.has_trait(has_descriptive_properties):
-                    self.properties.update(
-                        c.get_trait(has_descriptive_properties).get_properties()
-                    )
-            if not self.component.has_trait(has_overriden_name):
-                self.component.add_trait(
-                    has_overriden_name_defined(
-                        "{}[{}:{}]".format(
-                            ".".join(
-                                [
-                                    pname
-                                    for parent, pname in self.component.get_hierarchy()
-                                ]
-                            )
-                            if self.component.parent is not None
-                            else "",
-                            type(self.component).__name__,
-                            self.value if self.real else "virt",
-                        )
-                    )
-                )
-
-            self.name = self.component.get_trait(has_overriden_name).get_name()
-            self._comp = {}
-            self._update_comp()
-
-        def _update_comp(self):
-            self._comp.update(
-                {
-                    "name": self.name,
-                    "real": self.real,
-                    "properties": self.properties,
-                    "neighbors": self.neighbors,
-                }
             )
-            if self.real:
-                self._comp["value"] = self.value
-
-        def _get_comp(self):
-            return self._comp
-
-        def get_comp(self):
-            # only executed once
-            neighbors = {}
-            for pin, interface in (
-                self.component.get_trait(has_footprint_pinmap).get_pin_map().items()
-            ):
-                neighbors[pin] = []
-                for target_interface in interface.connections:
-                    if target_interface.has_trait(is_part_of_component):
-                        target_component = target_interface.get_trait(
-                            is_part_of_component
-                        ).get_component()
-                        target_pinmap = target_component.get_trait(
-                            has_footprint_pinmap
-                        ).get_pin_map()
-                        try:
-                            target_pin = list(target_pinmap.items())[
-                                list(target_pinmap.values()).index(target_interface)
-                            ][0]
-                        except ValueError:
-                            raise FaebrykException(
-                                "Pinmap of component does not contain referenced pin"
-                            )
-                        try:
-                            target_wrapped = [
-                                i
-                                for i in wrapped_list
-                                if i.component == target_component
-                            ][0]
-                        except IndexError:
-                            raise FaebrykException(
-                                "Discovered associated component not in component list:",
-                                target_component,
-                            )
-
-                        neighbors[pin].append(
-                            {"vertex": target_wrapped._get_comp(), "pin": target_pin}
-                        )
-                    else:
-                        logger.warn(
-                            "{comp} pin {pin} is connected to interface without component".format(
-                                comp=self.name,
-                                # intf=target_interface,
-                                pin=pin,
-                            )
-                        )
-
-            self.neighbors = neighbors
-            self._update_comp()
-
-            return self._get_comp()
-
-    all_components = list(components)
-    # add subcomponents to graph
-    for i in map(get_all_components, components):
-        all_components.extend(i)
-
-    wrapped_list = []
-    wrapped_list += [wrapper(comp, wrapped_list) for comp in all_components]
-
-    names = groupby(wrapped_list, key=lambda w: w.name)
-    for name, _objs in names:
-        objs = list(_objs)
-        if len(objs) <= 1:
-            continue
-        for i, obj in enumerate(objs):
-            # TODO deterministic
-            # maybe prefix name of parent instead
-            obj.name += f"@{i}"
-
-    logger.debug(
-        "Making graph from components:\n\t{}".format(
-            "\n\t".join(map(str, all_components))
         )
-    )
 
-    return wrapped_list
+    return c.get_trait(has_overriden_name).get_name(), value
+
+
+class can_represent_kicad_footprint_via_attached_component(
+    can_represent_kicad_footprint.impl()
+):
+    def __init__(self, component: Node, graph: nx.Graph) -> None:
+        """
+        graph has to be electrically closed
+        """
+
+        super().__init__()
+        self.component = component
+        self.graph = graph
+
+    def get_name_and_value(self):
+        return get_or_set_name_and_value_of_node(self.component)
+
+    def get_kicad_obj(self):
+        fp = self.get_obj()
+
+        properties = {
+            "footprint": fp.get_trait(has_kicad_footprint).get_kicad_footprint()
+        }
+
+        for c in [fp, self.component]:
+            if c.has_trait(has_descriptive_properties):
+                properties.update(
+                    c.get_trait(has_descriptive_properties).get_properties()
+                )
+
+        name, value = self.get_name_and_value()
+
+        pin_names = fp.get_trait(has_kicad_footprint).get_pin_names()
+
+        neighbors = {
+            pin_names[pin]: [
+                can_represent_kicad_footprint.kicad_footprint.neighbor(
+                    fp=target_fp,
+                    pin=target_fp.get_trait(has_kicad_footprint).get_pin_names()[
+                        i.node
+                    ],
+                )
+                for i in self.graph[pin.GIFs.connected]
+                if i.node is not pin
+                and isinstance(i.node, Electrical)
+                and (fp_tup := i.node.get_parent()) is not None
+                and isinstance((target_fp := fp_tup[0]), Footprint)
+            ]
+            for pin in fp.IFs.get_all()
+            if isinstance(pin, Electrical)
+        }
+
+        return can_represent_kicad_footprint.kicad_footprint(
+            name=name,
+            properties=properties,
+            neighbors=neighbors,
+            value=value,
+        )
+
+
+# TODO not sure if needed
+def close_electrical_graph(G: nx.Graph):
+    G_only_e = nx.Graph()
+    G_only_e.add_nodes_from(G.nodes)
+    G_only_e.add_edges_from(
+        [
+            (t0, t1, d)
+            for t0, t1, d in G.edges(data=True)
+            if isinstance(t0.node, Electrical)
+            and isinstance(t1.node, Electrical)
+            and t0.node != t1.node
+            and t0.node.GIFs.connected == t0
+            and t1.node.GIFs.connected == t1
+            and isinstance(d.get("link"), LinkDirect)
+            # TODO this does not characterize an electrical link very well
+        ]
+    )
+    G_only_e_closed = nx.transitive_closure(G_only_e)
+    for t0, t1, d in G_only_e_closed.edges(data=True):
+        if "link" in d:
+            continue
+        d["link"] = LinkDirect([t0, t1])
+        # G_only_e_closed.edges(data=True)[t1,t0]["link"] = d["link"]
+
+    Gclosed = nx.Graph(G)
+    Gclosed.add_edges_from(G_only_e_closed.edges(data=True))
+
+    return Gclosed
+
+
+def make_t1_netlist_from_graph(g: Graph):
+    Gclosed = close_electrical_graph(g.G)
+
+    # group comps & fps
+    node_fps = {
+        n: n.get_trait(has_footprint).get_footprint()
+        for GIF in Gclosed.nodes
+        # TODO maybe nicer to just look for footprints
+        # and get their respective components instead
+        if isinstance(GIF, GraphInterfaceSelf)
+        and (n := GIF.node) is not None
+        and n.has_trait(has_footprint)
+    }
+
+    logger.debug(f"node_fps: {node_fps}")
+
+    # add trait/info to footprints
+    for n, fp in node_fps.items():
+        fp = n.get_trait(has_footprint).get_footprint()
+        if fp.has_trait(can_represent_kicad_footprint):
+            continue
+        fp.add_trait(can_represent_kicad_footprint_via_attached_component(n, Gclosed))
+
+    # generate kicad_objs from footprints
+    kicad_objs = {
+        fp: fp.get_trait(can_represent_kicad_footprint).get_kicad_obj()
+        for fp in node_fps.values()
+    }
+
+    def convert_kicad_obj_base(
+        obj: can_represent_kicad_footprint.kicad_footprint,
+    ) -> dict[str, Any]:
+        return {
+            "name": obj.name,
+            "properties": obj.properties,
+            "value": obj.value,
+            "real": True,
+            "neighbors": obj.neighbors,
+        }
+
+    # convert into old/generic format
+    converted = {fp: convert_kicad_obj_base(obj) for fp, obj in kicad_objs.items()}
+
+    logger.debug(f"stage_1: {converted}")
+
+    def convert_kicad_obj_neighbors(obj: dict[str, Any]):
+        obj["neighbors"] = {
+            k: [{"vertex": converted[n.fp], "pin": n.pin} for n in v]
+            for k, v in obj["neighbors"].items()
+        }
+
+    for fp, obj in converted.items():
+        convert_kicad_obj_neighbors(obj)
+
+    return list(converted.values())

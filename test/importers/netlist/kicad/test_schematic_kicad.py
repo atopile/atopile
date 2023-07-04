@@ -5,7 +5,7 @@ import logging
 import os
 import unittest
 
-logger = logging.getLogger("test")
+logger = logging.getLogger(__name__)
 
 
 class TestImportSchematicKicad(unittest.TestCase):
@@ -16,7 +16,8 @@ class TestImportSchematicKicad(unittest.TestCase):
             base_path = os.path.join(
                 os.path.dirname(__file__), "../../../../build/kicad6_test/test/"
             )
-            # with open(os.path.join(os.path.dirname(__file__), "../../../common/resources/test.kicad_sch"), "r") as f:
+            # with open(os.path.join(os.path.dirname(__file__),
+            # "../../../common/resources/test.kicad_sch"), "r") as f:
             with open(os.path.join(base_path, name), "r") as f:
                 return f.read()
 

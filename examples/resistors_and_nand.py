@@ -4,47 +4,61 @@
 """
 This file contains a faebryk sample.
 Faebryk samples demonstrate the usage by building example systems.
-This particular sample creates a netlist with some resistors and a nand ic 
+This particular sample creates a netlist with some resistors and a nand ic
     with no specific further purpose or function.
+It shall primarily demonstrate some simple faebryk concepts.
 Thus this is a netlist sample.
 Netlist samples can be run directly.
-The netlist is printed to stdout.
 """
 import logging
 
-# function imports
-from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
-from faebryk.exporters.netlist.graph import (
-    make_graph_from_components,
-    make_t1_netlist_from_graph,
-)
-from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
+import typer
 
 # library imports
-from faebryk.library.core import Component
-from faebryk.library.library.components import TI_CD4011BE, Resistor
-from faebryk.library.library.footprints import SMDTwoPin
-from faebryk.library.library.interfaces import Power
-from faebryk.library.library.parameters import Constant
-from faebryk.library.trait_impl.component import (
-    has_defined_footprint,
-    has_symmetric_footprint_pinmap,
+from faebryk.core.core import Module
+from faebryk.core.util import connect_interfaces_via_chain
+from faebryk.exporters.netlist.graph import make_t1_netlist_from_graph
+from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
+from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
+from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
+from faebryk.library.can_attach_to_footprint_via_pinmap import (
+    can_attach_to_footprint_via_pinmap,
 )
+from faebryk.library.Constant import Constant
+from faebryk.library.Electrical import Electrical
+from faebryk.library.ElectricLogic import ElectricLogic
+from faebryk.library.ElectricPower import ElectricPower
+from faebryk.library.has_defined_type_description import has_defined_type_description
+from faebryk.library.KicadFootprint import KicadFootprint
+from faebryk.library.Resistor import Resistor
+from faebryk.library.SMDTwoPin import SMDTwoPin
+from faebryk.library.TI_CD4011BE import TI_CD4011BE
 from faebryk.libs.experiments.buildutil import export_graph, export_netlist
+from faebryk.libs.logging import setup_basic_logging
 
-logger = logging.getLogger("main")
+logger = logging.getLogger(__name__)
 
 
-def run_experiment():
-
+def main(make_graph: bool = True, show_graph: bool = True):
     # power
-    class Battery(Component):
-        class _IFS(Component.InterfacesCls()):
-            power = Power()
+    class Battery(Module):
+        class _IFS(Module.IFS()):
+            power = ElectricPower()
 
         def __init__(self) -> None:
             super().__init__()
             self.IFs = Battery._IFS(self)
+
+            self.add_trait(
+                can_attach_to_footprint_via_pinmap(
+                    {"1": self.IFs.power.NODEs.hv, "2": self.IFs.power.NODEs.lv}
+                )
+            ).attach(
+                KicadFootprint.with_simple_names(
+                    "BatteryHolder_ComfortableElectronic_CH273-2450_1x2450", 2
+                )
+            )
+            self.add_trait(has_defined_type_description("B"))
 
     battery = Battery()
 
@@ -54,55 +68,54 @@ def run_experiment():
     cd4011 = TI_CD4011BE()
 
     # aliases
-    vcc = battery.IFs.power.IFs.hv
-    gnd = battery.IFs.power.IFs.lv
+    power = ElectricPower()
+    vcc = Electrical()
+    gnd = Electrical()
+    high = ElectricLogic()
+    low = ElectricLogic()
+
+    power.connect(battery.IFs.power)
+    power.NODEs.hv.connect(vcc)
+    power.NODEs.lv.connect(gnd)
+
+    high.connect_to_electric(vcc, power)
+    low.connect_to_electric(gnd, power)
 
     # connections
-    r1it = iter(resistor1.IFs.get_all())
-    r2it = iter(resistor2.IFs.get_all())
-    next(r1it).connect(vcc).connect(next(r2it))
-    next(r1it).connect(gnd).connect(next(r2it))
-    cd4011.CMPs.nands[0].IFs.inputs[0].connect(vcc)
-    cd4011.CMPs.nands[0].IFs.inputs[1].connect(gnd)
+    connect_interfaces_via_chain(vcc, [resistor1, resistor2], gnd)
+
+    cd4011.NODEs.nands[0].IFs.inputs[0].connect(high)
+    cd4011.NODEs.nands[0].IFs.inputs[1].connect(low)
     cd4011.IFs.power.connect(battery.IFs.power)
 
-    # make kicad netlist exportable (packages, pinmaps)
-    for r in [resistor1, resistor2]:
-        r.add_trait(has_defined_footprint(SMDTwoPin(SMDTwoPin.Type._0805)))
-        r.add_trait(has_symmetric_footprint_pinmap())
-    battery.add_trait(has_symmetric_footprint_pinmap())
+    # make netlist exportable (packages, pinmaps)
+    for r in [
+        resistor1,
+        resistor2,
+    ]:
+        r.get_trait(can_attach_to_footprint).attach(SMDTwoPin(SMDTwoPin.Type._0805))
 
-    comps = [
+    # Export
+    app = Module()
+    app.NODEs.components = [
+        battery,
         resistor1,
         resistor2,
         cd4011,
-        battery,
     ]
+    G = app.get_graph()
 
-    t1_ = make_t1_netlist_from_graph(make_graph_from_components(comps))
+    t1 = make_t1_netlist_from_graph(G)
+    t2 = make_t2_netlist_from_t1(t1)
+    netlist = from_faebryk_t2_netlist(t2)
 
-    netlist = from_faebryk_t2_netlist(make_t2_netlist_from_t1(t1_))
-    assert netlist is not None
-
-    # from pretty import pretty
-    # logger.info("Experiment components")
-    # logger.info("\n" + "\n".join(pretty(c) for c in comps))
+    if make_graph:
+        export_graph(G.G, show_graph)
     export_netlist(netlist)
-    export_graph(t1_, show=True)
-
-
-# Boilerplate -----------------------------------------------------------------
-import sys
-
-
-def main(argc, argv, argi):
-    logging.basicConfig(level=logging.INFO)
-
-    logger.info("Running experiment")
-    run_experiment()
 
 
 if __name__ == "__main__":
-    import sys
+    setup_basic_logging()
+    logger.info("Running experiment")
 
-    main(len(sys.argv), sys.argv, iter(sys.argv))
+    typer.run(main)

@@ -5,7 +5,7 @@ import logging
 import os
 import unittest
 
-logger = logging.getLogger("test")
+logger = logging.getLogger(__name__)
 
 
 class TestImportNetlistKicad(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestImportNetlistKicad(unittest.TestCase):
 
         from faebryk.importers.netlist.kicad.netlist_kicad import to_faebryk_t2_netlist
 
-        t2 = to_faebryk_t2_netlist(test_netlist)
+        to_faebryk_t2_netlist(test_netlist)
 
         # import pprint
         # pprint.pprint(t2, indent=4)
@@ -49,7 +49,7 @@ class TestImportNetlistKicad(unittest.TestCase):
         t1 = to_faebryk_t1_netlist(t2)
 
         t2p = make_t2_netlist_from_t1(t1)
-        k_net = from_faebryk_t2_netlist(t2p)
+        from_faebryk_t2_netlist(t2p)
 
         # import pprint
         # pprint.pprint(k_net, indent=4)

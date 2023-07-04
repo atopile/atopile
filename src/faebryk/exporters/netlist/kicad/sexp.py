@@ -4,7 +4,7 @@
 import logging
 import re
 
-logger = logging.getLogger("sexp")
+logger = logging.getLogger(__name__)
 
 
 class multi_key_dict:

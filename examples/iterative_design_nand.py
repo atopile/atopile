@@ -4,68 +4,133 @@
 """
 This file contains a faebryk sample.
 Faebryk samples demonstrate the usage by building example systems.
-This particular sample creates a netlist with an led and a nand ic 
-    that creates some logic. 
+This particular sample creates a netlist with an led and a nand ic
+    that creates some logic.
 The goal of this sample is to show how faebryk can be used to iteratively
     expand the specifics of a design in multiple steps.
 Thus this is a netlist sample.
 Netlist samples can be run directly.
-The netlist is printed to stdout.
 """
 import logging
 
-from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
-from faebryk.exporters.netlist.graph import (
-    make_graph_from_components,
-    make_t1_netlist_from_graph,
-)
+import typer
+from faebryk.core.core import Module, Parameter
+from faebryk.core.util import get_all_nodes, specialize_interface, specialize_module
+from faebryk.exporters.netlist.graph import make_t1_netlist_from_graph
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-from faebryk.library.core import Component, Footprint, Parameter
-from faebryk.library.kicad import has_kicad_manual_footprint
-from faebryk.library.library.components import CD4011, LED, NAND, Resistor, Switch
-from faebryk.library.library.footprints import DIP, SMDTwoPin
-from faebryk.library.library.interfaces import Electrical, Power
-from faebryk.library.library.parameters import TBD, Constant
-from faebryk.library.trait_impl.component import (
-    has_defined_footprint,
-    has_defined_footprint_pinmap,
-    has_symmetric_footprint_pinmap,
+from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
+from faebryk.exporters.visualize.graph import render_matrix
+from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
+from faebryk.library.can_attach_to_footprint_via_pinmap import (
+    can_attach_to_footprint_via_pinmap,
 )
-from faebryk.libs.experiments.buildutil import export_graph, export_netlist
+from faebryk.library.Constant import Constant
+from faebryk.library.Electrical import Electrical
+from faebryk.library.ElectricLogic import ElectricLogic
+from faebryk.library.ElectricPower import ElectricPower
+from faebryk.library.has_defined_type_description import has_defined_type_description
+from faebryk.library.KicadFootprint import KicadFootprint
+from faebryk.library.LED import LED
+from faebryk.library.Logic import Logic
+from faebryk.library.NAND import NAND
+from faebryk.library.Resistor import Resistor
+from faebryk.library.SMDTwoPin import SMDTwoPin
+from faebryk.library.Switch import Switch
+from faebryk.library.TBD import TBD
+from faebryk.library.TI_CD4011BE import TI_CD4011BE
+from faebryk.libs.experiments.buildutil import export_netlist
+from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.util import times
 
-logger = logging.getLogger("main")
+logger = logging.getLogger(__name__)
 
 
-def run_experiment():
+class Battery(Module):
+    def __init__(self) -> None:
+        super().__init__()
 
+        class IFS(Module.IFS()):
+            power = ElectricPower()
+
+        self.IFs = IFS(self)
+        self.voltage: Parameter = TBD()
+
+
+class PowerSource(Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+        class IFS(Module.IFS()):
+            power_out = ElectricPower()
+
+        self.IFs = IFS(self)
+
+
+class XOR(Module):
+    def __init__(
+        self,
+    ):
+        super().__init__()
+
+        class IFS(Module.IFS()):
+            inputs = times(2, Logic)
+            output = Logic()
+
+        self.IFs = IFS(self)
+
+    def xor(self, in1: Logic, in2: Logic):
+        self.IFs.inputs[0].connect(in1)
+        self.IFs.inputs[1].connect(in2)
+        return self.IFs.output
+
+
+class XOR_with_NANDS(XOR):
+    def __init__(
+        self,
+    ):
+        super().__init__()
+
+        class NODES(Module.NODES()):
+            nands = times(4, lambda: NAND(2))
+
+        self.NODEs = NODES(self)
+
+        A = self.IFs.inputs[0]
+        B = self.IFs.inputs[1]
+
+        G = self.NODEs.nands
+        Q = self.IFs.output
+
+        # ~(a&b)
+        q0 = G[0].nand(A, B)
+        # ~(a&~b)
+        q1 = G[1].nand(A, q0)
+        # ~(~a&b)
+        q2 = G[2].nand(B, q0)
+        # (a&~b) o| (~a&b)
+        q3 = G[3].nand(q1, q2)
+
+        Q.connect(q3)
+
+
+def main(make_graph: bool = True):
     # levels
-    high = Electrical()
-    low = Electrical()
+    on = Logic()
+    off = Logic()
 
     # power
-    class Battery(Component):
-        def __init__(self) -> None:
-            super().__init__()
-
-            class _IFs(Component.InterfacesCls()):
-                power = Power()
-
-            self.IFs = _IFs(self)
-            self.voltage: Parameter = TBD()
-
-    battery = Battery()
+    power_source = PowerSource()
 
     # alias
-    gnd = battery.IFs.power.IFs.lv
-    power = battery.IFs.power
+    power = power_source.IFs.power_out
+    gnd = Electrical().connect(power.NODEs.lv)
 
     # logic
-    nands = [NAND(2) for _ in range(2)]
-    nands[0].IFs.inputs[1].connect(low)
-    nands[1].IFs.inputs[0].connect(nands[0].IFs.output)
-    nands[1].IFs.inputs[1].connect(low)
-    logic_in = nands[0].IFs.inputs[0]
-    logic_out = nands[1].IFs.output
+    logic_in = Logic()
+    logic_out = Logic()
+
+    xor = XOR()
+    logic_out.connect(xor.xor(logic_in, on))
 
     # led
     current_limiting_resistor = Resistor(resistance=TBD())
@@ -73,21 +138,58 @@ def run_experiment():
     led.IFs.cathode.connect_via(current_limiting_resistor, gnd)
 
     # application
-    switch = Switch()
-    pull_down_resistor = Resistor(TBD())
+    switch = Switch(Logic)()
 
-    logic_in.connect_via(pull_down_resistor, low)
-    logic_in.connect_via(switch, high)
-    logic_out.connect(led.IFs.anode)
+    logic_in.connect_via(switch, on)
+
+    e_in = specialize_interface(logic_in, ElectricLogic())
+    pull_down_resistor = Resistor(TBD())
+    e_in.pull_down(pull_down_resistor)
+
+    e_out = specialize_interface(logic_out, ElectricLogic())
+    e_out.NODEs.signal.connect(led.IFs.anode)
+
+    specialize_interface(on, ElectricLogic()).connect_to_electric(power.NODEs.hv, power)
+    specialize_interface(off, ElectricLogic()).connect_to_electric(
+        power.NODEs.lv, power
+    )
+
+    nxor = specialize_module(xor, XOR_with_NANDS())
+
+    battery = specialize_module(power_source, Battery())
+
+    el_switch = specialize_module(switch, Switch(ElectricLogic)())
+    e_switch = Switch(Electrical)()
+    # TODO make switch generic to remove the asserts
+    for e, el in zip(e_switch.IFs.unnamed, el_switch.IFs.unnamed):
+        assert isinstance(el, ElectricLogic)
+        assert isinstance(e, Electrical)
+        el.connect_to_electric(e, battery.IFs.power)
+
+    # build graph
+    app = Module()
+    app.NODEs.components = [
+        led,
+        pull_down_resistor,
+        current_limiting_resistor,
+        switch,
+        battery,
+        e_switch,
+    ]
 
     # parametrizing
-    battery.voltage = Constant(5)
     pull_down_resistor.set_resistance(Constant(100_000))
-    led.set_forward_parameters(voltage_V=Constant(2.4), current_A=Constant(0.020))
-    nand_ic = CD4011().get_trait(CD4011.constructable_from_nands).from_nands(nands)
-    nand_ic.IFs.power.connect(power)
-    high.connect(power.IFs.hv)
-    low.connect(power.IFs.lv)
+
+    for node in get_all_nodes(app):
+        if isinstance(node, Battery):
+            node.voltage = Constant(5)
+
+        if isinstance(node, LED):
+            node.set_forward_parameters(
+                voltage_V=Constant(2.4), current_A=Constant(0.020)
+            )
+
+    assert isinstance(battery.voltage, Constant)
     current_limiting_resistor.set_resistance(
         led.get_trait(
             LED.has_calculatable_needed_series_resistance
@@ -95,90 +197,71 @@ def run_experiment():
     )
 
     # packaging
-    nand_ic.add_trait(
-        has_defined_footprint(DIP(pin_cnt=14, spacing_mm=7.62, long_pads=False))
+    e_switch.get_trait(can_attach_to_footprint).attach(
+        KicadFootprint.with_simple_names("Panasonic_EVQPUJ_EVQPUA", 2)
     )
-    nand_ic.add_trait(
-        has_defined_footprint_pinmap(
-            {
-                7: nand_ic.IFs.power.IFs.lv,
-                14: nand_ic.IFs.power.IFs.hv,
-                3: nand_ic.connection_map[nand_ic.CMPs.nands[0].IFs.output],
-                4: nand_ic.connection_map[nand_ic.CMPs.nands[1].IFs.output],
-                11: nand_ic.connection_map[nand_ic.CMPs.nands[2].IFs.output],
-                10: nand_ic.connection_map[nand_ic.CMPs.nands[3].IFs.output],
-                1: nand_ic.connection_map[nand_ic.CMPs.nands[0].IFs.inputs[0]],
-                2: nand_ic.connection_map[nand_ic.CMPs.nands[0].IFs.inputs[1]],
-                5: nand_ic.connection_map[nand_ic.CMPs.nands[1].IFs.inputs[0]],
-                6: nand_ic.connection_map[nand_ic.CMPs.nands[1].IFs.inputs[1]],
-                12: nand_ic.connection_map[nand_ic.CMPs.nands[2].IFs.inputs[0]],
-                13: nand_ic.connection_map[nand_ic.CMPs.nands[2].IFs.inputs[1]],
-                9: nand_ic.connection_map[nand_ic.CMPs.nands[3].IFs.inputs[0]],
-                8: nand_ic.connection_map[nand_ic.CMPs.nands[3].IFs.inputs[1]],
-            }
-        )
-    )
+    for node in get_all_nodes(app):
+        if isinstance(node, Battery):
+            node.add_trait(
+                can_attach_to_footprint_via_pinmap(
+                    {"1": node.IFs.power.NODEs.hv, "2": node.IFs.power.NODEs.lv}
+                )
+            ).attach(
+                KicadFootprint.with_simple_names(
+                    "BatteryHolder_ComfortableElectronic_CH273-2450_1x2450", 2
+                )
+            )
+            node.add_trait(has_defined_type_description("B"))
 
-    for smd_comp in [led, pull_down_resistor, current_limiting_resistor]:
-        smd_comp.add_trait(has_defined_footprint(SMDTwoPin(SMDTwoPin.Type._0805)))
+        if isinstance(node, Resistor):
+            node.get_trait(can_attach_to_footprint).attach(
+                SMDTwoPin(SMDTwoPin.Type._0805)
+            )
 
-    switch_fp = Footprint()
-    switch_fp.add_trait(has_kicad_manual_footprint("Panasonic_EVQPUJ_EVQPUA"))
-    switch.add_trait(has_defined_footprint(switch_fp))
+        if isinstance(node, LED):
+            node.add_trait(
+                can_attach_to_footprint_via_pinmap(
+                    {"1": node.IFs.anode, "2": node.IFs.cathode}
+                )
+            ).attach(SMDTwoPin(SMDTwoPin.Type._0805))
 
-    for symmetric_component in [pull_down_resistor, current_limiting_resistor, switch]:
-        symmetric_component.add_trait(has_symmetric_footprint_pinmap())
+    # packages single nands as explicit IC
+    nand_ic = TI_CD4011BE()
+    for ic_nand, xor_nand in zip(nand_ic.NODEs.nands, nxor.NODEs.nands):
+        specialize_module(xor_nand, ic_nand)
 
-    led.add_trait(
-        has_defined_footprint_pinmap(
-            {
-                1: led.IFs.anode,
-                2: led.IFs.cathode,
-            }
-        )
-    )
+    app.NODEs.nand_ic = nand_ic
 
-    # TODO: remove, just compensation for old graph
-    battery.add_trait(has_symmetric_footprint_pinmap())
-    logic_virt = Component()
-    logic_virt.IFs.high = high
-    logic_virt.IFs.low = low
-    logic_virt.add_trait(has_symmetric_footprint_pinmap())
-    for n in nand_ic.CMPs.nands:
-        n.add_trait(has_symmetric_footprint_pinmap())
+    # export
+    logger.info("Make graph")
+    G = app.get_graph()
 
-    # make graph
-    components = [
-        led,
-        pull_down_resistor,
-        current_limiting_resistor,
-        nand_ic,
-        switch,
-        battery,
-        logic_virt,
-    ]
-
-    t1_ = make_t1_netlist_from_graph(make_graph_from_components(components))
-
-    netlist = from_faebryk_t2_netlist(make_t2_netlist_from_t1(t1_))
-    assert netlist is not None
+    logger.info("Make netlist")
+    t1 = make_t1_netlist_from_graph(G)
+    t2 = make_t2_netlist_from_t1(t1)
+    netlist = from_faebryk_t2_netlist(t2)
 
     # from pretty import pretty
     # logger.info("Experiment components")
     # logger.info("\n" + "\n".join(pretty(c) for c in components))
     export_netlist(netlist)
-    export_graph(t1_, show=True)
 
-
-# Boilerplate -----------------------------------------------------------------
-def main(argc, argv, argi):
-    logging.basicConfig(level=logging.INFO)
-
-    logger.info("Running experiment")
-    run_experiment()
+    if make_graph:
+        logger.info("Make render")
+        render_matrix(
+            G.G,
+            nodes_rows=[
+                [nand_ic, led, nxor, xor, e_out],
+            ],
+            depth=1,
+            show_full=False,
+            show_non_sum=False,
+        ).show()
+        # export_graph(G.G, False)
 
 
 if __name__ == "__main__":
-    import sys
+    setup_basic_logging()
+    logger.info("Running experiment")
 
-    main(len(sys.argv), sys.argv, iter(sys.argv))
+    typer.run(main)

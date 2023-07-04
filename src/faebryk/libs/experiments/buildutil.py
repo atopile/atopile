@@ -1,5 +1,10 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
 import logging
 from pathlib import Path
+
+from faebryk.exporters.visualize.graph import render_sidebyside
 
 
 def export_netlist(netlist):
@@ -13,10 +18,8 @@ def export_netlist(netlist):
     netlist_filepath.write_text(netlist)
 
 
-def export_graph(t1, show):
-    from faebryk.exporters.netlist.netlist import render_graph
-
-    plt = render_graph(t1)
+def export_graph(g, show):
+    plt = render_sidebyside(g)
 
     build_folder_path = Path("./build/faebryk/")
     build_folder_path.mkdir(

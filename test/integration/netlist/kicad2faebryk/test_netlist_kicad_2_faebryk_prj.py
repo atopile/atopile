@@ -5,7 +5,7 @@ import logging
 import os
 import unittest
 
-logger = logging.getLogger("test")
+logger = logging.getLogger(__name__)
 
 
 class TestNetlistKicad2FaebrykProject(unittest.TestCase):
@@ -26,7 +26,7 @@ class TestNetlistKicad2FaebrykProject(unittest.TestCase):
 
         t2 = to_faebryk_t2_netlist(test_netlist)
         t1 = to_faebryk_t1_netlist(t2)
-        prj = from_t1_netlist(t1)
+        from_t1_netlist(t1)
 
         # print(prj)
 

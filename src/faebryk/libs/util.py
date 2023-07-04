@@ -4,7 +4,7 @@
 
 from abc import abstractmethod
 from collections import defaultdict
-from typing import Any, Generic, Iterable, Iterator, List, Type, TypeVar
+from typing import Any, Callable, Generic, Iterable, Iterator, List, Type, TypeVar
 
 
 class lazy:
@@ -55,10 +55,27 @@ def get_dict(obj, key, default):
     return obj[key]
 
 
-def flatten(obj, depth=1):
+def flatten(obj: Iterable, depth=1) -> List:
     if depth == 0:
-        return obj
-    return [flatten(nested, depth=depth - 1) for top in obj for nested in top]
+        return list(obj)
+    if not isinstance(obj, Iterable):
+        return [obj]
+    return [nested for top in obj for nested in flatten(top, depth=depth - 1)]
+
+
+T = TypeVar("T")
+U = TypeVar("U")
+
+
+def get_key(haystack: dict[T, U], needle: U) -> T:
+    return find(haystack.items(), lambda x: x[1] == needle)[0]
+
+
+def find(haystack: Iterable[T], needle: Callable) -> T:
+    results = list(filter(needle, haystack))
+    if len(results) != 1:
+        raise ValueError
+    return results[0]
 
 
 def groupby(it, key):
@@ -68,20 +85,32 @@ def groupby(it, key):
     return out
 
 
+def nested_enumerate(it: Iterable) -> list[tuple[list[int], Any]]:
+    out: list[tuple[list[int], Any]] = []
+    for i, obj in enumerate(it):
+        if not isinstance(obj, Iterable):
+            out.append(([i], obj))
+            continue
+        for j, _obj in nested_enumerate(obj):
+            out.append(([i] + j, _obj))
+
+    return out
+
+
 class NotifiesOnPropertyChange(object):
     def __init__(self, callback) -> None:
-        self.callback = callback
+        self._callback = callback
 
         # TODO dir -> vars?
         for name in dir(self):
-            self.callback(name, getattr(self, name))
+            self._callback(name, getattr(self, name))
 
     def __setattr__(self, __name, __value) -> None:
         super().__setattr__(__name, __value)
 
         # before init
-        if hasattr(self, "callback"):
-            self.callback(__name, __value)
+        if hasattr(self, "_callback"):
+            self._callback(__name, __value)
 
 
 T = TypeVar("T")
@@ -94,7 +123,7 @@ class _wrapper(NotifiesOnPropertyChange, Generic[T, P]):
         raise NotImplementedError
 
     @abstractmethod
-    def get_all(self) -> List[T]:
+    def get_all(self) -> list[T]:
         raise NotImplementedError
 
     @abstractmethod
@@ -112,8 +141,8 @@ def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
 
     class __wrapper(_wrapper[_T, _P]):
         def __init__(self, parent: P) -> None:
-            self._list: List[T] = []
-            self.type = _type
+            self._list: list[T] = []
+            self._type = _type
             self._parent: P = parent
 
             NotifiesOnPropertyChange.__init__(self, self._callback)
@@ -121,44 +150,46 @@ def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
         def _callback(self, name: str, value: Any):
             if name.startswith("_"):
                 return
-            if isinstance(value, self.type):
+
+            if callable(value):
+                return
+
+            if isinstance(value, self._type):
                 self._list.append(value)
                 self.handle_add(name, value)
                 return
 
             if isinstance(value, Iterable):
-                if not all(map(lambda x: isinstance(x, self.type), value)):
-                    # TODO maybe warning on any?
-                    return
+                e_objs = nested_enumerate(value)
+                objs = [x[1] for x in e_objs]
+                assert all(map(lambda x: isinstance(x, self._type), objs))
 
-                self._list += value
-                for i, instance in enumerate(value):
-                    self.handle_add(f"{name}[{i}]", instance)
+                self._list += objs
+                for i_list, instance in e_objs:
+                    i_acc = "".join(f"[{i}]" for i in i_list)
+                    self.handle_add(f"{name}{i_acc}", instance)
                 return
 
-        def get_all(self) -> List[T]:
-            # TODO fix list stuff to use this
-            # return self._list
+            raise Exception("Invalid property added")
 
-            out: List[T] = []
-
+        def get_all(self) -> list[T]:
+            # check for illegal list modifications
             for name in dir(self):
                 value = getattr(self, name)
                 if name.startswith("_"):
                     continue
-                if isinstance(value, self.type):
-                    out.append(value)
+                if callable(value):
+                    continue
+                if isinstance(value, self._type):
                     continue
                 if isinstance(value, Iterable):
-                    if not all(map(lambda x: isinstance(x, self.type), value)):
-                        continue
-                    out += list(value)
+                    assert set(flatten(value, -1)).issubset(set(self._list))
                     continue
 
-            return out
+            return self._list
 
         def handle_add(self, name: str, obj: T) -> None:
-            pass
+            ...
 
         def get_parent(self) -> P:
             return self._parent
@@ -177,3 +208,15 @@ def consume_iterator(target, it: Iterator):
             yield target(it)
         except StopIteration:
             return
+
+
+T = TypeVar("T")
+
+
+def cast_assert(t: type[T], obj) -> T:
+    assert isinstance(obj, t)
+    return obj
+
+
+def times(cnt: int, lamb: Callable[[], T]) -> list[T]:
+    return [lamb() for _ in range(cnt)]

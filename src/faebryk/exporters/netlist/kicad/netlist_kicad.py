@@ -4,9 +4,9 @@
 import itertools
 import logging
 
-logger = logging.getLogger("netlist")
-
 import faebryk.exporters.netlist.kicad.sexp as sexp
+
+logger = logging.getLogger(__name__)
 
 
 # Generators ------------------------------------------------------------------

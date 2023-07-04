@@ -1,3 +1,7 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
+
 class ufds:
     parent_node = {}
     rank = {}
