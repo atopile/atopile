@@ -516,11 +516,20 @@ function addStubs(stubs) {
     };
 }
 
-function createComponent(title, uuid, parent) {
+function getElementTitle(element) {
+    if (element['instance_of'] != null) {
+        return`${element['name']} \n(${element['instance_of']})`;
+    } else {
+        return element['name'];;
+    }
+}
+
+function createComponent(element, parent) {
+    let title = getElementTitle(element);
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     const component = new AtoComponent({
-        id: uuid,
+        id: element['uuid'],
         size: { width: comp_width,
                 height: comp_height},
         attrs: {
@@ -543,9 +552,10 @@ function createComponent(title, uuid, parent) {
     return component;
 }
 
-function createBlock(title, uuid, parent) {
+function createBlock(element, parent) {
+    let title = getElementTitle(element);
     const block = new AtoBlock({
-        id: uuid,
+        id: element['uuid'],
         attrs: {
             label: {
                 text: title,
@@ -568,15 +578,7 @@ function addElementToElement(block_to_add, to_block) {
     to_block.embed(block_to_add);
 }
 
-function getElementTitle(element) {
-    if (element['instance_of'] != null) {
-        return`${element['name']} \n(${element['instance_of']})`;
-    } else {
-        return element['name'];;
-    }
-}
-
-function returnFileModuleName(string) {
+function returnConfigFileName(string) {
     if (string) {
         const [file, module] = string.split(":");
         return {"file": file, "module": module}
@@ -592,52 +594,37 @@ function getElementPosition(element_name, config) {
     return position;
 }
 
-async function loadDataFromBackend(data, parent = null, blocks_config = null, parent_config = null) {
-    for (let element of data) {
+async function generateJointjsGraph(circuit, parent = null, path = null) {
+    let jointJSCircuit = [];
+
+    for (let element of circuit) {
         var created_element = null;
 
         if (element['type'] == 'component') {
-            let title = getElementTitle(element);
-            created_element = createComponent(title, element['uuid'], parent);
-            element['jointObject'] = created_element;
-
-            applyConfig(element, blocks_config);
+            joint_object = createComponent(element, parent);
+            element['jointObject'] = joint_object;
         }
 
         // If it is a block, create it and instantiate the contents within it
         else if (element['type'] == 'module') {
             // Create the module
-            let title = getElementTitle(element);
-            created_element = createBlock(title, element['uuid'], parent);
+            created_element = createBlock(element, parent);
             element['jointObject'] = created_element;
 
-            // Get the module config
-            let child_blocks_config = null;
-            if (element['instance_of'] !== null) {
-                file_module_name = returnFileModuleName(element['instance_of']);
-                const config = await loadFileConfig(file_module_name['file']);
-                if (config !== null) {
-                    child_blocks_config = config[file_module_name['module']];
-                }
-            }
-            let new_parent_config = null;
-            if (parent_config !== null && element['name'] in blocks_config) {
-                new_parent_config = blocks_config[element['name']];
-            }
 
             // Call the function recursively on children
-            await loadDataFromBackend(element['blocks'], created_element, child_blocks_config, new_parent_config);
+            await generateJointjsGraph(element['blocks'], created_element);
 
             //addLinks(element['links']);
             //addStubs(element['stubs']);
             //created_element.fitAncestorElements();
 
-            applyConfig(element, blocks_config);
+            //applyConfig(element, blocks_config);
         }
 
         else if (element['type'] == 'file') {
             //let file = getElementTitle(element);
-            loadDataFromBackend(element['blocks'], false);
+            await generateJointjsGraph(element['blocks']);
         }
 
         else {
@@ -646,6 +633,42 @@ async function loadDataFromBackend(data, parent = null, blocks_config = null, pa
             console.log('Unknown element type: '+ element['type']);
         }
     }
+}
+
+async function populateConfigFromBackend(circuit_dict, parent_path = null) {
+    let populated_circuit = [];
+    let path = "";
+
+    for (let element of circuit_dict) {
+        path = element['name']
+        if (parent_path !== null){
+            path = parent_path + '/' + path;
+        };
+        if (element['type'] == 'component') {
+            if (element['instance_of'] !== null) {
+                config_location_name = returnConfigFileName(element['instance_of']);
+                const config = await loadFileConfig(config_location_name['file']);
+                element['config'] = null;
+                if (config !== null) {
+                    element['config'] = config[config_location_name['module']];
+                }
+            }
+        }
+        if (element['type'] == 'module' || element['type'] == 'file') {
+            if (element['instance_of'] !== null) {
+                config_location_name = returnConfigFileName(element['instance_of']);
+                const config = await loadFileConfig(config_location_name['file']);
+                element['config'] = null;
+                if (config !== null) {
+                    element['config'] = config[config_location_name['module']];
+                }
+            }
+            element['blocks'] = await populateConfigFromBackend(element['blocks'], path);
+        }
+        element['uuid'] = path;
+        populated_circuit.push(element);
+    }
+    return populated_circuit;
 }
 
 function applyConfig(element, config) {
@@ -684,8 +707,6 @@ window.onload = fill_paper;
 window.onresize = fill_paper;
 
 let pin_to_element_association = {};
-let circuit_dict = {};
-let visual_config = {};
 
 paper.on('link:mouseenter', function(linkView) {
     linkView.showTools();
@@ -752,10 +773,10 @@ async function loadCircuit() {
     //const response = await fetch('/api/view');
     const response = await fetch('/static/circuit2.json');
     const circuit_data = await response.json();
-    // Place the dict in a global variable
-    circuit_dict = circuit_data;
 
-    loadDataFromBackend(circuit_dict);
+    let config_populated_circuit = await populateConfigFromBackend(circuit_data);
+    console.log(config_populated_circuit);
+    generateJointjsGraph(config_populated_circuit);
 }
 
 loadCircuit();

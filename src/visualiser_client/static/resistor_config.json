@@ -6,26 +6,24 @@
                 "location": "top",
                 "pins": [
                     {
-                        "name": "input",
+                        "name": "p1",
+                        "index": 0,
+                        "private": false
+                    }
+                ]
+            },
+            {
+                "name": "bottom",
+                "location": "bottom",
+                "pins": [
+                    {
+                        "name": "p2",
                         "index": 0,
                         "private": false
                     }
                 ]
             }
         ],
-        "blocks": {
-            "r_top": {
-                "position": {
-                    "x": 10,
-                    "y": 10
-                }
-            },
-            "r_bt": {
-                "position": {
-                    "x": 10,
-                    "y": 100
-                }
-            }
-        }
+        "blocks_positions": []
     }
 }

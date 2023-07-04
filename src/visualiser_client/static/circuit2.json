@@ -48,7 +48,7 @@
                                             }
                                         ],
                                         "links": [],
-                                        "instance_of": "std/capcitor.ato:Capacitor"
+                                        "instance_of": "resistor.ato:Resistor"
                                     },
                                     {
                                         "name": "r_bt",
@@ -71,7 +71,7 @@
                                             }
                                         ],
                                         "links": [],
-                                        "instance_of": "std/capcitor.ato:Capacitor"
+                                        "instance_of": "resistor.ato:Resistor"
                                     }
                                 ],
                                 "pins": [
@@ -140,7 +140,7 @@
                                             }
                                         ],
                                         "links": [],
-                                        "instance_of": "std/capcitor.ato:Capacitor"
+                                        "instance_of": "resistor.ato:Resistor"
                                     },
                                     {
                                         "name": "r_bt",
@@ -163,7 +163,7 @@
                                             }
                                         ],
                                         "links": [],
-                                        "instance_of": "std/capcitor.ato:Capacitor"
+                                        "instance_of": "resistor.ato:Resistor"
                                     }
                                 ],
                                 "pins": [
