@@ -574,35 +574,15 @@ function returnFileModuleName(string) {
     else return null;
 }
 
-function getElementPosition(visual_config_dict, element_name) {
-    console.log('data received with name ' + element_name);
-    console.log(visual_config_dict);
-
-    // If the visual dict is defined
-    if (visual_config_dict) {
-        // If that specific element is in the dict
-        if (element_name in visual_config_dict) {
-            position = visual_config_dict[element_name]['position'];
-        }
-        else{
-            console.log('Element ' + element_name + ' position not defined.')
-            position['x'] = 100;
-            position['y'] = 100;
-        }
-        console.log(position)
-    }
-    else {
-        position['x'] = 600;
-        position['y'] = 600;
+function getElementPosition(element_name, config) {
+    let position = {'x': 10, 'y': 10};
+    if (config && element_name in config) {
+        position = config[element_name]['position'];
     }
     return position;
 }
 
-async function loadDataFromBackend(data, is_root = true, parent = null) {
-
-    // Create the list of all the created elements
-    //let dict_of_elements = {};
-
+async function loadDataFromBackend(data, parent = null, blocks_config = null, parent_config = null) {
     for (let element of data) {
         var created_element = null;
 
@@ -610,34 +590,36 @@ async function loadDataFromBackend(data, is_root = true, parent = null) {
             let title = getElementTitle(element);
             created_element = createComponent(title, element['uuid']);
             element['jointObject'] = created_element;
-            element['jointObject'].position(2,2);
-            // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
-            //created_element.fitAncestorElements();
+
             if (parent) {
                 addElementToElement(created_element, parent);
             }
+            applyConfig(element, blocks_config);
         }
 
-        // If it is a block, create it
+        // If it is a block, create it and instantiate the contents within it
         else if (element['type'] == 'module') {
+            // Create the module
             let title = getElementTitle(element);
             created_element = createBlock(title, element['uuid']);
             element['jointObject'] = created_element;
 
-            // Extract file and module name from class
-            file_module_name = returnFileModuleName(element['instance_of']);
-            if (file_module_name) {
-                element['visual_config'] = await loadModuleConfig(file_module_name['file'], file_module_name['module']);
+            // Get the module config
+            let child_blocks_config = null;
+            if (element['instance_of'] !== null) {
+                file_module_name = returnFileModuleName(element['instance_of']);
+                const config = await loadFileConfig(file_module_name['file']);
+                if (config !== null) {
+                    child_blocks_config = config[file_module_name['module']];
+                }
             }
-            // If no class provided, leave the vis config blank
-            else {
-                element['visual_config'] = null;
+            let new_parent_config = null;
+            if (parent_config !== null && element['name'] in blocks_config) {
+                new_parent_config = blocks_config[element['name']];
             }
 
-            // Iterate over the included elements to create them
-            await loadDataFromBackend(element['blocks'], false, created_element);
-            // Add the returned list to the element list and add all sub-elements to it's parent
-            //dict_of_elements = { ...dict_of_elements, ...returned_dict };
+            // Call the function recursively on children
+            await loadDataFromBackend(element['blocks'], created_element, child_blocks_config, new_parent_config);
 
             //addLinks(element['links']);
             //addStubs(element['stubs']);
@@ -645,14 +627,14 @@ async function loadDataFromBackend(data, is_root = true, parent = null) {
             if (parent) {
                 addElementToElement(created_element, parent);
             }
-            applyConfig(element);
+            applyConfig(element, blocks_config);
         }
 
         else if (element['type'] == 'file') {
             //let file = getElementTitle(element);
             loadDataFromBackend(element['blocks'], false);
 
-            element['visual_config'] = await loadFileConfig(element['name'])
+            //element['visual_config'] = await loadFileConfig(element['name'])
         }
 
         else {
@@ -661,23 +643,11 @@ async function loadDataFromBackend(data, is_root = true, parent = null) {
             console.log('Unknown element type:'+ element['type']);
         }
     }
-    // for (let e_name in dict_of_elements) {
-    //     // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
-    //     dict_of_elements[e_name].fitAncestorElements();
-    // }
 }
 
-function applyConfig(data) {
-    console.log('config data');
-    console.log(data);
-    // If a visual config is provided
-    if (data['visual_config']) {
-        for (let element of data['blocks']) {
-            position = getElementPosition(data['visual_config'], element['name']);
-            console.log('moving a component ' + position['x'] + ' ' + position['y']);
-            element['jointObject'].position(position['x'], position['y'], { parentRelative: true });
-        }
-    }
+function applyConfig(element, config) {
+    let position = getElementPosition(element['name'], config);
+    element['jointObject'].position(position['x'], position['y'], { deep: true });
 }
 
 const graph = new dia.Graph({}, { cellNamespace });
@@ -740,27 +710,31 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
 });
 
 graph.on('change:position', function(cell) {
-    // `fitAncestorElements()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
-    cell.fitAncestorElements();
+    // `fitParent()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
+    //cell.fitAncestorElements();
 });
 
 // Fetch a file visual config from the server
 async function loadFileConfig(file_name) {
     //const response = await fetch('/api/view');
-    const response = await fetch('/static/config.json');
-    const config_data = await response.json();
 
-    // console.log(config_data);
-    return config_data;
-}
+    // Strip .ato from the name
+    let striped_file_name = file_name.replace(".ato", "");
+    let address = "/static/" + striped_file_name + '_config.json';
+    let response;
+    try {
+        response = await fetch(address);
+    } catch (error) {
+        console.log('There was an error', error);
+    }
 
-// Fetch a module visual config from a file config
-async function loadModuleConfig(file_name, module_name) {
-    const response = await loadFileConfig(file_name);
-    const module_config = response[module_name];
-
-    // console.log(module_config);
-    return module_config;
+    if (response.ok) {
+        console.log('File was found');
+        return response.json();
+    } else {
+        console.log(`HTTP Response Code: ${response?.status}`)
+        return null;
+    }
 }
 
 // Fetch a circuit dict from the server
@@ -772,7 +746,6 @@ async function loadCircuit() {
     circuit_dict = circuit_data;
 
     loadDataFromBackend(circuit_dict);
-    //applyConfig(circuit_dict);
 }
 
 loadCircuit();

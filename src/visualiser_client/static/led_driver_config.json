@@ -1,0 +1,16 @@
+{
+   "LedDriver": {
+        "voltage_divider": {
+            "position": {
+                "x": 200,
+                "y": 400
+            }
+        },
+        "voltage_divider_2": {
+            "position": {
+                "x": 400,
+                "y": 500
+            }
+        }
+    }
+}
