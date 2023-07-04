@@ -1,5 +1,5 @@
 {
-    "LedDriver": {
+    "Resistor": {
         "ports": [
             {
                 "name": "top",
@@ -13,17 +13,17 @@
                 ]
             }
         ],
-        "blocks_positions": {
-            "voltage_divider": {
+        "blocks": {
+            "r_top": {
                 "position": {
-                    "x": 200,
-                    "y": 400
+                    "x": 10,
+                    "y": 10
                 }
             },
-            "voltage_divider_2": {
+            "r_bt": {
                 "position": {
-                    "x": 400,
-                    "y": 500
+                    "x": 10,
+                    "y": 100
                 }
             }
         }

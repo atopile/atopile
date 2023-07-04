@@ -516,7 +516,7 @@ function addStubs(stubs) {
     };
 }
 
-function createComponent(title, uuid) {
+function createComponent(title, uuid, parent) {
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     const component = new AtoComponent({
@@ -535,10 +535,15 @@ function createComponent(title, uuid) {
     //resizeBasedOnPorts(component, ports_dict);
 
     component.addTo(graph);
+
+    if (parent) {
+        addElementToElement(component, parent);
+    }
+
     return component;
 }
 
-function createBlock(title, uuid) {
+function createBlock(title, uuid, parent) {
     const block = new AtoBlock({
         id: uuid,
         attrs: {
@@ -551,6 +556,11 @@ function createBlock(title, uuid) {
     //addPortsAndPins(block, ports_dict);
 
     block.addTo(graph);
+
+    if (parent) {
+        addElementToElement(block, parent);
+    }
+
     return block;
 }
 
@@ -588,12 +598,9 @@ async function loadDataFromBackend(data, parent = null, blocks_config = null, pa
 
         if (element['type'] == 'component') {
             let title = getElementTitle(element);
-            created_element = createComponent(title, element['uuid']);
+            created_element = createComponent(title, element['uuid'], parent);
             element['jointObject'] = created_element;
 
-            if (parent) {
-                addElementToElement(created_element, parent);
-            }
             applyConfig(element, blocks_config);
         }
 
@@ -601,7 +608,7 @@ async function loadDataFromBackend(data, parent = null, blocks_config = null, pa
         else if (element['type'] == 'module') {
             // Create the module
             let title = getElementTitle(element);
-            created_element = createBlock(title, element['uuid']);
+            created_element = createBlock(title, element['uuid'], parent);
             element['jointObject'] = created_element;
 
             // Get the module config
@@ -624,29 +631,33 @@ async function loadDataFromBackend(data, parent = null, blocks_config = null, pa
             //addLinks(element['links']);
             //addStubs(element['stubs']);
             //created_element.fitAncestorElements();
-            if (parent) {
-                addElementToElement(created_element, parent);
-            }
+
             applyConfig(element, blocks_config);
         }
 
         else if (element['type'] == 'file') {
             //let file = getElementTitle(element);
             loadDataFromBackend(element['blocks'], false);
-
-            //element['visual_config'] = await loadFileConfig(element['name'])
         }
 
         else {
             // raise an error because we don't know what to do with this element
             // TODO: raise an error
-            console.log('Unknown element type:'+ element['type']);
+            console.log('Unknown element type: '+ element['type']);
         }
     }
 }
 
 function applyConfig(element, config) {
-    let position = getElementPosition(element['name'], config);
+    block_position = null;
+    try {
+        block_position = config['blocks_positions'];
+    }
+    catch(err) {
+        console.log('Block position not provided for ' + element['name']);
+    }
+    let position = getElementPosition(element['name'], block_position);
+    // Deep setting ensures that the element is placed relative to all parents
     element['jointObject'].position(position['x'], position['y'], { deep: true });
 }
 
@@ -725,11 +736,10 @@ async function loadFileConfig(file_name) {
     try {
         response = await fetch(address);
     } catch (error) {
-        console.log('There was an error', error);
+        console.log('Could not fetch config ', error);
     }
 
     if (response.ok) {
-        console.log('File was found');
         return response.json();
     } else {
         console.log(`HTTP Response Code: ${response?.status}`)

@@ -1,15 +1,30 @@
 {
     "vdiv": {
-        "r_top": {
-            "position": {
-                "x": 10,
-                "y": 10
+        "ports": [
+            {
+                "name": "top",
+                "location": "top",
+                "pins": [
+                    {
+                        "name": "input",
+                        "index": 0,
+                        "private": false
+                    }
+                ]
             }
-        },
-        "r_bt": {
-            "position": {
-                "x": 10,
-                "y": 100
+        ],
+        "blocks_positions": {
+            "r_top": {
+                "position": {
+                    "x": 10,
+                    "y": 10
+                }
+            },
+            "r_bt": {
+                "position": {
+                    "x": 10,
+                    "y": 100
+                }
             }
         }
     }
