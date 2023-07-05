@@ -565,7 +565,7 @@ function createBlock(element, parent) {
         }
     });
 
-    //addPins(block, element);
+    addPins(block, element);
     //block.addPortWithPins('port', 'right', [{"name": 'test', "uuid": 3}]);
 
     block.addTo(graph);
@@ -752,7 +752,7 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
 
 graph.on('change:position', function(cell) {
     // `fitParent()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
-    cell.fitAncestorElements();
+    //cell.fitAncestorElements();
 });
 
 // Fetch a file visual config from the server
