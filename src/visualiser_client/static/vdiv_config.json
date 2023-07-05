@@ -3,17 +3,28 @@
         "ports": [
             {
                 "name": "top",
-                "location": "top",
-                "pins": [
-                    {
-                        "name": "input",
-                        "index": 0,
-                        "private": false
-                    }
-                ]
+                "location": "top"
+            },
+            {
+                "name": "bottom",
+                "location": "bottom"
             }
         ],
-        "blocks_positions": {
+        "pins": [
+            {
+                "name": "input",
+                "index": 0,
+                "private": false,
+                "port": "top"
+            },
+            {
+                "name": "gnd",
+                "index": 0,
+                "private": false,
+                "port": "bottom"
+            }
+        ],
+        "child_attrs": {
             "r_top": {
                 "position": {
                     "x": 10,

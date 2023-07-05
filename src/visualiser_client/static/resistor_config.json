@@ -3,27 +3,27 @@
         "ports": [
             {
                 "name": "top",
-                "location": "top",
-                "pins": [
-                    {
-                        "name": "p1",
-                        "index": 0,
-                        "private": false
-                    }
-                ]
+                "location": "top"
             },
             {
                 "name": "bottom",
-                "location": "bottom",
-                "pins": [
-                    {
-                        "name": "p2",
-                        "index": 0,
-                        "private": false
-                    }
-                ]
+                "location": "bottom"
             }
         ],
-        "blocks_positions": []
+        "pins": [
+            {
+                "name": "p1",
+                "index": 0,
+                "private": false,
+                "port": "top"
+            },
+            {
+                "name": "p2",
+                "index": 0,
+                "private": false,
+                "port": "bottom"
+            }
+        ],
+        "child_attrs": []
     }
 }
