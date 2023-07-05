@@ -5,6 +5,7 @@ import pstats
 import time
 from pathlib import Path
 
+
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
@@ -66,3 +67,10 @@ def update_dict(target: dict, source: dict):
             update_dict(target[k], v)
         else:
             target[k] = v
+
+@contextlib.contextmanager
+def timed(what_am_i_doing: str):
+    start_time = time.time()
+    log.info(what_am_i_doing)
+    yield
+    log.info("%s took %ss", what_am_i_doing, time.time() - start_time)

@@ -1,8 +1,8 @@
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Iterable
 
 import igraph as ig
 
-from atopile.model.model import EdgeType, Model, VertexType
+from atopile.model.model import EdgeType, Model, VertexType, PATH_SEPERATOR
 
 EdgeIterable = Union[ig.EdgeSeq, List[ig.Edge]]
 
@@ -103,9 +103,28 @@ class ModelVertexView:
         descendant_vids = set(part_of_view.subcomponent(self.index, mode="in"))
         return [ModelVertexView(self.model, vid) for vid in type_matched_vids & descendant_vids]
 
+    def get_ancestor_ids(self) -> List["ModelVertexView"]:
+        part_of_view = self.model.get_graph_view([EdgeType.part_of])
+        return part_of_view.subcomponent(self.index, mode="out")
+
+    def get_ancestors(self) -> List["ModelVertexView"]:
+        return [ModelVertexView(self.model, vid) for vid in self.get_ancestor_ids()]
+
     @classmethod
     def from_view(cls, view: "ModelVertexView"):
         return cls(view.model, view.index)
+
+    @classmethod
+    def from_indicies(cls, model: Model, indicies: Iterable[int]) -> List["ModelVertexView"]:
+        return [cls(model, i) for i in indicies]
+
+    def relative_path(self, other: "ModelVertexView") -> str:
+        if other.model != self.model:
+            raise ValueError("Can't get relative path between verticies from different models")
+        if self.index not in other.get_ancestor_ids():
+            raise ValueError("Other vertex must be a child of this vertex")
+        relative_idxs = [i for i in [other.index] + other.get_ancestor_ids() if i not in [self.index] + self.get_ancestor_ids()][::-1]
+        return PATH_SEPERATOR.join([ModelVertexView(self.model, i).ref for i in relative_idxs])
 
 def get_all_idx(model: Model, vertex_type: VertexType) -> List[int]:
     return model.graph.vs.select(type_eq=vertex_type.name)
@@ -115,3 +134,18 @@ def get_all_as(model: Model, vertex_type: VertexType, as_what) -> List[ModelVert
 
 def get_all(model: Model, vertex_type: VertexType) -> List[ModelVertexView]:
     return get_all_as(model, vertex_type, ModelVertexView)
+
+def lowest_common_ancestor(verticies: Iterable[ModelVertexView]) -> ModelVertexView:
+    if len(verticies) == 0:
+        return None
+    if len(verticies) == 1:
+        return verticies[0]
+    if len({v.model for v in verticies}) != 1:
+        raise ValueError("All verticies must be from the same model")
+
+    ids_by_depth = list(zip(*(v.get_ancestor_ids() for v in verticies)))[::-1]
+    for id_index, ids in enumerate(ids_by_depth):
+        if len(set(ids)) != 1:
+            if id_index == 0:
+                raise ValueError("Verticies aren't in the same tree")
+            return ModelVertexView(verticies[0].model, ids_by_depth[id_index - 1][0])

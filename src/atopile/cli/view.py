@@ -22,13 +22,12 @@ log.setLevel(logging.DEBUG)
 def view(project: Project, build_config: BuildConfig, port: int, browser: bool, debug: bool):
     # defer import because it's kinda expensive?
     import atopile.visualizer.server as s
-    s.watcher.project = project
-    s.watcher.build_config = build_config
+    s.project_handler.project = project
+    s.project_handler.build_config = build_config
     if debug:
         # FIXME: fuck... talk about pasghetti code
         import atopile.parser.parser
         atopile.parser.parser.log.setLevel(logging.DEBUG)
-    s.watcher.rebuild_all()
     if browser:
         webbrowser.open(f"http://localhost:{port}/static/client.html")
     uvicorn.run(s.app, host="0.0.0.0", port=port)
