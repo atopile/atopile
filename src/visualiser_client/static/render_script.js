@@ -130,6 +130,15 @@ class AtoElement extends dia.Element {
             }
         });
     }
+
+    applyParentAttrs(attrs) {
+        console.log('position being changed');
+        console.log(attrs);
+        if ('position' in attrs) {
+            // Deep setting ensures that the element is placed relative to all parents
+            this.position(attrs['position']['x'], attrs['position']['y'], { deep: true });
+        }
+    }
 }
 
 // Class for a component
@@ -183,6 +192,7 @@ class AtoBlock extends AtoElement {
         return {
             ...super.defaults(),
             type: "AtoComponent",
+            collapsed: false,
             attrs: {
                 body: {
                     fill: "transparent",
@@ -216,10 +226,10 @@ class AtoBlock extends AtoElement {
         `;
     }
 
-    // updateChildrenVisibility() {
-    //     const collapsed = this.isCollapsed();
-    //     this.getEmbeddedCells().forEach((child) => child.set("hidden", collapsed));
-    // }
+    updateChildrenVisibility() {
+        const collapsed = this.isCollapsed();
+        this.getEmbeddedCells().forEach((child) => child.set("hidden", collapsed));
+    }
 }
 
 
@@ -597,27 +607,47 @@ function getElementPosition(element_name, config) {
     return position;
 }
 
-async function generateJointjsGraph(circuit, parent = null) {
+function applyParentConfig(element, child_attrs) {
+    console.log('applying parent config for ' + element['name']);
+    if (child_attrs !== null && Object.keys(child_attrs).length > 0) {
+        console.log('pass');
+        console.log(child_attrs)
+        for (let attrs in child_attrs) {
+            if (attrs == element['name']) {
+                element['jointObject'].applyParentAttrs(child_attrs[attrs]);
+            }
+        }
+    }
+}
+
+async function generateJointjsGraph(circuit, parent = null, child_attrs = null) {
     let jointJSCircuit = [];
 
     for (let element of circuit) {
-        var created_element = null;
+        var joint_object = null;
 
         if (element['type'] == 'component') {
             joint_object = createComponent(element, parent);
             element['jointObject'] = joint_object;
+            if (parent) {
+                addElementToElement(joint_object, parent);
+            }
+            applyParentConfig(element, child_attrs);
         }
 
         // If it is a block, create it and instantiate the contents within it
         else if (element['type'] == 'module') {
             // Create the module
-            created_element = createBlock(element, parent);
-            element['jointObject'] = created_element;
-
+            joint_object = createBlock(element, parent);
+            element['jointObject'] = joint_object;
+            if (parent) {
+                addElementToElement(joint_object, parent);
+            }
 
             // Call the function recursively on children
-            await generateJointjsGraph(element['blocks'], created_element);
+            await generateJointjsGraph(element['blocks'], joint_object, element['config']['child_attrs']);
 
+            applyParentConfig(element, child_attrs);
             //addLinks(element['links']);
             //addStubs(element['stubs']);
             //created_element.fitAncestorElements();
@@ -633,7 +663,7 @@ async function generateJointjsGraph(circuit, parent = null) {
         else {
             // raise an error because we don't know what to do with this element
             // TODO: raise an error
-            console.log('Unknown element type: '+ element['type']);
+            console.log('Unknown element type: ' + element['type']);
         }
     }
 }
@@ -678,19 +708,6 @@ async function populateConfigFromBackend(circuit_dict, parent_path = null) {
         populated_circuit.push(element);
     }
     return populated_circuit;
-}
-
-function applyConfig(element, config) {
-    block_position = null;
-    try {
-        block_position = config['child_attrs'];
-    }
-    catch(err) {
-        console.log('Block position not provided for ' + element['name']);
-    }
-    let position = getElementPosition(element['name'], block_position);
-    // Deep setting ensures that the element is placed relative to all parents
-    element['jointObject'].position(position['x'], position['y'], { deep: true });
 }
 
 const graph = new dia.Graph({}, { cellNamespace });
