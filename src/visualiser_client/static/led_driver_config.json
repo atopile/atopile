@@ -3,17 +3,15 @@
         "ports": [
             {
                 "name": "top",
-                "location": "top",
-                "pins": [
-                    {
-                        "name": "input",
-                        "index": 0,
-                        "private": false
-                    }
-                ]
+                "location": "top"
+            },
+            {
+                "name": "bottom",
+                "location": "bottom"
             }
         ],
-        "blocks_positions": {
+        "pins": [],
+        "child_attrs": {
             "voltage_divider": {
                 "position": {
                     "x": 200,
