@@ -94,19 +94,19 @@
                                 ],
                                 "links": [
                                     {
-                                        "net": "test",
-                                        "source": "voltage_divider/input",
-                                        "target": "vin"
+                                        "net": "mid",
+                                        "source": "voltage_divider/r_top/p2",
+                                        "target": "votlage_divider/r_bt/p1"
                                     },
                                     {
-                                        "net": "test2",
-                                        "source": "voltage_divider/output",
-                                        "target": "gnd"
+                                        "net": "input",
+                                        "source": "voltage_divider/r_top/p1",
+                                        "target": "votlage_divider/input"
                                     },
                                     {
-                                        "net": "test",
+                                        "net": "gnd",
                                         "source": "voltage_divider/gnd",
-                                        "target": "gnd"
+                                        "target": "voltage_divider/r_bt/p2"
                                     }
                                 ],
                                 "instance_of": "vdiv.ato:vdiv"
@@ -184,23 +184,7 @@
                                         }
                                     }
                                 ],
-                                "links": [
-                                    {
-                                        "net": "test",
-                                        "source": "voltage_divider/input",
-                                        "target": "vin"
-                                    },
-                                    {
-                                        "net": "test2",
-                                        "source": "voltage_divider/output",
-                                        "target": "gnd"
-                                    },
-                                    {
-                                        "net": "test",
-                                        "source": "voltage_divider/gnd",
-                                        "target": "gnd"
-                                    }
-                                ],
+                                "links": [],
                                 "instance_of": "vdiv.ato:vdiv"
                             }
                         ],
@@ -215,18 +199,7 @@
                             }
 
                         ],
-                        "links": [
-                            {
-                                "net": "test",
-                                "source": "pwm_header/p3",
-                                "target": "vin"
-                            },
-                            {
-                                "net": "test2",
-                                "source": "pwm_header/p1",
-                                "target": "gnd"
-                            }
-                        ],
+                        "links": [],
                         "instance_of": "led_driver.ato:LedDriver"
                     }
                 ],
