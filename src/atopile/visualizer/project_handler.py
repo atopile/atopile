@@ -1,17 +1,20 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import List
-import yaml
-import time
-
+from typing import List, AsyncGenerator, AsyncIterator
+import contextlib
 import watchfiles
+import ruamel.yaml
 
 from atopile.model.model import Model
-from atopile.parser.parser import build_model as build_model
-from atopile.project.project import Project
+from atopile.parser.parser import build_model
 from atopile.project.config import BuildConfig
+from atopile.project.project import Project
+from atopile.utils import timed, update_dict
 from atopile.visualizer.render import build_view
+
+yaml = ruamel.yaml.YAML()
+yaml.preserve_quotes = True
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -22,60 +25,60 @@ class ProjectHandler:
         self.project: Project = None
         self.build_config: BuildConfig = None
 
-        # TODO: these need mutexes
         self._model: Model = None
-        self._current_view = None
-        self._vis_data: dict = None
+        self._model_mutex = asyncio.Lock()
 
-        self._task: asyncio.Task = None
-        self._watchers: List[asyncio.Queue] = []
+        self._watcher_task: asyncio.Task = None
+        self._circuit_listener_queues: List[asyncio.Queue] = []
         self._ignore_files: List[Path] = []
 
-    @property
-    def current_view(self):
-        if self._current_view is None:
-            self.rebuild_view()
-        return self._current_view
+    async def _build_model(self):
+        with timed("Building model"):
+            self._model = build_model(self.project, self.build_config)
 
-    @property
-    def vis_data(self) -> dict:
-        if self._vis_data is None:
-            self.reload_vis_data()
-        return self._vis_data
+    async def build_model(self):
+        with timed("Building model"):
+            async with self._model_mutex:
+                self._build_model()
 
-    @property
-    def model(self) -> Model:
-        if self._model is None:
-            self.rebuild_model()
-        return self._model
+    async def get_model(self) -> Model:
+        async with self._model_mutex:
+            if self._model is None:
+                await self._build_model()
+            return self._model
 
-    def reload_vis_data(self):
-        start_time = time.time()
-        log.info("Reloading vis_data...")
-        # load vis data
-        if self.vis_file_path.exists():
-            with self.vis_file_path.open() as f:
-                self._vis_data = yaml.safe_load(f)
+    async def get_config(self, filename: str):
+        if filename not in (await self.get_model()).src_files:
+            raise FileNotFoundError
+
+        vis_file = self.project.root / Path(filename).with_suffix(".vis.yaml")
+
+        if vis_file.exists():
+            with vis_file.open() as f:
+                vis_data = yaml.load(vis_file)
         else:
-            self._vis_data = {}
-        log.info(f"Reloaded vis_data in {time.time() - start_time}s")
+            vis_data = {}
 
-    def rebuild_model(self):
-        start_time = time.time()
-        log.info("Building model...")
-        self._model = build_model(self.project, self.build_config)
-        log.info(f"Rebuilt in {time.time() - start_time}s")
+        return vis_data
 
-    def rebuild_view(self):
-        start_time = time.time()
-        log.info("Building visualisation...")
-        self._current_view = build_view(self.model, self.build_config.root_node, self.vis_data)
-        log.info(f"Rebuilt in {time.time() - start_time}s")
+    async def update_config(self, filename: str, updates: dict):
+        if filename not in (await self.get_model()).src_files:
+            raise FileNotFoundError
 
-    def rebuild_all(self):
-        self.reload_vis_data()
-        self.rebuild_model()
-        self.rebuild_view()
+        vis_file = self.project.root / Path(filename).with_suffix(".vis.yaml")
+
+        if vis_file.exists():
+            with vis_file.open() as f:
+                vis_data = yaml.load(vis_file)
+        else:
+            vis_data = {}
+
+        update_dict(vis_data, updates)
+
+        self._ignore_files.append(vis_file)
+
+        with vis_file.open("w") as f:
+            yaml.dump(vis_data, f)
 
     async def _watch_files(self):
         try:
@@ -92,14 +95,8 @@ class ProjectHandler:
                     std_path = self.project.standardise_import_path(abs_path)
                     updated_files.append(std_path)
 
-                if any(f in self.model.src_files for f in updated_files):
-                    self.rebuild_model()
-
-                if self.vis_file_path in updated_files:
-                    self.reload_vis_data()
-
-                if updated_files:
-                    self.rebuild_view()
+                if any(f in (await self.get_model()).src_files for f in updated_files):
+                    await self.build_model()
 
                 # empty the ignore list
                 self._ignore_files.clear()
@@ -108,15 +105,17 @@ class ProjectHandler:
             log.exception(str(ex))
             raise
 
-    def start_watching(self):
-        self._task = asyncio.create_task(self._watch_files())
+    @contextlib.contextmanager
+    def monitor_filesystem(self):
+        self._watcher_task = asyncio.create_task(self._watch_files())
+        yield
+        for queue in self._circuit_listener_queues:
+            queue.put(asyncio.CancelledError)
+        self._watcher_task.cancel()
 
-    def stop_watching(self):
-        self._task.cancel()
-
-    async def emit_visions(self) -> dict:
+    async def listen_for_circuits(self) -> AsyncIterator[dict]:
         queue = asyncio.Queue()
-        self._watchers.append(queue)
+        self._circuit_listener_queues.append(queue)
         try:
             while True:
                 visions = await queue.get()
@@ -124,23 +123,11 @@ class ProjectHandler:
                     raise visions
                 yield visions
         finally:
-            self._watchers.remove(queue)
+            self._circuit_listener_queues.remove(queue)
 
-    def stop_vision_emission(self):
-        for queue in self._watchers:
-            queue.put(asyncio.CancelledError)
-
-    # TODO: make this a cached property
-    @property
-    def vis_file_path(self) -> Path:
-        return self.project.root / "vis.yaml"
-
-    # TODO: move this to the class responsible for handling vis configs
-    def do_move(self, elementid, x, y):
-        # as of writing, the elementid is the element's path
-        # so just use that
-        self._vis_data.setdefault(elementid, {})['position'] = {"x": x, "y": y}
-        with self.vis_file_path.open('w') as f:
-            yaml.dump(self._vis_data, f)
-        self._ignore_files.append(self.vis_file_path)
-        asyncio.get_event_loop().call_soon(self.rebuild_view)
+    async def build_circuit(self, path: str) -> dict:
+        # TODO: throw error if path is not in model
+        return build_view(
+            await self.get_model(),
+            path,
+        )
