@@ -128,7 +128,8 @@ class Model:
         elif option_of:
             path = f"{option_of}{PATH_SEPERATOR}{ref}"
 
-        assert path not in self.graph.vs["path"]
+        if path in self.graph.vs["path"]:
+            raise ValueError(f"Path {path} already exists")
         self.graph.add_vertex(ref=ref, type=vertex_type.name, path=path)
 
         if part_of:
