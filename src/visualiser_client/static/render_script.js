@@ -50,6 +50,35 @@ let opposite_direction = {
     "right": "left"
 }
 
+function customAnchor(view, magnet, ref, opt, endType, linkView) {
+    const elBBox = view.model.getBBox();
+    const magnetCenter = view.getNodeBBox(magnet).center();
+    const side = elBBox.sideNearestToPoint(magnetCenter);
+    let dx = 0;
+    let dy = 0;
+    const length = ('length' in opt) ? opt.length : 100;
+    switch (side) {
+        case 'left':
+        dx = -length;
+        break;
+    case 'right':
+        dx = length;
+        break;
+    case 'top':
+        dy = -length;
+        break;
+    case 'bottom':
+        dy = length;
+        break;
+
+    }
+    return joint.anchors.center.call(this, view, magnet, ref, {
+      ...opt,
+      dx,
+      dy
+    }, endType, linkView);
+}
+
 // Base class for the visual elements
 class AtoElement extends dia.Element {
     defaults() {
@@ -226,14 +255,7 @@ const cellNamespace = {
     AtoBlock
 };
 
-function createPort(uuid, port_name, port_group_name, port_anchor, is_stub) {
-    let markup;
-    if (is_stub) {
-        markup_svg = '<line x1="0" y1="0" x2="0" y2="-20" style="stroke:rgb(255,0,0);stroke-width:2" />'
-    }
-    else {
-        markup_svg = '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
-    }
+function createPort(uuid, port_name, port_group_name, port_anchor) {
     return {
         id: uuid,
         group: port_group_name,
@@ -246,7 +268,7 @@ function createPort(uuid, port_name, port_group_name, port_anchor, is_stub) {
                 textAnchor: port_anchor,
             },
         },
-        markup: markup_svg
+        markup: '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
     }
 }
 
