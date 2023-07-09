@@ -126,6 +126,11 @@ class ModelVertexView:
         relative_idxs = [i for i in [other.index] + other.get_ancestor_ids() if i not in [self.index] + self.get_ancestor_ids()][::-1]
         return PATH_SEPERATOR.join([ModelVertexView(self.model, i).ref for i in relative_idxs])
 
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, ModelVertexView):
+            return False
+        return self.model == o.model and self.index == o.index
+
 def get_all_idx(model: Model, vertex_type: VertexType) -> List[int]:
     return model.graph.vs.select(type_eq=vertex_type.name)
 
@@ -149,3 +154,5 @@ def lowest_common_ancestor(verticies: Iterable[ModelVertexView]) -> ModelVertexV
             if id_index == 0:
                 raise ValueError("Verticies aren't in the same tree")
             return ModelVertexView(verticies[0].model, ids_by_depth[id_index - 1][0])
+
+    raise ValueError("No common ancestor found")
