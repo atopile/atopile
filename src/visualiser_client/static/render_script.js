@@ -431,45 +431,48 @@ function resizeBasedOnLabels(element, ports_list) {
 };
 
 
-function addLinks(links) {
+function addLinks(links, current_path) {
     for (let link of links) {
-        var added_link = new shapes.standard.Link({
-            source: {
-                id: pin_to_element_association[link['source']],
-                port: link['source']
-            },
-            target: {
-                id: pin_to_element_association[link['target']],
-                port: link['target']
-            }
-        });
-        added_link.attr({
-            line: {
-                'stroke': settings_dict['link']['color'],
-                'stroke-width': settings_dict['link']['strokeWidth'],
-                targetMarker: {'type': 'none'},
-            },
-            z: 0
-        });
-        added_link.router('manhattan', {
-            perpendicular: true,
-            step: settings_dict['common']['gridSize'],
-        });
-
-        added_link.addTo(graph);
-
-        var verticesTool = new joint.linkTools.Vertices();
-        var segmentsTool = new joint.linkTools.Segments();
-        var boundaryTool = new joint.linkTools.Boundary();
-
-        var toolsView = new joint.dia.ToolsView({
-            tools: [verticesTool, boundaryTool]
-        });
-
-        var linkView = added_link.findView(paper);
-        linkView.addTools(toolsView);
-        linkView.hideTools();
+        console.log(link);
     }
+    // for (let link of links) {
+    //     var added_link = new shapes.standard.Link({
+    //         source: {
+    //             id: pin_to_element_association[link['source']],
+    //             port: link['source']
+    //         },
+    //         target: {
+    //             id: pin_to_element_association[link['target']],
+    //             port: link['target']
+    //         }
+    //     });
+    //     added_link.attr({
+    //         line: {
+    //             'stroke': settings_dict['link']['color'],
+    //             'stroke-width': settings_dict['link']['strokeWidth'],
+    //             targetMarker: {'type': 'none'},
+    //         },
+    //         z: 0
+    //     });
+    //     added_link.router('manhattan', {
+    //         perpendicular: true,
+    //         step: settings_dict['common']['gridSize'],
+    //     });
+
+    //     added_link.addTo(graph);
+
+    //     var verticesTool = new joint.linkTools.Vertices();
+    //     var segmentsTool = new joint.linkTools.Segments();
+    //     var boundaryTool = new joint.linkTools.Boundary();
+
+    //     var toolsView = new joint.dia.ToolsView({
+    //         tools: [verticesTool, boundaryTool]
+    //     });
+
+    //     var linkView = added_link.findView(paper);
+    //     linkView.addTools(toolsView);
+    //     linkView.hideTools();
+    // }
 }
 
 function addStubs(stubs) {
@@ -649,8 +652,10 @@ function applyParentConfig(element, child_attrs) {
     }
 }
 
-async function generateJointjsGraph(circuit, parent = null, child_attrs = null) {
+async function generateJointjsGraph(circuit, path = null, parent = null, child_attrs = null) {
     let jointJSCircuit = [];
+
+    let downstream_path;
 
     for (let element of circuit) {
         var joint_object = null;
@@ -666,6 +671,7 @@ async function generateJointjsGraph(circuit, parent = null, child_attrs = null) 
 
         // If it is a block, create it and instantiate the contents within it
         else if (element['type'] == 'module') {
+            downstream_path = path + element['name'] + '/';
             // Create the module
             joint_object = createBlock(element, parent);
             element['jointObject'] = joint_object;
@@ -673,8 +679,9 @@ async function generateJointjsGraph(circuit, parent = null, child_attrs = null) 
                 addElementToElement(joint_object, parent);
             }
 
+            addLinks(element['links'], )
             // Call the function recursively on children
-            await generateJointjsGraph(element['blocks'], joint_object, element['config']['child_attrs']);
+            await generateJointjsGraph(element['blocks'], downstream_path, joint_object, element['config']['child_attrs']);
 
             applyParentConfig(element, child_attrs);
             //addLinks(element['links']);
@@ -685,8 +692,8 @@ async function generateJointjsGraph(circuit, parent = null, child_attrs = null) 
         }
 
         else if (element['type'] == 'file') {
-            //let file = getElementTitle(element);
-            await generateJointjsGraph(element['blocks']);
+            downstream_path = element['name'] + ':';
+            await generateJointjsGraph(element['blocks'], downstream_path);
         }
 
         else {
