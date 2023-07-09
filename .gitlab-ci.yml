@@ -58,6 +58,9 @@ python-test:
   script:
     - pip install -e ."[dev,test,docs]"
     - pytest
+  artifacts:
+    paths:
+      - artifacts
 
 python-build:
   stage: build
