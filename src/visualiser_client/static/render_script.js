@@ -433,7 +433,38 @@ function resizeBasedOnLabels(element, ports_list) {
 
 function addLinks(links, current_path) {
     for (let link of links) {
-        console.log(link);
+        let source_path = concatenatePathAndName(current_path, link['source']);
+        let target_path = concatenatePathAndName(current_path, link['target']);
+        console.log('source block id', source_path);
+        console.log('target block id', target_path);
+        let source = popLastPathElementFromPath(source_path);
+        let target = popLastPathElementFromPath(target_path);
+        let source_pin = source['pin'];
+        let target_pin = target['pin'];
+        let source_block = source['path'];
+        let target_block = target['path'];
+        console.log('source path: ' + source_block + " pin: " + source_pin);
+        console.log('target path: ' + target_block + " pin: " + target_pin);
+
+        // const link = new joint.shapes.standard.Link({
+        //     source: {
+        //         id: source_block_id,
+        //         port: port.id,
+        //         anchor: {
+        //             name: 'center'
+        //         }
+        //     },
+        //         target: {
+        //         id: el1.id,
+        //         port: port.id,
+        //         anchor: {
+        //             name: 'customAnchor'
+        //         },
+        //         connectionPoint: {
+        //             name: 'anchor'
+        //         }
+        //     }
+        // });
     }
     // for (let link of links) {
     //     var added_link = new shapes.standard.Link({
@@ -634,6 +665,26 @@ function returnConfigFileName(string) {
     else return null;
 }
 
+function concatenatePathAndName(path, name) {
+    if (path == null) {
+        return name + ':'
+    }
+    else if (path.slice(-1) == ':') {
+        return path + name;
+    }
+    else {
+        return path + '.' + name;
+    }
+}
+
+function popLastPathElementFromPath(path) {
+    const blocks = path.split(".");
+    const path_blocks = blocks.slice(0, blocks.length - 1);
+    const remaining_path = path_blocks.join('.')
+    const pin = blocks[blocks.length - 1];
+    return {'path': remaining_path, 'pin': pin};
+}
+
 function getElementPosition(element_name, config) {
     let position = {'x': 10, 'y': 10};
     if (config && element_name in config) {
@@ -656,6 +707,7 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
     let jointJSCircuit = [];
 
     let downstream_path;
+    console.log('the current path is: ', path);
 
     for (let element of circuit) {
         var joint_object = null;
@@ -671,7 +723,7 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
 
         // If it is a block, create it and instantiate the contents within it
         else if (element['type'] == 'module') {
-            downstream_path = path + element['name'] + '/';
+            downstream_path = concatenatePathAndName(path, element['name']);
             // Create the module
             joint_object = createBlock(element, parent);
             element['jointObject'] = joint_object;
@@ -679,7 +731,7 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
                 addElementToElement(joint_object, parent);
             }
 
-            addLinks(element['links'], )
+            addLinks(element['links'], path)
             // Call the function recursively on children
             await generateJointjsGraph(element['blocks'], downstream_path, joint_object, element['config']['child_attrs']);
 
@@ -692,7 +744,7 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
         }
 
         else if (element['type'] == 'file') {
-            downstream_path = element['name'] + ':';
+            downstream_path = concatenatePathAndName(null, element['name']);
             await generateJointjsGraph(element['blocks'], downstream_path);
         }
 
@@ -717,7 +769,7 @@ async function populateConfigFromBackend(circuit_dict, parent_path = null) {
     for (let element of circuit_dict) {
         path = element['name']
         if (parent_path !== null){
-            path = parent_path + '/' + path;
+            path = parent_path + '.' + path;
         };
         if (element['type'] == 'component') {
             if (element['instance_of'] !== null) {
