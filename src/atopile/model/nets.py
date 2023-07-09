@@ -33,7 +33,7 @@ def resolve_net_name(all_electrical_verticies: NetType) -> str:
         return f"{lca.path}.{signal_name}"
 
     # final fallback - slap a UUID on it and call it a day
-    vertex_names_uuidd = generate_uid_from_path("".join(sorted(ev.ref for ev in all_electrical_verticies)))
+    vertex_names_uuidd = generate_uid_from_path("".join(sorted(ev.ref for ev in all_electrical_verticies)))[:6]
     return f"{lca.path}.{vertex_names_uuidd}"
 
 def find_nets(model: Model) -> Iterable[NetType]:
@@ -46,4 +46,4 @@ def find_nets(model: Model) -> Iterable[NetType]:
 
 def find_net_names(model: Model) -> Dict[str, NetType]:
     nets = find_nets(model)
-    return {resolve_net_name(n[0]): n for n in nets}
+    return {resolve_net_name(n): n for n in nets}

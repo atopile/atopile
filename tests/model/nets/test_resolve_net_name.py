@@ -1,7 +1,7 @@
 from pytest import fixture, mark
 from atopile.model.accessors import ModelVertexView
 from atopile.model.model import Model, VertexType, EdgeType
-from atopile.model.nets import resolve_net_name, find_nets
+from atopile.model.nets import resolve_net_name, find_nets, find_net_names
 
 @fixture
 def dummy_model() -> Model:
@@ -69,3 +69,10 @@ def test_naming(dummy_model: Model):
     net_names = {resolve_net_name(n) for n in nets}
 
     assert net_names == set(expected_nets.keys())
+
+def test_find_net_names(dummy_model: Model):
+    net_names = find_net_names(dummy_model)
+    assert set(net_names.keys()) == set(expected_nets.keys())
+
+    for name, net in net_names.items():
+        assert {v.path for v in net} == set(expected_nets[name])
