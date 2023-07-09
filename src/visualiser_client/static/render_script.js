@@ -58,7 +58,7 @@ class AtoElement extends dia.Element {
         };
     }
 
-    addPortWithPins(port_name, port_location, pin_list) {
+    addPortWithPins(port_group_name, port_location, pin_list) {
         let port_label_position = getPortLabelPosition(port_location);
         let port_anchor = getPortLabelAnchor(port_location);
         let port_angle = getPortLabelAngle(port_location);
@@ -66,7 +66,7 @@ class AtoElement extends dia.Element {
 
         let port_group = {};
 
-        port_group[port_name] = {
+        port_group[port_group_name] = {
             position: port_position,
             attrs: {
                 portBody: {
@@ -99,19 +99,7 @@ class AtoElement extends dia.Element {
 
         // While we are creating the port, add the pins in the element
         for (let pin of pin_list) {
-            this.addPort({
-                id: pin["uuid"],
-                group: port_name,
-                attrs: {
-                    label: {
-                        text: pin['name'],
-                        fontFamily: settings_dict['common']['fontFamily'],
-                        fontSize: settings_dict['component']['pin']['fontSize'],
-                        fontWeight: settings_dict["component"]['pin']["fontWeight"],
-                        textAnchor: port_anchor,
-                    },
-                },
-            });
+            this.addPort(createPort(pin['uuid'], pin['name'], port_group_name, port_anchor, true));
         }
 
         // Add the ports list to the element
@@ -132,8 +120,6 @@ class AtoElement extends dia.Element {
     }
 
     applyParentAttrs(attrs) {
-        console.log('position being changed');
-        console.log(attrs);
         if ('position' in attrs) {
             // Deep setting ensures that the element is placed relative to all parents
             this.position(attrs['position']['x'], attrs['position']['y'], { deep: true });
@@ -239,6 +225,30 @@ const cellNamespace = {
     AtoComponent,
     AtoBlock
 };
+
+function createPort(uuid, port_name, port_group_name, port_anchor, is_stub) {
+    let markup;
+    if (is_stub) {
+        markup_svg = '<line x1="0" y1="0" x2="0" y2="-20" style="stroke:rgb(255,0,0);stroke-width:2" />'
+    }
+    else {
+        markup_svg = '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
+    }
+    return {
+        id: uuid,
+        group: port_group_name,
+        attrs: {
+            label: {
+                text: port_name,
+                fontFamily: settings_dict['common']['fontFamily'],
+                fontSize: settings_dict['component']['pin']['fontSize'],
+                fontWeight: settings_dict["component"]['pin']["fontWeight"],
+                textAnchor: port_anchor,
+            },
+        },
+        markup: markup_svg
+    }
+}
 
 function getPortLabelPosition(location) {
     switch (location) {
@@ -608,10 +618,7 @@ function getElementPosition(element_name, config) {
 }
 
 function applyParentConfig(element, child_attrs) {
-    console.log('applying parent config for ' + element['name']);
     if (child_attrs !== null && Object.keys(child_attrs).length > 0) {
-        console.log('pass');
-        console.log(child_attrs)
         for (let attrs in child_attrs) {
             if (attrs == element['name']) {
                 element['jointObject'].applyParentAttrs(child_attrs[attrs]);
@@ -769,7 +776,7 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
 
 graph.on('change:position', function(cell) {
     // `fitParent()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
-    //cell.fitAncestorElements();
+    cell.fitAncestorElements();
 });
 
 // Fetch a file visual config from the server
