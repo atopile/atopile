@@ -7,7 +7,7 @@ from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from atopile.model.accessors import ModelVertexView
-from atopile.model.nets import find_net_names, resolve_net_name
+from atopile.targets.netlist.nets import find_net_names, resolve_net_name
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster

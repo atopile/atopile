@@ -1,7 +1,6 @@
 from pytest import fixture, mark
-from atopile.model.accessors import ModelVertexView
 from atopile.model.model import Model, VertexType, EdgeType
-from atopile.model.nets import resolve_net_name, find_nets, find_net_names
+from atopile.targets.netlist.nets import resolve_net_name, find_nets, find_net_names
 
 @fixture
 def dummy_model() -> Model:
