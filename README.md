@@ -64,15 +64,11 @@ For pull requests and bug-reports, see our [contributing guidelines](docs/CONTRI
 
 ## Using faebryk
 
-### From pip
+### From pip (as library)
 
 Setup
 
 ```bash
-> # optional: use venv
-> python -m venv venv
-> . venv/bin/activate
->
 > pip install faebryk
 ```
 
@@ -81,12 +77,11 @@ Running examples
 ```bash
 > mkdir my_faebryk_project
 > cd my_faebryk_project
-> # download a sample from the github repo in /examples
-# This will create ./build/faebryk/faebryk.net which contains the kicad netlist that can be imported into pcbnew
+> # download a sample from the faebryk github repo from the /examples folder
 > python3 <sample_name.py>
 ```
 
-### From source
+### From source (editable)
 
 Setup
 
@@ -94,21 +89,14 @@ Setup
 > git clone https://github.com/faebryk/faebryk.git
 > cd faebryk
 >
-> # create venv
-> python -m venv venv
-> . venv/bin/activate
->
-> # requires pip version >= 21.3
-> pip install --require-hashes -r requirements-hash.txt
-> pip install -r requirements.txt
-> pip install --editable .
+> poetry install
 ```
 
 Running examples
 
 ```bash
-# This will create ./build/faebryk/faebryk.net which contains the kicad netlist that can be imported into pcbnew
-> ./examples/<sample_name>.py
+> poetry shell
+> python ./examples/<sample_name>.py
 ```
 
 ---
