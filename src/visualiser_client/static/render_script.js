@@ -446,25 +446,27 @@ function addLinks(links, current_path) {
         console.log('source path: ' + source_block + " pin: " + source_pin);
         console.log('target path: ' + target_block + " pin: " + target_pin);
 
-        // const link = new joint.shapes.standard.Link({
-        //     source: {
-        //         id: source_block_id,
-        //         port: port.id,
-        //         anchor: {
-        //             name: 'center'
-        //         }
-        //     },
-        //         target: {
-        //         id: el1.id,
-        //         port: port.id,
-        //         anchor: {
-        //             name: 'customAnchor'
-        //         },
-        //         connectionPoint: {
-        //             name: 'anchor'
-        //         }
-        //     }
-        // });
+        const added_link = new shapes.standard.Link({
+            source: {
+                id: source_block,
+                port: source_path,
+                anchor: {
+                    name: 'center'
+                }
+            },
+                target: {
+                id: source_block,
+                port: source_path,
+                anchor: {
+                    name: 'customAnchor'
+                },
+                connectionPoint: {
+                    name: 'anchor'
+                }
+            }
+        });
+
+        added_link.addTo(graph);
     }
     // for (let link of links) {
     //     var added_link = new shapes.standard.Link({
@@ -603,6 +605,7 @@ function addPins(jointJSObject, element) {
 }
 
 function createComponent(element, parent) {
+    console.log("Create comp: ", element['uuid']);
     let title = getElementTitle(element);
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
@@ -731,7 +734,7 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
                 addElementToElement(joint_object, parent);
             }
 
-            addLinks(element['links'], path)
+            //addLinks(element['links'], path)
             // Call the function recursively on children
             await generateJointjsGraph(element['blocks'], downstream_path, joint_object, element['config']['child_attrs']);
 
@@ -744,7 +747,7 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
         }
 
         else if (element['type'] == 'file') {
-            downstream_path = concatenatePathAndName(null, element['name']);
+            downstream_path = concatenatePathAndName(path, element['name']);
             await generateJointjsGraph(element['blocks'], downstream_path);
         }
 
@@ -762,16 +765,15 @@ let default_config = {
     'child_attrs': []
 }
 
-async function populateConfigFromBackend(circuit_dict, parent_path = null) {
+async function populateConfigFromBackend(circuit_dict, path = null) {
     let populated_circuit = [];
-    let path = "";
+    let downstream_path;
 
     for (let element of circuit_dict) {
-        path = element['name']
-        if (parent_path !== null){
-            path = parent_path + '.' + path;
-        };
         if (element['type'] == 'component') {
+            downstream_path = concatenatePathAndName(path, element['name']);
+            element['uuid'] = downstream_path; // TODO: fix the name from uuid to path
+
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
                 const config = await loadFileConfig(config_location_name['file']);
@@ -782,6 +784,9 @@ async function populateConfigFromBackend(circuit_dict, parent_path = null) {
             }
         }
         if (element['type'] == 'module' || element['type'] == 'file') {
+            downstream_path = concatenatePathAndName(path, element['name']);
+            element['uuid'] = downstream_path; // TODO: fix the name from uuid to path
+
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
                 const config = await loadFileConfig(config_location_name['file']);
@@ -790,9 +795,8 @@ async function populateConfigFromBackend(circuit_dict, parent_path = null) {
                     element['config'] = config[config_location_name['module']];
                 }
             }
-            element['blocks'] = await populateConfigFromBackend(element['blocks'], path);
+            element['blocks'] = await populateConfigFromBackend(element['blocks'], downstream_path);
         }
-        element['uuid'] = path;
         populated_circuit.push(element);
     }
     return populated_circuit;
