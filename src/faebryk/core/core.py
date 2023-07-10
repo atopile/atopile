@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Generic, Optional, Type, TypeVar
+from typing import Generic, Iterable, Optional, Type, TypeVar
 
 from faebryk.libs.util import Holder, NotNone, cast_assert
 from typing_extensions import Self
@@ -311,6 +311,8 @@ class GraphInterface(FaebrykLibObject):
         self._node: Optional[Node] = None
         self.name: str = type(self).__name__
 
+        self.cache = set()
+
     @property
     def node(self):
         return NotNone(self._node)
@@ -337,7 +339,14 @@ class GraphInterface(FaebrykLibObject):
         except Exception:
             ...
 
+        self.cache.add(other)
         return self
+
+    def _is_connected(self, other: GraphInterface):
+        return other in self.cache
+
+    def is_connected(self, other: GraphInterface):
+        return self._is_connected(other) or other._is_connected(self)
 
     def get_full_name(self):
         return f"{self.node.get_full_name()}.{self.name}"
@@ -523,49 +532,60 @@ class ModuleInterface(Node):
             return self
 
         # Already connected
-        if other in get_connected_mifs(self.GIFs.connected):
+        if self.is_connected_to(other):
             return self
 
         logger.debug(f"MIF connection: {self} to {other}")
 
-        # Connect graph IF
-        self.GIFs.connected.connect(other.GIFs.connected)
+        def cross_connect(
+            s_group: Iterable[ModuleInterface],
+            d_group: Iterable[ModuleInterface],
+            hint=None,
+        ):
+            if logger.isEnabledFor(logging.DEBUG) and hint is not None:
+                logger.debug(f"Connect {hint} {s_sib} -> {d_sib}")
 
-        # Connect to all siblings
-        s_sib = get_connected_mifs(self.GIFs.sibling) | {self}
-        d_sib = get_connected_mifs(other.GIFs.sibling) | {other}
-        logger.debug(f"Connect siblings {s_sib} -> {d_sib}")
-        for s in s_sib:
-            for d in d_sib:
-                s._connect(d)
+            for s in s_group:
+                for d in d_group:
+                    s._connect(d)
 
         # Connect to all connections
         s_con = get_connected_mifs(self.GIFs.connected) | {self}
         d_con = get_connected_mifs(other.GIFs.connected) | {other}
-        logger.debug(f"Connect cons {s_con} -> {d_con}")
-        for s in s_con:
-            for d in d_con:
-                s._connect(d)
+        cross_connect(s_con, d_con, "connections")
+
+        # Connect to all siblings
+        s_sib = get_connected_mifs(self.GIFs.sibling) | {self}
+        d_sib = get_connected_mifs(other.GIFs.sibling) | {other}
+        cross_connect(s_sib, d_sib, "siblings")
 
         return self
 
     def _connect(self, other: ModuleInterface) -> ModuleInterface:
         from faebryk.core.util import zip_connect_moduleinterfaces
 
+        if self.is_connected_to(other):
+            return self
+
         if isinstance(other, type(self)):
             zip_connect_moduleinterfaces([self], [other])
 
-        return self.__connect(other)
+        self.GIFs.connected.connect(other.GIFs.connected)
+
+        return self
 
     def connect(self, other: Self) -> Self:
         # TODO consider some type of check at the end within the graph instead
         # assert type(other) is type(self)
-        return self._connect(other)
+        return self.__connect(other)
 
     def connect_via(self, bridge: Node, other: Self):
         from faebryk.library.can_bridge import can_bridge
 
         bridge.get_trait(can_bridge).bridge(self, other)
+
+    def is_connected_to(self, other: ModuleInterface):
+        return self.GIFs.connected.is_connected(other.GIFs.connected)
 
 
 TM = TypeVar("TM", bound="Module")

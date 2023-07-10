@@ -22,3 +22,6 @@ class Range(Parameter):
                 f"Value not in range: {value_to_check} not in [{self.min},{self.max}]"
             )
         self.add_trait(is_representable_by_single_value_defined(value_to_check))
+
+    def __str__(self) -> str:
+        return f"{type(self).__name__}({self.min}, {self.max})"

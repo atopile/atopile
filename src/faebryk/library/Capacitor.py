@@ -57,7 +57,7 @@ class Capacitor(Module):
             @staticmethod
             def get_type_description():
                 return unit_map(
-                    _capacitance.value, ["µF", "mF", "F", "KF", "MF", "GF"], start="F"
+                    _capacitance.value, ["µF", "mF", "F", "kF", "MF", "GF"], start="F"
                 )
 
         self.add_trait(_has_type_description())

@@ -3,7 +3,7 @@
 
 # TODO replace with pint or something
 
-K = 1000
+k = 1000
 M = 1000_000
 G = 1000_000_000
 

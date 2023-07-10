@@ -124,7 +124,6 @@ class can_represent_kicad_footprint_via_attached_component(
         )
 
 
-# TODO not sure if needed
 def close_electrical_graph(G: nx.Graph):
     G_only_e = nx.Graph()
     G_only_e.add_nodes_from(G.nodes)
@@ -155,7 +154,11 @@ def close_electrical_graph(G: nx.Graph):
 
 
 def make_t1_netlist_from_graph(g: Graph):
-    Gclosed = close_electrical_graph(g.G)
+    # TODO not sure if needed
+    #   as long as core is connecting to all MIFs anyway not needed
+    # Gclosed = close_electrical_graph(g.G)
+    logger.info(f"Closing graph {g.G}")
+    Gclosed = g.G
 
     # group comps & fps
     node_fps = {
@@ -168,7 +171,9 @@ def make_t1_netlist_from_graph(g: Graph):
         and n.has_trait(has_footprint)
     }
 
-    logger.debug(f"node_fps: {node_fps}")
+    logger.info(f"Found {len(node_fps)} components with footprints")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"node_fps: {node_fps}")
 
     # add trait/info to footprints
     for n, fp in node_fps.items():
@@ -178,6 +183,7 @@ def make_t1_netlist_from_graph(g: Graph):
         fp.add_trait(can_represent_kicad_footprint_via_attached_component(n, Gclosed))
 
     # generate kicad_objs from footprints
+    logger.info("Generating kicad objects")
     kicad_objs = {
         fp: fp.get_trait(can_represent_kicad_footprint).get_kicad_obj()
         for fp in node_fps.values()
@@ -195,9 +201,11 @@ def make_t1_netlist_from_graph(g: Graph):
         }
 
     # convert into old/generic format
+    logger.info("Converting kicad objects")
     converted = {fp: convert_kicad_obj_base(obj) for fp, obj in kicad_objs.items()}
 
-    logger.debug(f"stage_1: {converted}")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"stage_1: {converted}")
 
     def convert_kicad_obj_neighbors(obj: dict[str, Any]):
         obj["neighbors"] = {

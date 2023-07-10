@@ -1,20 +1,20 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import ModuleInterface
+from faebryk.core.core import Module, ModuleInterface
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.has_single_electric_reference_defined import (
     has_single_electric_reference_defined,
 )
+from faebryk.libs.util import times
 
 
-class SWD(ModuleInterface):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+class Sercom(ModuleInterface):
+    def __init__(self) -> None:
+        super().__init__()
 
-        class _NODEs(ModuleInterface.NODES()):
-            clk = ElectricLogic()
-            dio = ElectricLogic()
+        class _NODEs(Module.NODES()):
+            unnamed = times(4, ElectricLogic)
 
         self.NODEs = _NODEs(self)
 

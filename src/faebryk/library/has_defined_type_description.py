@@ -8,6 +8,7 @@ class has_defined_type_description(has_type_description.impl()):
     def __init__(self, value: str) -> None:
         super().__init__()
         self.value = value
+        assert value != ""
 
     def get_type_description(self) -> str:
         return self.value

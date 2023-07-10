@@ -22,23 +22,23 @@ class USB_C_PSU(Module):
         self.IFs = _IFs(self)
 
         # components
-        class _CMPs(Module.NODES()):
+        class _NODEs(Module.NODES()):
             usb = USB_Type_C_Receptacle_24_pin()
             configuration_resistors = times(2, lambda: Resistor(Constant(5.1 * K)))
 
-        self.CMPs = _CMPs(self)
+        self.NODEs = _NODEs(self)
 
         connect_all_interfaces(
-            list(self.CMPs.usb.IFs.vbus + [self.IFs.power_out.NODEs.hv])
+            list(self.NODEs.usb.IFs.vbus + [self.IFs.power_out.NODEs.hv])
         )
         connect_all_interfaces(
-            list(self.CMPs.usb.IFs.gnd + [self.IFs.power_out.NODEs.lv])
+            list(self.NODEs.usb.IFs.gnd + [self.IFs.power_out.NODEs.lv])
         )
 
         # configure as ufp with 5V@max3A
-        self.CMPs.usb.IFs.cc1.connect_via(
-            self.CMPs.configuration_resistors[0], self.IFs.power_out.NODEs.lv
+        self.NODEs.usb.IFs.cc1.connect_via(
+            self.NODEs.configuration_resistors[0], self.IFs.power_out.NODEs.lv
         )
-        self.CMPs.usb.IFs.cc2.connect_via(
-            self.CMPs.configuration_resistors[1], self.IFs.power_out.NODEs.lv
+        self.NODEs.usb.IFs.cc2.connect_via(
+            self.NODEs.configuration_resistors[1], self.IFs.power_out.NODEs.lv
         )

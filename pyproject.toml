@@ -26,7 +26,8 @@ dependencies = [
     "click",
     "typing-extensions",
     "rich",
-    "ruff"
+    "ruff",
+    "easyeda2kicad"
 ]
 
 [project.urls]

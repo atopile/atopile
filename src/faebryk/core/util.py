@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from typing import Iterable, TypeVar
 
 # TODO this file should not exist
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-def unit_map(value: int, units, start=None, base=1000):
+def unit_map(value: int | float, units, start=None, base=1000):
     if start is None:
         start_idx = 0
     else:
@@ -23,15 +24,16 @@ def unit_map(value: int, units, start=None, base=1000):
     while value >= cur:
         cur *= base
         ptr += 1
-    form_value = integer_base(value, base=base)
-    return f"{form_value}{units[ptr]}"
+    form_value = round(integer_base(value, base=base), int(math.log(base, 10)))
+    out = f"{form_value}{units[ptr]}"
+    return out
 
 
-def integer_base(value: int, base=1000):
+def integer_base(value: int | float, base=1000):
     while value < 1:
         value *= base
     while value >= base:
-        value //= base
+        value /= base
     return value
 
 
@@ -82,10 +84,12 @@ def connect_interfaces_via_chain(
     last.connect(end)
 
 
-def connect_all_interfaces(interfaces: list[ModuleInterface]):
+def connect_all_interfaces(interfaces: Iterable[ModuleInterface]):
+    interfaces = list(interfaces)
     for i in interfaces:
         for j in interfaces:
             i.connect(j)
+    return interfaces[0]
 
 
 def connect_to_all_interfaces(

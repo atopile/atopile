@@ -479,6 +479,7 @@ def render_matrix(
     G: nx.Graph,
     nodes_rows: list[list[Node]],
     depth=2,
+    min_depth=0,
     show_full=True,
     show_non_sum=True,
 ):
@@ -490,7 +491,7 @@ def render_matrix(
     if show_full:
         _nodes_rows.append(None)
 
-    depths: list[int | None] = list(range(depth + 1))
+    depths: list[int | None] = list(range(min_depth, depth + 1))
     if show_non_sum:
         depths.append(None)
 

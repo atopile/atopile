@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.core import ModuleInterface
-from faebryk.library.differential_pair import DifferentialPair
+from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.Electrical import Electrical
-from faebryk.library.usb2_0 import USB2_0
+from faebryk.library.USB2_0 import USB2_0
 
 
 class USB3(ModuleInterface):

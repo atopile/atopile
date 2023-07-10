@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.core import ModuleInterface
+from faebryk.library.Capacitor import Capacitor
 from faebryk.library.Electrical import Electrical
 from faebryk.library.Power import Power
 
@@ -21,3 +22,6 @@ class ElectricPower(Power):
             self.NODEs.hv.connect(other.NODEs.hv)
             self.NODEs.lv.connect(other.NODEs.lv)
         return super()._connect(other)
+
+    def decouple(self, capacitor: Capacitor):
+        self.NODEs.hv.connect_via(capacitor, self.NODEs.lv)

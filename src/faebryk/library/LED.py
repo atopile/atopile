@@ -35,6 +35,8 @@ class LED(Module):
 
         self.add_trait(_())
 
+        self.add_trait(has_defined_type_description("D"))
+
     def _setup_interfaces(self):
         class _IFs(super().IFS()):
             anode = Electrical()

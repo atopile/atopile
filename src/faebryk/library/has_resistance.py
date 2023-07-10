@@ -3,10 +3,10 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.core import ModuleTrait, Parameter
 
 
 class has_resistance(ModuleTrait):
     @abstractmethod
-    def get_resistance(self):
+    def get_resistance(self) -> Parameter:
         ...

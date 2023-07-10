@@ -32,10 +32,9 @@ class MOSFET(Module):
         self.saturation_type = saturation_type
 
         self._setup_interfaces()
-        self._setup_interfaces()
 
     def _setup_traits(self):
-        self.add_trait(has_defined_type_description("MOSFET"))
+        self.add_trait(has_defined_type_description("Q"))
 
     def _setup_interfaces(self):
         class _IFs(super().IFS()):

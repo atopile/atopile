@@ -58,7 +58,9 @@ class Resistor(Module):
                 resistance = self.get_trait(has_resistance).get_resistance()
                 assert isinstance(resistance, Constant)
                 return unit_map(
-                    resistance.value, ["µΩ", "mΩ", "Ω", "KΩ", "MΩ", "GΩ"], start="Ω"
+                    resistance.value,
+                    ["µΩ", "mΩ", "Ω", "kΩ", "MΩ", "GΩ"],
+                    start="Ω",
                 )
 
         self.add_trait(_has_type_description())

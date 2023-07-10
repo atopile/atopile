@@ -41,7 +41,7 @@ class SMDTwoPin(Footprint):
                     self.Type._01005: "0402",
                     self.Type._0201: "0603",
                     self.Type._0402: "1005",
-                    self.Type._0603: "1005",
+                    self.Type._0603: "1608",
                     self.Type._0805: "2012",
                     self.Type._1206: "3216",
                     self.Type._1210: "3225",

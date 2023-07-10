@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.core import ModuleInterface
-from faebryk.library.differential_pair import DifferentialPair
+from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricPower import ElectricPower
 
 

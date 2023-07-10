@@ -78,7 +78,7 @@ def find(haystack: Iterable[T], needle: Callable) -> T:
     return results[0]
 
 
-def groupby(it, key):
+def groupby(it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
     out = defaultdict(list)
     for i in it:
         out[key(i)].append(i)

@@ -2,19 +2,26 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.core import ModuleInterface
+from faebryk.library.Electrical import Electrical
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.has_single_electric_reference_defined import (
     has_single_electric_reference_defined,
 )
 
 
-class SWD(ModuleInterface):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+class JTAG(ModuleInterface):
+    def __init__(self) -> None:
+        super().__init__()
 
         class _NODEs(ModuleInterface.NODES()):
-            clk = ElectricLogic()
-            dio = ElectricLogic()
+            dbgrq = ElectricLogic()
+            tdo = ElectricLogic()
+            tdi = ElectricLogic()
+            tms = ElectricLogic()
+            tck = ElectricLogic()
+            n_trst = ElectricLogic()
+            n_reset = ElectricLogic()
+            vtref = Electrical()
 
         self.NODEs = _NODEs(self)
 
