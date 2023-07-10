@@ -1,5 +1,5 @@
 from pytest import fixture, mark
-from atopile.model.accessors import lowest_common_ancestor, ModelVertexView
+from atopile.model.accessors import lowest_common_ancestor, lowest_common_ancestor_with_ancestor_ids, ModelVertexView
 from atopile.model.model import Model, VertexType, EdgeType
 
 @fixture
@@ -32,6 +32,16 @@ def test_modules(dummy_model: Model):
     p1 = ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp1/p1")
     p2 = ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp2/p1")
     assert module == lowest_common_ancestor([p1, p2])
+
+def test_ancestor_ids(dummy_model: Model):
+    # module = ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module")
+    p1 = ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp1/p1")
+    p2 = ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp2/p1")
+    _, rel_anc_ids = lowest_common_ancestor_with_ancestor_ids([p1, p2])
+    assert rel_anc_ids == [
+        [ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp1").index],
+        [ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp2").index]
+    ]
 
 @mark.xfail
 def test_no_common_ansestor(dummy_model: Model):

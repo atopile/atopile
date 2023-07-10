@@ -21,3 +21,12 @@ def test_different_verticies():
     m.new_vertex(VertexType.file, "dummy_file2.ato")
 
     assert ModelVertexView(m, 0) != ModelVertexView(m, 1)
+
+def test_contains():
+    m = Model()
+    m.new_vertex(VertexType.file, "dummy_file.ato")
+    m.new_vertex(VertexType.file, "dummy_file2.ato")
+
+    assert ModelVertexView(m, 0) in [ModelVertexView(m, 0)]
+    assert ModelVertexView(m, 0) not in [ModelVertexView(m, 1)]
+    assert ModelVertexView(m, 1) not in [ModelVertexView(m, 0)]
