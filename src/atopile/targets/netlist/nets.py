@@ -4,7 +4,7 @@ from atopile.model.accessors import (
     ModelVertexView,
     lowest_common_ancestor_with_ancestor_ids,
 )
-from atopile.model.model import Model, EdgeType, VertexType
+from atopile.model.model import Model, EdgeType, VertexType, PATH_SEPERATOR
 from atopile.model.utils import generate_uid_from_path
 
 # specifically a list of Signal and Pin vertices
@@ -16,20 +16,21 @@ def resolve_net_name(all_electrical_verticies: NetType) -> str:
 
     lca, rel_anc_ids = lowest_common_ancestor_with_ancestor_ids(all_electrical_verticies)
 
-    relative_depths = [len(anc_ids) for anc_ids in rel_anc_ids]
-
     # descend down, checking for signals as we go
     # we're going to name the net <module-path>.<signal-name>
     # if there are multiple signals, we'll name it <module-path>.<signal-name1>-<signal-name2>
-    signals_by_depth: Dict[int, List[ModelVertexView]] = {}
-    for electrical_vertex, depth in zip(all_electrical_verticies, relative_depths):
+    rel_by_depth: Dict[int, List[ModelVertexView]] = {}
+    for electrical_vertex, rel_ids in zip(all_electrical_verticies, rel_anc_ids):
         if electrical_vertex.vertex_type != VertexType.signal:
             continue
-        signals_by_depth.setdefault(depth, []).append(electrical_vertex)
+        depth = len(rel_ids)
+        rel_path = PATH_SEPERATOR.join([ModelVertexView(electrical_vertex.model, i).ref for i in rel_ids] + [electrical_vertex.ref])
+        rel_by_depth.setdefault(depth, []).append(rel_path)
 
-    if signals_by_depth:
-        signals = signals_by_depth[min(signals_by_depth.keys())]
-        signal_name = "-".join(sorted(signal.ref for signal in signals))
+    if rel_by_depth:
+        min_depth = min(rel_by_depth.keys())
+        signal_names = rel_by_depth[min_depth]
+        signal_name = "-".join(sorted(signal_name for signal_name in signal_names))
         return f"{lca.path}.{signal_name}"
 
     # final fallback - slap a UUID on it and call it a day

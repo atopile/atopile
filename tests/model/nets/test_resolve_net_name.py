@@ -12,6 +12,7 @@ def dummy_model() -> Model:
     comp1 = m.new_vertex(VertexType.component, "dummy_comp1", module)
     comp2 = m.new_vertex(VertexType.component, "dummy_comp2", module)
     for c in (comp1, comp2):
+        m.new_vertex(VertexType.signal, "spare_sig", c)
         for i in range(2):
             p_path = m.new_vertex(VertexType.pin, f"p{i}", c)
             s_path = m.new_vertex(VertexType.signal, f"sig{i}", c)
@@ -21,6 +22,7 @@ def dummy_model() -> Model:
     # s_path is still dummy_comp2/sig2
     m.new_edge(EdgeType.connects_to, top_signal_path, s_path)
     m.new_edge(EdgeType.connects_to, comp1 + "/sig0", comp1 + "/sig1")
+    m.new_edge(EdgeType.connects_to, comp1 + "/spare_sig", comp2 + "/spare_sig")
 
     return m
 
@@ -40,11 +42,15 @@ expected_nets = {
         "dummy_file.ato/dummy_module/dummy_comp2/p1",
         "dummy_file.ato/dummy_module/top_sig"
     ],
+    "dummy_file.ato/dummy_module.dummy_comp1/spare_sig-dummy_comp2/spare_sig": [
+        "dummy_file.ato/dummy_module/dummy_comp1/spare_sig",
+        "dummy_file.ato/dummy_module/dummy_comp2/spare_sig",
+    ],
 }
 
 def test_find_nets(dummy_model: Model):
     nets = find_nets(dummy_model)
-    assert len(nets) == 3
+    assert len(nets) == len(expected_nets)
 
     checked_nets = []
     for net in nets:
