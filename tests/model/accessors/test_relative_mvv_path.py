@@ -1,6 +1,5 @@
 import pytest
 
-from atopile.model.model import Model
 from atopile.model.accessors import ModelVertexView
 
 def test_self(comp0: ModelVertexView):

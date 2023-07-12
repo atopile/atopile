@@ -149,7 +149,7 @@ class ModelVertexView:
     def from_indicies(cls, model: Model, indicies: Iterable[int]) -> List["ModelVertexView"]:
         return [cls(model, i) for i in indicies]
 
-    def relative_mvv_path(self, other: "ModelVertexView") -> str:
+    def relative_mvv_path(self, other: "ModelVertexView") -> List["ModelVertexView"]:
         if other.model != self.model:
             raise ValueError("Can't get relative path between verticies from different models")
         if self.index == other.index:
@@ -160,7 +160,7 @@ class ModelVertexView:
         return [ModelVertexView(self.model, i) for i in relative_idxs]
 
     def relative_pathv2(self, other: "ModelVertexView") -> str:
-        return PATH_SEPERATOR.join(self.relative_mvv_path(other))
+        return mvvs_to_pathv2([mvv for mvv in self.relative_mvv_path(other)])
 
     def __eq__(self, o: object) -> bool:
         if not isinstance(o, ModelVertexView):
