@@ -1,4 +1,5 @@
 stages:
+  - test
   - build
   - deploy
 
@@ -50,6 +51,16 @@ docker-build:
       --build-arg SETUPTOOLS_SCM_PRETEND_VERSION="$CI_COMMIT_TAG"
   rules:
     - if: $CI_COMMIT_TAG
+
+python-test:
+  stage: test
+  image: python:latest
+  script:
+    - pip install -e ."[dev,test,docs]"
+    - pytest
+  artifacts:
+    paths:
+      - artifacts
 
 python-build:
   stage: build

@@ -135,6 +135,12 @@ class ModelVertexView:
         relative_idxs = [i for i in [other.index] + other.get_ancestor_ids() if i not in [self.index] + self.get_ancestor_ids()][::-1]
         return PATH_SEPERATOR.join([ModelVertexView(self.model, i).ref for i in relative_idxs])
 
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, ModelVertexView):
+            return False
+        return self.model == o.model and self.index == o.index
+
+
 def get_all_idx(model: Model, vertex_type: VertexType) -> List[int]:
     return model.graph.vs.select(type_eq=vertex_type.name)
 
@@ -144,17 +150,25 @@ def get_all_as(model: Model, vertex_type: VertexType, as_what) -> List[ModelVert
 def get_all(model: Model, vertex_type: VertexType) -> List[ModelVertexView]:
     return get_all_as(model, vertex_type, ModelVertexView)
 
-def lowest_common_ancestor(verticies: Iterable[ModelVertexView]) -> ModelVertexView:
+def lowest_common_ancestor_with_ancestor_ids(verticies: Iterable[ModelVertexView]) -> tuple[ModelVertexView, Iterable[Iterable[ModelVertexView]]]:
     if len(verticies) == 0:
-        return None
+        return None, []
     if len(verticies) == 1:
-        return verticies[0]
+        return verticies[0], []
     if len({v.model for v in verticies}) != 1:
         raise ValueError("All verticies must be from the same model")
 
-    ids_by_depth = list(zip(*(v.get_ancestor_ids() for v in verticies)))[::-1]
-    for id_index, ids in enumerate(ids_by_depth):
+    abs_ancestor_ids: List[List[int]] = [v.get_ancestor_ids()[::-1] for v in verticies]
+    depths = [len(ids) for ids in abs_ancestor_ids]
+    for depth in range(min(depths)):
+        ids = [ids[depth] for ids in abs_ancestor_ids]
         if len(set(ids)) != 1:
-            if id_index == 0:
+            if depth == 0:
                 raise ValueError("Verticies aren't in the same tree")
-            return ModelVertexView(verticies[0].model, ids_by_depth[id_index - 1][0])
+            common_ancestor = ModelVertexView(verticies[0].model, abs_ancestor_ids[0][depth - 1])
+            rel_ancestor_ids = [abs_anc_ids[depth:-1] for abs_anc_ids in abs_ancestor_ids]
+            return common_ancestor, rel_ancestor_ids
+    raise ValueError("No common ancestor found")
+
+def lowest_common_ancestor(verticies: Iterable[ModelVertexView]) -> ModelVertexView:
+    return lowest_common_ancestor_with_ancestor_ids(verticies)[0]
