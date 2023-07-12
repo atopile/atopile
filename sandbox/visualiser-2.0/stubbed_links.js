@@ -17,7 +17,6 @@ const paper = new joint.dia.Paper({
     defaultLink: () => new joint.shapes.standard.Link(),
     anchorNamespace: {
         ...joint.anchors,
-        customAnchor
     }
 });
 
@@ -53,6 +52,81 @@ function customAnchor(view, magnet, ref, opt, endType, linkView) {
 
 // Example
 
+var port_group = {};
+port_group['top'] = {
+    position: {
+        name: 'line',
+        args: {
+            start: { x: 0, y: 0 },
+            end: { x: ('calc(w)'), y: 0 }
+        },
+    },
+    attrs: {
+        portBody: {
+            magnet: true,
+            r: 2,
+            fill: '#FFFFFF',
+            stroke:'#023047',
+        },
+    },
+    label: {
+        position: {
+            args: {
+                x: 0,
+                y: 0,
+                angle: 0,
+            }, // Can't use inside/outside in combination
+            //name: 'inside'
+        },
+        markup: [{
+            tagName: 'text',
+            selector: 'label',
+            className: 'label-text'
+        }]
+    },
+    markup: [{
+        tagName: 'circle',
+        selector: 'portBody'
+    }]
+};
+
+port_group['bottom'] = {
+    position: {
+        name: 'line',
+        args: {
+            start: { x: 0, y: 'calc(h)' },
+            end: { x: ('calc(w)'), y: 'calc(h)' }
+        },
+    },
+    attrs: {
+        portBody: {
+            magnet: true,
+            r: 2,
+            fill: '#FFFFFF',
+            stroke:'#023047',
+        },
+    },
+    label: {
+        position: {
+            args: {
+                x: 0,
+                y: 0,
+                angle: 0,
+            }, // Can't use inside/outside in combination
+            //name: 'inside'
+        },
+        markup: [{
+            tagName: 'text',
+            selector: 'label',
+            className: 'label-text'
+        }]
+    },
+    markup: [{
+        tagName: 'circle',
+        selector: 'portBody'
+    }]
+};
+
 var el1 = new joint.shapes.standard.Rectangle({
     position: {
         x: 150,
@@ -62,84 +136,96 @@ var el1 = new joint.shapes.standard.Rectangle({
         width: 100,
         height: 150
     },
-    ports: {
-        groups: {
-            main: {
-            position: 'absolute',
-            attrs: {
-                portRect: {
-                x: -10,
-                y: -10,
-                width: 20,
-                height: 20,
-                fill: 'red',
-                stroke: '#333',
-                strokeWidth: 2,
-                magnet: true
-                }
-            },
-            markup: [{
-                tagName: 'rect',
-                selector: 'portBody',
-                groupSelector: 'portRect'
-            }],
-            }
+});
+
+el1.prop({"ports": { "groups": port_group}});
+el1.addPort({
+    id: 'test',
+    group: 'top',
+    attrs: {
+        label: {
+            text: 'test',
+            textAnchor: 'start',
         },
-        items: [{
-            id: 'p1',
-            group: 'main',
-            args: {
-            x: 'calc(w)',
-            y: 'calc(h/2)'
-            }
-        }, {
-            id: 'p2',
-            group: 'main',
-            args: {
-            x: 0,
-            y: 'calc(h/2)'
-            }
-        }, {
-            id: 'p3',
-            group: 'main',
-            args: {
-            x: 'calc(w/2)',
-            y: 0
-            }
-        }, {
-            id: 'p4',
-            group: 'main',
-            args: {
-            x: 'calc(w/2)',
-            y: 'calc(h)'
-            }
-        }]
+    },
+    //markup: '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
+});
+
+el1.addPort({
+    id: 'test2',
+    group: 'bottom',
+    attrs: {
+        label: {
+            text: 'test2',
+            textAnchor: 'start',
+        },
+    },
+    //markup: '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
+});
+
+el1.addTo(graph);
+//graph.resetCells([el1]);
+
+var el2 = new joint.shapes.standard.Rectangle({
+    position: {
+        x: 400,
+        y: 150
+    },
+    size: {
+        width: 100,
+        height: 150
     },
 });
 
-graph.resetCells([el1]);
-
-el1.getPorts().forEach(port => {
-    const link = new joint.shapes.standard.Link({
-        source: {
-            id: el1.id,
-            port: port.id,
-            anchor: {
-                name: 'center'
-            }
+el2.prop({"ports": { "groups": port_group}});
+el2.addPort({
+    id: 'test',
+    group: 'top',
+    attrs: {
+        label: {
+            text: 'test',
+            textAnchor: 'start',
         },
-            target: {
-            id: el1.id,
-            port: port.id,
-            anchor: {
-                name: 'customAnchor'
-            },
-            connectionPoint: {
-                name: 'anchor'
-            }
-        }
-    });
-    graph.addCell(link);
+    },
+    markup: '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
 });
+
+el2.addPort({
+    id: 'test2',
+    group: 'bottom',
+    attrs: {
+        label: {
+            text: 'test2',
+            textAnchor: 'start',
+        },
+    },
+    markup: '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
+});
+
+el2.addTo(graph);
+
+const link = new joint.shapes.standard.Link({
+    source: {
+        id: el1.id,
+        port: 'test'
+    },
+    target: {
+        id: el2.id,
+        port: 'test'
+    }
+});
+graph.addCell(link);
+
+const link2 = new joint.shapes.standard.Link({
+    source: {
+        id: el1.id,
+        port: 'test2',
+    },
+    target: {
+        id: el2.id,
+        port: 'test',
+    }
+});
+graph.addCell(link2);
 
 paper.unfreeze();
