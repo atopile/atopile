@@ -95,9 +95,8 @@ class Bob(ModelVisitor):
             lca = lowest_common_ancestor(ModelVertexView.from_indicies(model, [connection.source, connection.target]))
 
             link = Link(
-                net="test",
-                source=lca.relative_path(ModelVertexView(model, connection.source)),
-                target=lca.relative_path(ModelVertexView(model, connection.target)),
+                source=lca.relative_pathv2(ModelVertexView(model, connection.source)),
+                target=lca.relative_pathv2(ModelVertexView(model, connection.target)),
             )
 
             bob.block_directory_by_path[lca.path].links.append(link)
@@ -156,7 +155,7 @@ class Bob(ModelVisitor):
         return self.generic_visit_block(vertex)
 
     def generic_visit_pin(self, vertex: ModelVertexView) -> Pin:
-        vertex_data: dict = self.model.data[vertex.path]
+        vertex_data: dict = self.model.data.get(vertex.path, {})
         pin = Pin(
             name=vertex.ref,
             fields=vertex_data.get("fields", {})
@@ -183,7 +182,7 @@ class Bob(ModelVisitor):
         return self.generic_visit_pin(vertex)
 
 # TODO: resolve the API between this and build_model
-def build_view(model: Model, root_node: str) -> list:
+def build_view(model: Model, root_node: str) -> dict:
     root_node = ModelVertexView.from_path(model, root_node)
     root = Bob.build(model, root_node)
-    return [root.to_dict()]
+    return root.to_dict()
