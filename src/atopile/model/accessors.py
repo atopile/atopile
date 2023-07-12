@@ -6,6 +6,27 @@ from atopile.model.model import EdgeType, Model, VertexType, PATH_SEPERATOR
 
 EdgeIterable = Union[ig.EdgeSeq, List[ig.Edge]]
 
+
+def mvvs_to_pathv2(mvvs: List["ModelVertexView"]) -> str:
+    if not mvvs:
+        raise ValueError("Can't get pathv2 from empty list")
+
+    if mvvs[0].vertex_type == VertexType.file:
+        file_path = mvvs.pop(0).ref
+    else:
+        file_path = None
+
+    module_path = ".".join(mvv.ref for mvv in mvvs) or None
+
+    if file_path and module_path:
+        return f"{file_path}:{module_path}"
+    if file_path:
+        return file_path
+    if module_path:
+        return module_path
+
+    raise ValueError(f"Couldn't compute pathv2 from mvvs {[mvv.ref for mvv in mvvs]}")
+
 class ModelVertexView:
     def __init__(self, model: Model, index: int) -> None:
         self.model = model
@@ -35,12 +56,7 @@ class ModelVertexView:
     def pathv2(self) -> str:
         path_as_mvvs: List[ModelVertexView] = self.get_ancestors()[::-1]
         # TODO: consider using URI format instead, it's probably far better designed
-        # FIXME: for now we just assume the first element is a file, and nothing else is
-        file_path = path_as_mvvs[0].ref
-        module_path = ".".join(mvv.ref for mvv in path_as_mvvs[1:])
-        if module_path:
-            return f"{file_path}:{module_path}"
-        return file_path
+        return mvvs_to_pathv2(path_as_mvvs)
 
     @property
     def data(self) -> dict:
@@ -133,13 +149,18 @@ class ModelVertexView:
     def from_indicies(cls, model: Model, indicies: Iterable[int]) -> List["ModelVertexView"]:
         return [cls(model, i) for i in indicies]
 
-    def relative_path(self, other: "ModelVertexView") -> str:
+    def relative_mvv_path(self, other: "ModelVertexView") -> str:
         if other.model != self.model:
             raise ValueError("Can't get relative path between verticies from different models")
+        if self.index == other.index:
+            raise ValueError("Can't get relative path between the same vertex")
         if self.index not in other.get_ancestor_ids():
             raise ValueError("Other vertex must be a child of this vertex")
-        relative_idxs = [i for i in [other.index] + other.get_ancestor_ids() if i not in [self.index] + self.get_ancestor_ids()][::-1]
-        return PATH_SEPERATOR.join([ModelVertexView(self.model, i).ref for i in relative_idxs])
+        relative_idxs = [i for i in other.get_ancestor_ids() if i not in self.get_ancestor_ids()][::-1]
+        return [ModelVertexView(self.model, i) for i in relative_idxs]
+
+    def relative_pathv2(self, other: "ModelVertexView") -> str:
+        return PATH_SEPERATOR.join(self.relative_mvv_path(other))
 
     def __eq__(self, o: object) -> bool:
         if not isinstance(o, ModelVertexView):

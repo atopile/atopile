@@ -1,5 +1,7 @@
 from pytest import fixture
-from atopile.model.model import Model, VertexType, EdgeType
+
+from atopile.model.accessors import ModelVertexView
+from atopile.model.model import EdgeType, Model, VertexType
 
 
 @fixture
@@ -25,3 +27,16 @@ def dummy_model() -> Model:
     m.new_edge(EdgeType.connects_to, comp1 + "/spare_sig", comp2 + "/spare_sig")
 
     return m
+
+@fixture
+def module(dummy_model: Model):
+    return ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module")
+
+@fixture
+def comp0(dummy_model: Model):
+    return ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp0")
+
+@fixture
+def comp0_p0(dummy_model: Model):
+    return ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp0/p0")
+
