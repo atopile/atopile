@@ -1,11 +1,10 @@
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Literal
 
 import attrs
 import logging
 
 from atopile.model.model import EdgeType, Model, VertexType
-from atopile.model.utils import generate_uid_from_path
 from atopile.model.accessors import ModelVertexView, lowest_common_ancestor
 from atopile.model.visitor import ModelVisitor
 
@@ -29,23 +28,24 @@ class Pin:
 @attrs.define
 class Link:
     # mandatory external
-    net: str
     source: str
     target: str
 
     def to_dict(self) -> dict:
         return {
-            "net": self.net,
             "source": self.source,
             "target": self.target,
         }
 
+
+BlockType = Literal["file", "module", "component"]
 
 @attrs.define
 class Block:
     # mandatory external
     name: str
     type: str
+    fields: Dict[str, Any]
     blocks: List["Block"]
     pins: List[Pin]
     links: List[Link]
@@ -58,6 +58,7 @@ class Block:
         return {
             "name": self.name,
             "type": self.type,
+            "fields": self.fields,
             "blocks": [block.to_dict() for block in self.blocks],
             "pins": [pin.to_dict() for pin in self.pins],
             "links": [link.to_dict() for link in self.links],

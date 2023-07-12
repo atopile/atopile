@@ -94,22 +94,18 @@
                                 ],
                                 "links": [
                                     {
-                                        "net": "mid",
                                         "source": "voltage_divider.r_top.p2",
                                         "target": "votlage_divider.r_bt.p1"
                                     },
                                     {
-                                        "net": "input",
                                         "source": "voltage_divider.r_top.p1",
                                         "target": "votlage_divider.input"
                                     },
                                     {
-                                        "net": "ground",
                                         "source": "voltage_divider.ground",
                                         "target": "voltage_divider.r_bt.p2"
                                     },
                                     {
-                                        "net": "ground",
                                         "source": "voltage_divider.output",
                                         "target": "voltage_divider.r_bt.p2"
                                     }
