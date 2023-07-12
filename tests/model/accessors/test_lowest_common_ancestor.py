@@ -1,18 +1,12 @@
-from pytest import fixture, mark
-from atopile.model.accessors import lowest_common_ancestor, lowest_common_ancestor_with_ancestor_ids, ModelVertexView
-from atopile.model.model import Model, VertexType, EdgeType
+from pytest import mark
 
-@fixture
-def dummy_model() -> Model:
-    m = Model()
-    file = m.new_vertex(VertexType.file, "dummy_file.ato")
-    module = m.new_vertex(VertexType.module, "dummy_module", file)
-    comp1 = m.new_vertex(VertexType.component, "dummy_comp1", module)
-    comp2 = m.new_vertex(VertexType.component, "dummy_comp2", module)
-    for c in (comp1, comp2):
-        m.new_vertex(VertexType.pin, "p1", c)
-        m.new_vertex(VertexType.pin, "p2", c)
-    return m
+from atopile.model.accessors import (
+    ModelVertexView,
+    lowest_common_ancestor,
+    lowest_common_ancestor_with_ancestor_ids,
+)
+from atopile.model.model import Model
+
 
 def test_nothing():
     assert lowest_common_ancestor([]) is None

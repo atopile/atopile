@@ -38,7 +38,7 @@ class ModelVertexView:
         # FIXME: for now we just assume the first element is a file, and nothing else is
         file_path = path_as_mvvs[0].ref
         module_path = ".".join(mvv.ref for mvv in path_as_mvvs[1:])
-        return f"{file_path}:{module_path}"
+        return ":".join([file_path, module_path])
 
     @property
     def data(self) -> dict:
@@ -88,6 +88,10 @@ class ModelVertexView:
         except ValueError as ex:
             raise ValueError(f"Path {path} not found in model") from ex
         return cls(model, root_node.index)
+
+    @classmethod
+    def from_pathv2(cls, model: Model, path: str) -> "ModelVertexView":
+        raise NotImplementedError
 
     @classmethod
     def from_edges(cls, model: Model, mode: str, edges: EdgeIterable) -> List["ModelVertexView"]:
