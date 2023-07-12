@@ -7,6 +7,7 @@ from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from atopile.model.accessors import ModelVertexView
+from atopile.targets.netlist.nets import find_net_names, resolve_net_name
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
@@ -111,8 +112,8 @@ class KicadNet:
       (node (ref "R1") (pin "1") (pintype "passive"))
       (node (ref "R2") (pin "1") (pintype "passive")))
     """
-    code: str  # do these have to be numbers, or can they be more UIDs?
-    name: str  # TODO: how do we wanna name nets?
+    code: str  # TODO: do these have to be numbers, or can they be more UIDs?
+    name: str
     nodes: List[KicadNode] = field(factory=list)
 
 class KicadLibraries:
@@ -130,7 +131,7 @@ class KicadLibraries:
 class KicadNetlist:
     version: str = "E"  # What does this mean?
     source: str = "unknown"  # eg. "/Users/mattwildoer/Projects/SizzleSack/schematic/sandbox.py" TODO: point this at the sourcefile
-    date: str = ""
+    date: str = ""  # NOTE: we don't want a data in here because it'll make a diff in our outputs -- although perhaps it's a useful field for a hash here
     tool: str = "atopile"  # TODO: add version in here too
 
     components: List[KicadComponent] = field(factory=list)
@@ -282,23 +283,33 @@ class KicadNetlist:
         electrical_graph_within_main = electrical_graph.subgraph(vidxs_within_main)
         clusters = electrical_graph_within_main.connected_components(mode="weak")
         nets = []
+
+        # TODO: slapping this on the side to unblock Narayan's layout
+        # This deserves rebuilding
+        nets_by_name = find_net_names(model)
+
         for i, cluster in enumerate(clusters):
+            log.info(f"Processing cluster {i+1}/{len(clusters)}")
             cluster_vs = electrical_graph_within_main.vs[cluster]
             cluster_paths = cluster_vs["path"]
 
             # this works naturally to filter out signals, because only pins are present in the nodes dict
             nodes_in_cluster = [nodes[path] for path in cluster_paths if path in nodes]
 
-            # let's find something to call this net
-            # how about we call it {lowest common module path}.{signal-name-1}-{signal-name-2}-{signal-name-3}...
-            # actually, fuck that, it sounds hard and it almost 11pm...
-            # let's just call it i for now. TODO: ^ that better thing
+            # find which net this cluster matches with
+            rep_mvv = ModelVertexView.from_path(model, cluster_paths[0])
+            for net_name, net_mvvs in nets_by_name.items():
+                if rep_mvv in net_mvvs:
+                    break
+            else:
+                net_name = resolve_net_name([ModelVertexView.from_path(model, p) for p in cluster_paths])
+                log.warning(f"Couldn't find net properly, but using name: {net_name}, which is hopefully good enough")
 
             # the cluster only represents a net if it contains eletrical pins
             if nodes_in_cluster:
                 net = KicadNet(
                     code=str(len(nets) + 1), #code has to start at 1 and increment
-                    name=str(i),
+                    name=net_name,
                     nodes=nodes_in_cluster,
                 )
 

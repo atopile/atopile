@@ -1,11 +1,10 @@
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Literal
 
 import attrs
 import logging
 
 from atopile.model.model import EdgeType, Model, VertexType
-from atopile.model.utils import generate_uid_from_path
 from atopile.model.accessors import ModelVertexView, lowest_common_ancestor
 from atopile.model.visitor import ModelVisitor
 
@@ -29,23 +28,24 @@ class Pin:
 @attrs.define
 class Link:
     # mandatory external
-    net: str
     source: str
     target: str
 
     def to_dict(self) -> dict:
         return {
-            "net": self.net,
             "source": self.source,
             "target": self.target,
         }
 
+
+BlockType = Literal["file", "module", "component"]
 
 @attrs.define
 class Block:
     # mandatory external
     name: str
     type: str
+    fields: Dict[str, Any]
     blocks: List["Block"]
     pins: List[Pin]
     links: List[Link]
@@ -58,6 +58,7 @@ class Block:
         return {
             "name": self.name,
             "type": self.type,
+            "fields": self.fields,
             "blocks": [block.to_dict() for block in self.blocks],
             "pins": [pin.to_dict() for pin in self.pins],
             "links": [link.to_dict() for link in self.links],
@@ -94,9 +95,8 @@ class Bob(ModelVisitor):
             lca = lowest_common_ancestor(ModelVertexView.from_indicies(model, [connection.source, connection.target]))
 
             link = Link(
-                net="test",
-                source=lca.relative_path(ModelVertexView(model, connection.source)),
-                target=lca.relative_path(ModelVertexView(model, connection.target)),
+                source=lca.relative_pathv2(ModelVertexView(model, connection.source)),
+                target=lca.relative_pathv2(ModelVertexView(model, connection.target)),
             )
 
             bob.block_directory_by_path[lca.path].links.append(link)
@@ -113,19 +113,22 @@ class Bob(ModelVisitor):
                 vertex_type=[VertexType.component, VertexType.module]
             )
 
-            pins: List[Pin] = self.wander(
-                vertex=vertex,
-                mode="in",
-                edge_type=EdgeType.part_of,
-                vertex_type=[VertexType.pin, VertexType.signal]
+            pins: List[Pin] = filter(
+                lambda x: x is not None,
+                self.wander(
+                    vertex=vertex,
+                    mode="in",
+                    edge_type=EdgeType.part_of,
+                    vertex_type=[VertexType.pin, VertexType.signal]
+                )
             )
-            # filter out Nones
-            pins = [p for p in pins if p is not None]
 
             # check the type of this block
             instance_ofs = vertex.get_adjacents("out", EdgeType.instance_of)
             if len(instance_ofs) > 0:
-                instance_of = instance_ofs[0].ref
+                if len(instance_ofs) > 1:
+                    log.warning(f"Block {vertex.path} is an instance_of multiple things")
+                instance_of = instance_ofs[0].pathv2
             else:
                 instance_of = None
 
@@ -133,6 +136,7 @@ class Bob(ModelVisitor):
             block = Block(
                 name=vertex.ref,
                 type=vertex.vertex_type.name,
+                fields=vertex.data,  # FIXME: feels wrong to just blindly shove all this data down the pipe
                 blocks=blocks,
                 pins=pins,
                 links=[],
@@ -151,7 +155,7 @@ class Bob(ModelVisitor):
         return self.generic_visit_block(vertex)
 
     def generic_visit_pin(self, vertex: ModelVertexView) -> Pin:
-        vertex_data: dict = self.model.data[vertex.path]
+        vertex_data: dict = self.model.data.get(vertex.path, {})
         pin = Pin(
             name=vertex.ref,
             fields=vertex_data.get("fields", {})
@@ -178,7 +182,7 @@ class Bob(ModelVisitor):
         return self.generic_visit_pin(vertex)
 
 # TODO: resolve the API between this and build_model
-def build_view(model: Model, root_node: str) -> list:
+def build_view(model: Model, root_node: str) -> dict:
     root_node = ModelVertexView.from_path(model, root_node)
     root = Bob.build(model, root_node)
-    return [root.to_dict()]
+    return root.to_dict()
