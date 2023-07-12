@@ -114,19 +114,22 @@ class Bob(ModelVisitor):
                 vertex_type=[VertexType.component, VertexType.module]
             )
 
-            pins: List[Pin] = self.wander(
-                vertex=vertex,
-                mode="in",
-                edge_type=EdgeType.part_of,
-                vertex_type=[VertexType.pin, VertexType.signal]
+            pins: List[Pin] = filter(
+                lambda x: x is not None,
+                self.wander(
+                    vertex=vertex,
+                    mode="in",
+                    edge_type=EdgeType.part_of,
+                    vertex_type=[VertexType.pin, VertexType.signal]
+                )
             )
-            # filter out Nones
-            pins = [p for p in pins if p is not None]
 
             # check the type of this block
             instance_ofs = vertex.get_adjacents("out", EdgeType.instance_of)
             if len(instance_ofs) > 0:
-                instance_of = instance_ofs[0].ref
+                if len(instance_ofs) > 1:
+                    log.warning(f"Block {vertex.path} is an instance_of multiple things")
+                # TODO:
             else:
                 instance_of = None
 
@@ -134,6 +137,7 @@ class Bob(ModelVisitor):
             block = Block(
                 name=vertex.ref,
                 type=vertex.vertex_type.name,
+                fields=vertex.data,  # FIXME: feels wrong to just blindly shove all this data down the pipe
                 blocks=blocks,
                 pins=pins,
                 links=[],
