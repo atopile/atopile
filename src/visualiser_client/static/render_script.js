@@ -56,18 +56,18 @@ function customAnchor(view, magnet, ref, opt, endType, linkView) {
     const side = elBBox.sideNearestToPoint(magnetCenter);
     let dx = 0;
     let dy = 0;
-    const length = ('length' in opt) ? opt.length : 100;
+    const length = ('length' in opt) ? opt.length : 20;
     switch (side) {
         case 'left':
         dx = -length;
         break;
-    case 'right':
+        case 'right':
         dx = length;
         break;
-    case 'top':
+        case 'top':
         dy = -length;
         break;
-    case 'bottom':
+        case 'bottom':
         dy = length;
         break;
 
@@ -126,13 +126,15 @@ class AtoElement extends dia.Element {
             }]
         };
 
-        // While we are creating the port, add the pins in the element
-        for (let pin of pin_list) {
-            this.addPort(createPort(pin['uuid'], pin['name'], port_group_name, port_anchor, true));
-        }
-
         // Add the ports list to the element
         this.prop({"ports": { "groups": port_group}});
+
+        // While we are creating the port, add the pins in the element
+        for (let pin of pin_list) {
+            //console.log('pin uuid: ', pin['path']);
+            //console.log('pin name: ', pin['name']);
+            this.addPort(createPort(pin['path'], pin['name'], port_group_name, port_anchor, true));
+        }
     }
 
     fitAncestorElements() {
@@ -268,7 +270,7 @@ function createPort(uuid, port_name, port_group_name, port_anchor) {
                 textAnchor: port_anchor,
             },
         },
-        markup: '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
+        // markup: '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
     }
 }
 
@@ -435,18 +437,17 @@ function addLinks(links, current_path) {
     for (let link of links) {
         let source_path = concatenatePathAndName(current_path, link['source']);
         let target_path = concatenatePathAndName(current_path, link['target']);
-        console.log('source block id', source_path);
-        console.log('target block id', target_path);
         let source = popLastPathElementFromPath(source_path);
         let target = popLastPathElementFromPath(target_path);
         let source_pin = source['pin'];
         let target_pin = target['pin'];
         let source_block = source['path'];
         let target_block = target['path'];
-        console.log('source path: ' + source_block + " pin: " + source_pin);
-        console.log('target path: ' + target_block + " pin: " + target_pin);
+        console.log('Creating a link');
+        console.log('source block ' + source_block + " pin: " + source_path );
+        console.log('source block ' + source_block + " pin: " + source_path );
 
-        const added_link = new shapes.standard.Link({
+        let added_link = new shapes.standard.Link({
             source: {
                 id: source_block,
                 port: source_path,
@@ -465,8 +466,9 @@ function addLinks(links, current_path) {
                 }
             }
         });
+        console.log(added_link);
 
-        added_link.addTo(graph);
+        graph.addCell(added_link);
     }
     // for (let link of links) {
     //     var added_link = new shapes.standard.Link({
@@ -568,7 +570,8 @@ function getElementTitle(element) {
     }
 }
 
-function addPins(jointJSObject, element) {
+function addPins(jointJSObject, element, path) {
+    console.log('add pins with path ', path);
     // Create the default port location
     let ports_to_add = {};
     ports_to_add['default'] = {
@@ -584,16 +587,26 @@ function addPins(jointJSObject, element) {
     }
 
     let config_found;
+    console.log(element['name']);
+    console.log(ports_to_add);
     for (let circuit_pin of element['pins']) {
+        // Let's all pins to their respective port
+        let pin_to_add = circuit_pin;
+        pin_to_add['path'] = concatenatePathAndName(path, pin_to_add['name']);
         config_found = false;
+
         for (let config_pin of element['config']['pins']) {
-            if (circuit_pin['name'] == config_pin['name']) {
-                ports_to_add[config_pin['port']]['pins'].push(circuit_pin);
+            // If a port is defined, add it to it designated port
+            if (pin_to_add['name'] == config_pin['name']) {
+                console.log('adding a pin');
+                console.log(pin_to_add);
+                ports_to_add[config_pin['port']]['pins'].push(pin_to_add);
                 config_found = true;
             }
         }
+        // If no port is defined, add it to the default port
         if (!config_found) {
-            ports_to_add['default']['pins'].push(circuit_pin);
+            ports_to_add['default']['pins'].push(pin_to_add);
         }
     }
 
@@ -604,13 +617,13 @@ function addPins(jointJSObject, element) {
     }
 }
 
-function createComponent(element, parent) {
-    console.log("Create comp: ", element['uuid']);
+function createComponent(element, parent, path) {
+    console.log("Create comp: ", path);
     let title = getElementTitle(element);
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
-    const component = new AtoComponent({
-        id: element['uuid'],
+    var component = new AtoComponent({
+        id: path,
         size: { width: comp_width,
                 height: comp_height},
         attrs: {
@@ -620,7 +633,9 @@ function createComponent(element, parent) {
         }
     });
 
-    addPins(component, element);
+
+    addPins(component, element, path);
+
     //resizeBasedOnLabels(component, ports_dict);
     //resizeBasedOnPorts(component, ports_dict);
 
@@ -633,10 +648,10 @@ function createComponent(element, parent) {
     return component;
 }
 
-function createBlock(element, parent) {
+function createBlock(element, parent, path) {
     let title = getElementTitle(element);
     const block = new AtoBlock({
-        id: element['uuid'],
+        id: path,
         attrs: {
             label: {
                 text: title,
@@ -644,8 +659,7 @@ function createBlock(element, parent) {
         }
     });
 
-    addPins(block, element);
-    //block.addPortWithPins('port', 'right', [{"name": 'test', "uuid": 3}]);
+    addPins(block, element, path);
 
     block.addTo(graph);
 
@@ -707,8 +721,6 @@ function applyParentConfig(element, child_attrs) {
 }
 
 async function generateJointjsGraph(circuit, path = null, parent = null, child_attrs = null) {
-    let jointJSCircuit = [];
-
     let downstream_path;
     console.log('the current path is: ', path);
 
@@ -716,7 +728,8 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
         var joint_object = null;
 
         if (element['type'] == 'component') {
-            joint_object = createComponent(element, parent);
+            downstream_path = concatenatePathAndName(path, element['name']);
+            joint_object = createComponent(element, parent, downstream_path);
             element['jointObject'] = joint_object;
             if (parent) {
                 addElementToElement(joint_object, parent);
@@ -728,15 +741,16 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
         else if (element['type'] == 'module') {
             downstream_path = concatenatePathAndName(path, element['name']);
             // Create the module
-            joint_object = createBlock(element, parent);
+            joint_object = createBlock(element, parent, downstream_path);
             element['jointObject'] = joint_object;
             if (parent) {
                 addElementToElement(joint_object, parent);
             }
 
-            //addLinks(element['links'], path)
             // Call the function recursively on children
             await generateJointjsGraph(element['blocks'], downstream_path, joint_object, element['config']['child_attrs']);
+
+            addLinks(element['links'], path)
 
             applyParentConfig(element, child_attrs);
             //addLinks(element['links']);
@@ -765,15 +779,11 @@ let default_config = {
     'child_attrs': []
 }
 
-async function populateConfigFromBackend(circuit_dict, path = null) {
+async function populateConfigFromBackend(circuit_dict) {
     let populated_circuit = [];
-    let downstream_path;
 
     for (let element of circuit_dict) {
         if (element['type'] == 'component') {
-            downstream_path = concatenatePathAndName(path, element['name']);
-            element['uuid'] = downstream_path; // TODO: fix the name from uuid to path
-
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
                 const config = await loadFileConfig(config_location_name['file']);
@@ -784,9 +794,6 @@ async function populateConfigFromBackend(circuit_dict, path = null) {
             }
         }
         if (element['type'] == 'module' || element['type'] == 'file') {
-            downstream_path = concatenatePathAndName(path, element['name']);
-            element['uuid'] = downstream_path; // TODO: fix the name from uuid to path
-
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
                 const config = await loadFileConfig(config_location_name['file']);
@@ -795,7 +802,7 @@ async function populateConfigFromBackend(circuit_dict, path = null) {
                     element['config'] = config[config_location_name['module']];
                 }
             }
-            element['blocks'] = await populateConfigFromBackend(element['blocks'], downstream_path);
+            element['blocks'] = await populateConfigFromBackend(element['blocks']);
         }
         populated_circuit.push(element);
     }
@@ -814,7 +821,14 @@ const paper = new joint.dia.Paper({
         color: settings_dict["common"]["backgroundColor"]
     },
     interactive: true,
+    snapLinks: true,
+    linkPinning: false,
+    magnetThreshold: 'onleave',
     cellViewNamespace: cellNamespace,
+    anchorNamespace: {
+        ...joint.anchors,
+        customAnchor
+    }
 });
 
 function fill_paper() {

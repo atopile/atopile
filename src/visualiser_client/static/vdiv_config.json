@@ -6,6 +6,10 @@
                 "location": "top"
             },
             {
+                "name": "right",
+                "location": "right"
+            },
+            {
                 "name": "bottom",
                 "location": "bottom"
             }
@@ -18,7 +22,13 @@
                 "port": "top"
             },
             {
-                "name": "gnd",
+                "name": "output",
+                "index": 0,
+                "private": false,
+                "port": "right"
+            },
+            {
+                "name": "ground",
                 "index": 0,
                 "private": false,
                 "port": "bottom"

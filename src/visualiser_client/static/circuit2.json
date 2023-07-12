@@ -104,8 +104,13 @@
                                         "target": "votlage_divider.input"
                                     },
                                     {
-                                        "net": "gnd",
-                                        "source": "voltage_divider.gnd",
+                                        "net": "ground",
+                                        "source": "voltage_divider.ground",
+                                        "target": "voltage_divider.r_bt.p2"
+                                    },
+                                    {
+                                        "net": "ground",
+                                        "source": "voltage_divider.output",
                                         "target": "voltage_divider.r_bt.p2"
                                     }
                                 ],
