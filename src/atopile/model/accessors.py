@@ -33,12 +33,14 @@ class ModelVertexView:
 
     @property
     def pathv2(self) -> str:
-        path_as_mvvs: List[ModelVertexView] = [self, *self.get_ancestors()][::-1]
+        path_as_mvvs: List[ModelVertexView] = self.get_ancestors()[::-1]
         # TODO: consider using URI format instead, it's probably far better designed
         # FIXME: for now we just assume the first element is a file, and nothing else is
         file_path = path_as_mvvs[0].ref
         module_path = ".".join(mvv.ref for mvv in path_as_mvvs[1:])
-        return ":".join([file_path, module_path])
+        if module_path:
+            return f"{file_path}:{module_path}"
+        return file_path
 
     @property
     def data(self) -> dict:
