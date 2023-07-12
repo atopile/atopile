@@ -34,6 +34,20 @@
                 "port": "bottom"
             }
         ],
+        "signals": [
+            {
+                "name": "input",
+                "is_stub": true
+            },
+            {
+                "name": "output",
+                "is_stub": true
+            },
+            {
+                "name": "ground",
+                "is_stub": false
+            }
+        ],
         "child_attrs": {
             "r_top": {
                 "position": {

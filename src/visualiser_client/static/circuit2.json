@@ -94,24 +94,24 @@
                                 ],
                                 "links": [
                                     {
-                                        "net": "mid",
-                                        "source": "voltage_divider.r_top.p2",
-                                        "target": "votlage_divider.r_bt.p1"
+                                        "signal": "output",
+                                        "source": "r_top.p2",
+                                        "target": "r_bt.p1"
                                     },
                                     {
-                                        "net": "input",
-                                        "source": "voltage_divider.r_top.p1",
-                                        "target": "votlage_divider.input"
+                                        "signal": "output",
+                                        "source": "r_top.p2",
+                                        "target": "output"
                                     },
                                     {
-                                        "net": "ground",
-                                        "source": "voltage_divider.ground",
-                                        "target": "voltage_divider.r_bt.p2"
+                                        "signal": "input",
+                                        "source": "r_top.p1",
+                                        "target": "input"
                                     },
                                     {
-                                        "net": "ground",
-                                        "source": "voltage_divider.output",
-                                        "target": "voltage_divider.r_bt.p2"
+                                        "signal": "ground",
+                                        "source": "ground",
+                                        "target": "r_bt.p2"
                                     }
                                 ],
                                 "instance_of": "vdiv.ato:vdiv"
@@ -189,7 +189,23 @@
                                         }
                                     }
                                 ],
-                                "links": [],
+                                "links": [
+                                    {
+                                        "signal": "mid",
+                                        "source": "r_top.p2",
+                                        "target": "r_bt.p1"
+                                    },
+                                    {
+                                        "signal": "input",
+                                        "source": "r_top.p1",
+                                        "target": "input"
+                                    },
+                                    {
+                                        "signal": "ground",
+                                        "source": "ground",
+                                        "target": "r_bt.p2"
+                                    }
+                                ],
                                 "instance_of": "vdiv.ato:vdiv"
                             }
                         ],
@@ -204,7 +220,13 @@
                             }
 
                         ],
-                        "links": [],
+                        "links": [
+                            {
+                                "signal": "-",
+                                "source": "voltage_divider.ground",
+                                "target": "voltage_divider_2.input"
+                            }
+                        ],
                         "instance_of": "led_driver.ato:LedDriver"
                     }
                 ],

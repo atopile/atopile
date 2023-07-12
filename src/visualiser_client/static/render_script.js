@@ -39,7 +39,7 @@ let settings_dict = {
         color: "blue"
     },
     stubs: {
-        fontSize: 10,
+        fontSize: 8,
     }
 }
 
@@ -56,7 +56,7 @@ function customAnchor(view, magnet, ref, opt, endType, linkView) {
     const side = elBBox.sideNearestToPoint(magnetCenter);
     let dx = 0;
     let dy = 0;
-    const length = ('length' in opt) ? opt.length : 20;
+    const length = ('length' in opt) ? opt.length : 30;
     switch (side) {
         case 'left':
         dx = -length;
@@ -131,8 +131,6 @@ class AtoElement extends dia.Element {
 
         // While we are creating the port, add the pins in the element
         for (let pin of pin_list) {
-            //console.log('pin uuid: ', pin['path']);
-            //console.log('pin name: ', pin['name']);
             this.addPort(createPort(pin['path'], pin['name'], port_group_name, port_anchor, true));
         }
     }
@@ -433,42 +431,145 @@ function resizeBasedOnLabels(element, ports_list) {
 };
 
 
-function addLinks(links, current_path) {
-    for (let link of links) {
+function addLinks(element, current_path) {
+    for (let link of element['links']) {
+        // Add the block (if there is one) and port to the path
         let source_path = concatenatePathAndName(current_path, link['source']);
         let target_path = concatenatePathAndName(current_path, link['target']);
+        // Remove the port from the path to get the block path
         let source = popLastPathElementFromPath(source_path);
         let target = popLastPathElementFromPath(target_path);
-        let source_pin = source['pin'];
-        let target_pin = target['pin'];
         let source_block = source['path'];
         let target_block = target['path'];
-        console.log('Creating a link');
-        console.log('source block ' + source_block + " pin: " + source_path );
-        console.log('source block ' + source_block + " pin: " + source_path );
 
-        let added_link = new shapes.standard.Link({
-            source: {
-                id: source_block,
-                port: source_path,
-                anchor: {
-                    name: 'center'
-                }
-            },
-                target: {
-                id: source_block,
-                port: source_path,
-                anchor: {
-                    name: 'customAnchor'
-                },
-                connectionPoint: {
-                    name: 'anchor'
-                }
+        let is_stub = false;
+        for (let link_config of element['config']['signals']) {
+            if (link_config['name'] == link['signal'] && link_config['is_stub']) {
+                is_stub = true;
+                let added_stub_source = new shapes.standard.Link({
+                    source: {
+                        id: source_block,
+                        port: source_path,
+                        anchor: {
+                            name: 'center'
+                        }
+                    },
+                        target: {
+                        id: source_block,
+                        port: source_path,
+                        anchor: {
+                            name: 'customAnchor'
+                        },
+                        connectionPoint: {
+                            name: 'anchor'
+                        }
+                    }
+                });
+                added_stub_source.attr({
+                    line: {
+                        'stroke': settings_dict['link']['color'],
+                        'stroke-width': settings_dict['link']['strokeWidth'],
+                        targetMarker: {'type': 'none'},
+                    },
+                    z: 0,
+                });
+                added_stub_source.appendLabel({
+                    attrs: {
+                        text: {
+                            text: link['signal'],
+                            fontFamily: settings_dict['common']['fontFamily'],
+                            fontSize: settings_dict['stubs']['fontSize'],
+                            //textVerticalAnchor: "middle",
+                            textAnchor: "start",
+                        }
+                    },
+                    position: {
+                        distance: .1,
+                        offset: -5,
+                        angle: 0,
+                        args: {
+                            keepGradient: true
+                        }
+                    }
+                });
+
+                let added_stub_target = new shapes.standard.Link({
+                    source: {
+                        id: target_block,
+                        port: target_path,
+                        anchor: {
+                            name: 'center'
+                        }
+                    },
+                        target: {
+                        id: target_block,
+                        port: target_path,
+                        anchor: {
+                            name: 'customAnchor'
+                        },
+                        connectionPoint: {
+                            name: 'anchor'
+                        }
+                    }
+                });
+                added_stub_target.attr({
+                    line: {
+                        'stroke': settings_dict['link']['color'],
+                        'stroke-width': settings_dict['link']['strokeWidth'],
+                        targetMarker: {'type': 'none'},
+                    },
+                    z: 0,
+                });
+                added_stub_target.appendLabel({
+                    attrs: {
+                        text: {
+                            text: link['signal'],
+                            fontFamily: settings_dict['common']['fontFamily'],
+                            fontSize: settings_dict['stubs']['fontSize'],
+                            textAnchor: "start",
+                        }
+                    },
+                    position: {
+                        distance: .1,
+                        offset: -5,
+                        angle: 0,
+                        args: {
+                            keepGradient: true
+                        }
+                    }
+                });
+
+                graph.addCell(added_stub_source);
+                graph.addCell(added_stub_target);
             }
-        });
-        console.log(added_link);
+        }
 
-        graph.addCell(added_link);
+        if (!is_stub) {
+            var added_link = new shapes.standard.Link({
+                source: {
+                    id: source_block,
+                    port: source_path
+                },
+                target: {
+                    id: target_block,
+                    port: target_path
+                }
+            });
+            added_link.attr({
+                line: {
+                    'stroke': settings_dict['link']['color'],
+                    'stroke-width': settings_dict['link']['strokeWidth'],
+                    targetMarker: {'type': 'none'},
+                },
+                z: 0
+            });
+            added_link.router('manhattan', {
+                perpendicular: true,
+                step: settings_dict['common']['gridSize'],
+            });
+
+            added_link.addTo(graph);
+        }
     }
     // for (let link of links) {
     //     var added_link = new shapes.standard.Link({
@@ -571,7 +672,6 @@ function getElementTitle(element) {
 }
 
 function addPins(jointJSObject, element, path) {
-    console.log('add pins with path ', path);
     // Create the default port location
     let ports_to_add = {};
     ports_to_add['default'] = {
@@ -587,8 +687,6 @@ function addPins(jointJSObject, element, path) {
     }
 
     let config_found;
-    console.log(element['name']);
-    console.log(ports_to_add);
     for (let circuit_pin of element['pins']) {
         // Let's all pins to their respective port
         let pin_to_add = circuit_pin;
@@ -598,8 +696,6 @@ function addPins(jointJSObject, element, path) {
         for (let config_pin of element['config']['pins']) {
             // If a port is defined, add it to it designated port
             if (pin_to_add['name'] == config_pin['name']) {
-                console.log('adding a pin');
-                console.log(pin_to_add);
                 ports_to_add[config_pin['port']]['pins'].push(pin_to_add);
                 config_found = true;
             }
@@ -618,7 +714,6 @@ function addPins(jointJSObject, element, path) {
 }
 
 function createComponent(element, parent, path) {
-    console.log("Create comp: ", path);
     let title = getElementTitle(element);
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
@@ -698,8 +793,8 @@ function popLastPathElementFromPath(path) {
     const blocks = path.split(".");
     const path_blocks = blocks.slice(0, blocks.length - 1);
     const remaining_path = path_blocks.join('.')
-    const pin = blocks[blocks.length - 1];
-    return {'path': remaining_path, 'pin': pin};
+    const name = blocks[blocks.length - 1];
+    return {'path': remaining_path, 'name': name};
 }
 
 function getElementPosition(element_name, config) {
@@ -722,7 +817,6 @@ function applyParentConfig(element, child_attrs) {
 
 async function generateJointjsGraph(circuit, path = null, parent = null, child_attrs = null) {
     let downstream_path;
-    console.log('the current path is: ', path);
 
     for (let element of circuit) {
         var joint_object = null;
@@ -750,7 +844,7 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
             // Call the function recursively on children
             await generateJointjsGraph(element['blocks'], downstream_path, joint_object, element['config']['child_attrs']);
 
-            addLinks(element['links'], path)
+            addLinks(element, downstream_path)
 
             applyParentConfig(element, child_attrs);
             //addLinks(element['links']);
@@ -776,6 +870,7 @@ async function generateJointjsGraph(circuit, path = null, parent = null, child_a
 let default_config = {
     "ports": [],
     "pins": [],
+    "signals": [],
     'child_attrs': []
 }
 
