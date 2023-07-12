@@ -129,7 +129,7 @@ class Bob(ModelVisitor):
             if len(instance_ofs) > 0:
                 if len(instance_ofs) > 1:
                     log.warning(f"Block {vertex.path} is an instance_of multiple things")
-                # TODO:
+                instance_of = instance_ofs[0].pathv2
             else:
                 instance_of = None
 
