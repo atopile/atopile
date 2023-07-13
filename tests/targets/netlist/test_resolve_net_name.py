@@ -1,27 +1,26 @@
 from pytest import mark
 from atopile.model.model import Model
-from atopile.targets.netlist.nets import resolve_net_name, find_nets, find_net_names
-
+from atopile.targets.netlist.nets import resolve_name, find_nets, find_net_names
 
 expected_nets = {
-    "dummy_file.ato/dummy_module/dummy_comp0.sig0-sig1": [
-        "dummy_file.ato/dummy_module/dummy_comp0/sig0",
-        "dummy_file.ato/dummy_module/dummy_comp0/sig1",
-        "dummy_file.ato/dummy_module/dummy_comp0/p0",
-        "dummy_file.ato/dummy_module/dummy_comp0/p1"
+    "dummy_file.ato:dummy_module.dummy_comp0.sig0-sig1": [
+        "dummy_file.ato:dummy_module.dummy_comp0.sig0",
+        "dummy_file.ato:dummy_module.dummy_comp0.sig1",
+        "dummy_file.ato:dummy_module.dummy_comp0.p0",
+        "dummy_file.ato:dummy_module.dummy_comp0.p1"
     ],
-    "dummy_file.ato/dummy_module/dummy_comp1.sig0": [
-        "dummy_file.ato/dummy_module/dummy_comp1/sig0",
-        "dummy_file.ato/dummy_module/dummy_comp1/p0"
+    "dummy_file.ato:dummy_module.dummy_comp1.sig0": [
+        "dummy_file.ato:dummy_module.dummy_comp1.sig0",
+        "dummy_file.ato:dummy_module.dummy_comp1.p0"
     ],
-    "dummy_file.ato/dummy_module.top_sig": [
-        "dummy_file.ato/dummy_module/dummy_comp1/sig1",
-        "dummy_file.ato/dummy_module/dummy_comp1/p1",
-        "dummy_file.ato/dummy_module/top_sig"
+    "dummy_file.ato:dummy_module.top_sig": [
+        "dummy_file.ato:dummy_module.dummy_comp1.sig1",
+        "dummy_file.ato:dummy_module.dummy_comp1.p1",
+        "dummy_file.ato:dummy_module.top_sig"
     ],
-    "dummy_file.ato/dummy_module.dummy_comp0/spare_sig-dummy_comp1/spare_sig": [
-        "dummy_file.ato/dummy_module/dummy_comp0/spare_sig",
-        "dummy_file.ato/dummy_module/dummy_comp1/spare_sig",
+    "dummy_file.ato:dummy_module.dummy_comp0.spare_sig-dummy_comp1.spare_sig": [
+        "dummy_file.ato:dummy_module.dummy_comp0.spare_sig",
+        "dummy_file.ato:dummy_module.dummy_comp1.spare_sig",
     ],
 }
 
@@ -48,7 +47,7 @@ def test_nothing():
 
 def test_naming(dummy_model: Model):
     nets = find_nets(dummy_model)
-    net_names = {resolve_net_name(n) for n in nets}
+    net_names = {resolve_name(n) for n in nets}
 
     assert net_names == set(expected_nets.keys())
 
