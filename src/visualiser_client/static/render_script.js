@@ -135,6 +135,61 @@ class AtoElement extends dia.Element {
         }
     }
 
+    resizeBasedOnContent() {
+        let ports = this.getPorts();
+        if (ports) {
+            let port_buckets = {
+                "top": this.getGroupPorts('top'),
+                "bottom": this.getGroupPorts('bottom'),
+                "left": this.getGroupPorts('left'),
+                "right": this.getGroupPorts('right'),
+                "default": this.getGroupPorts('default')
+            };
+            let ports_text_length = {
+                "top": 0,
+                "bottom": 0,
+                "left": 0,
+                "right": 0
+            };
+            let dim_from_text = {
+                "height": 0,
+                "width": 0
+            };
+            let dim_from_ports = {
+                "height": 0,
+                "width": 0
+            }
+
+            // Move the default to the top
+            if (port_buckets["default"].length) {
+                port_buckets["top"].push(port_buckets["default"]);
+            }
+
+            // Extract the longest port label from each bucket
+            for (let port_bucket in port_buckets) {
+                if (port_buckets[port_bucket].length) {
+                    for (let port of port_buckets[port_bucket]) {
+                        if (port["attrs"]["label"]["text"].length > ports_text_length[port_bucket]) {
+                            ports_text_length[port_bucket] = port["attrs"]["label"]["text"];
+                        }
+                    }
+                }
+            }
+            dim_from_text['height'] = measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length");
+            dim_from_text['height'] += measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length");
+            dim_from_text['height'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
+            dim_from_text['height'] += settings_dict['component']['labelVerticalMargin'] * 2;
+            dim_from_text['width'] = measureText(ports_text_length['right'], settings_dict['component']['fontSize'], "length");
+            dim_from_text['width'] += measureText(ports_text_length['left'], settings_dict['component']['fontSize'], "length");
+            dim_from_text['width'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "length");
+
+            dim_from_ports['height'] = (Math.max(port_buckets['right'].length, port_buckets['left'].length) + 1) * settings_dict['component']['portPitch'];
+            dim_from_ports['width'] = (Math.max(port_buckets['top'].length, port_buckets['bottom'].length) + 1) * settings_dict['component']['portPitch'];
+
+            this.resize(Math.max(dim_from_text['width'], dim_from_ports['width']), Math.max(dim_from_text['height'], dim_from_ports['height']));
+        }
+    }
+
     fitAncestorElements() {
         var padding = settings_dict['common']['parentPadding'];
         this.fitParent({
@@ -353,8 +408,10 @@ function getPortPosition(location) {
     };
 };
 
+// Definitely need to update this garbage at some point
 function measureText(text, text_size, direction) {
-    var lines = text.split("\n");
+    var string = text + '';
+    var lines = string.split("\n");
     var width = 0;
     for (let line of lines) {
         var length = line.length;
@@ -666,7 +723,7 @@ function addStubs(stubs) {
 
 function getElementTitle(element) {
     if (element['instance_of'] != null) {
-        return`${element['name']} \n(${element['instance_of']})`;
+        return`${element['name']} \n(${popLastPathElementFromPath(element['instance_of']).name})`;
     } else {
         return element['name'];;
     }
@@ -732,12 +789,9 @@ function createComponent(element, parent, path) {
 
     addPins(component, element, path);
 
-    //component.resizeBasedOnContent();
-    //resizeBasedOnPorts(component, ports_dict);
+    component.resizeBasedOnContent();
 
     component.addTo(graph);
-
-    //console.log(component.getPorts());
 
     if (parent) {
         addElementToElement(component, parent);
@@ -797,11 +851,15 @@ function concatenatePathAndName(path, name) {
 }
 
 function popLastPathElementFromPath(path) {
-    const blocks = path.split(".");
+    // Split the file name and the blocks
+    const file_block = path.split(":");
+    const file = file_block[0];
+    // Split the blocks
+    const blocks = file_block[1].split(".");
     const path_blocks = blocks.slice(0, blocks.length - 1);
-    const remaining_path = path_blocks.join('.')
+    const remaining_path = file + ':' + path_blocks.join('.')
     const name = blocks[blocks.length - 1];
-    return {'path': remaining_path, 'name': name};
+    return {'file': file, 'path': remaining_path, 'name': name};
 }
 
 function getElementPosition(element_name, config) {
@@ -982,6 +1040,8 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
         fetch('/api/view/move', requestOptions);
     }
 });
+
+const svg = paper.svg;
 
 graph.on('change:position', function(cell) {
     // `fitParent()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
