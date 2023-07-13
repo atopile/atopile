@@ -2,7 +2,7 @@ from typing import Dict, Iterable, List
 
 from atopile.model.accessors import ModelVertexView
 from atopile.model.model import Model, EdgeType, VertexType
-from atopile.model.names import resolve_name
+from atopile.model.names import resolve_abs_name
 
 
 NetType = List[ModelVertexView]
@@ -27,4 +27,4 @@ def find_nets(model: Model) -> Iterable[NetType]:
 
 def find_net_names(model: Model) -> Dict[str, NetType]:
     nets = find_nets(model)
-    return {resolve_name(n): n for n in nets}
+    return {resolve_abs_name(n)[1]: n for n in nets}
