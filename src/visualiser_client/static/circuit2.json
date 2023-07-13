@@ -94,22 +94,22 @@
                                 ],
                                 "links": [
                                     {
-                                        "signal": "output",
+                                        "name": "-",
                                         "source": "r_top.p2",
                                         "target": "r_bt.p1"
                                     },
                                     {
-                                        "signal": "output",
+                                        "name": "output",
                                         "source": "r_top.p2",
                                         "target": "output"
                                     },
                                     {
-                                        "signal": "input",
+                                        "name": "-",
                                         "source": "r_top.p1",
                                         "target": "input"
                                     },
                                     {
-                                        "signal": "ground",
+                                        "name": "-",
                                         "source": "ground",
                                         "target": "r_bt.p2"
                                     }
