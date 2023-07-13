@@ -747,6 +747,10 @@ function createBlock(element, parent, path) {
     let title = getElementTitle(element);
     const block = new AtoBlock({
         id: path,
+        size: {
+            width: 200,
+            height: 100
+        },
         attrs: {
             label: {
                 text: title,
@@ -815,55 +819,65 @@ function applyParentConfig(element, child_attrs) {
     }
 }
 
-async function generateJointjsGraph(circuit, path = null, parent = null, child_attrs = null) {
+async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path = null, parent = null, child_attrs = null) {
     let downstream_path;
+    let new_depth = current_depth + 1;
 
-    for (let element of circuit) {
-        var joint_object = null;
+    console.log(current_depth + ' ' + max_depth);
 
-        if (element['type'] == 'component') {
-            downstream_path = concatenatePathAndName(path, element['name']);
-            joint_object = createComponent(element, parent, downstream_path);
-            element['jointObject'] = joint_object;
-            if (parent) {
-                addElementToElement(joint_object, parent);
-            }
-            applyParentConfig(element, child_attrs);
-        }
+    if (current_depth <= max_depth) {
+        for (let element of circuit) {
+            var joint_object = null;
 
-        // If it is a block, create it and instantiate the contents within it
-        else if (element['type'] == 'module') {
-            downstream_path = concatenatePathAndName(path, element['name']);
-            // Create the module
-            joint_object = createBlock(element, parent, downstream_path);
-            element['jointObject'] = joint_object;
-            if (parent) {
-                addElementToElement(joint_object, parent);
+            if (element['type'] == 'component') {
+                downstream_path = concatenatePathAndName(path, element['name']);
+                joint_object = createComponent(element, parent, downstream_path);
+                element['jointObject'] = joint_object;
+                if (parent) {
+                    addElementToElement(joint_object, parent);
+                }
+                applyParentConfig(element, child_attrs);
             }
 
-            // Call the function recursively on children
-            await generateJointjsGraph(element['blocks'], downstream_path, joint_object, element['config']['child_attrs']);
+            // If it is a block, create it and instantiate the contents within it
+            else if (element['type'] == 'module') {
+                downstream_path = concatenatePathAndName(path, element['name']);
+                // Create the module
+                joint_object = createBlock(element, parent, downstream_path);
+                element['jointObject'] = joint_object;
+                if (parent) {
+                    addElementToElement(joint_object, parent);
+                }
 
-            addLinks(element, downstream_path)
+                // Call the function recursively on children
+                if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
+                    addLinks(element, downstream_path)
 
-            applyParentConfig(element, child_attrs);
-            //addLinks(element['links']);
-            //addStubs(element['stubs']);
-            //created_element.fitAncestorElements();
+                    applyParentConfig(element, child_attrs);
+                }
 
-            //applyConfig(element, blocks_config);
+                //addLinks(element['links']);
+                //addStubs(element['stubs']);
+                //created_element.fitAncestorElements();
+
+                //applyConfig(element, blocks_config);
+            }
+
+            else if (element['type'] == 'file') {
+                downstream_path = concatenatePathAndName(path, element['name']);
+                await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path);
+            }
+
+            else {
+                // raise an error because we don't know what to do with this element
+                // TODO: raise an error
+                console.log('Unknown element type: ' + element['type']);
+            }
         }
-
-        else if (element['type'] == 'file') {
-            downstream_path = concatenatePathAndName(path, element['name']);
-            await generateJointjsGraph(element['blocks'], downstream_path);
-        }
-
-        else {
-            // raise an error because we don't know what to do with this element
-            // TODO: raise an error
-            console.log('Unknown element type: ' + element['type']);
-        }
+        return true;
+    }
+    else {
+        return false;
     }
 }
 
@@ -1003,7 +1017,7 @@ async function loadCircuit() {
 
     let config_populated_circuit = await populateConfigFromBackend(circuit_data);
     console.log(config_populated_circuit);
-    generateJointjsGraph(config_populated_circuit);
+    generateJointjsGraph(config_populated_circuit, 4);
 }
 
 loadCircuit();
