@@ -73,6 +73,7 @@ class Bob(ModelVisitor):
 
     def __init__(self, model: Model) -> None:
         self.model = model
+        self.all_verticies: List[ModelVertexView] = []
         self.block_stack: List[ModelVertexView] = []
         self.block_directory_by_path: Dict[str, Block] = {}
         self.pin_directory_by_vid: Dict[int, Pin] = {}
@@ -92,6 +93,9 @@ class Bob(ModelVisitor):
 
         connections = model.graph.es.select(type_eq=EdgeType.connects_to.name)
         for connection in connections:
+            if connection.source not in bob.all_verticies or connection.target not in bob.all_verticies:
+                continue
+
             lca = lowest_common_ancestor(ModelVertexView.from_indicies(model, [connection.source, connection.target]))
 
             link = Link(
@@ -104,6 +108,8 @@ class Bob(ModelVisitor):
         return root
 
     def generic_visit_block(self, vertex: ModelVertexView) -> Block:
+        self.all_verticies.append(vertex)
+
         with self.block_context(vertex):
             # find subelements
             blocks: List[Block] = self.wander(
@@ -164,6 +170,8 @@ class Bob(ModelVisitor):
         return pin
 
     def visit_pin(self, vertex: ModelVertexView) -> Optional[Pin]:
+        self.all_verticies.append(vertex)
+
         # filter out pins that have a single connection to a signal within the same block
         connections_in = vertex.get_edges(mode="in", edge_type=EdgeType.connects_to)
         connections_out = vertex.get_edges(mode="out", edge_type=EdgeType.connects_to)
