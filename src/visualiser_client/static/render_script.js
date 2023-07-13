@@ -17,7 +17,7 @@ let settings_dict = {
         defaultWidth: 60,
         portPitch: 20,
         defaultHeight: 50,
-        labelHorizontalMargin: 40,
+        labelHorizontalMargin: 30,
         labelVerticalMargin: 10,
         titleMargin: 10,
         pin: {
@@ -185,6 +185,12 @@ class AtoElement extends dia.Element {
 
             dim_from_ports['height'] = (Math.max(port_buckets['right'].length, port_buckets['left'].length) + 1) * settings_dict['component']['portPitch'];
             dim_from_ports['width'] = (Math.max(port_buckets['top'].length, port_buckets['bottom'].length) + 1) * settings_dict['component']['portPitch'];
+            if (port_buckets['right'].length != 0 || port_buckets['left'].length != 0) {
+                if (port_buckets['top'].length != 0 || port_buckets['bottom'].length != 0) {
+                    dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
+                }
+            }
+            console.log(dim_from_ports);
 
             this.resize(Math.max(dim_from_text['width'], dim_from_ports['width']), Math.max(dim_from_text['height'], dim_from_ports['height']));
         }
@@ -1078,7 +1084,7 @@ async function loadCircuit() {
 
     let config_populated_circuit = await populateConfigFromBackend(circuit_data);
     console.log(config_populated_circuit);
-    generateJointjsGraph(config_populated_circuit, 4);
+    generateJointjsGraph(config_populated_circuit, 3);
 }
 
 loadCircuit();
