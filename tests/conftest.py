@@ -7,6 +7,7 @@ from atopile.model.model import EdgeType, Model, VertexType
 @fixture
 def dummy_model() -> Model:
     m = Model()
+    m.src_files = ["dummy_file.ato"]
     file = m.new_vertex(VertexType.file, "dummy_file.ato")
     module = m.new_vertex(VertexType.module, "dummy_module", file)
     top_signal_path = m.new_vertex(VertexType.signal, "top_sig", module)
