@@ -99,4 +99,4 @@ def project_handler(dummy_model: Model, mocked_project: Project, vis_config_data
 
 @pytest.mark.asyncio
 async def test_load_yaml(project_handler: ProjectHandler, vis_config_data: dict):
-    assert dict(await project_handler.get_config("dummy_file.ato.json")) == vis_config_data
+    assert dict(await project_handler.get_config("dummy_file.vis.json")) == vis_config_data
