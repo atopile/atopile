@@ -1,11 +1,12 @@
+import logging
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Any, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 import attrs
-import logging
 
-from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.accessors import ModelVertexView, lowest_common_ancestor
+from atopile.model.model import EdgeType, Model, VertexType
+from atopile.model.names import resolve_rel_name
 from atopile.model.visitor import ModelVisitor
 
 log = logging.getLogger(__name__)
@@ -25,11 +26,13 @@ class Pin:
 @attrs.define
 class Link:
     # mandatory external
+    name: str
     source: str
     target: str
 
     def to_dict(self) -> dict:
         return {
+            "name": self.name,
             "source": self.source,
             "target": self.target,
         }
@@ -98,13 +101,14 @@ class Bob(ModelVisitor):
             ):
                 continue
 
-            lca = lowest_common_ancestor(
+            lca, link_name = resolve_rel_name(
                 ModelVertexView.from_indicies(
                     model, [connection.source, connection.target]
                 )
             )
 
             link = Link(
+                name=link_name,
                 source=lca.relative_path(ModelVertexView(model, connection.source)),
                 target=lca.relative_path(ModelVertexView(model, connection.target)),
             )
