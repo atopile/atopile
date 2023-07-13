@@ -326,9 +326,9 @@ function createPort(uuid, port_name, port_group_name, port_anchor) {
 function getPortLabelPosition(location) {
     switch (location) {
         case "top":
-            return [0, 8];
+            return [0, 5];
         case "bottom":
-            return [0, -8];
+            return [0, -5];
         case "left":
             return [5, 0];
         case "right":
