@@ -1,0 +1,67 @@
+{
+    "acomp": {
+        "ports": [
+            {
+                "name": "bottom",
+                "location": "bottom"
+            },
+            {
+                "name": "right",
+                "location": "right"
+            }
+        ],
+        "pins": [
+            {
+                "name": "p1",
+                "index": 0,
+                "private": false,
+                "port": "bottom"
+            },
+            {
+                "name": "p2",
+                "index": 0,
+                "private": false,
+                "port": "bottom"
+            },
+            {
+                "name": "p3",
+                "index": 0,
+                "private": false,
+                "port": "bottom"
+            },
+            {
+                "name": "p4",
+                "index": 0,
+                "private": false,
+                "port": "right"
+            },
+            {
+                "name": "p5",
+                "index": 0,
+                "private": false,
+                "port": "right"
+            },
+            {
+                "name": "p6",
+                "index": 0,
+                "private": false,
+                "port": "right"
+            }
+        ],
+        "signals": [
+            {
+                "name": "input",
+                "is_stub": true
+            },
+            {
+                "name": "output",
+                "is_stub": true
+            },
+            {
+                "name": "ground",
+                "is_stub": true
+            }
+        ],
+        "child_attrs": []
+    }
+}

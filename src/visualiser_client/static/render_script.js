@@ -43,13 +43,6 @@ let settings_dict = {
     }
 }
 
-let opposite_direction = {
-    "top": "bottom",
-    "bottom": "top",
-    "left": "right",
-    "right": "left"
-}
-
 function customAnchor(view, magnet, ref, opt, endType, linkView) {
     const elBBox = view.model.getBBox();
     const magnetCenter = view.getNodeBBox(magnet).center();
@@ -437,58 +430,81 @@ function measureText(text, text_size, direction) {
     }
 };
 
-// This function resizes a component based on the size of the labels and the number of ports
-function resizeBasedOnLabels(element, ports_list) {
-    // Largest text for each port
-    let text_length_by_port = {
-        'top': 0,
-        'left': 0,
-        'right': 0,
-        'bottom': 0,
-    };
-    let component_port_nb = {
-        'top': 0,
-        'left': 0,
-        'right': 0,
-        'bottom': 0,
-    };
+function addStub(block_id, port_id, label) {
+    let added_stub = new shapes.standard.Link({
+        source: {
+            id: block_id,
+            port: port_id,
+            anchor: {
+                name: 'center'
+            }
+        },
+            target: {
+            id: block_id,
+            port: port_id,
+            anchor: {
+                name: 'customAnchor'
+            },
+            connectionPoint: {
+                name: 'anchor'
+            }
+        }
+    });
+    added_stub.attr({
+        line: {
+            'stroke': settings_dict['link']['color'],
+            'stroke-width': settings_dict['link']['strokeWidth'],
+            targetMarker: {'type': 'none'},
+        },
+        z: 0,
+    });
+    added_stub.appendLabel({
+        attrs: {
+            text: {
+                text: label,
+                fontFamily: settings_dict['common']['fontFamily'],
+                fontSize: settings_dict['stubs']['fontSize'],
+                //textVerticalAnchor: "middle",
+                textAnchor: "start",
+            }
+        },
+        position: {
+            distance: .1,
+            offset: -5,
+            angle: 0,
+            args: {
+                keepGradient: true
+            }
+        }
+    });
+    graph.addCell(added_stub);
+}
 
-    for (let port of ports_list) {
-        // Check how many pins in each port
-        component_port_nb[port['location']] = port['pins'].length;
-
-        // For each port, find the longest label
-        for (let pin of port['pins']) {
-            label_length = measureText(pin['name'], settings_dict["component"]['pin']["fontSize"], 'length');
-            if (label_length > text_length_by_port[port['name']]) {
-                text_length_by_port[port['location']] = label_length;
-            };
-        };
-    };
-
-    // width of the component with text only
-    max_label_text_width = Math.max(text_length_by_port['left'], text_length_by_port['right']);
-    max_label_text_height = Math.max(text_length_by_port['top'], text_length_by_port['bottom']);
-
-    let comp_width_by_text = element.getBBox().width + 2 * max_label_text_width;
-    let comp_height_by_text = element.getBBox().height + 2 * max_label_text_height;
-
-    element.resize(comp_width_by_text, comp_height_by_text);
-
-    width_with_ports = 2 * settings_dict['component']['labelHorizontalMargin'] +
-                        Math.max(component_port_nb['top'], component_port_nb['bottom']) * (settings_dict['component']['portPitch'] - 1);
-    height_with_ports = 2 * settings_dict['component']['labelVerticalMargin'] +
-                        Math.max(component_port_nb['left'], component_port_nb['right']) * (settings_dict['component']['portPitch'] - 1);
-
-    if (width_with_ports > element.getBBox().width) {
-        element.resize(width_with_ports, element.getBBox().height);
-        console.log('width changed');
-    };
-    if (height_with_ports > element.getBBox().height) {
-        element.resize(element.getBBox().width, height_with_ports);
-        console.log('height changed');
-    };
-};
+function addLink(source_block_id, source_port_id, target_block_id, target_port_id) {
+    var added_link = new shapes.standard.Link({
+        source: {
+            id: source_block_id,
+            port: source_port_id
+        },
+        target: {
+            id: target_block_id,
+            port: target_port_id
+        }
+    });
+    added_link.attr({
+        line: {
+            'stroke': settings_dict['link']['color'],
+            'stroke-width': settings_dict['link']['strokeWidth'],
+            targetMarker: {'type': 'none'},
+        },
+        z: 0
+    });
+    added_link.router('manhattan', {
+        perpendicular: true,
+        step: settings_dict['common']['gridSize'],
+    });
+    added_link.addTo(graph);
+}
 
 
 function addLinks(element, current_path) {
@@ -508,223 +524,18 @@ function addLinks(element, current_path) {
                 is_stub = true;
                 // if not a module
                 if (current_path.length != source_block.length) {
-                    let added_stub_source = new shapes.standard.Link({
-                        source: {
-                            id: source_block,
-                            port: source_path,
-                            anchor: {
-                                name: 'center'
-                            }
-                        },
-                            target: {
-                            id: source_block,
-                            port: source_path,
-                            anchor: {
-                                name: 'customAnchor'
-                            },
-                            connectionPoint: {
-                                name: 'anchor'
-                            }
-                        }
-                    });
-                    added_stub_source.attr({
-                        line: {
-                            'stroke': settings_dict['link']['color'],
-                            'stroke-width': settings_dict['link']['strokeWidth'],
-                            targetMarker: {'type': 'none'},
-                        },
-                        z: 0,
-                    });
-                    added_stub_source.appendLabel({
-                        attrs: {
-                            text: {
-                                text: link['signal'],
-                                fontFamily: settings_dict['common']['fontFamily'],
-                                fontSize: settings_dict['stubs']['fontSize'],
-                                //textVerticalAnchor: "middle",
-                                textAnchor: "start",
-                            }
-                        },
-                        position: {
-                            distance: .1,
-                            offset: -5,
-                            angle: 0,
-                            args: {
-                                keepGradient: true
-                            }
-                        }
-                    });
-                    graph.addCell(added_stub_source);
+                    addStub(source_block, source_path, link['signal']);
                 }
                 // if not a module
                 if (current_path.length != target_block.length) {
-                    let added_stub_target = new shapes.standard.Link({
-                        source: {
-                            id: target_block,
-                            port: target_path,
-                            anchor: {
-                                name: 'center'
-                            }
-                        },
-                            target: {
-                            id: target_block,
-                            port: target_path,
-                            anchor: {
-                                name: 'customAnchor'
-                            },
-                            connectionPoint: {
-                                name: 'anchor'
-                            }
-                        }
-                    });
-                    added_stub_target.attr({
-                        line: {
-                            'stroke': settings_dict['link']['color'],
-                            'stroke-width': settings_dict['link']['strokeWidth'],
-                            targetMarker: {'type': 'none'},
-                        },
-                        z: 0,
-                    });
-                    added_stub_target.appendLabel({
-                        attrs: {
-                            text: {
-                                text: link['signal'],
-                                fontFamily: settings_dict['common']['fontFamily'],
-                                fontSize: settings_dict['stubs']['fontSize'],
-                                textAnchor: "start",
-                            }
-                        },
-                        position: {
-                            distance: .1,
-                            offset: -5,
-                            angle: 0,
-                            args: {
-                                keepGradient: true
-                            }
-                        }
-                    });
-                    graph.addCell(added_stub_target);
+                    addStub(target_block, target_path, link['signal']);
                 }
             }
         }
-
         if (!is_stub) {
-            var added_link = new shapes.standard.Link({
-                source: {
-                    id: source_block,
-                    port: source_path
-                },
-                target: {
-                    id: target_block,
-                    port: target_path
-                }
-            });
-            added_link.attr({
-                line: {
-                    'stroke': settings_dict['link']['color'],
-                    'stroke-width': settings_dict['link']['strokeWidth'],
-                    targetMarker: {'type': 'none'},
-                },
-                z: 0
-            });
-            added_link.router('manhattan', {
-                perpendicular: true,
-                step: settings_dict['common']['gridSize'],
-            });
-
-            added_link.addTo(graph);
+            addLink(source_block, source_path, target_block, target_path);
         }
     }
-    // for (let link of links) {
-    //     var added_link = new shapes.standard.Link({
-    //         source: {
-    //             id: pin_to_element_association[link['source']],
-    //             port: link['source']
-    //         },
-    //         target: {
-    //             id: pin_to_element_association[link['target']],
-    //             port: link['target']
-    //         }
-    //     });
-    //     added_link.attr({
-    //         line: {
-    //             'stroke': settings_dict['link']['color'],
-    //             'stroke-width': settings_dict['link']['strokeWidth'],
-    //             targetMarker: {'type': 'none'},
-    //         },
-    //         z: 0
-    //     });
-    //     added_link.router('manhattan', {
-    //         perpendicular: true,
-    //         step: settings_dict['common']['gridSize'],
-    //     });
-
-    //     added_link.addTo(graph);
-
-    //     var verticesTool = new joint.linkTools.Vertices();
-    //     var segmentsTool = new joint.linkTools.Segments();
-    //     var boundaryTool = new joint.linkTools.Boundary();
-
-    //     var toolsView = new joint.dia.ToolsView({
-    //         tools: [verticesTool, boundaryTool]
-    //     });
-
-    //     var linkView = added_link.findView(paper);
-    //     linkView.addTools(toolsView);
-    //     linkView.hideTools();
-    // }
-}
-
-function addStubs(stubs) {
-    for (let stub of stubs) {
-        var added_stub = new shapes.standard.Link({id: stub['uuid']});
-        added_stub.prop('source', {
-            id: pin_to_element_association[stub['source']],
-            port: stub['source']});
-        if (stub['position']) {
-            added_stub.prop('target', stub['position']);
-        } else {
-            added_stub.prop('target', { x: 10, y: 10 });
-        }
-        added_stub.router('manhattan', {
-            startDirections: [stub['direction']],
-            endDirections: [opposite_direction[stub['direction']]],
-            perpendicular: true,
-            step: settings_dict['common']['gridSize'],
-        });
-        added_stub.attr('root/title', 'joint.shapes.standard.Link');
-        added_stub.attr({
-            line: {
-                'stroke': settings_dict['link']['color'],
-                'stroke-width': settings_dict['link']['strokeWidth'],
-                //targetMarker: {'type': 'none'},
-            },
-            z: 0
-        });
-        let label_offset;
-        (stub['direction'] == 'bottom') ? label_offset = 10 : label_offset = -10;
-        added_stub.appendLabel({
-            attrs: {
-                text: {
-                    text: stub['name'],
-                    fontFamily: settings_dict['common']['fontFamily'],
-                    fontSize: settings_dict['stubs']['fontSize'],
-                }
-            },
-            position: {
-                distance: 1,
-                offset: {
-                    x: 0,
-                    y: label_offset
-                },
-                angle: 0,
-                args: {
-                    keepGradient: false
-                }
-            }
-        });
-        added_stub.addTo(graph);
-    };
 }
 
 function getElementTitle(element) {
@@ -792,11 +603,8 @@ function createComponent(element, parent, path) {
         }
     });
 
-
     addPins(component, element, path);
-
     component.resizeBasedOnContent();
-
     component.addTo(graph);
 
     if (parent) {
@@ -808,7 +616,7 @@ function createComponent(element, parent, path) {
 
 function createBlock(element, parent, path) {
     let title = getElementTitle(element);
-    const block = new AtoBlock({
+    let block = new AtoBlock({
         id: path,
         size: {
             width: 200,
@@ -822,7 +630,6 @@ function createBlock(element, parent, path) {
     });
 
     addPins(block, element, path);
-
     block.addTo(graph);
 
     if (parent) {
@@ -868,14 +675,6 @@ function popLastPathElementFromPath(path) {
     return {'file': file, 'path': remaining_path, 'name': name};
 }
 
-function getElementPosition(element_name, config) {
-    let position = {'x': 10, 'y': 10};
-    if (config && element_name in config) {
-        position = config[element_name]['position'];
-    }
-    return position;
-}
-
 function applyParentConfig(element, child_attrs) {
     if (child_attrs !== null && Object.keys(child_attrs).length > 0) {
         for (let attrs in child_attrs) {
@@ -917,15 +716,8 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
                     addLinks(element, downstream_path)
-
                     applyParentConfig(element, child_attrs);
                 }
-
-                //addLinks(element['links']);
-                //addStubs(element['stubs']);
-                //created_element.fitAncestorElements();
-
-                //applyConfig(element, blocks_config);
             }
 
             else if (element['type'] == 'file') {
@@ -1084,7 +876,7 @@ async function loadCircuit() {
 
     let config_populated_circuit = await populateConfigFromBackend(circuit_data);
     console.log(config_populated_circuit);
-    generateJointjsGraph(config_populated_circuit, 3);
+    generateJointjsGraph(config_populated_circuit, 5);
 }
 
 loadCircuit();
