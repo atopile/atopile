@@ -48,6 +48,7 @@ test = [
     "pytest",
     "pytest-html",
     "pytest-datafiles",
+    "pytest-asyncio",
     # "coverage[toml] >= 6.5.0,< 8.0",
     # "mypy ==0.982",
     # "ruff ==0.0.138",

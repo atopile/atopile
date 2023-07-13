@@ -37,9 +37,8 @@ class ProjectHandler:
             self._model = build_model(self.project, self.build_config)
 
     async def build_model(self):
-        with timed("Building model"):
-            async with self._model_mutex:
-                self._build_model()
+        async with self._model_mutex:
+            self._build_model()
 
     async def get_model(self) -> Model:
         async with self._model_mutex:
@@ -47,15 +46,19 @@ class ProjectHandler:
                 await self._build_model()
             return self._model
 
+    # TODO: cache configs and rate limit updates to FS
     async def get_config(self, filename: str):
-        if filename not in (await self.get_model()).src_files:
+        # filename is expected to be ~/<project_root>/some_file.vis.json
+        # to get the ato source file, let's strip the .json
+        ato_filename = Path(filename).with_suffix("").with_suffix(".ato")
+        if str(ato_filename) not in (await self.get_model()).src_files:
             raise FileNotFoundError
 
-        vis_file = self.project.root / Path(filename).with_suffix(".vis.yaml")
+        vis_file = self.project.root / Path(filename).with_suffix(".yaml")
 
         if vis_file.exists():
             with vis_file.open() as f:
-                vis_data = yaml.load(vis_file)
+                vis_data = yaml.load(f)
         else:
             vis_data = {}
 

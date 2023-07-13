@@ -7,6 +7,7 @@ from atopile.model.model import EdgeType, Model, VertexType
 @fixture
 def dummy_model() -> Model:
     m = Model()
+    m.src_files = ["dummy_file.ato"]
     file = m.new_vertex(VertexType.file, "dummy_file.ato")
     module = m.new_vertex(VertexType.module, "dummy_module", file)
     top_signal_path = m.new_vertex(VertexType.signal, "top_sig", module)
@@ -21,22 +22,22 @@ def dummy_model() -> Model:
 
             m.new_edge(EdgeType.connects_to, p_path, s_path)
 
-    # s_path is still dummy_comp2/sig2
+    # s_path is still dummy_comp2.sig2
     m.new_edge(EdgeType.connects_to, top_signal_path, s_path)
-    m.new_edge(EdgeType.connects_to, comp1 + "/sig0", comp1 + "/sig1")
-    m.new_edge(EdgeType.connects_to, comp1 + "/spare_sig", comp2 + "/spare_sig")
+    m.new_edge(EdgeType.connects_to, comp1 + ".sig0", comp1 + ".sig1")
+    m.new_edge(EdgeType.connects_to, comp1 + ".spare_sig", comp2 + ".spare_sig")
 
     return m
 
 @fixture
 def module(dummy_model: Model):
-    return ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module")
+    return ModelVertexView.from_path(dummy_model, "dummy_file.ato:dummy_module")
 
 @fixture
 def comp0(dummy_model: Model):
-    return ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp0")
+    return ModelVertexView.from_path(dummy_model, "dummy_file.ato:dummy_module.dummy_comp0")
 
 @fixture
 def comp0_p0(dummy_model: Model):
-    return ModelVertexView.from_path(dummy_model, "dummy_file.ato/dummy_module/dummy_comp0/p0")
+    return ModelVertexView.from_path(dummy_model, "dummy_file.ato:dummy_module.dummy_comp0.p0")
 

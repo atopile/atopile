@@ -2,14 +2,14 @@ from typing import List, Union, Optional, Iterable
 
 import igraph as ig
 
-from atopile.model.model import EdgeType, Model, VertexType, PATH_SEPERATOR
+from atopile.model.model import EdgeType, Model, VertexType, MODULE_PATH_SEPERATOR
 
 EdgeIterable = Union[ig.EdgeSeq, List[ig.Edge]]
 
 
-def mvvs_to_pathv2(mvvs: List["ModelVertexView"]) -> str:
+def mvvs_to_path(mvvs: List["ModelVertexView"]) -> str:
     if not mvvs:
-        raise ValueError("Can't get pathv2 from empty list")
+        raise ValueError("Can't get path from empty list")
 
     if mvvs[0].vertex_type == VertexType.file:
         file_path = mvvs.pop(0).ref
@@ -25,7 +25,7 @@ def mvvs_to_pathv2(mvvs: List["ModelVertexView"]) -> str:
     if module_path:
         return module_path
 
-    raise ValueError(f"Couldn't compute pathv2 from mvvs {[mvv.ref for mvv in mvvs]}")
+    raise ValueError(f"Couldn't compute path from mvvs {[mvv.ref for mvv in mvvs]}")
 
 class ModelVertexView:
     def __init__(self, model: Model, index: int) -> None:
@@ -52,11 +52,12 @@ class ModelVertexView:
     def path(self) -> str:
         return self.vertex["path"]
 
-    @property
-    def pathv2(self) -> str:
-        path_as_mvvs: List[ModelVertexView] = self.get_ancestors()[::-1]
-        # TODO: consider using URI format instead, it's probably far better designed
-        return mvvs_to_pathv2(path_as_mvvs)
+    # TODO: remove this if the core model's working properly
+    # @property
+    # def path(self) -> str:
+    #     path_as_mvvs: List[ModelVertexView] = self.get_ancestors()[::-1]
+    #     # TODO: consider using URI format instead, it's probably far better designed
+    #     return mvvs_to_path(path_as_mvvs)
 
     @property
     def data(self) -> dict:
@@ -108,10 +109,6 @@ class ModelVertexView:
         return cls(model, root_node.index)
 
     @classmethod
-    def from_pathv2(cls, model: Model, path: str) -> "ModelVertexView":
-        raise NotImplementedError
-
-    @classmethod
     def from_edges(cls, model: Model, mode: str, edges: EdgeIterable) -> List["ModelVertexView"]:
         if mode == "out":
             return [cls(model, e.target) for e in edges]
@@ -159,8 +156,8 @@ class ModelVertexView:
         relative_idxs = [i for i in other.get_ancestor_ids() if i not in self.get_ancestor_ids()][::-1]
         return [ModelVertexView(self.model, i) for i in relative_idxs]
 
-    def relative_pathv2(self, other: "ModelVertexView") -> str:
-        return mvvs_to_pathv2([mvv for mvv in self.relative_mvv_path(other)])
+    def relative_path(self, other: "ModelVertexView") -> str:
+        return mvvs_to_path([mvv for mvv in self.relative_mvv_path(other)])
 
     def __eq__(self, o: object) -> bool:
         if not isinstance(o, ModelVertexView):
