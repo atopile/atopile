@@ -59,6 +59,7 @@ def profile(profile_log: logging.Logger, entries: int=20, sort_stats="cumtime", 
     stats = pstats.Stats(prof, stream=s).sort_stats(sort_stats)
     stats.print_stats(entries)
 
+# TODO: updating an input? wow... cruddy much?
 def update_dict(target: dict, source: dict):
     for k, v in source.items():
         if isinstance(v, dict):
