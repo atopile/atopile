@@ -181,9 +181,6 @@ class AtoComponent extends AtoElement {
                     textVerticalAnchor: "middle",
                     textAnchor: "middle",
                     fontFamily: settings_dict["common"]["fontFamily"],
-                    textWrap: {
-                        width: 100,
-                    },
                     x: "calc(w/2)",
                     y: "calc(h/2)"
                 }
@@ -446,101 +443,105 @@ function addLinks(element, current_path) {
         for (let link_config of element['config']['signals']) {
             if (link_config['name'] == link['signal'] && link_config['is_stub']) {
                 is_stub = true;
-                let added_stub_source = new shapes.standard.Link({
-                    source: {
-                        id: source_block,
-                        port: source_path,
-                        anchor: {
-                            name: 'center'
-                        }
-                    },
-                        target: {
-                        id: source_block,
-                        port: source_path,
-                        anchor: {
-                            name: 'customAnchor'
+                // if not a module
+                if (current_path.length != source_block.length) {
+                    let added_stub_source = new shapes.standard.Link({
+                        source: {
+                            id: source_block,
+                            port: source_path,
+                            anchor: {
+                                name: 'center'
+                            }
                         },
-                        connectionPoint: {
-                            name: 'anchor'
+                            target: {
+                            id: source_block,
+                            port: source_path,
+                            anchor: {
+                                name: 'customAnchor'
+                            },
+                            connectionPoint: {
+                                name: 'anchor'
+                            }
                         }
-                    }
-                });
-                added_stub_source.attr({
-                    line: {
-                        'stroke': settings_dict['link']['color'],
-                        'stroke-width': settings_dict['link']['strokeWidth'],
-                        targetMarker: {'type': 'none'},
-                    },
-                    z: 0,
-                });
-                added_stub_source.appendLabel({
-                    attrs: {
-                        text: {
-                            text: link['signal'],
-                            fontFamily: settings_dict['common']['fontFamily'],
-                            fontSize: settings_dict['stubs']['fontSize'],
-                            //textVerticalAnchor: "middle",
-                            textAnchor: "start",
-                        }
-                    },
-                    position: {
-                        distance: .1,
-                        offset: -5,
-                        angle: 0,
-                        args: {
-                            keepGradient: true
-                        }
-                    }
-                });
-
-                let added_stub_target = new shapes.standard.Link({
-                    source: {
-                        id: target_block,
-                        port: target_path,
-                        anchor: {
-                            name: 'center'
-                        }
-                    },
-                        target: {
-                        id: target_block,
-                        port: target_path,
-                        anchor: {
-                            name: 'customAnchor'
+                    });
+                    added_stub_source.attr({
+                        line: {
+                            'stroke': settings_dict['link']['color'],
+                            'stroke-width': settings_dict['link']['strokeWidth'],
+                            targetMarker: {'type': 'none'},
                         },
-                        connectionPoint: {
-                            name: 'anchor'
+                        z: 0,
+                    });
+                    added_stub_source.appendLabel({
+                        attrs: {
+                            text: {
+                                text: link['signal'],
+                                fontFamily: settings_dict['common']['fontFamily'],
+                                fontSize: settings_dict['stubs']['fontSize'],
+                                //textVerticalAnchor: "middle",
+                                textAnchor: "start",
+                            }
+                        },
+                        position: {
+                            distance: .1,
+                            offset: -5,
+                            angle: 0,
+                            args: {
+                                keepGradient: true
+                            }
                         }
-                    }
-                });
-                added_stub_target.attr({
-                    line: {
-                        'stroke': settings_dict['link']['color'],
-                        'stroke-width': settings_dict['link']['strokeWidth'],
-                        targetMarker: {'type': 'none'},
-                    },
-                    z: 0,
-                });
-                added_stub_target.appendLabel({
-                    attrs: {
-                        text: {
-                            text: link['signal'],
-                            fontFamily: settings_dict['common']['fontFamily'],
-                            fontSize: settings_dict['stubs']['fontSize'],
-                            textAnchor: "start",
+                    });
+                    graph.addCell(added_stub_source);
+                }
+                // if not a module
+                if (current_path.length != target_block.length) {
+                    let added_stub_target = new shapes.standard.Link({
+                        source: {
+                            id: target_block,
+                            port: target_path,
+                            anchor: {
+                                name: 'center'
+                            }
+                        },
+                            target: {
+                            id: target_block,
+                            port: target_path,
+                            anchor: {
+                                name: 'customAnchor'
+                            },
+                            connectionPoint: {
+                                name: 'anchor'
+                            }
                         }
-                    },
-                    position: {
-                        distance: .1,
-                        offset: -5,
-                        angle: 0,
-                        args: {
-                            keepGradient: true
+                    });
+                    added_stub_target.attr({
+                        line: {
+                            'stroke': settings_dict['link']['color'],
+                            'stroke-width': settings_dict['link']['strokeWidth'],
+                            targetMarker: {'type': 'none'},
+                        },
+                        z: 0,
+                    });
+                    added_stub_target.appendLabel({
+                        attrs: {
+                            text: {
+                                text: link['signal'],
+                                fontFamily: settings_dict['common']['fontFamily'],
+                                fontSize: settings_dict['stubs']['fontSize'],
+                                textAnchor: "start",
+                            }
+                        },
+                        position: {
+                            distance: .1,
+                            offset: -5,
+                            angle: 0,
+                            args: {
+                                keepGradient: true
+                            }
                         }
-                    }
-                });
-
-                graph.addCell(added_stub_source);
-                graph.addCell(added_stub_target);
+                    });
+                    graph.addCell(added_stub_target);
+                }
             }
         }
 
@@ -731,10 +732,12 @@ function createComponent(element, parent, path) {
 
     addPins(component, element, path);
 
-    //resizeBasedOnLabels(component, ports_dict);
+    //component.resizeBasedOnContent();
     //resizeBasedOnPorts(component, ports_dict);
 
     component.addTo(graph);
+
+    //console.log(component.getPorts());
 
     if (parent) {
         addElementToElement(component, parent);
@@ -822,8 +825,6 @@ function applyParentConfig(element, child_attrs) {
 async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path = null, parent = null, child_attrs = null) {
     let downstream_path;
     let new_depth = current_depth + 1;
-
-    console.log(current_depth + ' ' + max_depth);
 
     if (current_depth <= max_depth) {
         for (let element of circuit) {
