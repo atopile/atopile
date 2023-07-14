@@ -36,6 +36,15 @@ def view(
     url = f"http://localhost:{port}/static/client.html?" + urllib.parse.urlencode(
         {"circuit": build_config.root_node}
     )
+
+    # print out the URL to the console super obviously
+    log.info("")
+    log.info("=" * len(url))
+    log.info("Browse to:")
+    log.info(url)
+    log.info("=" * len(url))
+    log.info("")
+
     if browser:
         webbrowser.open(url)
     uvicorn.run(s.app, host="0.0.0.0", port=port)

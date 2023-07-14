@@ -77,8 +77,10 @@ class AtoElement extends dia.Element {
     defaults() {
         return {
             ...super.defaults,
+            parent_element: null,
             instance_name: null,
             config_origin_filename: null,
+            config_origin_module: [],
         };
     }
 
@@ -517,7 +519,7 @@ function addLinks(element, current_path) {
         let target_block = target['path'];
 
         let is_stub = false;
-        for (let link_config of element['config']['signals']) {
+        for (let link_config of ((element.config || {}).signals || [])) {
             if (link_config['name'] == link['signal'] && link_config['is_stub']) {
                 is_stub = true;
                 // if not a module
@@ -547,28 +549,22 @@ function getElementTitle(element) {
 function addPins(jointJSObject, element, path) {
     // Create the default port location
     let ports_to_add = {};
-    ports_to_add['top'] = {
-        "location": "top",
-        "pins": []
-    };
+
     // Create the ports that are defined in the config
-    if (element['config']['ports'].length != 0) {
-        for (let port of element['config']['ports']) {
-            ports_to_add[port['name']] = {
-                "location": port["location"],
-                "pins": []
-            }
+    for (let port of ((element.config || {}).ports || [])) {
+        ports_to_add[port.get("name", "top")] = {
+            "location": port.get("location", "top"),
+            "pins": []
         }
     }
 
     let config_found;
-    for (let circuit_pin of element['pins']) {
-        // Let's all pins to their respective port
-        let pin_to_add = circuit_pin;
-        pin_to_add['path'] = concatenatePathAndName(path, pin_to_add['name']);
-        config_found = false;
+    for (let pin_to_add of element['pins']) {
 
-        for (let config_pin of element['config']['pins']) {
+        pin_to_add['path'] = concatenatePathAndName(path, pin_to_add['name']);
+
+        config_found = false;
+        for (let config_pin of ((element.config || {}).pins || [])) {
             // If a port is defined, add it to it designated port
             if (pin_to_add['name'] == config_pin['name']) {
                 ports_to_add[config_pin['port']]['pins'].push(pin_to_add);
@@ -577,6 +573,7 @@ function addPins(jointJSObject, element, path) {
         }
         // If no port is defined, add it to the default port
         if (!config_found) {
+            if (!ports_to_add['top']) ports_to_add['top'] = {"location": "top", "pins": []};
             ports_to_add['top']['pins'].push(pin_to_add);
         }
     }
@@ -602,7 +599,8 @@ function createComponent(element, parent, path) {
                 text: title,
             }
         },
-        config_origin_filename: element['config_origin_filename'],
+        config_origin_filename: element.config_origin_filename,
+        config_origin_module: element.config_origin_module,
     });
 
     addPins(component, element, path);
@@ -610,6 +608,7 @@ function createComponent(element, parent, path) {
     component.addTo(graph);
 
     if (parent) {
+        component.attributes.parent_element = parent;
         addElementToElement(component, parent);
     }
 
@@ -630,7 +629,8 @@ function createBlock(element, parent, path) {
                 text: title,
             }
         },
-        config_origin_filename: element['config_origin_filename'],
+        config_origin_filename: element.config_origin_filename,
+        config_origin_module: element.config_origin_module,
     });
 
     addPins(block, element, path);
@@ -638,6 +638,7 @@ function createBlock(element, parent, path) {
 
     if (parent) {
         addElementToElement(block, parent);
+        block.attributes.parent_element = parent;
     }
 
     return block;
@@ -742,39 +743,32 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
     }
 }
 
-let default_config = {
-    "ports": [],
-    "pins": [],
-    "signals": [],
-    'child_attrs': []
-}
-
 async function populateConfigFromBackend(circuit_dict, file_name = null) {
     let populated_circuit = [];
 
     for (let element of circuit_dict) {
-        if (element['type'] == 'component') {
-            if (element['instance_of'] !== null) {
-                config_location_name = returnConfigFileName(element['instance_of']);
-                element["config_origin_filename"] = getConfigFilenameFromAto(config_location_name['file']);
-                const config = await loadFileConfig(config_location_name['file']);
-                element['config'] = default_config;
-                if (Object.keys(config).length !== 0) {
-                    element['config'] = config[config_location_name['module']];
-                }
+        if (element.type == 'component') {
+            if (element.instance_of !== null) {
+                config_location_name = returnConfigFileName(element.instance_of);
+                element.config_origin_filename = getConfigFilenameFromAto(config_location_name.file);
+                element.config_origin_module = config_location_name.module;
+                const config = await loadFileConfig(config_location_name.file);
+                element['config'] = config[config_location_name.module] || {};
             }
         }
-        else if (element['type'] == 'module') {
+        else if (element.type == 'module') {
             let config = null;
-            element['config'] = default_config;
-            if (element['instance_of'] !== null) {
-                config_location_name = returnConfigFileName(element['instance_of']);
-                element["config_origin_filename"] = getConfigFilenameFromAto(config_location_name['file']);
-                config = await loadFileConfig(config_location_name['file']);
+            element.config = {};
+            if (element.instance_of !== null) {
+                config_location_name = returnConfigFileName(element.instance_of);
+                element.config_origin_filename = getConfigFilenameFromAto(config_location_name.file);
+                element.config_origin_module = config_location_name.module;
+                config = await loadFileConfig(config_location_name.file);
             }
             else if (file_name) {
                 config = await loadFileConfig(file_name);
             }
+
             if (config) {
                 if (Object.keys(config).length !== 0) {
                     if (config.hasOwnProperty(config_location_name['module'])) {
@@ -845,16 +839,24 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
         body: {}
     };
 
-    if (cell.model instanceof AtoComponent) {
-        let requestOptionBody = {"child_attrs": {}};
-        requestOptionBody["child_attrs"][cell.model.attributes.instance_name] = {
+    if (cell.model instanceof AtoComponent || cell.model instanceof AtoBlock) {
+        parent = cell.model.attributes.parent_element;
+        if (!parent) return; // ignore moving the top-level module
+
+        // TODO: deal with nested modules
+        let request_body_options = {};
+        let module_options_obj = {"child_attrs": {}};
+        request_body_options[parent.attributes.config_origin_module] = module_options_obj;
+        module_options_obj["child_attrs"][parent.attributes.instance_name] = {
             "position": {
-                x: cell.model.attributes.position.x,
-                y: cell.model.attributes.position.y,
+                // TODO: calculate relative position to parents
+                x: cell.model.attributes.position.x - parent.attributes.position.x,
+                y: cell.model.attributes.position.y - parent.attributes.position.y,
             }
         };
-        requestOptions.body = JSON.stringify(requestOptionBody);
+        requestOptions.body = JSON.stringify(request_body_options);
         fetch('/api/config/' + cell.model.attributes.config_origin_filename, requestOptions);
+
     } else if (cell.model instanceof shapes.standard.Link) {
         // FIXME:
         // screw links anyway...
