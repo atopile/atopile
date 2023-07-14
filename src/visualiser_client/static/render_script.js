@@ -1,3 +1,5 @@
+// TODO: the root cell ID has a colon in it, which there shouldn't be
+
 const { shapes, util, dia, anchors } = joint;
 
 // Visual settings for the visualizer
