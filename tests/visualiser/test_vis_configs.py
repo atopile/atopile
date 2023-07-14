@@ -1,4 +1,4 @@
-# contents of conftest.py
+import copy
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -14,76 +14,35 @@ from atopile.visualizer.project_handler import ProjectHandler
 def vis_config_data():
     return {
         "vdiv": {
-            "ports": [
-                {
-                    "name": "top",
-                    "location": "top"
-                },
-                {
-                    "name": "right",
-                    "location": "right"
-                },
-                {
-                    "name": "bottom",
-                    "location": "bottom"
-                }
-            ],
-            "pins": [
-                {
-                    "name": "input",
-                    "index": 0,
-                    "private": False,
-                    "port": "top"
-                },
-                {
-                    "name": "output",
-                    "index": 0,
-                    "private": False,
-                    "port": "right"
-                },
-                {
-                    "name": "ground",
-                    "index": 0,
-                    "private": False,
-                    "port": "bottom"
-                }
-            ],
-            "signals": [
-                {
-                    "name": "input",
-                    "is_stub": True
-                },
-                {
-                    "name": "output",
-                    "is_stub": True
-                },
-                {
-                    "name": "ground",
-                    "is_stub": False
-                }
-            ],
+            "ports": {
+                "top": {"location": "top"},
+                "right": {"location": "right"},
+                "bottom": {"location": "bottom"},
+            },
+            "pins": {
+                "input": {"index": 0, "private": False, "port": "top"},
+                "output": {"index": 0, "private": False, "port": "right"},
+                "ground": {"index": 0, "private": False, "port": "bottom"},
+            },
+            "signals": {
+                "input": {"is_stub": True},
+                "output": {"is_stub": True},
+                "ground": {"is_stub": False},
+            },
             "child_attrs": {
-                "r_top": {
-                    "position": {
-                        "x": 10,
-                        "y": 10
-                    }
-                },
-                "r_bt": {
-                    "position": {
-                        "x": 10,
-                        "y": 100
-                    }
-                }
-            }
+                "r_top": {"position": {"x": 10, "y": 10}},
+                "r_bt": {"position": {"x": 10, "y": 100}},
+            },
         }
     }
+
 
 @pytest.fixture
 def mocked_project(tmp_path: Path):
     _mocked_project = MagicMock()
     _mocked_project.root = tmp_path
     return _mocked_project
+
 
 @pytest.fixture
 def project_handler(dummy_model: Model, mocked_project: Project, vis_config_data: dict):
@@ -97,6 +56,22 @@ def project_handler(dummy_model: Model, mocked_project: Project, vis_config_data
 
     return _project_handler
 
+
 @pytest.mark.asyncio
 async def test_load_yaml(project_handler: ProjectHandler, vis_config_data: dict):
-    assert dict(await project_handler.get_config("dummy_file.vis.json")) == vis_config_data
+    assert (
+        dict(await project_handler.get_config("dummy_file.vis.json")) == vis_config_data
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_yaml(project_handler: ProjectHandler, vis_config_data: dict):
+    await project_handler.update_config(
+        "dummy_file.vis.json", {"vdiv": {"pins": {"input": {"private": True}}}}
+    )
+
+    expected = copy.deepcopy(vis_config_data)
+    expected["vdiv"]["pins"]["input"]["private"] = True
+
+    actual = dict(await project_handler.get_config("dummy_file.vis.json"))
+    assert actual == expected
