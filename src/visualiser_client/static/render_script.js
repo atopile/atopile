@@ -137,8 +137,7 @@ class AtoElement extends dia.Element {
                 "top": this.getGroupPorts('top'),
                 "bottom": this.getGroupPorts('bottom'),
                 "left": this.getGroupPorts('left'),
-                "right": this.getGroupPorts('right'),
-                "default": this.getGroupPorts('default')
+                "right": this.getGroupPorts('right')
             };
             let ports_text_length = {
                 "top": 0,
@@ -155,11 +154,6 @@ class AtoElement extends dia.Element {
                 "width": 0
             }
 
-            // Move the default to the top
-            if (port_buckets["default"].length) {
-                port_buckets["top"].push(port_buckets["default"]);
-            }
-
             // Extract the longest port label from each bucket
             for (let port_bucket in port_buckets) {
                 if (port_buckets[port_bucket].length) {
@@ -170,6 +164,7 @@ class AtoElement extends dia.Element {
                     }
                 }
             }
+
             dim_from_text['height'] = measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length");
             dim_from_text['height'] += measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length");
             dim_from_text['height'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
@@ -179,13 +174,14 @@ class AtoElement extends dia.Element {
             dim_from_text['width'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "length");
 
             dim_from_ports['height'] = (Math.max(port_buckets['right'].length, port_buckets['left'].length) + 1) * settings_dict['component']['portPitch'];
-            dim_from_ports['width'] = (Math.max(port_buckets['top'].length, port_buckets['bottom'].length) + 1) * settings_dict['component']['portPitch'];
-            if (port_buckets['right'].length != 0 || port_buckets['left'].length != 0) {
-                if (port_buckets['top'].length != 0 || port_buckets['bottom'].length != 0) {
-                    dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
-                }
-            }
-            console.log(dim_from_ports);
+            dim_from_ports['width'] = (Math.max(port_buckets['top'].length, port_buckets['bottom'].length) - 1) * settings_dict['component']['portPitch'];
+            dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
+            // Feature does not work without moveable ports
+            // if (port_buckets['right'].length != 0 || port_buckets['left'].length != 0) {
+            //     if (port_buckets['top'].length != 0 || port_buckets['bottom'].length != 0) {
+            //         dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
+            //     }
+            // }
 
             this.resize(Math.max(dim_from_text['width'], dim_from_ports['width']), Math.max(dim_from_text['height'], dim_from_ports['height']));
         }
@@ -551,7 +547,7 @@ function getElementTitle(element) {
 function addPins(jointJSObject, element, path) {
     // Create the default port location
     let ports_to_add = {};
-    ports_to_add['default'] = {
+    ports_to_add['top'] = {
         "location": "top",
         "pins": []
     };
@@ -581,7 +577,7 @@ function addPins(jointJSObject, element, path) {
         }
         // If no port is defined, add it to the default port
         if (!config_found) {
-            ports_to_add['default']['pins'].push(pin_to_add);
+            ports_to_add['top']['pins'].push(pin_to_add);
         }
     }
 
@@ -758,8 +754,6 @@ async function populateConfigFromBackend(circuit_dict, file_name = null) {
     let populated_circuit = [];
 
     for (let element of circuit_dict) {
-        console.log('element')
-        console.log(element)
         if (element['type'] == 'component') {
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
@@ -782,9 +776,11 @@ async function populateConfigFromBackend(circuit_dict, file_name = null) {
             else if (file_name) {
                 config = await loadFileConfig(file_name);
             }
-            if (Object.keys(config).length !== 0) {
-                if (config.hasOwnProperty(config_location_name['module'])) {
-                    element['config'] = config[config_location_name['module']];
+            if (config) {
+                if (Object.keys(config).length !== 0) {
+                    if (config.hasOwnProperty(config_location_name['module'])) {
+                        element['config'] = config[config_location_name['module']];
+                    }
                 }
             }
             element['blocks'] = await populateConfigFromBackend(element['blocks']);
