@@ -602,8 +602,7 @@ function createComponent(element, parent, path) {
                 text: title,
             }
         },
-        parent: parent,
-        instance_name: element['config_origin_filename'],
+        config_origin_filename: element['config_origin_filename'],
     });
 
     addPins(component, element, path);
@@ -631,7 +630,7 @@ function createBlock(element, parent, path) {
                 text: title,
             }
         },
-        instance_name: element['config_origin_filename'],
+        config_origin_filename: element['config_origin_filename'],
     });
 
     addPins(block, element, path);
@@ -757,7 +756,7 @@ async function populateConfigFromBackend(circuit_dict, file_name = null) {
         if (element['type'] == 'component') {
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
-                element["config_origin_filename"] = config_location_name['file'] + '.vis.json';
+                element["config_origin_filename"] = getConfigFilenameFromAto(config_location_name['file']);
                 const config = await loadFileConfig(config_location_name['file']);
                 element['config'] = default_config;
                 if (Object.keys(config).length !== 0) {
@@ -770,7 +769,7 @@ async function populateConfigFromBackend(circuit_dict, file_name = null) {
             element['config'] = default_config;
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
-                element["config_origin_filename"] = config_location_name['file'] + '.vis.json';
+                element["config_origin_filename"] = getConfigFilenameFromAto(config_location_name['file']);
                 config = await loadFileConfig(config_location_name['file']);
             }
             else if (file_name) {
@@ -847,12 +846,15 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
     };
 
     if (cell.model instanceof AtoComponent) {
-
-        requestOptions.body = JSON.stringify({
-            id: cell.model.attributes.id,
-            x: cell.model.attributes.position.x,
-            y: cell.model.attributes.position.y,
-        });
+        let requestOptionBody = {"child_attrs": {}};
+        requestOptionBody["child_attrs"][cell.model.attributes.instance_name] = {
+            "position": {
+                x: cell.model.attributes.position.x,
+                y: cell.model.attributes.position.y,
+            }
+        };
+        requestOptions.body = JSON.stringify(requestOptionBody);
+        fetch('/api/config/' + cell.model.attributes.config_origin_filename, requestOptions);
     } else if (cell.model instanceof shapes.standard.Link) {
         // FIXME:
         // screw links anyway...
@@ -866,7 +868,6 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
         return;
     }
 
-    fetch('/api/view/move', requestOptions);
 });
 
 const svg = paper.svg;
@@ -876,11 +877,15 @@ graph.on('change:position', function(cell) {
     cell.fitAncestorElements();
 });
 
+function getConfigFilenameFromAto(ato_file_name) {
+    // Strip .ato from the name
+    let striped_file_name = ato_file_name.replace(".ato", "");
+    return  striped_file_name + '.vis.json';
+}
+
 // Fetch a file visual config from the server
 async function loadFileConfig(file_name) {
-    // Strip .ato from the name
-    let striped_file_name = file_name.replace(".ato", "");
-    let address = "/api/config/" + striped_file_name + '.vis.json';
+    let address = "/api/config/" + getConfigFilenameFromAto(file_name);
     //address = "/api/circuit/bike_light.ato:BikeLight";
     let response;
     try {
