@@ -31,18 +31,27 @@ app = FastAPI()
 static_dir = get_project_root() / "src/visualiser_client/static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+
 @app.get("/api/")
 async def api_root():
     log.info("Hello World")
     return {"message": "Hello World"}
 
+
 @app.get("/api/circuit/{file:path}", name="path-convertor")
 async def get_circuit(file):
     return await project_handler.build_circuit(file)
 
+
 @app.get("/api/config/{file:path}", name="path-convertor")
 async def get_config(file):
     return await project_handler.get_config(file)
+
+
+@app.post("/api/config/{file:path}", name="path-convertor")
+async def get_config(file, updates: dict):
+    return await project_handler.update_config(file, updates)
+
 
 # TODO: stream updates
 # @app.websocket("/ws/circuit/")
