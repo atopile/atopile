@@ -842,47 +842,6 @@ paper.on('link:mouseleave', function(linkView) {
     linkView.unhighlight();
 });
 
-paper.on('cell:pointerup', function(cell, evt, x, y) {
-    let requestOptions = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: {}
-    };
-
-    if (cell.model instanceof AtoComponent || cell.model instanceof AtoBlock) {
-        parent = cell.model.getParentCell();
-        if (!parent) return; // ignore moving the top-level module
-
-        // TODO: deal with nested modules
-        let request_body_options = {};
-        let module_options_obj = {"child_attrs": {}};
-        request_body_options[parent.attributes.config_origin_module] = module_options_obj;
-        module_options_obj["child_attrs"][cell.model.attributes.instance_name] = {
-            "position": {
-                x: cell.model.attributes.position.x - parent.attributes.position.x,
-                y: cell.model.attributes.position.y - parent.attributes.position.y,
-            }
-        };
-        requestOptions.body = JSON.stringify(request_body_options);
-        fetch('/api/config/' + parent.attributes.config_origin_filename, requestOptions);
-
-    } else if (cell.model instanceof shapes.standard.Link) {
-        // FIXME:
-        // screw links anyway...
-        // requestOptions.body = JSON.stringify({
-        //     id: cell.model.attributes.id,
-        //     x: cell.targetPoint.x,
-        //     y: cell.targetPoint.y,
-        // });
-        return;
-    } else {
-        return;
-    }
-
-});
-
-const svg = paper.svg;
-
 graph.on('change:position', function(cell) {
     // `fitParent()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
     cell.fitAncestorElements();
@@ -925,5 +884,60 @@ async function loadCircuit() {
     console.log(config_populated_circuit);
     generateJointjsGraph(config_populated_circuit, 5);
 }
+
+// flag to help rate limit calls to savePositions
+var stuff_has_moved = false;
+
+paper.on('cell:pointerup', function(cell, evt, x, y) {
+    if (cell.model instanceof AtoComponent || cell.model instanceof AtoBlock) {
+        stuff_has_moved = true;
+    }
+});
+
+function savePositions() {
+    let requests_to_make = {};
+
+    graph.getCells().forEach(function(cell) {
+        if (cell instanceof AtoComponent || cell instanceof AtoBlock) {
+            console.log(cell.id);
+
+            let parent = cell.getParentCell();
+            if (!parent) return; // skip the root element
+
+            let origin_file = parent.attributes.config_origin_filename;
+            let origin_module = parent.attributes.config_origin_module;
+            let instance_name = cell.attributes.instance_name;
+
+            if (!requests_to_make[origin_file]) requests_to_make[origin_file] = {};
+            if (!requests_to_make[origin_file][origin_module]) requests_to_make[origin_file][origin_module] = {"child_attrs": {}};
+            requests_to_make[origin_file][origin_module]["child_attrs"][instance_name] = {
+                "position": {
+                    x: cell.attributes.position.x - parent.attributes.position.x,
+                    y: cell.attributes.position.y - parent.attributes.position.y,
+                }
+            };
+        }
+    });
+
+    for (let origin_file in requests_to_make) {
+        let requestOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requests_to_make[origin_file])
+        };
+        fetch('/api/config/' + origin_file, requestOptions);
+    }
+
+    // reset the flag
+    stuff_has_moved = false;
+}
+
+// rate limit the calls to savePositions
+setInterval(function() {
+    if (stuff_has_moved) {
+        console.log("saving positions");
+        savePositions();
+    }
+}, 1000);
 
 loadCircuit();
