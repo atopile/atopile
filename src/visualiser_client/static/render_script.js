@@ -472,7 +472,8 @@ function addStub(block_id, port_id, label) {
             offset: -5,
             angle: 0,
             args: {
-                keepGradient: true
+                keepGradient: true,
+                ensureLegibility: true,
             }
         }
     });
@@ -519,15 +520,15 @@ function addLinks(element, current_path) {
 
         let is_stub = false;
         for (let link_config of ((element.config || {}).signals || [])) {
-            if (link_config['name'] == link['signal'] && link_config['is_stub']) {
+            if (link_config['name'] == link['name'] && link_config['is_stub']) {
                 is_stub = true;
                 // if not a module
                 if (current_path.length != source_block.length) {
-                    addStub(source_block, source_path, link['signal']);
+                    addStub(source_block, source_path, link['name']);
                 }
                 // if not a module
                 if (current_path.length != target_block.length) {
-                    addStub(target_block, target_path, link['signal']);
+                    addStub(target_block, target_path, link['name']);
                 }
             }
         }
