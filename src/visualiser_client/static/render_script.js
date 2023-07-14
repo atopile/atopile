@@ -77,7 +77,6 @@ class AtoElement extends dia.Element {
     defaults() {
         return {
             ...super.defaults,
-            parent_element: null,
             instance_name: null,
             config_origin_filename: null,
             config_origin_module: [],
@@ -552,8 +551,8 @@ function addPins(jointJSObject, element, path) {
 
     // Create the ports that are defined in the config
     for (let port of ((element.config || {}).ports || [])) {
-        ports_to_add[port.get("name", "top")] = {
-            "location": port.get("location", "top"),
+        ports_to_add[(port.name || "top")] = {
+            "location": (port.location || "top"),
             "pins": []
         }
     }
@@ -608,7 +607,6 @@ function createComponent(element, parent, path) {
     component.addTo(graph);
 
     if (parent) {
-        component.attributes.parent_element = parent;
         addElementToElement(component, parent);
     }
 
@@ -638,7 +636,6 @@ function createBlock(element, parent, path) {
 
     if (parent) {
         addElementToElement(block, parent);
-        block.attributes.parent_element = parent;
     }
 
     return block;
@@ -765,9 +762,6 @@ async function populateConfigFromBackend(circuit_dict, file_name = null) {
                 element.config_origin_module = config_location_name.module;
                 config = await loadFileConfig(config_location_name.file);
             }
-            else if (file_name) {
-                config = await loadFileConfig(file_name);
-            }
 
             if (config) {
                 if (Object.keys(config).length !== 0) {
@@ -840,22 +834,21 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
     };
 
     if (cell.model instanceof AtoComponent || cell.model instanceof AtoBlock) {
-        parent = cell.model.attributes.parent_element;
+        parent = cell.model.getParentCell();
         if (!parent) return; // ignore moving the top-level module
 
         // TODO: deal with nested modules
         let request_body_options = {};
         let module_options_obj = {"child_attrs": {}};
         request_body_options[parent.attributes.config_origin_module] = module_options_obj;
-        module_options_obj["child_attrs"][parent.attributes.instance_name] = {
+        module_options_obj["child_attrs"][cell.model.attributes.instance_name] = {
             "position": {
-                // TODO: calculate relative position to parents
                 x: cell.model.attributes.position.x - parent.attributes.position.x,
                 y: cell.model.attributes.position.y - parent.attributes.position.y,
             }
         };
         requestOptions.body = JSON.stringify(request_body_options);
-        fetch('/api/config/' + cell.model.attributes.config_origin_filename, requestOptions);
+        fetch('/api/config/' + parent.attributes.config_origin_filename, requestOptions);
 
     } else if (cell.model instanceof shapes.standard.Link) {
         // FIXME:
