@@ -3,6 +3,3 @@ component Diode:
     signal cathode
 
     designator_prefix = "D"
-
-    anode.visualizer.location = "top"
-    cathode.visualizer.location = "bottom"
