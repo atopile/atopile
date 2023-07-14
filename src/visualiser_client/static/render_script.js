@@ -18,7 +18,7 @@ let settings_dict = {
         portPitch: 20,
         defaultHeight: 50,
         labelHorizontalMargin: 30,
-        labelVerticalMargin: 10,
+        labelVerticalMargin: 4,
         titleMargin: 10,
         pin: {
             fontSize: 8,
@@ -141,10 +141,10 @@ class AtoElement extends dia.Element {
                 "right": this.getGroupPorts('right')
             };
             let ports_text_length = {
-                "top": 0,
-                "bottom": 0,
-                "left": 0,
-                "right": 0
+                "top": "",
+                "bottom": "",
+                "left": "",
+                "right": ""
             };
             let dim_from_text = {
                 "height": 0,
@@ -159,19 +159,17 @@ class AtoElement extends dia.Element {
             for (let port_bucket in port_buckets) {
                 if (port_buckets[port_bucket].length) {
                     for (let port of port_buckets[port_bucket]) {
-                        if (port["attrs"]["label"]["text"].length > ports_text_length[port_bucket]) {
+                        if (port["attrs"]["label"]["text"].length > ports_text_length[port_bucket].length) {
                             ports_text_length[port_bucket] = port["attrs"]["label"]["text"];
                         }
                     }
                 }
             }
 
-            dim_from_text['height'] = measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length");
-            dim_from_text['height'] += measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length");
+            dim_from_text['height'] = 2 * (Math.max(measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length")));
             dim_from_text['height'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
             dim_from_text['height'] += settings_dict['component']['labelVerticalMargin'] * 2;
-            dim_from_text['width'] = measureText(ports_text_length['right'], settings_dict['component']['fontSize'], "length");
-            dim_from_text['width'] += measureText(ports_text_length['left'], settings_dict['component']['fontSize'], "length");
+            dim_from_text['width'] = 2 * (Math.max(measureText(ports_text_length['right'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['left'], settings_dict['component']['fontSize'], "length")));
             dim_from_text['width'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "length");
 
             dim_from_ports['height'] = (Math.max(port_buckets['right'].length, port_buckets['left'].length) + 1) * settings_dict['component']['portPitch'];
@@ -464,11 +462,11 @@ function addStub(block_id, port_id, label) {
                 fontFamily: settings_dict['common']['fontFamily'],
                 fontSize: settings_dict['stubs']['fontSize'],
                 //textVerticalAnchor: "middle",
-                textAnchor: "start",
+                textAnchor: "middle",
             }
         },
         position: {
-            distance: .1,
+            distance: .9,
             offset: -5,
             angle: 0,
             args: {
