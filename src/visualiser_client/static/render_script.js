@@ -77,6 +77,8 @@ class AtoElement extends dia.Element {
     defaults() {
         return {
             ...super.defaults,
+            instance_name: null,
+            config_origin_filename: null,
         };
     }
 
@@ -596,13 +598,16 @@ function createComponent(element, parent, path) {
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     var component = new AtoComponent({
         id: path,
+        instance_name: element['name'],
         size: { width: comp_width,
                 height: comp_height},
         attrs: {
             label: {
                 text: title,
             }
-        }
+        },
+        parent: parent,
+        instance_name: element['config_origin_filename'],
     });
 
     addPins(component, element, path);
@@ -620,6 +625,7 @@ function createBlock(element, parent, path) {
     let title = getElementTitle(element);
     let block = new AtoBlock({
         id: path,
+        instance_name: element['name'],
         size: {
             width: 200,
             height: 100
@@ -628,7 +634,8 @@ function createBlock(element, parent, path) {
             label: {
                 text: title,
             }
-        }
+        },
+        instance_name: element['config_origin_filename'],
     });
 
     addPins(block, element, path);
@@ -756,7 +763,7 @@ async function populateConfigFromBackend(circuit_dict, file_name = null) {
         if (element['type'] == 'component') {
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
-                console.log(config_location_name);
+                element["config_origin_filename"] = config_location_name['file'] + '.vis.json';
                 const config = await loadFileConfig(config_location_name['file']);
                 element['config'] = default_config;
                 if (Object.keys(config).length !== 0) {
@@ -769,6 +776,7 @@ async function populateConfigFromBackend(circuit_dict, file_name = null) {
             element['config'] = default_config;
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
+                element["config_origin_filename"] = config_location_name['file'] + '.vis.json';
                 config = await loadFileConfig(config_location_name['file']);
             }
             else if (file_name) {
@@ -841,21 +849,28 @@ paper.on('cell:pointerup', function(cell, evt, x, y) {
         headers: { 'Content-Type': 'application/json' },
         body: {}
     };
+
     if (cell.model instanceof AtoComponent) {
+
         requestOptions.body = JSON.stringify({
             id: cell.model.attributes.id,
             x: cell.model.attributes.position.x,
             y: cell.model.attributes.position.y,
         });
-        fetch('/api/view/move', requestOptions);
     } else if (cell.model instanceof shapes.standard.Link) {
-        requestOptions.body = JSON.stringify({
-            id: cell.model.attributes.id,
-            x: cell.targetPoint.x,
-            y: cell.targetPoint.y,
-        });
-        fetch('/api/view/move', requestOptions);
+        // FIXME:
+        // screw links anyway...
+        // requestOptions.body = JSON.stringify({
+        //     id: cell.model.attributes.id,
+        //     x: cell.targetPoint.x,
+        //     y: cell.targetPoint.y,
+        // });
+        return;
+    } else {
+        return;
     }
+
+    fetch('/api/view/move', requestOptions);
 });
 
 const svg = paper.svg;
