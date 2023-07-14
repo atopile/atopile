@@ -91,6 +91,7 @@ class Bob(ModelVisitor):
         bob = Bob(model)
 
         root = bob.generic_visit_block(main)
+        root.instance_of = main.path
 
         connections = model.graph.es.select(type_eq=EdgeType.connects_to.name)
         all_indicies = {v.index for v in bob.all_verticies}
