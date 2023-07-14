@@ -747,7 +747,7 @@ let default_config = {
     'child_attrs': []
 }
 
-async function populateConfigFromBackend(circuit_dict) {
+async function populateConfigFromBackend(circuit_dict, file_name = null) {
     let populated_circuit = [];
 
     for (let element of circuit_dict) {
@@ -764,18 +764,30 @@ async function populateConfigFromBackend(circuit_dict) {
                 }
             }
         }
-        if (element['type'] == 'module' || element['type'] == 'file') {
+        else if (element['type'] == 'module') {
+            let config = null;
+            element['config'] = default_config;
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
-                console.log(element);
-                console.log(config_location_name);
-                const config = await loadFileConfig(config_location_name['file']);
-                element['config'] = default_config;
-                if (Object.keys(config).length !== 0) {
+                config = await loadFileConfig(config_location_name['file']);
+            }
+            else if (file_name) {
+                config = await loadFileConfig(file_name);
+            }
+            if (Object.keys(config).length !== 0) {
+                if (config.hasOwnProperty(config_location_name['module'])) {
                     element['config'] = config[config_location_name['module']];
                 }
             }
             element['blocks'] = await populateConfigFromBackend(element['blocks']);
+        }
+        else if (element['type'] == 'file') {
+            // If file, the following block will not be an instance, so it needs to know it's parent file
+            // to fetch the config
+            element['blocks'] = await populateConfigFromBackend(element['blocks'], element['name']);
+        }
+        else {
+            console.log("unknown block type");
         }
         populated_circuit.push(element);
     }
