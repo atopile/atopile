@@ -719,6 +719,21 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
                     addLinks(element, downstream_path)
                     applyParentConfig(element, child_attrs);
                 }
+
+                // FIXME:
+                // Position the root element in the middle of the screen
+                if (current_depth == 0) {
+                    let paperSize = paper.getComputedSize();
+                    let rootSize = joint_object.size();
+
+                    // Calculate the position for the center of the paper.
+                    let posX = (paperSize.width / 2) - (rootSize.width / 2);
+                    let posY = (paperSize.height / 2) - (rootSize.height / 2);
+
+                    // Position the rectangle in the center of the paper.
+                    joint_object.position(posX, posY);
+                    // TODO: bring the other content with it
+                }
             }
 
             else if (element['type'] == 'file') {
