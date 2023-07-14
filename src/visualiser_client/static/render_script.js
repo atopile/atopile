@@ -855,8 +855,6 @@ graph.on('change:position', function(cell) {
 
 // Fetch a file visual config from the server
 async function loadFileConfig(file_name) {
-    //const response = await fetch('/api/view');
-
     // Strip .ato from the name
     let striped_file_name = file_name.replace(".ato", "");
     let address = "/api/config/" + striped_file_name + '.vis.json';
@@ -878,8 +876,8 @@ async function loadFileConfig(file_name) {
 
 // Fetch a circuit dict from the server
 async function loadCircuit() {
-    //const response = await fetch('/api/view');
-    const response = await fetch('/api/circuit/bike_light.ato');
+    const urlParams = new URLSearchParams(window.location.search);
+    const response = await fetch('/api/circuit/' + urlParams.get('circuit'));
     const circuit_data = await response.json();
     console.log("data received from backend")
     console.log(circuit_data);

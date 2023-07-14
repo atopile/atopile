@@ -49,7 +49,7 @@ async def get_config(file):
 
 
 @app.post("/api/config/{file:path}", name="path-convertor")
-async def get_config(file, updates: dict):
+async def update_config(file, updates: dict):
     return await project_handler.update_config(file, updates)
 
 

@@ -1,6 +1,6 @@
 import logging
 import webbrowser
-from pathlib import Path
+import urllib.parse
 
 import click
 import uvicorn
@@ -16,18 +16,26 @@ log.setLevel(logging.DEBUG)
 # configure UI
 @click.command()
 @ingest_config_hat
-@click.option('--port', default=2860)  # ato0 -> 2860 on an old phone
-@click.option('--browser/--no-browser', default=True)
-@click.option('--debug/--no-debug', default=False)
-def view(project: Project, build_config: BuildConfig, port: int, browser: bool, debug: bool):
+@click.option("--port", default=2860)  # ato0 -> 2860 on an old phone
+@click.option("--browser/--no-browser", default=True)
+@click.option("--debug/--no-debug", default=False)
+def view(
+    project: Project, build_config: BuildConfig, port: int, browser: bool, debug: bool
+):
     # defer import because it's kinda expensive?
     import atopile.visualizer.server as s
+
     s.project_handler.project = project
     s.project_handler.build_config = build_config
     if debug:
         # FIXME: fuck... talk about pasghetti code
         import atopile.parser.parser
+
         atopile.parser.parser.log.setLevel(logging.DEBUG)
+
+    url = f"http://localhost:{port}/static/client.html?" + urllib.parse.urlencode(
+        {"circuit": build_config.root_node}
+    )
     if browser:
-        webbrowser.open(f"http://localhost:{port}/static/client.html")
+        webbrowser.open(url)
     uvicorn.run(s.app, host="0.0.0.0", port=port)
