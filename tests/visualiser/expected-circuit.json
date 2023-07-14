@@ -1,0 +1,107 @@
+{
+  "name": "dummy_file.ato",
+  "type": "file",
+  "fields": {},
+  "blocks": [
+    {
+      "name": "dummy_module",
+      "type": "module",
+      "fields": {},
+      "blocks": [
+        {
+          "name": "dummy_comp0",
+          "type": "component",
+          "fields": {},
+          "blocks": [],
+          "pins": [
+            {
+              "name": "spare_sig",
+              "fields": {}
+            },
+            {
+              "name": "sig0",
+              "fields": {}
+            },
+            {
+              "name": "sig1",
+              "fields": {}
+            }
+          ],
+          "links": [
+            {
+              "name": "sig0",
+              "source": "p0",
+              "target": "sig0"
+            },
+            {
+              "name": "sig1",
+              "source": "p1",
+              "target": "sig1"
+            },
+            {
+              "name": "sig0-sig1",
+              "source": "sig0",
+              "target": "sig1"
+            }
+          ],
+          "instance_of": null
+        },
+        {
+          "name": "dummy_comp1",
+          "type": "component",
+          "fields": {},
+          "blocks": [],
+          "pins": [
+            {
+              "name": "spare_sig",
+              "fields": {}
+            },
+            {
+              "name": "sig0",
+              "fields": {}
+            },
+            {
+              "name": "sig1",
+              "fields": {}
+            }
+          ],
+          "links": [
+            {
+              "name": "sig0",
+              "source": "p0",
+              "target": "sig0"
+            },
+            {
+              "name": "sig1",
+              "source": "p1",
+              "target": "sig1"
+            }
+          ],
+          "instance_of": null
+        }
+      ],
+      "pins": [
+        {
+          "name": "top_sig",
+          "fields": {}
+        }
+      ],
+      "links": [
+        {
+          "name": "top_sig",
+          "source": "top_sig",
+          "target": "dummy_comp1.sig1"
+        },
+        {
+          "name": "dummy_comp0.spare_sig-dummy_comp1.spare_sig",
+          "source": "dummy_comp0.spare_sig",
+          "target": "dummy_comp1.spare_sig"
+        }
+      ],
+      "instance_of": null
+    }
+  ],
+  "pins": [],
+  "links": [],
+  "instance_of": "dummy_file.ato"
+}

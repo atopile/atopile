@@ -1,3 +1,5 @@
+// TODO: the root cell ID has a colon in it, which there shouldn't be
+
 const { shapes, util, dia, anchors } = joint;
 
 // Visual settings for the visualizer
@@ -17,8 +19,8 @@ let settings_dict = {
         defaultWidth: 60,
         portPitch: 20,
         defaultHeight: 50,
-        labelHorizontalMargin: 40,
-        labelVerticalMargin: 10,
+        labelHorizontalMargin: 30,
+        labelVerticalMargin: 4,
         titleMargin: 10,
         pin: {
             fontSize: 8,
@@ -39,15 +41,37 @@ let settings_dict = {
         color: "blue"
     },
     stubs: {
-        fontSize: 10,
+        fontSize: 8,
     }
 }
 
-let opposite_direction = {
-    "top": "bottom",
-    "bottom": "top",
-    "left": "right",
-    "right": "left"
+function customAnchor(view, magnet, ref, opt, endType, linkView) {
+    const elBBox = view.model.getBBox();
+    const magnetCenter = view.getNodeBBox(magnet).center();
+    const side = elBBox.sideNearestToPoint(magnetCenter);
+    let dx = 0;
+    let dy = 0;
+    const length = ('length' in opt) ? opt.length : 30;
+    switch (side) {
+        case 'left':
+        dx = -length;
+        break;
+        case 'right':
+        dx = length;
+        break;
+        case 'top':
+        dy = -length;
+        break;
+        case 'bottom':
+        dy = length;
+        break;
+
+    }
+    return joint.anchors.center.call(this, view, magnet, ref, {
+      ...opt,
+      dx,
+      dy
+    }, endType, linkView);
 }
 
 // Base class for the visual elements
@@ -55,16 +79,133 @@ class AtoElement extends dia.Element {
     defaults() {
         return {
             ...super.defaults,
-            hidden: false,
+            instance_name: null,
+            config_origin_filename: null,
+            config_origin_module: [],
         };
     }
 
-    isHidden() {
-        return Boolean(this.get("hidden"));
+    addPortWithPins(port_group_name, port_location, pin_list) {
+        let port_label_position = getPortLabelPosition(port_location);
+        let port_anchor = getPortLabelAnchor(port_location);
+        let port_angle = getPortLabelAngle(port_location);
+        let port_position = getPortPosition(port_location);
+
+        let port_group = {};
+
+        port_group[port_group_name] = {
+            position: port_position,
+            attrs: {
+                portBody: {
+                    magnet: true,
+                    r: 2,
+                    fill: '#FFFFFF',
+                    stroke:'#023047',
+                },
+            },
+            label: {
+                position: {
+                    args: {
+                        x: port_label_position[0],
+                        y: port_label_position[1],
+                        angle: port_angle,
+                    }, // Can't use inside/outside in combination
+                    //name: 'inside'
+                },
+                markup: [{
+                    tagName: 'text',
+                    selector: 'label',
+                    className: 'label-text'
+                }]
+            },
+            markup: [{
+                tagName: 'circle',
+                selector: 'portBody'
+            }]
+        };
+
+        // Add the ports list to the element
+        this.prop({"ports": { "groups": port_group}});
+
+        // While we are creating the port, add the pins in the element
+        for (let pin of pin_list) {
+            this.addPort(createPort(pin['path'], pin['name'], port_group_name, port_anchor, true));
+        }
     }
 
-    static isAtoElement(shape) {
-        return shape instanceof AtoElement;
+    resizeBasedOnContent() {
+        let ports = this.getPorts();
+        if (ports) {
+            let port_buckets = {
+                "top": this.getGroupPorts('top'),
+                "bottom": this.getGroupPorts('bottom'),
+                "left": this.getGroupPorts('left'),
+                "right": this.getGroupPorts('right')
+            };
+            let ports_text_length = {
+                "top": "",
+                "bottom": "",
+                "left": "",
+                "right": ""
+            };
+            let dim_from_text = {
+                "height": 0,
+                "width": 0
+            };
+            let dim_from_ports = {
+                "height": 0,
+                "width": 0
+            }
+
+            // Extract the longest port label from each bucket
+            for (let port_bucket in port_buckets) {
+                if (port_buckets[port_bucket].length) {
+                    for (let port of port_buckets[port_bucket]) {
+                        if (port["attrs"]["label"]["text"].length > ports_text_length[port_bucket].length) {
+                            ports_text_length[port_bucket] = port["attrs"]["label"]["text"];
+                        }
+                    }
+                }
+            }
+
+            dim_from_text['height'] = 2 * (Math.max(measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length")));
+            dim_from_text['height'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
+            dim_from_text['height'] += settings_dict['component']['labelVerticalMargin'] * 2;
+            dim_from_text['width'] = 2 * (Math.max(measureText(ports_text_length['right'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['left'], settings_dict['component']['fontSize'], "length")));
+            dim_from_text['width'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "length");
+
+            dim_from_ports['height'] = (Math.max(port_buckets['right'].length, port_buckets['left'].length) + 1) * settings_dict['component']['portPitch'];
+            dim_from_ports['width'] = (Math.max(port_buckets['top'].length, port_buckets['bottom'].length) - 1) * settings_dict['component']['portPitch'];
+            dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
+            // Feature does not work without moveable ports
+            // if (port_buckets['right'].length != 0 || port_buckets['left'].length != 0) {
+            //     if (port_buckets['top'].length != 0 || port_buckets['bottom'].length != 0) {
+            //         dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
+            //     }
+            // }
+
+            this.resize(Math.max(dim_from_text['width'], dim_from_ports['width']), Math.max(dim_from_text['height'], dim_from_ports['height']));
+        }
+    }
+
+    fitAncestorElements() {
+        var padding = settings_dict['common']['parentPadding'];
+        this.fitParent({
+            deep: true,
+            padding: {
+                top: padding,
+                left: padding,
+                right: padding,
+                bottom: padding
+            }
+        });
+    }
+
+    applyParentAttrs(attrs) {
+        if ('position' in attrs) {
+            // Deep setting ensures that the element is placed relative to all parents
+            this.position(attrs['position']['x'], attrs['position']['y'], { deep: true });
+        }
     }
 }
 
@@ -93,9 +234,6 @@ class AtoComponent extends AtoElement {
                     textVerticalAnchor: "middle",
                     textAnchor: "middle",
                     fontFamily: settings_dict["common"]["fontFamily"],
-                    textWrap: {
-                        width: 100,
-                    },
                     x: "calc(w/2)",
                     y: "calc(h/2)"
                 }
@@ -109,82 +247,55 @@ class AtoComponent extends AtoElement {
             <text @selector="label" />
         `;
     }
-
-    fitAncestorElements() {
-        var padding = settings_dict['common']['parentPadding'];
-        this.fitParent({
-            deep: true,
-            padding: {
-                top: padding,
-                left: padding,
-                right: padding,
-                bottom: padding
-            }
-        });
-    }
 }
 
 // Class for a block
 // For the moment, blocks and components are separate.
 // We might want to combine them in the future.
-class AtoBlock extends dia.Element {
+class AtoBlock extends AtoElement {
     defaults() {
         return {
-            ...super.defaults,
-            type: "AtoBlock",
-            size: { width: 10, height: 10 },
+            ...super.defaults(),
+            type: "AtoComponent",
             collapsed: false,
             attrs: {
-            body: {
-                fill: "transparent",
-                stroke: "#333",
-                strokeWidth: settings_dict["block"]["strokeWidth"],
-                strokeDasharray: settings_dict["block"]["strokeDasharray"],
-                width: "calc(w)",
-                height: "calc(h)",
-                rx: settings_dict["block"]["boxRadius"],
-                ry: settings_dict["block"]["boxRadius"],
-            },
-            label: {
-                text: "Block",
-                fill: "#333",
-                textVerticalAnchor: "top",
-                fontFamily: settings_dict['common']['fontFamily'],
-                fontSize: settings_dict['block']['label']['fontSize'],
-                fontWeight: settings_dict["block"]['label']["fontWeight"],
-                textAnchor: 'start',
-                x: 8,
-                y: 8
+                body: {
+                    fill: "transparent",
+                    stroke: "#333",
+                    strokeWidth: settings_dict["block"]["strokeWidth"],
+                    strokeDasharray: settings_dict["block"]["strokeDasharray"],
+                    width: "calc(w)",
+                    height: "calc(h)",
+                    rx: settings_dict["block"]["boxRadius"],
+                    ry: settings_dict["block"]["boxRadius"],
+                },
+                label: {
+                    text: "Block",
+                    fill: "black",
+                    textVerticalAnchor: "top",
+                    fontSize: settings_dict['block']['label']['fontSize'],
+                    fontWeight: settings_dict["block"]['label']["fontWeight"],
+                    textAnchor: "start",
+                    fontFamily: settings_dict["common"]["fontFamily"],
+                    x: 8,
+                    y: 8
+                }
             }
-        }
-      };
+        };
     }
 
-    preinitialize(...args) {
-      this.markup = util.svg`
-              <rect @selector="body" />
-              <text @selector="label" />
-          `;
+    preinitialize() {
+        this.markup = util.svg`
+            <rect @selector="body" />
+            <text @selector="label" />
+        `;
     }
 
     updateChildrenVisibility() {
-      const collapsed = this.isCollapsed();
-      this.getEmbeddedCells().forEach((child) => child.set("hidden", collapsed));
+        const collapsed = this.isCollapsed();
+        this.getEmbeddedCells().forEach((child) => child.set("hidden", collapsed));
     }
-
-    fitAncestorElements() {
-        var padding = 10;
-        this.fitParent({
-            deep: true,
-            padding: {
-                top:  padding,
-                left: padding,
-                right: padding,
-                bottom: padding
-            }
-        });
-    }
-  }
+}
 
 
 const cellNamespace = {
@@ -194,12 +305,29 @@ const cellNamespace = {
     AtoBlock
 };
 
-function getPortLabelPosition(port) {
-    switch (port['location']) {
+function createPort(uuid, port_name, port_group_name, port_anchor) {
+    return {
+        id: uuid,
+        group: port_group_name,
+        attrs: {
+            label: {
+                text: port_name,
+                fontFamily: settings_dict['common']['fontFamily'],
+                fontSize: settings_dict['component']['pin']['fontSize'],
+                fontWeight: settings_dict["component"]['pin']["fontWeight"],
+                textAnchor: port_anchor,
+            },
+        },
+        // markup: '<circle id="Oval" stroke="#000000" fill="#FFFFFF" cx="0" cy="0" r="2"/>'
+    }
+}
+
+function getPortLabelPosition(location) {
+    switch (location) {
         case "top":
-            return [0, 8];
+            return [0, 5];
         case "bottom":
-            return [0, -8];
+            return [0, -5];
         case "left":
             return [5, 0];
         case "right":
@@ -209,8 +337,8 @@ function getPortLabelPosition(port) {
     };
 };
 
-function getPortLabelAnchor(port) {
-    switch (port['location']) {
+function getPortLabelAnchor(location) {
+    switch (location) {
         case "top":
             return 'end';
         case "bottom":
@@ -224,8 +352,8 @@ function getPortLabelAnchor(port) {
     }
 };
 
-function getPortLabelAngle(port) {
-    switch (port['location']) {
+function getPortLabelAngle(location) {
+    switch (location) {
         case "top":
             return -90;
         case "bottom":
@@ -239,8 +367,8 @@ function getPortLabelAngle(port) {
     };
 };
 
-function getPortPosition(port) {
-    switch (port['location']) {
+function getPortPosition(location) {
+    switch (location) {
         case "top":
             return {
                 name: 'line',
@@ -278,8 +406,10 @@ function getPortPosition(port) {
     };
 };
 
+// Definitely need to update this garbage at some point
 function measureText(text, text_size, direction) {
-    var lines = text.split("\n");
+    var string = text + '';
+    var lines = string.split("\n");
     var width = 0;
     for (let line of lines) {
         var length = line.length;
@@ -299,260 +429,216 @@ function measureText(text, text_size, direction) {
     }
 };
 
-// This function resizes a component based on the size of the labels and the number of ports
-function resizeBasedOnLabels(element, ports_list) {
-    // Largest text for each port
-    let text_length_by_port = {
-        'top': 0,
-        'left': 0,
-        'right': 0,
-        'bottom': 0,
-    };
-    let component_port_nb = {
-        'top': 0,
-        'left': 0,
-        'right': 0,
-        'bottom': 0,
-    };
-
-    for (let port of ports_list) {
-        // Check how many pins in each port
-        component_port_nb[port['location']] = port['pins'].length;
-
-        // For each port, find the longest label
-        for (let pin of port['pins']) {
-            label_length = measureText(pin['name'], settings_dict["component"]['pin']["fontSize"], 'length');
-            if (label_length > text_length_by_port[port['name']]) {
-                text_length_by_port[port['location']] = label_length;
-            };
-        };
-    };
-
-    // width of the component with text only
-    max_label_text_width = Math.max(text_length_by_port['left'], text_length_by_port['right']);
-    max_label_text_height = Math.max(text_length_by_port['top'], text_length_by_port['bottom']);
-
-    let comp_width_by_text = element.getBBox().width + 2 * max_label_text_width;
-    let comp_height_by_text = element.getBBox().height + 2 * max_label_text_height;
-
-    element.resize(comp_width_by_text, comp_height_by_text);
-
-    width_with_ports = 2 * settings_dict['component']['labelHorizontalMargin'] +
-                        Math.max(component_port_nb['top'], component_port_nb['bottom']) * (settings_dict['component']['portPitch'] - 1);
-    height_with_ports = 2 * settings_dict['component']['labelVerticalMargin'] +
-                        Math.max(component_port_nb['left'], component_port_nb['right']) * (settings_dict['component']['portPitch'] - 1);
-
-    if (width_with_ports > element.getBBox().width) {
-        element.resize(width_with_ports, element.getBBox().height);
-        console.log('width changed');
-    };
-    if (height_with_ports > element.getBBox().height) {
-        element.resize(element.getBBox().width, height_with_ports);
-        console.log('height changed');
-    };
-};
-
-
-function addPortsAndPins(element, ports_list) {
-    // Dict of all the port for the element
-    let port_groups = {};
-
-    // Create the different ports from the list
-    for (let port of ports_list) {
-
-        let port_label_position = [];
-        let port_anchor = "";
-        let port_angle = 0;
-        let port_position = {};
-        port_label_position = getPortLabelPosition(port);
-        port_anchor = getPortLabelAnchor(port);
-        port_angle = getPortLabelAngle(port);
-        port_position = getPortPosition(port);
-
-        port_groups[port['name']] = {
-            position: port_position,
-            attrs: {
-                portBody: {
-                    magnet: true,
-                    r: 2,
-                    fill: '#FFFFFF',
-                    stroke:'#023047',
-                },
+function addStub(block_id, port_id, label) {
+    let added_stub = new shapes.standard.Link({
+        source: {
+            id: block_id,
+            port: port_id,
+            anchor: {
+                name: 'center'
+            }
+        },
+            target: {
+            id: block_id,
+            port: port_id,
+            anchor: {
+                name: 'customAnchor'
             },
-            label: {
-                position: {
-                    args: {
-                        x: port_label_position[0],
-                        y: port_label_position[1],
-                        angle: port_angle,
-                    }, // Can't use inside/outside in combination
-                    //name: 'inside'
-                },
-                markup: [{
-                    tagName: 'text',
-                    selector: 'label',
-                    className: 'label-text'
-                }]
-            },
-            markup: [{
-                tagName: 'circle',
-                selector: 'portBody'
-            }]
-        };
-
-        // While we are creating the port, add the pins in the element
-        for (let pin of port['pins']) {
-            element.addPort({
-                id: pin["uuid"],
-                group: port['name'],
-                attrs: {
-                    label: {
-                        text: pin['name'],
-                        fontFamily: settings_dict['common']['fontFamily'],
-                        fontSize: settings_dict['component']['pin']['fontSize'],
-                        fontWeight: settings_dict["component"]['pin']["fontWeight"],
-                        textAnchor: port_anchor,
-                    },
-                },
-            });
-            pin_to_element_association[pin["uuid"]] = element["id"];
+            connectionPoint: {
+                name: 'anchor'
+            }
         }
-    };
-
-    // Add the ports list to the element
-    element.prop({"ports": { "groups": port_groups}});
+    });
+    added_stub.attr({
+        line: {
+            'stroke': settings_dict['link']['color'],
+            'stroke-width': settings_dict['link']['strokeWidth'],
+            targetMarker: {'type': 'none'},
+        },
+        z: 0,
+    });
+    added_stub.appendLabel({
+        attrs: {
+            text: {
+                text: label,
+                fontFamily: settings_dict['common']['fontFamily'],
+                fontSize: settings_dict['stubs']['fontSize'],
+                //textVerticalAnchor: "middle",
+                textAnchor: "middle",
+            }
+        },
+        position: {
+            distance: .9,
+            offset: -5,
+            angle: 0,
+            args: {
+                keepGradient: true,
+                ensureLegibility: true,
+            }
+        }
+    });
+    graph.addCell(added_stub);
 }
 
-function addLinks(links) {
-    for (let link of links) {
-        var added_link = new shapes.standard.Link({
-            source: {
-                id: pin_to_element_association[link['source']],
-                port: link['source']
-            },
-            target: {
-                id: pin_to_element_association[link['target']],
-                port: link['target']
+function addLink(source_block_id, source_port_id, target_block_id, target_port_id) {
+    var added_link = new shapes.standard.Link({
+        source: {
+            id: source_block_id,
+            port: source_port_id
+        },
+        target: {
+            id: target_block_id,
+            port: target_port_id
+        }
+    });
+    added_link.attr({
+        line: {
+            'stroke': settings_dict['link']['color'],
+            'stroke-width': settings_dict['link']['strokeWidth'],
+            targetMarker: {'type': 'none'},
+        },
+        z: 0
+    });
+    added_link.router('manhattan', {
+        perpendicular: true,
+        step: settings_dict['common']['gridSize'],
+    });
+    added_link.addTo(graph);
+}
+
+
+function addLinks(element, current_path) {
+    for (let link of element['links']) {
+        // Add the block (if there is one) and port to the path
+        let source_path = concatenatePathAndName(current_path, link['source']);
+        let target_path = concatenatePathAndName(current_path, link['target']);
+        // Remove the port from the path to get the block path
+        let source = popLastPathElementFromPath(source_path);
+        let target = popLastPathElementFromPath(target_path);
+        let source_block = source['path'];
+        let target_block = target['path'];
+
+        let is_stub = false;
+        for (let link_config of ((element.config || {}).signals || [])) {
+            if (link_config['name'] == link['name'] && link_config['is_stub']) {
+                is_stub = true;
+                // if not a module
+                if (current_path.length != source_block.length) {
+                    addStub(source_block, source_path, link['name']);
+                }
+                // if not a module
+                if (current_path.length != target_block.length) {
+                    addStub(target_block, target_path, link['name']);
+                }
             }
-        });
-        added_link.attr({
-            line: {
-                'stroke': settings_dict['link']['color'],
-                'stroke-width': settings_dict['link']['strokeWidth'],
-                targetMarker: {'type': 'none'},
-            },
-            z: 0
-        });
-        added_link.router('manhattan', {
-            perpendicular: true,
-            step: settings_dict['common']['gridSize'],
-        });
-
-        added_link.addTo(graph);
-
-        var verticesTool = new joint.linkTools.Vertices();
-        var segmentsTool = new joint.linkTools.Segments();
-        var boundaryTool = new joint.linkTools.Boundary();
-
-        var toolsView = new joint.dia.ToolsView({
-            tools: [verticesTool, boundaryTool]
-        });
-
-        var linkView = added_link.findView(paper);
-        linkView.addTools(toolsView);
-        linkView.hideTools();
+        }
+        if (!is_stub) {
+            addLink(source_block, source_path, target_block, target_path);
+        }
     }
 }
 
-function addStubs(stubs) {
-    for (let stub of stubs) {
-        var added_stub = new shapes.standard.Link({id: stub['uuid']});
-        added_stub.prop('source', {
-            id: pin_to_element_association[stub['source']],
-            port: stub['source']});
-        if (stub['position']) {
-            added_stub.prop('target', stub['position']);
-        } else {
-            added_stub.prop('target', { x: 10, y: 10 });
-        }
-        added_stub.router('manhattan', {
-            startDirections: [stub['direction']],
-            endDirections: [opposite_direction[stub['direction']]],
-            perpendicular: true,
-            step: settings_dict['common']['gridSize'],
-        });
-        added_stub.attr('root/title', 'joint.shapes.standard.Link');
-        added_stub.attr({
-            line: {
-                'stroke': settings_dict['link']['color'],
-                'stroke-width': settings_dict['link']['strokeWidth'],
-                //targetMarker: {'type': 'none'},
-            },
-            z: 0
-        });
-        let label_offset;
-        (stub['direction'] == 'bottom') ? label_offset = 10 : label_offset = -10;
-        added_stub.appendLabel({
-            attrs: {
-                text: {
-                    text: stub['name'],
-                    fontFamily: settings_dict['common']['fontFamily'],
-                    fontSize: settings_dict['stubs']['fontSize'],
-                }
-            },
-            position: {
-                distance: 1,
-                offset: {
-                    x: 0,
-                    y: label_offset
-                },
-                angle: 0,
-                args: {
-                    keepGradient: false
-                }
-            }
-        });
-        added_stub.addTo(graph);
-    };
+function getElementTitle(element) {
+    if (element['instance_of'] != null) {
+        return`${element['name']} \n(${popLastPathElementFromPath(element['instance_of']).name})`;
+    } else {
+        return element['name'];;
+    }
 }
 
-function createComponent(title, uuid, ports_dict, x, y) {
+function addPins(jointJSObject, element, path) {
+    // Create the default port location
+    let ports_to_add = {};
+
+    // Create the ports that are defined in the config
+    for (let port of ((element.config || {}).ports || [])) {
+        ports_to_add[(port.name || "top")] = {
+            "location": (port.location || "top"),
+            "pins": []
+        }
+    }
+
+    let config_found;
+    for (let pin_to_add of element['pins']) {
+
+        pin_to_add['path'] = concatenatePathAndName(path, pin_to_add['name']);
+
+        config_found = false;
+        for (let config_pin of ((element.config || {}).pins || [])) {
+            // If a port is defined, add it to it designated port
+            if (pin_to_add['name'] == config_pin['name']) {
+                ports_to_add[config_pin['port']]['pins'].push(pin_to_add);
+                config_found = true;
+            }
+        }
+        // If no port is defined, add it to the default port
+        if (!config_found) {
+            if (!ports_to_add['top']) ports_to_add['top'] = {"location": "top", "pins": []};
+            ports_to_add['top']['pins'].push(pin_to_add);
+        }
+    }
+
+    for (let port in ports_to_add) {
+        if (ports_to_add[port]['pins'].length > 0) {
+            jointJSObject.addPortWithPins(port, ports_to_add[port]['location'], ports_to_add[port]['pins']);
+        }
+    }
+}
+
+function createComponent(element, parent, path) {
+    let title = getElementTitle(element);
     comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
     comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
-    const component = new AtoComponent({
-        id: uuid,
+    var component = new AtoComponent({
+        id: path,
+        instance_name: element['name'],
         size: { width: comp_width,
                 height: comp_height},
         attrs: {
             label: {
                 text: title,
             }
-        }
+        },
+        config_origin_filename: element.config_origin_filename,
+        config_origin_module: element.config_origin_module,
     });
 
-    addPortsAndPins(component, ports_dict);
-    resizeBasedOnLabels(component, ports_dict);
-    //resizeBasedOnPorts(component, ports_dict);
-
+    addPins(component, element, path);
+    component.resizeBasedOnContent();
     component.addTo(graph);
-    component.position(x, y, { parentRelative: true });
+
+    if (parent) {
+        addElementToElement(component, parent);
+    }
+
     return component;
 }
 
-function createBlock(title, uuid, ports_dict, x, y) {
-    const block = new AtoBlock({
-        id: uuid,
+function createBlock(element, parent, path) {
+    let title = getElementTitle(element);
+    let block = new AtoBlock({
+        id: path,
+        instance_name: element['name'],
+        size: {
+            width: 200,
+            height: 100
+        },
         attrs: {
             label: {
                 text: title,
             }
-        }
+        },
+        config_origin_filename: element.config_origin_filename,
+        config_origin_module: element.config_origin_module,
     });
 
-    addPortsAndPins(block, ports_dict);
-
+    addPins(block, element, path);
     block.addTo(graph);
-    block.position(x, y, { parentRelative: false });
+
+    if (parent) {
+        addElementToElement(block, parent);
+    }
+
     return block;
 }
 
@@ -560,72 +646,159 @@ function addElementToElement(block_to_add, to_block) {
     to_block.embed(block_to_add);
 }
 
-function getElementTitle(element) {
-    if (element['instance_of'] != null) {
-        return`${element['name']} \n(${element['instance_of']})`;
-    } else {
-        return element['name'];;
+function returnConfigFileName(string) {
+    if (string) {
+        const [file, module] = string.split(":");
+        return {"file": file, "module": module}
+    }
+    else return null;
+}
+
+function concatenatePathAndName(path, name) {
+    if (path == null) {
+        return name + ':'
+    }
+    else if (path.slice(-1) == ':') {
+        return path + name;
+    }
+    else {
+        return path + '.' + name;
     }
 }
 
-function renderDataFromBackend(data, is_root = true, parent = null) {
+function popLastPathElementFromPath(path) {
+    // Split the file name and the blocks
+    const file_block = path.split(":");
+    const file = file_block[0];
+    // Split the blocks
+    const blocks = file_block[1].split(".");
+    const path_blocks = blocks.slice(0, blocks.length - 1);
+    const remaining_path = file + ':' + path_blocks.join('.')
+    const name = blocks[blocks.length - 1];
+    return {'file': file, 'path': remaining_path, 'name': name};
+}
 
-    // Create the list of all the created elements
-    let dict_of_elements = {};
-
-    for (let element of data) {
-        // FIXME: this default positioning is shit
-        let x = 100;
-        let y = 100;
-
-        if (element['position']) {
-            x = element['position']['x'];
-            y = element['position']['y'];
+function applyParentConfig(element, child_attrs) {
+    if (child_attrs !== null && Object.keys(child_attrs).length > 0) {
+        for (let attrs in child_attrs) {
+            if (attrs == element['name']) {
+                element['jointObject'].applyParentAttrs(child_attrs[attrs]);
+            }
         }
+    }
+}
 
-        var created_element = null;
+async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path = null, parent = null, child_attrs = null) {
+    let downstream_path;
+    let new_depth = current_depth + 1;
 
-        if (element['type'] == 'component') {
-            let title = getElementTitle(element);
-            created_element = createComponent(title, element['uuid'], element['ports'], x, y);
-            dict_of_elements[element['uuid']] = created_element;
-            // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
-            created_element.fitAncestorElements();
+    if (current_depth <= max_depth) {
+        for (let element of circuit) {
+            var joint_object = null;
+
+            if (element['type'] == 'component') {
+                downstream_path = concatenatePathAndName(path, element['name']);
+                joint_object = createComponent(element, parent, downstream_path);
+                element['jointObject'] = joint_object;
+                if (parent) {
+                    addElementToElement(joint_object, parent);
+                }
+                applyParentConfig(element, child_attrs);
+            }
+
+            // If it is a block, create it and instantiate the contents within it
+            else if (element['type'] == 'module') {
+                downstream_path = concatenatePathAndName(path, element['name']);
+                // Create the module
+                joint_object = createBlock(element, parent, downstream_path);
+                element['jointObject'] = joint_object;
+                if (parent) {
+                    addElementToElement(joint_object, parent);
+                }
+
+                // Call the function recursively on children
+                if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
+                    addLinks(element, downstream_path)
+                    applyParentConfig(element, child_attrs);
+                }
+
+                // FIXME:
+                // Position the root element in the middle of the screen
+                if (current_depth == 0) {
+                    let paperSize = paper.getComputedSize();
+                    let rootSize = joint_object.size();
+
+                    // Calculate the position for the center of the paper.
+                    let posX = (paperSize.width / 2) - (rootSize.width / 2);
+                    let posY = (paperSize.height / 2) - (rootSize.height / 2);
+
+                    // Position the rectangle in the center of the paper.
+                    joint_object.position(posX, posY);
+                    // TODO: bring the other content with it
+                }
+            }
+
+            else if (element['type'] == 'file') {
+                downstream_path = concatenatePathAndName(path, element['name']);
+                await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path);
+            }
+
+            else {
+                // raise an error because we don't know what to do with this element
+                // TODO: raise an error
+                console.log('Unknown element type: ' + element['type']);
+            }
         }
+        return true;
+    }
+    else {
+        return false;
+    }
+}
 
-        // If it is a block, create it
-        else if (element['type'] == 'module') {
-            let title = getElementTitle(element);
-            created_element = createBlock(title, element['uuid'], element['ports'], x, y);
-            dict_of_elements[element['uuid']] = created_element;
+async function populateConfigFromBackend(circuit_dict, file_name = null) {
+    let populated_circuit = [];
 
-            // Iterate over the included elements to create them
-            let returned_dict = renderDataFromBackend(element['blocks'], false, created_element);
-            // Add the returned list to the element list and add all sub-elements to it's parent
-            dict_of_elements = { ...dict_of_elements, ...returned_dict };
-
-            addLinks(element['links']);
-            addStubs(element['stubs']);
-            created_element.fitAncestorElements();
+    for (let element of circuit_dict) {
+        if (element.type == 'component') {
+            if (element.instance_of !== null) {
+                config_location_name = returnConfigFileName(element.instance_of);
+                element.config_origin_filename = getConfigFilenameFromAto(config_location_name.file);
+                element.config_origin_module = config_location_name.module;
+                const config = await loadFileConfig(config_location_name.file);
+                element['config'] = config[config_location_name.module] || {};
+            }
         }
+        else if (element.type == 'module') {
+            let config = null;
+            element.config = {};
+            if (element.instance_of !== null) {
+                config_location_name = returnConfigFileName(element.instance_of);
+                element.config_origin_filename = getConfigFilenameFromAto(config_location_name.file);
+                element.config_origin_module = config_location_name.module;
+                config = await loadFileConfig(config_location_name.file);
+            }
 
+            if (config) {
+                if (Object.keys(config).length !== 0) {
+                    if (config.hasOwnProperty(config_location_name['module'])) {
+                        element['config'] = config[config_location_name['module']];
+                    }
+                }
+            }
+            element['blocks'] = await populateConfigFromBackend(element['blocks']);
+        }
+        else if (element['type'] == 'file') {
+            // If file, the following block will not be an instance, so it needs to know it's parent file
+            // to fetch the config
+            element['blocks'] = await populateConfigFromBackend(element['blocks'], element['name']);
+        }
         else {
-            // raise an error because we don't know what to do with this element
-            // TODO: raise an error
-            console.log('Unknown element type:'+ element['type']);
+            console.log("unknown block type");
         }
-
-        if (parent) {
-            addElementToElement(created_element, parent);
-        }
+        populated_circuit.push(element);
     }
-
-    for (let e_name in dict_of_elements) {
-        // FIXME: this is stupildy inefficent. We should be calling fitEmbeds once instead, but it didn't work
-        dict_of_elements[e_name].fitAncestorElements();
-    }
-
-    return dict_of_elements;
+    return populated_circuit;
 }
 
 const graph = new dia.Graph({}, { cellNamespace });
@@ -640,7 +813,14 @@ const paper = new joint.dia.Paper({
         color: settings_dict["common"]["backgroundColor"]
     },
     interactive: true,
+    snapLinks: true,
+    linkPinning: false,
+    magnetThreshold: 'onleave',
     cellViewNamespace: cellNamespace,
+    anchorNamespace: {
+        ...joint.anchors,
+        customAnchor
+    }
 });
 
 function fill_paper() {
@@ -651,8 +831,6 @@ window.onload = fill_paper;
 window.onresize = fill_paper;
 
 let pin_to_element_association = {};
-let element_dict = {};
-
 
 paper.on('link:mouseenter', function(linkView) {
     linkView.showTools();
@@ -664,40 +842,102 @@ paper.on('link:mouseleave', function(linkView) {
     linkView.unhighlight();
 });
 
-paper.on('cell:pointerup', function(cell, evt, x, y) {
-    let requestOptions = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: {}
-    };
-    if (cell.model instanceof AtoComponent) {
-        requestOptions.body = JSON.stringify({
-            id: cell.model.attributes.id,
-            x: cell.model.attributes.position.x,
-            y: cell.model.attributes.position.y,
-        });
-        fetch('/api/view/move', requestOptions);
-    } else if (cell.model instanceof shapes.standard.Link) {
-        requestOptions.body = JSON.stringify({
-            id: cell.model.attributes.id,
-            x: cell.targetPoint.x,
-            y: cell.targetPoint.y,
-        });
-        fetch('/api/view/move', requestOptions);
-    }
-});
-
 graph.on('change:position', function(cell) {
-    // `fitAncestorElements()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
+    // `fitParent()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
     cell.fitAncestorElements();
 });
 
-async function loadData() {
-    const response = await fetch('/api/view');
-    const vis_dict = await response.json();
-
-    console.log(vis_dict);
-    element_dict = renderDataFromBackend(vis_dict);
+function getConfigFilenameFromAto(ato_file_name) {
+    // Strip .ato from the name
+    let striped_file_name = ato_file_name.replace(".ato", "");
+    return  striped_file_name + '.vis.json';
 }
 
-loadData();
+// Fetch a file visual config from the server
+async function loadFileConfig(file_name) {
+    let address = "/api/config/" + getConfigFilenameFromAto(file_name);
+    //address = "/api/circuit/bike_light.ato:BikeLight";
+    let response;
+    try {
+        response = await fetch(address);
+    } catch (error) {
+        console.log('Could not fetch config ', error);
+    }
+
+    if (response.ok) {
+        return await response.json();
+    } else {
+        console.log(`HTTP Response Code: ${response?.status}`)
+        return null;
+    }
+}
+
+// Fetch a circuit dict from the server
+async function loadCircuit() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const response = await fetch('/api/circuit/' + urlParams.get('circuit'));
+    const circuit_data = await response.json();
+    console.log("data received from backend")
+    console.log(circuit_data);
+
+    let config_populated_circuit = await populateConfigFromBackend([circuit_data]);
+    console.log(config_populated_circuit);
+    generateJointjsGraph(config_populated_circuit, 5);
+}
+
+// flag to help rate limit calls to savePositions
+var stuff_has_moved = false;
+
+paper.on('cell:pointerup', function(cell, evt, x, y) {
+    if (cell.model instanceof AtoComponent || cell.model instanceof AtoBlock) {
+        stuff_has_moved = true;
+    }
+});
+
+function savePositions() {
+    let requests_to_make = {};
+
+    graph.getCells().forEach(function(cell) {
+        if (cell instanceof AtoComponent || cell instanceof AtoBlock) {
+            console.log(cell.id);
+
+            let parent = cell.getParentCell();
+            if (!parent) return; // skip the root element
+
+            let origin_file = parent.attributes.config_origin_filename;
+            let origin_module = parent.attributes.config_origin_module;
+            let instance_name = cell.attributes.instance_name;
+
+            if (!requests_to_make[origin_file]) requests_to_make[origin_file] = {};
+            if (!requests_to_make[origin_file][origin_module]) requests_to_make[origin_file][origin_module] = {"child_attrs": {}};
+            requests_to_make[origin_file][origin_module]["child_attrs"][instance_name] = {
+                "position": {
+                    x: cell.attributes.position.x - parent.attributes.position.x,
+                    y: cell.attributes.position.y - parent.attributes.position.y,
+                }
+            };
+        }
+    });
+
+    for (let origin_file in requests_to_make) {
+        let requestOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requests_to_make[origin_file])
+        };
+        fetch('/api/config/' + origin_file, requestOptions);
+    }
+
+    // reset the flag
+    stuff_has_moved = false;
+}
+
+// rate limit the calls to savePositions
+setInterval(function() {
+    if (stuff_has_moved) {
+        console.log("saving positions");
+        savePositions();
+    }
+}, 1000);
+
+loadCircuit();
