@@ -554,10 +554,12 @@ function addPins(jointJSObject, element, path) {
         "pins": []
     };
     // Create the ports that are defined in the config
-    for (let port of element['config']['ports']) {
-        ports_to_add[port['name']] = {
-            "location": port["location"],
-            "pins": []
+    if (element['config']['ports'].length != 0) {
+        for (let port of element['config']['ports']) {
+            ports_to_add[port['name']] = {
+                "location": port["location"],
+                "pins": []
+            }
         }
     }
 
@@ -749,12 +751,15 @@ async function populateConfigFromBackend(circuit_dict) {
     let populated_circuit = [];
 
     for (let element of circuit_dict) {
+        console.log('element')
+        console.log(element)
         if (element['type'] == 'component') {
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
+                console.log(config_location_name);
                 const config = await loadFileConfig(config_location_name['file']);
                 element['config'] = default_config;
-                if (config !== null) {
+                if (Object.keys(config).length !== 0) {
                     element['config'] = config[config_location_name['module']];
                 }
             }
@@ -762,9 +767,11 @@ async function populateConfigFromBackend(circuit_dict) {
         if (element['type'] == 'module' || element['type'] == 'file') {
             if (element['instance_of'] !== null) {
                 config_location_name = returnConfigFileName(element['instance_of']);
+                console.log(element);
+                console.log(config_location_name);
                 const config = await loadFileConfig(config_location_name['file']);
                 element['config'] = default_config;
-                if (config !== null) {
+                if (Object.keys(config).length !== 0) {
                     element['config'] = config[config_location_name['module']];
                 }
             }
@@ -852,7 +859,8 @@ async function loadFileConfig(file_name) {
 
     // Strip .ato from the name
     let striped_file_name = file_name.replace(".ato", "");
-    let address = "/static/" + striped_file_name + '_config.json';
+    let address = "/api/config/" + striped_file_name + '.vis.json';
+    //address = "/api/circuit/bike_light.ato:BikeLight";
     let response;
     try {
         response = await fetch(address);
@@ -861,7 +869,7 @@ async function loadFileConfig(file_name) {
     }
 
     if (response.ok) {
-        return response.json();
+        return await response.json();
     } else {
         console.log(`HTTP Response Code: ${response?.status}`)
         return null;
@@ -871,10 +879,12 @@ async function loadFileConfig(file_name) {
 // Fetch a circuit dict from the server
 async function loadCircuit() {
     //const response = await fetch('/api/view');
-    const response = await fetch('/static/circuit2.json');
+    const response = await fetch('/api/circuit/bike_light.ato');
     const circuit_data = await response.json();
+    console.log("data received from backend")
+    console.log(circuit_data);
 
-    let config_populated_circuit = await populateConfigFromBackend(circuit_data);
+    let config_populated_circuit = await populateConfigFromBackend([circuit_data]);
     console.log(config_populated_circuit);
     generateJointjsGraph(config_populated_circuit, 5);
 }

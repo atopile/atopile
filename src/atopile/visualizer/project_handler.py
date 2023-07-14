@@ -51,8 +51,9 @@ class ProjectHandler:
         # filename is expected to be ~/<project_root>/some_file.vis.json
         # to get the ato source file, let's strip the .json
         ato_filename = Path(filename).with_suffix("").with_suffix(".ato")
-        if str(ato_filename) not in (await self.get_model()).src_files:
-            raise FileNotFoundError
+        src_files = (await self.get_model()).src_files
+        if ato_filename not in src_files:
+            raise FileNotFoundError(f"{ato_filename} not in {src_files}")
 
         vis_file = self.project.root / Path(filename).with_suffix(".yaml")
 
