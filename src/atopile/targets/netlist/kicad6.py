@@ -249,11 +249,12 @@ class KicadNetlist:
             fields = [KicadField(k, v) for k, v in component_data.items() if k not in NON_FIELD_DATA]
 
             # there should always be at least one parent, even if only the file
-            component_parent_v = ModelVertexView(model, component_v.index).parent
+            component_mvv = ModelVertexView(model, component_v.index)
+            component_parent_mvv = component_mvv.parent
 
             sheetpath = KicadSheetpath(
-                names=component_parent_v.path,
-                tstamps=generate_uid_from_path(component_parent_v.path),
+                names=component_parent_mvv.path,
+                tstamps=generate_uid_from_path(component_parent_mvv.path),
             )
 
             # figure out the designators
@@ -274,9 +275,11 @@ class KicadNetlist:
             components[component_path] = component
 
             # Generate the component's nodes
+            # FIXME: all the components are referencing back to their components class's pins
             pins_by_ref = pins_by_ref_by_component[component_class_path]
             for ref, pin in pins_by_ref.items():
-                nodes[f"{component_path}/{ref}"] = KicadNode(component=component, pin=pin)
+                # FIXME: this manual path generation is what got us into strife in the first place... don't do it
+                nodes[f"{component_path}.{ref}"] = KicadNode(component=component, pin=pin)
 
         # Create the nets
         electrical_graph = model.get_graph_view([EdgeType.connects_to])
@@ -308,7 +311,7 @@ class KicadNetlist:
             # the cluster only represents a net if it contains eletrical pins
             if nodes_in_cluster:
                 net = KicadNet(
-                    code=str(len(nets) + 1), #code has to start at 1 and increment
+                    code=str(len(nets) + 1), # code has to start at 1 and increment
                     name=net_name,
                     nodes=nodes_in_cluster,
                 )
