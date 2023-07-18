@@ -882,7 +882,7 @@ async function loadCircuit() {
 
     let config_populated_circuit = await populateConfigFromBackend([circuit_data]);
     console.log(config_populated_circuit);
-    generateJointjsGraph(config_populated_circuit, 5);
+    generateJointjsGraph(config_populated_circuit, 1);
 }
 
 // flag to help rate limit calls to savePositions
