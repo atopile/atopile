@@ -507,33 +507,65 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
 }
 
 
-function addLinks(element, current_path) {
+function addLinks(element, current_path, embedded_cells) {
     for (let link of element['links']) {
         // Add the block (if there is one) and port to the path
-        let source_path = concatenatePathAndName(current_path, link['source']);
-        let target_path = concatenatePathAndName(current_path, link['target']);
-        // Remove the port from the path to get the block path
-        let source = popLastPathElementFromPath(source_path);
-        let target = popLastPathElementFromPath(target_path);
-        let source_block = source['path'];
-        let target_block = target['path'];
+        let source_port_path = concatenatePathAndName(current_path, link['source']);
+        let target_port_path = concatenatePathAndName(current_path, link['target']);
+
+        let source_name_depth = computeNameDepth(link['source']);
+        let target_name_depth = computeNameDepth(link['target']);
+        let source_cell_id;
+        let target_cell_id;
+        let first_element;
+        switch (source_name_depth) {
+            // The port is on the module itself
+            case 1:
+                source_cell_id = current_path;
+                break;
+            // The port is on an embedded cell
+            case 2:
+                first_element = popFirstNameElementFromName(link['source']);
+                source_cell_id = concatenatePathAndName(current_path, first_element['pop']);
+                break;
+            // The port is in a deeper layer. A port should be added on the module.
+            default:
+                first_element = popFirstNameElementFromName(link['source']);
+                source_cell_id = concatenatePathAndName(current_path, first_element['pop']);
+                // need to add a link
+                break;
+        }
+        switch (target_name_depth) {
+            case 1:
+                target_cell_id = current_path;
+                break;
+            case 2:
+                first_element = popFirstNameElementFromName(link['target']);
+                target_cell_id = concatenatePathAndName(current_path, first_element['pop']);
+                break;
+            default:
+                first_element = popFirstNameElementFromName(link['target']);
+                target_cell_id = concatenatePathAndName(current_path, first_element['pop']);
+                // need to add a link
+                break;
+        }
 
         let is_stub = false;
         for (let link_config of ((element.config || {}).signals || [])) {
             if (link_config['name'] == link['name'] && link_config['is_stub']) {
                 is_stub = true;
                 // if not a module
-                if (current_path.length != source_block.length) {
-                    addStub(source_block, source_path, link['name']);
+                if (current_path.length != source_cell_id.length) {
+                    addStub(source_cell_id, source_port_path, link['name']);
                 }
                 // if not a module
-                if (current_path.length != target_block.length) {
-                    addStub(target_block, target_path, link['name']);
+                if (current_path.length != target_cell_id.length) {
+                    addStub(target_cell_id, target_port_path, link['name']);
                 }
             }
         }
         if (!is_stub) {
-            addLink(source_block, source_path, target_block, target_path);
+            addLink(source_cell_id, source_port_path, target_cell_id, target_port_path);
         }
     }
 }
@@ -666,6 +698,22 @@ function concatenatePathAndName(path, name) {
     }
 }
 
+// This function does not support complete paths
+// Only names that are separated by a .
+function computeNameDepth(path) {
+    let name_list = path.split(".");
+    return name_list.length;
+}
+
+function popFirstNameElementFromName(name) {
+    // Split the blocks
+    const blocks = name.split(".");
+    const remaining_blocks = blocks.slice(1, blocks.length);
+    const remaining_name = remaining_blocks.join('.');
+    const pop = blocks[0];
+    return {'pop': pop, 'remaining': remaining_name};
+}
+
 function popLastPathElementFromPath(path) {
     // Split the file name and the blocks
     const file_block = path.split(":");
@@ -673,7 +721,7 @@ function popLastPathElementFromPath(path) {
     // Split the blocks
     const blocks = file_block[1].split(".");
     const path_blocks = blocks.slice(0, blocks.length - 1);
-    const remaining_path = file + ':' + path_blocks.join('.')
+    const remaining_path = file + ':' + path_blocks.join('.');
     const name = blocks[blocks.length - 1];
     return {'file': file, 'path': remaining_path, 'name': name};
 }
@@ -718,7 +766,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
-                    addLinks(element, downstream_path)
+                    addLinks(element, downstream_path, joint_object.getEmbeddedCells())
                     applyParentConfig(element, child_attrs);
                 }
 
