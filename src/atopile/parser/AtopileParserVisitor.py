@@ -99,8 +99,18 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#numerical_pin_ref.
+    def visitNumerical_pin_ref(self, ctx:AtopileParser.Numerical_pin_refContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#attr.
     def visitAttr(self, ctx:AtopileParser.AttrContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#totally_an_integer.
+    def visitTotally_an_integer(self, ctx:AtopileParser.Totally_an_integerContext):
         return self.visitChildren(ctx)
 
 

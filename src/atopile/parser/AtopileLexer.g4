@@ -257,8 +257,7 @@ fragment BIN_DIGIT
 
 /// pointfloat    ::=  [intpart] fraction | intpart "."
 fragment POINT_FLOAT
- : INT_PART? FRACTION
- | INT_PART '.'
+ : INT_PART '.' INT_PART
  ;
 
 /// exponentfloat ::=  (intpart | pointfloat) exponent
@@ -271,10 +270,10 @@ fragment INT_PART
  : DIGIT+
  ;
 
-/// fraction      ::=  "." digit+
-fragment FRACTION
- : '.' DIGIT+
- ;
+// /// fraction      ::=  "." digit+
+// fragment FRACTION
+//  : '.' DIGIT+
+//  ;
 
 /// exponent      ::=  ("e" | "E") ["+" | "-"] digit+
 fragment EXPONENT

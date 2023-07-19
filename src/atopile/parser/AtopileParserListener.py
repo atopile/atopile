@@ -170,12 +170,30 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by AtopileParser#numerical_pin_ref.
+    def enterNumerical_pin_ref(self, ctx:AtopileParser.Numerical_pin_refContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#numerical_pin_ref.
+    def exitNumerical_pin_ref(self, ctx:AtopileParser.Numerical_pin_refContext):
+        pass
+
+
     # Enter a parse tree produced by AtopileParser#attr.
     def enterAttr(self, ctx:AtopileParser.AttrContext):
         pass
 
     # Exit a parse tree produced by AtopileParser#attr.
     def exitAttr(self, ctx:AtopileParser.AttrContext):
+        pass
+
+
+    # Enter a parse tree produced by AtopileParser#totally_an_integer.
+    def enterTotally_an_integer(self, ctx:AtopileParser.Totally_an_integerContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#totally_an_integer.
+    def exitTotally_an_integer(self, ctx:AtopileParser.Totally_an_integerContext):
         pass
 
 

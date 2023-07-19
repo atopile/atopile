@@ -203,7 +203,7 @@ class Model:
                 if return_unfound:
                     return ref_vertex_trail[-1]["path"], remaining_ref_parts[:ref_parts_checked_in_data], remaining_ref_parts[ref_parts_checked_in_data:]
                 else:
-                    raise AttributeError(f"Could not find {ref} in {context}") from ex
+                    raise KeyError(f"Could not find {ref} in {context}") from ex
         else:
             # found a complete match in the data
             if return_unfound:
