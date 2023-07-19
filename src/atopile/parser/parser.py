@@ -1,10 +1,11 @@
 import logging
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List
 
-import yaml
-from antlr4 import CommonTokenStream, FileStream, InputStream
+from antlr4 import CommonTokenStream, InputStream
+from antlr4.error.ErrorListener import ErrorListener
 
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_edge_uid
@@ -17,6 +18,27 @@ from atopile.utils import profile
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
+
+
+class LanguageError(Exception):
+    """
+    This exception is thrown when there's an error in the syntax of the language
+    """
+
+    def __init__(self, message: str, filepath: Path, line: int, column: int) -> None:
+        super().__init__(message)
+        self.message = message
+        self.filepath = filepath
+        self.line = line
+        self.column = column
+
+
+class ParserErrorListener(ErrorListener):
+    def __init__(self, filepath: Path) -> None:
+        self.filepath = filepath
+
+    def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
+        raise LanguageError(f"Syntax error: '{msg}'", self.filepath, line, column)
 
 
 class Builder(AtopileParserVisitor):
@@ -59,13 +81,17 @@ class Builder(AtopileParserVisitor):
         if str(abs_path) in self._tree_cache:
             return self._tree_cache[str(abs_path)]
 
+        error_listener = ParserErrorListener(abs_path)
+
         # FIXME: hacky performance improvement by avoiding jittery read
         with abs_path.open("r", encoding="utf-8") as f:
             input = InputStream(f.read())
-        # input = FileStream(abs_path, encoding="utf-8")
+
         lexer = AtopileLexer(input)
         stream = CommonTokenStream(lexer)
         parser = AtopileParser(stream)
+        parser.removeErrorListeners()
+        parser.addErrorListener(error_listener)
         tree = parser.file_input()
         self._tree_cache[str(abs_path)] = tree
         return tree
@@ -95,10 +121,17 @@ class Builder(AtopileParserVisitor):
     def visitImport_stmt(self, ctx: AtopileParser.Import_stmtContext):
         import_filename = self.get_string(ctx.string())
 
-        abs_path, std_path = self.project.resolve_import(import_filename, self.current_file)
+        abs_path, std_path = self.project.resolve_import(
+            import_filename, self.current_file
+        )
 
         if std_path in self._file_stack:
-            raise RuntimeError(f"Circular import detected: {std_path}")
+            raise LanguageError(
+                f"Circular import detected: {std_path}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
 
         if std_path not in self.model.src_files:
             # do the actual import, parsing etc...
@@ -112,13 +145,14 @@ class Builder(AtopileParserVisitor):
         to_import = ctx.name_or_attr().getText()
         graph_path, data_path = self.model.find_ref(to_import, import_filename)
         if data_path:
-            raise RuntimeError(f"Cannot import data path {data_path}")
+            raise LanguageError(
+                f"Cannot import data path {data_path}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
 
-        self.model.new_edge(
-            EdgeType.imported_to,
-            graph_path,
-            self.current_block
-        )
+        self.model.new_edge(EdgeType.imported_to, graph_path, self.current_block)
 
         # the super().visit() in the new file import section should
         # handle all depth required. From here, we always want to go back up
@@ -129,15 +163,11 @@ class Builder(AtopileParserVisitor):
 
         if ctx.OPTIONAL():
             block_path = self.model.new_vertex(
-                block_type,
-                name,
-                option_of=self.current_block
+                block_type, name, option_of=self.current_block
             )
         else:
             block_path = self.model.new_vertex(
-                block_type,
-                name,
-                part_of=self.current_block
+                block_type, name, part_of=self.current_block
             )
 
         self.model.data[block_path] = {}
@@ -152,11 +182,30 @@ class Builder(AtopileParserVisitor):
         return self.define_block(ctx, VertexType.module)
 
     def visitPindef_stmt(self, ctx: AtopileParser.Pindef_stmtContext):
-        name = ctx.name().getText()
+        if ctx.name() is not None:
+            name = ctx.name().getText()
+        elif ctx.totally_an_integer() is not None:
+            name = ctx.totally_an_integer().getText()
+            try:
+                int(name)
+            except ValueError as ex:
+                raise LanguageError(
+                    "Pindef_stmt must have a name or integer",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                ) from ex
+
+        else:
+            raise LanguageError(
+                "Pindef_stmt must have a name or integer",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
         pin_path = self.model.new_vertex(
-            VertexType.pin,
-            name,
-            part_of=self.current_block
+            VertexType.pin, name, part_of=self.current_block
         )
         self.model.data[pin_path] = {}
 
@@ -171,9 +220,7 @@ class Builder(AtopileParserVisitor):
             private = False
 
         signal_path = self.model.new_vertex(
-            VertexType.signal,
-            name,
-            part_of=self.current_block
+            VertexType.signal, name, part_of=self.current_block
         )
         self.model.data[signal_path] = {
             "private": private,
@@ -181,24 +228,83 @@ class Builder(AtopileParserVisitor):
 
         return super().visitSignaldef_stmt(ctx)
 
+    def deref_totally_an_integer(
+        self, ctx: AtopileParser.Totally_an_integerContext
+    ) -> str:
+        try:
+            int(ctx.getText())
+        except ValueError as ex:
+            raise LanguageError(
+                "Numerical pin reference must be an integer, but seems you stuck something else in there somehow?",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
+        return ctx.getText()
+
     def deref_connectable(self, ctx: AtopileParser.ConnectableContext) -> str:
         if ctx.name_or_attr():
             ref = ctx.name_or_attr().getText()
         elif ctx.signaldef_stmt():
             ref = ctx.signaldef_stmt().name().getText()
         elif ctx.pindef_stmt():
-            ref = ctx.pindef_stmt().name().getText()
+            if ctx.pindef_stmt().name():
+                ref = ctx.pindef_stmt().name().getText()
+            elif ctx.pindef_stmt().totally_an_integer():
+                # here we don't care about the result, we're just using the function to check it's an integer
+                self.deref_totally_an_integer(ctx.pindef_stmt().totally_an_integer())
+                ref = ctx.pindef_stmt().totally_an_integer().getText()
+            else:
+                raise LanguageError(
+                    "Cannot connect to this type of object",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+        elif ctx.numerical_pin_ref():
+            # same as above, we don't care about the result
+            self.deref_totally_an_integer(ctx.numerical_pin_ref().totally_an_integer())
+            ref = ctx.numerical_pin_ref().getText()
         else:
-            raise TypeError("Cannot connect to this type of object")
+            raise LanguageError(
+                "Cannot connect to this type of object",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
 
-        cn_path, cn_data = self.model.find_ref(ref, self.current_block)
+        try:
+            cn_path, cn_data = self.model.find_ref(ref, self.current_block)
+        except KeyError as ex:
+            raise LanguageError(
+                f"Cannot connect to non-existent object {ref}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
+
         if cn_data:
-            raise TypeError(f"Cannot connect to data object {ref}")
+            raise LanguageError(
+                f"Cannot connect to data object {ref}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
         return cn_path
 
     def visitConnect_stmt(self, ctx: AtopileParser.Connect_stmtContext):
         # visit the connectables now before attempting to make a connection
         result = self.visitChildren(ctx)
+        connectables = ctx.connectable()
+
+        if len(connectables) < 2:
+            raise LanguageError(
+                "Connect statement must have at least two connectables",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
         from_path = self.deref_connectable(ctx.connectable(0))
         to_path = self.deref_connectable(ctx.connectable(1))
         uid = generate_edge_uid(from_path, to_path, self.current_block)
@@ -237,9 +343,16 @@ class Builder(AtopileParserVisitor):
             elif assignable.boolean_():
                 value = bool(assignable.boolean_().getText())
             else:
-                raise NotImplementedError("Only strings and numbers are supported")
+                raise LanguageError(
+                    "Only strings and numbers are supported",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
 
-            graph_path, existing_data_path, remaining_parts = self.model.find_ref(assignee, self.current_block, return_unfound=True)
+            graph_path, existing_data_path, remaining_parts = self.model.find_ref(
+                assignee, self.current_block, return_unfound=True
+            )
             data_path = existing_data_path + remaining_parts
             data = self.model.data[graph_path]
             for p in data_path[:-1]:
@@ -249,8 +362,9 @@ class Builder(AtopileParserVisitor):
 
         return super().visitAssign_stmt(ctx)
 
-    def get_string(self, ctx:AtopileParser.StringContext) -> str:
-        return ctx.getText().strip("\"\'")
+    def get_string(self, ctx: AtopileParser.StringContext) -> str:
+        return ctx.getText().strip("\"'")
+
 
 def build_model(project: Project, config: BuildConfig) -> Model:
     log.info("Building model")
@@ -258,6 +372,13 @@ def build_model(project: Project, config: BuildConfig) -> Model:
 
     with profile(profile_log=log, skip=skip_profiler):
         bob = Builder(project)
-        model = bob.build(config.root_file)
+        try:
+            model = bob.build(config.root_file)
+        except LanguageError as ex:
+            log.error(
+                f"Language error @ {ex.filepath}:{ex.line}:{ex.column}: {ex.message}"
+            )
+            log.error("Stopping due to error.")
+            sys.exit(1)
 
     return model
