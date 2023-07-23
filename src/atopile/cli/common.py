@@ -12,68 +12,105 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-def project_argument(f):
-    def callback(ctx: click.Context, param, value):
-        if value is None:
-            project_path = Path.cwd()
-        else:
-            project_path = Path(value)
-
-        try:
-            project: Project = Project.from_path(project_path)
-        except FileNotFoundError as e:
-            raise click.BadParameter(f"Could not find project at {project_path}.") from e
-        log.info(f"Using project {project.root}")
-
-        ctx.obj = project
-        return project
-
-    # TODO: add help
-    return click.argument("project", required=False, default=None, callback=callback)(f)
-
 def ingest_config_hat(f):
     # to calculate the config, we need a project and we need them in that order.
     # click doesn't guarentee the order of processing, and it's substantiall up to the user entering the options.
     # since we always need the project to figure out the config, we may as well decorate the command ourselves,
     # process things in the right order and hand them back as kw_args
 
-    @project_argument
+    @click.argument("source", required=False, default=None)
     @click.option("--build-config", default=None)
     @click.option("--root-file", default=None)
     @click.option("--root-node", default=None)
     @functools.wraps(f)
-    def wrapper(*args, project: Project, build_config: str, root_file: str, root_node: str, **kwargs):
-        build_config_name = build_config
-        if build_config_name is None:
-            build_config: BuildConfig = project.config.builds["default"]
+    def wrapper(
+        *args,
+        source: str,
+        build_config: str,
+        root_file: str,
+        root_node: str,
+        **kwargs,
+    ):
+        if source is None:
+            source_path = Path.cwd()
+            module_path = None
         else:
-            if build_config_name in project.config.builds:
-                build_config = project.config.builds[build_config_name]
+            split_source = source.split(":")
+            if len(split_source) == 2:
+                raw_source_path, module_path = split_source
+            elif len(split_source) == 1:
+                raw_source_path = split_source[0]
+                module_path = None
             else:
-                raise click.BadParameter(f"Could not find build-config \"{build_config_name}\".")
-        log.info(f"Using build config {build_config.name}")
+                raise click.BadParameter(
+                    f"Could not parse source path {source}. Expected format is `path/to/source.ato:module/path`."
+                )
 
-        # root-file
-        if root_file is not None:
-            build_config = CustomBuildConfig.from_build_config(build_config)
-            build_config.root_file = project.root / root_file
+            source_path = Path(raw_source_path)
 
-        if build_config.root_file is None:
-            raise click.BadParameter(f"No root-file specified by options or config \"{build_config.name}\"")
+            if not source_path.exists():
+                raise click.BadParameter(
+                    f"Path not found {str(source_path)}."
+                )
 
-        if not build_config.root_file.exists():
-            raise click.ClickException(f"root-file {root_file} does not exist")
-        log.info(f"Using root-file {root_file}")
+        try:
+            project: Project = Project.from_path(source_path)
+        except FileNotFoundError as e:
+            raise click.BadParameter(
+                f"Could not find project from path {str(source_path)}. Is this file path within a project?"
+            ) from e
 
-        # root-node
-        if root_node is not None:
-            build_config = CustomBuildConfig.from_build_config(build_config)
-            build_config.root_node = root_node
+        log.info(f"Using project {project.root}")
 
-        if build_config.root_node is None:
-            raise click.BadParameter(f"No root-node specified by options or config \"{build_config.name}\"")
+        # FIXME: remove deprecated options
+        if root_file is not None or root_node is not None:
+            log.warning("Specifying root-file or root-node via options is deprecated.")
+            log.warning("... because it was a daft idea. Matt's sorry.")
+            log.warning(
+                "Please instead specify what you are pointing to with a positional argument eg."
+            )
+            log.warning(
+                "ato ... %s/%s:%s",
+                project.root.relative_to(Path(".").resolve().absolute()),
+                root_file,
+                root_node,
+            )
+            log.warning("See `atopile view --help` for more information.")
+
+        if module_path or source_path.is_file():
+            root_file_path = project.standardise_import_path(source_path)
+            root_node_path = str(root_file_path) + ":" + module_path
+        else:
+            root_file_path = None
+            root_node_path = None
+
+        if build_config is None:
+            base_build_config_obj: BuildConfig = project.config.builds["default"]
+        else:
+            if build_config in project.config.builds:
+                base_build_config_obj = project.config.builds[build_config]
+            else:
+                raise click.BadParameter(
+                    f'Could not find build-config "{build_config}".'
+                )
+        if root_file_path is not None:
+            build_config_obj = CustomBuildConfig.from_build_config(
+                base_build_config_obj
+            )
+            build_config_obj.root_file = (
+                (project.root / root_file_path).resolve().absolute()
+            )
+            if root_node_path is not None:
+                build_config_obj.root_node = root_node_path
+        else:
+            if root_node_path is not None:
+                raise click.BadParameter(
+                    "Cannot specify root-node without specifying root-file via positional argument."
+                )
+            build_config_obj = base_build_config_obj
+        log.info(f"Using build config {build_config_obj.name}")
 
         # do the thing
-        return f(*args, project, build_config, **kwargs)
+        return f(*args, project, build_config_obj, **kwargs)
 
     return wrapper
