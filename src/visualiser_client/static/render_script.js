@@ -507,6 +507,10 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
     added_link.addTo(graph);
 }
 
+// Return the cell id and port id from port name and current path
+// If the link spans deeper than one module, a port is added to the module
+// TODO: what happens if the port is multiple layers deep?
+// TODO: Currently only adding the top link
 function returnLinkAddress(port, current_path, embedded_cells) {
     let port_path = concatenatePathAndName(current_path, port);
     let port_name_depth = computeNameDepth(port);
@@ -546,11 +550,11 @@ function addLinks(element, current_path, embedded_cells) {
         for (let link_config of ((element.config || {}).signals || [])) {
             if (link_config['name'] == link['name'] && link_config['is_stub']) {
                 is_stub = true;
-                // if not a module
+                // if not a module (don't want stubs at module level)
                 if (current_path.length != source_address['cell_id'].length) {
                     addStub(source_address['cell_id'], source_address['port_id'], link['name']);
                 }
-                // if not a module
+                // if not a module (don;t want stubs at module level)
                 if (current_path.length != target_address['cell_id'].length) {
                     addStub(target_address['cell_id'], target_address['port_id'], link['name']);
                 }
