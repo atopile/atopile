@@ -1,65 +1,173 @@
-# Additional language features to support richer information pass-down
-# Let's take the exmaple of the NMOS component currently causing us headaches
-# 1. it sucks to make a completely seperate component for NMOS part, when they've all for the same params
-# 2. without a good top-level abstraction you can't readily switch out the parts with valid alternatives
+##### typing of block objects, both classes and instances
 
-# we can borrow from some more strictly typed languages here and define some additional keywords
-# abstract -> this variable is forward-declared, but must be defined somewhere properly
-# module <name> from <super> -> this module is a specialization of another module, and inherits all of its properties, but can override or append to them
+block Component:
+    str footprint = unknown
+    node pin[str | int] = [any]
 
-component NMOS:
-    signal gate
-    signal drain
-    signal source
+block NMOS:
+    Signal gate
+    Signal drain
+    Signal source
 
-    required uF gate_charge
-    optional mOhm gate_resistance
+block SomeNMOS from NMOS, Component:
+    # only components can have footprints, pins
+    gate.nominal_voltage = 0V to 10V
+    gate ~ pin[1]
+    drain ~ pin[2]
+    source ~ pin[3]
 
-    # base type examples
-    required str footprint
-    optional int example1
+block ParallelNMOS from NMOS:
+    SomeNMOS n1, n2, n3  # ? on this syntax
+    gate ~ n1.gate, n2.gate, n3.gate
+    drain ~ n1.drain, n2.drain, n3.drain
+    source ~ n1.source, n2.source, n3.source
 
-    # compound declaration and definition
-    # optional/required ir redundent here, because it's already defined and
-    # therefore there's no way it could be missing
-    # the var keyword isn't critical, but it's useful to ensure typos aren't declaring
-    # new variable that were intended as definitions
-    var example2 = 10uF +/- 10%
+block ThreeSomeNMOS from NMOS:
+    # the one benifit to this syntax is that it allows you to create type unions
+    # this means you're able to import from disperate sources and still use modules
+    # BUT, we'd prefer to force you to wrap components in another block to commonise the interface
+    NMOS n1, n2, n3
+    gate ~ n1.gate, n2.gate, n3.gate
+    drain ~ n1.drain, n2.drain, n3.drain
+    source ~ n1.source, n2.source, n3.source
 
-# well, apparently that was clear enough that Copilot picked up on it well because all I typed below was `component SomeNMOS`
-component SomeNMOS from NMOS:
-    pin 1 ~ gate
-    pin 2 ~ drain
-    pin 3 ~ source
-    pin 4 ~ ground
+block HalfBridge:
+    Signal vin
+    Signal vout
+    Signal gate
+    Signal gnd
 
-    gate_charge = 1pF
-    gate_resistance = 1kOhm
-    footprint = "SOT-23"
+    NMOS high_fet
+    NMOS low_fet
 
-    # if we spec'd, we should get a compiler type error
-    gate = 1V
+    vin ~ high_fet.drain
+    vout ~ high_fet.source, low_fet.drain
+    gate ~ high_fet.gate, low_fet.gate
+    gnd ~ low_fet.source
 
-# now, how does this all solve our problem of configurability?
-# say we've got a half bridge driver
+block TopLevel:
+    HalfBridge half_bridge
+    half_bridge.high_fet -> SomeNMOS
+    half_bridge.low_fet -> ThreeSomeNMOS
 
-module HalfBridge:
-    high_fet = abstract NMOS
-    low_fet = abstract NMOS
+##### typing of signals
 
-    # configure the current limiting resistor on the FET's gate
-    # (yes, I'm aware 10kOhm is a terrible value for this, but it's just an example)
-    r_gate = new Resistor
-    r_gate.value = 10kOhm - high_fet.gate_resistance
+node Signal:
+    pass
 
-    # ... other stuff
+node DigitalOutput from Signal:
+    capacitance capacitance = unknown
+    resistance on_stiffness = unknown
+    resistance off_stiffness = unknown
+    voltage on_voltage = unknown
+    voltage off_voltage = unknown
 
-module TopLevelModule:
-    phase_a = new HalfBridge
-    phase_b = new HalfBridge
-    phase_c = new HalfBridge
+node PushPullOutput from DigitalOutput:
+    # we need a means to be able to define some kind of connected-compatabilities
+    # eg. if you have a digital output, you can connect it to a digital input
+    # but we should expect an error if you connect it to another DigitalOutput since they can both be driving
+    limit PushPullOutput not in connections
 
-    # this is entirely placeholder syntax, but gist is "all of the NMOS components in this module should become SomeNMOS"
-    # with that, this module is now concretely defined and compileable
-    [HalfBridge][NMOS] -> SomeNMOS
-    # ... other stuff
+    # TODO: consider the validity of this "not in" syntax
+
+# What is the benefit of limiting the number of aspects GPIOs could be?
+# I guess you can union those things and test against it?
+union GPIO = (DigitalOutput | DigitalInput | AnalogOutput | AnalogInput)
+
+block RP2040:
+    GPIO gpio[:32]
+
+##### maths; relationships and limits
+
+# There's two obvious types of equations/relationships we can draw
+# 1. limit which serve to bound the relationship between things
+# 2. relations which describe the relationship between things
+
+# to account for real-world fuzziness we also need the concept
+# of tolerance/uncertainty which we will express using the first-class "ranges"
+# I'm not entirely sure we need multiple constructs for this tbh...
+
+# let's describe a simple voltage divider
+block VDiv:
+    PowerIn vin
+    AnalogOutput vout
+    Gnd gnd
+
+    Resistor r1
+    Resistor r2
+
+    r1.pin[1] ~ vin
+    r1.pin[2] ~ vout
+    r2.pin[1] ~ vout
+    r2.pin[2] ~ gnd
+
+    # we can describe the relationship between the resistors
+    float ratio == r1.value / r2.value
+    vout.nominal_voltage == vin.nominal_voltage * ratio
+    ohms total_resistance == r1.value + r2.value
+
+# say we continue with this example of the half-bridge
+block HalfBridge:
+    PowerIn vin
+    PowerOut vout
+    DigitalInput gate
+    Ground gnd
+
+    NMOS high_fet
+    NMOS low_fet
+
+    current gate_current_target = 350mA to 400mA
+
+    Resistor gate_resistor
+    gate ~ gate_resistor.pin[1]
+    gate_resistor.pin[2] ~ high_fet.gate, low_fet.gate
+    gate.on_voltage > 6V  # all the gate.on_voltage range must be above 6V
+    gate.off_voltage < 2V  # all the gate.off_voltage range must be below 2V
+    # this equation must always be satified considering the ranges
+    gate_resistor.value == gate.on_voltage / gate_current_target - gate.on_stiffness
+
+    vin ~ high_fet.drain
+    vout ~ high_fet.source, low_fet.drain
+    gnd ~ low_fet.source
+
+##### repetition
+
+# repeating yourself sucks, so we should have a means to define and connect things avoiding it
+# let's look back at the ThreeSomeNMOS example if we adopt some functional programming concepts
+
+# since the fet_count is fundemental to the definition of the block, it should be a parameter
+block ParallelNMOS(int fet_count = 3) from NMOS:
+    # this list, named "fet" of type NMOS contains a repeated element times "fet_count"
+    NMOS fet[:fet_count]
+    # when lists have their attributes accessed, they return a list of the same length
+    # only attributes accessible from the contextually-known type are supported
+    # eg. fet.gate is supported, fet.fet (in this case a recursive attribute) is not
+    # connections can be made to the list, which will be applied to all elements as if it were written to each
+    gate ~ fet.gate
+    drain ~ fet.drain
+    source ~ fet.source
+
+##### selectors
+
+# we can also imagine wanting to select a subset of a list
+block ResistorLadder(int resistor_count = 2):
+    Signal vin
+    Signal vout[resistor_count-1]
+    Signal gnd
+
+    Resistor resistors[:resistor_count]
+
+    resistors[0].pin[1] ~ vin
+    # every second resistor, starting from the first connects to every second resistor starting from the second
+    # lists of the same length connect each element to the corresponding when connected together
+    resistors[::2].pin[1] ~ resistors[1::2].pin[2]
+    resistors[-1].pin[2] ~ gnd
+
+    resistors[:-2].pin[2] ~ vout
+
+##### partials
+
+# we can foreseeably want to define a block which is a partial of another block
+# eg. if a package contains two op-amps and we want to use each of them on different circuits
+
+# TODO: 
