@@ -85,6 +85,7 @@ class AtoElement extends dia.Element {
         };
     }
 
+    // TODO: need to change to add port and add pins in port
     addPortWithPins(port_group_name, port_location, pin_list) {
         let port_label_position = getPortLabelPosition(port_location);
         let port_anchor = getPortLabelAnchor(port_location);
@@ -506,66 +507,57 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
     added_link.addTo(graph);
 }
 
+function returnLinkAddress(port, current_path, embedded_cells) {
+    let port_path = concatenatePathAndName(current_path, port);
+    let port_name_depth = computeNameDepth(port);
+    let cell_id;
+    let first_element;
+
+    switch (port_name_depth) {
+        case 1:
+            cell_id = current_path;
+            break;
+        case 2:
+            first_element = popFirstNameElementFromName(port);
+            cell_id = concatenatePathAndName(current_path, first_element['pop']);
+            break;
+        default:
+            console.log('default');
+            first_element = popFirstNameElementFromName(port);
+            cell_id = concatenatePathAndName(current_path, first_element['pop']);
+            for (let cell of embedded_cells) {
+                if (cell['id'] == cell_id) {
+                    cell.addPortWithPins('top', 'top', [{'path': port_path, 'name': first_element['remaining']}])
+                }
+            }
+            break;
+    }
+    console.log({'cell_id': cell_id, 'port_id': port_path});
+    return {'cell_id': cell_id, 'port_id': port_path};
+}
+
 
 function addLinks(element, current_path, embedded_cells) {
     for (let link of element['links']) {
-        // Add the block (if there is one) and port to the path
-        let source_port_path = concatenatePathAndName(current_path, link['source']);
-        let target_port_path = concatenatePathAndName(current_path, link['target']);
-
-        let source_name_depth = computeNameDepth(link['source']);
-        let target_name_depth = computeNameDepth(link['target']);
-        let source_cell_id;
-        let target_cell_id;
-        let first_element;
-        switch (source_name_depth) {
-            // The port is on the module itself
-            case 1:
-                source_cell_id = current_path;
-                break;
-            // The port is on an embedded cell
-            case 2:
-                first_element = popFirstNameElementFromName(link['source']);
-                source_cell_id = concatenatePathAndName(current_path, first_element['pop']);
-                break;
-            // The port is in a deeper layer. A port should be added on the module.
-            default:
-                first_element = popFirstNameElementFromName(link['source']);
-                source_cell_id = concatenatePathAndName(current_path, first_element['pop']);
-                // need to add a link
-                break;
-        }
-        switch (target_name_depth) {
-            case 1:
-                target_cell_id = current_path;
-                break;
-            case 2:
-                first_element = popFirstNameElementFromName(link['target']);
-                target_cell_id = concatenatePathAndName(current_path, first_element['pop']);
-                break;
-            default:
-                first_element = popFirstNameElementFromName(link['target']);
-                target_cell_id = concatenatePathAndName(current_path, first_element['pop']);
-                // need to add a link
-                break;
-        }
+        source_address = returnLinkAddress(link['source'], current_path, embedded_cells);
+        target_address = returnLinkAddress(link['target'], current_path, embedded_cells);
 
         let is_stub = false;
         for (let link_config of ((element.config || {}).signals || [])) {
             if (link_config['name'] == link['name'] && link_config['is_stub']) {
                 is_stub = true;
                 // if not a module
-                if (current_path.length != source_cell_id.length) {
-                    addStub(source_cell_id, source_port_path, link['name']);
+                if (current_path.length != source_address['cell_id'].length) {
+                    addStub(source_address['cell_id'], source_address['port_id'], link['name']);
                 }
                 // if not a module
-                if (current_path.length != target_cell_id.length) {
-                    addStub(target_cell_id, target_port_path, link['name']);
+                if (current_path.length != target_address['cell_id'].length) {
+                    addStub(target_address['cell_id'], target_address['port_id'], link['name']);
                 }
             }
         }
         if (!is_stub) {
-            addLink(source_cell_id, source_port_path, target_cell_id, target_port_path);
+            addLink(source_address['cell_id'], source_address['port_id'], target_address['cell_id'], target_address['port_id']);
         }
     }
 }
