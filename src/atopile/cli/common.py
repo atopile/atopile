@@ -20,8 +20,8 @@ def ingest_config_hat(f):
 
     @click.argument("source", required=False, default=None)
     @click.option("--build-config", default=None)
-    @click.option("--root-file", default=None)
-    @click.option("--root-node", default=None)
+    @click.option("--root-file", help="DEPRECATED - do not use", default=None)
+    @click.option("--root-node", help="DEPRECATED - do not use", default=None)
     @functools.wraps(f)
     def wrapper(
         *args,

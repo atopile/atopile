@@ -20,6 +20,11 @@ log.setLevel(logging.INFO)
 @click.option("--debug/--no-debug", default=None)
 @click.option("--strict/--no-strict", default=None)
 def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool, strict: bool):
+    """
+    Build the specified --target(s) or the targets specified by the build config.
+    Specify the root source file with the argument SOURCE.
+    eg. `ato build --target my_target path/to/source.ato:module.path`
+    """
     # input sanitisation
     if debug:
         import atopile.parser.parser
