@@ -1,5 +1,7 @@
+import concurrent.futures
 import logging
 import sys
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List
@@ -60,7 +62,7 @@ class Builder(AtopileParserVisitor):
 
     @property
     def current_file(self):
-        return self._file_stack[0]
+        return self._file_stack[0]  # FIXME: shouldn't this be -1?
 
     @contextmanager
     def working_block(self, ref: str):
@@ -366,12 +368,78 @@ class Builder(AtopileParserVisitor):
         return ctx.getText().strip("\"'")
 
 
+class ParallelParser(AtopileParserVisitor):
+    def __init__(
+        self,
+        bob: Builder,
+        current_file: Path,
+        futures_to_path: dict[concurrent.futures.Future, Path],
+        executor: concurrent.futures.ThreadPoolExecutor,
+        accounted_for_files: set[Path],
+        accounted_for_files_lock: threading.Lock,
+    ) -> None:
+        self._bob = bob
+        self._current_file = current_file
+        self._futures_to_path = futures_to_path
+        self._executor = executor
+        self._accounted_for_files = accounted_for_files
+        self._accounted_for_files_lock = accounted_for_files_lock
+
+    def _parse(self, abs_path: Path):
+        tree = self._bob.parse_file(abs_path)
+        log.info(f"Finished parsing {str(abs_path)}")
+        self.visit(tree)
+
+    def visitImport_stmt(self, ctx: AtopileParser.Import_stmtContext):
+        import_filename = self._bob.get_string(ctx.string())
+
+        abs_path, _ = self._bob.project.resolve_import(
+            import_filename, self._current_file
+        )
+
+        self._accounted_for_files_lock.acquire(timeout=10)
+        try:
+            if abs_path in self._accounted_for_files:
+                return
+            self._accounted_for_files.add(abs_path)
+        finally:
+            self._accounted_for_files_lock.release()
+
+        new_parser = ParallelParser(
+            self._bob,
+            abs_path,
+            self._futures_to_path,
+            self._executor,
+            self._accounted_for_files,
+            self._accounted_for_files_lock,
+        )
+        self._futures_to_path[self._executor.submit(new_parser._parse, abs_path)] = abs_path
+
+    @staticmethod
+    def pre_parse(bob: Builder, root_file: Path):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            future_to_path: dict[concurrent.futures.Future, Path] = {}
+            seed_parser = ParallelParser(
+                bob,
+                root_file,
+                future_to_path,
+                executor,
+                set(),
+                threading.Lock(),
+            )
+            future_to_path[executor.submit(seed_parser._parse, root_file)] = root_file
+
+            for future in concurrent.futures.as_completed(future_to_path):
+                path = future_to_path[future]
+                log.info(f"Finished parsing {str(path)}")
+
 def build_model(project: Project, config: BuildConfig) -> Model:
     log.info("Building model")
     skip_profiler = log.getEffectiveLevel() > logging.DEBUG
 
     with profile(profile_log=log, skip=skip_profiler):
         bob = Builder(project)
+        ParallelParser.pre_parse(bob, config.root_file)
         try:
             model = bob.build(config.root_file)
         except LanguageError as ex:
