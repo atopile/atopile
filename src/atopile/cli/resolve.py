@@ -22,6 +22,11 @@ log.setLevel(logging.INFO)
 @click.option("--debug/--no-debug", default=None)
 @click.option("--clean/--no-clean", default=None)
 def resolve(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool, clean: bool):
+    """
+    Resolve the required inputs for the specified --target(s) or the targets specified by the build config.
+    Specify the root source file with the argument SOURCE.
+    eg. `ato resolve --target my_target path/to/source.ato:module.path`
+    """
     # input sanitisation
     if debug:
         import atopile.parser.parser

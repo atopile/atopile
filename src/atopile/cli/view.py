@@ -22,6 +22,10 @@ log.setLevel(logging.DEBUG)
 def view(
     project: Project, build_config: BuildConfig, port: int, browser: bool, debug: bool
 ):
+    """
+    View the specified the root source file with the argument SOURCE.
+    eg. `ato view path/to/source.ato:module.path`
+    """
     # defer import because it's kinda expensive?
     import atopile.visualizer.server as s
 

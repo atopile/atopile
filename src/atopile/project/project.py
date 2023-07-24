@@ -65,12 +65,12 @@ class Project:
 
     def standardise_import_path(self, path: Path) -> Path:
         abs_path = path.resolve().absolute()
-        if path.is_relative_to(self.root):
+        if abs_path.is_relative_to(self.root):
             std_path = abs_path.relative_to(self.root)
-        elif path.is_relative_to(self.get_std_lib_path()):
+        elif abs_path.is_relative_to(self.get_std_lib_path()):
             std_path = abs_path.relative_to(self.get_std_lib_path())
         else:
-            raise ImportError("Import is outside the project directory and isn't part of the std lib")
+            raise ImportError(f"Import {path} is outside the project directory and isn't part of the std lib")
         if std_path in self._std_import_to_abs:
             if self._std_import_to_abs[std_path] != abs_path:
                 # not sure we can ever hit this, but I wanna know about it if we can
