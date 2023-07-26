@@ -511,7 +511,7 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
 // If the link spans deeper than one module, a port is added to the module
 // TODO: what happens if the port is multiple layers deep?
 // TODO: Currently only adding the top link
-function returnLinkAddress(port, current_path, embedded_cells) {
+function getLinkAddress(port, current_path, embedded_cells) {
     let port_path = concatenatePathAndName(current_path, port);
     let port_name_depth = computeNameDepth(port);
     let cell_id;
@@ -543,8 +543,8 @@ function returnLinkAddress(port, current_path, embedded_cells) {
 
 function addLinks(element, current_path, embedded_cells) {
     for (let link of element['links']) {
-        source_address = returnLinkAddress(link['source'], current_path, embedded_cells);
-        target_address = returnLinkAddress(link['target'], current_path, embedded_cells);
+        source_address = getLinkAddress(link['source'], current_path, embedded_cells);
+        target_address = getLinkAddress(link['target'], current_path, embedded_cells);
 
         let is_stub = false;
         for (let link_config of ((element.config || {}).signals || [])) {
@@ -762,7 +762,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
-                    addLinks(element, downstream_path, joint_object.getEmbeddedCells())
+                    addLinks(element, downstream_path, joint_object.getEmbeddedCells());
                     applyParentConfig(element, child_attrs);
                 }
 
