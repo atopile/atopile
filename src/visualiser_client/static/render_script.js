@@ -85,6 +85,7 @@ class AtoElement extends dia.Element {
         };
     }
 
+    // TODO: need to change to add port and add pins in port
     addPortWithPins(port_group_name, port_location, pin_list) {
         let port_label_position = getPortLabelPosition(port_location);
         let port_anchor = getPortLabelAnchor(port_location);
@@ -506,34 +507,61 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
     added_link.addTo(graph);
 }
 
+// Return the cell id and port id from port name and current path
+// If the link spans deeper than one module, a port is added to the module
+// TODO: what happens if the port is multiple layers deep?
+// TODO: Currently only adding the top link
+function getLinkAddress(port, current_path, embedded_cells) {
+    let port_path = concatenatePathAndName(current_path, port);
+    let port_name_depth = computeNameDepth(port);
+    let cell_id;
+    let first_element;
 
-function addLinks(element, current_path) {
+    switch (port_name_depth) {
+        case 1:
+            cell_id = current_path;
+            break;
+        case 2:
+            first_element = popFirstNameElementFromName(port);
+            cell_id = concatenatePathAndName(current_path, first_element['pop']);
+            break;
+        default:
+            console.log('default');
+            first_element = popFirstNameElementFromName(port);
+            cell_id = concatenatePathAndName(current_path, first_element['pop']);
+            for (let cell of embedded_cells) {
+                if (cell['id'] == cell_id) {
+                    cell.addPortWithPins('top', 'top', [{'path': port_path, 'name': first_element['remaining']}])
+                }
+            }
+            break;
+    }
+    console.log({'cell_id': cell_id, 'port_id': port_path});
+    return {'cell_id': cell_id, 'port_id': port_path};
+}
+
+
+function addLinks(element, current_path, embedded_cells) {
     for (let link of element['links']) {
-        // Add the block (if there is one) and port to the path
-        let source_path = concatenatePathAndName(current_path, link['source']);
-        let target_path = concatenatePathAndName(current_path, link['target']);
-        // Remove the port from the path to get the block path
-        let source = popLastPathElementFromPath(source_path);
-        let target = popLastPathElementFromPath(target_path);
-        let source_block = source['path'];
-        let target_block = target['path'];
+        source_address = getLinkAddress(link['source'], current_path, embedded_cells);
+        target_address = getLinkAddress(link['target'], current_path, embedded_cells);
 
         let is_stub = false;
         for (let link_config of ((element.config || {}).signals || [])) {
             if (link_config['name'] == link['name'] && link_config['is_stub']) {
                 is_stub = true;
-                // if not a module
-                if (current_path.length != source_block.length) {
-                    addStub(source_block, source_path, link['name']);
+                // if not a module (don't want stubs at module level)
+                if (current_path.length != source_address['cell_id'].length) {
+                    addStub(source_address['cell_id'], source_address['port_id'], link['name']);
                 }
-                // if not a module
-                if (current_path.length != target_block.length) {
-                    addStub(target_block, target_path, link['name']);
+                // if not a module (don;t want stubs at module level)
+                if (current_path.length != target_address['cell_id'].length) {
+                    addStub(target_address['cell_id'], target_address['port_id'], link['name']);
                 }
             }
         }
         if (!is_stub) {
-            addLink(source_block, source_path, target_block, target_path);
+            addLink(source_address['cell_id'], source_address['port_id'], target_address['cell_id'], target_address['port_id']);
         }
     }
 }
@@ -666,6 +694,22 @@ function concatenatePathAndName(path, name) {
     }
 }
 
+// This function does not support complete paths
+// Only names that are separated by a .
+function computeNameDepth(path) {
+    let name_list = path.split(".");
+    return name_list.length;
+}
+
+function popFirstNameElementFromName(name) {
+    // Split the blocks
+    const blocks = name.split(".");
+    const remaining_blocks = blocks.slice(1, blocks.length);
+    const remaining_name = remaining_blocks.join('.');
+    const pop = blocks[0];
+    return {'pop': pop, 'remaining': remaining_name};
+}
+
 function popLastPathElementFromPath(path) {
     // Split the file name and the blocks
     const file_block = path.split(":");
@@ -673,7 +717,7 @@ function popLastPathElementFromPath(path) {
     // Split the blocks
     const blocks = file_block[1].split(".");
     const path_blocks = blocks.slice(0, blocks.length - 1);
-    const remaining_path = file + ':' + path_blocks.join('.')
+    const remaining_path = file + ':' + path_blocks.join('.');
     const name = blocks[blocks.length - 1];
     return {'file': file, 'path': remaining_path, 'name': name};
 }
@@ -718,7 +762,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
-                    addLinks(element, downstream_path)
+                    addLinks(element, downstream_path, joint_object.getEmbeddedCells());
                     applyParentConfig(element, child_attrs);
                 }
 
@@ -882,7 +926,7 @@ async function loadCircuit() {
 
     let config_populated_circuit = await populateConfigFromBackend([circuit_data]);
     console.log(config_populated_circuit);
-    generateJointjsGraph(config_populated_circuit, 5);
+    generateJointjsGraph(config_populated_circuit, 1);
 }
 
 // flag to help rate limit calls to savePositions
