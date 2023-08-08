@@ -7,7 +7,7 @@ from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from atopile.model.accessors import ModelVertexView
-from atopile.targets.netlist.nets import find_net_names, resolve_abs_name
+from atopile.targets.netlist.nets import find_net_names, generate_net_name
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
@@ -305,7 +305,7 @@ class KicadNetlist:
                 if rep_mvv in net_mvvs:
                     break
             else:
-                _, net_name = resolve_abs_name([ModelVertexView.from_path(model, p) for p in cluster_paths])
+                net_name = generate_net_name([ModelVertexView.from_path(model, p) for p in cluster_paths])
                 log.warning(f"Couldn't find net properly, but using name: {net_name}, which is hopefully good enough")
 
             # the cluster only represents a net if it contains eletrical pins
