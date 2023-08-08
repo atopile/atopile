@@ -62,7 +62,7 @@ class Builder(AtopileParserVisitor):
 
     @property
     def current_file(self):
-        return self._file_stack[0]  # FIXME: shouldn't this be -1?
+        return self._file_stack[-1]
 
     @contextmanager
     def working_block(self, ref: str):
