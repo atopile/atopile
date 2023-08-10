@@ -27,7 +27,7 @@ def view(
     eg. `ato view path/to/source.ato:module.path`
     """
     # defer import because it's kinda expensive?
-    import atopile.visualizer.server as s
+    import atopile.viewer.server as s
 
     s.project_handler.project = project
     s.project_handler.build_config = build_config
@@ -37,7 +37,7 @@ def view(
 
         atopile.parser.parser.log.setLevel(logging.DEBUG)
 
-    url = f"http://localhost:{port}/static/client.html?" + urllib.parse.urlencode(
+    url = f"http://localhost:{port}/client.html?" + urllib.parse.urlencode(
         {"circuit": build_config.root_node}
     )
 

@@ -7,7 +7,7 @@ import yaml
 
 from atopile.model.model import Model
 from atopile.project.project import Project
-from atopile.visualizer.project_handler import ProjectHandler
+from atopile.viewer.project_handler import ProjectHandler
 
 
 @pytest.fixture

@@ -1,0 +1,18 @@
+{
+  "name": "atopile_vis",
+  "source": "src/viewer/client.html",
+  "scripts": {
+    "start": "parcel serve",
+    "build": "parcel build"
+  },
+  "devDependencies": {
+    "parcel": "^2.9.3"
+  },
+  "dependencies": {
+    "backbone": "^1.5.0",
+    "jointjs": "^3.7.5",
+    "jquery": "^3.7.0",
+    "lodash": "^4.17.21",
+    "underscore": "^1.13.6"
+  }
+}
