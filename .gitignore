@@ -170,3 +170,8 @@ cython_debug/
 
 # generic outputs
 artifacts
+
+# Parcel
+.parcel-cache/
+dist/
+node_modules/

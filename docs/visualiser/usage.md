@@ -1,3 +1,3 @@
-# Using the Visualizer
+# Using the Viewer
 
 `ato view`

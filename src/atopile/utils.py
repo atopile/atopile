@@ -10,39 +10,52 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-def get_project_root():
+def get_src_dir():
+    return Path(__file__).parent.parent
+
+
+def get_source_project_root():
     return Path(__file__).parent.parent.parent
+
+
+def is_dev_install():
+    return (get_source_project_root() / "pyproject.toml").exists()
+
 
 class StreamToLogger(object):
     """
     Fake file-like stream object that redirects writes to a logger instance.
     """
-    def __init__(self, logger: logging.Logger, log_level: int=logging.INFO):
+
+    def __init__(self, logger: logging.Logger, log_level: int = logging.INFO):
         self.logger = logger
         self.log_level = log_level
-        self.linebuf = ''
+        self.linebuf = ""
 
     def write(self, buf):
         temp_linebuf: str = self.linebuf + buf
-        self.linebuf = ''
+        self.linebuf = ""
         for line in temp_linebuf.splitlines(True):
             # From the io.TextIOWrapper docs:
             #   On output, if newline is None, any '\n' characters written
             #   are translated to the system default line separator.
             # By default sys.stdout.write() expects '\n' newlines and then
             # translates them so this is still cross platform.
-            if line[-1] == '\n':
+            if line[-1] == "\n":
                 self.logger.log(self.log_level, line.rstrip())
             else:
                 self.linebuf += line
 
     def flush(self):
-        if self.linebuf != '':
+        if self.linebuf != "":
             self.logger.log(self.log_level, self.linebuf.rstrip())
-        self.linebuf = ''
+        self.linebuf = ""
+
 
 @contextlib.contextmanager
-def profile(profile_log: logging.Logger, entries: int=20, sort_stats="cumtime", skip=False):
+def profile(
+    profile_log: logging.Logger, entries: int = 20, sort_stats="cumtime", skip=False
+):
     if skip:
         # skip allows you to include the profiler context in code and switch it easily downstream
         yield
@@ -59,6 +72,7 @@ def profile(profile_log: logging.Logger, entries: int=20, sort_stats="cumtime", 
     stats = pstats.Stats(prof, stream=s).sort_stats(sort_stats)
     stats.print_stats(entries)
 
+
 # TODO: updating an input? wow... cruddy much?
 def update_dict(target: dict, source: dict):
     for k, v in source.items():
@@ -68,6 +82,7 @@ def update_dict(target: dict, source: dict):
             update_dict(target[k], v)
         else:
             target[k] = v
+
 
 @contextlib.contextmanager
 def timed(what_am_i_doing: str):

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from atopile.model.model import Model
-from atopile.visualizer.render import build_view
+from atopile.viewer.render import build_view
 
 
 def test_build_from_root(dummy_model: Model):

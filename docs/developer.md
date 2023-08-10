@@ -1,7 +1,19 @@
 # Developer
 
+
+## Prerequisites
+
+You'll need >= `python3.10` and `pip` (Use `brew`).
+I'd strongly recommend developing within a `venv`.
+You'll need `npm` for front-end development (`brew install node`).
+
 ## Getting started
 
-For general development: `pip install -e ."[dev,test,docs]"`
+For cli development: `pip install -e ."[dev,test,docs]"`
 
-If you're going to modify the language (eg. the `.g4` files), you'll need to install java too `brew install openjdk`
+For any front-end development, you'll also need to install the front-end dependencies: `npm install`
+
+To check out front-end changes live, run `npm run start` in one terminal and make sure to run `ato view` on a project in another (to provide API access).
+
+Your changes there should flow through live
+
