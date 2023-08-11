@@ -56,7 +56,9 @@ builds:
 
 `ato view --help` will give you a printout of the options it can take.
 
-`ato view --root-file led.ato --root-node led.ato/LED`
+atopile paths are in the form `path/to/file.ato:module.within.file`
+
+To view, the LED component for example: `ato view led.ato:LED`
 
 You should get a browser window popping up and wham! bam! alakazam! you've got a component!
 
@@ -69,3 +71,21 @@ To pull in a footprint, we've been using the wonderful tool [easyeda2kicad](http
 Add it to your python environment with `pip install easyeda2kicad`
 
 Then you can download JLCPCB/EasyEDA/LCSC footprints with `easyeda2kicad --full --lcsc_id=<LCSC-num> --output ../lib/lib`
+
+## Building the netlist and importing it to KiCAD
+
+`ato build` is the tool for you!
+
+For example: `ato build --target=netlist-kicad6`
+
+This will generate a netlist in the `build` directory.
+
+Then, from within the KiCAD layout, which is stored in `elec/layout/default`, you can import the netlist with:
+
+1. File -> Import Netlist
+![Import Netlist](images/file-import.png)
+1. Select the netlist you've just generated. The output is in the terminal, but it should approximately be servo-drive/build/servo-drive.net
+2. Make sure you're using unique IDs, rather than designators (though they should work too)
+3. Ruthlessly destroy stuff that's not supposed to be there (check boxes on the right)
+![Import Netlist 2](images/import-settings.png)
+1. Check the errors - sometimes it's important
