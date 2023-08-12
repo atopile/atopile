@@ -765,8 +765,8 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
                     addLinks(element, downstream_path, joint_object.getEmbeddedCells());
-                    applyParentConfig(element, child_attrs);
                 }
+                applyParentConfig(element, child_attrs);
 
                 // FIXME:
                 // Position the root element in the middle of the screen
