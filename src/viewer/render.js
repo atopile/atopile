@@ -34,7 +34,7 @@ let settings_dict = {
         boxRadius: 5,
         strokeDasharray: '4,4',
         label: {
-            fontSize: 10,
+            fontSize: 8,
             fontWeight: "bold",
         }
     },
@@ -275,13 +275,13 @@ class AtoBlock extends AtoElement {
                 label: {
                     text: "Block",
                     fill: "black",
-                    textVerticalAnchor: "top",
+                    textVerticalAnchor: "middle",
                     fontSize: settings_dict['block']['label']['fontSize'],
                     fontWeight: settings_dict["block"]['label']["fontWeight"],
-                    textAnchor: "start",
+                    textAnchor: "middle",
                     fontFamily: settings_dict["common"]["fontFamily"],
-                    x: 8,
-                    y: 8
+                    x: 'calc(w/2)',
+                    y: 'calc(h/2)'
                 }
             }
         };
@@ -663,6 +663,7 @@ function createBlock(element, parent, path) {
     });
 
     addPins(block, element, path);
+    block.resizeBasedOnContent();
     block.addTo(graph);
 
     if (parent) {
@@ -765,6 +766,15 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
                     addLinks(element, downstream_path, joint_object.getEmbeddedCells());
+                    // change the title layout to the corner for module with embedded childrens
+                    joint_object.attr({
+                        label: {
+                            textVerticalAnchor: "top",
+                            textAnchor: "start",
+                            x: 8,
+                            y: 8
+                        }
+                    });
                 }
                 applyParentConfig(element, child_attrs);
 
