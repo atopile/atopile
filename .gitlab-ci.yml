@@ -52,6 +52,13 @@ docker-build:
   rules:
     - if: $CI_COMMIT_TAG
 
+viewer-test:
+  stage: test
+  image: node:latest
+  script:
+    - npm ci
+    - npm run test
+
 viewer-build:
   stage: build
   image: node:latest
