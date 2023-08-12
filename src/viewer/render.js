@@ -8,7 +8,7 @@ import { shapes, util, dia, anchors } from 'jointjs';
 let settings_dict = {
     common: {
         backgroundColor: 'rgba(224, 233, 227, 0.3)',
-        gridSize: 5,
+        gridSize: 10,
         parentPadding: 50,
         fontFamily: "monospace",
         fontHeightToPxRatio: 1.6,
@@ -866,6 +866,7 @@ const paper = new dia.Paper({
     height: '100%',
     gridSize: settings_dict['common']['gridSize'],
     drawGrid: true,
+    drawGrid: { name: 'mesh', args: { color: 'black' }},
     background: {
         color: settings_dict["common"]["backgroundColor"]
     },
