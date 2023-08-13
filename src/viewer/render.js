@@ -9,40 +9,9 @@ import { returnConfigFileName,
     provideFirstNameElementFromName,
     provideLastPathElementFromPath } from './path';
 
-import { AtoElement, AtoBlock, AtoComponent, createBlock, createComponent } from "./joint_element";
+import { AtoElement, AtoBlock, AtoComponent, createBlock, createComponent, addLinks, customAnchor } from "./joint_element";
 
 import { settings_dict } from './viewer_settings';
-
-
-function customAnchor(view, magnet, ref, opt, endType, linkView) {
-    const elBBox = view.model.getBBox();
-    const magnetCenter = view.getNodeBBox(magnet).center();
-    const side = elBBox.sideNearestToPoint(magnetCenter);
-    let dx = 0;
-    let dy = 0;
-    const length = ('length' in opt) ? opt.length : 30;
-    switch (side) {
-        case 'left':
-        dx = -length;
-        break;
-        case 'right':
-        dx = length;
-        break;
-        case 'top':
-        dy = -length;
-        break;
-        case 'bottom':
-        dy = length;
-        break;
-
-    }
-    return anchors.center.call(this, view, magnet, ref, {
-      ...opt,
-      dx,
-      dy
-    }, endType, linkView);
-}
-
 
 
 const cellNamespace = {
@@ -51,143 +20,6 @@ const cellNamespace = {
     AtoComponent,
     AtoBlock
 };
-
-
-function addStub(block_id, port_id, label) {
-    let added_stub = new shapes.standard.Link({
-        source: {
-            id: block_id,
-            port: port_id,
-            anchor: {
-                name: 'center'
-            }
-        },
-            target: {
-            id: block_id,
-            port: port_id,
-            anchor: {
-                name: 'customAnchor'
-            },
-            connectionPoint: {
-                name: 'anchor'
-            }
-        }
-    });
-    added_stub.attr({
-        line: {
-            'stroke': settings_dict['link']['color'],
-            'stroke-width': settings_dict['link']['strokeWidth'],
-            targetMarker: {'type': 'none'},
-        },
-        z: 0,
-    });
-    added_stub.appendLabel({
-        attrs: {
-            text: {
-                text: label,
-                fontFamily: settings_dict['common']['fontFamily'],
-                fontSize: settings_dict['stubs']['fontSize'],
-                //textVerticalAnchor: "middle",
-                textAnchor: "middle",
-            }
-        },
-        position: {
-            distance: .9,
-            offset: -5,
-            angle: 0,
-            args: {
-                keepGradient: true,
-                ensureLegibility: true,
-            }
-        }
-    });
-    graph.addCell(added_stub);
-}
-
-function addLink(source_block_id, source_port_id, target_block_id, target_port_id) {
-    var added_link = new shapes.standard.Link({
-        source: {
-            id: source_block_id,
-            port: source_port_id
-        },
-        target: {
-            id: target_block_id,
-            port: target_port_id
-        }
-    });
-    added_link.attr({
-        line: {
-            'stroke': settings_dict['link']['color'],
-            'stroke-width': settings_dict['link']['strokeWidth'],
-            targetMarker: {'type': 'none'},
-        },
-        z: 0
-    });
-    added_link.router('manhattan', {
-        perpendicular: true,
-        step: settings_dict['common']['gridSize'],
-    });
-    added_link.addTo(graph);
-}
-
-// Return the cell id and port id from port name and current path
-// If the link spans deeper than one module, a port is added to the module
-// TODO: what happens if the port is multiple layers deep?
-// TODO: Currently only adding the top link
-function getLinkAddress(port, current_path, embedded_cells) {
-    let port_path = concatenateParentPathAndModuleName(current_path, port);
-    let port_name_depth = computeNameDepth(port);
-    let cell_id;
-    let first_element;
-
-    switch (port_name_depth) {
-        case 1:
-            cell_id = current_path;
-            break;
-        case 2:
-            first_element = provideFirstNameElementFromName(port);
-            cell_id = concatenateParentPathAndModuleName(current_path, first_element['first_name']);
-            break;
-        default:
-            console.log('default');
-            first_element = provideFirstNameElementFromName(port);
-            cell_id = concatenateParentPathAndModuleName(current_path, first_element['first_name']);
-            for (let cell of embedded_cells) {
-                if (cell['id'] == cell_id) {
-                    cell.addPortWithPins('top', 'top', [{'path': port_path, 'name': first_element['remaining']}])
-                }
-            }
-            break;
-    }
-    console.log({'cell_id': cell_id, 'port_id': port_path});
-    return {'cell_id': cell_id, 'port_id': port_path};
-}
-
-
-function addLinks(element, current_path, embedded_cells) {
-    for (let link of element['links']) {
-        let source_address = getLinkAddress(link['source'], current_path, embedded_cells);
-        let target_address = getLinkAddress(link['target'], current_path, embedded_cells);
-
-        let is_stub = false;
-        for (let link_config of ((element.config || {}).signals || [])) {
-            if (link_config['name'] == link['name'] && link_config['is_stub']) {
-                is_stub = true;
-                // if not a module (don't want stubs at module level)
-                if (current_path.length != source_address['cell_id'].length) {
-                    addStub(source_address['cell_id'], source_address['port_id'], link['name']);
-                }
-                // if not a module (don;t want stubs at module level)
-                if (current_path.length != target_address['cell_id'].length) {
-                    addStub(target_address['cell_id'], target_address['port_id'], link['name']);
-                }
-            }
-        }
-        if (!is_stub) {
-            addLink(source_address['cell_id'], source_address['port_id'], target_address['cell_id'], target_address['port_id']);
-        }
-    }
-}
 
 
 function addElementToElement(block_to_add, to_block) {
@@ -236,7 +68,10 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
-                    addLinks(element, downstream_path, joint_object.getEmbeddedCells());
+                    let added_element = addLinks(element, downstream_path, joint_object.getEmbeddedCells());
+                    for (let element of added_element) {
+                        element.addTo(graph);
+                    }
                     // change the title layout to the corner for module with embedded childrens
                     joint_object.attr({
                         label: {
