@@ -83,6 +83,29 @@ class ModelVertexView:
             return None
         return ModelVertexView(self.model, class_vidx)
 
+    @property
+    def is_instance(self) -> bool:
+        return self.instance_of is not None
+
+    @property
+    def superclass(self) -> "ModelVertexView":
+        superclasses = self.get_adjacents("out", EdgeType.subclass_of)
+        if len(superclasses) == 0:
+            return None
+        if len(superclasses) > 1:
+            raise ValueError(f"Vertex {self.index} has multiple superclasses")
+        return superclasses[0]
+
+    @property
+    def superclasses(self) -> List["ModelVertexView"]:
+        superclasses = []
+        while (superclass := self.superclass) is not None:
+            superclasses.append(superclass)
+
+    @property
+    def is_class(self) -> bool:
+        return not self.is_instance
+
     def get_edges(self, mode: str, edge_type: Union[EdgeType, List[EdgeType]] = None) -> ig.EdgeSeq:
         selector = {}
         if edge_type is not None:
