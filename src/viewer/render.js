@@ -173,9 +173,6 @@ const paper = new dia.Paper({
     gridSize: settings_dict['common']['gridSize'],
     drawGrid: true,
     drawGrid: { name: 'mesh', args: { color: 'black' }},
-    background: {
-        color: settings_dict["common"]["backgroundColor"]
-    },
     interactive: true,
     snapLinks: true,
     linkPinning: false,

@@ -2,7 +2,7 @@
 export let settings_dict = {
     common: {
         backgroundColor: 'rgba(224, 233, 227, 0.3)',
-        gridSize: 5,
+        gridSize: 10,
         parentPadding: 50,
         fontFamily: "monospace",
         fontHeightToPxRatio: 1.6,
