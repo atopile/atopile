@@ -4,10 +4,10 @@
 
 import { shapes, util, dia, anchors } from 'jointjs';
 import { returnConfigFileName,
-    concatenatePathAndName,
+    concatenateParentPathAndModuleName,
     computeNameDepth,
-    popFirstNameElementFromName,
-    popLastPathElementFromPath } from './path_tools';
+    provideFirstNameElementFromName,
+    provideLastPathElementFromPath } from './path';
 
 // Visual settings for the viewer
 let settings_dict = {
@@ -519,7 +519,7 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
 // TODO: what happens if the port is multiple layers deep?
 // TODO: Currently only adding the top link
 function getLinkAddress(port, current_path, embedded_cells) {
-    let port_path = concatenatePathAndName(current_path, port);
+    let port_path = concatenateParentPathAndModuleName(current_path, port);
     let port_name_depth = computeNameDepth(port);
     let cell_id;
     let first_element;
@@ -529,13 +529,13 @@ function getLinkAddress(port, current_path, embedded_cells) {
             cell_id = current_path;
             break;
         case 2:
-            first_element = popFirstNameElementFromName(port);
-            cell_id = concatenatePathAndName(current_path, first_element['pop']);
+            first_element = provideFirstNameElementFromName(port);
+            cell_id = concatenateParentPathAndModuleName(current_path, first_element['first_name']);
             break;
         default:
             console.log('default');
-            first_element = popFirstNameElementFromName(port);
-            cell_id = concatenatePathAndName(current_path, first_element['pop']);
+            first_element = provideFirstNameElementFromName(port);
+            cell_id = concatenateParentPathAndModuleName(current_path, first_element['first_name']);
             for (let cell of embedded_cells) {
                 if (cell['id'] == cell_id) {
                     cell.addPortWithPins('top', 'top', [{'path': port_path, 'name': first_element['remaining']}])
@@ -575,7 +575,7 @@ function addLinks(element, current_path, embedded_cells) {
 
 function getElementTitle(element) {
     if (element['instance_of'] != null) {
-        return`${element['name']} \n(${popLastPathElementFromPath(element['instance_of']).name})`;
+        return`${element['name']} \n(${provideLastPathElementFromPath(element['instance_of']).name})`;
     } else {
         return element['name'];;
     }
@@ -596,7 +596,7 @@ function addPins(jointJSObject, element, path) {
     let config_found;
     for (let pin_to_add of element['pins']) {
 
-        pin_to_add['path'] = concatenatePathAndName(path, pin_to_add['name']);
+        pin_to_add['path'] = concatenateParentPathAndModuleName(path, pin_to_add['name']);
 
         config_found = false;
         for (let config_pin of ((element.config || {}).pins || [])) {
@@ -701,7 +701,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
             var joint_object = null;
 
             if (element['type'] == 'component') {
-                downstream_path = concatenatePathAndName(path, element['name']);
+                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
                 joint_object = createComponent(element, parent, downstream_path);
                 element['jointObject'] = joint_object;
                 if (parent) {
@@ -712,7 +712,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
 
             // If it is a block, create it and instantiate the contents within it
             else if (element['type'] == 'module') {
-                downstream_path = concatenatePathAndName(path, element['name']);
+                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
                 // Create the module
                 joint_object = createBlock(element, parent, downstream_path);
                 element['jointObject'] = joint_object;
@@ -752,7 +752,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
             }
 
             else if (element['type'] == 'file') {
-                downstream_path = concatenatePathAndName(path, element['name']);
+                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
                 await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path);
             }
 
