@@ -2,10 +2,10 @@
 import { shapes, util, dia, anchors } from 'jointjs';
 
 import { returnConfigFileName,
-    concatenatePathAndName,
+    concatenateParentPathAndModuleName,
     computeNameDepth,
-    popFirstNameElementFromName,
-    popLastPathElementFromPath } from './path_tools';
+    provideFirstNameElementFromName,
+    provideLastPathElementFromPath } from './path';
 
 import { measureText } from './utils';
 
@@ -400,7 +400,7 @@ function addStub(block_id, port_id, label) {
 
 function getElementTitle(element) {
     if (element['instance_of'] != null) {
-        return`${element['name']} \n(${popLastPathElementFromPath(element['instance_of']).name})`;
+        return`${element['name']} \n(${provideLastPathElementFromPath(element['instance_of']).name})`;
     } else {
         return element['name'];;
     }
@@ -421,7 +421,7 @@ function addPins(jointJSObject, element, path) {
     let config_found;
     for (let pin_to_add of element['pins']) {
 
-        pin_to_add['path'] = concatenatePathAndName(path, pin_to_add['name']);
+        pin_to_add['path'] = concatenateParentPathAndModuleName(path, pin_to_add['name']);
 
         config_found = false;
         for (let config_pin of ((element.config || {}).pins || [])) {
