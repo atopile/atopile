@@ -24,3 +24,12 @@ export function measureText(text, text_size, direction) {
         return 0;
     }
 };
+
+export function normalizeDimensionToGrid(dimension, grid_size) {
+    if (dimension < 0) {
+        throw new Error('Dimension cannot be negative');
+    }
+    let remainder = dimension % grid_size;
+
+    return dimension + (grid_size - remainder);
+}

@@ -7,7 +7,7 @@ import { returnConfigFileName,
     provideFirstNameElementFromName,
     provideLastPathElementFromPath } from './path';
 
-import { measureText } from './utils';
+import { measureText, normalizeDimensionToGrid } from './utils';
 
 import { settings_dict } from './viewer_settings';
 
@@ -72,6 +72,24 @@ export class AtoElement extends dia.Element {
     }
 
     resizeBasedOnContent() {
+        //TODO: fix this function when ports are added automatically
+        let final_dim = {
+            "height": 0,
+            "width": 0
+        };
+        let dim_from_text = {
+            "height": 0,
+            "width": 0
+        };
+        let dim_from_ports = {
+            "height": 0,
+            "width": 0
+        }
+
+        dim_from_text['height'] = measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
+        dim_from_text['height'] += settings_dict['component']['labelVerticalMargin'] * 2;
+        dim_from_text['width'] = measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "length");
+
         let ports = this.getPorts();
         if (ports) {
             let port_buckets = {
@@ -86,14 +104,6 @@ export class AtoElement extends dia.Element {
                 "left": "",
                 "right": ""
             };
-            let dim_from_text = {
-                "height": 0,
-                "width": 0
-            };
-            let dim_from_ports = {
-                "height": 0,
-                "width": 0
-            }
 
             // Extract the longest port label from each bucket
             for (let port_bucket in port_buckets) {
@@ -106,11 +116,8 @@ export class AtoElement extends dia.Element {
                 }
             }
 
-            dim_from_text['height'] = 2 * (Math.max(measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length")));
-            dim_from_text['height'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
-            dim_from_text['height'] += settings_dict['component']['labelVerticalMargin'] * 2;
-            dim_from_text['width'] = 2 * (Math.max(measureText(ports_text_length['right'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['left'], settings_dict['component']['fontSize'], "length")));
-            dim_from_text['width'] += measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "length");
+            dim_from_text['height'] += 2 * (Math.max(measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length")));
+            dim_from_text['width'] += 2 * (Math.max(measureText(ports_text_length['right'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['left'], settings_dict['component']['fontSize'], "length")));
 
             dim_from_ports['height'] = (Math.max(port_buckets['right'].length, port_buckets['left'].length) + 1) * settings_dict['component']['portPitch'];
             dim_from_ports['width'] = (Math.max(port_buckets['top'].length, port_buckets['bottom'].length) - 1) * settings_dict['component']['portPitch'];
@@ -121,9 +128,14 @@ export class AtoElement extends dia.Element {
             //         dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
             //     }
             // }
-
-            this.resize(Math.max(dim_from_text['width'], dim_from_ports['width']), Math.max(dim_from_text['height'], dim_from_ports['height']));
         }
+        final_dim['width'] = Math.max(dim_from_text['width'], dim_from_ports['width']);
+        final_dim['width'] = normalizeDimensionToGrid(final_dim['width'], settings_dict['common']['gridSize']);
+
+        final_dim['height'] = Math.max(dim_from_text['height'], dim_from_ports['height']);
+        final_dim['height'] = normalizeDimensionToGrid(final_dim['height'], settings_dict['common']['gridSize']);
+
+        this.resize(final_dim['width'], final_dim['height']);
     }
 
     fitAncestorElements() {
