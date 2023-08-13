@@ -6,6 +6,10 @@ export function returnConfigFileName(string) {
     else return null;
 }
 
+// This function builds a path from the parent_path and module name
+// Example 1: parent_path = 'foo', module_name = 'bar', returns 'foo:bar'
+// Example 2: parent_path = null, module_name = 'bar', returns 'bar:'
+// Example 3: parent_path = 'foo:bar', module_name = 'test', returns 'foo:bar.test'
 export function concatenateParentPathAndModuleName(parent_path, module_name) {
     if (module_name == null) {
         throw new TypeError('Name should be defined');
