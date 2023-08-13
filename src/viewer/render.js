@@ -3,6 +3,11 @@
 //import { settings_dict } from "./vis_settings";
 
 import { shapes, util, dia, anchors } from 'jointjs';
+import { returnConfigFileName,
+    concatenateParentPathAndModuleName,
+    computeNameDepth,
+    provideFirstNameElementFromName,
+    provideLastPathElementFromPath } from './path';
 
 // Visual settings for the viewer
 let settings_dict = {
@@ -514,7 +519,7 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
 // TODO: what happens if the port is multiple layers deep?
 // TODO: Currently only adding the top link
 function getLinkAddress(port, current_path, embedded_cells) {
-    let port_path = concatenatePathAndName(current_path, port);
+    let port_path = concatenateParentPathAndModuleName(current_path, port);
     let port_name_depth = computeNameDepth(port);
     let cell_id;
     let first_element;
@@ -524,13 +529,13 @@ function getLinkAddress(port, current_path, embedded_cells) {
             cell_id = current_path;
             break;
         case 2:
-            first_element = popFirstNameElementFromName(port);
-            cell_id = concatenatePathAndName(current_path, first_element['pop']);
+            first_element = provideFirstNameElementFromName(port);
+            cell_id = concatenateParentPathAndModuleName(current_path, first_element['first_name']);
             break;
         default:
             console.log('default');
-            first_element = popFirstNameElementFromName(port);
-            cell_id = concatenatePathAndName(current_path, first_element['pop']);
+            first_element = provideFirstNameElementFromName(port);
+            cell_id = concatenateParentPathAndModuleName(current_path, first_element['first_name']);
             for (let cell of embedded_cells) {
                 if (cell['id'] == cell_id) {
                     cell.addPortWithPins('top', 'top', [{'path': port_path, 'name': first_element['remaining']}])
@@ -570,7 +575,7 @@ function addLinks(element, current_path, embedded_cells) {
 
 function getElementTitle(element) {
     if (element['instance_of'] != null) {
-        return`${element['name']} \n(${popLastPathElementFromPath(element['instance_of']).name})`;
+        return`${element['name']} \n(${provideLastPathElementFromPath(element['instance_of']).name})`;
     } else {
         return element['name'];;
     }
@@ -591,7 +596,7 @@ function addPins(jointJSObject, element, path) {
     let config_found;
     for (let pin_to_add of element['pins']) {
 
-        pin_to_add['path'] = concatenatePathAndName(path, pin_to_add['name']);
+        pin_to_add['path'] = concatenateParentPathAndModuleName(path, pin_to_add['name']);
 
         config_found = false;
         for (let config_pin of ((element.config || {}).pins || [])) {
@@ -677,54 +682,6 @@ function addElementToElement(block_to_add, to_block) {
     to_block.embed(block_to_add);
 }
 
-function returnConfigFileName(string) {
-    if (string) {
-        const [file, module] = string.split(":");
-        return {"file": file, "module": module}
-    }
-    else return null;
-}
-
-function concatenatePathAndName(path, name) {
-    if (path == null) {
-        return name + ':'
-    }
-    else if (path.slice(-1) == ':') {
-        return path + name;
-    }
-    else {
-        return path + '.' + name;
-    }
-}
-
-// This function does not support complete paths
-// Only names that are separated by a .
-function computeNameDepth(path) {
-    let name_list = path.split(".");
-    return name_list.length;
-}
-
-function popFirstNameElementFromName(name) {
-    // Split the blocks
-    const blocks = name.split(".");
-    const remaining_blocks = blocks.slice(1, blocks.length);
-    const remaining_name = remaining_blocks.join('.');
-    const pop = blocks[0];
-    return {'pop': pop, 'remaining': remaining_name};
-}
-
-function popLastPathElementFromPath(path) {
-    // Split the file name and the blocks
-    const file_block = path.split(":");
-    const file = file_block[0];
-    // Split the blocks
-    const blocks = file_block[1].split(".");
-    const path_blocks = blocks.slice(0, blocks.length - 1);
-    const remaining_path = file + ':' + path_blocks.join('.');
-    const name = blocks[blocks.length - 1];
-    return {'file': file, 'path': remaining_path, 'name': name};
-}
-
 function applyParentConfig(element, child_attrs) {
     if (child_attrs !== null && Object.keys(child_attrs).length > 0) {
         for (let attrs in child_attrs) {
@@ -744,7 +701,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
             var joint_object = null;
 
             if (element['type'] == 'component') {
-                downstream_path = concatenatePathAndName(path, element['name']);
+                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
                 joint_object = createComponent(element, parent, downstream_path);
                 element['jointObject'] = joint_object;
                 if (parent) {
@@ -755,7 +712,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
 
             // If it is a block, create it and instantiate the contents within it
             else if (element['type'] == 'module') {
-                downstream_path = concatenatePathAndName(path, element['name']);
+                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
                 // Create the module
                 joint_object = createBlock(element, parent, downstream_path);
                 element['jointObject'] = joint_object;
@@ -795,7 +752,7 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
             }
 
             else if (element['type'] == 'file') {
-                downstream_path = concatenatePathAndName(path, element['name']);
+                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
                 await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path);
             }
 
