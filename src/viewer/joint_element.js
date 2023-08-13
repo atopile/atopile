@@ -346,57 +346,6 @@ function getPortPosition(location) {
     };
 };
 
-function addStub(block_id, port_id, label) {
-    let added_stub = new shapes.standard.Link({
-        source: {
-            id: block_id,
-            port: port_id,
-            anchor: {
-                name: 'center'
-            }
-        },
-            target: {
-            id: block_id,
-            port: port_id,
-            anchor: {
-                name: 'customAnchor'
-            },
-            connectionPoint: {
-                name: 'anchor'
-            }
-        }
-    });
-    added_stub.attr({
-        line: {
-            'stroke': settings_dict['link']['color'],
-            'stroke-width': settings_dict['link']['strokeWidth'],
-            targetMarker: {'type': 'none'},
-        },
-        z: 0,
-    });
-    added_stub.appendLabel({
-        attrs: {
-            text: {
-                text: label,
-                fontFamily: settings_dict['common']['fontFamily'],
-                fontSize: settings_dict['stubs']['fontSize'],
-                //textVerticalAnchor: "middle",
-                textAnchor: "middle",
-            }
-        },
-        position: {
-            distance: .9,
-            offset: -5,
-            angle: 0,
-            args: {
-                keepGradient: true,
-                ensureLegibility: true,
-            }
-        }
-    });
-    graph.addCell(added_stub);
-}
-
 
 function getElementTitle(element) {
     if (element['instance_of'] != null) {
