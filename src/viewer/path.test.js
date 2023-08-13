@@ -1,8 +1,8 @@
 import { returnConfigFileName,
-    concatenatePathAndName,
+    concatenateParentPathAndModuleName,
     computeNameDepth,
-    popFirstNameElementFromName,
-    popLastPathElementFromPath } from './path_tools';
+    provideFirstNameElementFromName,
+    provideLastPathElementFromPath } from './path';
 
 // Test returnConfigFileName
 describe('returnConfigFileName', () => {
@@ -14,27 +14,27 @@ describe('returnConfigFileName', () => {
     });
 });
 
-// Test concatenatePathAndName
-describe('concatenatePathAndName', () => {
+// Test concatenateParentPathAndModuleName
+describe('concatenateParentPathAndModuleName', () => {
     test('should return a properly formed path', () => {
         const testCases = [
-            { path: null, name: 'foo', expected: 'foo:' },
-            { path: 'foo:', name: 'bar', expected: 'foo:bar' },
-            { path: 'foo:bar', name: 'bar', expected: 'foo:bar.bar' },
+            { parent_path: null, module_name: 'foo', expected: 'foo:' },
+            { parent_path: 'foo:', module_name: 'bar', expected: 'foo:bar' },
+            { parent_path: 'foo:bar', module_name: 'bar', expected: 'foo:bar.bar' },
         ];
 
-        testCases.forEach(({ path, name, expected }) => {
-            const result = concatenatePathAndName(path, name);
+        testCases.forEach(({ parent_path, module_name, expected }) => {
+            const result = concatenateParentPathAndModuleName(parent_path, module_name);
             expect(result).toBe(expected);
         });
     });
 
     test('should throw an error if called without args', () => {
-        expect(function(){ concatenatePathAndName(); } ).toThrow(TypeError('Name should be defined'));
+        expect(function(){ concatenateParentPathAndModuleName(); } ).toThrow(TypeError('Name should be defined'));
     });
 
     test('should throw an error if path is malformed', () => {
-        expect(function(){ concatenatePathAndName('fooo', 'bar'); } ).toThrow(Error('Path fooo is malformed'));
+        expect(function(){ concatenateParentPathAndModuleName('fooo', 'bar'); } ).toThrow(Error('Path fooo is malformed'));
     });
 });
 
@@ -57,32 +57,32 @@ describe('computeNameDepth', () => {
     });
 });
 
-// Test popFirstNameElementFromName
-describe('popFirstNameElementFromName', () => {
+// Test provideFirstNameElementFromName
+describe('provideFirstNameElementFromName', () => {
     test('should throw an error if called with file path', () => {
-        expect(function(){ popFirstNameElementFromName('foo:bar'); } ).toThrow(Error('Name foo:bar cannot contain file path'));
+        expect(function(){ provideFirstNameElementFromName('foo:bar'); } ).toThrow(Error('Name foo:bar cannot contain file path'));
     });
 
     test('should return first element', () => {
-        expect(popFirstNameElementFromName('foo.bar.bar')).toEqual({pop: 'foo', remaining: 'bar.bar'});
+        expect(provideFirstNameElementFromName('foo.bar.bar')).toEqual({first_name: 'foo', remaining: 'bar.bar'});
     });
 
     test('should return first element', () => {
-        expect(popFirstNameElementFromName('foo')).toEqual({pop: 'foo', remaining: ''});
+        expect(provideFirstNameElementFromName('foo')).toEqual({first_name: 'foo', remaining: ''});
     });
 });
 
-// Test popLastPathElementFromPath
-describe('popLastPathElementFromPath', () => {
+// Test provideLastPathElementFromPath
+describe('provideLastPathElementFromPath', () => {
     test('should throw an error if called without file path', () => {
-        expect(function(){ popLastPathElementFromPath('foo.bar'); } ).toThrow(Error('Path foo.bar is not a path'));
+        expect(function(){ provideLastPathElementFromPath('foo.bar'); } ).toThrow(Error('Path foo.bar is not a path'));
     });
 
     test('should return the split path', () => {
-        expect(popLastPathElementFromPath('foo:bar1.bar2')).toEqual({file: 'foo', path: 'foo:bar1', name: 'bar2'});
+        expect(provideLastPathElementFromPath('foo:bar1.bar2')).toEqual({file: 'foo', path: 'foo:bar1', name: 'bar2'});
     });
 
     test('should return the split path', () => {
-        expect(popLastPathElementFromPath('foo:bar')).toEqual({file: 'foo', path: 'foo:', name: 'bar'});
+        expect(provideLastPathElementFromPath('foo:bar')).toEqual({file: 'foo', path: 'foo:', name: 'bar'});
     });
 });

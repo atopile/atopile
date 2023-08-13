@@ -1,5 +1,3 @@
-
-
 export function returnConfigFileName(string) {
     if (string) {
         const [file, module] = string.split(":");
@@ -8,21 +6,21 @@ export function returnConfigFileName(string) {
     else return null;
 }
 
-export function concatenatePathAndName(path, name) {
-    if (name == null) {
+export function concatenateParentPathAndModuleName(parent_path, module_name) {
+    if (module_name == null) {
         throw new TypeError('Name should be defined');
     }
-    if (path == null) {
-        return name + ':'
+    if (parent_path == null) {
+        return module_name + ':'
     }
-    if (path.slice(-1) == ':') {
-        return path + name;
+    if (parent_path.slice(-1) == ':') {
+        return parent_path + module_name;
     }
-    if (path.split(':').length != 2) {
-        throw new Error('Path ' + path + ' is malformed');
+    if (parent_path.split(':').length != 2) {
+        throw new Error('Path ' + parent_path + ' is malformed');
     }
     else {
-        return path + '.' + name;
+        return parent_path + '.' + module_name;
     }
 }
 
@@ -33,7 +31,7 @@ export function computeNameDepth(path) {
     return name_list.length;
 }
 
-export function popFirstNameElementFromName(name) {
+export function provideFirstNameElementFromName(name) {
     // Check that there is no file
     if (name.split(':').length != 1) {
         throw new Error('Name ' + name + ' cannot contain file path');
@@ -42,11 +40,11 @@ export function popFirstNameElementFromName(name) {
     const blocks = name.split(".");
     const remaining_blocks = blocks.slice(1, blocks.length);
     const remaining_name = remaining_blocks.join('.');
-    const pop = blocks[0];
-    return {'pop': pop, 'remaining': remaining_name};
+    const first_name = blocks[0];
+    return {'first_name': first_name, 'remaining': remaining_name};
 }
 
-export function popLastPathElementFromPath(path) {
+export function provideLastPathElementFromPath(path) {
     // Check that there is no file
     if (path.split(':').length != 2) {
         throw new Error('Path ' + path + ' is not a path');
