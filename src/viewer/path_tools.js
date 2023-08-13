@@ -9,11 +9,17 @@ export function returnConfigFileName(string) {
 }
 
 export function concatenatePathAndName(path, name) {
+    if (name == null) {
+        throw new TypeError('Name should be defined');
+    }
     if (path == null) {
         return name + ':'
     }
-    else if (path.slice(-1) == ':') {
+    if (path.slice(-1) == ':') {
         return path + name;
+    }
+    if (path.split(':').length != 2) {
+        throw new Error('Path ' + path + ' is malformed');
     }
     else {
         return path + '.' + name;
@@ -28,6 +34,10 @@ export function computeNameDepth(path) {
 }
 
 export function popFirstNameElementFromName(name) {
+    // Check that there is no file
+    if (name.split(':').length != 1) {
+        throw new Error('Name ' + name + ' cannot contain file path');
+    }
     // Split the blocks
     const blocks = name.split(".");
     const remaining_blocks = blocks.slice(1, blocks.length);
@@ -37,6 +47,10 @@ export function popFirstNameElementFromName(name) {
 }
 
 export function popLastPathElementFromPath(path) {
+    // Check that there is no file
+    if (path.split(':').length != 2) {
+        throw new Error('Path ' + path + ' is not a path');
+    }
     // Split the file name and the blocks
     const file_block = path.split(":");
     const file = file_block[0];
