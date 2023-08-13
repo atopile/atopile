@@ -10,6 +10,6 @@ For now, clone the branch in the first link (eg. to your "repos" or "projects" d
 
 ## Building the Grammar
 
-`cd src/parser`
+`cd src/atopile/parser`
 
 `/Users/mattwildoer/Projects/antlr4/docker-simplified/antlr4 -Dlanguage=Python3 -visitor AtopileParser.g4 AtopileLexer.g4`
