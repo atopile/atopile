@@ -50,7 +50,7 @@ class Builder(AtopileParserVisitor):
         self.project = project
 
         self._block_stack: List[str] = []
-        self._file_stack: List[str] = []
+        self._file_stack: List[Path] = []
 
         self._tree_cache = {}
 
@@ -220,7 +220,7 @@ class Builder(AtopileParserVisitor):
 
             # make the noise!
             block_path = self.model.subclass_block(
-                block_type, superclass_path, name, self.current_file
+                block_type, superclass_path, name, self.current_block
             )
         else:
             # we're not subclassing anything

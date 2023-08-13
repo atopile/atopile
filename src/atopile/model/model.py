@@ -56,7 +56,7 @@ class Model:
         sg = self.graph.subgraph_edges(self.graph.es.select(type_in=edge_type_names), delete_vertices=False)
         return sg
 
-    def _instantiate_block(self, class_path: str, instance_ref: str, part_of_path: str) -> str:
+    def _instantiate_block(self, class_path: str, instance_ref: str, part_of_path: str, instance_path: Optional[str] = None) -> str:
         """
         Take the feature, component or module and create an instance of it.
         """
@@ -65,7 +65,10 @@ class Model:
         class_children_idxs = part_of_graph.subcomponent(class_root.index, mode="in")
         class_children = part_of_graph.vs[class_children_idxs]
         sg = self.graph.subgraph(class_children)
-        instance_path = part_of_path + MODULE_PATH_SEPERATOR + instance_ref
+
+        if instance_path is None:
+            # this is dumb, because it assumes that part_of_path is a module already, it doesn't expect it could be a file
+            instance_path = part_of_path + MODULE_PATH_SEPERATOR + instance_ref
 
         # replace the paths and references of all the blocks/subcomponents
         class_paths = copy.copy(sg.vs["path"])
@@ -118,7 +121,10 @@ class Model:
         Take the feature, component or module and create a subclass of it.
         """
         assert block_type in (VertexType.module, VertexType.component)
-        subclass_path = self._instantiate_block(superclass_path, subclass_ref, part_of_path)
+        # in the case of subclassing, a subclass's part_of_path must always be a file. This is checked in parser.py
+        # we just need to join them with a ":" instead of a "."
+        subclass_path = part_of_path + ":" + subclass_ref
+        self._instantiate_block(superclass_path, subclass_ref, part_of_path, subclass_path)
         self.graph.vs.find(path_eq=subclass_path)["type"] = block_type.name
 
         self.new_edge(
