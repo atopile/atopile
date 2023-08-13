@@ -82,7 +82,11 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
                         }
                     });
                 }
+                joint_object.resizeBasedOnContent();
                 applyParentConfig(element, child_attrs);
+                console.log('Bt port contains:')
+                console.log(joint_object);
+                console.log(joint_object.getGroupPorts('bottom'));
 
                 // FIXME:
                 // Position the root element in the middle of the screen
@@ -172,7 +176,7 @@ const paper = new dia.Paper({
     height: '100%',
     gridSize: settings_dict['common']['gridSize'],
     drawGrid: true,
-    drawGrid: { name: 'mesh', args: { color: 'black' }},
+    drawGrid: { name: 'dot', args: { color: 'black' }},
     interactive: true,
     snapLinks: true,
     linkPinning: false,

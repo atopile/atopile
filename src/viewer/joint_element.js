@@ -22,12 +22,16 @@ export class AtoElement extends dia.Element {
         };
     }
 
+    addPortSingle(path, name, port_group_name) {
+        let port_anchor = getPortLabelAnchor(port_group_name);
+        this.addPort(createPort(path, name, port_group_name, port_anchor));
+    }
+
     // TODO: need to change to add port and add pins in port
-    addPortWithPins(port_group_name, port_location, pin_list) {
+    addPortGroupWithPorts(port_group_name, port_location, pin_list) {
         let port_label_position = getPortLabelPosition(port_location);
-        let port_anchor = getPortLabelAnchor(port_location);
         let port_angle = getPortLabelAngle(port_location);
-        let port_position = getPortPosition(port_location);
+        let port_position = getPortPosition(port_location, pin_list);
 
         let port_group = {};
 
@@ -67,7 +71,7 @@ export class AtoElement extends dia.Element {
 
         // While we are creating the port, add the pins in the element
         for (let pin of pin_list) {
-            this.addPort(createPort(pin['path'], pin['name'], port_group_name, port_anchor, true));
+            this.addPortSingle(pin['path'], pin['name'], port_group_name);
         }
     }
 
@@ -319,38 +323,38 @@ function getPortLabelAngle(location) {
     };
 };
 
-function getPortPosition(location) {
+function getPortPosition(location, pin_list) {
     switch (location) {
         case "top":
             return {
                 name: 'line',
                 args: {
-                    start: { x: settings_dict['component']['labelHorizontalMargin'], y: 0 },
-                    end: { x: ('calc(w - ' + settings_dict['component']['labelHorizontalMargin'] + ')'), y: 0 }
+                    start: { x: settings_dict['component']['labelHorizontalMargin'] - settings_dict['common']['gridSize']/2, y: 0 },
+                    end: { x: (settings_dict['component']['labelHorizontalMargin'] + (pin_list.length - 0.5) * settings_dict['common']['gridSize']), y: 0 }
                 },
             };
         case "bottom":
             return {
                 name: 'line',
                 args: {
-                    start: { x: settings_dict['component']['labelHorizontalMargin'], y: 'calc(h)' },
-                    end: { x: ('calc(w - ' + settings_dict['component']['labelHorizontalMargin'] + ')'), y: 'calc(h)' }
+                    start: { x: settings_dict['component']['labelHorizontalMargin'] - settings_dict['common']['gridSize']/2, y: 'calc(h)' },
+                    end: { x: (settings_dict['component']['labelHorizontalMargin'] + (pin_list.length - 0.5) * settings_dict['common']['gridSize']), y: 'calc(h)' }
                 },
             };
         case "left":
             return {
                 name: 'line',
                 args: {
-                    start: { x: 0, y: settings_dict['component']['labelVerticalMargin']},
-                    end: { x: 0, y: ('calc(h - ' + settings_dict['component']['labelVerticalMargin'] + ')')}
+                    start: { x: 0, y: settings_dict['component']['labelVerticalMargin'] - settings_dict['common']['gridSize']/2},
+                    end: { x: 0, y: (settings_dict['component']['labelVerticalMargin'] + (pin_list.length - 0.5) * settings_dict['common']['gridSize'])}
                 },
             };
         case "right":
             return {
                 name: 'line',
                 args: {
-                    start: { x: 'calc(w)', y: settings_dict['component']['labelVerticalMargin'] },
-                    end: { x: 'calc(w)', y: ('calc(h - ' + settings_dict['component']['labelVerticalMargin'] + ')')}
+                    start: { x: 'calc(w)', y: settings_dict['component']['labelVerticalMargin']  - settings_dict['common']['gridSize']/2},
+                    end: { x: 'calc(w)', y: (settings_dict['component']['labelVerticalMargin'] + (pin_list.length - 0.5) * settings_dict['common']['gridSize'])}
                 },
             };
         default:
@@ -401,7 +405,7 @@ function addPins(jointJSObject, element, path) {
 
     for (let port in ports_to_add) {
         if (ports_to_add[port]['pins'].length > 0) {
-            jointJSObject.addPortWithPins(port, ports_to_add[port]['location'], ports_to_add[port]['pins']);
+            jointJSObject.addPortGroupWithPorts(port, ports_to_add[port]['location'], ports_to_add[port]['pins']);
         }
     }
 }
@@ -449,7 +453,6 @@ export function createBlock(element, parent, path) {
     });
 
     addPins(block, element, path);
-    block.resizeBasedOnContent();
 
     return block;
 }
@@ -553,12 +556,11 @@ function getLinkAddress(port, current_path, embedded_cells) {
             cell_id = concatenateParentPathAndModuleName(current_path, first_element['first_name']);
             break;
         default:
-            console.log('default');
             first_element = provideFirstNameElementFromName(port);
             cell_id = concatenateParentPathAndModuleName(current_path, first_element['first_name']);
             for (let cell of embedded_cells) {
                 if (cell['id'] == cell_id) {
-                    cell.addPortWithPins('top', 'top', [{'path': port_path, 'name': first_element['remaining']}])
+                    cell.addPortSingle(port_path, first_element['remaining'], 'bottom');
                 }
             }
             break;
