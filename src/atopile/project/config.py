@@ -81,6 +81,10 @@ class BuildConfig(BaseConfig):
     def targets(self) -> List[str]:
         return self._config_data.get("targets") or ["designators", "netlist-kicad6", "bom-jlcpcb"]
 
+    @property
+    def build_path(self) -> Path:
+        return self.project.config.paths.build / self.name
+
 class CustomBuildConfig:
     def __init__(self, name: str, project: "Project", root_file, root_node, targets) -> None:
         self._name = name
@@ -96,9 +100,13 @@ class CustomBuildConfig:
     @staticmethod
     def from_build_config(build_config: BuildConfig) -> "CustomBuildConfig":
         return CustomBuildConfig(
-            name=build_config.name,
+            name="modified-" + build_config.name,
             project=build_config.project,
             root_file=build_config.root_file,
             root_node=build_config.root_node,
             targets=build_config.targets,
         )
+
+    @property
+    def build_path(self) -> Path:
+        return self.project.config.paths.build / self.name
