@@ -68,8 +68,8 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
-                    let added_element = addLinks(element, downstream_path, joint_object.getEmbeddedCells());
-                    for (let element of added_element) {
+                    let added_elements = addLinks(element, downstream_path, joint_object.getEmbeddedCells());
+                    for (let element of added_elements) {
                         element.addTo(graph);
                     }
                     // change the title layout to the corner for module with embedded childrens
@@ -84,9 +84,6 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
                 }
                 joint_object.resizeBasedOnContent();
                 applyParentConfig(element, child_attrs);
-                console.log('Bt port contains:')
-                console.log(joint_object);
-                console.log(joint_object.getGroupPorts('bottom'));
 
                 // FIXME:
                 // Position the root element in the middle of the screen

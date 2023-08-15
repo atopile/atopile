@@ -27,11 +27,11 @@ export class AtoElement extends dia.Element {
         this.addPort(createPort(path, name, port_group_name, port_anchor));
     }
 
-    // TODO: need to change to add port and add pins in port
-    addPortGroupWithPorts(port_group_name, port_location, pin_list) {
+    addPortGroup(port_group_name, port_location) {
         let port_label_position = getPortLabelPosition(port_location);
         let port_angle = getPortLabelAngle(port_location);
-        let port_position = getPortPosition(port_location, pin_list);
+        let port_list = this.getGroupPorts(port_location);
+        let port_position = getPortPosition(port_location, port_list);
 
         let port_group = {};
 
@@ -68,6 +68,11 @@ export class AtoElement extends dia.Element {
 
         // Add the ports list to the element
         this.prop({"ports": { "groups": port_group}});
+    }
+
+    // TODO: need to change to add port and add pins in port
+    addPortGroupWithPorts(port_group_name, port_location, pin_list) {
+        this.addPortGroup(port_group_name, port_location);
 
         // While we are creating the port, add the pins in the element
         for (let pin of pin_list) {
@@ -140,6 +145,12 @@ export class AtoElement extends dia.Element {
         final_dim['height'] = normalizeDimensionToGrid(final_dim['height'], settings_dict['common']['gridSize']);
 
         this.resize(final_dim['width'], final_dim['height']);
+
+        //FIXME: currently just adding a port everywhere to resize the ports
+        this.addPortGroup('top', 'top');
+        this.addPortGroup('left', 'left');
+        this.addPortGroup('right', 'right');
+        this.addPortGroup('bottom', 'bottom');
     }
 
     fitAncestorElements() {
@@ -561,11 +572,11 @@ function getLinkAddress(port, current_path, embedded_cells) {
             for (let cell of embedded_cells) {
                 if (cell['id'] == cell_id) {
                     cell.addPortSingle(port_path, first_element['remaining'], 'bottom');
+                    cell.resizeBasedOnContent();
                 }
             }
             break;
     }
-    console.log({'cell_id': cell_id, 'port_id': port_path});
     return {'cell_id': cell_id, 'port_id': port_path};
 }
 
