@@ -9,6 +9,7 @@ from typing import List
 from antlr4 import CommonTokenStream, InputStream
 from antlr4.error.ErrorListener import ErrorListener
 
+from atopile.model.accessors import ModelVertexView
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_edge_uid
 from atopile.parser.AtopileLexer import AtopileLexer
@@ -49,7 +50,7 @@ class Builder(AtopileParserVisitor):
         self.project = project
 
         self._block_stack: List[str] = []
-        self._file_stack: List[str] = []
+        self._file_stack: List[Path] = []
 
         self._tree_cache = {}
 
@@ -160,28 +161,75 @@ class Builder(AtopileParserVisitor):
         # handle all depth required. From here, we always want to go back up
         return None
 
-    def define_block(self, ctx, block_type: VertexType):
+    def visitBlockdef(self, ctx: AtopileParser.BlockdefContext):
+        block_type = None
+        if ctx.COMPONENT():
+            block_type = VertexType.component
+        elif ctx.MODULE():
+            block_type = VertexType.module
+        else:
+            raise LanguageError(
+                f"Unknown block type {ctx.start.text}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        # name -> the naem of the block being defined
         name = ctx.name().getText()
 
-        if ctx.OPTIONAL():
-            block_path = self.model.new_vertex(
-                block_type, name, option_of=self.current_block
+        # make sure we're defining this block from the root of the file
+        if ModelVertexView.from_path(self.model, self.current_block).vertex_type != VertexType.file:
+            raise LanguageError(
+                f"Cannot define a block inside another block ({self.current_block}).",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        if ctx.FROM():
+            # we're subclassing something
+            # find what we're subclassing
+            from_obj = ctx.name_or_attr()
+            if not from_obj:
+                raise LanguageError(
+                    "Subclass must specify a superclass, but none specified",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+            superclass_path, data_path = self.model.find_ref(from_obj.getText(), self.current_block)
+            if data_path:
+                raise LanguageError(
+                    "Cannot subclass data object",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+
+            # we've got to check that the parent is a module if we're trying to make a module
+            #  if we're trying to make a component we don't care
+            superclass = ModelVertexView(self.model, superclass_path)
+            if block_type == VertexType.module and superclass.vertex_type != VertexType.module:
+                raise LanguageError(
+                    "Specified superclass is a component, but the subclass is trying to be a module. This isn't supported",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+
+            # make the noise!
+            block_path = self.model.subclass_block(
+                block_type, superclass_path, name, self.current_block
             )
         else:
-            block_path = self.model.new_vertex(
-                block_type, name, part_of=self.current_block
-            )
+            # we're not subclassing anything
+            block_path = self.model.new_vertex(block_type, name, part_of=self.current_block)
 
         self.model.data[block_path] = {}
 
         with self.working_block(block_path):
             return super().visitChildren(ctx)
-
-    def visitComponentdef(self, ctx: AtopileParser.ComponentdefContext):
-        return self.define_block(ctx, VertexType.component)
-
-    def visitModuledef(self, ctx: AtopileParser.ModuledefContext):
-        return self.define_block(ctx, VertexType.module)
 
     def visitPindef_stmt(self, ctx: AtopileParser.Pindef_stmtContext):
         if ctx.name() is not None:
@@ -335,8 +383,17 @@ class Builder(AtopileParserVisitor):
             class_path, _ = self.model.find_ref(class_ref, self.current_block)
             # FIXME: this probably throws a dud error if the name is an attr
             # NOTE: we're not using the assignee here because we actually want that error until this is fixed properly
-            instance_name = ctx.name_or_attr().name().getText()
-            self.model.instantiate_block(class_path, instance_name, self.current_block)
+            instance_name_obj = ctx.name_or_attr().name()
+            if instance_name_obj is None:
+                raise LanguageError(
+                    "Cannot assign new object to an attribute (eg. a.b.c), must be to a name (eg. c)",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+            self.model.instantiate_block(
+                class_path, instance_name_obj.getText(), self.current_block
+            )
         else:
             if assignable.string():
                 value = self.get_string(assignable.string())
@@ -413,7 +470,9 @@ class ParallelParser(AtopileParserVisitor):
             self._accounted_for_files,
             self._accounted_for_files_lock,
         )
-        self._futures_to_path[self._executor.submit(new_parser._parse, abs_path)] = abs_path
+        self._futures_to_path[
+            self._executor.submit(new_parser._parse, abs_path)
+        ] = abs_path
 
     @staticmethod
     def pre_parse(bob: Builder, root_file: Path):
@@ -432,6 +491,7 @@ class ParallelParser(AtopileParserVisitor):
             for future in concurrent.futures.as_completed(future_to_path):
                 path = future_to_path[future]
                 log.info(f"Finished parsing {str(path)}")
+
 
 def build_model(project: Project, config: BuildConfig) -> Model:
     log.info("Building model")

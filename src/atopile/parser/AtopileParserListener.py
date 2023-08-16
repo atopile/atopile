@@ -62,21 +62,12 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by AtopileParser#componentdef.
-    def enterComponentdef(self, ctx:AtopileParser.ComponentdefContext):
+    # Enter a parse tree produced by AtopileParser#blockdef.
+    def enterBlockdef(self, ctx:AtopileParser.BlockdefContext):
         pass
 
-    # Exit a parse tree produced by AtopileParser#componentdef.
-    def exitComponentdef(self, ctx:AtopileParser.ComponentdefContext):
-        pass
-
-
-    # Enter a parse tree produced by AtopileParser#moduledef.
-    def enterModuledef(self, ctx:AtopileParser.ModuledefContext):
-        pass
-
-    # Exit a parse tree produced by AtopileParser#moduledef.
-    def exitModuledef(self, ctx:AtopileParser.ModuledefContext):
+    # Exit a parse tree produced by AtopileParser#blockdef.
+    def exitBlockdef(self, ctx:AtopileParser.BlockdefContext):
         pass
 
 
@@ -104,6 +95,15 @@ class AtopileParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by AtopileParser#assignable.
     def exitAssignable(self, ctx:AtopileParser.AssignableContext):
+        pass
+
+
+    # Enter a parse tree produced by AtopileParser#retype_stmt.
+    def enterRetype_stmt(self, ctx:AtopileParser.Retype_stmtContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#retype_stmt.
+    def exitRetype_stmt(self, ctx:AtopileParser.Retype_stmtContext):
         pass
 
 
