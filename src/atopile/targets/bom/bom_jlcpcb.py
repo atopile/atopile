@@ -103,7 +103,7 @@ class BomJlcpcbTarget(Target):
             log.error(f"Cannot build {self.name} target due to missing translations. Run `ato resolve {self.name}` to fix this.")
             return
 
-        bom_path = self.project.config.paths.build / self.build_config.root_file.with_suffix(".bom.csv").name
+        bom_path = self.build_config.build_path / self.build_config.root_file.with_suffix(".bom.csv").name
         with bom_path.open("w") as f:
             f.write(self._bom)
 

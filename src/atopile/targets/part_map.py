@@ -89,7 +89,7 @@ class PartMapTarget(Target):
         return self._components
 
     def build(self) -> None:
-        part_map_path = self.project.config.paths.build / self.build_config.root_file.with_suffix(".part-map.yaml").name
+        part_map_path = self.build_config.build_path / self.build_config.root_file.with_suffix(".part-map.yaml").name
         with part_map_path.open("w") as f:
             f.write(yaml.dump(self.generate()))
 

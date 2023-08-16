@@ -60,15 +60,16 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
             log.error(f"Target {target.name} is unsolvable. Attempting to generate remaining targets.")
             target_muster.targets.remove(target)
         elif result == TargetCheckResult.SOLVABLE:
-            log.warning(f"Target {target.name} is solvable, but is unstable. Use `ato resolve {target.name}` to stabalise as desired.")
+            log.warning(f"Target {target.name} is solvable, but is unstable. Use `ato resolve --build-config={build_config.name} --target={target.name} {project.root}` to stabalise as desired.")
         elif result == TargetCheckResult.UNTIDY:
             log.warning(f"Target {target.name} is solvable, but is untidy.")
         elif result == TargetCheckResult.COMPLETE:
             log.info(f"Target {target.name} passes check.")
 
     # generate targets
-    log.info(f"Writing build output to {project.config.paths.build}")
-    project.ensure_build_dir()
+    log.info(f"Writing build output to {build_config.build_path}")
+    build_config.build_path.mkdir(parents=True, exist_ok=True)
+
     targets_string = ", ".join(target_names)
     log.info(f"Generating targets {targets_string}")
     for target in target_muster.targets:
