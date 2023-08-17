@@ -98,9 +98,10 @@ class ModelVertexView:
 
     @property
     def superclasses(self) -> List["ModelVertexView"]:
-        superclasses = []
-        while (superclass := self.superclass) is not None:
+        superclasses = [self.superclass]
+        while (superclass := superclasses[-1].superclass) is not None:
             superclasses.append(superclass)
+        return superclasses
 
     @property
     def is_class(self) -> bool:

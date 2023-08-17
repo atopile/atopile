@@ -126,18 +126,24 @@ class Delta:
 
         return delta
 
-    def update(self, other: "Delta") -> None:
+    @classmethod
+    def combine(cls, first: "Delta", second: "Delta") -> "Delta":
         """
         Like a dict.update, but for Delta objects.
         Cleans up possible path conflicts
         """
-        self.node.update(other.node)
-        self.connection.update(other.connection)
-        self.data.update(other.data)
+        new_delta = cls()
 
-        for k in self.data:
-            if k in self.node:
-                del self.data[k]
+        for delta in (first, second):
+            new_delta.node.update(delta.node)
+            new_delta.connection.update(delta.connection)
+            new_delta.data.update(delta.data)
+
+        for k in new_delta.data:
+            if k in new_delta.node:
+                del new_delta.data[k]
+
+        return new_delta
 
     def apply_to(self, target: ModelVertexView) -> None:
         # apply node delta
