@@ -61,7 +61,7 @@ class ModelVertexView:
 
     @property
     def data(self) -> dict:
-        return self.model.data.get(self.path, {})
+        return self.model.data.setdefault(self.path, {})
 
     @property
     def parent_vidx(self) -> int:
@@ -152,7 +152,7 @@ class ModelVertexView:
         type_matched_vids = {v.index for v in self.model.graph.vs.select(type_in=vertex_type_names)}
         part_of_view = self.model.get_graph_view([EdgeType.part_of])
         descendant_vids = set(part_of_view.subcomponent(self.index, mode="in"))
-        return [ModelVertexView(self.model, vid) for vid in type_matched_vids & descendant_vids]
+        return [ModelVertexView(self.model, vid) for vid in type_matched_vids & descendant_vids if vid != self.index]
 
     def get_ancestor_ids(self) -> List["ModelVertexView"]:
         part_of_view = self.model.get_graph_view([EdgeType.part_of])
