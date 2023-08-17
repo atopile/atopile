@@ -1,8 +1,8 @@
-from typing import List, Union, Optional, Iterable
+from typing import List, Union, Iterable
 
 import igraph as ig
 
-from atopile.model.model import EdgeType, Model, VertexType, MODULE_PATH_SEPERATOR
+from atopile.model.model import EdgeType, Model, VertexType
 
 EdgeIterable = Union[ig.EdgeSeq, List[ig.Edge]]
 

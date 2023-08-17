@@ -115,3 +115,20 @@ def test_remove_data(module1_root: ModelVertexView, module2_root: ModelVertexVie
     assert not delta.node
     assert not delta.connection
     assert delta.data == {("test", "test2"): Empty}
+
+
+def test_remove_data(module1_root: ModelVertexView, module2_root: ModelVertexView):
+    # we create some decent sized diff
+    add_nodes(module2_root)
+    add_connection(module2_root)
+    add_data(module2_root)
+    delta = Delta.diff(module1_root, module2_root)
+
+    # then let's re-apply it to module1_root
+    delta.apply_to(module1_root)
+
+    # and finally check there's no diff between the objects anymore
+    delta2 = Delta.diff(module1_root, module2_root)
+    assert not delta2.node
+    assert not delta2.connection
+    assert not delta2.data

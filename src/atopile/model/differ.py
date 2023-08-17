@@ -1,6 +1,6 @@
 from typing import Any, Type
 
-from atopile.model.accessors import ModelVertexView
+from atopile.model.accessors import ModelVertexView, mvvs_to_path
 from atopile.model.model import EdgeType, VertexType
 
 FragPath = tuple[str]
@@ -138,3 +138,46 @@ class Delta:
         for k in self.data:
             if k in self.node:
                 del self.data[k]
+
+    def apply_to(self, target: ModelVertexView) -> None:
+        # apply node delta
+        # by addressing teh shortest paths first we can make sure upstream nodes exist
+        for rel_frag_path in sorted(self.node.keys(), key=len):
+            node_delta = self.node[rel_frag_path]
+            if node_delta == Empty:
+                raise NotImplementedError("Deleting things isn't currently implemented - because I'm not sure how'd you'd get there.")
+            # FIXME: hacky string manipulation of paths
+            part_of_path = ".".join([target.path, *rel_frag_path[:-1]])
+            target.model.new_vertex(node_delta, rel_frag_path[-1], part_of_path)
+
+        # apply connections
+        for connection_from_to, connection_delta in self.connection.items():
+            connection_from, connection_to = connection_from_to
+            if connection_delta == Empty:
+                raise NotImplementedError("Deleting things isn't currently implemented - because I'm not sure how'd you'd get there.")
+            # FIXME: more hacky string manipulation of paths
+            connection_from_path = ".".join([target.path, *connection_from])
+            connection_to_path = ".".join([target.path, *connection_to])
+            target.model.new_edge(EdgeType.connects_to, connection_from_path, connection_to_path)
+
+        # apply data updates
+        for candidate_data_path, data_value in self.data.items():
+            data_node = target
+            data_path = list(candidate_data_path)
+            for data_path_frag in candidate_data_path:
+                for candidate_date_node in data_node.get_adjacents("in", EdgeType.part_of):
+                    if candidate_date_node.ref == data_path_frag:
+                        data_path.pop(0)
+                        data_node = candidate_date_node
+                        break
+                else:
+                    break
+
+            data_dict = data_node.data
+            for data_path_sec in data_path[:-1]:
+                data_dict = data_dict.setdefault(data_path_sec, {})
+            if data_value == Empty:
+                if data_path[-1] in data_dict:
+                    del data_dict[data_path[-1]]
+            else:
+                data_dict[data_path[-1]] = data_value
