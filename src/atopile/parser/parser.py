@@ -10,6 +10,7 @@ from antlr4 import CommonTokenStream, InputStream
 from antlr4.error.ErrorListener import ErrorListener
 
 from atopile.model.accessors import ModelVertexView
+from atopile.model.differ import Delta
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_edge_uid
 from atopile.parser.AtopileLexer import AtopileLexer
@@ -434,7 +435,6 @@ class Builder(AtopileParserVisitor):
         if assignable.new_stmt():
             class_ref = assignable.new_stmt().name_or_attr().getText()
             class_path, _ = self.model.find_ref(class_ref, self.current_block)
-            # FIXME: this probably throws a dud error if the name is an attr
             # NOTE: we're not using the assignee here because we actually want that error until this is fixed properly
             instance_name_obj = ctx.name_or_attr().name()
             if instance_name_obj is None:
@@ -476,6 +476,101 @@ class Builder(AtopileParserVisitor):
 
     def get_string(self, ctx: AtopileParser.StringContext) -> str:
         return ctx.getText().strip("\"'")
+
+    def visitRetype_stmt(self, ctx: AtopileParser.Retype_stmtContext):
+        """
+        This statement type will replace an existing block with a new one of a subclassed type
+
+        Since there's no way to delete elements, we can be sure that the subclass is
+        a superset of the superclass (confusing linguistically, makes sense logically)
+        """
+        # first, let's get all the data out of this replacement statement and validate it
+        retype_ref = ctx.name_or_attr(0).getText()
+        new_type_ref = ctx.name_or_attr(1).getText()
+
+        try:
+            retype_path, retype_data = self.model.find_ref(
+                retype_ref, self.current_block
+            )
+        except KeyError as ex:
+            raise LanguageError(
+                f"Cannot retype non-existent object {retype_ref}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
+
+        if retype_data:
+            raise LanguageError(
+                f"Cannot retype data object {retype_ref}. Provide a path to the object you want to retype instead.",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        try:
+            new_type_path, new_type_data = self.model.find_ref(
+                new_type_ref, self.current_block
+            )
+        except KeyError as ex:
+            raise LanguageError(
+                f"Cannot use new type of non-existant object {new_type_ref}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
+
+        if new_type_data:
+            raise LanguageError(
+                f"Cannot use data object as new type {new_type_ref}. Please provide a path to the class you want to use instead.",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        retype_mvv = ModelVertexView.from_path(self.model, retype_path)
+        new_type_mvv = ModelVertexView.from_path(self.model, new_type_path)
+
+        # check retype is an instance of a superclass of the new type (which is a class)
+        if not retype_mvv.is_instance:
+            raise LanguageError(
+                f"Can only retype instances of things, but {retype_ref} is a class",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+        if not new_type_mvv.is_class:
+            raise LanguageError(
+                f"Can only retype to a class, but {new_type_ref} is an instance",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+        if retype_mvv.instance_of not in new_type_mvv.superclasses:
+            raise LanguageError(
+                f"Cannot retype {retype_ref} to {new_type_ref}. {new_type_ref} must be a subclass of {retype_mvv.instance_of.path}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        # okay, now we can actually get on with the retyping
+        # first, we're going to diff the changes between the original class and the updated class
+        # then, we're going to diff the user has made to the standing instance, compared to the original class
+        # we're then going to apply the diffs, preferencing changes the user has manually made
+        class_diff = Delta.diff(retype_mvv.instance_of, new_type_mvv)
+        instance_diff = Delta.diff(retype_mvv.instance_of, retype_mvv)
+        combined_diff = Delta.combine(class_diff, instance_diff)
+        combined_diff.apply_to(retype_mvv)
+
+        # finally we need to change the "instance_of" link to point to the new class
+        instance_of_eid = self.model.graph.es.find(
+            _source=retype_mvv.index, type_eq=EdgeType.instance_of.name
+        )
+        self.model.graph.delete_edges(instance_of_eid)
+        self.model.new_edge(EdgeType.instance_of, retype_path, new_type_path)
+
+        return super().visitRetype_stmt(ctx)
 
 
 class ParallelParser(AtopileParserVisitor):
