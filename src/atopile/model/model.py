@@ -1,11 +1,13 @@
-from enum import Enum
-from typing import List, Optional, Union, Tuple
-from atopile.model import utils
-import logging
 import copy
-from schema import Schema
+import logging
+from enum import Enum
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import igraph as ig
+from schema import Schema
+
+from atopile.model import utils
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ class Model:
         self.data = {}
         self.schema = Schema({})
 
-        self.src_files = []
+        self.src_files: list[Path] = []
 
     def plot(self, *args, **kwargs):
         return utils.plot(self.graph, *args, **kwargs)
