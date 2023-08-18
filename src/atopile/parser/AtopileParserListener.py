@@ -71,6 +71,15 @@ class AtopileParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by AtopileParser#blocktype.
+    def enterBlocktype(self, ctx:AtopileParser.BlocktypeContext):
+        pass
+
+    # Exit a parse tree produced by AtopileParser#blocktype.
+    def exitBlocktype(self, ctx:AtopileParser.BlocktypeContext):
+        pass
+
+
     # Enter a parse tree produced by AtopileParser#import_stmt.
     def enterImport_stmt(self, ctx:AtopileParser.Import_stmtContext):
         pass

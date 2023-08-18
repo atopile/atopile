@@ -102,6 +102,13 @@ class ModelVertexView:
         while (superclass := self.superclass) is not None:
             superclasses.append(superclass)
 
+    def i_am_an_instance_of(self, of: "ModelVertexView") -> bool:
+        if self.is_class:
+            return False
+        if self.instance_of == of:
+            return True
+        return self.instance_of.is_instance(of)
+
     @property
     def is_class(self) -> bool:
         return not self.is_instance

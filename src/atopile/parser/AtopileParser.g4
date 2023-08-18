@@ -14,7 +14,8 @@ simple_stmt: import_stmt | assign_stmt | connect_stmt | retype_stmt | pindef_stm
 compound_stmt: blockdef;
 block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 
-blockdef: ('component' | 'module') name ('from' name_or_attr)? ':' block;
+blockdef: blocktype name ('from' name_or_attr)? ':' block;
+blocktype: ('component' | 'module' | 'interface');
 
 import_stmt: 'import' name_or_attr 'from' string;
 assign_stmt: name_or_attr '=' assignable;
