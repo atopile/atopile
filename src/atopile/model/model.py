@@ -16,10 +16,11 @@ class VertexType(Enum):
     file = "file"
     module = "module"
     component = "component"
+    interface = "interface"
     pin = "pin"
     signal = "signal"
 
-block_types = [VertexType.module, VertexType.component]
+block_types = [VertexType.module, VertexType.component, VertexType.interface]
 pin_types = [VertexType.pin, VertexType.signal]
 
 class EdgeType(Enum):
@@ -120,7 +121,7 @@ class Model:
         """
         Take the feature, component or module and create a subclass of it.
         """
-        assert block_type in (VertexType.module, VertexType.component)
+        assert block_type in block_types
         # in the case of subclassing, a subclass's part_of_path must always be a file. This is checked in parser.py
         # we just need to join them with a ":" instead of a "."
         subclass_path = part_of_path + ":" + subclass_ref

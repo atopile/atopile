@@ -44,6 +44,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#blocktype.
+    def visitBlocktype(self, ctx:AtopileParser.BlocktypeContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#import_stmt.
     def visitImport_stmt(self, ctx:AtopileParser.Import_stmtContext):
         return self.visitChildren(ctx)
