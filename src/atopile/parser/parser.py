@@ -163,18 +163,16 @@ class Builder(AtopileParserVisitor):
         return None
 
     def visitBlockdef(self, ctx: AtopileParser.BlockdefContext):
-        block_type = None
-        if ctx.COMPONENT():
-            block_type = VertexType.component
-        elif ctx.MODULE():
-            block_type = VertexType.module
-        else:
+        block_type_name = ctx.blocktype().getText()
+        try:
+            block_type = VertexType(block_type_name)
+        except ValueError as ex:
             raise LanguageError(
-                f"Unknown block type {ctx.start.text}",
+                f"Unknown block type {block_type_name}",
                 self.current_file,
                 ctx.start.line,
                 ctx.start.column,
-            )
+            ) from ex
 
         # name -> the naem of the block being defined
         name = ctx.name().getText()
@@ -213,15 +211,19 @@ class Builder(AtopileParserVisitor):
                     ctx.start.column,
                 )
 
-            # we've got to check that the parent is a module if we're trying to make a module
-            #  if we're trying to make a component we don't care
+            # we're allowed to make modules into components, but not visa-versa
+            # otherwise the class-type must be the same fundemental type as the superclass
             superclass = ModelVertexView(self.model, superclass_path)
-            if (
-                block_type == VertexType.module
-                and superclass.vertex_type != VertexType.module
-            ):
+            allowed_class_types = [superclass.vertex_type]
+            if block_type == VertexType.component:
+                allowed_class_types += [VertexType.module]
+
+            if block_type not in allowed_class_types:
+                allowed_class_types_friendly = " or ".join(
+                    e.value for e in allowed_class_types
+                )
                 raise LanguageError(
-                    "Specified superclass is a component, but the subclass is trying to be a module. This isn't supported",
+                    f"Superclass is a {superclass.vertex_type.value}, the subclass is trying to be a {block_type.value}, but must be a {allowed_class_types_friendly}",
                     self.current_file,
                     ctx.start.line,
                     ctx.start.column,
@@ -358,21 +360,62 @@ class Builder(AtopileParserVisitor):
         result = self.visitChildren(ctx)
         connectables = ctx.connectable()
 
-        if len(connectables) < 2:
+        if len(connectables) != 2:
             raise LanguageError(
-                "Connect statement must have at least two connectables",
+                "Connect statement must have two connectables",
                 self.current_file,
                 ctx.start.line,
                 ctx.start.column,
             )
 
+        # figure out what we're trying to connect
         from_path = self.deref_connectable(ctx.connectable(0))
         to_path = self.deref_connectable(ctx.connectable(1))
-        uid = generate_edge_uid(from_path, to_path, self.current_block)
-        self.model.new_edge(EdgeType.connects_to, from_path, to_path, uid=uid)
-        self.model.data[uid] = {
-            "defining_block": self.current_block,
-        }
+
+        # check typing to the connectables
+        from_mvv = ModelVertexView.from_path(self.model, from_path)
+        to_mvv = ModelVertexView.from_path(self.model, to_path)
+
+        basic_node_types = (VertexType.pin, VertexType.signal)
+        if (
+            to_mvv.vertex_type in basic_node_types
+            and from_mvv.vertex_type in basic_node_types
+        ):
+            # simple case, we don't care, connect 'em on up
+            joining_pairs = [
+                (from_path, to_path)
+            ]
+        elif from_mvv.vertex_type == to_mvv.vertex_type == VertexType.interface and (
+            to_mvv.i_am_an_instance_of(from_mvv.instance_of)
+            or from_mvv.i_am_an_instance_of(to_mvv.instance_of)
+        ):
+            # match interfaces based on node name
+            common_node_names = {
+                mvv.ref for mvv in from_mvv.get_descendants(list(VertexType))
+            } & {
+                mvv.ref for mvv in to_mvv.get_descendants(list(VertexType))
+            }
+
+            from_node_paths = [mvv.path for mvv in from_mvv.get_descendants(list(VertexType)) if mvv.ref in common_node_names]
+            to_node_paths = [mvv.path for mvv in to_mvv.get_descendants(list(VertexType)) if mvv.ref in common_node_names]
+
+            joining_pairs = zip(from_node_paths, to_node_paths)
+
+        else:
+            raise LanguageError(
+                f"Cannot connect {from_mvv.vertex_type.value} to {to_mvv.vertex_type.value}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        # make the noise
+        for i_from_path, i_to_path in joining_pairs:
+            uid = generate_edge_uid(i_from_path, i_to_path, self.current_block)
+            self.model.new_edge(EdgeType.connects_to, i_from_path, i_to_path, uid=uid)
+            self.model.data[uid] = {
+                "defining_block": self.current_block,
+            }
 
         # children are already vistited
         return result

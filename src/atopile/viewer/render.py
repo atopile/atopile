@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 import attrs
 
-from atopile.model.accessors import ModelVertexView, lowest_common_ancestor
+from atopile.model.accessors import ModelVertexView
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.names import resolve_rel_name
 from atopile.model.visitor import ModelVisitor
@@ -110,10 +110,30 @@ class Bob(ModelVisitor):
                 )
             )
 
+            rel_source_mvvs = lca.relative_mvv_path(ModelVertexView(model, connection.source))
+            rel_target_mvvs = lca.relative_mvv_path(ModelVertexView(model, connection.target))
+
+            # FIXME: we need to screw with the paths of interface-owned pins
+            # beacuse their pin names are indistinguisible from a sub-block's pins
+            # we should ultimately fix this path thing when we rev. the viewer
+            def _mod_path(mvv_path: list[ModelVertexView]) -> str:
+                """
+                Make relative paths, supplemeneting the '.'s after an interface with dashes
+                eg. a.b.c -> a.b-c (where b is an interface)
+                """
+                pre_inf = []
+                post_inf = []
+                for i, mvv in enumerate(mvv_path):
+                    if mvv.vertex_type == VertexType.interface:
+                        pre_inf = mvv_path[:i]
+                        post_inf = mvv_path[i:]
+                        return ".".join(mvv.ref for mvv in pre_inf) + "." + "-".join(mvv.ref for mvv in post_inf)
+                return ".".join(mvv.ref for mvv in mvv_path)
+
             link = Link(
                 name=link_name,
-                source=lca.relative_path(ModelVertexView(model, connection.source)),
-                target=lca.relative_path(ModelVertexView(model, connection.target)),
+                source=_mod_path(rel_source_mvvs),
+                target=_mod_path(rel_target_mvvs),
             )
 
             bob.block_directory_by_path[lca.path].links.append(link)
@@ -132,15 +152,7 @@ class Bob(ModelVisitor):
                 vertex_type=[VertexType.component, VertexType.module],
             )
 
-            pins: List[Pin] = filter(
-                lambda x: x is not None,
-                self.wander(
-                    vertex=vertex,
-                    mode="in",
-                    edge_type=EdgeType.part_of,
-                    vertex_type=[VertexType.pin, VertexType.signal],
-                ),
-            )
+            pins = self.wander_interface(vertex)
 
             # check the type of this block
             instance_ofs = vertex.get_adjacents("out", EdgeType.instance_of)
@@ -174,6 +186,30 @@ class Bob(ModelVisitor):
 
     def visit_module(self, vertex: ModelVertexView) -> Block:
         return self.generic_visit_block(vertex)
+
+    def wander_interface(self, vertex: ModelVertexView) -> List[Pin]:
+        listy_pins: List[Pin, List[Pin]] = filter(
+            lambda x: x is not None,
+            self.wander(
+                vertex=vertex,
+                mode="in",
+                edge_type=EdgeType.part_of,
+                vertex_type=[VertexType.pin, VertexType.signal, VertexType.interface],
+            ),
+        )
+        pins = []
+        for listy_pin in listy_pins:
+            if isinstance(listy_pin, list):
+                pins += listy_pin
+            else:
+                pins += [listy_pin]
+        return pins
+
+    def visit_interface(self, vertex: ModelVertexView) -> List[Pin]:
+        pins = self.wander_interface(vertex)
+        for pin in pins:
+            pin.name = vertex.ref + "-" + pin.name
+        return pins
 
     def generic_visit_pin(self, vertex: ModelVertexView) -> Pin:
         vertex_data: dict = self.model.data.get(vertex.path, {})

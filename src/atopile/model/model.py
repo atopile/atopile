@@ -1,11 +1,13 @@
-from enum import Enum
-from typing import List, Optional, Union, Tuple
-from atopile.model import utils
-import logging
 import copy
-from schema import Schema
+import logging
+from enum import Enum
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import igraph as ig
+from schema import Schema
+
+from atopile.model import utils
 
 log = logging.getLogger(__name__)
 
@@ -16,10 +18,11 @@ class VertexType(Enum):
     file = "file"
     module = "module"
     component = "component"
+    interface = "interface"
     pin = "pin"
     signal = "signal"
 
-block_types = [VertexType.module, VertexType.component]
+block_types = [VertexType.module, VertexType.component, VertexType.interface]
 pin_types = [VertexType.pin, VertexType.signal]
 
 class EdgeType(Enum):
@@ -41,7 +44,7 @@ class Model:
         self.data = {}
         self.schema = Schema({})
 
-        self.src_files = []
+        self.src_files: list[Path] = []
 
     def plot(self, *args, **kwargs):
         return utils.plot(self.graph, *args, **kwargs)
@@ -120,7 +123,7 @@ class Model:
         """
         Take the feature, component or module and create a subclass of it.
         """
-        assert block_type in (VertexType.module, VertexType.component)
+        assert block_type in block_types
         # in the case of subclassing, a subclass's part_of_path must always be a file. This is checked in parser.py
         # we just need to join them with a ":" instead of a "."
         subclass_path = part_of_path + ":" + subclass_ref

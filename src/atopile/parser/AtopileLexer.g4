@@ -33,6 +33,8 @@ INTEGER
 
 COMPONENT : 'component';
 MODULE : 'module';
+INTERFACE : 'interface';
+
 PIN : 'pin';
 SIGNAL : 'signal';
 

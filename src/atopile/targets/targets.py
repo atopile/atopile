@@ -30,6 +30,9 @@ def find_target(target_name: str) -> "Target":
     if target_name == "part-map":
         import atopile.targets.part_map
         return atopile.targets.part_map.PartMapTarget
+    if target_name == "sch-view":
+        import atopile.targets.schematic_view
+        return atopile.targets.schematic_view.SchematicViewTarget
     raise TargetNotFoundError(target_name)
 
 class TargetMuster:
