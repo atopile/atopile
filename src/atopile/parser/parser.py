@@ -213,7 +213,7 @@ class Builder(AtopileParserVisitor):
 
             # we're allowed to make modules into components, but not visa-versa
             # otherwise the class-type must be the same fundemental type as the superclass
-            superclass = ModelVertexView(self.model, superclass_path)
+            superclass = ModelVertexView.from_path(self.model, superclass_path)
             allowed_class_types = [superclass.vertex_type]
             if block_type == VertexType.component:
                 allowed_class_types += [VertexType.module]
