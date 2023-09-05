@@ -147,7 +147,15 @@ class Builder(AtopileParserVisitor):
 
         # link the import to the current block
         to_import = ctx.name_or_attr().getText()
-        graph_path, data_path = self.model.find_ref(to_import, import_filename)
+        try:
+            graph_path, data_path = self.model.find_ref(to_import, import_filename)
+        except KeyError as ex:
+            raise LanguageError(
+                ex.args[0],
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column
+            ) from ex
         if data_path:
             raise LanguageError(
                 f"Cannot import data path {data_path}",
@@ -200,9 +208,18 @@ class Builder(AtopileParserVisitor):
                     ctx.start.line,
                     ctx.start.column,
                 )
-            superclass_path, data_path = self.model.find_ref(
-                from_obj.getText(), self.current_block
-            )
+            try:
+                superclass_path, data_path = self.model.find_ref(
+                    from_obj.getText(), self.current_block
+                )
+            except KeyError as ex:
+                raise LanguageError(
+                    ex.args[0],
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                ) from ex
+
             if data_path:
                 raise LanguageError(
                     "Cannot subclass data object",
@@ -214,16 +231,16 @@ class Builder(AtopileParserVisitor):
             # we're allowed to make modules into components, but not visa-versa
             # otherwise the class-type must be the same fundemental type as the superclass
             superclass = ModelVertexView.from_path(self.model, superclass_path)
-            allowed_class_types = [superclass.vertex_type]
-            if block_type == VertexType.component:
-                allowed_class_types += [VertexType.module]
+            allowed_subclass_types = [superclass.vertex_type]
+            if superclass.vertex_type == VertexType.module:
+                allowed_subclass_types += [VertexType.component]
 
-            if block_type not in allowed_class_types:
-                allowed_class_types_friendly = " or ".join(
-                    e.value for e in allowed_class_types
+            if block_type not in allowed_subclass_types:
+                allowed_subclass_types_friendly = " or ".join(
+                    e.value for e in allowed_subclass_types
                 )
                 raise LanguageError(
-                    f"Superclass is a {superclass.vertex_type.value}, the subclass is trying to be a {block_type.value}, but must be a {allowed_class_types_friendly}",
+                    f"Superclass is a {superclass.vertex_type.value}, the subclass is trying to be a {block_type.value}, but must be a {allowed_subclass_types_friendly}",
                     self.current_file,
                     ctx.start.line,
                     ctx.start.column,
@@ -434,7 +451,16 @@ class Builder(AtopileParserVisitor):
 
         if assignable.new_stmt():
             class_ref = assignable.new_stmt().name_or_attr().getText()
-            class_path, _ = self.model.find_ref(class_ref, self.current_block)
+            try:
+                class_path, _ = self.model.find_ref(class_ref, self.current_block)
+            except KeyError as ex:
+                raise LanguageError(
+                    ex.args[0],
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                ) from ex
+
             # NOTE: we're not using the assignee here because we actually want that error until this is fixed properly
             instance_name_obj = ctx.name_or_attr().name()
             if instance_name_obj is None:
