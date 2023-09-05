@@ -125,9 +125,17 @@ class Builder(AtopileParserVisitor):
     def visitImport_stmt(self, ctx: AtopileParser.Import_stmtContext):
         import_filename = self.get_string(ctx.string())
 
-        abs_path, std_path = self.project.resolve_import(
-            import_filename, self.current_file
-        )
+        try:
+            abs_path, std_path = self.project.resolve_import(
+                import_filename, self.current_file
+            )
+        except FileNotFoundError as ex:
+            raise LanguageError(
+                f"Couldn't find file: {ex.args[0]}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
 
         if std_path in self._file_stack:
             raise LanguageError(
