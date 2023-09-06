@@ -3,7 +3,7 @@ export let settings_dict = {
     common: {
         backgroundColor: 'rgba(224, 233, 227, 0.3)',
         gridSize: 15,
-        parentPadding: 50,
+        parentPadding: 45,
         fontFamily: "monospace",
     },
     component : {
@@ -13,9 +13,10 @@ export let settings_dict = {
         defaultWidth: 60,
         portPitch: 15,
         defaultHeight: 50,
-        labelHorizontalMargin: 30,
+        labelHorizontalMargin: 5,
         labelVerticalMargin: 15,
-        titleMargin: 10,
+        titleMargin: 5,
+        portLabelToBorderGap: 3,
         pin: {
             fontSize: 8,
             fontWeight: "normal",

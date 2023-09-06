@@ -9,7 +9,7 @@ import { returnConfigFileName,
     provideFirstNameElementFromName,
     provideLastPathElementFromPath } from './path';
 
-import { AtoElement, AtoBlock, AtoComponent, createBlock, createComponent, addLinks, customAnchor } from "./joint_element";
+import { AtoElement, AtoBlock, AtoComponent, createBlock, createComponent, addLinks, customAnchor } from "./ato_element";
 
 import { settings_dict } from './viewer_settings';
 
@@ -77,8 +77,8 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
                         label: {
                             textVerticalAnchor: "top",
                             textAnchor: "start",
-                            x: 8,
-                            y: 8
+                            x: 30,
+                            y: 30
                         }
                     });
                 }
@@ -244,7 +244,7 @@ async function loadCircuit() {
 
     let config_populated_circuit = await populateConfigFromBackend([circuit_data]);
     console.log(config_populated_circuit);
-    generateJointjsGraph(config_populated_circuit, 1);
+    generateJointjsGraph(config_populated_circuit, 4);
 }
 
 // flag to help rate limit calls to savePositions

@@ -26,11 +26,11 @@ export class AtoElement extends dia.Element {
         this.addPort(createPort(path, name, port_group_name, port_anchor));
     }
 
-    addPortGroup(port_group_name, port_location) {
+    addPortGroup(port_group_name, port_location, port_offset) {
         let port_label_position = getPortLabelPosition(port_location);
         let port_angle = getPortLabelAngle(port_location);
         let port_list = this.getGroupPorts(port_location);
-        let port_position = getPortPosition(port_location, port_list);
+        let port_position = getPortPosition(port_location, port_list, port_offset);
 
         let port_group = {};
 
@@ -80,23 +80,39 @@ export class AtoElement extends dia.Element {
     }
 
     resizeBasedOnContent() {
-        //TODO: fix this function when ports are added automatically
-        let final_dim = {
+        // There are 5 rectangles that define the size of an element.
+        // The four side rectangles contain the ports. The center one contains the name.
+        // The left and right rectangles take the full height of the element.
+        // The width of the element is equal to the left and right width + the widest of the top or bottom rectangle.
+        var top_port_dim = {
             "height": 0,
             "width": 0
         };
-        let dim_from_text = {
+        var bottom_port_dim = {
             "height": 0,
             "width": 0
         };
-        let dim_from_ports = {
+        var left_port_dim = {
             "height": 0,
             "width": 0
-        }
+        };
+        var right_port_dim = {
+            "height": 0,
+            "width": 0
+        };
+        var center_name_dim = {
+            "height": 0,
+            "width": 0
+        };
 
-        dim_from_text['height'] = measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
-        dim_from_text['height'] += settings_dict['component']['labelVerticalMargin'] * 2;
-        dim_from_text['width'] = measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "length");
+        // Variable for the top and bottom ports offset from left and right edge for port creation
+        var left_right_port_max_width = 0
+
+        // Compute the center rectangle dimension
+        center_name_dim['height'] = measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
+        center_name_dim['height'] += settings_dict['component']['titleMargin'];
+        center_name_dim['width'] = measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "length");
+        center_name_dim['width'] += settings_dict['component']['titleMargin'];
 
         let ports = this.getPorts();
         if (ports) {
@@ -106,6 +122,7 @@ export class AtoElement extends dia.Element {
                 "left": this.getGroupPorts('left'),
                 "right": this.getGroupPorts('right')
             };
+            console.log(port_buckets);
             let ports_text_length = {
                 "top": "",
                 "bottom": "",
@@ -124,32 +141,41 @@ export class AtoElement extends dia.Element {
                 }
             }
 
-            dim_from_text['height'] += 2 * (Math.max(measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length")));
-            dim_from_text['width'] += 2 * (Math.max(measureText(ports_text_length['right'], settings_dict['component']['fontSize'], "length"), measureText(ports_text_length['left'], settings_dict['component']['fontSize'], "length")));
+            top_port_dim['height'] = measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length") + settings_dict['component']['portLabelToBorderGap'];
+            top_port_dim['width'] = (port_buckets['top'].length - 1) * settings_dict['component']['portPitch'];
 
-            dim_from_ports['height'] = (Math.max(port_buckets['right'].length, port_buckets['left'].length) + 1) * settings_dict['component']['portPitch'];
-            dim_from_ports['width'] = (Math.max(port_buckets['top'].length, port_buckets['bottom'].length) - 1) * settings_dict['component']['portPitch'];
-            dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
-            // Feature does not work without moveable ports
-            // if (port_buckets['right'].length != 0 || port_buckets['left'].length != 0) {
-            //     if (port_buckets['top'].length != 0 || port_buckets['bottom'].length != 0) {
-            //         dim_from_ports['width'] += 2 * settings_dict['component']['labelHorizontalMargin'];
-            //     }
-            // }
+            bottom_port_dim['height'] = measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length") + settings_dict['component']['portLabelToBorderGap'];
+            bottom_port_dim['width'] = (port_buckets['bottom'].length - 1) * settings_dict['component']['portPitch'];
+
+            // + 1 since we need a margin at the top and bottom
+            left_port_dim['height'] = (port_buckets['left'].length) * settings_dict['component']['portPitch'];
+            left_port_dim['width'] = measureText(ports_text_length['left'], settings_dict['component']['fontSize'], "length") + settings_dict['component']['portLabelToBorderGap'];
+
+            right_port_dim['height'] = (port_buckets['right'].length) * settings_dict['component']['portPitch'];
+            right_port_dim['width'] = measureText(ports_text_length['right'], settings_dict['component']['fontSize'], "length") + settings_dict['component']['portLabelToBorderGap'];
         }
-        final_dim['width'] = Math.max(dim_from_text['width'], dim_from_ports['width']);
+        //TODO: fix this function when ports are added automatically
+        let final_dim = {
+            "height": 0,
+            "width": 0
+        };
+
+        left_right_port_max_width = Math.max(right_port_dim['width'], left_port_dim['width'])
+        // The width is the widest between the top, center and bottom
+        final_dim['width'] = Math.max(top_port_dim['width'], bottom_port_dim['width'], center_name_dim['width']);
+        final_dim['width'] += 2 * left_right_port_max_width;
         final_dim['width'] = normalizeDimensionToGrid(final_dim['width'], settings_dict['common']['gridSize']);
 
-        final_dim['height'] = Math.max(dim_from_text['height'], dim_from_ports['height']);
+        final_dim['height'] = Math.max(right_port_dim['height'], left_port_dim['height'], (2 * Math.max(top_port_dim['height'], bottom_port_dim['height']) + center_name_dim['height']));
         final_dim['height'] = normalizeDimensionToGrid(final_dim['height'], settings_dict['common']['gridSize']);
 
         this.resize(final_dim['width'], final_dim['height']);
 
         //FIXME: currently just adding a port everywhere to resize the ports
-        this.addPortGroup('top', 'top');
-        this.addPortGroup('left', 'left');
-        this.addPortGroup('right', 'right');
-        this.addPortGroup('bottom', 'bottom');
+        this.addPortGroup('top', 'top', left_right_port_max_width);
+        this.addPortGroup('left', 'left', 0);
+        this.addPortGroup('right', 'right', 0);
+        this.addPortGroup('bottom', 'bottom', left_right_port_max_width);
     }
 
     fitAncestorElements() {
@@ -291,13 +317,13 @@ function createPort(uuid, port_name, port_group_name, port_anchor) {
 function getPortLabelPosition(location) {
     switch (location) {
         case "top":
-            return [0, 5];
+            return [0, settings_dict['component']['portLabelToBorderGap']];
         case "bottom":
-            return [0, -5];
+            return [0, - settings_dict['component']['portLabelToBorderGap']];
         case "left":
-            return [5, 0];
+            return [settings_dict['component']['portLabelToBorderGap'], 0];
         case "right":
-            return [-5, 0];
+            return [- settings_dict['component']['portLabelToBorderGap'], 0];
         default:
             return [0, 0];
     };
@@ -333,22 +359,23 @@ function getPortLabelAngle(location) {
     };
 };
 
-function getPortPosition(location, pin_list) {
+function getPortPosition(location, pin_list, port_offset) {
+    port_offset = normalizeDimensionToGrid(port_offset, settings_dict['common']['gridSize']);
     switch (location) {
         case "top":
             return {
                 name: 'line',
                 args: {
-                    start: { x: settings_dict['component']['labelHorizontalMargin'] - settings_dict['common']['gridSize']/2, y: 0 },
-                    end: { x: (settings_dict['component']['labelHorizontalMargin'] + (pin_list.length - 0.5) * settings_dict['common']['gridSize']), y: 0 }
+                    start: { x: (port_offset) - settings_dict['common']['gridSize']/2, y: 0 },
+                    end: { x: ((port_offset) + (pin_list.length - 0.5) * settings_dict['common']['gridSize']), y: 0 }
                 },
             };
         case "bottom":
             return {
                 name: 'line',
                 args: {
-                    start: { x: settings_dict['component']['labelHorizontalMargin'] - settings_dict['common']['gridSize']/2, y: 'calc(h)' },
-                    end: { x: (settings_dict['component']['labelHorizontalMargin'] + (pin_list.length - 0.5) * settings_dict['common']['gridSize']), y: 'calc(h)' }
+                    start: { x: (port_offset) - settings_dict['common']['gridSize']/2, y: 'calc(h)' },
+                    end: { x: ((port_offset) + (pin_list.length - 0.5) * settings_dict['common']['gridSize']), y: 'calc(h)' }
                 },
             };
         case "left":
@@ -422,13 +449,11 @@ function addPins(jointJSObject, element, path) {
 
 export function createComponent(element, parent, path) {
     let title = getElementTitle(element);
-    let comp_width = measureText(title, settings_dict['component']['pin']['fontSize'], 'length') + 2 * settings_dict['component']['titleMargin'];
-    let comp_height = measureText(title, settings_dict['component']['pin']['fontSize'], 'height') + 2 * settings_dict['component']['titleMargin'];
     var component = new AtoComponent({
         id: path,
         instance_name: element['name'],
-        size: { width: comp_width,
-                height: comp_height},
+        size: { width: 10,
+                height: 10},
         attrs: {
             label: {
                 text: title,
