@@ -13,7 +13,7 @@ export let settings_dict = {
         defaultWidth: 60,
         portPitch: 15,
         defaultHeight: 50,
-        labelHorizontalMargin: 5,
+        labelHorizontalMargin: 15,
         labelVerticalMargin: 15,
         titleMargin: 5,
         portLabelToBorderGap: 3,

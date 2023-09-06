@@ -144,10 +144,10 @@ export class AtoElement extends dia.Element {
             }
 
             top_port_dim['height'] = measureText(ports_text_length['top'], settings_dict['component']['fontSize'], "length") + settings_dict['component']['portLabelToBorderGap'];
-            top_port_dim['width'] = (port_buckets['top'].length - 1) * settings_dict['component']['portPitch'];
+            top_port_dim['width'] = (port_buckets['top'].length - 1) * settings_dict['component']['portPitch'] + settings_dict['component']['labelHorizontalMargin'];
 
             bottom_port_dim['height'] = measureText(ports_text_length['bottom'], settings_dict['component']['fontSize'], "length") + settings_dict['component']['portLabelToBorderGap'];
-            bottom_port_dim['width'] = (port_buckets['bottom'].length - 1) * settings_dict['component']['portPitch'];
+            bottom_port_dim['width'] = (port_buckets['bottom'].length - 1) * settings_dict['component']['portPitch'] + settings_dict['component']['labelHorizontalMargin'];
 
             // + 1 since we need a margin at the top and bottom
             left_port_dim['height'] = (port_buckets['left'].length) * settings_dict['component']['portPitch'];
