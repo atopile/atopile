@@ -26,11 +26,11 @@ export class AtoElement extends dia.Element {
         this.addPort(createPort(path, name, port_group_name, port_anchor));
     }
 
-    addPortGroup(port_group_name, port_location, port_offset) {
+    addPortGroup(port_group_name, port_location, port_offset, max_length) {
         let port_label_position = getPortLabelPosition(port_location);
         let port_angle = getPortLabelAngle(port_location);
         let port_list = this.getGroupPorts(port_location);
-        let port_position = getPortPosition(port_location, port_list, port_offset);
+        let port_position = getPortPosition(port_location, port_list, port_offset, max_length);
 
         let port_group = {};
 
@@ -106,7 +106,9 @@ export class AtoElement extends dia.Element {
         };
 
         // Variable for the top and bottom ports offset from left and right edge for port creation
-        var left_right_port_max_width = 0
+        var max_left_right_port_width = 0;
+        // Variable used to center the top and bottom port in the center of the component
+        var max_horizontal_width = 0;
 
         // Compute the center rectangle dimension
         center_name_dim['height'] = measureText(this['attributes']['attrs']['label']['text'], settings_dict['component']['fontSize'], "height");
@@ -160,22 +162,25 @@ export class AtoElement extends dia.Element {
             "width": 0
         };
 
-        left_right_port_max_width = Math.max(right_port_dim['width'], left_port_dim['width'])
+        max_left_right_port_width = Math.max(right_port_dim['width'], left_port_dim['width']);
+        max_horizontal_width = Math.max(top_port_dim['width'], bottom_port_dim['width'], center_name_dim['width']);
+        var max_height = Math.max(right_port_dim['height'], left_port_dim['height'], (2 * Math.max(top_port_dim['height'], bottom_port_dim['height']) + center_name_dim['height']));
+
         // The width is the widest between the top, center and bottom
-        final_dim['width'] = Math.max(top_port_dim['width'], bottom_port_dim['width'], center_name_dim['width']);
-        final_dim['width'] += 2 * left_right_port_max_width;
+        final_dim['width'] = max_horizontal_width;
+        final_dim['width'] += 2 * max_left_right_port_width;
         final_dim['width'] = normalizeDimensionToGrid(final_dim['width'], settings_dict['common']['gridSize']);
 
-        final_dim['height'] = Math.max(right_port_dim['height'], left_port_dim['height'], (2 * Math.max(top_port_dim['height'], bottom_port_dim['height']) + center_name_dim['height']));
+        final_dim['height'] = max_height;
         final_dim['height'] = normalizeDimensionToGrid(final_dim['height'], settings_dict['common']['gridSize']);
 
         this.resize(final_dim['width'], final_dim['height']);
 
         //FIXME: currently just adding a port everywhere to resize the ports
-        this.addPortGroup('top', 'top', left_right_port_max_width);
-        this.addPortGroup('left', 'left', 0);
-        this.addPortGroup('right', 'right', 0);
-        this.addPortGroup('bottom', 'bottom', left_right_port_max_width);
+        this.addPortGroup('top', 'top', max_left_right_port_width, max_horizontal_width);
+        this.addPortGroup('left', 'left', 0, max_height);
+        this.addPortGroup('right', 'right', 0, max_height);
+        this.addPortGroup('bottom', 'bottom', max_left_right_port_width, max_horizontal_width);
     }
 
     fitAncestorElements() {
@@ -359,39 +364,48 @@ function getPortLabelAngle(location) {
     };
 };
 
-function getPortPosition(location, pin_list, port_offset) {
-    port_offset = normalizeDimensionToGrid(port_offset, settings_dict['common']['gridSize']);
+function getPortPosition(location, pin_list, port_offset, max_length) {
+    // Make sure that the port offset results in having ports on the grid
+    var center_offset = normalizeDimensionToGrid((port_offset + max_length / 2), settings_dict['common']['gridSize']);
+    var port_start_position = 0;
+    if ((pin_list.length / 2) % 1 == .5) {
+        port_start_position = pin_list.length / 2 * settings_dict['common']['gridSize'];
+    }
+    else {
+        port_start_position = (pin_list.length / 2 + 0.5) * settings_dict['common']['gridSize'];
+    }
+    var port_length = pin_list.length * settings_dict['common']['gridSize'];
     switch (location) {
         case "top":
             return {
                 name: 'line',
                 args: {
-                    start: { x: (port_offset) - settings_dict['common']['gridSize']/2, y: 0 },
-                    end: { x: ((port_offset) + (pin_list.length - 0.5) * settings_dict['common']['gridSize']), y: 0 }
+                    start: { x: center_offset - port_start_position, y: 0 },
+                    end: { x: center_offset - port_start_position + port_length, y: 0 }
                 },
             };
         case "bottom":
             return {
                 name: 'line',
                 args: {
-                    start: { x: (port_offset) - settings_dict['common']['gridSize']/2, y: 'calc(h)' },
-                    end: { x: ((port_offset) + (pin_list.length - 0.5) * settings_dict['common']['gridSize']), y: 'calc(h)' }
+                    start: { x: center_offset - port_start_position, y: 'calc(h)' },
+                    end: { x: center_offset - port_start_position + port_length, y: 'calc(h)' }
                 },
             };
         case "left":
             return {
                 name: 'line',
                 args: {
-                    start: { x: 0, y: settings_dict['component']['labelVerticalMargin'] - settings_dict['common']['gridSize']/2},
-                    end: { x: 0, y: (settings_dict['component']['labelVerticalMargin'] + (pin_list.length - 0.5) * settings_dict['common']['gridSize'])}
+                    start: { x: 0, y: center_offset - port_start_position},
+                    end: { x: 0, y: center_offset - port_start_position + port_length}
                 },
             };
         case "right":
             return {
                 name: 'line',
                 args: {
-                    start: { x: 'calc(w)', y: settings_dict['component']['labelVerticalMargin']  - settings_dict['common']['gridSize']/2},
-                    end: { x: 'calc(w)', y: (settings_dict['component']['labelVerticalMargin'] + (pin_list.length - 0.5) * settings_dict['common']['gridSize'])}
+                    start: { x: 'calc(w)', y: center_offset - port_start_position},
+                    end: { x: 'calc(w)', y: center_offset - port_start_position + port_length}
                 },
             };
         default:
