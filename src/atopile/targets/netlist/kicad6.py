@@ -353,7 +353,7 @@ class Kicad6NetlistTarget(Target):
 
     def build(self) -> None:
         netlist = self.generate()
-        output_file = self.project.config.paths.build / self.build_config.root_file.with_suffix(".net").name
+        output_file = self.build_config.build_path / self.build_config.root_file.with_suffix(".net").name
         netlist.to_file(output_file)
 
     def resolve(self, *args, clean=None, **kwargs) -> None:

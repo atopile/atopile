@@ -1,11 +1,13 @@
-from enum import Enum
-from typing import List, Optional, Union, Tuple
-from atopile.model import utils
-import logging
 import copy
-from schema import Schema
+import logging
+from enum import Enum
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import igraph as ig
+from schema import Schema
+
+from atopile.model import utils
 
 log = logging.getLogger(__name__)
 
@@ -16,10 +18,11 @@ class VertexType(Enum):
     file = "file"
     module = "module"
     component = "component"
+    interface = "interface"
     pin = "pin"
     signal = "signal"
 
-block_types = [VertexType.module, VertexType.component]
+block_types = [VertexType.module, VertexType.component, VertexType.interface]
 pin_types = [VertexType.pin, VertexType.signal]
 
 class EdgeType(Enum):
@@ -29,6 +32,7 @@ class EdgeType(Enum):
     instance_of = "instance_of"
     inherits_from = "inherits_from"
     imported_to = "imported_to"
+    subclass_of = "subclass_of"
 
 class Model:
     def __init__(self) -> None:
@@ -40,7 +44,7 @@ class Model:
         self.data = {}
         self.schema = Schema({})
 
-        self.src_files = []
+        self.src_files: list[Path] = []
 
     def plot(self, *args, **kwargs):
         return utils.plot(self.graph, *args, **kwargs)
@@ -55,7 +59,7 @@ class Model:
         sg = self.graph.subgraph_edges(self.graph.es.select(type_in=edge_type_names), delete_vertices=False)
         return sg
 
-    def instantiate_block(self, class_path: str, instance_ref: str, part_of_path: str) -> str:
+    def _instantiate_block(self, class_path: str, instance_ref: str, part_of_path: str, instance_path: Optional[str] = None) -> str:
         """
         Take the feature, component or module and create an instance of it.
         """
@@ -64,7 +68,10 @@ class Model:
         class_children_idxs = part_of_graph.subcomponent(class_root.index, mode="in")
         class_children = part_of_graph.vs[class_children_idxs]
         sg = self.graph.subgraph(class_children)
-        instance_path = part_of_path + MODULE_PATH_SEPERATOR + instance_ref
+
+        if instance_path is None:
+            # this is dumb, because it assumes that part_of_path is a module already, it doesn't expect it could be a file
+            instance_path = part_of_path + MODULE_PATH_SEPERATOR + instance_ref
 
         # replace the paths and references of all the blocks/subcomponents
         class_paths = copy.copy(sg.vs["path"])
@@ -73,13 +80,8 @@ class Model:
 
         self.graph: ig.Graph = self.graph.disjoint_union(sg)
 
-        # create new instance and part_of edges
-        self.new_edge(
-            EdgeType.instance_of,
-            instance_path,
-            class_path,
-        )
-
+        # create new part_of edges
+        # instance_of edges are created in the caller of this function
         self.new_edge(
             EdgeType.part_of,
             instance_path,
@@ -104,6 +106,37 @@ class Model:
             # self.schemas[instance_vertex_path] = copy.deepcopy(self.schemas.get(class_vertex_path, {}))
 
         return instance_path
+
+    def instantiate_block(self, class_path: str, instance_ref: str, part_of_path: str) -> str:
+        """
+        Take the feature, component or module and create an instance of it.
+        """
+        instance_path = self._instantiate_block(class_path, instance_ref, part_of_path)
+        self.new_edge(
+            EdgeType.instance_of,
+            instance_path,
+            class_path,
+        )
+        return instance_path
+
+    def subclass_block(self, block_type: VertexType, superclass_path: str, subclass_ref: str, part_of_path: str) -> str:
+        """
+        Take the feature, component or module and create a subclass of it.
+        """
+        assert block_type in block_types
+        # in the case of subclassing, a subclass's part_of_path must always be a file. This is checked in parser.py
+        # we just need to join them with a ":" instead of a "."
+        subclass_path = part_of_path + ":" + subclass_ref
+        self._instantiate_block(superclass_path, subclass_ref, part_of_path, subclass_path)
+        self.graph.vs.find(path_eq=subclass_path)["type"] = block_type.name
+
+        self.new_edge(
+            EdgeType.subclass_of,
+            subclass_path,
+            superclass_path,
+        )
+
+        return subclass_path
 
     def enable_option(self, option_path: str) -> str:
         """

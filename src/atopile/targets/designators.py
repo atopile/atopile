@@ -124,7 +124,7 @@ class Designators(Target):
         return designator_map
 
     def build(self) -> None:
-        output_file = self.project.config.paths.build / self.build_config.root_file.with_suffix(".ref-map.yaml").name
+        output_file = self.build_config.build_path / self.build_config.root_file.with_suffix(".ref-map.yaml").name
         designator_map = [(v, k) for k, v in self.generate().items()]
         sorted_designators = sorted(designator_map, key=lambda x: x[0] or 0)
         with output_file.open("w") as f:

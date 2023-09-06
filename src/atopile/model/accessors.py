@@ -1,8 +1,8 @@
-from typing import List, Union, Optional, Iterable
+from typing import List, Union, Iterable
 
 import igraph as ig
 
-from atopile.model.model import EdgeType, Model, VertexType, MODULE_PATH_SEPERATOR
+from atopile.model.model import EdgeType, Model, VertexType
 
 EdgeIterable = Union[ig.EdgeSeq, List[ig.Edge]]
 
@@ -61,7 +61,7 @@ class ModelVertexView:
 
     @property
     def data(self) -> dict:
-        return self.model.data.get(self.path, {})
+        return self.model.data.setdefault(self.path, {})
 
     @property
     def parent_vidx(self) -> int:
@@ -82,6 +82,37 @@ class ModelVertexView:
         except ValueError:
             return None
         return ModelVertexView(self.model, class_vidx)
+
+    @property
+    def is_instance(self) -> bool:
+        return self.instance_of is not None
+
+    @property
+    def superclass(self) -> "ModelVertexView":
+        superclasses = self.get_adjacents("out", EdgeType.subclass_of)
+        if len(superclasses) == 0:
+            return None
+        if len(superclasses) > 1:
+            raise ValueError(f"Vertex {self.index} has multiple superclasses")
+        return superclasses[0]
+
+    @property
+    def superclasses(self) -> List["ModelVertexView"]:
+        superclasses = [self.superclass]
+        while (superclass := superclasses[-1].superclass) is not None:
+            superclasses.append(superclass)
+        return superclasses
+
+    def i_am_an_instance_of(self, of: "ModelVertexView") -> bool:
+        if self.is_class:
+            return False
+        if self.instance_of == of:
+            return True
+        return self.instance_of.is_instance(of)
+
+    @property
+    def is_class(self) -> bool:
+        return not self.is_instance
 
     def get_edges(self, mode: str, edge_type: Union[EdgeType, List[EdgeType]] = None) -> ig.EdgeSeq:
         selector = {}
@@ -129,7 +160,7 @@ class ModelVertexView:
         type_matched_vids = {v.index for v in self.model.graph.vs.select(type_in=vertex_type_names)}
         part_of_view = self.model.get_graph_view([EdgeType.part_of])
         descendant_vids = set(part_of_view.subcomponent(self.index, mode="in"))
-        return [ModelVertexView(self.model, vid) for vid in type_matched_vids & descendant_vids]
+        return [ModelVertexView(self.model, vid) for vid in type_matched_vids & descendant_vids if vid != self.index]
 
     def get_ancestor_ids(self) -> List["ModelVertexView"]:
         part_of_view = self.model.get_graph_view([EdgeType.part_of])

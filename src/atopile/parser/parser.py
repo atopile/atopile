@@ -9,6 +9,8 @@ from typing import List
 from antlr4 import CommonTokenStream, InputStream
 from antlr4.error.ErrorListener import ErrorListener
 
+from atopile.model.accessors import ModelVertexView
+from atopile.model.differ import Delta
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_edge_uid
 from atopile.parser.AtopileLexer import AtopileLexer
@@ -49,7 +51,7 @@ class Builder(AtopileParserVisitor):
         self.project = project
 
         self._block_stack: List[str] = []
-        self._file_stack: List[str] = []
+        self._file_stack: List[Path] = []
 
         self._tree_cache = {}
 
@@ -160,14 +162,79 @@ class Builder(AtopileParserVisitor):
         # handle all depth required. From here, we always want to go back up
         return None
 
-    def define_block(self, ctx, block_type: VertexType):
+    def visitBlockdef(self, ctx: AtopileParser.BlockdefContext):
+        block_type_name = ctx.blocktype().getText()
+        try:
+            block_type = VertexType(block_type_name)
+        except ValueError as ex:
+            raise LanguageError(
+                f"Unknown block type {block_type_name}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
+
+        # name -> the naem of the block being defined
         name = ctx.name().getText()
 
-        if ctx.OPTIONAL():
-            block_path = self.model.new_vertex(
-                block_type, name, option_of=self.current_block
+        # make sure we're defining this block from the root of the file
+        if (
+            ModelVertexView.from_path(self.model, self.current_block).vertex_type
+            != VertexType.file
+        ):
+            raise LanguageError(
+                f"Cannot define a block inside another block ({self.current_block}).",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        if ctx.FROM():
+            # we're subclassing something
+            # find what we're subclassing
+            from_obj = ctx.name_or_attr()
+            if not from_obj:
+                raise LanguageError(
+                    "Subclass must specify a superclass, but none specified",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+            superclass_path, data_path = self.model.find_ref(
+                from_obj.getText(), self.current_block
+            )
+            if data_path:
+                raise LanguageError(
+                    "Cannot subclass data object",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+
+            # we're allowed to make modules into components, but not visa-versa
+            # otherwise the class-type must be the same fundemental type as the superclass
+            superclass = ModelVertexView.from_path(self.model, superclass_path)
+            allowed_class_types = [superclass.vertex_type]
+            if block_type == VertexType.component:
+                allowed_class_types += [VertexType.module]
+
+            if block_type not in allowed_class_types:
+                allowed_class_types_friendly = " or ".join(
+                    e.value for e in allowed_class_types
+                )
+                raise LanguageError(
+                    f"Superclass is a {superclass.vertex_type.value}, the subclass is trying to be a {block_type.value}, but must be a {allowed_class_types_friendly}",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+
+            # make the noise!
+            block_path = self.model.subclass_block(
+                block_type, superclass_path, name, self.current_block
             )
         else:
+            # we're not subclassing anything
             block_path = self.model.new_vertex(
                 block_type, name, part_of=self.current_block
             )
@@ -176,12 +243,6 @@ class Builder(AtopileParserVisitor):
 
         with self.working_block(block_path):
             return super().visitChildren(ctx)
-
-    def visitComponentdef(self, ctx: AtopileParser.ComponentdefContext):
-        return self.define_block(ctx, VertexType.component)
-
-    def visitModuledef(self, ctx: AtopileParser.ModuledefContext):
-        return self.define_block(ctx, VertexType.module)
 
     def visitPindef_stmt(self, ctx: AtopileParser.Pindef_stmtContext):
         if ctx.name() is not None:
@@ -299,21 +360,62 @@ class Builder(AtopileParserVisitor):
         result = self.visitChildren(ctx)
         connectables = ctx.connectable()
 
-        if len(connectables) < 2:
+        if len(connectables) != 2:
             raise LanguageError(
-                "Connect statement must have at least two connectables",
+                "Connect statement must have two connectables",
                 self.current_file,
                 ctx.start.line,
                 ctx.start.column,
             )
 
+        # figure out what we're trying to connect
         from_path = self.deref_connectable(ctx.connectable(0))
         to_path = self.deref_connectable(ctx.connectable(1))
-        uid = generate_edge_uid(from_path, to_path, self.current_block)
-        self.model.new_edge(EdgeType.connects_to, from_path, to_path, uid=uid)
-        self.model.data[uid] = {
-            "defining_block": self.current_block,
-        }
+
+        # check typing to the connectables
+        from_mvv = ModelVertexView.from_path(self.model, from_path)
+        to_mvv = ModelVertexView.from_path(self.model, to_path)
+
+        basic_node_types = (VertexType.pin, VertexType.signal)
+        if (
+            to_mvv.vertex_type in basic_node_types
+            and from_mvv.vertex_type in basic_node_types
+        ):
+            # simple case, we don't care, connect 'em on up
+            joining_pairs = [
+                (from_path, to_path)
+            ]
+        elif from_mvv.vertex_type == to_mvv.vertex_type == VertexType.interface and (
+            to_mvv.i_am_an_instance_of(from_mvv.instance_of)
+            or from_mvv.i_am_an_instance_of(to_mvv.instance_of)
+        ):
+            # match interfaces based on node name
+            common_node_names = {
+                mvv.ref for mvv in from_mvv.get_descendants(list(VertexType))
+            } & {
+                mvv.ref for mvv in to_mvv.get_descendants(list(VertexType))
+            }
+
+            from_node_paths = [mvv.path for mvv in from_mvv.get_descendants(list(VertexType)) if mvv.ref in common_node_names]
+            to_node_paths = [mvv.path for mvv in to_mvv.get_descendants(list(VertexType)) if mvv.ref in common_node_names]
+
+            joining_pairs = zip(from_node_paths, to_node_paths)
+
+        else:
+            raise LanguageError(
+                f"Cannot connect {from_mvv.vertex_type.value} to {to_mvv.vertex_type.value}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        # make the noise
+        for i_from_path, i_to_path in joining_pairs:
+            uid = generate_edge_uid(i_from_path, i_to_path, self.current_block)
+            self.model.new_edge(EdgeType.connects_to, i_from_path, i_to_path, uid=uid)
+            self.model.data[uid] = {
+                "defining_block": self.current_block,
+            }
 
         # children are already vistited
         return result
@@ -333,10 +435,18 @@ class Builder(AtopileParserVisitor):
         if assignable.new_stmt():
             class_ref = assignable.new_stmt().name_or_attr().getText()
             class_path, _ = self.model.find_ref(class_ref, self.current_block)
-            # FIXME: this probably throws a dud error if the name is an attr
             # NOTE: we're not using the assignee here because we actually want that error until this is fixed properly
-            instance_name = ctx.name_or_attr().name().getText()
-            self.model.instantiate_block(class_path, instance_name, self.current_block)
+            instance_name_obj = ctx.name_or_attr().name()
+            if instance_name_obj is None:
+                raise LanguageError(
+                    "Cannot assign new object to an attribute (eg. a.b.c), must be to a name (eg. c)",
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                )
+            self.model.instantiate_block(
+                class_path, instance_name_obj.getText(), self.current_block
+            )
         else:
             if assignable.string():
                 value = self.get_string(assignable.string())
@@ -366,6 +476,101 @@ class Builder(AtopileParserVisitor):
 
     def get_string(self, ctx: AtopileParser.StringContext) -> str:
         return ctx.getText().strip("\"'")
+
+    def visitRetype_stmt(self, ctx: AtopileParser.Retype_stmtContext):
+        """
+        This statement type will replace an existing block with a new one of a subclassed type
+
+        Since there's no way to delete elements, we can be sure that the subclass is
+        a superset of the superclass (confusing linguistically, makes sense logically)
+        """
+        # first, let's get all the data out of this replacement statement and validate it
+        retype_ref = ctx.name_or_attr(0).getText()
+        new_type_ref = ctx.name_or_attr(1).getText()
+
+        try:
+            retype_path, retype_data = self.model.find_ref(
+                retype_ref, self.current_block
+            )
+        except KeyError as ex:
+            raise LanguageError(
+                f"Cannot retype non-existent object {retype_ref}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
+
+        if retype_data:
+            raise LanguageError(
+                f"Cannot retype data object {retype_ref}. Provide a path to the object you want to retype instead.",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        try:
+            new_type_path, new_type_data = self.model.find_ref(
+                new_type_ref, self.current_block
+            )
+        except KeyError as ex:
+            raise LanguageError(
+                f"Cannot use new type of non-existant object {new_type_ref}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
+
+        if new_type_data:
+            raise LanguageError(
+                f"Cannot use data object as new type {new_type_ref}. Please provide a path to the class you want to use instead.",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        retype_mvv = ModelVertexView.from_path(self.model, retype_path)
+        new_type_mvv = ModelVertexView.from_path(self.model, new_type_path)
+
+        # check retype is an instance of a superclass of the new type (which is a class)
+        if not retype_mvv.is_instance:
+            raise LanguageError(
+                f"Can only retype instances of things, but {retype_ref} is a class",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+        if not new_type_mvv.is_class:
+            raise LanguageError(
+                f"Can only retype to a class, but {new_type_ref} is an instance",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+        if retype_mvv.instance_of not in new_type_mvv.superclasses:
+            raise LanguageError(
+                f"Cannot retype {retype_ref} to {new_type_ref}. {new_type_ref} must be a subclass of {retype_mvv.instance_of.path}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            )
+
+        # okay, now we can actually get on with the retyping
+        # first, we're going to diff the changes between the original class and the updated class
+        # then, we're going to diff the user has made to the standing instance, compared to the original class
+        # we're then going to apply the diffs, preferencing changes the user has manually made
+        class_diff = Delta.diff(retype_mvv.instance_of, new_type_mvv)
+        instance_diff = Delta.diff(retype_mvv.instance_of, retype_mvv)
+        combined_diff = Delta.combine(class_diff, instance_diff)
+        combined_diff.apply_to(retype_mvv)
+
+        # finally we need to change the "instance_of" link to point to the new class
+        instance_of_eid = self.model.graph.es.find(
+            _source=retype_mvv.index, type_eq=EdgeType.instance_of.name
+        )
+        self.model.graph.delete_edges(instance_of_eid)
+        self.model.new_edge(EdgeType.instance_of, retype_path, new_type_path)
+
+        return super().visitRetype_stmt(ctx)
 
 
 class ParallelParser(AtopileParserVisitor):
@@ -413,7 +618,9 @@ class ParallelParser(AtopileParserVisitor):
             self._accounted_for_files,
             self._accounted_for_files_lock,
         )
-        self._futures_to_path[self._executor.submit(new_parser._parse, abs_path)] = abs_path
+        self._futures_to_path[
+            self._executor.submit(new_parser._parse, abs_path)
+        ] = abs_path
 
     @staticmethod
     def pre_parse(bob: Builder, root_file: Path):
@@ -432,6 +639,7 @@ class ParallelParser(AtopileParserVisitor):
             for future in concurrent.futures.as_completed(future_to_path):
                 path = future_to_path[future]
                 log.info(f"Finished parsing {str(path)}")
+
 
 def build_model(project: Project, config: BuildConfig) -> Model:
     log.info("Building model")

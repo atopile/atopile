@@ -10,16 +10,18 @@ file_input: (NEWLINE | stmt)* EOF;
 
 stmt: simple_stmts | compound_stmt;
 simple_stmts: simple_stmt (';' simple_stmt)* ';'? NEWLINE;
-simple_stmt: import_stmt | assign_stmt | connect_stmt | pindef_stmt | signaldef_stmt | with_stmt;
-compound_stmt: componentdef | moduledef;
+simple_stmt: import_stmt | assign_stmt | connect_stmt | retype_stmt | pindef_stmt | signaldef_stmt | with_stmt;
+compound_stmt: blockdef;
 block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 
-componentdef: ('optional')? 'component' name':' block;
-moduledef: ('optional')? 'module' name ':' block;
+blockdef: blocktype name ('from' name_or_attr)? ':' block;
+blocktype: ('component' | 'module' | 'interface');
 
 import_stmt: 'import' name_or_attr 'from' string;
 assign_stmt: name_or_attr '=' assignable;
 assignable: string | NUMBER | name_or_attr | new_stmt | boolean_;
+
+retype_stmt: name_or_attr '->' name_or_attr;
 
 connect_stmt: connectable '~' connectable;
 connectable: name_or_attr | numerical_pin_ref | signaldef_stmt | pindef_stmt;

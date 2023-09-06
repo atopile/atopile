@@ -39,13 +39,13 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#componentdef.
-    def visitComponentdef(self, ctx:AtopileParser.ComponentdefContext):
+    # Visit a parse tree produced by AtopileParser#blockdef.
+    def visitBlockdef(self, ctx:AtopileParser.BlockdefContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#moduledef.
-    def visitModuledef(self, ctx:AtopileParser.ModuledefContext):
+    # Visit a parse tree produced by AtopileParser#blocktype.
+    def visitBlocktype(self, ctx:AtopileParser.BlocktypeContext):
         return self.visitChildren(ctx)
 
 
@@ -61,6 +61,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtopileParser#assignable.
     def visitAssignable(self, ctx:AtopileParser.AssignableContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#retype_stmt.
+    def visitRetype_stmt(self, ctx:AtopileParser.Retype_stmtContext):
         return self.visitChildren(ctx)
 
 
