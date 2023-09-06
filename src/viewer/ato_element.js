@@ -580,7 +580,7 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
     });
     added_link.router('manhattan', {
         perpendicular: true,
-        step: settings_dict['common']['gridSize'],
+        step: settings_dict['common']['gridSize']/2,
     });
 
     return added_link;
