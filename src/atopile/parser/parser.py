@@ -125,9 +125,17 @@ class Builder(AtopileParserVisitor):
     def visitImport_stmt(self, ctx: AtopileParser.Import_stmtContext):
         import_filename = self.get_string(ctx.string())
 
-        abs_path, std_path = self.project.resolve_import(
-            import_filename, self.current_file
-        )
+        try:
+            abs_path, std_path = self.project.resolve_import(
+                import_filename, self.current_file
+            )
+        except FileNotFoundError as ex:
+            raise LanguageError(
+                f"Couldn't find file: {ex.args[0]}",
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column,
+            ) from ex
 
         if std_path in self._file_stack:
             raise LanguageError(
@@ -147,7 +155,15 @@ class Builder(AtopileParserVisitor):
 
         # link the import to the current block
         to_import = ctx.name_or_attr().getText()
-        graph_path, data_path = self.model.find_ref(to_import, import_filename)
+        try:
+            graph_path, data_path = self.model.find_ref(to_import, import_filename)
+        except KeyError as ex:
+            raise LanguageError(
+                ex.args[0],
+                self.current_file,
+                ctx.start.line,
+                ctx.start.column
+            ) from ex
         if data_path:
             raise LanguageError(
                 f"Cannot import data path {data_path}",
@@ -200,9 +216,18 @@ class Builder(AtopileParserVisitor):
                     ctx.start.line,
                     ctx.start.column,
                 )
-            superclass_path, data_path = self.model.find_ref(
-                from_obj.getText(), self.current_block
-            )
+            try:
+                superclass_path, data_path = self.model.find_ref(
+                    from_obj.getText(), self.current_block
+                )
+            except KeyError as ex:
+                raise LanguageError(
+                    ex.args[0],
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                ) from ex
+
             if data_path:
                 raise LanguageError(
                     "Cannot subclass data object",
@@ -214,16 +239,16 @@ class Builder(AtopileParserVisitor):
             # we're allowed to make modules into components, but not visa-versa
             # otherwise the class-type must be the same fundemental type as the superclass
             superclass = ModelVertexView.from_path(self.model, superclass_path)
-            allowed_class_types = [superclass.vertex_type]
-            if block_type == VertexType.component:
-                allowed_class_types += [VertexType.module]
+            allowed_subclass_types = [superclass.vertex_type]
+            if superclass.vertex_type == VertexType.module:
+                allowed_subclass_types += [VertexType.component]
 
-            if block_type not in allowed_class_types:
-                allowed_class_types_friendly = " or ".join(
-                    e.value for e in allowed_class_types
+            if block_type not in allowed_subclass_types:
+                allowed_subclass_types_friendly = " or ".join(
+                    e.value for e in allowed_subclass_types
                 )
                 raise LanguageError(
-                    f"Superclass is a {superclass.vertex_type.value}, the subclass is trying to be a {block_type.value}, but must be a {allowed_class_types_friendly}",
+                    f"Superclass is a {superclass.vertex_type.value}, the subclass is trying to be a {block_type.value}, but must be a {allowed_subclass_types_friendly}",
                     self.current_file,
                     ctx.start.line,
                     ctx.start.column,
@@ -434,7 +459,16 @@ class Builder(AtopileParserVisitor):
 
         if assignable.new_stmt():
             class_ref = assignable.new_stmt().name_or_attr().getText()
-            class_path, _ = self.model.find_ref(class_ref, self.current_block)
+            try:
+                class_path, _ = self.model.find_ref(class_ref, self.current_block)
+            except KeyError as ex:
+                raise LanguageError(
+                    ex.args[0],
+                    self.current_file,
+                    ctx.start.line,
+                    ctx.start.column,
+                ) from ex
+
             # NOTE: we're not using the assignee here because we actually want that error until this is fixed properly
             instance_name_obj = ctx.name_or_attr().name()
             if instance_name_obj is None:
@@ -560,7 +594,17 @@ class Builder(AtopileParserVisitor):
         # we're then going to apply the diffs, preferencing changes the user has manually made
         class_diff = Delta.diff(retype_mvv.instance_of, new_type_mvv)
         instance_diff = Delta.diff(retype_mvv.instance_of, retype_mvv)
-        combined_diff = Delta.combine(class_diff, instance_diff)
+
+        combined_diff = Delta.combine_diff(class_diff, instance_diff)
+
+        # remove the "part_of" edge from the diff
+        # we know there's only one of these so we can break once we find it
+        for k, v in combined_diff.edge.items():
+            if k[0] == () and v == EdgeType.part_of:
+                del combined_diff.edge[k]
+                break
+
+        # apply the diff to the instance
         combined_diff.apply_to(retype_mvv)
 
         # finally we need to change the "instance_of" link to point to the new class

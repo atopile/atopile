@@ -1,7 +1,7 @@
 import pytest
 
 from atopile.model.accessors import ModelVertexView
-from atopile.model.differ import Delta, Empty
+from atopile.model.differ import Delta, EMPTY, ROOT
 from atopile.model.model import Model, VertexType, EdgeType
 
 
@@ -23,7 +23,7 @@ def module2_root(dummy2: Model):
 def test_zero_delta(module1_root, module2_root):
     delta = Delta.diff(module1_root, module2_root)
     assert not delta.node
-    assert not delta.connection
+    assert not delta.edge
     assert not delta.data
 
 
@@ -43,7 +43,11 @@ def test_added_node2(module1_root: ModelVertexView, module2_root: ModelVertexVie
         ("new_module",): VertexType.module,
         ("new_module", "new_component"): VertexType.component,
     }
-    assert not delta.connection
+
+    assert delta.edge == {
+        (('new_module',), ()): EdgeType.part_of,
+        (('new_module', 'new_component'), ('new_module',)): EdgeType.part_of,
+    }
     assert not delta.data
 
 
@@ -51,10 +55,15 @@ def test_remove_node2(module1_root: ModelVertexView, module2_root: ModelVertexVi
     add_nodes(module1_root)
     delta = Delta.diff(module1_root, module2_root)
     assert delta.node == {
-        ("new_module",): Empty,
-        ("new_module", "new_component"): Empty,
+        ("new_module",): EMPTY,
+        ("new_module", "new_component"): EMPTY,
     }
-    assert not delta.connection
+
+    assert delta.edge == {
+        (('new_module',), ()): EMPTY,
+        (('new_module', 'new_component'), ('new_module',)): EMPTY,
+    }
+
     assert not delta.data
 
 
@@ -70,8 +79,8 @@ def test_added_connection(module1_root: ModelVertexView, module2_root: ModelVert
     add_connection(module2_root)
     delta = Delta.diff(module1_root, module2_root)
     assert not delta.node
-    assert delta.connection == {
-        (("dummy_comp0", "sig0"), ("dummy_comp1", "sig0")): True
+    assert delta.edge == {
+        (("dummy_comp0", "sig0"), ("dummy_comp1", "sig0")): EdgeType.connects_to
     }
     assert not delta.data
 
@@ -80,8 +89,8 @@ def test_remove_connection(module1_root: ModelVertexView, module2_root: ModelVer
     add_connection(module1_root)
     delta = Delta.diff(module1_root, module2_root)
     assert not delta.node
-    assert delta.connection == {
-        (("dummy_comp0", "sig0"), ("dummy_comp1", "sig0")): Empty
+    assert delta.edge == {
+        (("dummy_comp0", "sig0"), ("dummy_comp1", "sig0")): EMPTY
     }
     assert not delta.data
 
@@ -95,7 +104,7 @@ def test_added_data(module1_root: ModelVertexView, module2_root: ModelVertexView
     add_data(module2_root)
     delta = Delta.diff(module1_root, module2_root)
     assert not delta.node
-    assert not delta.connection
+    assert not delta.edge
     assert delta.data == {("test", "test2"): "hello-world"}
 
 
@@ -105,7 +114,7 @@ def test_modify_data(module1_root: ModelVertexView, module2_root: ModelVertexVie
     module2_root.data["test"]["test2"] = "new-world"
     delta = Delta.diff(module1_root, module2_root)
     assert not delta.node
-    assert not delta.connection
+    assert not delta.edge
     assert delta.data == {("test", "test2"): "new-world"}
 
 
@@ -113,11 +122,11 @@ def test_remove_data(module1_root: ModelVertexView, module2_root: ModelVertexVie
     add_data(module1_root)
     delta = Delta.diff(module1_root, module2_root)
     assert not delta.node
-    assert not delta.connection
-    assert delta.data == {("test", "test2"): Empty}
+    assert not delta.edge
+    assert delta.data == {("test", "test2"): EMPTY}
 
 
-def test_remove_data(module1_root: ModelVertexView, module2_root: ModelVertexView):
+def test_apply_to(module1_root: ModelVertexView, module2_root: ModelVertexView):
     # we create some decent sized diff
     add_nodes(module2_root)
     add_connection(module2_root)
@@ -130,5 +139,5 @@ def test_remove_data(module1_root: ModelVertexView, module2_root: ModelVertexVie
     # and finally check there's no diff between the objects anymore
     delta2 = Delta.diff(module1_root, module2_root)
     assert not delta2.node
-    assert not delta2.connection
+    assert not delta2.edge
     assert not delta2.data

@@ -1,4 +1,4 @@
-from typing import List, Union, Iterable
+from typing import Iterable, List, Tuple, Union
 
 import igraph as ig
 
@@ -151,6 +151,10 @@ class ModelVertexView:
     def get_adjacents(self, mode: str, edge_type: Union[EdgeType, List]) -> List["ModelVertexView"]:
         edges = self.get_edges(mode, edge_type)
         return self.from_edges(self.model, mode, edges)
+
+    def get_adjacents_with_edge_types(self, mode: str, edge_type: Union[EdgeType, List]) -> List[Tuple[EdgeType, "ModelVertexView"]]:
+        edges = self.get_edges(mode, edge_type)
+        return zip((EdgeType(e["type"]) for e in edges), self.from_edges(self.model, mode, edges))
 
     def get_descendants(self, vertex_type: Union[VertexType, List]) -> List["ModelVertexView"]:
         if isinstance(vertex_type, VertexType):
