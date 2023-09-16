@@ -1,7 +1,7 @@
 import pytest
 
 from atopile.model.accessors import ModelVertexView
-from atopile.model.differ import Delta, Empty
+from atopile.model.differ import Delta, EMPTY
 from atopile.model.model import Model, VertexType, EdgeType
 
 
@@ -51,8 +51,8 @@ def test_remove_node2(module1_root: ModelVertexView, module2_root: ModelVertexVi
     add_nodes(module1_root)
     delta = Delta.diff(module1_root, module2_root)
     assert delta.node == {
-        ("new_module",): Empty,
-        ("new_module", "new_component"): Empty,
+        ("new_module",): EMPTY,
+        ("new_module", "new_component"): EMPTY,
     }
     assert not delta.connection
     assert not delta.data
@@ -81,7 +81,7 @@ def test_remove_connection(module1_root: ModelVertexView, module2_root: ModelVer
     delta = Delta.diff(module1_root, module2_root)
     assert not delta.node
     assert delta.connection == {
-        (("dummy_comp0", "sig0"), ("dummy_comp1", "sig0")): Empty
+        (("dummy_comp0", "sig0"), ("dummy_comp1", "sig0")): EMPTY
     }
     assert not delta.data
 
@@ -114,7 +114,7 @@ def test_remove_data(module1_root: ModelVertexView, module2_root: ModelVertexVie
     delta = Delta.diff(module1_root, module2_root)
     assert not delta.node
     assert not delta.connection
-    assert delta.data == {("test", "test2"): Empty}
+    assert delta.data == {("test", "test2"): EMPTY}
 
 
 def test_remove_data(module1_root: ModelVertexView, module2_root: ModelVertexView):
