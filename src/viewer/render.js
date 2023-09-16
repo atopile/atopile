@@ -9,7 +9,7 @@ import { returnConfigFileName,
     provideFirstNameElementFromName,
     provideLastPathElementFromPath } from './path';
 
-import { AtoElement, AtoBlock, AtoComponent, createBlock, createComponent, addLinks, customAnchor } from "./joint_element";
+import { AtoElement, AtoBlock, AtoComponent, createBlock, createComponent, addLinks, customAnchor } from "./ato_element";
 
 import { settings_dict } from './viewer_settings';
 
@@ -68,8 +68,8 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
 
                 // Call the function recursively on children
                 if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
-                    let added_element = addLinks(element, downstream_path, joint_object.getEmbeddedCells());
-                    for (let element of added_element) {
+                    let added_elements = addLinks(element, downstream_path, joint_object.getEmbeddedCells());
+                    for (let element of added_elements) {
                         element.addTo(graph);
                     }
                     // change the title layout to the corner for module with embedded childrens
@@ -77,11 +77,12 @@ async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path 
                         label: {
                             textVerticalAnchor: "top",
                             textAnchor: "start",
-                            x: 8,
-                            y: 8
+                            x: 30,
+                            y: 30
                         }
                     });
                 }
+                joint_object.resizeBasedOnContent();
                 applyParentConfig(element, child_attrs);
 
                 // FIXME:
@@ -172,9 +173,7 @@ const paper = new dia.Paper({
     height: '100%',
     gridSize: settings_dict['common']['gridSize'],
     drawGrid: true,
-    background: {
-        color: settings_dict["common"]["backgroundColor"]
-    },
+    drawGrid: { name: 'dot', args: { color: 'black' }},
     interactive: true,
     snapLinks: true,
     linkPinning: false,
@@ -245,7 +244,7 @@ async function loadCircuit() {
 
     let config_populated_circuit = await populateConfigFromBackend([circuit_data]);
     console.log(config_populated_circuit);
-    generateJointjsGraph(config_populated_circuit, 1);
+    generateJointjsGraph(config_populated_circuit, 4);
 }
 
 // flag to help rate limit calls to savePositions
