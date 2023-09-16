@@ -99,3 +99,7 @@ extension-build:
   artifacts:
     paths:
       - src/vscode-atopile/atopile-*.vsix
+  rules:
+    - changes:
+        paths:
+          - src/vscode-atopile/*
