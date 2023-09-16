@@ -1,3 +1,5 @@
+from functools import partial
+from itertools import chain
 from typing import Any
 
 from atopile.model.accessors import ModelVertexView
@@ -13,22 +15,35 @@ class Empty:
 EMPTY = Empty()
 
 
-FragPath = tuple[str]
+class Root:
+    """
+    Representes the root of the model.
+    """
+
+
+ROOT = Root()
+
+
+FragPath = tuple[str | Root]
 EdgeFragPath = tuple[FragPath, FragPath]
 
 NodeRep = dict[FragPath, VertexType]
-ConnectionRep = dict[EdgeFragPath, EdgeType]
+EdgeRep = dict[EdgeFragPath, EdgeType]
 DataRep = dict[FragPath, Any]
 
-NodeDelta = dict[FragPath, VertexType | EMPTY]
-ConnectionDelta = dict[EdgeFragPath, EdgeType | EMPTY]
+NodeDelta = dict[FragPath, VertexType | Empty]
+EdgeDelta = dict[EdgeFragPath, EdgeType | Empty]
 DataDelta = dict[FragPath, Any]
+
+
+def get_root_path(mvv: ModelVertexView) -> FragPath:
+    return (ROOT,) + tuple(a.ref for a in mvv.get_ancestors()[::-1])
 
 
 class FragRep:
     def __init__(self) -> None:
         self.node: NodeRep = {}
-        self.connection: ConnectionRep = {}
+        self.edge: EdgeRep = {}
         self.data: DataRep = {}
 
     @classmethod
@@ -64,35 +79,26 @@ class FragRep:
 
             _recurse_data(child_frag_path, child.data)
 
-            # connection rep
-            for connection in child.get_adjacents("in", list(EdgeType)):
-                # FIXME: does this work only on connections to internal things
-                # the issuue at the moment is that the frag rep eg. ("path", "to", "something")
-                # is currently only designed to represent something in the scope of the diff being made - not the whole project
-                # this means practically speaking it's impossible with this current scheme to apply stuff like class information
-                # since the class isn't defined inside the class here
-                # 1. I can translate these to be full paths instead?
-                # 2. We could use full paths instead
-                # 3. We could rebuild the model to add UIDs to all the elements
+            # edge rep
+            _adj = partial(
+                child.get_adjacents_with_edge_types, edge_type=list(EdgeType)
+            )
+            for edge_type, from_mvv, to_mvv, mode in chain(
+                ((edge_type, other, child, "in") for edge_type, other in _adj("in")),
+                ((edge_type, child, other, "out") for edge_type, other in _adj("out")),
+            ):
+                if from_mvv.path in relative_frag_paths:
+                    from_frag = relative_frag_paths[from_mvv.path]
+                else:
+                    from_frag = get_root_path(from_mvv)
 
-                # 1. seems best to me as of now
-                # need to move the creation of relative paths from this function (and keep whole paths) to the application
-                # the application will need to match the first N elements of the frag path against the application object's path (len == N elements)
-                # if it matches, remove it and reapply the new object's path, else use original abs path
-                #####
-                #####
-                #####
-                if connection.path in relative_frag_paths:
-                    # FIXME: this needs to be converted to
-                    frag_rep.connection.add(
-                        (relative_frag_paths[connection.path], child_frag_path)
-                    )
+                if to_mvv.path in relative_frag_paths:
+                    to_frag = relative_frag_paths[to_mvv.path]
+                else:
+                    to_frag = get_root_path(to_mvv)
 
-            for connection in child.get_adjacents("out", list(EdgeType)):
-                if connection.path in relative_frag_paths:
-                    frag_rep.connection.add(
-                        (child_frag_path, relative_frag_paths[connection.path])
-                    )
+                edge_rep = (from_frag, to_frag)
+                frag_rep.edge[edge_rep] = edge_type
 
         return frag_rep
 
@@ -100,7 +106,7 @@ class FragRep:
 class Delta:
     def __init__(self) -> None:
         self.node: NodeDelta = {}
-        self.connection: ConnectionDelta = {}
+        self.edge: EdgeDelta = {}
         self.data: DataDelta = {}
 
     @classmethod
@@ -124,12 +130,19 @@ class Delta:
         for deleted_data in a_nodes - b_nodes:
             delta.node[deleted_data] = EMPTY
 
-        # diff connections
-        for new_conn in b.connection - a.connection:
-            delta.connection[new_conn] = True
+        # diff edges
+        a_conn = set(a.edge.keys())
+        b_conn = set(b.edge.keys())
 
-        for deleted_conn in a.connection - b.connection:
-            delta.connection[deleted_conn] = EMPTY
+        for common_conn in a_conn & b_conn:
+            if a.edge[common_conn] != b.edge[common_conn]:
+                delta.edge[common_conn] = b.edge[common_conn]
+
+        for new_conn in b_conn - a_conn:
+            delta.edge[new_conn] = b.edge[new_conn]
+
+        for deleted_conn in a_conn - b_conn:
+            delta.edge[deleted_conn] = EMPTY
 
         # diff data
         a_data = set(a.data.keys())
@@ -148,7 +161,7 @@ class Delta:
         return delta
 
     @classmethod
-    def combine(cls, first: "Delta", second: "Delta") -> "Delta":
+    def combine_union(cls, first: "Delta", second: "Delta") -> "Delta":
         """
         Like a dict.update, but for Delta objects.
         Cleans up possible path conflicts
@@ -157,8 +170,31 @@ class Delta:
 
         for delta in (first, second):
             new_delta.node.update(delta.node)
-            new_delta.connection.update(delta.connection)
+            new_delta.edge.update(delta.edge)
             new_delta.data.update(delta.data)
+
+        for k in new_delta.data:
+            if k in new_delta.node:
+                del new_delta.data[k]
+
+        return new_delta
+
+    @classmethod
+    def combine_diff(cls, potitive: "Delta", negative: "Delta") -> "Delta":
+        """
+        Like a dict.update, but for Delta objects.
+        Cleans up possible path conflicts
+        """
+        new_delta = cls()
+
+        for new_dict, pos_dict, neg_dict in (
+            (new_delta.node, potitive.node, negative.node),
+            (new_delta.edge, potitive.edge, negative.edge),
+            (new_delta.data, potitive.data, negative.data),
+        ):
+            diff_keys = set(pos_dict.keys()) - set(neg_dict.keys())
+            for k in diff_keys:
+                new_dict[k] = pos_dict[k]
 
         for k in new_delta.data:
             if k in new_delta.node:
@@ -179,18 +215,28 @@ class Delta:
             part_of_path = ".".join([target.path, *rel_frag_path[:-1]])
             target.model.new_vertex(node_delta, rel_frag_path[-1], part_of_path)
 
-        # apply connections
-        for connection_from_to, connection_delta in self.connection.items():
-            connection_from, connection_to = connection_from_to
-            if connection_delta == EMPTY:
+        # apply edges
+        # FIXME: KILLME:
+        def _make_path(path: FragPath) -> str:
+            if path and path[0] == ROOT:
+                # we're just gonna make the gross assumption
+                # that the first thing after the root is a file
+                if len(path) == 2:
+                    return path[1]
+                return path[1] + ":" + ".".join(path[2:])
+            return ".".join([target.path, *path])
+
+        for edge_from_to, edge_delta in self.edge.items():
+            edge_from, edge_to = edge_from_to
+            if edge_delta == EMPTY:
                 raise NotImplementedError(
                     "Deleting things isn't currently implemented - because I'm not sure how'd you'd get there."
+                    f"Failed to remove {str(edge_delta)} from {edge_from} to {edge_to}"
                 )
-            # FIXME: more hacky string manipulation of paths
-            connection_from_path = ".".join([target.path, *connection_from])
-            connection_to_path = ".".join([target.path, *connection_to])
+            edge_from_path = _make_path(edge_from)
+            edge_to_path = _make_path(edge_to)
             target.model.new_edge(
-                EdgeType.connects_to, connection_from_path, connection_to_path
+                edge_delta, edge_from_path, edge_to_path
             )
 
         # apply data updates

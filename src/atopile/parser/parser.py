@@ -594,7 +594,17 @@ class Builder(AtopileParserVisitor):
         # we're then going to apply the diffs, preferencing changes the user has manually made
         class_diff = Delta.diff(retype_mvv.instance_of, new_type_mvv)
         instance_diff = Delta.diff(retype_mvv.instance_of, retype_mvv)
-        combined_diff = Delta.combine(class_diff, instance_diff)
+
+        combined_diff = Delta.combine_diff(class_diff, instance_diff)
+
+        # remove the "part_of" edge from the diff
+        # we know there's only one of these so we can break once we find it
+        for k, v in combined_diff.edge.items():
+            if k[0] == () and v == EdgeType.part_of:
+                del combined_diff.edge[k]
+                break
+
+        # apply the diff to the instance
         combined_diff.apply_to(retype_mvv)
 
         # finally we need to change the "instance_of" link to point to the new class
