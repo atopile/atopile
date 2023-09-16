@@ -23,7 +23,7 @@
 			"match": "\\b(with)\\b"
 		},
 		{
-			"begin": "^\\s*(module|component)",
+			"begin": "^\\s*(module|component|interface)",
 			"end": "\\s+([a-zA-Z_][a-zA-Z_0-9]*)",
 			"beginCaptures": {
 				"1": {
