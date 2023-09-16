@@ -3,6 +3,11 @@
   "displayName": ".ato",
   "description": "atopile synthax highlighting",
   "version": "0.0.1",
+  "repository": {
+    "url": "https://gitlab.atopile.io/atopile/atopile",
+    "directory": "src/vscode-atopile",
+    "type": "git"
+  },
   "engines": {
     "vscode": "^1.78.0"
   },
