@@ -63,6 +63,8 @@ This will start the front-end server at `localhost:1234` and the backend at `loc
 
 ## Syntax highlighting is pretty nice...
 
-Copy `src/vscode_extension` to `~/.vscode/extensions/`
+You can download the extension from CI here:
 
-eg. `cp -r src/vscode_extension ~/.vscode/extensions/atopile-0.0.1`
+![download-artifacts](docs/images/download-artifacts.png)
+
+Then, from your PC `code --install-extension path/to/atopile-*.vsix`
