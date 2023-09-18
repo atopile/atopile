@@ -99,59 +99,18 @@ addopts = [
     "--html=artifacts/test-report.html",
     "--self-contained-html",
 ]
-# addopts = [
-#   "--strict-config",
-#   "--strict-markers",
-# ]
-# xfail_strict = true
-# junit_family = "xunit2"
-# filterwarnings = [
-#     "error",
-#     # TODO: needed by asyncio in Python 3.9.7 https://bugs.python.org/issue45097, try to remove on 3.9.8
-#     'ignore:The loop argument is deprecated since Python 3\.8, and scheduled for removal in Python 3\.10:DeprecationWarning:asyncio',
-#     'ignore:starlette.middleware.wsgi is deprecated and will be removed in a future release\..*:DeprecationWarning:starlette',
-#     # TODO: remove after upgrading HTTPX to a version newer than 0.23.0
-#     # Including PR: https://github.com/encode/httpx/pull/2309
-#     "ignore:'cgi' is deprecated:DeprecationWarning",
-#     # For passlib
-#     "ignore:'crypt' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
-#     # see https://trio.readthedocs.io/en/stable/history.html#trio-0-22-0-2022-09-28
-#     "ignore:You seem to already have a custom.*:RuntimeWarning:trio",
-#     "ignore::trio.TrioDeprecationWarning",
-#     # TODO remove pytest-cov
-#     'ignore::pytest.PytestDeprecationWarning:pytest_cov',
-# ]
-
-# [tool.coverage.run]
-# parallel = true
-# source = [
-#     "docs_src",
-#     "tests",
-#     "src/atopile"
-# ]
-# context = '${CONTEXT}'
-# omit = [
-#     "docs_src/response_model/tutorial003_04.py",
-#     "docs_src/response_model/tutorial003_04_py310.py",
-# ]
 
 [tool.ruff]
-select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    # "I",  # isort
-    "C",  # flake8-comprehensions
-    "B",  # flake8-bugbear
+exclude = [
+    "src/atopile/parser/AtopileLexer.py",
+    "src/atopile/parser/AtopileLexerBase.py",
+    "src/atopile/parser/AtopileParser.py",
+    "src/atopile/parser/AtopileParserBase.py",
+    "src/atopile/parser/AtopileParserListener.py",
+    "src/atopile/parser/AtopileParserVisitor.py",
 ]
+
 ignore = [
-    "E501",  # line too long, handled by black
-    "B008",  # do not perform function calls in argument defaults
+    "E501",  # line too long (ignore for the minute)
     "C901",  # too complex
 ]
-
-[tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]
-
-# [tool.ruff.isort]
-# known-third-party = ["fastapi", "pydantic", "starlette"]
