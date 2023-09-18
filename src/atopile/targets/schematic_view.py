@@ -1,12 +1,9 @@
 import json
 import logging
-from pathlib import Path
 
 import ruamel.yaml
 
 from atopile.model.accessors import ModelVertexView
-from atopile.model.model import VertexType
-from atopile.project.config import BaseConfig
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
 from atopile.viewer.render import build_view
 

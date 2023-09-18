@@ -66,6 +66,13 @@ viewer-build:
     - npm ci
     - npm run build
 
+cli-lint:
+  stage: test
+  image: python:latest
+  script:
+    - pip install -e ."[dev,test,docs]"
+    - ruff src/atopile
+
 cli-test:
   stage: test
   image: python:latest

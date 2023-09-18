@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import List, AsyncGenerator, AsyncIterator
+from typing import List, AsyncIterator
 import contextlib
 import watchfiles
 import ruamel.yaml
