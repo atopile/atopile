@@ -1,4 +1,5 @@
-from typing import Iterable, List, Tuple, Union
+import itertools
+from typing import Any, Iterable, List, Tuple, Union
 
 import igraph as ig
 
@@ -108,11 +109,11 @@ class ModelVertexView:
         return superclasses[0]
 
     @property
-    def superclasses(self) -> List["ModelVertexView"]:
+    def superclasses(self) -> Iterable["ModelVertexView"]:
         superclasses = [self.superclass]
         while (superclass := superclasses[-1].superclass) is not None:
             superclasses.append(superclass)
-        return superclasses
+            yield superclass
 
     def i_am_an_instance_of(self, of: "ModelVertexView") -> bool:
         if self.is_class:
@@ -204,6 +205,45 @@ class ModelVertexView:
 
     def relative_path(self, other: "ModelVertexView") -> str:
         return mvvs_to_path([mvv for mvv in self.relative_mvv_path(other)])
+
+    def get_data(self, path: Union[str, Tuple[str]], failure: Exception=KeyError) -> Any:
+        """
+        Helper function to get data from an object's data dict.
+        This is better than just accessing the data directly,
+        because it will check superclasses for the requested data as well.
+        """
+        # forward declare data as None, so that if we don't find it / anything
+        # useful we can still run the exception logic beyond the loop
+        data = None
+        for obj in itertools.chain([self], self.superclasses):
+            try:
+                if isinstance(path, str):
+                    return obj.data[path]
+                elif isinstance(path, tuple):
+                    data = obj.data[path[0]]
+                    break
+            except KeyError:
+                continue
+
+        # find any child of data that matches the rest of the path
+        # if the path is a string and we haven't already returned, we've failed and we skip this
+        # if the path is a tuple, we try to find the rest of the path
+        # if we didn't find any data in the first place, we'll hit the type error and break out of this loop
+        if isinstance(path, tuple):
+            for path_segment in path[1:]:
+                try:
+                    data = data[path_segment]
+                except (KeyError, TypeError):
+                    # break to exception logic
+                    break
+            else:
+                # we finished the loop, so we've found our data - yay!
+                return data
+
+        # we've failed to find our data's key
+        if isinstance(failure, Exception):
+            raise failure
+        return failure
 
     def __eq__(self, o: object) -> bool:
         if not isinstance(o, ModelVertexView):

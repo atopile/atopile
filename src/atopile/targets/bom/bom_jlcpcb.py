@@ -26,9 +26,9 @@ class ImplicitPartSpec:
     def matches_component(self, component: ModelVertexView) -> bool:
         if self.instance_of != component.instance_of.path:
             return False
-        if self.footprint and self.footprint != component.data.get("footprint"):
+        if self.footprint and self.footprint != component.get_data("footprint"):
             return False
-        if self.value and self.value != component.data.get("value"):
+        if self.value and self.value != component.get_data("value"):
             return False
         return True
 
@@ -42,7 +42,7 @@ class ImplicitPartSpec:
 
     @staticmethod
     def from_component(component: ModelVertexView) -> "ImplicitPartSpec":
-        return ImplicitPartSpec(component.instance_of.path, component.data.get("footprint"), component.data.get("value"))
+        return ImplicitPartSpec(component.instance_of.path, component.get_data("footprint"), component.get_data("value"))
 
     def to_dict(self) -> Dict[str, Any]:
         result = {"instance_of": self.instance_of, "footprint": self.footprint, "value": self.value}
@@ -230,13 +230,13 @@ class BomJlcpcbTarget(Target):
 
             component_path = component_paths[0]
             component_view = ModelVertexView.from_path(self.model, component_path)
-            comment = component_view.data.get("value", "")
+            comment = component_view.get_data("value", "")
 
             designators = ",".join([component_to_designator_map[p] for p in component_paths])
             if len(component_paths) > 1:
                 designators = "\"" + designators + "\""
 
-            footprint = component_view.data.get("footprint", "").split(":")[-1]
+            footprint = component_view.get_data("footprint", "").split(":")[-1]
             lcsc = jlcpcb_number
             row = ",".join([comment, designators, footprint, lcsc])
             bom_rows.append(row)
