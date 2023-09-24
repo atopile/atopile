@@ -110,9 +110,9 @@ class ModelVertexView:
 
     @property
     def superclasses(self) -> Iterable["ModelVertexView"]:
-        superclasses = [self.superclass]
-        while (superclass := superclasses[-1].superclass) is not None:
-            superclasses.append(superclass)
+        # got a little social climbing here, eh?
+        superclass = self  # little white lie
+        while superclass := superclass.superclass:
             yield superclass
 
     def i_am_an_instance_of(self, of: "ModelVertexView") -> bool:
