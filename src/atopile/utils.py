@@ -4,7 +4,7 @@ import logging
 import pstats
 import time
 from pathlib import Path
-
+from typing import Callable, Optional, TypeVar
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -90,3 +90,27 @@ def timed(what_am_i_doing: str):
     log.info(what_am_i_doing)
     yield
     log.info("%s took %ss", what_am_i_doing, time.time() - start_time)
+
+
+ShieldToNoneReturn = TypeVar("ShieldToNoneReturn")  # Return type
+ShieldToNoneAargs = TypeVar(
+    "ShieldToNoneAargs"
+)  # Argument type (can be a tuple if multiple argument types)
+ShieldToNoneKwargs = TypeVar(
+    "ShieldToNoneKwargs"
+)  # Keyword argument type (can be a dict if multiple kwarg types)
+
+
+def shield_to_none(
+    exception: BaseException,
+    func: Callable[[ShieldToNoneAargs, ShieldToNoneKwargs], ShieldToNoneReturn],
+    *args: ShieldToNoneAargs,
+    **kwargs: ShieldToNoneKwargs,
+) -> Optional[ShieldToNoneReturn]:
+    """
+    Shield the function from the exception, returning None if it's raised.
+    """
+    try:
+        return func(*args, **kwargs)
+    except exception:
+        return None
