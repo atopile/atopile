@@ -2,7 +2,8 @@ from functools import partial
 from itertools import chain
 from typing import Any
 
-from atopile.model.accessors import ModelVertexView
+from atopile.utils import shield_to_none
+from atopile.model.accessors import ModelVertexView, NodeNotFoundError
 from atopile.model.model import EdgeType, VertexType
 
 
@@ -60,8 +61,7 @@ class FragRep:
         for child in [root] + children:
             # node rep
             child_frag_path = relative_frag_paths[child.path]
-            if child != root:
-                frag_rep.node[child_frag_path] = child.vertex_type
+            frag_rep.node[child_frag_path] = child.vertex_type
 
             # data rep
             def _recurse_data(data_rel_path: FragPath, data: dict):
@@ -203,20 +203,12 @@ class Delta:
         return new_delta
 
     def apply_to(self, target: ModelVertexView) -> None:
-        # apply node delta
-        # by addressing teh shortest paths first we can make sure upstream nodes exist
-        for rel_frag_path in sorted(self.node.keys(), key=len):
-            node_delta = self.node[rel_frag_path]
-            if node_delta == EMPTY:
-                raise NotImplementedError(
-                    "Deleting things isn't currently implemented - because I'm not sure how'd you'd get there."
-                )
-            # FIXME: hacky string manipulation of paths
-            part_of_path = ".".join([target.path, *rel_frag_path[:-1]])
-            target.model.new_vertex(node_delta, rel_frag_path[-1], part_of_path)
-
-        # apply edges
-        # FIXME: KILLME:
+        """
+        An extremely problematic and painful partially written implementation of applying a delta to a model.
+        FIXME: it only really works for ADDING things
+        FIXME: it can deal with modifications to node types and data, but no other characteristics
+        """
+        # FIXME: KILLME: hacky string manipulation of paths
         def _make_path(path: FragPath) -> str:
             if path and path[0] == ROOT:
                 # we're just gonna make the gross assumption
@@ -226,17 +218,32 @@ class Delta:
                 return path[1] + ":" + ".".join(path[2:])
             return ".".join([target.path, *path])
 
-        for edge_from_to, edge_delta in self.edge.items():
-            edge_from, edge_to = edge_from_to
-            if edge_delta == EMPTY:
+        # apply node delta
+        # by addressing the shortest paths first we can make sure upstream nodes exist
+        for rel_frag_path in sorted(self.node.keys(), key=len):
+            node_type = self.node[rel_frag_path]
+            if node_type == EMPTY:
                 raise NotImplementedError(
                     "Deleting things isn't currently implemented - because I'm not sure how'd you'd get there."
-                    f"Failed to remove {str(edge_delta)} from {edge_from} to {edge_to}"
+                )
+            if existing_node := shield_to_none(NodeNotFoundError, ModelVertexView.from_path, target.model, _make_path(rel_frag_path)):
+                existing_node.vertex_type = node_type
+                continue
+            part_of_path = _make_path(rel_frag_path[:-1])
+            target.model.new_vertex(node_type, rel_frag_path[-1], part_of_path)
+
+        # apply edges
+        for edge_from_to, edge_type in self.edge.items():
+            edge_from, edge_to = edge_from_to
+            if edge_type == EMPTY:
+                raise NotImplementedError(
+                    "Deleting things isn't currently implemented - because I'm not sure how'd you'd get there."
+                    f"Failed to remove {str(edge_type)} from {edge_from} to {edge_to}"
                 )
             edge_from_path = _make_path(edge_from)
             edge_to_path = _make_path(edge_to)
             target.model.new_edge(
-                edge_delta, edge_from_path, edge_to_path
+                edge_type, edge_from_path, edge_to_path
             )
 
         # apply data updates

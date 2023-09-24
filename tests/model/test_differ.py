@@ -141,3 +141,23 @@ def test_apply_to(module1_root: ModelVertexView, module2_root: ModelVertexView):
     assert not delta2.node
     assert not delta2.edge
     assert not delta2.data
+
+
+def test_apply_to_root_type_change(module1_root: ModelVertexView, module2_root: ModelVertexView):
+    """
+    This case happens when we subclass a module to a component
+
+    NOTE: eh, we really shouldn't allow components in components, but there's not checks for now so this test is fine
+    """
+    module2_root.vertex["type"] = VertexType.component.value
+    delta = Delta.diff(module1_root, module2_root)
+
+    # then let's re-apply it to module1_root
+    delta.apply_to(module1_root)
+
+    # and finally check there's no diff between the objects anymore
+    delta2 = Delta.diff(module1_root, module2_root)
+    assert not delta2.node
+    assert not delta2.edge
+    assert not delta2.data
+    assert module1_root.vertex_type == VertexType.component
