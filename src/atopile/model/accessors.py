@@ -215,7 +215,15 @@ class ModelVertexView:
         # forward declare data as None, so that if we don't find it / anything
         # useful we can still run the exception logic beyond the loop
         data = None
-        for obj in itertools.chain([self], self.superclasses):
+
+        # if we're an instance, we need to look in ourself, our class and then our supers
+        # if we're a class, we need to look in ourself and our supers
+        if self.is_instance:
+            objs = itertools.chain([self, self.instance_of], self.instance_of.superclasses)
+        else:
+            objs = itertools.chain([self], self.superclasses)
+
+        for obj in objs:
             try:
                 if isinstance(path, str):
                     return obj.data[path]
