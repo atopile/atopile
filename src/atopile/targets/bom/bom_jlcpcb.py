@@ -232,7 +232,10 @@ class BomJlcpcbTarget(Target):
             component_view = ModelVertexView.from_path(self.model, component_path)
             comment = component_view.get_data("value", "")
 
-            designators = ",".join([component_to_designator_map[p] for p in component_paths])
+            # designator map's paths are relative to the root node
+            root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
+            like_components = [ModelVertexView.from_path(self.model, p) for p in component_paths]
+            designators = ",".join(component_to_designator_map[root_node.relative_path(p)] for p in like_components)
             if len(component_paths) > 1:
                 designators = "\"" + designators + "\""
 

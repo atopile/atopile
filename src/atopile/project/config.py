@@ -100,7 +100,7 @@ class CustomBuildConfig:
     @staticmethod
     def from_build_config(build_config: BuildConfig) -> "CustomBuildConfig":
         return CustomBuildConfig(
-            name="modified-" + build_config.name,
+            name=build_config.name,
             project=build_config.project,
             root_file=build_config.root_file,
             root_node=build_config.root_node,

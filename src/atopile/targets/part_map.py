@@ -47,7 +47,12 @@ class ImplicitPartSpec:
 
     @staticmethod
     def from_component(component: ModelVertexView) -> "ImplicitPartSpec":
-        return ImplicitPartSpec(component.instance_of.path, component.get_data("footprint"), component.get_data("value"), component.get_data("part"))
+        return ImplicitPartSpec(
+            component.instance_of.path,
+            component.get_data("footprint"),
+            component.get_data("value"),
+            component.get_data("part")
+        )
 
     def to_dict(self, missing_part: str) -> Dict[str, Any]:
         result = {"instance_of": self.instance_of, "footprint": self.footprint, "value": self.value, "part": self.part or missing_part}
