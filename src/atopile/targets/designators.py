@@ -72,13 +72,15 @@ class Designators(Target):
 
         root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
         components = root_node.get_descendants(VertexType.component)
+        rel_paths = {c.index: root_node.relative_path(c) for c in components}
 
         # find all the components still missing designators
         components_to_designate: List[ModelVertexView] = []
         designator_map: Dict[str, str] = {}
 
         for component in components:
-            existing_designator = designator_file_data.get(component.path)
+            rel_path = rel_paths[component.index]
+            existing_designator = designator_file_data.get(component.path) or designator_file_data.get(rel_path)
             if existing_designator is None:
                 components_to_designate.append(component)
                 continue
@@ -94,7 +96,7 @@ class Designators(Target):
                 continue
 
             # if none of the above, then we're cool with the existing designator. Let's roll.
-            designator_map[component.path] = existing_designator
+            designator_map[rel_path] = existing_designator
 
         # if at this point, we've got stuff to designate, we're solvable
         # if not, perhaps we're still untidy
@@ -113,7 +115,7 @@ class Designators(Target):
             for i in range(1, MAX_DESIGNATOR):
                 designator = designator_prefix + str(i)
                 if designator not in designator_map.values():
-                    designator_map[component.path] = designator
+                    designator_map[rel_paths[component.index]] = designator
                     break
             else:
                 raise ValueError(f"Exceeded the limit of {MAX_DESIGNATOR} on a board! Eeek!")
