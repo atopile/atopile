@@ -206,7 +206,7 @@ class ModelVertexView:
     def relative_path(self, other: "ModelVertexView") -> str:
         return mvvs_to_path([mvv for mvv in self.relative_mvv_path(other)])
 
-    def get_data(self, path: Union[str, Tuple[str]], failure: Exception=KeyError) -> Any:
+    def get_data(self, path: Union[str, Tuple[str]], failure=None) -> Any:
         """
         Helper function to get data from an object's data dict.
         This is better than just accessing the data directly,
@@ -251,6 +251,13 @@ class ModelVertexView:
         # we've failed to find our data's key
         if isinstance(failure, Exception):
             raise failure
+
+        try:
+            if isinstance(failure(), Exception):
+                raise failure
+        except TypeError:
+            pass
+
         return failure
 
     def __eq__(self, o: object) -> bool:
