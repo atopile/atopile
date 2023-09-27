@@ -89,7 +89,7 @@ class Designators(Target):
                 components_to_designate.append(component)
                 continue
 
-            designator_prefix = component.data.get("designator_prefix", self.config.default_prefix)
+            designator_prefix = component.get_data("designator_prefix", self.config.default_prefix)
             if not existing_designator.startswith(designator_prefix):
                 components_to_designate.append(component)
                 log.warning(f"{component.path} has a designator-prefix mis-match. Regenerating designator.")
@@ -110,7 +110,7 @@ class Designators(Target):
         # generate designators and back-assign everything to the designator data
         MAX_DESIGNATOR = 10000
         for component in components_to_designate:
-            designator_prefix = component.data.get("designator_prefix", self.config.default_prefix)
+            designator_prefix = component.get_data("designator_prefix", self.config.default_prefix)
             # TODO: this is cruddy and inefficent. Fix it.
             for i in range(1, MAX_DESIGNATOR):
                 designator = designator_prefix + str(i)

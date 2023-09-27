@@ -176,6 +176,9 @@ class KicadNetlist:
         vidxs_within_main = part_of_view.subcomponent(main_vertex.index, mode="in")
 
         component_vs = model.graph.vs[vidxs_within_main].select(type_eq=VertexType.component.name)
+        root_mvv = ModelVertexView.from_path(model, root_node)
+        component_mvvs = {component_vs["path"]: ModelVertexView(model, component_vs.index) for component_vs in component_vs}
+
         component_class_vidxs: Dict[str, int] = {}  # by component path
         for component_v in component_vs:
             component_class_vidx = instance_of_view.neighbors(component_v.index, mode="out")
@@ -258,7 +261,7 @@ class KicadNetlist:
             )
 
             # figure out the designators
-            designator = designators[component_path]
+            designator = designators[root_mvv.relative_path(component_mvvs[component_path])]
 
             # make the component of your dreams
             component = KicadComponent(

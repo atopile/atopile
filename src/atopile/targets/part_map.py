@@ -32,9 +32,9 @@ class ImplicitPartSpec:
     def matches_component(self, component: ModelVertexView) -> bool:
         if self.instance_of != component.instance_of.path:
             return False
-        if self.footprint and self.footprint != component.data.get("footprint"):
+        if self.footprint and self.footprint != component.get_data("footprint"):
             return False
-        if self.value and self.value != component.data.get("value"):
+        if self.value and self.value != component.get_data("value"):
             return False
         return True
 
@@ -47,7 +47,12 @@ class ImplicitPartSpec:
 
     @staticmethod
     def from_component(component: ModelVertexView) -> "ImplicitPartSpec":
-        return ImplicitPartSpec(component.instance_of.path, component.data.get("footprint"), component.data.get("value"), component.data.get("part"))
+        return ImplicitPartSpec(
+            component.instance_of.path,
+            component.get_data("footprint"),
+            component.get_data("value"),
+            component.get_data("part")
+        )
 
     def to_dict(self, missing_part: str) -> Dict[str, Any]:
         result = {"instance_of": self.instance_of, "footprint": self.footprint, "value": self.value, "part": self.part or missing_part}
@@ -179,9 +184,9 @@ class PartMapTarget(Target):
             # embedded in the ato file
             # TODO: not sure this is a great idea
             # TODO: we should at least be able to glob match these or something
-            if c.data.get("mfg_part_number"):
-                log.info(f"Using mfg part number {c.data.get('mfg_part_number')} from ato code for {c.path}.")
-                component_path_to_part_number[c.path] = c.data.get("mfg_part_number")
+            if c.get_data("mfg_part_number"):
+                log.info(f"Using mfg part number {c.get_data('mfg_part_number')} from ato code for {c.path}.")
+                component_path_to_part_number[c.path] = c.get_data("mfg_part_number")
                 continue
 
             # explicitly defined in the part map file
