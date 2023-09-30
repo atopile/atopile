@@ -7,7 +7,7 @@ import click
 
 from atopile.project.config import BuildConfig, CustomBuildConfig
 from atopile.project.project import Project
-from atopile.version import check_project_version, get_version
+from atopile.version import check_project_version
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
