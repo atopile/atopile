@@ -18,7 +18,7 @@ def get_source_project_root():
     return Path(__file__).parent.parent.parent
 
 
-def is_dev_install():
+def is_editable_install():
     return (get_source_project_root() / "pyproject.toml").exists()
 
 

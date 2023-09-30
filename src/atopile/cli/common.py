@@ -1,12 +1,13 @@
 import functools
 import logging
+import sys
 from pathlib import Path
 
 import click
 
-from atopile.parser.parser import build_model as build_model
 from atopile.project.config import BuildConfig, CustomBuildConfig
 from atopile.project.project import Project
+from atopile.version import check_project_version
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -49,18 +50,16 @@ def ingest_config_hat(f):
             source_path = Path(raw_source_path)
 
             if not source_path.exists():
-                raise click.BadParameter(
-                    f"Path not found {str(source_path)}."
-                )
+                raise click.BadParameter(f"Path not found {str(source_path)}.")
 
         try:
             project: Project = Project.from_path(source_path)
-        except FileNotFoundError as e:
+        except FileNotFoundError as ex:
             raise click.BadParameter(
                 f"Could not find project from path {str(source_path)}. Is this file path within a project?"
-            ) from e
+            ) from ex
 
-        log.info(f"Using project {project.root}")
+        log.info("Using project %s", project.root)
 
         # FIXME: remove deprecated options
         if root_file is not None or root_node is not None:
@@ -108,7 +107,11 @@ def ingest_config_hat(f):
                     "Cannot specify root-node without specifying root-file via positional argument."
                 )
             build_config_obj = base_build_config_obj
-        log.info(f"Using build config {build_config_obj.name}")
+        log.info("Using build config %s", build_config_obj.name)
+
+        # perform pre-build checks
+        if not check_project_version(project):
+            sys.exit(1)
 
         # do the thing
         return f(*args, project, build_config_obj, **kwargs)

@@ -37,6 +37,8 @@ dependencies = [
     "jinja2",
     "antlr4-python3-runtime==4.13.0",
     "ruamel.yaml",
+    "semver",
+    "rich",
 ]
 dynamic = ["version"]
 
