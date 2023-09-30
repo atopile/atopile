@@ -46,6 +46,13 @@ def test_match_caret(version):
     assert match("^2.0.0", version) is False
 
 
+def test_match_dirty():
+    version = parse("0.0.17-dev6+gdaf6b51")
+    assert match("^0.0.16", version)
+    assert match("^0.0.17", version)
+    assert match("^0.0.18", version) is False
+
+
 def test_match_tilde(version):
     assert match("~1.2.3", version)
     assert match("~1.3.0", version) is False

@@ -111,11 +111,6 @@ def ingest_config_hat(f):
 
         # perform pre-build checks
         if not check_project_version(project):
-            log.error(
-                "Project demands atopile version %s, but you have %s installed.",
-                project.config.atopile_version,
-                get_version(),
-            )
             sys.exit(1)
 
         # do the thing
