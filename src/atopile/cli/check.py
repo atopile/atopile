@@ -6,7 +6,6 @@ import click
 
 from atopile.cli.common import ingest_config_hat
 from atopile.parser.parser import build_model
-from atopile.version import check_project_version, get_version
 from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 from atopile.targets.targets import (
@@ -48,15 +47,6 @@ def check(
     target_names = target
     if not target_names:
         target_names: List[str] = build_config.targets
-
-    # perform pre-build checks
-    if not check_project_version(project):
-        log.error(
-            "Project demands atopile version %s, but you have %s installed.",
-            project.config.atopile_version,
-            get_version(),
-        )
-        sys.exit(1)
 
     # build core model
     model = build_model(project, build_config)
