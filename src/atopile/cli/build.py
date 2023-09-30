@@ -5,10 +5,11 @@ from typing import List, Tuple
 import click
 
 from atopile.cli.common import ingest_config_hat
-from atopile.parser.parser import build_model as build_model
+from atopile.parser.parser import build_model
 from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
+from atopile.version import check_project_version, get_version
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -19,7 +20,13 @@ log.setLevel(logging.INFO)
 @click.option("--target", multiple=True, default=None)
 @click.option("--debug/--no-debug", default=None)
 @click.option("--strict/--no-strict", default=None)
-def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug: bool, strict: bool):
+def build(
+    project: Project,
+    build_config: BuildConfig,
+    target: Tuple[str],
+    debug: bool,
+    strict: bool,
+):
     """
     Build the specified --target(s) or the targets specified by the build config.
     Specify the root source file with the argument SOURCE.
@@ -27,7 +34,8 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
     """
     # input sanitisation
     if debug:
-        import atopile.parser.parser
+        import atopile.parser.parser  # pylint: disable=import-outside-toplevel
+
         atopile.parser.parser.log.setLevel(logging.DEBUG)
 
     if strict is None:
@@ -37,14 +45,21 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
     if not target_names:
         target_names: List[str] = build_config.targets
 
+    # perform pre-build checks
+    if not check_project_version(project):
+        log.error(
+            "Project demands atopile version %s, but you have %s installed.",
+            project.config.atopile_version,
+            get_version(),
+        )
+        sys.exit(1)
+
     # build core model
     model = build_model(project, build_config)
     exit_code = 0
 
     # generate targets
     target_muster = TargetMuster(project, model, build_config)
-    # FIXME: this is duplicate code and kinda cruddy
-    target_muster.try_add_targets(["ato-version"])
     target_muster.try_add_targets(target_names)
 
     # check targets
@@ -59,21 +74,30 @@ def build(project: Project, build_config: BuildConfig, target: Tuple[str], debug
         if result > passable_check_level:
             exit_code = 1
         if result == TargetCheckResult.UNSOLVABLE:
-            log.error(f"Target {target.name} is unsolvable. Attempting to generate remaining targets.")
+            log.error(
+                "Target %s is unsolvable. Attempting to generate remaining targets.",
+                target.name,
+            )
             target_muster.targets.remove(target)
         elif result == TargetCheckResult.SOLVABLE:
-            log.warning(f"Target {target.name} is solvable, but is unstable. Use `ato resolve --build-config={build_config.name} --target={target.name} {project.root}` to stabalise as desired.")
+            log.warning(
+                "Target %s is solvable, but is unstable. Use `ato resolve --build-config=%s --target=%s %s` to stabalise as desired.",
+                target.name,
+                build_config.name,
+                target.name,
+                project.root,
+            )
         elif result == TargetCheckResult.UNTIDY:
-            log.warning(f"Target {target.name} is solvable, but is untidy.")
+            log.warning("Target %s is solvable, but is untidy.", target.name)
         elif result == TargetCheckResult.COMPLETE:
-            log.info(f"Target {target.name} passes check.")
+            log.info("Target %s passes check.", target.name)
 
     # generate targets
-    log.info(f"Writing build output to {build_config.build_path}")
+    log.info("Writing build output to %s", build_config.build_path)
     build_config.build_path.mkdir(parents=True, exist_ok=True)
 
     targets_string = ", ".join(target_names)
-    log.info(f"Generating targets {targets_string}")
+    log.info("Generating targets %s", targets_string)
     for target in target_muster.targets:
         assert isinstance(target, Target)
         target.build()

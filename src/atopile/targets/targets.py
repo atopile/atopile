@@ -33,9 +33,6 @@ def find_target(target_name: str) -> "Target":
     if target_name == "sch-view":
         import atopile.targets.schematic_view
         return atopile.targets.schematic_view.SchematicViewTarget
-    if target_name == "ato-version":
-        import atopile.targets.ato_version
-        return atopile.targets.ato_version.AtoVersion
     raise TargetNotFoundError(target_name)
 
 class TargetMuster:
