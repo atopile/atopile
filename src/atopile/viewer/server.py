@@ -7,7 +7,7 @@ from fastapi import (
 from fastapi.staticfiles import StaticFiles
 
 from atopile.viewer.project_handler import ProjectHandler
-from atopile.utils import get_source_project_root, is_dev_install
+from atopile.utils import get_source_project_root, is_editable_install
 from pathlib import Path
 
 # configure logging
@@ -65,7 +65,7 @@ async def update_config(file, updates: dict):
 # by default, use the assets in the viewer directory
 static_dir = Path(__file__).parent / "static"
 # if we're using a dev install, try use the dist directory for assets from a fresh UI build instead
-if is_dev_install():
+if is_editable_install():
     log.info("Detected dev install")
     dist_dir = get_source_project_root() / "dist"
     if dist_dir.exists():

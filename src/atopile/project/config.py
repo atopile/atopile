@@ -28,15 +28,25 @@ class BaseConfig:
         return return_type(self._config_data.get(key, {}), self.project, name=key)
 
     def _return_list_of(self, list_key: str, return_type) -> list:
-        return [return_type(d, self.project) for d in self._config_data.get(list_key, [])]
+        return [
+            return_type(d, self.project) for d in self._config_data.get(list_key, [])
+        ]
 
     def _return_dict_of(self, dict_key: str, return_type) -> dict:
-        return {k: return_type(v, self.project, name=k) for k, v in self._config_data.get(dict_key, {}).items()}
+        return {
+            k: return_type(v, self.project, name=k)
+            for k, v in self._config_data.get(dict_key, {}).items()
+        }
+
 
 class Config(BaseConfig):
     @property
     def paths(self) -> "Paths":
         return self._return_subconfig("paths", Paths)
+
+    @property
+    def atopile_version(self) -> str:
+        return self._config_data.get("ato-version")
 
     @property
     def builds(self) -> Dict[str, "BuildConfig"]:
@@ -48,6 +58,7 @@ class Config(BaseConfig):
     @property
     def targets(self) -> Dict[str, "BaseConfig"]:
         return self._return_dict_of("targets", BaseConfig)
+
 
 class Paths(BaseConfig):
     @property
@@ -61,6 +72,7 @@ class Paths(BaseConfig):
             build_dir = self.project.root / build_dir
 
         return build_dir.resolve().absolute()
+
 
 class BuildConfig(BaseConfig):
     @property
@@ -79,14 +91,21 @@ class BuildConfig(BaseConfig):
 
     @property
     def targets(self) -> List[str]:
-        return self._config_data.get("targets") or ["designators", "netlist-kicad6", "bom-jlcpcb"]
+        return self._config_data.get("targets") or [
+            "designators",
+            "netlist-kicad6",
+            "bom-jlcpcb",
+        ]
 
     @property
     def build_path(self) -> Path:
         return self.project.config.paths.build / self.name
 
+
 class CustomBuildConfig:
-    def __init__(self, name: str, project: "Project", root_file, root_node, targets) -> None:
+    def __init__(
+        self, name: str, project: "Project", root_file, root_node, targets
+    ) -> None:
         self._name = name
         self.project = project
         self.root_file = root_file

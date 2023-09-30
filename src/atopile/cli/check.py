@@ -46,6 +46,8 @@ def check(project: Project, build_config: BuildConfig, target: Tuple[str], debug
 
     # generate targets
     target_muster = TargetMuster(project, model, build_config)
+    # FIXME: this is duplicate code and kinda cruddy
+    target_muster.try_add_targets(["ato-version"])
     target_muster.try_add_targets(target_names)
 
     # check targets
