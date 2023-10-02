@@ -242,18 +242,18 @@ class KicadNetlist:
         components: Dict[str, KicadComponent] = {}  # by component path
         nodes: Dict[str, KicadNode] = {}  # by component pin path
         for component_v in component_vs:
+            # there should always be at least one parent, even if only the file
+            component_mvv = ModelVertexView(model, component_v.index)
+            component_parent_mvv = component_mvv.parent
+
             component_path = component_v["path"]
             component_class_idx = component_class_vidxs[component_path]
             component_class_v = model.graph.vs[component_class_idx]
             component_class_path = component_class_v["path"]
 
-            component_data = model.data.get(component_path, {})
-
-            fields = [KicadField(k, v) for k, v in component_data.items() if k not in NON_FIELD_DATA]
-
-            # there should always be at least one parent, even if only the file
-            component_mvv = ModelVertexView(model, component_v.index)
-            component_parent_mvv = component_mvv.parent
+            component_data = component_mvv.get_all_data()
+            if component_data is not None:
+                fields = [KicadField(k, v) for k, v in component_data.items() if k not in NON_FIELD_DATA]
 
             sheetpath = KicadSheetpath(
                 names=component_parent_mvv.path,
@@ -262,12 +262,11 @@ class KicadNetlist:
 
             # figure out the designators
             designator = designators[root_mvv.relative_path(component_mvvs[component_path])]
-
             # make the component of your dreams
             component = KicadComponent(
                 ref=designator,
                 value=component_data.get("value", ""),
-                footprint=component_data.get("footprint"),
+                footprint=component_data.get("footprint", ""),
                 libsource=libparts[component_class_path],
                 tstamp=generate_uid_from_path(component_path),
                 fields=fields,
