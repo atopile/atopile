@@ -260,6 +260,28 @@ class ModelVertexView:
 
         return failure
 
+    def get_all_data(self) -> dict:
+        """
+        Helper function to get all data from an object's data dict.
+        This is better than just accessing the data directly,
+        because it will check superclasses for data as well.
+        """
+        # if we're an instance, we need to look in ourself, our class and then our supers
+        # if we're a class, we need to look in ourself and our supers
+        if self.is_instance:
+            objs = itertools.chain([self, self.instance_of], self.instance_of.superclasses)
+        else:
+            objs = itertools.chain([self], self.superclasses)
+
+        # We store the fields we want to return
+        fields_found = {}
+        objs_list = list(objs)
+        for obj in objs_list[::-1]:
+            for field in obj.data:
+                fields_found[field] = obj.data[field]
+
+        return fields_found
+
     def __eq__(self, o: object) -> bool:
         if not isinstance(o, ModelVertexView):
             return False

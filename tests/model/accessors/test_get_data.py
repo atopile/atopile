@@ -51,6 +51,17 @@ def test_superclass_attribute(path):
 
     assert ModelVertexView.get_data(self, path) == 1234
 
+def test_return_all_superclass_attribute():
+    self = MagicMock()
+    self.data = {"some_value": 1234}
+    self.is_instance = True
+    self.instance_of = MagicMock()
+    self.instance_of.data = {}
+    self.instance_of.superclasses = [MagicMock()]
+    self.instance_of.superclasses[0].data = {"some_value": 2345, "some_other_value": 3456}
+
+    assert ModelVertexView.get_all_data(self) == {"some_value": 1234, "some_other_value": 3456}
+
 
 def test_instance_nested_tuple_attribute():
     self = MagicMock()
