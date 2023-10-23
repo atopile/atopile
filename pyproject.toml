@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = ""
 authors = [
     { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
