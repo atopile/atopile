@@ -421,10 +421,12 @@ class Builder(AtopileParserVisitor):
                 mvv.ref for mvv in to_mvv.get_descendants(list(VertexType))
             }
 
-            from_node_paths = [mvv.path for mvv in from_mvv.get_descendants(list(VertexType)) if mvv.ref in common_node_names]
-            to_node_paths = [mvv.path for mvv in to_mvv.get_descendants(list(VertexType)) if mvv.ref in common_node_names]
+            from_path = from_mvv.path
+            to_path = to_mvv.path
 
-            joining_pairs = zip(from_node_paths, to_node_paths)
+            joining_pairs = [
+                (from_path + "." + ref, to_path + "." + ref) for ref in common_node_names
+            ]
 
         else:
             raise LanguageError(
