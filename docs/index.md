@@ -1,16 +1,21 @@
 # atopile
 
-`atopile` is a project building toolchains to bring the best of software development to the world of hardware design.
+`atopile` brings the best of software development to the world of hardware design.
 
-We're starting with an electronics compiler that takes uses a new language in `.ato` files to describe the hardware design, and compiles it to netlists that can be laid out and fabricated.
+We're starting with an electronics compiler and a new language called `ato`. Files with the `.ato` extension can be used to describe your circuit, and compiles it to netlists that can be laid out and fabricated.
 
-These `.ato` files are human readable, and can be version controlled, so you can collaborate with your team on the design of your hardware. They're modular, so you can reuse components from other projects, and share them with the community. They provide a way to save the intelligence of your design and the validation required to make sure it works as intended, so you can be confident that your design will work as expected.
+The `.ato` files are human readable and can be version controlled, so you can collaborate with your team on the design of your hardware. They're modular, so you can reuse components from other projects, and share them with the community. They provide a way to save the intelligence of your design and the validation required to make sure it works as intended, so you can be confident that your design will work as expected.
+
+# Getting started
+
+Clone this template project to get started: [https://gitlab.atopile.io/atopile/atopile-project-template](https://gitlab.atopile.io/atopile/atopile-project-template)
+
+Find inspiration from the servo-drive project: [https://gitlab.atopile.io/atopile/servo-drive](https://gitlab.atopile.io/atopile/servo-drive)
 
 ## Intentional Omissions
 
 - Detailed Installation -> instructions are in the `atopile` project's README.md and are fluid since there's a bunch of not-so-well-packaged components at the moment
-- Creating new projects -> with a WIP syntax, we're intentionally avoiding lots of new projects to maintain.
-
+- Creating new projects -> we are activelly working on the language synthax. New keywords and features will be intorduced in the future with potential breaking changes to previous versions of `.ato` files.
 
 ## Project structure
 
@@ -21,6 +26,12 @@ The root of an ato project is marked by the presence of an `ato.yaml` file.
 Here's an example:
 
 ```yaml
+# this line defines the version of compiler required to compile the project
+ato-version: ^0.0.18
+# those line defines the path where the build artifact will be placed by the compiler
+paths:
+  build: ../../build/
+# those lines define the elements that will be built by the compiler
 builds:
   default:
     # we don't have a default root file yet
@@ -30,27 +41,27 @@ builds:
       - bom-jlcpcb
 ```
 
+The compiler version follows [sementic versioning](https://semver.org). The required version to compile your project can be specified using [npm's standard](https://docs.npmjs.com/about-semantic-versioning).
 
 ## Imports
 
-You can import assets by specifying what you want to import and where you want to import it from with the following syntax:
+You can import assets by specifying what you want to import and where you want to import it from using the following syntax:
 
 `import What from "where.ato"`
 
 Notes on that statement:
-- quotes on the "where.ato" - it's a string
+- add quotes on the "where.ato" - it's a string
 - `What` is capitalised - it's a type and types should be capitalised, though this isn't enforced and you can import things other than types from other files
 
 The import statements are with respect to the current project, or within the standard library (`std`)
-
 
 ## Basic types
 
 There's a handful of major types that you'll use in your `.ato` files, falling into two categories; blocks and nodes.
 
-Blocks represent something that can contain other things. They provide an abstration over their contents.
+Blocks represent something that can contain other things. They provide an abstration over their contents. For example, a block could be power supply chip and all the passive components around it.
 
-Nodes are connectable quanta.
+Nodes are elements you can connect to.
 
 Block types are:
 - `component` - represents exactly one component
@@ -64,7 +75,7 @@ Node types are:
 
 ## Block definition
 
-Say we create a new file `led.ato` with the following contents:
+Here is an example of a block (in this case a `component`) created within a file named `led.ato`:
 
 ```ato
 component LED:
@@ -76,7 +87,7 @@ component LED:
 
 ## Viewing your first component
 
-`ato view` is the tool for you!
+`ato view` is still in development. Please expect the feature to be unstable.
 
 `ato view --help` will give you a printout of the options it can take.
 
@@ -118,6 +129,7 @@ While creating a new project and where to place your KiCAD files is out of scope
 ![Import Netlist 2](images/import-settings.png)
 1. Check the errors - sometimes it's important
 
+In case you want to setup your own project, we have prepared a template with sample `ato` code and KiCAD project. Find it [here](https://gitlab.atopile.io/atopile/atopile-project-template).
 
 ## More on blocks
 
@@ -165,9 +177,9 @@ This operator allows you to increase the specificity of a block somewhere.
 Take the following example:
 1. You want to create a reusable half-bridge module
 2. If you spec the FETs within the module, you can't readily reuse the design in other projects with other FETs
-3. If you don't declare the FETs at the bottom level it's a PITA to use, since every time you ues it you need to remember to slot the FET in the right spot
+3. If you don't declare the FETs at the bottom level it's a PITA to use, since every time you use it you need to remember to slot the FET in the right spot
 
-You want some way to to say "we're putting a FET here, but we'll tell you which FET later"
+You want some way to say "we're putting a FET here, but we'll tell you which FET later"
 
 Subclassing is the way you say what a FET is, the replacement operator gives you the later.
 
@@ -250,6 +262,7 @@ Cmd+<click> on the link to gitlab
 
 # Manufacturing outputs
 Our CI pipeline will automatically generate the following outputs for you:
+
 - Gerbers (with githash automatically stamped on it!)
 - BOM
 - Pick and place file
