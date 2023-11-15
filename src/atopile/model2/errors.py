@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Type
 
-from atopile.model2 import types
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -78,36 +77,60 @@ def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     return {}
 
 
+def _process_error(
+    ex: Exception | ExceptionGroup,
+    src_path: str,
+    visitor_type: Type,
+    logger: logging.Logger,
+):
+    """Helper function to consistently write errors to the log"""
+    if isinstance(ex, ExceptionGroup):
+        for e in ex.exceptions:
+            _process_error(e, src_path, visitor_type, logger)
+        return
+
+    # if we catch an ato error, we can reliably get the line and column from the exception itself
+    # if not, we need to get the error's line and column from the context, if possible
+    if isinstance(ex, AtoError):
+        message = ex.user_facing_name + ": " + ex.message
+    else:
+        message = f"Unprocessed '{repr(ex)}' occurred during compilation"
+        if ctx := get_locals_from_exception_in_class(ex, visitor_type).get("ctx"):
+            start_line = ctx.start.line
+            start_column = ctx.start.column
+        else:
+            start_line = "Unknown"
+            start_column = "Unknown"
+
+    logger.exception(
+        textwrap.dedent(
+            f"""
+            {src_path}:{start_line}:{start_column}:
+            {message}
+            """
+        ).strip()
+    )
+
+
 @contextmanager
-def ato_errors_to_log(
-    file_path: Path,
-    class_: Type,
-    error_class: Type[AtoError] = AtoError,
+def write_errors_to_log(
+    src_path: str,  # builtin errors don't have source info
+    visitor_type: Type,
     logger: Optional[logging.Logger] = None,
     reraise: bool = True,
-) -> types.Class:
+) -> None:
     """
-    Compile the given tree into an atopile core representation
+    This helper function catches all exception and attempts to add "best effort" source info to them.
+    It's designed to be used on visitors that are the first stage of compilation after parsing.
+    It detects if the exception came from inside the visitor, and if so, attempts to add source info from the ANTLR ctx.
     """
     if logger is None:
         logger = log
 
     try:
         yield
-    except Exception as ex:
-        if ctx := get_locals_from_exception_in_class(ex, class_).get("ctx"):
-            if isinstance(ex, error_class):
-                message = ex.user_facing_name + ": " + ex.message
-            else:
-                message = f"Unprocessed '{repr(ex)}' occurred during compilation"
-
-            logger.exception(
-                textwrap.dedent(
-                    f"""
-                    {file_path}:{ctx.start.line}:{ctx.start.column}:
-                    {message}
-                    """
-                ).strip()
-            )
+    except (Exception, ExceptionGroup) as ex:
+        _process_error(ex, src_path, visitor_type, logger)
         if reraise:
             raise
+
