@@ -1,4 +1,4 @@
-from atopile.dev.parse import parse_as_file, make_parser
+from atopile.dev.parse import parse_as_file, parser_from_src_code
 from atopile.model2.datamodel1 import Object, Link, Import, Dizzy, Replace
 from atopile.model2.datamodel1 import MODULE, COMPONENT, PIN, SIGNAL, INTERFACE
 from atopile.model2 import errors
@@ -71,7 +71,7 @@ def test_visitName(input, output):
 
 #TODO: check for a..b error at model 1 level
 def test_visitAttr():
-    parser = make_parser("a.b.c")
+    parser = parser_from_src_code("a.b.c")
     ctx = parser.attr()
 
     dizzy = Dizzy("test.ato")
@@ -86,7 +86,7 @@ def test_visitAttr():
     ]
 )
 def test_visitName_or_attr(input, output):
-    parser = make_parser(input)
+    parser = parser_from_src_code(input)
     ctx = parser.name_or_attr()
 
     dizzy = Dizzy("test.ato")
@@ -101,7 +101,7 @@ def test_visitName_or_attr(input, output):
     ]
 )
 def test_visit_ref_helper_totally_an_integer(input, output):
-    parser = make_parser(input)
+    parser = parser_from_src_code(input)
     ctx = parser.totally_an_integer()
 
     dizzy = Dizzy("test.ato")
@@ -116,14 +116,14 @@ def test_visit_ref_helper_totally_an_integer(input, output):
     ]
 )
 def test_visit_ref_helper_name_or_attr(input, output):
-    parser = make_parser(input)
+    parser = parser_from_src_code(input)
     ctx = parser.name_or_attr()
 
     dizzy = Dizzy("test.ato")
     assert output == dizzy.visit_ref_helper(ctx)
 
 def test_visit_ref_helper_name():
-    parser = make_parser("sparkles")
+    parser = parser_from_src_code("sparkles")
     ctx = parser.name()
 
     dizzy = Dizzy("test.ato")
@@ -152,7 +152,7 @@ def test_interface():
     ))
 
 def test_visitSignaldef_stmt():
-    parser = make_parser("signal signal_a")
+    parser = parser_from_src_code("signal signal_a")
     ctx = parser.signaldef_stmt()
 
     dizzy = Dizzy("test.ato")
@@ -161,7 +161,7 @@ def test_visitSignaldef_stmt():
 
 
 def test_visitPindef_stmt():
-    parser = make_parser("pin pin_a")
+    parser = parser_from_src_code("pin pin_a")
     ctx = parser.pindef_stmt()
 
     dizzy = Dizzy("test.ato")
@@ -170,7 +170,7 @@ def test_visitPindef_stmt():
 
 # Connect statement return a tuple as there might be signal or pin instantiation within it
 def test_visitConnect_stmt_simple():
-    parser = make_parser("pin_a ~ pin_b")
+    parser = parser_from_src_code("pin_a ~ pin_b")
     ctx = parser.connect_stmt()
 
     dizzy = Dizzy("test.ato")
@@ -178,7 +178,7 @@ def test_visitConnect_stmt_simple():
     assert ret == ((None, Link(source=('pin_a',), target=('pin_b',))),)
 
 def test_visitRetype_stmt():
-    parser = make_parser("a -> b")
+    parser = parser_from_src_code("a -> b")
     ctx = parser.retype_stmt()
 
     dizzy = Dizzy("test.ato")
@@ -187,7 +187,7 @@ def test_visitRetype_stmt():
     assert ret[0] == (None, Replace(original=('a',), replacement=('b',)))
 
 def test_visitConnect_stmt_instance():
-    parser = make_parser("pin pin_a ~ signal sig_b")
+    parser = parser_from_src_code("pin pin_a ~ signal sig_b")
     ctx = parser.connect_stmt()
 
     dizzy = Dizzy("test.ato")
@@ -199,7 +199,7 @@ def test_visitConnect_stmt_instance():
     )
 
 def test_visitImport_stmt():
-    parser = make_parser("import Module1 from 'test_import.ato'")
+    parser = parser_from_src_code("import Module1 from 'test_import.ato'")
     ctx = parser.import_stmt()
 
     dizzy = Dizzy("test.ato")
@@ -208,7 +208,7 @@ def test_visitImport_stmt():
     assert ret[0] == (('Module1',), Import(what=('Module1',), from_='test_import.ato'))
 
 def test_visitBlockdef():
-    parser = make_parser(
+    parser = parser_from_src_code(
         """
         component comp1 from comp2:
             signal signal_a
@@ -227,7 +227,7 @@ def test_visitBlockdef():
     )
 
 def test_visitAssign_stmt_value():
-    parser = make_parser("foo.bar = 35")
+    parser = parser_from_src_code("foo.bar = 35")
     ctx = parser.assign_stmt()
 
     dizzy = Dizzy("test.ato")
@@ -236,7 +236,7 @@ def test_visitAssign_stmt_value():
     assert results[0] == (('foo', 'bar'), 35)
 
 def test_visitAssign_stmt_string():
-    parser = make_parser('foo.bar = "baz"')
+    parser = parser_from_src_code('foo.bar = "baz"')
     ctx = parser.assign_stmt()
 
     dizzy = Dizzy("test.ato")
@@ -245,7 +245,7 @@ def test_visitAssign_stmt_string():
     assert results[0] == (('foo', 'bar'), "baz")
 
 def test_visitNew_stmt():
-    parser = make_parser("new Bar")
+    parser = parser_from_src_code("new Bar")
     ctx = parser.new_stmt()
 
     dizzy = Dizzy("test.ato")

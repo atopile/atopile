@@ -1,18 +1,63 @@
 """
 This datamodel represents the code in a clean, simple and traversable way, but doesn't resolve names of things
 In building this datamodel, we check for name collisions, but we don't resolve them yet.
+
+#####
+
+Example of the data structure we're trying to build:
+
+#####
+
+FIXME: this is out of date
+
+file = Object(class_=MODULE, supers=[], locals_={})
+
+Resistor = Object(
+    supers=[COMPONENT],
+    locals_={
+        1: Object(class_=PIN),
+        2: Object(class_=PIN),
+        "test": 1,
+    },
+)
+
+in this data model we make everything by reference
+vdiv_named_link = Link(source=("r_top", 1), target=("top",))
+VDiv = Object(
+    supers=[MODULE],
+    locals_={
+        "top": Object(class_=SIGNAL),
+        "out": Object(class_=SIGNAL),
+        "bottom": Object(class_=SIGNAL),
+        "r_top": Object(class_=("Resistor",)),
+        "r_bottom": Object(class_=("Resistor",)),
+        "top_link": vdiv_named_link,
+        ("r_top", "test"): 2,
+        (None, Link(source=("r_top", 2), target=("out",))),
+        (None, Link(source=("r_bottom", 1), target=("out",))),
+        (None, Link(source=("r_bottom", 2), target=("bottom",))),
+    },
+)
+
+
+Test = Object(
+    supers=[MODULE],
+    anon=[Replace(original=("vdiv", "r_top"), replacement=("Resistor2",))],
+    locals_={
+        "vdiv": Object(class_=("VDiv",)),
+    },
+)
 """
 
 import enum
 import itertools
 import logging
-import typing
 from typing import Any, Iterable, Optional
 
+from antlr4 import ParserRuleContext
 from attrs import define, field
 
-from atopile.model2 import errors, types
-from atopile.model2.parse import ParserRuleContext
+from atopile.model2 import errors
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
@@ -61,48 +106,6 @@ PIN = (("pin",),)
 SIGNAL = (("signal",),)
 INTERFACE = (("interface",),)
 
-## Usage Example
-
-# file = Object(class_=MODULE, supers=[], locals_={})
-
-# Resistor = Object(
-#     supers=[COMPONENT],
-#     locals_={
-#         1: Object(class_=PIN),
-#         2: Object(class_=PIN),
-#         "test": 1,
-#     },
-# )
-
-# in this data model we make everything by reference
-# vdiv_named_link = Link(source=("r_top", 1), target=("top",))
-# VDiv = Object(
-#     supers=[MODULE],
-#     locals_={
-#         "top": Object(class_=SIGNAL),
-#         "out": Object(class_=SIGNAL),
-#         "bottom": Object(class_=SIGNAL),
-#         "r_top": Object(class_=("Resistor",)),
-#         "r_bottom": Object(class_=("Resistor",)),
-#         "top_link": vdiv_named_link,
-#         ("r_top", "test"): 2,
-#         (None, Link(source=("r_top", 2), target=("out",))),
-#         (None, Link(source=("r_bottom", 1), target=("out",))),
-#         (None, Link(source=("r_bottom", 2), target=("bottom",))),
-#     },
-# )
-
-
-# Test = Object(
-#     supers=[MODULE],
-#     anon=[Replace(original=("vdiv", "r_top"), replacement=("Resistor2",))],
-#     locals_={
-#         "vdiv": Object(class_=("VDiv",)),
-#     },
-# )
-
-## Return struct
-
 
 class Type(enum.Enum):
     LINK = enum.auto()
@@ -128,10 +131,9 @@ class Dizzy(AtopileParserVisitor):
 
     def __init__(
         self,
-        name: str,
+        src_path: str,
     ) -> None:
-        # TODO: get this outta here
-        self.src_path = name
+        self.src_path = src_path
         super().__init__()
 
     def defaultResult(self):
