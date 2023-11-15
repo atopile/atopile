@@ -247,3 +247,16 @@ To gitlab.atopile.io:atopile/servo-drive.git
 ```
 
 Cmd+<click> on the link to gitlab
+
+# Manufacturing outputs
+Our CI pipeline will automatically generate the following outputs for you:
+- Gerbers (with githash automatically stamped on it!)
+- BOM
+- Pick and place file
+
+## Gitlab artifacts
+To download the artifacts, go to the pipeline page and click on the download button:
+![Gitlab pipeline](images/gitlab-pipline-artifacts.png)
+
+download the "store-build:archive" artifact and extract, you should see soemthing like this:
+![Gitlab artifacts](images/download-artifacts.png)
