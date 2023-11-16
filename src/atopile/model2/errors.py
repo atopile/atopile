@@ -11,7 +11,8 @@ from antlr4 import InputStream, Token
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-
+# I think it'd make far more sense for this to exist in .parse
+# however, it'd become a circular import
 def get_src_info_from_ctx(ctx) -> tuple[str, str, str]:
     """Get the source path, line, and column from a context"""
     token: Token = ctx.start
