@@ -90,11 +90,11 @@ class Builder(AtopileParserVisitor):
         return self.model
 
     def visitImport_stmt(self, ctx: AtopileParser.Import_stmtContext):
-        import_filename = self.get_string(ctx.string())
+        filepath_to_import = self.get_string(ctx.string())
 
         try:
             abs_path, std_path = self.project.resolve_import(
-                import_filename, self.current_file
+                filepath_to_import, self.current_file
             )
         except FileNotFoundError as ex:
             raise AtoError(
@@ -103,6 +103,8 @@ class Builder(AtopileParserVisitor):
                 ctx.start.line,
                 ctx.start.column,
             ) from ex
+
+        import_filename = str(std_path)
 
         if std_path in self._file_stack:
             raise AtoError(
@@ -660,7 +662,6 @@ def build_model(project: Project, config: BuildConfig) -> Model:
 
     with profile(profile_log=log, skip=skip_profiler):
         bob = Builder(project)
-        ParallelParser.pre_parse(bob, config.root_file)
         try:
             with write_errors_to_log(Builder, log, ReraiseBehavior.RAISE_ATO_ERROR):
                 model = bob.build(config.root_file)
