@@ -10,41 +10,31 @@ Example of the data structure we're trying to build:
 
 FIXME: this is out of date
 
-file = Object(class_=MODULE, supers=[], locals_={})
+file = Object(supers=MODULE, locals_=tuple())
 
 Resistor = Object(
-    supers=[COMPONENT],
-    locals_={
-        1: Object(class_=PIN),
-        2: Object(class_=PIN),
-        "test": 1,
-    },
+    supers=COMPONENT,
+    locals_=(
+        ((1,), Object(supers=PIN)),
+        ((2,), Object(supers=PIN)),
+        ((test,), 1),
+    ),
 )
 
 in this data model we make everything by reference
-vdiv_named_link = Link(source=("r_top", 1), target=("top",))
 VDiv = Object(
-    supers=[MODULE],
-    locals_={
-        "top": Object(class_=SIGNAL),
-        "out": Object(class_=SIGNAL),
-        "bottom": Object(class_=SIGNAL),
-        "r_top": Object(class_=("Resistor",)),
-        "r_bottom": Object(class_=("Resistor",)),
-        "top_link": vdiv_named_link,
-        ("r_top", "test"): 2,
-        (None, Link(source=("r_top", 2), target=("out",))),
-        (None, Link(source=("r_bottom", 1), target=("out",))),
-        (None, Link(source=("r_bottom", 2), target=("bottom",))),
-    },
-)
-
-
-Test = Object(
-    supers=[MODULE],
-    anon=[Replace(original=("vdiv", "r_top"), replacement=("Resistor2",))],
-    locals_={
-        "vdiv": Object(class_=("VDiv",)),
+    supers=MODULE,
+    locals_=(
+        (("top",), Object(supers=SIGNAL)),
+        (("out",), Object(supers=SIGNAL)),
+        (("bottom",), Object(supers=SIGNAL)),
+        (("r_top",), Object(supers=(('Resistor',),),
+        (("r_bottom",), Object(supers=(('Resistor',),),
+        ((top_link",), Link(source=("r_top", 1), target=("top",)),
+        ("r_top", "test"), 2,
+        (None, Link(source=(("r_top", 2)), target=("out",)),
+        (None, Link(source=(("r_bottom", 2)), target=("out",)),
+        (None, Link(source=(("r_bottom", 2)), target=("bottom",)),
     },
 )
 """
@@ -269,7 +259,6 @@ class Dizzy(AtopileParserVisitor):
             ),
         )
 
-    # TODO: reimplement
     def visitPindef_stmt(
         self, ctx: ap.Pindef_stmtContext
     ) -> tuple[tuple[Optional[Ref], Object]]:
@@ -287,7 +276,6 @@ class Dizzy(AtopileParserVisitor):
 
         return ((ref, created_pin),)
 
-    # TODO: reimplement
     def visitSignaldef_stmt(
         self, ctx: ap.Signaldef_stmtContext
     ) -> tuple[tuple[Optional[Ref], Object]]:
@@ -300,7 +288,7 @@ class Dizzy(AtopileParserVisitor):
         created_signal = Object(
             src_path=self.src_path,
             src_ctx=ctx,
-            supers=(SIGNAL),
+            supers=SIGNAL,
         )
         # TODO: reimplement this error handling at the above level
         # if name in self.scope:
@@ -376,7 +364,6 @@ class Dizzy(AtopileParserVisitor):
         if target:
             returns.append(target)
 
-        # TODO: not sure that's the cleanest way to return a tuple
         return tuple(returns)
 
     def visitWith_stmt(self, ctx: ap.With_stmtContext) -> tuple[Optional[Ref], Object]:
