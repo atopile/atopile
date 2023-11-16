@@ -65,7 +65,10 @@ class Project:
                 search_paths = [cwp, self.module_dir]
             else:
                 search_paths = [cwp.parent, self.module_dir]
-        search_paths += [self.get_std_lib_path()]
+        search_paths += [
+            self.root,
+            self.get_std_lib_path()
+        ]
         return search_paths
 
     def standardise_import_path(self, path: Path) -> Path:
