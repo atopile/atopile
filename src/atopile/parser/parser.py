@@ -6,14 +6,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import List
 
-from antlr4 import CommonTokenStream, InputStream
-from antlr4.error.ErrorListener import ErrorListener
-
 from atopile.model.accessors import ModelVertexView
 from atopile.model.differ import Delta
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_edge_uid
-from atopile.parser.AtopileLexer import AtopileLexer
+from atopile.model2.errors import AtoError, write_errors_to_log, ReraiseBehavior
+from atopile.model2.parse import parse_file as parse_file2
 from atopile.parser.AtopileParser import AtopileParser
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 from atopile.project.config import BuildConfig
@@ -22,27 +20,6 @@ from atopile.utils import profile
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
-
-
-class LanguageError(Exception):
-    """
-    This exception is thrown when there's an error in the syntax of the language
-    """
-
-    def __init__(self, message: str, filepath: Path, line: int, column: int) -> None:
-        super().__init__(message)
-        self.message = message
-        self.filepath = filepath
-        self.line = line
-        self.column = column
-
-
-class ParserErrorListener(ErrorListener):
-    def __init__(self, filepath: Path) -> None:
-        self.filepath = filepath
-
-    def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
-        raise LanguageError(f"Syntax error: '{msg}'", self.filepath, line, column)
 
 
 class Builder(AtopileParserVisitor):
@@ -85,18 +62,8 @@ class Builder(AtopileParserVisitor):
         if str(abs_path) in self._tree_cache:
             return self._tree_cache[str(abs_path)]
 
-        error_listener = ParserErrorListener(abs_path)
+        tree = parse_file2(abs_path)
 
-        # FIXME: hacky performance improvement by avoiding jittery read
-        with abs_path.open("r", encoding="utf-8") as f:
-            input = InputStream(f.read())
-
-        lexer = AtopileLexer(input)
-        stream = CommonTokenStream(lexer)
-        parser = AtopileParser(stream)
-        parser.removeErrorListeners()
-        parser.addErrorListener(error_listener)
-        tree = parser.file_input()
         self._tree_cache[str(abs_path)] = tree
         return tree
 
@@ -130,7 +97,7 @@ class Builder(AtopileParserVisitor):
                 import_filename, self.current_file
             )
         except FileNotFoundError as ex:
-            raise LanguageError(
+            raise AtoError(
                 f"Couldn't find file: {ex.args[0]}",
                 self.current_file,
                 ctx.start.line,
@@ -138,7 +105,7 @@ class Builder(AtopileParserVisitor):
             ) from ex
 
         if std_path in self._file_stack:
-            raise LanguageError(
+            raise AtoError(
                 f"Circular import detected: {std_path}",
                 self.current_file,
                 ctx.start.line,
@@ -158,14 +125,14 @@ class Builder(AtopileParserVisitor):
         try:
             graph_path, data_path = self.model.find_ref(to_import, import_filename)
         except KeyError as ex:
-            raise LanguageError(
+            raise AtoError(
                 ex.args[0],
                 self.current_file,
                 ctx.start.line,
                 ctx.start.column
             ) from ex
         if data_path:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot import data path {data_path}",
                 self.current_file,
                 ctx.start.line,
@@ -183,7 +150,7 @@ class Builder(AtopileParserVisitor):
         try:
             block_type = VertexType(block_type_name)
         except ValueError as ex:
-            raise LanguageError(
+            raise AtoError(
                 f"Unknown block type {block_type_name}",
                 self.current_file,
                 ctx.start.line,
@@ -198,7 +165,7 @@ class Builder(AtopileParserVisitor):
             ModelVertexView.from_path(self.model, self.current_block).vertex_type
             != VertexType.file
         ):
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot define a block inside another block ({self.current_block}).",
                 self.current_file,
                 ctx.start.line,
@@ -210,7 +177,7 @@ class Builder(AtopileParserVisitor):
             # find what we're subclassing
             from_obj = ctx.name_or_attr()
             if not from_obj:
-                raise LanguageError(
+                raise AtoError(
                     "Subclass must specify a superclass, but none specified",
                     self.current_file,
                     ctx.start.line,
@@ -221,7 +188,7 @@ class Builder(AtopileParserVisitor):
                     from_obj.getText(), self.current_block
                 )
             except KeyError as ex:
-                raise LanguageError(
+                raise AtoError(
                     ex.args[0],
                     self.current_file,
                     ctx.start.line,
@@ -229,7 +196,7 @@ class Builder(AtopileParserVisitor):
                 ) from ex
 
             if data_path:
-                raise LanguageError(
+                raise AtoError(
                     "Cannot subclass data object",
                     self.current_file,
                     ctx.start.line,
@@ -247,7 +214,7 @@ class Builder(AtopileParserVisitor):
                 allowed_subclass_types_friendly = " or ".join(
                     e.value for e in allowed_subclass_types
                 )
-                raise LanguageError(
+                raise AtoError(
                     f"Superclass is a {superclass.vertex_type.value}, the subclass is trying to be a {block_type.value}, but must be a {allowed_subclass_types_friendly}",
                     self.current_file,
                     ctx.start.line,
@@ -277,7 +244,7 @@ class Builder(AtopileParserVisitor):
             try:
                 int(name)
             except ValueError as ex:
-                raise LanguageError(
+                raise AtoError(
                     "Pindef_stmt must have a name or integer",
                     self.current_file,
                     ctx.start.line,
@@ -285,7 +252,7 @@ class Builder(AtopileParserVisitor):
                 ) from ex
 
         else:
-            raise LanguageError(
+            raise AtoError(
                 "Pindef_stmt must have a name or integer",
                 self.current_file,
                 ctx.start.line,
@@ -322,7 +289,7 @@ class Builder(AtopileParserVisitor):
         try:
             int(ctx.getText())
         except ValueError as ex:
-            raise LanguageError(
+            raise AtoError(
                 "Numerical pin reference must be an integer, but seems you stuck something else in there somehow?",
                 self.current_file,
                 ctx.start.line,
@@ -343,7 +310,7 @@ class Builder(AtopileParserVisitor):
                 self.deref_totally_an_integer(ctx.pindef_stmt().totally_an_integer())
                 ref = ctx.pindef_stmt().totally_an_integer().getText()
             else:
-                raise LanguageError(
+                raise AtoError(
                     "Cannot connect to this type of object",
                     self.current_file,
                     ctx.start.line,
@@ -354,7 +321,7 @@ class Builder(AtopileParserVisitor):
             self.deref_totally_an_integer(ctx.numerical_pin_ref().totally_an_integer())
             ref = ctx.numerical_pin_ref().getText()
         else:
-            raise LanguageError(
+            raise AtoError(
                 "Cannot connect to this type of object",
                 self.current_file,
                 ctx.start.line,
@@ -364,7 +331,7 @@ class Builder(AtopileParserVisitor):
         try:
             cn_path, cn_data = self.model.find_ref(ref, self.current_block)
         except KeyError as ex:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot connect to non-existent object {ref}",
                 self.current_file,
                 ctx.start.line,
@@ -372,7 +339,7 @@ class Builder(AtopileParserVisitor):
             ) from ex
 
         if cn_data:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot connect to data object {ref}",
                 self.current_file,
                 ctx.start.line,
@@ -386,7 +353,7 @@ class Builder(AtopileParserVisitor):
         connectables = ctx.connectable()
 
         if len(connectables) != 2:
-            raise LanguageError(
+            raise AtoError(
                 "Connect statement must have two connectables",
                 self.current_file,
                 ctx.start.line,
@@ -429,7 +396,7 @@ class Builder(AtopileParserVisitor):
             ]
 
         else:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot connect {from_mvv.vertex_type.value} to {to_mvv.vertex_type.value}",
                 self.current_file,
                 ctx.start.line,
@@ -464,7 +431,7 @@ class Builder(AtopileParserVisitor):
             try:
                 class_path, _ = self.model.find_ref(class_ref, self.current_block)
             except KeyError as ex:
-                raise LanguageError(
+                raise AtoError(
                     ex.args[0],
                     self.current_file,
                     ctx.start.line,
@@ -474,7 +441,7 @@ class Builder(AtopileParserVisitor):
             # NOTE: we're not using the assignee here because we actually want that error until this is fixed properly
             instance_name_obj = ctx.name_or_attr().name()
             if instance_name_obj is None:
-                raise LanguageError(
+                raise AtoError(
                     "Cannot assign new object to an attribute (eg. a.b.c), must be to a name (eg. c)",
                     self.current_file,
                     ctx.start.line,
@@ -491,7 +458,7 @@ class Builder(AtopileParserVisitor):
             elif assignable.boolean_():
                 value = bool(assignable.boolean_().getText())
             else:
-                raise LanguageError(
+                raise AtoError(
                     "Only strings and numbers are supported",
                     self.current_file,
                     ctx.start.line,
@@ -529,7 +496,7 @@ class Builder(AtopileParserVisitor):
                 retype_ref, self.current_block
             )
         except KeyError as ex:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot retype non-existent object {retype_ref}",
                 self.current_file,
                 ctx.start.line,
@@ -537,7 +504,7 @@ class Builder(AtopileParserVisitor):
             ) from ex
 
         if retype_data:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot retype data object {retype_ref}. Provide a path to the object you want to retype instead.",
                 self.current_file,
                 ctx.start.line,
@@ -549,7 +516,7 @@ class Builder(AtopileParserVisitor):
                 new_type_ref, self.current_block
             )
         except KeyError as ex:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot use new type of non-existant object {new_type_ref}",
                 self.current_file,
                 ctx.start.line,
@@ -557,7 +524,7 @@ class Builder(AtopileParserVisitor):
             ) from ex
 
         if new_type_data:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot use data object as new type {new_type_ref}. Please provide a path to the class you want to use instead.",
                 self.current_file,
                 ctx.start.line,
@@ -569,21 +536,21 @@ class Builder(AtopileParserVisitor):
 
         # check retype is an instance of a superclass of the new type (which is a class)
         if not retype_mvv.is_instance:
-            raise LanguageError(
+            raise AtoError(
                 f"Can only retype instances of things, but {retype_ref} is a class",
                 self.current_file,
                 ctx.start.line,
                 ctx.start.column,
             )
         if not new_type_mvv.is_class:
-            raise LanguageError(
+            raise AtoError(
                 f"Can only retype to a class, but {new_type_ref} is an instance",
                 self.current_file,
                 ctx.start.line,
                 ctx.start.column,
             )
         if retype_mvv.instance_of not in new_type_mvv.superclasses:
-            raise LanguageError(
+            raise AtoError(
                 f"Cannot retype {retype_ref} to {new_type_ref}. {new_type_ref} must be a subclass of {retype_mvv.instance_of.path}",
                 self.current_file,
                 ctx.start.line,
@@ -695,11 +662,9 @@ def build_model(project: Project, config: BuildConfig) -> Model:
         bob = Builder(project)
         ParallelParser.pre_parse(bob, config.root_file)
         try:
-            model = bob.build(config.root_file)
-        except LanguageError as ex:
-            log.error(
-                f"Language error @ {ex.filepath}:{ex.line}:{ex.column}: {ex.message}"
-            )
+            with write_errors_to_log(Builder, log, ReraiseBehavior.RAISE_ATO_ERROR):
+                model = bob.build(config.root_file)
+        except AtoError:
             log.error("Stopping due to error.")
             sys.exit(1)
 
