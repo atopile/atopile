@@ -77,6 +77,8 @@ class Project:
 
         if abs_path.is_relative_to(self.get_std_lib_path()):
             std_path = abs_path.relative_to(self.get_std_lib_path())
+        elif abs_path.is_relative_to(self.module_dir):
+            std_path = abs_path.relative_to(self.module_dir)
         elif abs_path.is_relative_to(self.root):
             std_path = abs_path.relative_to(self.root)
         else:

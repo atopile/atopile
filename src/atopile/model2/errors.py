@@ -6,18 +6,22 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Optional, Type
 
-from antlr4 import InputStream, Token
+from antlr4 import InputStream, Token, ParserRuleContext
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 # I think it'd make far more sense for this to exist in .parse
 # however, it'd become a circular import
-def get_src_info_from_ctx(ctx) -> tuple[str, str, str]:
+def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
+    """Get the source path, line, and column from a context"""
+    input_stream: InputStream = token.getInputStream()
+    return input_stream.name, token.line, token.column
+
+def get_src_info_from_ctx(ctx: ParserRuleContext) -> tuple[str, int, int]:
     """Get the source path, line, and column from a context"""
     token: Token = ctx.start
-    input_stream: InputStream = ctx.start.source[1]
-    return input_stream.name, token.line, token.column
+    return get_src_info_from_token(token)
 
 
 class AtoError(Exception):
@@ -40,7 +44,12 @@ class AtoError(Exception):
         self.src_col = src_col
 
     @classmethod
-    def from_ctx(cls, message: str, ctx) -> "AtoError":
+    def from_token(cls, message: str, token: Token) -> "AtoError":
+        src_path, src_line, src_col = get_src_info_from_token(token)
+        return cls(message, src_path, src_line, src_col)
+
+    @classmethod
+    def from_ctx(cls, message: str, ctx: ParserRuleContext) -> "AtoError":
         src_path, src_line, src_col = get_src_info_from_ctx(ctx)
         return cls(message, src_path, src_line, src_col)
 

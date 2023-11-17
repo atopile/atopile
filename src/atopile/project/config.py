@@ -73,9 +73,13 @@ class Paths(BaseConfig):
 
         return build_dir.resolve().absolute()
 
+    @property
+    def lib_path(self) -> Path:
+        lib_path: str = self._config_data.get("lib-path", "../lib/lib.pretty")
+        return (self.project.root / lib_path).resolve().absolute()
 
 class BuildConfig(BaseConfig):
-    @property
+    @property 
     def default(self) -> "BuildConfig":
         return self.project.config.builds["default"]
 
@@ -95,6 +99,7 @@ class BuildConfig(BaseConfig):
             "designators",
             "netlist-kicad6",
             "bom-jlcpcb",
+            "kicad-lib-paths"
         ]
 
     @property
@@ -104,13 +109,15 @@ class BuildConfig(BaseConfig):
 
 class CustomBuildConfig:
     def __init__(
-        self, name: str, project: "Project", root_file, root_node, targets
+        self, name: str, project: "Project", root_file, root_node, targets, config_data
     ) -> None:
         self._name = name
         self.project = project
         self.root_file = root_file
         self.root_node = root_node
         self.targets = targets
+        self._config_data = config_data
+
 
     @property
     def name(self) -> str:
@@ -124,6 +131,7 @@ class CustomBuildConfig:
             root_file=build_config.root_file,
             root_node=build_config.root_node,
             targets=build_config.targets,
+            config_data=build_config._config_data,
         )
 
     @property
