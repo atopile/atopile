@@ -93,8 +93,15 @@ class Builder(AtopileParserVisitor):
         filepath_to_import = self.get_string(ctx.string())
 
         try:
+            potentially_sub_project = Project.from_path(self.current_file)
+        except FileNotFoundError:
+            additional_search_paths = None
+        else:
+            additional_search_paths = [potentially_sub_project.root]
+
+        try:
             abs_path, std_path = self.project.resolve_import(
-                filepath_to_import, self.current_file
+                filepath_to_import, self.current_file, additional_search_paths
             )
         except FileNotFoundError as ex:
             raise AtoError(
