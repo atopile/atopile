@@ -62,7 +62,14 @@ class ModelVertexView:
 
     @property
     def path(self) -> str:
+        """
+        Paths come in the form of: path/to/file.ato:module.inside.a.b.c
+        """
         return self.vertex["path"]
+
+    @property
+    def file_path(self) -> str:
+        return self.path.split(":")[0]
 
     # TODO: remove this if the core model's working properly
     # @property

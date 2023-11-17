@@ -33,6 +33,9 @@ def find_target(target_name: str) -> "Target":
     if target_name == "sch-view":
         import atopile.targets.schematic_view
         return atopile.targets.schematic_view.SchematicViewTarget
+    if target_name == "kicad-lib-paths":
+        import atopile.targets.netlist.kicad_lib_paths
+        return atopile.targets.netlist.kicad_lib_paths.KicadLibPath
     raise TargetNotFoundError(target_name)
 
 class TargetMuster:

@@ -158,7 +158,14 @@ class KicadNetlist:
             f.write(netlist_str)
 
     @classmethod
-    def from_model(cls, model: Model, root_node: str, designators: Dict[str, str]) -> "KicadNetlist":
+    def from_model(
+        cls,
+        model: Model,
+        root_node: str,
+        designators: Dict[str, str],
+        components_to_lib_map: dict[str, str],
+        # lib_name_to_lib_path: dict[str,Path]
+    ) -> "KicadNetlist":
         """
         :param model: to generate the netlist from
         :param main: path in the graph to compile from
@@ -262,11 +269,26 @@ class KicadNetlist:
 
             # figure out the designators
             designator = designators[root_mvv.relative_path(component_mvvs[component_path])]
+            try:
+                footprint = component_data["footprint"]
+            except KeyError:
+                raise KeyError(f"Component {component_path} has no footprint")
+            # if there is a 'lib:' prefix, strip it
+            #TODO: this is a bit of a hack, we should clean up the libs and delete this
+            footprint_path = ""
+            if footprint.startswith("lib:"):
+                footprint = footprint[4:]
+            if ":" in footprint:
+                footprint_path = footprint
+            else:
+                footprint_lib_name = components_to_lib_map[component_path]
+                footprint_path = f"{footprint_lib_name}:{footprint}"
+
             # make the component of your dreams
             component = KicadComponent(
                 ref=designator,
                 value=component_data.get("value", ""),
-                footprint=component_data.get("footprint", ""),
+                footprint=footprint_path,
                 libsource=libparts[component_class_path],
                 tstamp=generate_uid_from_path(component_path),
                 fields=fields,
@@ -335,14 +357,18 @@ class Kicad6NetlistTarget(Target):
     def __init__(self, muster: TargetMuster) -> None:
         self._netlist: Optional[KicadNetlist] = None
         self._designator_target = muster.ensure_target("designators")
+        self._kicad_lib_paths_target = muster.ensure_target("kicad-lib-paths")
         super().__init__(muster)
 
     def generate(self) -> KicadNetlist:
         if self._netlist is None:
+            self._kicad_lib_paths_target.generate()
             self._netlist = KicadNetlist.from_model(
                 self.model,
                 root_node=self.build_config.root_node,
-                designators=self._designator_target.generate()
+                designators=self._designator_target.generate(),
+                components_to_lib_map=self._kicad_lib_paths_target.component_path_to_lib_name,
+                # lib_name_to_lib_path=self._kicad_lib_paths_target.lib_name_to_lib_path,
             )
         return self._netlist
 
