@@ -1,6 +1,7 @@
 import logging
 from contextlib import contextmanager
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING
+from pathlib import Path
 
 import attrs
 
@@ -8,6 +9,9 @@ from atopile.model.accessors import ModelVertexView
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.names import resolve_rel_name
 from atopile.model.visitor import ModelVisitor
+
+if TYPE_CHECKING:
+    from .project_handler import ProjectHandler
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -17,24 +21,53 @@ log.setLevel(logging.INFO)
 class Pin:
     # mandatory external
     name: str
-    fields: Dict[str, Any]
+    type: List[Any]
+    locals: Dict[str, Any]
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "fields": self.fields}
+        return {
+            "name": self.name,
+            "type": self.type,
+            "instance_of": self.type,
+            "locals": [self.locals]
+        }
 
 
 @attrs.define
 class Link:
     # mandatory external
     name: str
-    source: str
-    target: str
+    type: str
+    source_connectable: str
+    target_connectable: str
+    source_connectable_type: str
+    target_connectable_type: str
+    source_block: str
+    target_block: str
+    above_source_block: str
+    above_target_block: str
+    source_block_type: str
+    target_block_type: str
+    above_source_block_type: str
+    above_target_block_type: str
 
     def to_dict(self) -> dict:
         return {
             "name": self.name,
-            "source": self.source,
-            "target": self.target,
+            "type": self.type,
+            "instance_of": "link",
+            "source_connectable": self.source_connectable,
+            "target_connectable": self.target_connectable,
+            "source_connectable_type": self.source_connectable_type,
+            "target_connectable_type": self.target_connectable_type,
+            "source_block": self.source_block,
+            "target_block": self.target_block,
+            "above_source_block": self.above_source_block,
+            "above_target_block": self.above_target_block,
+            "source_block_type": self.source_block_type,
+            "target_block_type": self.target_block_type,
+            "above_source_block_type": self.above_source_block_type,
+            "above_target_block_type": self.above_target_block_type,
         }
 
 
@@ -47,10 +80,11 @@ class Block:
     name: str
     type: str
     fields: Dict[str, Any]
-    blocks: List["Block"]
+    blocks: List["Block"] #TODO: in the future we want all locals here
     pins: List[Pin]
     links: List[Link]
     instance_of: Optional[str]
+    config: Dict
 
     # mandatory internal
     source: ModelVertexView
@@ -59,11 +93,11 @@ class Block:
         return {
             "name": self.name,
             "type": self.type,
-            "fields": self.fields,
-            "blocks": [block.to_dict() for block in self.blocks],
-            "pins": [pin.to_dict() for pin in self.pins],
-            "links": [link.to_dict() for link in self.links],
             "instance_of": self.instance_of,
+            "locals": [block.to_dict() for block in self.blocks] + [pin.to_dict() for pin in self.pins] + [link.to_dict() for link in self.links] + [self.fields],
+            "config": self.config
+            # "pins": [pin.to_dict() for pin in self.pins],
+            # "links": [link.to_dict() for link in self.links],
         }
 
 
@@ -72,8 +106,9 @@ class Bob(ModelVisitor):
     The builder... obviously
     """
 
-    def __init__(self, model: Model) -> None:
+    def __init__(self, model: Model, project_handler: "ProjectHandler",) -> None:
         self.model = model
+        self.project_handler = project_handler
         self.all_verticies: List[ModelVertexView] = []
         self.block_stack: List[ModelVertexView] = []
         self.block_directory_by_path: Dict[str, Block] = {}
@@ -87,8 +122,8 @@ class Bob(ModelVisitor):
         self.block_stack.pop()
 
     @staticmethod
-    def build(model: Model, main: ModelVertexView) -> Block:
-        bob = Bob(model)
+    def build(model: Model, project_handler: "ProjectHandler", main: ModelVertexView) -> Block:
+        bob = Bob(model, project_handler)
 
         root = bob.generic_visit_block(main)
         # TODO: this logic ultimately belongs in the viewer, because this
@@ -110,30 +145,44 @@ class Bob(ModelVisitor):
                 )
             )
 
-            rel_source_mvvs = lca.relative_mvv_path(ModelVertexView(model, connection.source))
-            rel_target_mvvs = lca.relative_mvv_path(ModelVertexView(model, connection.target))
+            source_mvv = ModelVertexView(model, connection.source)
+            target_mvv = ModelVertexView(model, connection.target)
 
-            # FIXME: we need to screw with the paths of interface-owned pins
-            # beacuse their pin names are indistinguisible from a sub-block's pins
-            # we should ultimately fix this path thing when we rev. the viewer
-            def _mod_path(mvv_path: list[ModelVertexView]) -> str:
-                """
-                Make relative paths, supplemeneting the '.'s after an interface with dashes
-                eg. a.b.c -> a.b-c (where b is an interface)
-                """
-                pre_inf = []
-                post_inf = []
-                for i, mvv in enumerate(mvv_path):
-                    if mvv.vertex_type == VertexType.interface:
-                        pre_inf = mvv_path[:i]
-                        post_inf = mvv_path[i:]
-                        return ".".join(mvv.ref for mvv in pre_inf) + "." + "-".join(mvv.ref for mvv in post_inf)
-                return ".".join(mvv.ref for mvv in mvv_path)
+            #TODO: this mechanism only works at the root level, will need to fix if we want this to work deeper
+            source_block_type = "self"
+            above_source_block_type = "self"
+            source_parent_mvv = source_mvv.parent
+            above_source_parent_mvv = source_parent_mvv.parent
+            if source_parent_mvv.path != main.path:
+                source_block_type = source_parent_mvv.vertex_type.name
+                if above_source_parent_mvv.path != main.path:
+                    above_source_block_type = above_source_parent_mvv.vertex_type.name
+
+
+            target_block_type = "self"
+            above_target_block_type = "self"
+            target_parent_mvv = target_mvv.parent
+            above_target_parent_mvv = target_parent_mvv.parent
+            if target_parent_mvv.path != main.path:
+                target_block_type = target_parent_mvv.vertex_type.name
+                if above_target_parent_mvv.path != main.path:
+                    above_target_block_type = above_target_parent_mvv.vertex_type.name
 
             link = Link(
                 name=link_name,
-                source=_mod_path(rel_source_mvvs),
-                target=_mod_path(rel_target_mvvs),
+                type="link", 
+                source_connectable=source_mvv.ref,
+                target_connectable=target_mvv.ref,
+                source_connectable_type=source_mvv.vertex_type.name,
+                target_connectable_type=target_mvv.vertex_type.name,
+                source_block=source_mvv.parent.ref,
+                target_block=target_mvv.parent.ref,
+                above_source_block=source_mvv.parent.parent.ref,
+                above_target_block=target_mvv.parent.parent.ref,
+                source_block_type=source_block_type,
+                target_block_type=target_block_type,
+                above_source_block_type=above_source_block_type,
+                above_target_block_type=above_target_block_type,
             )
 
             bob.block_directory_by_path[lca.path].links.append(link)
@@ -154,6 +203,7 @@ class Bob(ModelVisitor):
 
             pins = self.wander_interface(vertex)
 
+
             # check the type of this block
             instance_ofs = vertex.get_adjacents("out", EdgeType.instance_of)
             if len(instance_ofs) > 0:
@@ -161,9 +211,15 @@ class Bob(ModelVisitor):
                     log.warning(
                         f"Block {vertex.path} is an instance_of multiple things"
                     )
-                instance_of = instance_ofs[0].path
+                instance_of = instance_ofs[0].class_path
             else:
                 instance_of = None
+
+            config = None
+            if instance_of:
+                config = self.project_handler.get_config_sync(Path(instance_ofs[0].file_path).with_suffix(".vis.dummy"))
+            else:
+                config = self.project_handler.get_config_sync(Path(vertex.file_path).with_suffix(".vis.dummy"))
 
             # do block build
             block = Block(
@@ -175,6 +231,7 @@ class Bob(ModelVisitor):
                 links=[],
                 instance_of=instance_of,
                 source=vertex,
+                config=config
             )
 
             self.block_directory_by_path[vertex.path] = block
@@ -205,15 +262,15 @@ class Bob(ModelVisitor):
                 pins += [listy_pin]
         return pins
 
-    def visit_interface(self, vertex: ModelVertexView) -> List[Pin]:
+    def visit_interface(self, vertex: ModelVertexView) -> Block:
         pins = self.wander_interface(vertex)
         for pin in pins:
             pin.name = vertex.ref + "-" + pin.name
-        return pins
+        return self.generic_visit_block(vertex)
 
     def generic_visit_pin(self, vertex: ModelVertexView) -> Pin:
         vertex_data: dict = self.model.data.get(vertex.path, {})
-        pin = Pin(name=vertex.ref, fields=vertex_data.get("fields", {}))
+        pin = Pin(name=vertex.ref, type=vertex.vertex_type, locals=vertex_data.get("fields", {}))
         self.pin_directory_by_vid[vertex.index] = pin
         return pin
 
@@ -239,7 +296,7 @@ class Bob(ModelVisitor):
 
 
 # TODO: resolve the API between this and build_model
-def build_view(model: Model, root_node: str) -> dict:
+def build_view(model: Model, project_handler: "ProjectHandler", root_node: str) -> dict:
     root_node = ModelVertexView.from_path(model, root_node)
-    root = Bob.build(model, root_node)
+    root = Bob.build(model, project_handler, root_node)
     return root.to_dict()
