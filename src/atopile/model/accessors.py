@@ -71,6 +71,10 @@ class ModelVertexView:
     def file_path(self) -> str:
         return self.path.split(":")[0]
 
+    @property
+    def class_path(self) -> str:
+        return self.path.split(":")[1]
+
     # TODO: remove this if the core model's working properly
     # @property
     # def path(self) -> str:

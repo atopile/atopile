@@ -8,13 +8,10 @@ export function measureText(text, text_size, direction) {
     var length = 0;
     for (let line of lines) {
         var current_length = line.length;
-        console.log('new line')
-        console.log(line);
         // Save the longest line
         if (current_length > length) {
             length = current_length;
         };
-        console.log(length);
     };
     if (direction == 'length') {
         // will have to fix the magic number
@@ -36,3 +33,11 @@ export function normalizeDimensionToGrid(dimension, grid_size) {
 
     return dimension + (grid_size - remainder);
 }
+
+export function isIterable(obj) {
+    // checks for null and undefined
+    if (obj == null) {
+      return false;
+    }
+    return typeof obj[Symbol.iterator] === 'function';
+  }

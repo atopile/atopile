@@ -1,15 +1,7 @@
-// TODO: the root cell ID has a colon in it, which there shouldn't be
+import { shapes, dia, anchors } from 'jointjs';
+import { returnConfigFileName} from './path';
 
-//import { settings_dict } from "./vis_settings";
-
-import { shapes, util, dia, anchors } from 'jointjs';
-import { returnConfigFileName,
-    concatenateParentPathAndModuleName,
-    computeNameDepth,
-    provideFirstNameElementFromName,
-    provideLastPathElementFromPath } from './path';
-
-import { AtoElement, AtoBlock, AtoComponent, createBlock, createComponent, addLinks, customAnchor } from "./ato_element";
+import { AtoElement, AtoBlock, AtoComponent, AtoInterface, processBlock, customAnchor } from "./ato_element";
 
 import { settings_dict } from './viewer_settings';
 
@@ -22,147 +14,22 @@ const cellNamespace = {
 };
 
 
-function addElementToElement(block_to_add, to_block) {
-    to_block.embed(block_to_add);
-}
+async function generateJointjsRoot(circuit, file_name) {
+    let joint_object = await processBlock(circuit, file_name, true, graph);
 
-function applyParentConfig(element, child_attrs) {
-    if (child_attrs !== null && Object.keys(child_attrs).length > 0) {
-        for (let attrs in child_attrs) {
-            if (attrs == element['name']) {
-                element['jointObject'].applyParentAttrs(child_attrs[attrs]);
+    // Apply the positions to cells
+    let embedded_cells = joint_object.getEmbeddedCells();
+    if (circuit['name'] in circuit['config']) {
+        let object_config = circuit['config'][circuit['name']];
+        for (let cell of embedded_cells) {
+            for (let conf_cell in object_config['child_attrs']) {
+                if (cell.id == conf_cell) {
+                    cell.applyParentAttrs(object_config['child_attrs'][conf_cell])
+                }
             }
         }
     }
-}
-
-async function generateJointjsGraph(circuit, max_depth, current_depth = 0, path = null, parent = null, child_attrs = null) {
-    let downstream_path;
-    let new_depth = current_depth + 1;
-
-    if (current_depth <= max_depth) {
-        for (let element of circuit) {
-            var joint_object = null;
-
-            if (element['type'] == 'component') {
-                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
-                joint_object = createComponent(element, parent, downstream_path);
-                joint_object.addTo(graph);
-                element['jointObject'] = joint_object;
-                if (parent) {
-                    addElementToElement(joint_object, parent);
-                }
-                applyParentConfig(element, child_attrs);
-            }
-
-            // If it is a block, create it and instantiate the contents within it
-            else if (element['type'] == 'module') {
-                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
-                // Create the module
-                joint_object = createBlock(element, parent, downstream_path);
-                joint_object.addTo(graph);
-                element['jointObject'] = joint_object;
-                if (parent) {
-                    addElementToElement(joint_object, parent);
-                }
-
-                // Call the function recursively on children
-                if (await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path, joint_object, element['config']['child_attrs'])) {
-                    let added_elements = addLinks(element, downstream_path, joint_object.getEmbeddedCells());
-                    for (let element of added_elements) {
-                        element.addTo(graph);
-                    }
-                    // change the title layout to the corner for module with embedded childrens
-                    joint_object.attr({
-                        label: {
-                            textVerticalAnchor: "top",
-                            textAnchor: "start",
-                            x: 30,
-                            y: 30
-                        }
-                    });
-                }
-                joint_object.resizeBasedOnContent();
-                applyParentConfig(element, child_attrs);
-
-                // FIXME:
-                // Position the root element in the middle of the screen
-                if (current_depth == 0) {
-                    let paperSize = paper.getComputedSize();
-                    let rootSize = joint_object.size();
-
-                    // Calculate the position for the center of the paper.
-                    let posX = (paperSize.width / 2) - (rootSize.width / 2);
-                    let posY = (paperSize.height / 2) - (rootSize.height / 2);
-
-                    // Position the rectangle in the center of the paper.
-                    joint_object.position(posX, posY);
-                    // TODO: bring the other content with it
-                }
-            }
-
-            else if (element['type'] == 'file') {
-                downstream_path = concatenateParentPathAndModuleName(path, element['name']);
-                await generateJointjsGraph(element['blocks'], max_depth, new_depth, downstream_path);
-            }
-
-            else {
-                // raise an error because we don't know what to do with this element
-                // TODO: raise an error
-                console.log('Unknown element type: ' + element['type']);
-            }
-        }
-        return true;
-    }
-    else {
-        return false;
-    }
-}
-
-async function populateConfigFromBackend(circuit_dict, file_name = null) {
-    let populated_circuit = [];
-    let config_location_name;
-
-    for (let element of circuit_dict) {
-        if (element.type == 'component') {
-            if (element.instance_of !== null) {
-                config_location_name = returnConfigFileName(element.instance_of);
-                element.config_origin_filename = getConfigFilenameFromAto(config_location_name.file);
-                element.config_origin_module = config_location_name.module;
-                const config = await loadFileConfig(config_location_name.file);
-                element['config'] = config[config_location_name.module] || {};
-            }
-        }
-        else if (element.type == 'module') {
-            let config = null;
-            element.config = {};
-            if (element.instance_of !== null) {
-                config_location_name = returnConfigFileName(element.instance_of);
-                element.config_origin_filename = getConfigFilenameFromAto(config_location_name.file);
-                element.config_origin_module = config_location_name.module;
-                config = await loadFileConfig(config_location_name.file);
-            }
-
-            if (config) {
-                if (Object.keys(config).length !== 0) {
-                    if (config.hasOwnProperty(config_location_name['module'])) {
-                        element['config'] = config[config_location_name['module']];
-                    }
-                }
-            }
-            element['blocks'] = await populateConfigFromBackend(element['blocks']);
-        }
-        else if (element['type'] == 'file') {
-            // If file, the following block will not be an instance, so it needs to know it's parent file
-            // to fetch the config
-            element['blocks'] = await populateConfigFromBackend(element['blocks'], element['name']);
-        }
-        else {
-            console.log("unknown block type");
-        }
-        populated_circuit.push(element);
-    }
-    return populated_circuit;
+    return joint_object;
 }
 
 const graph = new dia.Graph({}, { cellNamespace });
@@ -192,8 +59,6 @@ function fill_paper() {
 window.onload = fill_paper;
 window.onresize = fill_paper;
 
-let pin_to_element_association = {};
-
 paper.on('link:mouseenter', function(linkView) {
     linkView.showTools();
     linkView.highlight();
@@ -205,7 +70,6 @@ paper.on('link:mouseleave', function(linkView) {
 });
 
 graph.on('change:position', function(cell) {
-    // `fitParent()` method is defined at `joint.shapes.container.Base` in `./joint.shapes.container.js`
     cell.fitAncestorElements();
 });
 
@@ -215,43 +79,24 @@ function getConfigFilenameFromAto(ato_file_name) {
     return  striped_file_name + '.vis.json';
 }
 
-// Fetch a file visual config from the server
-async function loadFileConfig(file_name) {
-    let address = "/api/config/" + getConfigFilenameFromAto(file_name);
-    //address = "/api/circuit/bike_light.ato:BikeLight";
-    let response;
-    try {
-        response = await fetch(address);
-    } catch (error) {
-        console.log('Could not fetch config ', error);
-    }
-
-    if (response.ok) {
-        return await response.json();
-    } else {
-        console.log(`HTTP Response Code: ${response?.status}`)
-        return null;
-    }
-}
-
 // Fetch a circuit dict from the server
 async function loadCircuit() {
     const urlParams = new URLSearchParams(window.location.search);
     const response = await fetch('/api/circuit/' + urlParams.get('circuit'));
+    const file_name = returnConfigFileName(urlParams.get('circuit'));
+
     const circuit_data = await response.json();
     console.log("data received from backend")
     console.log(circuit_data);
 
-    let config_populated_circuit = await populateConfigFromBackend([circuit_data]);
-    console.log(config_populated_circuit);
-    generateJointjsGraph(config_populated_circuit, 4);
+    let jointJSRoot = await generateJointjsRoot(circuit_data, file_name.file);
 }
 
 // flag to help rate limit calls to savePositions
 var stuff_has_moved = false;
 
 paper.on('cell:pointerup', function(cell, evt, x, y) {
-    if (cell.model instanceof AtoComponent || cell.model instanceof AtoBlock) {
+    if (cell.model instanceof AtoComponent || cell.model instanceof AtoBlock || cell.model instanceof AtoInterface) {
         stuff_has_moved = true;
     }
 });
@@ -260,22 +105,22 @@ function savePositions() {
     let requests_to_make = {};
 
     graph.getCells().forEach(function(cell) {
-        if (cell instanceof AtoComponent || cell instanceof AtoBlock) {
+        if (cell instanceof AtoComponent || cell instanceof AtoBlock || cell instanceof AtoInterface) {
             console.log(cell.id);
 
             let parent = cell.getParentCell();
             if (!parent) return; // skip the root element
 
-            let origin_file = parent.attributes.config_origin_filename;
-            let origin_module = parent.attributes.config_origin_module;
-            let instance_name = cell.attributes.instance_name;
+            let origin_file = getConfigFilenameFromAto(parent.attributes.file_name);
+            let origin_module = parent.id;
+            let instance_name = cell.id;
 
             if (!requests_to_make[origin_file]) requests_to_make[origin_file] = {};
             if (!requests_to_make[origin_file][origin_module]) requests_to_make[origin_file][origin_module] = {"child_attrs": {}};
             requests_to_make[origin_file][origin_module]["child_attrs"][instance_name] = {
                 "position": {
-                    x: cell.attributes.position.x - parent.attributes.position.x,
-                    y: cell.attributes.position.y - parent.attributes.position.y,
+                    x: cell.attributes.position.x,
+                    y: cell.attributes.position.y
                 }
             };
         }
