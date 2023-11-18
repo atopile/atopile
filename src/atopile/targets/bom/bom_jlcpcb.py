@@ -1,16 +1,16 @@
 import copy
 import logging
-from collections import OrderedDict, ChainMap
+from collections import ChainMap, OrderedDict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import ruamel.yaml
-from attrs import frozen
-
-from atopile.model.model import Model, VertexType
 from atopile.model.accessors import ModelVertexView
+from atopile.model.model import Model, VertexType
 from atopile.project.config import BaseConfig
+from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
+from attrs import frozen
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -212,8 +212,9 @@ class BomJlcpcbTarget(Target):
             if not isinstance(bom_map, dict):
                 log.warning(f"Skipping {bom_map_path} because it is not in the correct format.")
                 continue
-            relative_path_parent = bom_map_path.relative_to(self.project.root).parent
-            bom_map_by_specs[bom_map_path] = _spec_data_to_map(bom_map.get("by-spec", []), str(relative_path_parent))
+            sub_project = Project(bom_map_path.parent, self.project.config)
+            standardised_sub_project_root = self.project.standardise_import_path(sub_project.root)
+            bom_map_by_specs[bom_map_path] = _spec_data_to_map(bom_map.get("by-spec", []), str(standardised_sub_project_root))
 
         specs_to_jlcpcb = ChainMap(top_level_specs_to_jlcpcb, *bom_map_by_specs.values())
 

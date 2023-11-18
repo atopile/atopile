@@ -164,7 +164,7 @@ class KicadNetlist:
         root_node: str,
         designators: Dict[str, str],
         components_to_lib_map: dict[str, str],
-        # lib_name_to_lib_path: dict[str,Path]
+        target: "Kicad6NetlistTarget",
     ) -> "KicadNetlist":
         """
         :param model: to generate the netlist from
@@ -272,7 +272,10 @@ class KicadNetlist:
             try:
                 footprint = component_data["footprint"]
             except KeyError:
-                raise KeyError(f"Component {component_path} has no footprint")
+                log.error("Component %s has no footprint", component_path)
+                target.elevate_check_result(TargetCheckResult.UNSOLVABLE)
+                continue
+
             # if there is a 'lib:' prefix, strip it
             #TODO: this is a bit of a hack, we should clean up the libs and delete this
             footprint_path = ""
@@ -281,7 +284,12 @@ class KicadNetlist:
             if ":" in footprint:
                 footprint_path = footprint
             else:
-                footprint_lib_name = components_to_lib_map[component_path]
+                try:
+                    footprint_lib_name = components_to_lib_map[component_path]
+                except KeyError:
+                    log.error("Component %s has no lib", component_path)
+                    target.elevate_check_result(TargetCheckResult.UNSOLVABLE)
+                    continue
                 footprint_path = f"{footprint_lib_name}:{footprint}"
 
             # make the component of your dreams
@@ -304,6 +312,9 @@ class KicadNetlist:
             for ref, pin in pins_by_ref.items():
                 # FIXME: this manual path generation is what got us into strife in the first place... don't do it
                 nodes[f"{component_path}.{ref}"] = KicadNode(component=component, pin=pin)
+
+        if target.check_result == TargetCheckResult.UNSOLVABLE:
+            raise ResourceWarning("Not generating netlist because of unsolvable errors")
 
         # Create the nets
         electrical_graph = model.get_graph_view([EdgeType.connects_to])
@@ -368,7 +379,7 @@ class Kicad6NetlistTarget(Target):
                 root_node=self.build_config.root_node,
                 designators=self._designator_target.generate(),
                 components_to_lib_map=self._kicad_lib_paths_target.component_path_to_lib_name,
-                # lib_name_to_lib_path=self._kicad_lib_paths_target.lib_name_to_lib_path,
+                target=self,
             )
         return self._netlist
 

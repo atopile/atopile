@@ -79,7 +79,7 @@ class Paths(BaseConfig):
         return (self.project.root / lib_path).resolve().absolute()
 
 class BuildConfig(BaseConfig):
-    @property 
+    @property
     def default(self) -> "BuildConfig":
         return self.project.config.builds["default"]
 
