@@ -125,6 +125,13 @@ class Target:
     def config(self) -> BaseConfig:
         return self.project.config.targets.get(self.name, BaseConfig({}, self.project, self.name))
 
+    @property
+    def check_result(self) -> TargetCheckResult:
+        # FIXME: I don't think pretending everything is find and dandy is a long-term solution
+        if self._check_result is None:
+            return TargetCheckResult.COMPLETE
+        return self._check_result
+
     def build(self) -> None:
         """
         Build this targets output and save it to the build directory.

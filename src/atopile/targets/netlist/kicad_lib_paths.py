@@ -1,4 +1,5 @@
 import logging
+import itertools
 from pathlib import Path
 from typing import Optional
 
@@ -48,15 +49,35 @@ class KicadLibPath(Target):
 
         root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
         components = root_node.get_descendants(VertexType.component)
-        component_path_to_source_path: dict[str, Path] = {}
         component_path_to_project_root: dict[str, Path] = {}
         for component in components:
-            path = self.project.get_abs_import_path_from_std_path(
-                Path(component.file_path)
+            # FIXME: this trash
+            footprint_definer = None
+
+            component_footprint: str = component.data.get("footprint")
+            if not component_footprint:
+                log.error("Component %s has no footprint", component.path)
+                continue
+
+            for candidate_footprint_definer in itertools.chain([component, component.instance_of], component.instance_of.superclasses):
+                if candidate_footprint_definer.data.get("footprint") == component.data.get("footprint"):
+                    footprint_definer = candidate_footprint_definer
+                else:
+                    break
+
+            if not footprint_definer:
+                log.error("Could not find footprint definer for %s", component.path)
+                self.elevate_check_result(TargetCheckResult.UNSOLVABLE)
+                continue
+
+            if ":" in component_footprint and not component_footprint.startswith("lib:"):
+                log.info("Component %s has a lib spec'd for its footprint %s.\n Ignoring in fp-lib-path", component.path, component_footprint)
+                continue
+
+            footprint_definer_path = self.project.get_abs_import_path_from_std_path(
+                Path(footprint_definer.file_path)
             )
-            component_path_to_source_path[component.path] = path
-            source_path = Project.from_path(path).root
-            component_path_to_project_root[component.path] = source_path
+            component_path_to_project_root[component.path] = Project.from_path(footprint_definer_path).root
 
         # find unique lib paths
         unique_project_roots = set(component_path_to_project_root.values())
