@@ -39,6 +39,7 @@ dependencies = [
     "ruamel.yaml",
     "semver",
     "rich",
+    "gitpython"
 ]
 dynamic = ["version"]
 
