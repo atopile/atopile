@@ -614,7 +614,7 @@ export async function processBlock(element, file_name, is_root, graph) {
     // If element is the root, call the function recursively to build the elements within it
     if (is_root) {
         for (let sub_element of element['locals']) {
-            return_joint_element = await processBlock(sub_element, file_name, false, graph);
+            let return_joint_element = await processBlock(sub_element, file_name, false, graph);
             if (return_joint_element instanceof AtoComponent || return_joint_element instanceof AtoBlock) {
                 addElementToElement(return_joint_element, joint_object);
             }
