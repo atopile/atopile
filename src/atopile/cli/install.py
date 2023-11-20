@@ -13,6 +13,9 @@ log.setLevel(logging.INFO)
 @click.command()
 @click.argument("component_id")
 def install(component_id: str):
+    """
+    Install a component from EasyEDA to the local library. Using LCSC ID.
+    """
     # Example of running a simple command like 'ls' on Unix or 'dir' on Windows
     # check that component id is valid, must start with a C and then be all numbers
     if not component_id.startswith("C"):
