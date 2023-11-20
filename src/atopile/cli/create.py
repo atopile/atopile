@@ -42,9 +42,14 @@ def create(name: str, blank: bool):
 
     log.info("Updating component library submodules")
     for submodule in project_repo.submodules:
-        submodule.update(init=True)
+        try:
+            submodule.update(init=True, recursive=True)
+            log.info(f"Submodule {submodule.name} updated successfully.")
+        except Exception as e:
+            log.error(f"Failed to update submodule {submodule.name}: {e}")
 
-    log.info("Renaming files and updating ato.yaml")
+        log.info("Renaming files and updating ato.yaml")
+
     # Rename files in the cloned project path
     rename_files(project_dir, module_name)
 
