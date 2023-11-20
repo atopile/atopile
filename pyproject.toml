@@ -39,7 +39,8 @@ dependencies = [
     "ruamel.yaml",
     "semver",
     "rich",
-    "gitpython"
+    "gitpython",
+    "easyeda2kicad"
 ]
 dynamic = ["version"]
 
