@@ -11,19 +11,27 @@ log.setLevel(logging.INFO)
 
 
 @click.command()
-@click.argument("component_id")
-def install(component_id: str):
+@click.option('--jlcpcb', required=False, help='JLCPCB component ID')
+def install(jlcpcb: str):
     """
     Install a component from EasyEDA to the local library. Using LCSC
     """
     # Example of running a simple command like 'ls' on Unix or 'dir' on Windows
     # check that component id is valid, must start with a C and then be all numbers
-    if not component_id.startswith("C"):
+    if jlcpcb is not None:
+        install_jlcpcb(jlcpcb)
+    else:
+        log.error("Only --JLCPCB <JLCPN> is supported at this time")
+        sys.exit(1)
+
+def install_jlcpcb(component_id: str):
+
+    component_id = component_id.upper()
+    if not component_id.startswith("C") or not component_id[1:].isdigit():
         log.error(f"Component id {component_id} is invalid. Aborting.")
         sys.exit(1)
-    if not component_id[1:].isdigit():
-        log.error(f"Component id {component_id} is invalid. Aborting.")
-        sys.exit(1)
+
+    #TODO: replace garbage below with project.path.lib_path when we restructure the ato.yaml
 
     # Get the top level of the git module the user is currently within
     repo = Repo(".", search_parent_directories=True)
