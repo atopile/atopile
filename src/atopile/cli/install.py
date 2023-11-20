@@ -14,7 +14,7 @@ log.setLevel(logging.INFO)
 @click.argument("component_id")
 def install(component_id: str):
     """
-    Install a component from EasyEDA to the local library. Using LCSC ID.
+    Install a component from EasyEDA to the local library. Using LCSC
     """
     # Example of running a simple command like 'ls' on Unix or 'dir' on Windows
     # check that component id is valid, must start with a C and then be all numbers
@@ -46,12 +46,14 @@ def install(component_id: str):
         f"--lcsc_id={component_id}",
         f"--output={footprints_dir}",
         "--overwrite",
+        "--ato",
+        f"--ato_file_path={top_level_path / 'elec/src'}",
     ]
     result = subprocess.run(command, capture_output=True, text=True)
 
     # The stdout and stderr are captured due to 'capture_output=True'
-    # print("STDOUT:", result.stdout)
-    # print("STDERR:", result.stderr)
+    print("STDOUT:", result.stdout)
+    print("STDERR:", result.stderr)
 
     # Check the return code to see if the command was successful
     if result.returncode == 0:
