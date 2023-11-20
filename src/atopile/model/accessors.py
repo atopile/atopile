@@ -326,7 +326,9 @@ def lowest_common_ancestor_with_ancestor_ids(verticies: Iterable[ModelVertexView
             common_ancestor = ModelVertexView(verticies[0].model, abs_ancestor_ids[0][depth - 1])
             rel_ancestor_ids = [abs_anc_ids[depth:-1] for abs_anc_ids in abs_ancestor_ids]
             return common_ancestor, rel_ancestor_ids
-    raise ValueError("No common ancestor found")
+
+    friendly_verticies = ", ".join(v.path for v in verticies)
+    raise ValueError(f"No common ancestor found for {friendly_verticies}")
 
 def lowest_common_ancestor(verticies: Iterable[ModelVertexView]) -> ModelVertexView:
     return lowest_common_ancestor_with_ancestor_ids(verticies)[0]

@@ -70,7 +70,6 @@ docs = [
 
 dev = [
     "ruff",
-    "pycairo",
 ]
 
 [project.scripts]
