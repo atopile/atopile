@@ -33,7 +33,7 @@ export class AtoElement extends dia.Element {
                     magnet: true,
                     r: 2,
                     fill: '#FFFFFF',
-                    stroke:'#023047',
+                    stroke: '#023047',
                 },
             },
             label: {
@@ -58,7 +58,7 @@ export class AtoElement extends dia.Element {
         };
 
         // Add the ports list to the element
-        this.prop({"ports": { "groups": port_group}});
+        this.prop({ "ports": { "groups": port_group } });
     }
 
     createDefaultPorts() {
@@ -439,16 +439,16 @@ function getPortPosition(location, pin_list, port_offset, max_length) {
             return {
                 name: 'line',
                 args: {
-                    start: { x: 0, y: center_offset - port_start_position},
-                    end: { x: 0, y: center_offset - port_start_position + port_length}
+                    start: { x: 0, y: center_offset - port_start_position },
+                    end: { x: 0, y: center_offset - port_start_position + port_length }
                 },
             };
         case "right":
             return {
                 name: 'line',
                 args: {
-                    start: { x: 'calc(w)', y: center_offset - port_start_position},
-                    end: { x: 'calc(w)', y: center_offset - port_start_position + port_length}
+                    start: { x: 'calc(w)', y: center_offset - port_start_position },
+                    end: { x: 'calc(w)', y: center_offset - port_start_position + port_length }
                 },
             };
         default:
@@ -459,7 +459,7 @@ function getPortPosition(location, pin_list, port_offset, max_length) {
 
 function getElementTitle(name, instance_of) {
     if (instance_of != null) {
-        return`${name} \n(${instance_of})`;
+        return `${name} \n(${instance_of})`;
     } else {
         return name;
     }
@@ -469,7 +469,8 @@ function getElementTitle(name, instance_of) {
 function processLocals(jointJSObject, locals, config) {
 
     for (let element of locals) {
-        if (element['type'] == 'signal' || element['type'] == 'pin' || element['type'] == 'interface') {
+        const allowedTypes = ['signal', 'pin', 'interface'];
+        if (allowedTypes.includes(element['type'])) {
             let pin_to_add = {
                 "path": element['name'],
                 "name": element['name'],
@@ -491,8 +492,10 @@ export function createComponent(name, instance_of, locals, config) {
     var component = new AtoComponent({
         id: name,
         instance_name: name,
-        size: { width: 10,
-                height: 10},
+        size: {
+            width: 10,
+            height: 10
+        },
         attrs: {
             label: {
                 text: title,
@@ -575,7 +578,7 @@ function addElementToElement(block_to_add, to_block) {
 
 export async function processBlock(element, file_name, is_root, graph) {
     let joint_object = null;
-    switch(element['type']) {
+    switch (element['type']) {
         case 'component':
             joint_object = createComponent(element['name'], element['instance_of'], element['locals'], element['config'][element['instance_of']]);
             joint_object.resizeBasedOnContent();
@@ -611,7 +614,7 @@ export async function processBlock(element, file_name, is_root, graph) {
     // If element is the root, call the function recursively to build the elements within it
     if (is_root) {
         for (let sub_element of element['locals']) {
-            return_joint_element = await processBlock(sub_element, file_name, false, graph);
+            let return_joint_element = await processBlock(sub_element, file_name, false, graph);
             if (return_joint_element instanceof AtoComponent || return_joint_element instanceof AtoBlock) {
                 addElementToElement(return_joint_element, joint_object);
             }
@@ -630,7 +633,7 @@ function addStub(block_id, port_id, label) {
                 name: 'center'
             }
         },
-            target: {
+        target: {
             id: block_id,
             port: port_id,
             anchor: {
@@ -645,7 +648,7 @@ function addStub(block_id, port_id, label) {
         line: {
             'stroke': settings_dict['link']['color'],
             'stroke-width': settings_dict['link']['strokeWidth'],
-            targetMarker: {'type': 'none'},
+            targetMarker: { 'type': 'none' },
         },
         z: 0,
     });
@@ -683,7 +686,7 @@ function addInterface(block_id, port_id, label) {
                 name: 'center'
             }
         },
-            target: {
+        target: {
             id: block_id,
             port: port_id,
             anchor: {
@@ -698,7 +701,7 @@ function addInterface(block_id, port_id, label) {
         line: {
             'stroke': settings_dict['interface']['color'],
             'stroke-width': settings_dict['interface']['strokeWidth'],
-            targetMarker: {'type': 'none'},
+            targetMarker: { 'type': 'none' },
         },
         z: 0,
     });
@@ -741,13 +744,13 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
         line: {
             'stroke': settings_dict['link']['color'],
             'stroke-width': settings_dict['link']['strokeWidth'],
-            targetMarker: {'type': 'none'},
+            targetMarker: { 'type': 'none' },
         },
         z: 0
     });
     added_link.router('manhattan', {
         perpendicular: true,
-        step: settings_dict['common']['gridSize']/2,
+        step: settings_dict['common']['gridSize'] / 2,
     });
 
     return added_link;
@@ -761,7 +764,7 @@ export function createLink(name, source_con, target_con, source_con_type, target
         added_link.addTo(graph);
     }
     else {
-        if (((source_block_type == "self" || source_block_type == "module")  && target_block_type == "interface") || ((target_block_type == "self" || target_block_type == "module") && source_block_type == "interface")) {
+        if (((source_block_type == "self" || source_block_type == "module" || source_block_type == "component") && target_block_type == "interface") || ((target_block_type == "self" || target_block_type == "module" || target_block_type == "component") && source_block_type == "interface")) {
             if (source_block_type == "interface") {
                 added_link = addInterface(target_block, target_con, source_block + '.' + source_con);
                 added_link.addTo(graph);
@@ -772,12 +775,10 @@ export function createLink(name, source_con, target_con, source_con_type, target
             }
         }
         if ((source_block_type == "interface" && target_block_type == "interface")) {
-            if (source_block_type == "interface") {
-                added_link = addInterface(above_source_block, source_block, target_block);
-                added_link.addTo(graph);
-                added_link = addInterface(above_target_block, target_block, source_block);
-                added_link.addTo(graph);
-            }
+            added_link = addInterface(above_source_block, source_block, target_block);
+            added_link.addTo(graph);
+            added_link = addInterface(above_target_block, target_block, source_block);
+            added_link.addTo(graph);
         }
         if ((source_block_type == "self" && above_source_block_type == "self") && ((target_block_type == "module" || target_block_type == "component") && above_target_block_type == "self")) {
             added_link = addStub(target_block, target_con, name);
@@ -801,22 +802,22 @@ export function customAnchor(view, magnet, ref, opt, endType, linkView) {
     const length = ('length' in opt) ? opt.length : 35;
     switch (side) {
         case 'left':
-        dx = -length;
-        break;
+            dx = -length;
+            break;
         case 'right':
-        dx = length;
-        break;
+            dx = length;
+            break;
         case 'top':
-        dy = -length;
-        break;
+            dy = -length;
+            break;
         case 'bottom':
-        dy = length;
-        break;
+            dy = length;
+            break;
 
     }
     return anchors.center.call(this, view, magnet, ref, {
-      ...opt,
-      dx,
-      dy
+        ...opt,
+        dx,
+        dy
     }, endType, linkView);
 }
