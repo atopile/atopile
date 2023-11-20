@@ -15,6 +15,9 @@ log.setLevel(logging.INFO)
 @click.argument("name")
 @click.option("--blank", is_flag=True)
 def create(name: str, blank: bool):
+    """
+    Create a new project from the atopile project template. eg. `ato create my_project`
+    """
     # Resolve the absolute path for the name argument
     project_path = Path(name).resolve()
     project_name = project_path.name
