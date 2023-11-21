@@ -43,7 +43,9 @@ def create(name: str, blank: bool):
     log.info("Updating component library submodules")
     for submodule in project_repo.submodules:
         try:
-            submodule.update(init=True, recursive=True)
+            submodule.update(init=True)
+            sub_repo = submodule.module()
+            sub_repo.git.reset(hard=True)
             log.info(f"Submodule {submodule.name} updated successfully.")
         except Exception as e:
             log.error(f"Failed to update submodule {submodule.name}: {e}")
