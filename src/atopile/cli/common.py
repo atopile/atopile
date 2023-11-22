@@ -101,6 +101,6 @@ def ingest_config_hat(f):
             sys.exit(1)
 
         # do the thing
-        return f(*args, project, **kwargs)
+        return f(*args, **kwargs, project=project)
 
     return wrapper
