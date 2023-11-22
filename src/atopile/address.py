@@ -86,7 +86,7 @@ class AddrStr(str):
         return get_node_str(self)
 
     @property
-    def node_as_ref(self) -> tuple[str]:
+    def node(self) -> tuple[str]:
         return get_node_as_ref(self)
 
     @classmethod
