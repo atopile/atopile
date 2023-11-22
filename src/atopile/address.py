@@ -10,31 +10,45 @@ from os import PathLike
 from typing import Optional
 
 
-def get_file(address: str) -> Path:
+class AddrValueError(ValueError):
+    """
+    Raised when an address is invalid.
+    """
+
+
+def get_file(address: str) -> Optional[Path]:
     """
     Extract the file path from an address.
+
+    This will return None if there is no file address.
+    FIXME: this is different to the node addresses,
+    which will return an empty string or tuple if there
+    is no node address.
+    This is because an "empty" file path is a valid address,
+    to the current working directory, which is confusing.
     """
-    return Path(address.split(":")[0])
+    path_str = address.split(":")[0]
+    if not path_str:
+        return None
+    return Path(path_str)
 
 
 def get_node_str(address: str) -> str:
     """
     Extract the node path from an address.
     """
-    return address.split(":")[1]
+    try:
+        return address.split(":")[1]
+    except IndexError:
+        return ""
 
 
 def get_node_as_ref(address: str) -> tuple[str]:
     """
     Extract the node path from an address.
     """
-    return tuple(get_node_str(address).split("."))
-
-
-class AddrValueError(ValueError):
-    """
-    Raised when an address is invalid.
-    """
+    str_node = get_node_str(address)
+    return tuple(str_node.split(".") if str_node else [])
 
 
 def validate_address(address: str) -> None:
@@ -64,7 +78,7 @@ class AddrStr(str):
     """
 
     @property
-    def file(self) -> Path:
+    def file(self) -> Optional[Path]:
         return get_file(self)
 
     @property
