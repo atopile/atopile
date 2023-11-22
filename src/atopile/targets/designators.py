@@ -6,9 +6,9 @@ from typing import Dict, List
 import ruamel.yaml
 import yaml
 
+from atopile.address import AddrStr
 from atopile.model.accessors import ModelVertexView
 from atopile.model.model import VertexType
-from atopile.project.config import BaseConfig
 from atopile.targets.targets import Target, TargetCheckResult
 from atopile.utils import update_dict
 
@@ -16,14 +16,8 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-class DesignatorConfig(BaseConfig):
-    @property
-    def designators_file_template(self) -> str:
-        return self._config_data.get("designators-file", "{build-config}-designators.yaml")
+DEFAULT_DESIGNATOR_PREFIX = "U"
 
-    @property
-    def default_prefix(self) -> str:
-        return self._config_data.get("default-prefix", "U")
 
 class Designators(Target):
     name = "designators"
@@ -33,12 +27,8 @@ class Designators(Target):
         self._check_result: TargetCheckResult = None
         super().__init__(*args, **kwargs)
 
-    @property
-    def config(self) -> DesignatorConfig:
-        return DesignatorConfig.from_config(super().config)
-
     def get_designators_file(self) -> Path:
-        return self.project.root / self.config.designators_file_template.format(**{"build-config": self.build_config.name})
+        return self.project.root / f"{self.project.config.selected_build_name}-designators.yaml"
 
     def check(self) -> TargetCheckResult:
         if self._check_result is not None:
@@ -57,8 +47,6 @@ class Designators(Target):
         if self._designator_map is not None:
             return self._designator_map
 
-        assert isinstance(self.config, DesignatorConfig)
-
         # set this as unsolvable at the beginning so if it crashes, the check is pre-marked as failed
         self._check_result = TargetCheckResult.UNSOLVABLE
 
@@ -70,7 +58,8 @@ class Designators(Target):
         else:
             designator_file_data = {}
 
-        root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
+        entry = AddrStr(self.project.config.selected_build.entry)
+        root_node = ModelVertexView.from_path(self.model, entry)
         components = root_node.get_descendants(VertexType.component)
         rel_paths = {c.index: root_node.relative_path(c) for c in components}
 
@@ -89,7 +78,7 @@ class Designators(Target):
                 components_to_designate.append(component)
                 continue
 
-            designator_prefix = component.get_data("designator_prefix", self.config.default_prefix)
+            designator_prefix = component.get_data("designator_prefix", DEFAULT_DESIGNATOR_PREFIX)
             if not existing_designator.startswith(designator_prefix):
                 components_to_designate.append(component)
                 log.warning(f"{component.path} has a designator-prefix mis-match. Regenerating designator.")
@@ -110,7 +99,7 @@ class Designators(Target):
         # generate designators and back-assign everything to the designator data
         MAX_DESIGNATOR = 10000
         for component in components_to_designate:
-            designator_prefix = component.get_data("designator_prefix", self.config.default_prefix)
+            designator_prefix = component.get_data("designator_prefix", DEFAULT_DESIGNATOR_PREFIX)
             # TODO: this is cruddy and inefficent. Fix it.
             for i in range(1, MAX_DESIGNATOR):
                 designator = designator_prefix + str(i)
@@ -126,7 +115,8 @@ class Designators(Target):
         return designator_map
 
     def build(self) -> None:
-        output_file = self.build_config.build_path / self.build_config.root_file.with_suffix(".ref-map.yaml").name
+        build_dir = self.project.config.paths.abs_build
+        output_file = build_dir / "ref-map.yaml"
         designator_map = [(v, k) for k, v in self.generate().items()]
         sorted_designators = sorted(designator_map, key=lambda x: x[0] or 0)
         with output_file.open("w") as f:

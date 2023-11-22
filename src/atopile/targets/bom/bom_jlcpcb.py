@@ -5,12 +5,13 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import ruamel.yaml
+from attrs import frozen
+
+from atopile.address import AddrStr
 from atopile.model.accessors import ModelVertexView
 from atopile.model.model import Model, VertexType
-from atopile.project.config import BaseConfig
 from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
-from attrs import frozen
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -60,10 +61,6 @@ def part_spec_groups(model: Model, root_node_path: str) -> Tuple[Iterable[ModelV
         spec_by_component[component.path] = part_spec
     return components, components_by_spec, spec_by_component
 
-class BomJlcpcbTargetConfig(BaseConfig):
-    @property
-    def jlcpcb_map_file_template(self) -> str:
-        return self._config_data.get("jlcpcb-file", "{build-config}-bom-jlcpcb.yaml")
 
 class BomJlcpcbTarget(Target):
     name = "bom-jlcpcb"
@@ -89,12 +86,8 @@ class BomJlcpcbTarget(Target):
 
         super().__init__(muster)
 
-    @property
-    def config(self) -> BomJlcpcbTargetConfig:
-        return BomJlcpcbTargetConfig.from_config(super().config)
-
     def get_jlcpcb_map_file(self) -> Path:
-        return self.project.root / self.config.jlcpcb_map_file_template.format(**{"build-config": self.build_config.name})
+        return self.project.root / f"{self.project.config.selected_build_name}-bom-jlcpcb.yaml"
 
     def build(self) -> None:
         if self._bom is None:
@@ -104,7 +97,10 @@ class BomJlcpcbTarget(Target):
             log.error(f"Cannot build {self.name} target due to missing translations. Run `ato resolve {self.name}` to fix this.")
             return
 
-        bom_path = self.build_config.build_path / self.build_config.root_file.with_suffix(".bom.csv").name
+        build_dir = self.project.config.paths.abs_build
+        build_entry = AddrStr(self.project.config.selected_build.entry)
+        bom_filename = build_entry.file.with_suffix(".bom.csv").name
+        bom_path = build_dir / bom_filename
         with bom_path.open("w") as f:
             f.write(self._bom)
 
@@ -174,7 +170,8 @@ class BomJlcpcbTarget(Target):
             jlcpcb_map = yaml.load("{}")
 
         # get implicit part specs
-        components, _, spec_by_component = part_spec_groups(self.model, self.build_config.root_node)
+        entry = AddrStr(self.project.config.selected_build.entry)
+        components, _, spec_by_component = part_spec_groups(self.model, entry)
 
         # get implicit spec-to-jlcpcb map
         def _spec_data_to_map(
@@ -212,7 +209,8 @@ class BomJlcpcbTarget(Target):
             if not isinstance(bom_map, dict):
                 log.warning(f"Skipping {bom_map_path} because it is not in the correct format.")
                 continue
-            sub_project = Project(bom_map_path.parent, self.project.config)
+            # FIXME: how do we deal with subconfigs build selection here?
+            sub_project = Project.from_path(bom_map_path)
             standardised_sub_project_root = self.project.standardise_import_path(sub_project.root)
             bom_map_by_specs[bom_map_path] = _spec_data_to_map(bom_map.get("by-spec", []), str(standardised_sub_project_root))
 
@@ -268,7 +266,8 @@ class BomJlcpcbTarget(Target):
             comment = component_view.get_data("value", "")
 
             # designator map's paths are relative to the root node
-            root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
+            entry = AddrStr(self.project.config.selected_build.entry)
+            root_node = ModelVertexView.from_path(self.model, entry)
             like_components = [ModelVertexView.from_path(self.model, p) for p in component_paths]
             designators = ",".join(component_to_designator_map[root_node.relative_path(p)] for p in like_components)
             if len(component_paths) > 1:

@@ -23,14 +23,16 @@ def ingest_config_hat(f):
     # process things in the right order and hand them back as kw_args
 
     @click.argument("entry", required=False, default=None)
-    @click.option("--build", default=None)
+    @click.option("-b", "--build", default=None)
     @click.option("-c", "--config", multiple=True)
+    @click.option("-t", "--target", multiple=True)
     @functools.wraps(f)
     def wrapper(
         *args,
         entry: str,
         build: str,
         config: Iterable[str],
+        target: Iterable[str],
         **kwargs,
     ):
         # basic the entry address if provided, otherwise leave it as None
@@ -89,6 +91,10 @@ def ingest_config_hat(f):
                     f" the node within it you want to build {entry}.",
                     param_hint="entry",
                 )
+
+        # layer on selected targets
+        if target:
+            project.config.selected_build.targets = list(target)
 
         # perform pre-build checks
         if not check_project_version(project):
