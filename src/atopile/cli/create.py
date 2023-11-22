@@ -38,7 +38,7 @@ def create(name: str, blank: bool):
     project_repo = Repo.clone_from(url=project_template_url, to_path=project_path)
 
     for submodule in project_repo.submodules:
-            submodule.update(init=True)
+        submodule.update(init=True)
 
     # Rename files in the cloned project path
     rename_files(project_dir, project_name)
