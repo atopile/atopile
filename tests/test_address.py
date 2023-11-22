@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from atopile.address import AddrStr
+from atopile.address import AddrStr, AddrValueError
 
 
 def test_addrstr_properties():
@@ -26,3 +26,14 @@ def test_addrstr_properties():
 )
 def test_addrstr_from_parts(path, node, expected):
     assert AddrStr.from_parts(path, node) == expected
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "::",
+        "/path:./to/file:",
+    ],
+)
+def test_addrstr_validation(address: str):
+    with pytest.raises(AddrValueError):
+        AddrStr.from_str(address)
