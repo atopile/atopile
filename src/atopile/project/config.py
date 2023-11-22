@@ -43,6 +43,9 @@ class Paths:
     footprints: Path = "../lib/lib.pretty"
     abs_footprints: Path = "${.project}/${.footprints}"
 
+    kicad_project: Path = "../layout"
+    abs_kicad_project: Path = "${.project}/${.kicad_project_dir}"
+
 
 @define
 class BuildConfig:
