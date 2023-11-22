@@ -14,7 +14,7 @@ You can find inspiration in a more advanced project like the servo-drive: [https
 
 ## Intentional Omissions
 
-- Detailed Installation -> instructions are in the `atopile` project's README.md and are fluid since there's a bunch of not-so-well-packaged components at the moment
+- Detailed Installation -> instructions are in the `atopile` project's (README.md)[https://gitlab.atopile.io/atopile/atopile/-/blob/main/README.md?ref_type=heads] and are fluid since there's a bunch of not-so-well-packaged components at the moment
 - Creating new projects -> we are activelly working on the language synthax. New keywords and features will be intorduced in the future with potential breaking changes to previous versions of `.ato` files.
 
 ## Project structure
