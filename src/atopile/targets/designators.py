@@ -28,7 +28,7 @@ class Designators(Target):
         super().__init__(*args, **kwargs)
 
     def get_designators_file(self) -> Path:
-        return self.project.root / f"{self.project.config.selected_build_name}-designators.yaml"
+        return self.project.config.paths.abs_src / f"{self.project.config.selected_build_name}-designators.yaml"
 
     def check(self) -> TargetCheckResult:
         if self._check_result is not None:

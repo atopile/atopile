@@ -57,7 +57,7 @@ class Project:
             else:
                 search_paths = [cwp.parent, self.module_dir]
         search_paths += [
-            self.root,
+            self.config.paths.abs_src,
             self.get_std_lib_path()
         ]
         return search_paths
@@ -65,13 +65,14 @@ class Project:
     def standardise_import_path(self, path: Path) -> Path:
         """Turn an absolute path into an ato-standardised import path for this project."""
         abs_path = path.resolve().absolute()
+        project_src_path = self.config.paths.abs_src.resolve().absolute()
 
         if abs_path.is_relative_to(self.get_std_lib_path()):
             std_path = abs_path.relative_to(self.get_std_lib_path())
         elif abs_path.is_relative_to(self.module_dir):
             std_path = abs_path.relative_to(self.module_dir)
-        elif abs_path.is_relative_to(self.root):
-            std_path = abs_path.relative_to(self.root)
+        elif abs_path.is_relative_to(project_src_path):
+            std_path = abs_path.relative_to(project_src_path)
         else:
             raise ImportError(
                 f"Import {path} is outside the project directory"
@@ -107,7 +108,7 @@ class Project:
         for path in chain(self.get_import_search_paths(cwp), additional_search_paths or []):
             abs_path = (path / name).resolve().absolute()
             if abs_path.exists():
-                if not abs_path.is_relative_to(self.root):
+                if not abs_path.is_relative_to(self.config.paths.abs_src.resolve().absolute()):
                     non_relative_paths.append(abs_path)
                 return abs_path, self.standardise_import_path(abs_path)
 

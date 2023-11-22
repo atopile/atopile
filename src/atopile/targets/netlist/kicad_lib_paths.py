@@ -67,7 +67,7 @@ class KicadLibPath(Target):
             footprint_definer_path = self.project.get_abs_import_path_from_std_path(
                 Path(footprint_definer.file_path)
             )
-            component_path_to_project_root[component.path] = Project.from_path(footprint_definer_path).root
+            component_path_to_project_root[component.path] = Project.from_path(footprint_definer_path).config.paths.abs_src
 
         # find unique lib paths
         unique_project_roots = set(component_path_to_project_root.values())

@@ -97,7 +97,7 @@ class Builder(AtopileParserVisitor):
         except FileNotFoundError:
             additional_search_paths = None
         else:
-            additional_search_paths = [potentially_sub_project.root]
+            additional_search_paths = [potentially_sub_project.config.paths.abs_src]
 
         try:
             abs_path, std_path = self.project.resolve_import(

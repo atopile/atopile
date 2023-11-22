@@ -91,7 +91,7 @@ class BomJlcpcbTarget(Target):
         super().__init__(muster)
 
     def get_jlcpcb_map_file(self) -> Path:
-        return self.project.root / f"{self.project.config.selected_build_name}-bom-jlcpcb.yaml"
+        return self.project.config.paths.abs_src / f"{self.project.config.selected_build_name}-bom-jlcpcb.yaml"
 
     def build(self) -> None:
         if self._bom is None:
@@ -215,7 +215,7 @@ class BomJlcpcbTarget(Target):
                 continue
             # FIXME: how do we deal with subconfigs build selection here?
             sub_project = Project.from_path(bom_map_path)
-            standardised_sub_project_root = self.project.standardise_import_path(sub_project.root)
+            standardised_sub_project_root = self.project.standardise_import_path(sub_project.config.paths.abs_src)
             bom_map_by_specs[bom_map_path] = _spec_data_to_map(bom_map.get("by-spec", []), str(standardised_sub_project_root))
 
         specs_to_jlcpcb = ChainMap(top_level_specs_to_jlcpcb, *bom_map_by_specs.values())
