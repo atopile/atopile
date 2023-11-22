@@ -117,3 +117,9 @@ ignore = [
     "E501",  # line too long (ignore for the minute)
     "C901",  # too complex
 ]
+
+[tool.pylint.main]
+ignore-paths = [
+    "tests",
+    "src/atopile/parser/",
+]
