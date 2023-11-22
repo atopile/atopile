@@ -13,11 +13,14 @@ from atopile.model.model import Model, VertexType
 from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
 
+
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+
 yaml = ruamel.yaml.YAML()
 yaml.preserve_quotes = True
+
 
 @frozen
 class ImplicitPartSpec:
@@ -49,6 +52,7 @@ class ImplicitPartSpec:
     def to_dict(self) -> Dict[str, Any]:
         result = {"instance_of": self.instance_of, "footprint": self.footprint, "value": self.value}
         return {k: v for k, v in result.items() if v is not None}
+
 
 def part_spec_groups(model: Model, root_node_path: str) -> Tuple[Iterable[ModelVertexView], Dict[ImplicitPartSpec, Iterable[ModelVertexView]], Dict[str, ImplicitPartSpec]]:
     root_node = ModelVertexView.from_path(model, root_node_path)

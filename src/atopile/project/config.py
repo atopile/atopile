@@ -1,15 +1,12 @@
 import collections.abc
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 import yaml
 from attrs import Factory, define
 from omegaconf import MISSING, OmegaConf
 
-if TYPE_CHECKING:
-    # See: https://adamj.eu/tech/2021/05/13/python-type-hints-how-to-fix-circular-imports/
-    from atopile.project.project import Project
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)

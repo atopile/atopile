@@ -4,16 +4,17 @@ import logging
 from typing import Any, Dict, List, Union, Optional
 
 from atopile.model.model import Model
-from atopile.project.config import Config
 from atopile.project.project import Project
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+
 class TargetNotFoundError(Exception):
     """
     The target you are looking for does not exist.
     """
+
 
 def find_target(target_name: str) -> "Target":
     """Find a target by name."""
@@ -89,6 +90,7 @@ class TargetMuster:
         self.try_add_targets(project.config.selected_build.targets)
         return self
 
+
 class TargetCheckResult(enum.IntEnum):
     # data is fully specified so anything
     # untouched between revs will be the same
@@ -104,6 +106,7 @@ class TargetCheckResult(enum.IntEnum):
 
     # there's not enough data to solve deterministically
     UNSOLVABLE = 3
+
 
 class Target:
     def __init__(self, muster: TargetMuster) -> None:
