@@ -21,11 +21,13 @@ USER_CONFIG_PATH = Path("~/.atopile/config.yaml").expanduser().resolve().absolut
 def _sanitise_key(s: str) -> str:
     return s.replace("-", "_")
 
+
 def _sanitise_item(item: tuple[Any, Any]) -> tuple[Any, Any]:
     k, v = item
     if isinstance(v, collections.abc.Mapping):
         return _sanitise_key(k), _sanitise_dict_keys(v)
     return _sanitise_key(k), v
+
 
 def _sanitise_dict_keys(d: collections.abc.Mapping) -> collections.abc.Mapping:
     return dict(_sanitise_item(item) for item in d.items())
@@ -46,7 +48,12 @@ class Paths:
 class BuildConfig:
     entry: str = MISSING
 
-    targets: list[str] = ["designators", "netlist-kicad6", "bom-jlcpcb", "kicad-lib-paths"]
+    targets: list[str] = [
+        "designators",
+        "netlist-kicad6",
+        "bom-jlcpcb",
+        "kicad-lib-paths",
+    ]
     build_path: Path = "${..paths.abs_build}/${.name}"
 
 
@@ -59,11 +66,11 @@ class Config:
     builds: dict[str, BuildConfig] = Factory(lambda: {"default": BuildConfig()})
     default_build: BuildConfig = "${.builds[default]}"
 
-    selected_build_config_name: str = "default"
-    selected_build_config: BuildConfig = "${.builds[${.selected_build_config_name}]}"
+    selected_build_name: str = "default"
+    selected_build: BuildConfig = "${.builds[${.selected_build_name}]}"
 
 
-def make_config(project_config: Path, build_config: str = "default") -> Config:
+def make_config(project_config: Path, build: Optional[str] = None) -> Config:
     """
     Make a config object for a project.
 
@@ -71,7 +78,8 @@ def make_config(project_config: Path, build_config: str = "default") -> Config:
     """
     structure = Config()
     structure.paths.project = project_config
-    structure.selected_build_config_name = build_config
+    if build is not None:
+        structure.selected_build_name = build
 
     if USER_CONFIG_PATH.exists():
         user_config = OmegaConf.load(USER_CONFIG_PATH)
