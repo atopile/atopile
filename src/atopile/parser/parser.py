@@ -6,15 +6,15 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import List
 
+from atopile.address import AddrStr
+from atopile.model2.errors import AtoError, ReraiseBehavior, write_errors_to_log
+from atopile.model2.parse import parse_file as parse_file2
 from atopile.model.accessors import ModelVertexView
 from atopile.model.differ import Delta
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_edge_uid
-from atopile.model2.errors import AtoError, write_errors_to_log, ReraiseBehavior
-from atopile.model2.parse import parse_file as parse_file2
 from atopile.parser.AtopileParser import AtopileParser
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
-from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 from atopile.utils import profile
 
@@ -663,15 +663,16 @@ class ParallelParser(AtopileParserVisitor):
                 log.info(f"Finished parsing {str(path)}")
 
 
-def build_model(project: Project, config: BuildConfig) -> Model:
+def build_model(project: Project) -> Model:
     log.info("Building model")
     skip_profiler = log.getEffectiveLevel() > logging.DEBUG
 
     with profile(profile_log=log, skip=skip_profiler):
         bob = Builder(project)
         try:
+            entry = AddrStr(project.config.selected_build.entry)
             with write_errors_to_log(Builder, log, ReraiseBehavior.RAISE_ATO_ERROR):
-                model = bob.build(config.root_file)
+                model = bob.build(entry.file)
         except AtoError:
             log.error("Stopping due to error.")
             sys.exit(1)

@@ -38,7 +38,7 @@ def build(
         strict = False
 
     # build core model
-    model = build_model(project, build_config)
+    model = build_model(project)
     exit_code = 0
 
     # generate targets

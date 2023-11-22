@@ -1,12 +1,10 @@
 import logging
 import sys
-from typing import Dict, List, Tuple
 
 import click
 
 from atopile.cli.common import ingest_config_hat
 from atopile.parser.parser import build_model
-from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 from atopile.targets.targets import (
     Target,
@@ -42,13 +40,13 @@ def check(
         strict = False
 
     # build core model
-    model = build_model(project, build_config)
+    model = build_model(project)
 
     # generate targets
     target_muster = TargetMuster.from_project_and_model(project, model)
 
     # check targets
-    check_results: Dict[Target, TargetCheckResult] = {}
+    check_results: dict[Target, TargetCheckResult] = {}
     for target in target_muster.targets:
         assert isinstance(target, Target)
         result = check_results[target] = target.check()

@@ -23,7 +23,7 @@ workspace_root = project_root.parent
 project = Project.from_path(workspace_root / "skate-board-brake-light/elec/src")
 
 #%%
-model = build_model(project, blinky_config)
+model = build_model(project)
 
 # %%
 %load_ext autoreload

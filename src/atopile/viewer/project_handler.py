@@ -34,7 +34,7 @@ class ProjectHandler:
 
     async def _build_model(self):
         with timed("Building model"):
-            self._model = build_model(self.project, self.build_config)
+            self._model = build_model(self.project)
 
     async def build_model(self):
         async with self._model_mutex:
