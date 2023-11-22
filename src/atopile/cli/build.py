@@ -16,13 +16,10 @@ log.setLevel(logging.INFO)
 
 @click.command()
 @ingest_config_hat
-@click.option("--target", multiple=True, default=None)
 @click.option("--debug/--no-debug", default=None)
 @click.option("--strict/--no-strict", default=None)
 def build(
     project: Project,
-    build_config: BuildConfig,
-    target: Tuple[str],
     debug: bool,
     strict: bool,
 ):
@@ -40,17 +37,12 @@ def build(
     if strict is None:
         strict = False
 
-    target_names = target
-    if not target_names:
-        target_names: List[str] = build_config.targets
-
     # build core model
     model = build_model(project, build_config)
     exit_code = 0
 
     # generate targets
-    target_muster = TargetMuster(project, model, build_config)
-    target_muster.try_add_targets(target_names)
+    target_muster = TargetMuster.from_project_and_model(project, model)
 
     # check targets
     if strict:

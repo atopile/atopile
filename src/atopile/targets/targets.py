@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Union, Optional
 
 from atopile.model.model import Model
-from atopile.project.config import BaseConfig, BuildConfig
+from atopile.project.config import Config
 from atopile.project.project import Project
 
 log = logging.getLogger(__name__)
@@ -39,10 +39,9 @@ def find_target(target_name: str) -> "Target":
     raise TargetNotFoundError(target_name)
 
 class TargetMuster:
-    def __init__(self, project: Project, model: Model, build_config: BuildConfig) -> None:
+    def __init__(self, project: Project, model: Model) -> None:
         self.project = project
         self.model = model
-        self.build_config = build_config
         self._targets: collections.OrderedDict[str, Target] = collections.OrderedDict()
 
     @property
@@ -84,6 +83,12 @@ class TargetMuster:
             except TargetNotFoundError:
                 log.error(f"Target {target_name} not found. Attempting to generate remaining targets.")
 
+    @classmethod
+    def from_project_and_model(cls, project: Project, model: Model) -> "TargetMuster":
+        self = cls(project, model)
+        self.try_add_targets(project.config.selected_build.targets)
+        return self
+
 class TargetCheckResult(enum.IntEnum):
     # data is fully specified so anything
     # untouched between revs will be the same
@@ -114,16 +119,8 @@ class Target:
         return self.muster.model
 
     @property
-    def build_config(self) -> BuildConfig:
-        return self.muster.build_config
-
-    @property
     def name(self) -> str:
         raise NotImplementedError
-
-    @property
-    def config(self) -> BaseConfig:
-        return self.project.config.targets.get(self.name, BaseConfig({}, self.project, self.name))
 
     @property
     def check_result(self) -> TargetCheckResult:
