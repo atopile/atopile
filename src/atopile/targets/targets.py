@@ -15,7 +15,7 @@ class TargetNotFoundError(Exception):
     The target you are looking for does not exist.
     """
 
-
+# pylint: disable=import-outside-toplevel
 def find_target(target_name: str) -> "Target":
     """Find a target by name."""
     #TODO: fix this entire function and premise
@@ -31,9 +31,6 @@ def find_target(target_name: str) -> "Target":
     if target_name == "part-map":
         import atopile.targets.part_map
         return atopile.targets.part_map.PartMapTarget
-    if target_name == "sch-view":
-        import atopile.targets.schematic_view
-        return atopile.targets.schematic_view.SchematicViewTarget
     if target_name == "kicad-lib-paths":
         import atopile.targets.netlist.kicad_lib_paths
         return atopile.targets.netlist.kicad_lib_paths.KicadLibPath

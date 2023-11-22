@@ -1,9 +1,11 @@
+"""CLI command definition for `ato check`."""
+
 import logging
 import sys
 
 import click
 
-from atopile.cli.common import ingest_config_hat
+from atopile.cli.common import project_options
 from atopile.parser.parser import build_model
 from atopile.project.project import Project
 from atopile.targets.targets import (
@@ -17,7 +19,7 @@ log.setLevel(logging.INFO)
 
 
 @click.command()
-@ingest_config_hat
+@project_options
 @click.option("--debug/--no-debug", default=None)
 @click.option("--strict/--no-strict", default=None)
 def check(
@@ -53,13 +55,15 @@ def check(
         # TODO: move this repeated code somewhere common
         if result == TargetCheckResult.UNSOLVABLE:
             log.error(
-                "Target %s is unsolvable. Attempting to generate remaining targets.",
+                "Target %s is unsolvable. Attempting to generate"
+                " remaining targets.",
                 target.name,
             )
             target_muster.targets.remove(target)
         elif result == TargetCheckResult.SOLVABLE:
             log.warning(
-                "Target %s is solvable, but is unstable. Use `ato resolve --target=%s` to stabalise as desired.",
+                "Target %s is solvable, but is unstable."
+                " Use `ato resolve --target=%s` to stabalise as desired.",
                 target.name,
                 target.name,
             )

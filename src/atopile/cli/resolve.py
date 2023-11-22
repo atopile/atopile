@@ -1,8 +1,10 @@
+"""CLI command definition for `ato resolve`."""
+
 import logging
 
 import click
 
-from atopile.cli.common import ingest_config_hat
+from atopile.cli.common import project_options
 from atopile.parser.parser import build_model
 from atopile.project.project import Project
 from atopile.targets.targets import (
@@ -15,18 +17,19 @@ log.setLevel(logging.INFO)
 
 
 @click.command()
-@ingest_config_hat
+@project_options
 @click.option("--debug/--no-debug", default=None)
 @click.option("--clean/--no-clean", default=None)
 def resolve(project: Project, debug: bool, clean: bool):
     """
-    Resolve the required inputs for the specified --target(s) or the targets specified by the build config.
+    Resolve the required inputs for the specified --target(s)
+    or the targets specified by the build config.
     Specify the root source file with the argument SOURCE.
     eg. `ato resolve --target my_target path/to/source.ato:module.path`
     """
     # input sanitisation
     if debug:
-        import atopile.parser.parser
+        import atopile.parser.parser  # pylint: disable=import-outside-toplevel
         atopile.parser.parser.log.setLevel(logging.DEBUG)
 
     # build core model

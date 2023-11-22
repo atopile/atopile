@@ -16,11 +16,10 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-def ingest_config_hat(f):
-    # to calculate the config, we need a project and we need them in that order.
-    # click doesn't guarentee the order of processing, and it's substantiall up to the user entering the options.
-    # since we always need the project to figure out the config, we may as well decorate the command ourselves,
-    # process things in the right order and hand them back as kw_args
+def project_options(f):
+    """
+    Utility decorator to ingest common config options to build a project.
+    """
 
     @click.argument("entry", required=False, default=None)
     @click.option("-b", "--build", default=None)

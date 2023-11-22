@@ -1,3 +1,7 @@
+# pylint: disable=too-few-public-methods
+
+"""Schema and utils for atopile config files."""
+
 import collections.abc
 import logging
 from pathlib import Path
@@ -91,7 +95,7 @@ def make_config(project_config: Path, build: Optional[str] = None) -> Config:
     The typing on this is a little white lie... because they're really OmegaConf objects.
     """
     structure = Config()
-    structure.paths.project = project_config
+    structure.paths.project = project_config  # pylint: disable=assigning-non-slot
     if build is not None:
         structure.selected_build_name = build
 

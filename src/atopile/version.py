@@ -1,3 +1,7 @@
+"""
+Tools to compare semantic versions using npm style version specifiers.
+"""
+
 import importlib.metadata
 import logging
 
@@ -132,11 +136,13 @@ def match(spec: str, version: semver.Version):
 
 def check_project_version(project: Project) -> bool:
     """
-    Check if the current version of Atopile matches the version specified in the project's configuration file.
+    Check if the current version of Atopile matches the
+    version specified in the project's configuration file.
 
     :param project: The project to check the version for.
     :type project: Project
-    :return: True if the current version matches the project's version specification, False otherwise.
+    :return: True if the current version matches the project's
+    version specification, False otherwise.
     :rtype: bool
     """
     version_spec = project.config.ato_version

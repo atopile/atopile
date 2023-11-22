@@ -68,8 +68,7 @@ def is_address_valid(address: str) -> bool:
         validate_address(address)
     except AddrValueError:
         return False
-    else:
-        return True
+    return True
 
 
 class AddrStr(str):
@@ -79,14 +78,17 @@ class AddrStr(str):
 
     @property
     def file(self) -> Optional[Path]:
+        """Return the file section of the address as a Path."""
         return get_file(self)
 
     @property
     def node_as_str(self) -> str:
+        """Return the node section of the address as a string."""
         return get_node_str(self)
 
     @property
     def node(self) -> tuple[str]:
+        """Return the node section of the address as a reference"""
         return get_node_as_ref(self)
 
     @classmethod

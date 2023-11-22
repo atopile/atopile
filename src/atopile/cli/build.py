@@ -1,9 +1,11 @@
+"""CLI command definition for `ato build`."""
+
 import logging
 import sys
 
 import click
 
-from atopile.cli.common import ingest_config_hat
+from atopile.cli.common import project_options
 from atopile.parser.parser import build_model
 from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
@@ -13,7 +15,7 @@ log.setLevel(logging.INFO)
 
 
 @click.command()
-@ingest_config_hat
+@project_options
 @click.option("--debug/--no-debug", default=None)
 @click.option("--strict/--no-strict", default=None)
 def build(
@@ -61,7 +63,8 @@ def build(
             target_muster.targets.remove(target)
         elif result == TargetCheckResult.SOLVABLE:
             log.warning(
-                "Target %s is solvable, but is unstable. Use `ato resolve --build-config=%s --target=%s %s` to stabalise as desired.",
+                "Target %s is solvable, but is unstable. Use `ato resolve"
+                "--build-config=%s --target=%s %s` to stabalise as desired.",
                 target.name,
                 project.config.selected_build_name,
                 target.name,
