@@ -1,5 +1,6 @@
 """
-This datamodel represents the code in a clean, simple and traversable way, but doesn't resolve names of things
+This datamodel represents the code in a clean, simple and traversable way,
+but doesn't resolve names of things.
 In building this datamodel, we check for name collisions, but we don't resolve them yet.
 """
 import enum
@@ -8,7 +9,7 @@ import logging
 from typing import Any, Iterable, Optional, Mapping
 
 from antlr4 import ParserRuleContext
-from attrs import define, field, resolve_types
+from attrs import define, field
 
 from atopile.model2 import errors
 from atopile.parser.AtopileParser import AtopileParser as ap
@@ -18,21 +19,34 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-Ref = tuple[str]
+class Ref(tuple[str | int]):
+    """Shell class to provide basic utils for a reference."""
+
+    @classmethod
+    def from_one(cls, name: str | int) -> "Ref":
+        """Return a Ref with a single item."""
+        return cls((name,))
 
 
-class OptionallyNamedItem(tuple[Ref, Any]):
+class KeyOptItem(tuple[Ref, Any]):
     """A class representing anf optionally-named thing."""
     @property
-    def ref(self) -> Ref:
+    def ref(self) -> Optional[Ref]:
+        """Return the name of this item, if it has one."""
         return self[0]
 
     @property
     def value(self) -> Any:
+        """Return the value of this item."""
         return self[1]
 
+    @classmethod
+    def from_kv(cls, key: Optional[Ref], value: Any) -> "KeyOptItem":
+        """Return a KeyOptItem with a single item."""
+        return KeyOptItem((key, value))
 
-class OptionallyNamedItems(tuple[OptionallyNamedItem]):
+
+class KeyOptMap(tuple[KeyOptItem]):
     """A class representing a set of optionally-named things."""
     def get_named_items(self) -> Mapping[str, Any]:
         """Return all the named items in this set, ignoring the unnamed ones."""
@@ -42,12 +56,30 @@ class OptionallyNamedItems(tuple[OptionallyNamedItem]):
         """Return an interable of all the unnamed items in this set."""
         return map(lambda x: x.value, filter(lambda x: x.ref is None, self))
 
+    def keys(self) -> Iterable[Ref]:
+        """Return an iterable of all the names in this set."""
+        return map(lambda x: x.ref, filter(lambda x: x.ref is not None, self))
+
+    def values(self) -> Iterable[Any]:
+        """Return an iterable of all the values in this set."""
+        return map(lambda x: x.value, self)
+
+    @classmethod
+    def from_item(cls, item: KeyOptItem) -> "KeyOptMap":
+        """Return a KeyOptMap with a single item."""
+        return KeyOptMap((item,))
+
+    @classmethod
+    def from_kv(cls, key: Optional[Ref], value: Any) -> "KeyOptMap":
+        """Return a KeyOptMap with a single item."""
+        return cls.from_item(KeyOptItem.from_kv(key, value))
+
 
 @define
 class Base:
     """Base class for all objects in the datamodel."""
-    # this is a str rather than a path because it might just be virtual
-    src_ctx: ParserRuleContext = field(kw_only=True, eq=False)
+    # this is optional only because it makes testing convenient
+    src_ctx: ParserRuleContext = field(default=None, kw_only=True, eq=False)
 
 
 @define
@@ -74,26 +106,18 @@ class Import(Base):
 @define
 class Object(Base):
     """Represent a container class."""
-    closure: tuple["Object"]
-
-    # everything else needs defaults because of circular references
-    supers: Optional[tuple[Ref]] = None
-    locals_: Optional[OptionallyNamedItems] = None
-
-    # generated from the locals_
-    name_bindings: dict[str, Any] = None
-
-
-resolve_types(Object)  # resolve in post is required because of the circular reference
+    supers: tuple[Ref]
+    locals_: KeyOptMap
+    name_bindings: Mapping[str, Any]
 
 
 # these are the build-in superclasses that have special meaning to the compiler
-MODULE = (("module",),)
-COMPONENT = MODULE + (("component",),)
+MODULE = (Ref.from_one("module"),)
+COMPONENT = MODULE + (Ref.from_one("component"),)
 
-PIN = (("pin",),)
-SIGNAL = (("signal",),)
-INTERFACE = (("interface",),)
+PIN = (Ref.from_one("pin"),)
+SIGNAL = (Ref.from_one("signal"),)
+INTERFACE = (Ref.from_one("interface"),)
 
 
 ## Builder
@@ -123,63 +147,62 @@ class Dizzy(AtopileParserVisitor):
 
     def visit_iterable_helper(
         self, children: Iterable
-    ) -> OptionallyNamedItems:
+    ) -> KeyOptMap:
         """
         Visit multiple children and return a tuple of their results,
         discard any results that are NOTHING and flattening the children's results.
         It is assumed the children are returning their own OptionallyNamedItems.
         """
         results = (self.visit(child) for child in children)
-        return OptionallyNamedItems(itertools.chain(*filter(lambda x: x is not NOTHING, results)))
+        return KeyOptMap(itertools.chain(*filter(lambda x: x is not NOTHING, results)))
 
-    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> _Sentinel | tuple:
+    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> _Sentinel | KeyOptItem:
         """
         This is practically here as a development shim to assert the result is as intended
         """
         result = self.visitChildren(ctx)
         if result is not NOTHING:
-            assert isinstance(result, tuple)
+            assert isinstance(result, KeyOptMap)
             if len(result) > 0:
-                assert isinstance(result[0], tuple)
+                assert isinstance(result[0], KeyOptItem)
+                if result[0].ref is not None:
+                    assert isinstance(result[0].ref, Ref)
                 assert len(result[0]) == 2
         return result
 
-    def visitStmt(self, ctx: ap.StmtContext) -> OptionallyNamedItems:
+    def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
         """
         Ensure consistency of return type
         """
         if ctx.simple_stmts():
             value = self.visitSimple_stmts(ctx.simple_stmts())
         elif ctx.compound_stmt():
-            value = OptionallyNamedItems(self.visit(ctx.compound_stmt()),)
+            value = KeyOptMap((self.visit(ctx.compound_stmt()),))
         else:
             raise errors.AtoError("Unexpected statement type")
         return value
 
     def visitSimple_stmts(
         self, ctx: ap.Simple_stmtsContext
-    ) -> OptionallyNamedItems:
+    ) -> KeyOptMap:
         return self.visit_iterable_helper(ctx.simple_stmt())
 
-    def visitTotally_an_integer(self, ctx: ap.Totally_an_integerContext) -> str:
+    def visitTotally_an_integer(self, ctx: ap.Totally_an_integerContext) -> int:
         text = ctx.getText()
         try:
-            int(text)
+            return int(text)
         except ValueError as ex:
             raise errors.AtoTypeError(f"Expected an integer, but got {text}") from ex
 
-        return text
-
     def visitFile_input(self, ctx: ap.File_inputContext) -> Object:
-        obj = Object(
-            closure=(),
-            src_ctx=ctx,
-            supers=MODULE,
-        )
         locals_ = self.visit_iterable_helper(ctx.stmt())
-        obj.locals_ = locals_
-        obj.name_bindings = locals_.get_named_items()
-        return obj
+
+        return Object(
+            locals_=locals_,
+            name_bindings = locals_.get_named_items(),
+            supers=MODULE,
+            src_ctx=ctx,
+        )
 
     def visitBlocktype(self, ctx: ap.BlocktypeContext) -> tuple[Ref]:
         block_type_name = ctx.getText()
@@ -207,9 +230,9 @@ class Dizzy(AtopileParserVisitor):
             ctx,
             (ap.NameContext, ap.Totally_an_integerContext, ap.Numerical_pin_refContext),
         ):
-            return (self.visit(ctx),)
+            return Ref.from_one(str(self.visit(ctx)))
         if isinstance(ctx, (ap.AttrContext, ap.Name_or_attrContext)):
-            return self.visit(ctx)
+            return Ref(map(str, self.visit(ctx)),)
         raise errors.AtoError(f"Unknown reference type: {type(ctx)}")
 
     def visitName(self, ctx: ap.NameContext) -> str | int:
@@ -222,17 +245,18 @@ class Dizzy(AtopileParserVisitor):
             return ctx.getText()
 
     def visitAttr(self, ctx: ap.AttrContext) -> Ref:
-        return tuple(self.visitName(name) for name in ctx.name())  # Comprehension
+        return Ref(self.visitName(name) for name in ctx.name())  # Comprehension
 
     def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> Ref:
         if ctx.name():
-            return (self.visitName(ctx.name()),)
+            name = self.visitName(ctx.name())
+            return Ref.from_one(name)
         elif ctx.attr():
             return self.visitAttr(ctx.attr())
 
         raise errors.AtoError("Expected a name or attribute")
 
-    def visitBlock(self, ctx) -> OptionallyNamedItems:
+    def visitBlock(self, ctx) -> KeyOptMap:
         if ctx.simple_stmts():
             return self.visitSimple_stmts(ctx.simple_stmts())
         elif ctx.stmt():
@@ -240,7 +264,7 @@ class Dizzy(AtopileParserVisitor):
         else:
             raise errors.AtoError("Unexpected block type")
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> OptionallyNamedItem:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptItem:
         block_returns = self.visitBlock(ctx.block())
 
         if ctx.FROM():
@@ -250,18 +274,19 @@ class Dizzy(AtopileParserVisitor):
         else:
             block_supers = self.visitBlocktype(ctx.blocktype())
 
-        return (
+        return KeyOptItem.from_kv(
             self.visit_ref_helper(ctx.name()),
             Object(
-                src_ctx=ctx,
                 supers=block_supers,
                 locals_=block_returns,
+                name_bindings=block_returns.get_named_items(),
+                src_ctx=ctx,
             ),
         )
 
     def visitPindef_stmt(
         self, ctx: ap.Pindef_stmtContext
-    ) -> OptionallyNamedItems:
+    ) -> KeyOptMap:
         ref = self.visit_ref_helper(ctx.totally_an_integer() or ctx.name())
 
         if not ref:
@@ -269,15 +294,17 @@ class Dizzy(AtopileParserVisitor):
 
         # TODO: reimplement this error handling at the above level
         created_pin = Object(
-            src_ctx=ctx,
             supers=PIN,
+            locals_=KeyOptMap(),
+            name_bindings={},
+            src_ctx=ctx,
         )
 
-        return OptionallyNamedItems((ref, created_pin),)
+        return KeyOptMap.from_kv(ref, created_pin)
 
     def visitSignaldef_stmt(
         self, ctx: ap.Signaldef_stmtContext
-    ) -> OptionallyNamedItems:
+    ) -> KeyOptMap:
         name = self.visit_ref_helper(ctx.name())
 
         # TODO: provide context of where this error was found within the file
@@ -285,18 +312,20 @@ class Dizzy(AtopileParserVisitor):
             raise errors.AtoError("Signals must have a name")
 
         created_signal = Object(
-            src_ctx=ctx,
             supers=SIGNAL,
+            locals_=KeyOptMap(),
+            name_bindings={},
+            src_ctx=ctx,
         )
         # TODO: reimplement this error handling at the above level
         # if name in self.scope:
         #     raise errors.AtoNameConflictError(
         #         f"Cannot redefine '{name}' in the same scope"
         #     )
-        return OptionallyNamedItems((name, created_signal),)
+        return KeyOptMap.from_kv(name, created_signal)
 
     # Import statements have no ref
-    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> tuple[tuple[Ref, Import]]:
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> KeyOptMap:
         from_file: str = self.visitString(ctx.string())
         imported_element = self.visit_ref_helper(ctx.name_or_attr())
 
@@ -311,36 +340,33 @@ class Dizzy(AtopileParserVisitor):
             # import everything
             raise NotImplementedError("import *")
 
-        return (
-            (
-                imported_element,
-                Import(
-                    src_ctx=ctx,
-                    what=imported_element,
-                    from_=from_file,
-                ),
-            ),
+        import_ = Import(
+            what=imported_element,
+            from_=from_file,
+            src_ctx=ctx,
         )
+
+        return KeyOptMap.from_kv(imported_element, import_)
 
     # if a signal or a pin def statement are executed during a connection, it is returned as well
     def visitConnectable(
         self, ctx: ap.ConnectableContext
-    ) -> tuple[Ref, Optional[OptionallyNamedItem]]:
+    ) -> tuple[Ref, Optional[KeyOptItem]]:
         if ctx.name_or_attr():
             # Returns a tuple
             return self.visit_ref_helper(ctx.name_or_attr()), None
         elif ctx.numerical_pin_ref():
             return self.visit_ref_helper(ctx.numerical_pin_ref()), None
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():
-            connectable = self.visitChildren(ctx)[0]
+            connectable: KeyOptMap = self.visitChildren(ctx)
             # return the object's ref and the created object itself
-            return connectable[0], connectable
+            return connectable[0][0], connectable[0]
         else:
             raise ValueError("Unexpected context in visitConnectable")
 
     def visitConnect_stmt(
         self, ctx: ap.Connect_stmtContext
-    ) -> OptionallyNamedItem:
+    ) -> KeyOptMap:
         """
         Connect interfaces together
         """
@@ -348,27 +374,29 @@ class Dizzy(AtopileParserVisitor):
         target_name, target = self.visitConnectable(ctx.connectable(1))
 
         returns = [
-            (
+            KeyOptItem.from_kv(
                 None,
                 Link(source_name, target_name, src_ctx=ctx),
             )
         ]
 
-        # If the connect statement is also used to instantiate an element, add it to the return tuple
+        # If the connect statement is also used to instantiate
+        # an element, add it to the return tuple
         if source:
             returns.append(source)
 
         if target:
             returns.append(target)
 
-        return tuple(returns)
+        return KeyOptMap(returns)
 
     def visitNew_stmt(self, ctx: ap.New_stmtContext) -> Object:
-        new_object_name = self.visit_ref_helper(ctx.name_or_attr())
+        class_to_init = self.visit_ref_helper(ctx.name_or_attr())
 
         return Object(
-            supers=new_object_name,
-            locals_=(),
+            supers=(class_to_init,),
+            locals_=KeyOptMap(),
+            name_bindings={},
             src_ctx=ctx,
         )
 
@@ -380,10 +408,12 @@ class Dizzy(AtopileParserVisitor):
 
     def visitAssignable(
         self, ctx: ap.AssignableContext
-    ) -> OptionallyNamedItem | int | float | str:
+    ) -> KeyOptItem | int | float | str:
         """Yield something we can place in a set of locals."""
         if ctx.name_or_attr():
-            raise errors.AtoError("Cannot directly reference another object like this. Use 'new' instead.")
+            raise errors.AtoError(
+                "Cannot directly reference another object like this. Use 'new' instead."
+            )
 
         if ctx.new_stmt():
             return self.visit(ctx.new_stmt())
@@ -398,15 +428,17 @@ class Dizzy(AtopileParserVisitor):
         if ctx.boolean_():
             return self.visitBoolean_(ctx.boolean_())
 
-    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> tuple[tuple[Ref, str]]:
+        raise errors.AtoError("Unexpected assignable type")
+
+    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         assigned_value_name = self.visitName_or_attr(ctx.name_or_attr())
         assigned_value = self.visitAssignable(ctx.assignable())
 
-        return ((assigned_value_name, assigned_value),)
+        return KeyOptMap.from_kv(assigned_value_name, assigned_value)
 
     def visitRetype_stmt(
         self, ctx: ap.Retype_stmtContext
-    ) -> tuple[tuple[Optional[Ref], Replace]]:
+    ) -> KeyOptMap:
         """
         This statement type will replace an existing block with a new one of a subclassed type
 
@@ -415,13 +447,11 @@ class Dizzy(AtopileParserVisitor):
         """
         original_name = self.visit_ref_helper(ctx.name_or_attr(0))
         replaced_name = self.visit_ref_helper(ctx.name_or_attr(1))
-        return (
-            (
-                None,
-                Replace(
-                    src_ctx=ctx,
-                    original=original_name,
-                    replacement=replaced_name,
-                ),
-            ),
+
+        replace = Replace(
+            src_ctx=ctx,
+            original=original_name,
+            replacement=replaced_name,
         )
+
+        return KeyOptMap.from_kv(None, replace)
