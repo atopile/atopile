@@ -40,7 +40,8 @@ dependencies = [
     "semver",
     "rich",
     "gitpython",
-    "easyeda2kicad"
+    "easyeda2kicad",
+    "atopile-omegaconf",
 ]
 dynamic = ["version"]
 
