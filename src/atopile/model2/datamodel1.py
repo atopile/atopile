@@ -6,10 +6,11 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 import enum
 import itertools
 import logging
-from typing import Any, Iterable, Optional, Mapping
+from collections import ChainMap
+from typing import Any, Iterable, Mapping, Optional
 
 from antlr4 import ParserRuleContext
-from attrs import define, field
+from attrs import define, field, resolve_types
 
 from atopile.model2 import errors
 from atopile.parser.AtopileParser import AtopileParser as ap
@@ -28,7 +29,7 @@ class Ref(tuple[str | int]):
         return cls((name,))
 
 
-class KeyOptItem(tuple[Ref, Any]):
+class KeyOptItem(tuple[Optional[Ref], Any]):
     """A class representing anf optionally-named thing."""
     @property
     def ref(self) -> Optional[Ref]:
@@ -110,6 +111,27 @@ class Object(Base):
     locals_: KeyOptMap
     name_bindings: Mapping[str, Any]
 
+    # configured after construction
+    closure: tuple["Object"] = None
+    closure_map: Mapping[Optional[Ref], "Object"] = None
+
+
+resolve_types(Object)
+
+
+def _fix_object_closure(obj: Object) -> None:
+    """Fix the closure of an object."""
+    if obj.closure is None:
+        local_closure = (obj,)
+    else:
+        local_closure = obj.closure + (obj,)
+
+    for local in obj.locals_.values():
+        if isinstance(local, Object):
+            local.closure = local_closure
+            local.closure_map = ChainMap(o.name_bindings for o in local_closure)
+            _fix_object_closure(local)
+
 
 # these are the build-in superclasses that have special meaning to the compiler
 MODULE = (Ref.from_one("module"),)
@@ -121,6 +143,15 @@ INTERFACE = (Ref.from_one("interface"),)
 
 
 ## Builder
+
+def build(tree: ParserRuleContext, fail_fast: bool = False) -> Object:
+    """Build the datamodel from an ANTLR context."""
+    dizzy = Dizzy(fail_fast)
+    result = dizzy.visit(tree)
+    assert isinstance(result, Object)
+    _fix_object_closure(result)
+    return result
+
 
 class _Sentinel(enum.Enum):
     NOTHING = enum.auto()
@@ -137,10 +168,21 @@ class Dizzy(AtopileParserVisitor):
 
     def __init__(
         self,
-        src_path: str,
+        fail_fast: bool = False,
     ) -> None:
-        self.src_path = src_path
+        self.fail_fast = fail_fast
+        self.errors: list[Exception] = []
         super().__init__()
+
+    def handle_error(self_, error: Exception) -> Exception:
+        """
+        Deal with an error, either by shoving it in the error list or raising it.
+        NOTE: self_ is named strangely because it's detected by the error handler otherwise.
+        """
+        if self_.fail_fast:
+            raise error
+        self_.errors.append(error)
+        return error
 
     def defaultResult(self):
         return NOTHING
@@ -179,7 +221,8 @@ class Dizzy(AtopileParserVisitor):
         elif ctx.compound_stmt():
             value = KeyOptMap((self.visit(ctx.compound_stmt()),))
         else:
-            raise errors.AtoError("Unexpected statement type")
+            self.handle_error(errors.AtoError("Unexpected statement type"))
+            value = NOTHING
         return value
 
     def visitSimple_stmts(
@@ -191,8 +234,9 @@ class Dizzy(AtopileParserVisitor):
         text = ctx.getText()
         try:
             return int(text)
-        except ValueError as ex:
-            raise errors.AtoTypeError(f"Expected an integer, but got {text}") from ex
+        except ValueError:
+            self.handle_error(errors.AtoTypeError(f"Expected an integer, but got {text}"))
+            return NOTHING
 
     def visitFile_input(self, ctx: ap.File_inputContext) -> Object:
         locals_ = self.visit_iterable_helper(ctx.stmt())
@@ -214,7 +258,8 @@ class Dizzy(AtopileParserVisitor):
             case "interface":
                 return INTERFACE
             case _:
-                raise errors.AtoError(f"Unknown block type '{block_type_name}'")
+                self.handle_error(errors.AtoError(f"Unknown block type '{block_type_name}'"))
+                return NOTHING
 
     def visit_ref_helper(
         self,
@@ -233,7 +278,8 @@ class Dizzy(AtopileParserVisitor):
             return Ref.from_one(str(self.visit(ctx)))
         if isinstance(ctx, (ap.AttrContext, ap.Name_or_attrContext)):
             return Ref(map(str, self.visit(ctx)),)
-        raise errors.AtoError(f"Unknown reference type: {type(ctx)}")
+        self.handle_error(errors.AtoError(f"Unknown reference type: {type(ctx)}"))
+        return NOTHING
 
     def visitName(self, ctx: ap.NameContext) -> str | int:
         """
@@ -254,7 +300,8 @@ class Dizzy(AtopileParserVisitor):
         elif ctx.attr():
             return self.visitAttr(ctx.attr())
 
-        raise errors.AtoError("Expected a name or attribute")
+        self.handle_error(errors.AtoError("Expected a name or attribute"))
+        return NOTHING
 
     def visitBlock(self, ctx) -> KeyOptMap:
         if ctx.simple_stmts():
@@ -262,14 +309,16 @@ class Dizzy(AtopileParserVisitor):
         elif ctx.stmt():
             return self.visit_iterable_helper(ctx.stmt())
         else:
-            raise errors.AtoError("Unexpected block type")
+            self.handle_error(errors.AtoError("Unexpected block type"))
+            return NOTHING
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptItem:
         block_returns = self.visitBlock(ctx.block())
 
         if ctx.FROM():
             if not ctx.name_or_attr():
-                raise errors.AtoError("Expected a name or attribute after 'from'")
+                self.handle_error(errors.AtoError("Expected a name or attribute after 'from'"))
+                return NOTHING
             block_supers = (self.visit_ref_helper(ctx.name_or_attr()),)
         else:
             block_supers = self.visitBlocktype(ctx.blocktype())
@@ -290,7 +339,8 @@ class Dizzy(AtopileParserVisitor):
         ref = self.visit_ref_helper(ctx.totally_an_integer() or ctx.name())
 
         if not ref:
-            raise errors.AtoError("Pins must have a name")
+            self.handle_error(errors.AtoError("Pins must have a name"))
+            return NOTHING
 
         # TODO: reimplement this error handling at the above level
         created_pin = Object(
@@ -309,7 +359,8 @@ class Dizzy(AtopileParserVisitor):
 
         # TODO: provide context of where this error was found within the file
         if not name:
-            raise errors.AtoError("Signals must have a name")
+            self.handle_error(errors.AtoError("Signals must have a name"))
+            return NOTHING
 
         created_signal = Object(
             supers=SIGNAL,
@@ -319,7 +370,7 @@ class Dizzy(AtopileParserVisitor):
         )
         # TODO: reimplement this error handling at the above level
         # if name in self.scope:
-        #     raise errors.AtoNameConflictError(
+        #    .handle_error.handel_error(errors.AtoNameConflictError()
         #         f"Cannot redefine '{name}' in the same scope"
         #     )
         return KeyOptMap.from_kv(name, created_signal)
@@ -330,11 +381,13 @@ class Dizzy(AtopileParserVisitor):
         imported_element = self.visit_ref_helper(ctx.name_or_attr())
 
         if not from_file:
-            raise errors.AtoError("Expected a 'from <file-path>' after 'import'")
+            self.handle_error(errors.AtoError("Expected a 'from <file-path>' after 'import'"))
+            return NOTHING
         if not imported_element:
-            raise errors.AtoError(
+            self.handle_error(errors.AtoError(
                 "Expected a name or attribute to import after 'import'"
-            )
+            ))
+            return NOTHING
 
         if imported_element == "*":
             # import everything
@@ -360,7 +413,9 @@ class Dizzy(AtopileParserVisitor):
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():
             connectable: KeyOptMap = self.visitChildren(ctx)
             # return the object's ref and the created object itself
-            return connectable[0][0], connectable[0]
+            ref = connectable[0][0]
+            assert ref is not None
+            return ref, connectable[0]
         else:
             raise ValueError("Unexpected context in visitConnectable")
 

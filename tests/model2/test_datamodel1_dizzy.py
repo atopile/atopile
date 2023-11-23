@@ -35,7 +35,7 @@ def test_Totally_an_integer_errors(input):
     mock_ctx.getText = getText
 
     with pytest.raises(errors.AtoTypeError):
-        dizzy = Dizzy("test.ato")
+        dizzy = Dizzy(True)
         dizzy.visitTotally_an_integer(mock_ctx)
 
 
@@ -53,7 +53,7 @@ def test_Totally_an_integer_passes(input, output):
     getText.return_value = input
     mock_ctx.getText = getText
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     assert output == dizzy.visitTotally_an_integer(mock_ctx)
 
 
@@ -67,7 +67,7 @@ def test_visitName(input, output):
     getText.return_value = input
     mock_ctx.getText = getText
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     assert output == dizzy.visitName(mock_ctx)
 
 
@@ -76,7 +76,7 @@ def test_visitAttr():
     parser = parser_from_src_code("a.b.c")
     ctx = parser.attr()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     assert ("a", "b", "c") == dizzy.visitAttr(ctx)
 
 
@@ -92,7 +92,7 @@ def test_visitName_or_attr(input, output):
     parser = parser_from_src_code(input)
     ctx = parser.name_or_attr()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     assert output == dizzy.visitName_or_attr(ctx)
 
 
@@ -108,7 +108,7 @@ def test_visit_ref_helper_totally_an_integer(input, output):
     parser = parser_from_src_code(input)
     ctx = parser.totally_an_integer()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     assert output == dizzy.visit_ref_helper(ctx)
 
 
@@ -124,7 +124,7 @@ def test_visit_ref_helper_name_or_attr(input, output):
     parser = parser_from_src_code(input)
     ctx = parser.name_or_attr()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     assert output == dizzy.visit_ref_helper(ctx)
 
 
@@ -132,7 +132,7 @@ def test_visit_ref_helper_name():
     parser = parser_from_src_code("sparkles")
     ctx = parser.name()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     assert ("sparkles",) == dizzy.visit_ref_helper(ctx)
 
 
@@ -149,7 +149,7 @@ def test_interface():
             signal signal_b
         """
     )
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     results = dizzy.visitFile_input(tree)
     results.src_ctx = None
     assert results.supers == MODULE
@@ -168,7 +168,7 @@ def test_visitSignaldef_stmt():
     parser = parser_from_src_code("signal signal_a")
     ctx = parser.signaldef_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     ret = dizzy.visitSignaldef_stmt(ctx)
     assert isinstance(ret, tuple)
 
@@ -183,7 +183,7 @@ def test_visitPindef_stmt():
     parser = parser_from_src_code("pin pin_a")
     ctx = parser.pindef_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     ret = dizzy.visitPindef_stmt(ctx)
     assert isinstance(ret, tuple)
     assert len(ret) == 1
@@ -197,7 +197,7 @@ def test_visitConnect_stmt_simple():
     parser = parser_from_src_code("pin_a ~ pin_b")
     ctx = parser.connect_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     ret = dizzy.visitConnect_stmt(ctx)
     assert len(ret[0]) == 2
     link = ret[0][1]
@@ -209,7 +209,7 @@ def test_visitRetype_stmt():
     parser = parser_from_src_code("a -> b")
     ctx = parser.retype_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     ret = dizzy.visitRetype_stmt(ctx)
     assert len(ret) == 1
     assert ret[0] == (None, Replace(original=("a",), replacement=("b",)))
@@ -219,7 +219,7 @@ def test_visitConnect_stmt_instance():
     parser = parser_from_src_code("pin pin_a ~ signal sig_b")
     ctx = parser.connect_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     ret = dizzy.visitConnect_stmt(ctx)
 
     assert isinstance(ret, tuple)
@@ -243,7 +243,7 @@ def test_visitImport_stmt():
     parser = parser_from_src_code("import Module1 from 'test_import.ato'")
     ctx = parser.import_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     ret = dizzy.visitImport_stmt(ctx)
     assert len(ret) == 1
     assert ret[0] == (("Module1",), Import(what=("Module1",), from_="test_import.ato"))
@@ -258,7 +258,7 @@ def test_visitBlockdef():
     )
     ctx = parser.blockdef()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     results = dizzy.visitBlockdef(ctx)
 
     assert results.ref == ("comp1",)
@@ -278,7 +278,7 @@ def test_visitAssign_stmt_value():
     parser = parser_from_src_code("foo.bar = 35")
     ctx = parser.assign_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     results = dizzy.visitAssign_stmt(ctx)
     assert len(results) == 1
     assert results[0] == (("foo", "bar"), 35)
@@ -288,7 +288,7 @@ def test_visitAssign_stmt_string():
     parser = parser_from_src_code('foo.bar = "baz"')
     ctx = parser.assign_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     results = dizzy.visitAssign_stmt(ctx)
     assert len(results) == 1
     assert results[0] == (("foo", "bar"), "baz")
@@ -298,7 +298,7 @@ def test_visitNew_stmt():
     parser = parser_from_src_code("new Bar")
     ctx = parser.new_stmt()
 
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     results = dizzy.visitNew_stmt(ctx)
     assert isinstance(results, Object)
     assert results.supers == (("Bar",),)
@@ -314,7 +314,7 @@ def test_visitModule1LayerDeep():
             signal_a ~ signal_b
         """
     )
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     results = dizzy.visitFile_input(tree)
     assert isinstance(results, Object)
     assert results.supers == MODULE
@@ -342,7 +342,7 @@ def test_visitModule_pin_to_signal():
             signal signal_a ~ pin p1
         """
     )
-    dizzy = Dizzy("test.ato")
+    dizzy = Dizzy(True)
     results = dizzy.visitFile_input(tree)
     assert isinstance(results, Object)
     assert results.supers == MODULE
