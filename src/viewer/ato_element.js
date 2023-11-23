@@ -729,7 +729,7 @@ function addInterface(block_id, port_id, label) {
     return added_stub;
 }
 
-function addLink(source_block_id, source_port_id, target_block_id, target_port_id) {
+function addLink(source_block_id, source_port_id, target_block_id, target_port_id, stroke_width) {
     var added_link = new shapes.standard.Link({
         source: {
             id: source_block_id,
@@ -743,7 +743,7 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
     added_link.attr({
         line: {
             'stroke': settings_dict['link']['color'],
-            'stroke-width': settings_dict['link']['strokeWidth'],
+            'stroke-width': stroke_width,
             targetMarker: { 'type': 'none' },
         },
         z: 0
@@ -759,8 +759,14 @@ function addLink(source_block_id, source_port_id, target_block_id, target_port_i
 //TODO: this is a ratsnest. We need to update the logic here.
 export function createLink(name, source_con, target_con, source_con_type, target_con_type, source_block, target_block, above_source_block, above_target_block, source_block_type, target_block_type, above_source_block_type, above_target_block_type, graph) {
     let added_link;
-    if ((source_block_type == 'component' || source_block_type == 'module') && (target_block_type == 'component' || target_block_type == 'module')) {
-        added_link = addLink(source_block, source_con, target_block, target_con);
+    let allowedInterface = ['interface'];
+    let allowedBlock = ['component', 'module'];
+    if ((allowedInterface.includes(source_block_type) && allowedInterface.includes(target_block_type)) && above_source_block_type != 'self' && above_target_block_type != 'self') {
+        added_link = addLink(above_source_block, source_block, above_target_block, target_block, settings_dict['interface']['strokeWidth']);
+        added_link.addTo(graph);
+    }
+    else if (allowedBlock.includes(source_block_type) && allowedBlock.includes(target_block_type)) {
+        added_link = addLink(source_block, source_con, target_block, target_con, settings_dict['link']['strokeWidth']);
         added_link.addTo(graph);
     }
     else {

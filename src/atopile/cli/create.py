@@ -25,6 +25,9 @@ def create(name: str, blank: bool):
     project_name = project_path.name
     project_dir = project_path.parent
 
+    module_name = pascal_case(project_name)
+    file_name = snake_case(project_name)
+
     log.info(f"Project name: {project_name}")
     log.info(f"Project directory: {project_dir}")
 
@@ -39,21 +42,41 @@ def create(name: str, blank: bool):
     log.info("Cloning project template from " + project_template_url)
     project_repo = Repo.clone_from(url=project_template_url, to_path=project_path)
 
+    log.info("Updating component library submodules")
     for submodule in project_repo.submodules:
-        submodule.update(init=True)
+        try:
+            submodule.update(init=True)
+            sub_repo = submodule.module()
+            sub_repo.git.reset(hard=True)
+            log.info(f"Submodule {submodule.name} updated successfully.")
+        except Exception as e:
+            log.error(f"Failed to update submodule {submodule.name}: {e}")
+
+        log.info("Renaming files and updating ato.yaml")
 
     # Rename files in the cloned project path
-    rename_files(project_dir, project_name)
+    rename_files(project_dir, module_name)
 
     # Update ato.yaml in the cloned project path
     ato_yaml_path = project_path / "elec/src/ato.yaml"
-    update_ato_yaml(ato_yaml_path, project_name)
+
+    with open(ato_yaml_path, "r") as stream:
+        data = yaml.safe_load(stream)
+
+    # Modify the 'root-file' and 'root-node' keys
+    data["builds"]["default"]["root-file"] = f"{file_name}.ato"
+    data["builds"]["default"]["root-node"] = f"{file_name}.ato:{module_name}"
+
+    # Write the modified YAML file back
+    with open(project_path / "elec/src/ato.yaml", "w") as stream:
+        yaml.safe_dump(data, stream, default_flow_style=False)
+
 
     # If blank is True, update the content of the .ato file to a blank module
     if blank:
         log.info("Blank project selected. Removing template code.")
-        ato_file_path = project_path / f"elec/src/{project_name}.ato"
-        update_file_content(ato_file_path, f"module {project_name}:")
+        with open(project_path / f"elec/src/{file_name}" , "w") as stream:
+            stream.write(f"module {project_name}:\n")
 
     make_initial_commit(project_path)
 
@@ -71,24 +94,18 @@ def create(name: str, blank: bool):
         )
 
 
-def update_ato_yaml(file_path: Path, new_base_name: str):
-    # Read the YAML file
-    with open(file_path, "r") as stream:
-        data = yaml.safe_load(stream)
-
-    # Modify the 'root-file' and 'root-node' keys
-    data["builds"]["default"]["root-file"] = f"{new_base_name}.ato"
-    data["builds"]["default"]["root-node"] = f"{new_base_name}.ato:{new_base_name}"
-
-    # Write the modified YAML file back
-    with open(file_path, "w") as stream:
-        yaml.safe_dump(data, stream, default_flow_style=False)
+def pascal_case(name: str):
+    # Split the name by spaces or underscores
+    words = name.replace("_", " ").split()
+    # Capitalize the first letter of each word and join them together
+    return "".join(word.capitalize() for word in words)
 
 
-def update_file_content(file_path: Path, module_name):
-    # Open the file in write mode and replace its contents
-    with open(file_path, "w") as file:
-        file.write(f"module {module_name}:")
+def snake_case(name: str):
+    # Split the name by spaces or underscores
+    words = name.replace(" ", "_").split()
+    # Lowercase the first letter of each word and join them together
+    return "_".join(word.lower() for word in words)
 
 
 def rename_files(project_dir, new_base_name):
