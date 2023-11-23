@@ -111,7 +111,7 @@ class ProjectHandler:
 
     async def _watch_files(self):
         try:
-            async for changes in watchfiles.awatch(self.project.root, self.project.get_std_lib_path()):
+            async for changes in watchfiles.awatch(self.project.root):
                 log.info("Changes detected in project directory.")
                 # figure out what source files have been updated
                 updated_files = []
