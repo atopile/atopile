@@ -91,7 +91,9 @@ class BomJlcpcbTarget(Target):
         super().__init__(muster)
 
     def get_jlcpcb_map_file(self) -> Path:
-        return self.project.config.paths.abs_src / f"{self.project.config.selected_build_name}-bom-jlcpcb.yaml"
+        src_path = self.project.config.paths.abs_src
+        bom_map = f"{self.project.config.selected_build_name}-bom-jlcpcb.yaml"
+        return src_path / bom_map
 
     def build(self) -> None:
         if self._bom is None:

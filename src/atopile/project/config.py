@@ -24,7 +24,7 @@ class Paths:
     """Config grouping for all the paths in a project."""
     project: Path = MISSING  # should be the absolute path to the project root
 
-    src: Path = "elec/src"
+    src: Path = "./"
     abs_src: Path = "${.project}/${.src}"
 
     build: Path = "build"
@@ -34,13 +34,16 @@ class Paths:
     abs_footprints: Path = "${.project}/${.footprints}"
 
     kicad_project: Path = "elec/layout"
-    abs_kicad_project: Path = "${.project}/${.kicad_project_dir}"
+    abs_kicad_project: Path = "${.project}/${.kicad_project}"
+
+    selected_build_path: Path = "${.abs_build}/${selected_build_name}"
 
 
 @define
 class BuildConfig:
     """Config for a build."""
     entry: str = MISSING
+    abs_entry: str = "${paths.abs_src}/${.entry}"
 
     targets: list[str] = [
         "designators",
@@ -48,8 +51,6 @@ class BuildConfig:
         "bom-jlcpcb",
         "kicad-lib-paths",
     ]
-
-    build_path: Path = "${..paths.abs_build}/${.name}"
 
 
 @define
@@ -95,7 +96,7 @@ def make_config(project_config: Path, build: Optional[str] = None) -> Config:
     The typing on this is a little white lie... because they're really OmegaConf objects.
     """
     structure = Config()
-    structure.paths.project = project_config  # pylint: disable=assigning-non-slot
+    structure.paths.project = project_config.parent  # pylint: disable=assigning-non-slot
     if build is not None:
         structure.selected_build_name = build
 

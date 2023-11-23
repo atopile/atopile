@@ -61,7 +61,7 @@ def project_options(f):
         log.info("Using project %s", project.root)
 
         # set the build config
-        if build is None:
+        if build is not None:
             if build not in project.config.builds:
                 raise click.BadParameter(
                     f'Could not find build-config "{build}". Available build configs are: {", ".join(project.config.builds.keys())}.'
@@ -87,7 +87,7 @@ def project_options(f):
             else:
                 raise click.BadParameter(
                     "If an entry of a file is specified, you must specify"
-                    f" the node within it you want to build {entry}.",
+                    " the node within it you want to build.",
                     param_hint="entry",
                 )
 

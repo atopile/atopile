@@ -76,7 +76,7 @@ def build(
             log.info("Target %s passes check.", target.name)
 
     # generate targets
-    build_path = project.config.selected_build.build_path
+    build_path = project.config.paths.selected_build_path
     log.info("Writing build output to %s", build_path)
     build_path.mkdir(parents=True, exist_ok=True)
 

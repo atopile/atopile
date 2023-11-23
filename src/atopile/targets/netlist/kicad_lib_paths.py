@@ -105,7 +105,7 @@ class KicadLibPath(Target):
         fp_lib_table_str = "\n".join(fp_lib_table)
 
         # Now you have the fp-lib-table as a string. You can write it to a file in the project under elec/layout.
-        kicad_project_dir = self.project.config.paths.kicad_project
+        kicad_project_dir = self.project.config.paths.abs_kicad_project
         with open(kicad_project_dir / "fp-lib-table", "w", encoding="utf-8") as f:
             f.write(fp_lib_table_str)
 

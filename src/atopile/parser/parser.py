@@ -670,7 +670,7 @@ def build_model(project: Project) -> Model:
     with profile(profile_log=log, skip=skip_profiler):
         bob = Builder(project)
         try:
-            entry = AddrStr(project.config.selected_build.entry)
+            entry = AddrStr(project.config.selected_build.abs_entry)
             with write_errors_to_log(Builder, log, ReraiseBehavior.RAISE_ATO_ERROR):
                 model = bob.build(entry.file)
         except AtoError:
