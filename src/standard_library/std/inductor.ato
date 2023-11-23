@@ -1,4 +1,0 @@
-component Inductor:
-    pin p1
-    pin p2
-    designator_prefix = "L"
