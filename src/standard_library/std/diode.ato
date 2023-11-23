@@ -1,4 +1,0 @@
-component Diode:
-    signal anode
-    signal cathode
-    designator_prefix = "D"

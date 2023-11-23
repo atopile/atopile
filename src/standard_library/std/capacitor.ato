@@ -1,5 +1,0 @@
-component Capacitor:
-    pin p1
-    pin p2
-    footprint = "Capacitor_SMD:C_0402_1005Metric"
-    designator_prefix = "C"
