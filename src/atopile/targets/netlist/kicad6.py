@@ -6,10 +6,11 @@ from typing import Dict, List, Optional
 from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from atopile.address import AddrStr
 from atopile.model.accessors import ModelVertexView
-from atopile.targets.netlist.nets import find_net_names, generate_net_name
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
+from atopile.targets.netlist.nets import find_net_names, generate_net_name
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
 
 log = logging.getLogger(__name__)
@@ -372,11 +373,12 @@ class Kicad6NetlistTarget(Target):
         super().__init__(muster)
 
     def generate(self) -> KicadNetlist:
+        entry = AddrStr(self.project.config.selected_build.entry)
         if self._netlist is None:
             self._kicad_lib_paths_target.generate()
             self._netlist = KicadNetlist.from_model(
                 self.model,
-                root_node=self.build_config.root_node,
+                root_node=entry,
                 designators=self._designator_target.generate(),
                 components_to_lib_map=self._kicad_lib_paths_target.component_path_to_lib_name,
                 target=self,
@@ -392,7 +394,9 @@ class Kicad6NetlistTarget(Target):
 
     def build(self) -> None:
         netlist = self.generate()
-        output_file = self.build_config.build_path / self.build_config.root_file.with_suffix(".net").name
+        entry = AddrStr(self.project.config.selected_build.abs_entry)
+        build_dir = self.project.config.paths.selected_build_path
+        output_file = build_dir / entry.file.with_suffix(".net").name
         netlist.to_file(output_file)
 
     def resolve(self, *args, clean=None, **kwargs) -> None:

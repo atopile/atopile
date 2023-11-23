@@ -1,13 +1,13 @@
-import logging
 import itertools
+import logging
 from pathlib import Path
 from typing import Optional
 
 import ruamel.yaml
 
+from atopile.address import AddrStr
 from atopile.model.accessors import ModelVertexView
 from atopile.model.model import VertexType
-from atopile.project.config import BaseConfig
 from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
 
@@ -18,13 +18,6 @@ yaml = ruamel.yaml.YAML()
 yaml.preserve_quotes = True
 
 
-class KicadLibPathConfig(BaseConfig):
-    @property
-    def kicad_project_dir(self) -> Path:
-        rel_path = self._config_data.get("kicad-project-dir", "../layout")
-        return (self.project.root / rel_path).resolve().absolute()
-
-
 class KicadLibPath(Target):
     name = "kicad_lib_paths"
 
@@ -32,10 +25,6 @@ class KicadLibPath(Target):
         self.component_path_to_lib_name: Optional[dict[str, str]] = None
         self.lib_name_to_lib_path: Optional[dict[str, Path]] = None
         super().__init__(muster)
-
-    @property
-    def config(self) -> KicadLibPathConfig:
-        return KicadLibPathConfig.from_config(super().build_config)
 
     def generate(self) -> None:
         # iterate over all the footprint properties in the project
@@ -47,7 +36,8 @@ class KicadLibPath(Target):
         self.component_path_to_lib_name = {}
         self.lib_name_to_lib_path = {}
 
-        root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
+        entry = AddrStr(self.project.config.selected_build.entry)
+        root_node = ModelVertexView.from_path(self.model, entry)
         components = root_node.get_descendants(VertexType.component)
         component_path_to_project_root: dict[str, Path] = {}
         for component in components:
@@ -77,7 +67,7 @@ class KicadLibPath(Target):
             footprint_definer_path = self.project.get_abs_import_path_from_std_path(
                 Path(footprint_definer.file_path)
             )
-            component_path_to_project_root[component.path] = Project.from_path(footprint_definer_path).root
+            component_path_to_project_root[component.path] = Project.from_path(footprint_definer_path).config.paths.abs_src
 
         # find unique lib paths
         unique_project_roots = set(component_path_to_project_root.values())
@@ -85,7 +75,7 @@ class KicadLibPath(Target):
 
         for i, project_root in enumerate(unique_project_roots):
             project = Project.from_path(project_root)
-            path = project.config.paths.lib_path
+            path = project.config.paths.abs_footprints
             name = "lib" + str(i)
             self.lib_name_to_lib_path[name] = path
             project_root_to_lib_name[project_root] = name
@@ -115,7 +105,7 @@ class KicadLibPath(Target):
         fp_lib_table_str = "\n".join(fp_lib_table)
 
         # Now you have the fp-lib-table as a string. You can write it to a file in the project under elec/layout.
-        kicad_project_dir = self.config.kicad_project_dir
+        kicad_project_dir = self.project.config.paths.abs_kicad_project
         with open(kicad_project_dir / "fp-lib-table", "w", encoding="utf-8") as f:
             f.write(fp_lib_table_str)
 

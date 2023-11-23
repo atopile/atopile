@@ -1,3 +1,5 @@
+"""CLI command definition for `ato create`."""
+
 import logging
 import os
 import sys

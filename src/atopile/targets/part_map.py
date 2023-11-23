@@ -5,11 +5,10 @@ from typing import Any, Dict, List, Optional, Set
 import ruamel.yaml
 from attrs import frozen
 
+from atopile.address import AddrStr
 from atopile.model.accessors import ModelVertexView
 from atopile.model.model import VertexType
-from atopile.project.config import BaseConfig
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
-
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -17,10 +16,6 @@ log.setLevel(logging.INFO)
 yaml = ruamel.yaml.YAML()
 yaml.preserve_quotes = True
 
-class PartMapConfig(BaseConfig):
-    @property
-    def component_selection_file_template(self) -> str:
-        return self._config_data.get("component-selection-file", "{build-config}-components.yaml")
 
 @frozen
 class ImplicitPartSpec:
@@ -78,23 +73,23 @@ class PartMapTarget(Target):
 
         super().__init__(muster)
 
-    @property
-    def config(self) -> PartMapConfig:
-        return PartMapConfig.from_config(super().config)
-
     def get_mfg_map_file(self) -> Path:
-        return self.project.root / self.config.component_selection_file_template.format(**{"build-config": self.build_config.name})
+        src_path = self.project.config.paths.abs_src
+        components_filename = f"{self.project.config.selected_build_name}-components.yaml"
+        return src_path / components_filename
 
     def get_components(self) -> List[ModelVertexView]:
         if self._components is not None:
             return self._components
 
-        root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
+        entry = AddrStr(self.project.config.selected_build.entry)
+        root_node = ModelVertexView.from_path(self.model, entry)
         self._components = root_node.get_descendants(VertexType.component)
         return self._components
 
     def build(self) -> None:
-        part_map_path = self.build_config.build_path / self.build_config.root_file.with_suffix(".part-map.yaml").name
+        build_dir = self.project.config.paths.selected_build_path
+        part_map_path = build_dir / "part-map.yaml"
         with part_map_path.open("w") as f:
             f.write(yaml.dump(self.generate()))
 
