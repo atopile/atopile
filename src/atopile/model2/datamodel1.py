@@ -6,7 +6,7 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 import enum
 import itertools
 import logging
-from collections import ChainMap
+from itertools import chain
 from typing import Any, Iterable, Mapping, Optional
 
 from antlr4 import ParserRuleContext
@@ -31,6 +31,7 @@ class Ref(tuple[str | int]):
 
 class KeyOptItem(tuple[Optional[Ref], Any]):
     """A class representing anf optionally-named thing."""
+
     @property
     def ref(self) -> Optional[Ref]:
         """Return the name of this item, if it has one."""
@@ -49,6 +50,7 @@ class KeyOptItem(tuple[Optional[Ref], Any]):
 
 class KeyOptMap(tuple[KeyOptItem]):
     """A class representing a set of optionally-named things."""
+
     def get_named_items(self) -> Mapping[str, Any]:
         """Return all the named items in this set, ignoring the unnamed ones."""
         return dict(filter(lambda x: x.ref is not None, self))
@@ -79,6 +81,7 @@ class KeyOptMap(tuple[KeyOptItem]):
 @define
 class Base:
     """Base class for all objects in the datamodel."""
+
     # this is optional only because it makes testing convenient
     src_ctx: ParserRuleContext = field(default=None, kw_only=True, eq=False)
 
@@ -86,6 +89,7 @@ class Base:
 @define
 class Link(Base):
     """Represent a connection between two connectable things."""
+
     source: Ref
     target: Ref
 
@@ -93,6 +97,7 @@ class Link(Base):
 @define
 class Replace(Base):
     """Represent a replacement of one object with another."""
+
     original: Ref
     replacement: Ref
 
@@ -100,6 +105,7 @@ class Replace(Base):
 @define
 class Import(Base):
     """Represent an import statement."""
+
     what: Ref
     from_: str
 
@@ -107,13 +113,54 @@ class Import(Base):
 @define
 class Object(Base):
     """Represent a container class."""
+
     supers: tuple[Ref]
     locals_: KeyOptMap
     name_bindings: Mapping[str, Any]
 
     # configured after construction
-    closure: tuple["Object"] = None
-    closure_map: Mapping[Optional[Ref], "Object"] = None
+    closure: Optional[tuple["Object"]] = None
+    # closure_map: Mapping[Optional[Ref], "Object"] = None
+
+    @property
+    def _closures_and_self(self) -> Iterable["Object"]:
+        """Return the closure and self."""
+        assert self.closure is not None
+        return reversed(chain(self.closure, (self,)))
+
+    def downward_name_lookup(self, name: str | int) -> Any:
+        """Look up a name in the locals."""
+        return self.name_bindings[name]
+
+    def advanced_downward_lookup(self, ref: Ref) -> tuple[Any]:
+        """Look up a name in the closure."""
+        next_obj = self.downward_name_lookup(ref[0])
+        if len(ref) == 1:
+            return (next_obj,)
+        assert isinstance(next_obj, Object)
+        return (next_obj,) + next_obj.advanced_downward_lookup(ref[1:])
+
+    def downward_lookup(self, ref: Ref) -> Any:
+        """Look up a name in the closure."""
+        return self.advanced_downward_lookup(ref)[-1]
+
+    def closure_name_lookup(self, name: str | int) -> tuple["Object", Any]:
+        """Look up a name in the closure."""
+        for obj in self._closures_and_self:
+            if name in obj.name_bindings:
+                return obj, obj.name_bindings[name]
+
+    def advanced_closure_lookup(self, ref: Ref) -> tuple["Object", tuple[Any]]:
+        """
+        Look up a ref in the closure.
+        This function returns:
+        1. the "peak" object in the closure chain that it had to go to before descending.
+        2. the tuple of objects / values it went through to find the ref
+        """
+
+        for obj in self._closures_and_self:
+            if ref in obj.name_bindings:
+                return obj, obj.name_bindings[ref]
 
 
 resolve_types(Object)
@@ -129,7 +176,7 @@ def _fix_object_closure(obj: Object) -> None:
     for local in obj.locals_.values():
         if isinstance(local, Object):
             local.closure = local_closure
-            local.closure_map = ChainMap(o.name_bindings for o in local_closure)
+            # local.closure_map = ChainMap(o.name_bindings for o in local_closure)
             _fix_object_closure(local)
 
 
@@ -143,6 +190,7 @@ INTERFACE = (Ref.from_one("interface"),)
 
 
 ## Builder
+
 
 def build(tree: ParserRuleContext, fail_fast: bool = False) -> Object:
     """Build the datamodel from an ANTLR context."""
@@ -187,9 +235,7 @@ class Dizzy(AtopileParserVisitor):
     def defaultResult(self):
         return NOTHING
 
-    def visit_iterable_helper(
-        self, children: Iterable
-    ) -> KeyOptMap:
+    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
         """
         Visit multiple children and return a tuple of their results,
         discard any results that are NOTHING and flattening the children's results.
@@ -225,9 +271,7 @@ class Dizzy(AtopileParserVisitor):
             value = NOTHING
         return value
 
-    def visitSimple_stmts(
-        self, ctx: ap.Simple_stmtsContext
-    ) -> KeyOptMap:
+    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
         return self.visit_iterable_helper(ctx.simple_stmt())
 
     def visitTotally_an_integer(self, ctx: ap.Totally_an_integerContext) -> int:
@@ -235,7 +279,9 @@ class Dizzy(AtopileParserVisitor):
         try:
             return int(text)
         except ValueError:
-            self.handle_error(errors.AtoTypeError(f"Expected an integer, but got {text}"))
+            self.handle_error(
+                errors.AtoTypeError(f"Expected an integer, but got {text}")
+            )
             return NOTHING
 
     def visitFile_input(self, ctx: ap.File_inputContext) -> Object:
@@ -243,7 +289,7 @@ class Dizzy(AtopileParserVisitor):
 
         return Object(
             locals_=locals_,
-            name_bindings = locals_.get_named_items(),
+            name_bindings=locals_.get_named_items(),
             supers=MODULE,
             src_ctx=ctx,
         )
@@ -258,7 +304,9 @@ class Dizzy(AtopileParserVisitor):
             case "interface":
                 return INTERFACE
             case _:
-                self.handle_error(errors.AtoError(f"Unknown block type '{block_type_name}'"))
+                self.handle_error(
+                    errors.AtoError(f"Unknown block type '{block_type_name}'")
+                )
                 return NOTHING
 
     def visit_ref_helper(
@@ -277,7 +325,9 @@ class Dizzy(AtopileParserVisitor):
         ):
             return Ref.from_one(str(self.visit(ctx)))
         if isinstance(ctx, (ap.AttrContext, ap.Name_or_attrContext)):
-            return Ref(map(str, self.visit(ctx)),)
+            return Ref(
+                map(str, self.visit(ctx)),
+            )
         self.handle_error(errors.AtoError(f"Unknown reference type: {type(ctx)}"))
         return NOTHING
 
@@ -317,7 +367,9 @@ class Dizzy(AtopileParserVisitor):
 
         if ctx.FROM():
             if not ctx.name_or_attr():
-                self.handle_error(errors.AtoError("Expected a name or attribute after 'from'"))
+                self.handle_error(
+                    errors.AtoError("Expected a name or attribute after 'from'")
+                )
                 return NOTHING
             block_supers = (self.visit_ref_helper(ctx.name_or_attr()),)
         else:
@@ -333,9 +385,7 @@ class Dizzy(AtopileParserVisitor):
             ),
         )
 
-    def visitPindef_stmt(
-        self, ctx: ap.Pindef_stmtContext
-    ) -> KeyOptMap:
+    def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
         ref = self.visit_ref_helper(ctx.totally_an_integer() or ctx.name())
 
         if not ref:
@@ -352,9 +402,7 @@ class Dizzy(AtopileParserVisitor):
 
         return KeyOptMap.from_kv(ref, created_pin)
 
-    def visitSignaldef_stmt(
-        self, ctx: ap.Signaldef_stmtContext
-    ) -> KeyOptMap:
+    def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visit_ref_helper(ctx.name())
 
         # TODO: provide context of where this error was found within the file
@@ -381,12 +429,14 @@ class Dizzy(AtopileParserVisitor):
         imported_element = self.visit_ref_helper(ctx.name_or_attr())
 
         if not from_file:
-            self.handle_error(errors.AtoError("Expected a 'from <file-path>' after 'import'"))
+            self.handle_error(
+                errors.AtoError("Expected a 'from <file-path>' after 'import'")
+            )
             return NOTHING
         if not imported_element:
-            self.handle_error(errors.AtoError(
-                "Expected a name or attribute to import after 'import'"
-            ))
+            self.handle_error(
+                errors.AtoError("Expected a name or attribute to import after 'import'")
+            )
             return NOTHING
 
         if imported_element == "*":
@@ -419,9 +469,7 @@ class Dizzy(AtopileParserVisitor):
         else:
             raise ValueError("Unexpected context in visitConnectable")
 
-    def visitConnect_stmt(
-        self, ctx: ap.Connect_stmtContext
-    ) -> KeyOptMap:
+    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
         """
         Connect interfaces together
         """
@@ -491,9 +539,7 @@ class Dizzy(AtopileParserVisitor):
 
         return KeyOptMap.from_kv(assigned_value_name, assigned_value)
 
-    def visitRetype_stmt(
-        self, ctx: ap.Retype_stmtContext
-    ) -> KeyOptMap:
+    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext) -> KeyOptMap:
         """
         This statement type will replace an existing block with a new one of a subclassed type
 
