@@ -32,11 +32,25 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
+def _attach_closures(obj: Object) -> None:
+    """Fix the closure of an object."""
+    if obj.closure is None:
+        local_closure = (obj,)
+    else:
+        local_closure = obj.closure + (obj,)
+
+    for local in obj.locals_.values():
+        if isinstance(local, Object):
+            local.closure = local_closure
+            _attach_closures(local)
+
+
 def build(tree: ParserRuleContext, fail_fast: bool = False) -> Object:
     """Build the datamodel from an ANTLR context."""
     dizzy = Dizzy(fail_fast)
     result = dizzy.visit(tree)
     assert isinstance(result, Object)
+    _attach_closures(result)
     return result
 
 
