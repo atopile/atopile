@@ -83,16 +83,19 @@ class AtoImportNotFoundError(AtoError):
 
 
 class _Sentinel(enum.Enum):
-    NOTHING = enum.auto()
+    IGNORE_MY_EXCEPTIONS = enum.auto()
 
 
-NOTHING = _Sentinel.NOTHING
+IGNORE_MY_EXCEPTIONS = _Sentinel.IGNORE_MY_EXCEPTIONS
 
 
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
         if isinstance(tb.f_locals.get("self"), class_):
+            if "IGNORE_MY_EXCEPTIONS" in tb.f_locals:
+                if tb.f_locals["IGNORE_MY_EXCEPTIONS"] is IGNORE_MY_EXCEPTIONS:
+                    continue
             return tb.f_locals
     return {}
 
