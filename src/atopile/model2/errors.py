@@ -5,7 +5,8 @@ from contextlib import contextmanager
 from enum import Enum, auto, IntEnum
 from pathlib import Path
 from typing import Optional, Type
-from .parse_utils import get_src_info_from_ctx
+from antlr4 import Token, ParserRuleContext
+from .parse_utils import get_src_info_from_ctx, get_src_info_from_token
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -31,8 +32,12 @@ class AtoError(Exception):
         self.src_col = src_col
 
     @classmethod
-    def from_ctx(cls, message: str, ctx) -> "AtoError":
-        """Create an AtoError from an ANTLR context."""
+    def from_token(cls, message: str, token: Token) -> "AtoError":
+        src_path, src_line, src_col = get_src_info_from_token(token)
+        return cls(message, src_path, src_line, src_col)
+
+    @classmethod
+    def from_ctx(cls, message: str, ctx: ParserRuleContext) -> "AtoError":
         src_path, src_line, src_col = get_src_info_from_ctx(ctx)
         return cls(message, src_path, src_line, src_col)
 
@@ -139,9 +144,9 @@ def _process_error(
         logger.debug("Error info:\n", exc_info=ex)
 
 
-
 class ErrorHandlerMode(Enum):
     """The mode to use when an error occurs."""
+
     COLLECT_ALL = auto()
     RAISE_NON_ATO = auto()
     RAISE_ALL = auto()
@@ -149,7 +154,12 @@ class ErrorHandlerMode(Enum):
 
 class ErrorHandler:
     """Handles errors in the compiler."""
-    def __init__(self, logger: logging.Logger, error_mode: ErrorHandlerMode = ErrorHandlerMode.COLLECT_ALL) -> None:
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        error_mode: ErrorHandlerMode = ErrorHandlerMode.COLLECT_ALL,
+    ) -> None:
         self.logger = logger
         self.error_mode = error_mode
         self.errors: list[Exception] = []

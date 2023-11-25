@@ -1,12 +1,12 @@
+"""CLI command definition for `ato check`."""
+
 import logging
 import sys
-from typing import Dict, List, Tuple
 
 import click
 
-from atopile.cli.common import ingest_config_hat
+from atopile.cli.common import project_options
 from atopile.parser.parser import build_model
-from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 from atopile.targets.targets import (
     Target,
@@ -19,14 +19,11 @@ log.setLevel(logging.INFO)
 
 
 @click.command()
-@ingest_config_hat
-@click.option("--target", multiple=True, default=None)
+@project_options
 @click.option("--debug/--no-debug", default=None)
 @click.option("--strict/--no-strict", default=None)
 def check(
     project: Project,
-    build_config: BuildConfig,
-    target: Tuple[str],
     debug: bool,
     strict: bool,
 ):
@@ -44,32 +41,29 @@ def check(
     if strict is None:
         strict = False
 
-    target_names = target
-    if not target_names:
-        target_names: List[str] = build_config.targets
-
     # build core model
-    model = build_model(project, build_config)
+    model = build_model(project)
 
     # generate targets
-    target_muster = TargetMuster(project, model, build_config)
-    target_muster.try_add_targets(target_names)
+    target_muster = TargetMuster.from_project_and_model(project, model)
 
     # check targets
-    check_results: Dict[Target, TargetCheckResult] = {}
+    check_results: dict[Target, TargetCheckResult] = {}
     for target in target_muster.targets:
         assert isinstance(target, Target)
         result = check_results[target] = target.check()
         # TODO: move this repeated code somewhere common
         if result == TargetCheckResult.UNSOLVABLE:
             log.error(
-                "Target %s is unsolvable. Attempting to generate remaining targets.",
+                "Target %s is unsolvable. Attempting to generate"
+                " remaining targets.",
                 target.name,
             )
             target_muster.targets.remove(target)
         elif result == TargetCheckResult.SOLVABLE:
             log.warning(
-                "Target %s is solvable, but is unstable. Use `ato resolve --target=%s` to stabalise as desired.",
+                "Target %s is solvable, but is unstable."
+                " Use `ato resolve --target=%s` to stabalise as desired.",
                 target.name,
                 target.name,
             )

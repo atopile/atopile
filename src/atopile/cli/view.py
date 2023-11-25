@@ -6,7 +6,7 @@ import click
 import uvicorn
 from atopile.project.project import Project
 from atopile.project.config import BuildConfig
-from atopile.cli.common import ingest_config_hat
+from atopile.cli.common import project_options
 
 # configure logging
 log = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ log.setLevel(logging.DEBUG)
 
 # configure UI
 @click.command()
-@ingest_config_hat
+@project_options
 @click.option("--port", default=2860)  # ato0 -> 2860 on an old phone
 @click.option("--browser/--no-browser", default=True)
 @click.option("--debug/--no-debug", default=False)

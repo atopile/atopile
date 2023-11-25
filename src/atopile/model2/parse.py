@@ -17,7 +17,7 @@ log.setLevel(logging.INFO)
 class ErrorListenerConverter(ErrorListener):
     """Converts an error into an AtoSyntaxError."""
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
-        raise AtoSyntaxError.from_ctx(f"{str(e)} '{msg}'", offendingSymbol)
+        raise AtoSyntaxError.from_token(f"{str(e)} '{msg}'", offendingSymbol)
 
 
 class ErrorListenerCollector(ErrorListenerConverter):
@@ -27,7 +27,7 @@ class ErrorListenerCollector(ErrorListenerConverter):
         super().__init__()
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
-        self.errors.append(AtoSyntaxError.from_ctx(f"{str(e)} '{msg}'", offendingSymbol))
+        self.errors.append(AtoSyntaxError.from_token(f"{str(e)} '{msg}'", offendingSymbol))
 
 
 def make_parser(src_stream: InputStream) -> AtopileParser:

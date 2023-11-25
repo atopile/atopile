@@ -8,13 +8,13 @@ The `.ato` files are human readable and can be version controlled, so you can co
 
 # Getting started
 
-Clone this template project to get started: [https://gitlab.atopile.io/atopile/atopile-project-template](https://gitlab.atopile.io/atopile/atopile-project-template)
+To get started, you can invoke the `ato create 'path/to/your project's name` command. This will clone the [template project](https://gitlab.atopile.io/atopile/atopile-project-template) in your local directory and create a remote directory in atopile's gitlab instance.
 
-Find inspiration from the servo-drive project: [https://gitlab.atopile.io/atopile/servo-drive](https://gitlab.atopile.io/atopile/servo-drive)
+You can find inspiration in a more advanced project like the servo-drive: [https://gitlab.atopile.io/atopile/servo-drive](https://gitlab.atopile.io/atopile/servo-drive)
 
 ## Intentional Omissions
 
-- Detailed Installation -> instructions are in the `atopile` project's README.md and are fluid since there's a bunch of not-so-well-packaged components at the moment
+- Detailed Installation -> instructions are in the `atopile` project's (README.md)[https://gitlab.atopile.io/atopile/atopile/-/blob/main/README.md?ref_type=heads] and are fluid since there's a bunch of not-so-well-packaged components at the moment
 - Creating new projects -> we are activelly working on the language synthax. New keywords and features will be intorduced in the future with potential breaking changes to previous versions of `.ato` files.
 
 ## Project structure
@@ -42,6 +42,14 @@ builds:
 ```
 
 The compiler version follows [sementic versioning](https://semver.org). The required version to compile your project can be specified using [npm's standard](https://docs.npmjs.com/about-semantic-versioning).
+
+## Adding components to your project
+
+Components and footprints can be added manually to your project. For convenience, you can also use the `ato install` command. Here is an example installing the (RP2040 chip)[https://www.lcsc.com/product-detail/Microcontroller-Units-MCUs-MPUs-SOCs_Raspberry-Pi-RP2040_C2040.html]:
+
+`ato install --jlcpcb 'C2040'` 
+
+The command will add your footprint and 3D representation to the KiCAD library (named lib in your folder structure) and create an ato file of the component.
 
 ## Imports
 

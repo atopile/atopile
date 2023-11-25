@@ -1,12 +1,12 @@
+"""CLI command definition for `ato build`."""
+
 import logging
 import sys
-from typing import List, Tuple
 
 import click
 
-from atopile.cli.common import ingest_config_hat
+from atopile.cli.common import project_options
 from atopile.parser.parser import build_model
-from atopile.project.config import BuildConfig
 from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
 
@@ -15,14 +15,11 @@ log.setLevel(logging.INFO)
 
 
 @click.command()
-@ingest_config_hat
-@click.option("--target", multiple=True, default=None)
+@project_options
 @click.option("--debug/--no-debug", default=None)
 @click.option("--strict/--no-strict", default=None)
 def build(
     project: Project,
-    build_config: BuildConfig,
-    target: Tuple[str],
     debug: bool,
     strict: bool,
 ):
@@ -40,17 +37,12 @@ def build(
     if strict is None:
         strict = False
 
-    target_names = target
-    if not target_names:
-        target_names: List[str] = build_config.targets
-
     # build core model
-    model = build_model(project, build_config)
+    model = build_model(project)
     exit_code = 0
 
     # generate targets
-    target_muster = TargetMuster(project, model, build_config)
-    target_muster.try_add_targets(target_names)
+    target_muster = TargetMuster.from_project_and_model(project, model)
 
     # check targets
     if strict:
@@ -71,9 +63,10 @@ def build(
             target_muster.targets.remove(target)
         elif result == TargetCheckResult.SOLVABLE:
             log.warning(
-                "Target %s is solvable, but is unstable. Use `ato resolve --build-config=%s --target=%s %s` to stabalise as desired.",
+                "Target %s is solvable, but is unstable. Use `ato resolve"
+                "--build-config=%s --target=%s %s` to stabalise as desired.",
                 target.name,
-                build_config.name,
+                project.config.selected_build_name,
                 target.name,
                 project.root,
             )
@@ -83,10 +76,11 @@ def build(
             log.info("Target %s passes check.", target.name)
 
     # generate targets
-    log.info("Writing build output to %s", build_config.build_path)
-    build_config.build_path.mkdir(parents=True, exist_ok=True)
+    build_path = project.config.paths.selected_build_path
+    log.info("Writing build output to %s", build_path)
+    build_path.mkdir(parents=True, exist_ok=True)
 
-    targets_string = ", ".join(target_names)
+    targets_string = ", ".join(target.name for target in target_muster.targets)
     log.info("Generating targets %s", targets_string)
     for target in target_muster.targets:
         assert isinstance(target, Target)

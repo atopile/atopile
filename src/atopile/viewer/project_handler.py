@@ -34,11 +34,17 @@ class ProjectHandler:
 
     async def _build_model(self):
         with timed("Building model"):
-            self._model = build_model(self.project, self.build_config)
+            self._model = build_model(self.project)
 
     async def build_model(self):
         async with self._model_mutex:
             self._build_model()
+
+    def get_model_sync(self) -> Model:
+        """Return the model that's available or raise a RuntimeErorr if it's not"""
+        if self._model is None:
+            raise RuntimeError("No model available")
+        return self._model
 
     async def get_model(self) -> Model:
         async with self._model_mutex:
@@ -46,16 +52,22 @@ class ProjectHandler:
                 await self._build_model()
             return self._model
 
-    async def file_in_model(self, filename: str) -> bool:
-        stringified_paths_in_model = [str(f) for f in (await self.get_model()).src_files]
+    @staticmethod
+    def _file_in_model_helper(filename: str, model: Model) -> bool:
+        stringified_paths_in_model = [str(f) for f in model.src_files]
         return filename in stringified_paths_in_model
 
-    # TODO: cache configs and rate limit updates to FS
-    async def get_config(self, filename: str):
+    async def file_in_model(self, filename: str) -> bool:
+        return self._file_in_model_helper(filename, await self.get_model())
+
+    def file_in_model_sync(self, filename: str) -> bool:
+        return self._file_in_model_helper(filename, self.get_model_sync())
+
+    def _get_config_helper(self, filename: str, model: Model) -> dict:
         # filename is expected to be ~/<project_root>/some_file.vis.json
         # to get the ato source file, let's strip the .json
         ato_filename = str(Path(filename).with_suffix("").with_suffix(".ato"))
-        if not await self.file_in_model(ato_filename):
+        if not self._file_in_model_helper(ato_filename, model):
             raise FileNotFoundError
 
         vis_file = self.project.root / Path(filename).with_suffix(".yaml")
@@ -67,6 +79,13 @@ class ProjectHandler:
             vis_data = {}
 
         return vis_data
+
+    # TODO: cache configs and rate limit updates to FS
+    async def get_config(self, filename: str):
+        return self._get_config_helper(filename, await self.get_model())
+
+    def get_config_sync(self, filename: str) -> dict:
+        return self._get_config_helper(filename, self.get_model_sync())
 
     async def update_config(self, filename: str, updates: dict):
         # filename is expected to be ~/<project_root>/some_file.vis.json
@@ -92,7 +111,7 @@ class ProjectHandler:
 
     async def _watch_files(self):
         try:
-            async for changes in watchfiles.awatch(self.project.root, self.project.get_std_lib_path()):
+            async for changes in watchfiles.awatch(self.project.root):
                 log.info("Changes detected in project directory.")
                 # figure out what source files have been updated
                 updated_files = []
@@ -139,5 +158,6 @@ class ProjectHandler:
         # TODO: throw error if path is not in model
         return build_view(
             await self.get_model(),
-            path,
+            self,
+            path
         )

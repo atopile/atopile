@@ -37,5 +37,10 @@ export let settings_dict = {
     },
     stubs: {
         fontSize: 8,
+    },
+    interface: {
+        fontSize: 8,
+        color: "blue",
+        strokeWidth: 3,
     }
 }

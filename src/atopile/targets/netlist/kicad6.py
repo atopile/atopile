@@ -6,10 +6,11 @@ from typing import Dict, List, Optional
 from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from atopile.address import AddrStr
 from atopile.model.accessors import ModelVertexView
-from atopile.targets.netlist.nets import find_net_names, generate_net_name
 from atopile.model.model import EdgeType, Model, VertexType
 from atopile.model.utils import generate_uid_from_path
+from atopile.targets.netlist.nets import find_net_names, generate_net_name
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
 
 log = logging.getLogger(__name__)
@@ -158,7 +159,14 @@ class KicadNetlist:
             f.write(netlist_str)
 
     @classmethod
-    def from_model(cls, model: Model, root_node: str, designators: Dict[str, str]) -> "KicadNetlist":
+    def from_model(
+        cls,
+        model: Model,
+        root_node: str,
+        designators: Dict[str, str],
+        components_to_lib_map: dict[str, str],
+        target: "Kicad6NetlistTarget",
+    ) -> "KicadNetlist":
         """
         :param model: to generate the netlist from
         :param main: path in the graph to compile from
@@ -262,11 +270,34 @@ class KicadNetlist:
 
             # figure out the designators
             designator = designators[root_mvv.relative_path(component_mvvs[component_path])]
+            try:
+                footprint = component_data["footprint"]
+            except KeyError:
+                log.error("Component %s has no footprint", component_path)
+                target.elevate_check_result(TargetCheckResult.UNSOLVABLE)
+                continue
+
+            # if there is a 'lib:' prefix, strip it
+            #TODO: this is a bit of a hack, we should clean up the libs and delete this
+            footprint_path = ""
+            if footprint.startswith("lib:"):
+                footprint = footprint[4:]
+            if ":" in footprint:
+                footprint_path = footprint
+            else:
+                try:
+                    footprint_lib_name = components_to_lib_map[component_path]
+                except KeyError:
+                    log.error("Component %s has no lib", component_path)
+                    target.elevate_check_result(TargetCheckResult.UNSOLVABLE)
+                    continue
+                footprint_path = f"{footprint_lib_name}:{footprint}"
+
             # make the component of your dreams
             component = KicadComponent(
                 ref=designator,
                 value=component_data.get("value", ""),
-                footprint=component_data.get("footprint", ""),
+                footprint=footprint_path,
                 libsource=libparts[component_class_path],
                 tstamp=generate_uid_from_path(component_path),
                 fields=fields,
@@ -282,6 +313,9 @@ class KicadNetlist:
             for ref, pin in pins_by_ref.items():
                 # FIXME: this manual path generation is what got us into strife in the first place... don't do it
                 nodes[f"{component_path}.{ref}"] = KicadNode(component=component, pin=pin)
+
+        if target.check_result == TargetCheckResult.UNSOLVABLE:
+            raise ResourceWarning("Not generating netlist because of unsolvable errors")
 
         # Create the nets
         electrical_graph = model.get_graph_view([EdgeType.connects_to])
@@ -335,14 +369,19 @@ class Kicad6NetlistTarget(Target):
     def __init__(self, muster: TargetMuster) -> None:
         self._netlist: Optional[KicadNetlist] = None
         self._designator_target = muster.ensure_target("designators")
+        self._kicad_lib_paths_target = muster.ensure_target("kicad-lib-paths")
         super().__init__(muster)
 
     def generate(self) -> KicadNetlist:
+        entry = AddrStr(self.project.config.selected_build.entry)
         if self._netlist is None:
+            self._kicad_lib_paths_target.generate()
             self._netlist = KicadNetlist.from_model(
                 self.model,
-                root_node=self.build_config.root_node,
-                designators=self._designator_target.generate()
+                root_node=entry,
+                designators=self._designator_target.generate(),
+                components_to_lib_map=self._kicad_lib_paths_target.component_path_to_lib_name,
+                target=self,
             )
         return self._netlist
 
@@ -355,7 +394,9 @@ class Kicad6NetlistTarget(Target):
 
     def build(self) -> None:
         netlist = self.generate()
-        output_file = self.build_config.build_path / self.build_config.root_file.with_suffix(".net").name
+        entry = AddrStr(self.project.config.selected_build.abs_entry)
+        build_dir = self.project.config.paths.selected_build_path
+        output_file = build_dir / entry.file.with_suffix(".net").name
         netlist.to_file(output_file)
 
     def resolve(self, *args, clean=None, **kwargs) -> None:

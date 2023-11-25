@@ -1,131 +1,115 @@
+# pylint: disable=too-few-public-methods
+
+"""Schema and utils for atopile config files."""
+
+import collections.abc
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List
+from typing import Any, Optional
 
-if TYPE_CHECKING:
-    # See: https://adamj.eu/tech/2021/05/13/python-type-hints-how-to-fix-circular-imports/
-    from atopile.project.project import Project
+import yaml
+from attrs import Factory, define
+from omegaconf import MISSING, OmegaConf
+
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-class BaseConfig:
-    def __init__(self, config_data: dict, project: "Project", name=None) -> None:
-        self._config_data = config_data
-        self.project = project
-        self._name = name
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @classmethod
-    def from_config(cls, config: "BaseConfig") -> "BaseConfig":
-        return cls(config._config_data, config.project, config.name)
-
-    def _return_subconfig(self, key: str, return_type) -> "BaseConfig":
-        return return_type(self._config_data.get(key, {}), self.project, name=key)
-
-    def _return_list_of(self, list_key: str, return_type) -> list:
-        return [
-            return_type(d, self.project) for d in self._config_data.get(list_key, [])
-        ]
-
-    def _return_dict_of(self, dict_key: str, return_type) -> dict:
-        return {
-            k: return_type(v, self.project, name=k)
-            for k, v in self._config_data.get(dict_key, {}).items()
-        }
+USER_CONFIG_PATH = Path("~/.atopile/config.yaml").expanduser().resolve().absolute()
 
 
-class Config(BaseConfig):
-    @property
-    def paths(self) -> "Paths":
-        return self._return_subconfig("paths", Paths)
+@define
+class Paths:
+    """Config grouping for all the paths in a project."""
+    project: Path = MISSING  # should be the absolute path to the project root
 
-    @property
-    def atopile_version(self) -> str:
-        return self._config_data.get("ato-version")
+    src: Path = "./"
+    abs_src: Path = "${.project}/${.src}"
 
-    @property
-    def builds(self) -> Dict[str, "BuildConfig"]:
-        build_dict = self._return_dict_of("builds", BuildConfig)
-        if "default" not in build_dict:
-            build_dict["default"] = BuildConfig("default", {}, self.project)
-        return build_dict
+    build: Path = "build"
+    abs_build: Path = "${.project}/${.build}"
 
-    @property
-    def targets(self) -> Dict[str, "BaseConfig"]:
-        return self._return_dict_of("targets", BaseConfig)
+    footprints: Path = "elec/lib/lib.pretty"
+    abs_footprints: Path = "${.project}/${.footprints}"
 
+    kicad_project: Path = "elec/layout"
+    abs_kicad_project: Path = "${.project}/${.kicad_project}"
 
-class Paths(BaseConfig):
-    @property
-    def build(self) -> Path:
-        build_dir = self._config_data.get("build")
-        if build_dir is None:
-            return (self.project.root / "build").resolve().absolute()
-
-        build_dir = Path(build_dir)
-        if not build_dir.is_absolute():
-            build_dir = self.project.root / build_dir
-
-        return build_dir.resolve().absolute()
+    selected_build_path: Path = "${.abs_build}/${selected_build_name}"
 
 
-class BuildConfig(BaseConfig):
-    @property
-    def default(self) -> "BuildConfig":
-        return self.project.config.builds["default"]
+@define
+class BuildConfig:
+    """Config for a build."""
+    entry: str = MISSING
+    abs_entry: str = "${paths.abs_src}/${.entry}"
 
-    @property
-    def root_file(self) -> Path:
-        if "root-file" not in self._config_data:
-            return
-        return self.project.root / self._config_data["root-file"]
-
-    @property
-    def root_node(self) -> str:
-        return self._config_data.get("root-node", self._config_data.get("root-file"))
-
-    @property
-    def targets(self) -> List[str]:
-        return self._config_data.get("targets") or [
-            "designators",
-            "netlist-kicad6",
-            "bom-jlcpcb",
-        ]
-
-    @property
-    def build_path(self) -> Path:
-        return self.project.config.paths.build / self.name
+    targets: list[str] = [
+        "designators",
+        "netlist-kicad6",
+        "bom-jlcpcb",
+        "kicad-lib-paths",
+    ]
 
 
-class CustomBuildConfig:
-    def __init__(
-        self, name: str, project: "Project", root_file, root_node, targets
-    ) -> None:
-        self._name = name
-        self.project = project
-        self.root_file = root_file
-        self.root_node = root_node
-        self.targets = targets
+@define
+class Config:
+    """
+    The config object for atopile.
+    NOTE: this is the config for both the project, and the user.
+    Project settings take precedent over user settings.
+    """
+    ato_version: str = "^0.0.0"
 
-    @property
-    def name(self) -> str:
-        return self._name
+    paths: Paths = Factory(Paths)
 
-    @staticmethod
-    def from_build_config(build_config: BuildConfig) -> "CustomBuildConfig":
-        return CustomBuildConfig(
-            name=build_config.name,
-            project=build_config.project,
-            root_file=build_config.root_file,
-            root_node=build_config.root_node,
-            targets=build_config.targets,
-        )
+    builds: dict[str, BuildConfig] = Factory(lambda: {"default": BuildConfig()})
+    default_build: BuildConfig = "${.builds[default]}"
 
-    @property
-    def build_path(self) -> Path:
-        return self.project.config.paths.build / self.name
+    selected_build_name: str = "default"
+    selected_build: BuildConfig = "${.builds[${.selected_build_name}]}"
+
+
+def _sanitise_key(s: str) -> str:
+    """Sanitise a string to be a valid python identifier."""
+    return s.replace("-", "_")
+
+
+def _sanitise_item(item: tuple[Any, Any]) -> tuple[Any, Any]:
+    """Sanitise the key of a dictionary item to be a valid python identifier."""
+    k, v = item
+    if isinstance(v, collections.abc.Mapping):
+        return _sanitise_key(k), _sanitise_dict_keys(v)
+    return _sanitise_key(k), v
+
+
+def _sanitise_dict_keys(d: collections.abc.Mapping) -> collections.abc.Mapping:
+    """Sanitise the keys of a dictionary to be valid python identifiers."""
+    return dict(_sanitise_item(item) for item in d.items())
+
+
+def make_config(project_config: Path, build: Optional[str] = None) -> Config:
+    """
+    Make a config object for a project.
+
+    The typing on this is a little white lie... because they're really OmegaConf objects.
+    """
+    structure = Config()
+    structure.paths.project = project_config.parent  # pylint: disable=assigning-non-slot
+    if build is not None:
+        structure.selected_build_name = build
+
+    if USER_CONFIG_PATH.exists():
+        user_config = OmegaConf.load(USER_CONFIG_PATH)
+    else:
+        user_config = OmegaConf.create()  # empty config
+
+    with project_config.open() as f:
+        config_data = yaml.safe_load(f)
+
+    return OmegaConf.merge(
+        OmegaConf.structured(structure),  # structure
+        user_config,  # user config
+        OmegaConf.create(_sanitise_dict_keys(config_data)),  # project config
+    )

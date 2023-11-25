@@ -1,21 +1,26 @@
+import copy
 import logging
-from collections import OrderedDict
+from collections import ChainMap, OrderedDict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import ruamel.yaml
 from attrs import frozen
 
-from atopile.model.model import Model, VertexType
+from atopile.address import AddrStr
 from atopile.model.accessors import ModelVertexView
-from atopile.project.config import BaseConfig
+from atopile.model.model import Model, VertexType
+from atopile.project.project import Project
 from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
+
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+
 yaml = ruamel.yaml.YAML()
 yaml.preserve_quotes = True
+
 
 @frozen
 class ImplicitPartSpec:
@@ -48,6 +53,7 @@ class ImplicitPartSpec:
         result = {"instance_of": self.instance_of, "footprint": self.footprint, "value": self.value}
         return {k: v for k, v in result.items() if v is not None}
 
+
 def part_spec_groups(model: Model, root_node_path: str) -> Tuple[Iterable[ModelVertexView], Dict[ImplicitPartSpec, Iterable[ModelVertexView]], Dict[str, ImplicitPartSpec]]:
     root_node = ModelVertexView.from_path(model, root_node_path)
     components = root_node.get_descendants(VertexType.component)
@@ -59,10 +65,6 @@ def part_spec_groups(model: Model, root_node_path: str) -> Tuple[Iterable[ModelV
         spec_by_component[component.path] = part_spec
     return components, components_by_spec, spec_by_component
 
-class BomJlcpcbTargetConfig(BaseConfig):
-    @property
-    def jlcpcb_map_file_template(self) -> str:
-        return self._config_data.get("jlcpcb-file", "{build-config}-bom-jlcpcb.yaml")
 
 class BomJlcpcbTarget(Target):
     name = "bom-jlcpcb"
@@ -88,12 +90,10 @@ class BomJlcpcbTarget(Target):
 
         super().__init__(muster)
 
-    @property
-    def config(self) -> BomJlcpcbTargetConfig:
-        return BomJlcpcbTargetConfig.from_config(super().config)
-
     def get_jlcpcb_map_file(self) -> Path:
-        return self.project.root / self.config.jlcpcb_map_file_template.format(**{"build-config": self.build_config.name})
+        src_path = self.project.config.paths.abs_src
+        bom_map = f"{self.project.config.selected_build_name}-bom-jlcpcb.yaml"
+        return src_path / bom_map
 
     def build(self) -> None:
         if self._bom is None:
@@ -103,7 +103,10 @@ class BomJlcpcbTarget(Target):
             log.error(f"Cannot build {self.name} target due to missing translations. Run `ato resolve {self.name}` to fix this.")
             return
 
-        bom_path = self.build_config.build_path / self.build_config.root_file.with_suffix(".bom.csv").name
+        build_dir = self.project.config.paths.abs_build
+        build_entry = AddrStr(self.project.config.selected_build.entry)
+        bom_filename = build_entry.file.with_suffix(".bom.csv").name
+        bom_path = build_dir / bom_filename
         with bom_path.open("w") as f:
             f.write(self._bom)
 
@@ -173,15 +176,51 @@ class BomJlcpcbTarget(Target):
             jlcpcb_map = yaml.load("{}")
 
         # get implicit part specs
-        components, _, spec_by_component = part_spec_groups(self.model, self.build_config.root_node)
+        entry = AddrStr(self.project.config.selected_build.entry)
+        components, _, spec_by_component = part_spec_groups(self.model, entry)
 
         # get implicit spec-to-jlcpcb map
-        specs_to_jlcpcb = {}
-        for data in jlcpcb_map.get("by-spec", []):
-            if data.get("jlcpcb", "<fill-me>") != "<fill-me>":
-                specs_to_jlcpcb[ImplicitPartSpec.from_dict(data)] = data["jlcpcb"]
-            else:
-                log.warning(f"Missing jlcpcb part number for {data}.")
+        def _spec_data_to_map(
+            spec_data: List[Dict[str, Any]],
+            path_offset: Optional[str] = None
+        ) -> Dict[ImplicitPartSpec, str]:
+            """
+            Convert a list of spec data to a map of spec to jlcpcb part number.
+            If the path_offset is provided, it will be prepended to the instance_of field.
+            """
+            spec_map = {}
+            for _data in spec_data:
+                data = copy.deepcopy(_data)
+                if data.get("jlcpcb", "<fill-me>") != "<fill-me>":
+                    # FIXME: please lord forgive me for these sins
+                    if path_offset is not None:
+                        if not data["instance_of"].startswith("std/"):
+                            data["instance_of"] = path_offset + "/" + data["instance_of"]
+
+                    spec_map[ImplicitPartSpec.from_dict(data)] = data["jlcpcb"]
+
+                else:
+                    log.warning(f"Missing jlcpcb part number for {data}.")
+            return spec_map
+
+        top_level_specs_to_jlcpcb = _spec_data_to_map(jlcpcb_map.get("by-spec", []))
+
+        # FIXME: big o'l hack; globbing the bom-maps and sorting them by length ISN'T a good way to do this
+        bom_map_paths = sorted(self.project.root.glob("**/*-bom-jlcpcb.yaml"), key=lambda p: len(p.parts))
+
+        bom_map_by_specs: dict[Path, Dict[ImplicitPartSpec, str]] = {}
+        for bom_map_path in bom_map_paths:
+            with bom_map_path.open() as f:
+                bom_map = yaml.load(f)
+            if not isinstance(bom_map, dict):
+                log.warning(f"Skipping {bom_map_path} because it is not in the correct format.")
+                continue
+            # FIXME: how do we deal with subconfigs build selection here?
+            sub_project = Project.from_path(bom_map_path)
+            standardised_sub_project_root = self.project.standardise_import_path(sub_project.config.paths.abs_src)
+            bom_map_by_specs[bom_map_path] = _spec_data_to_map(bom_map.get("by-spec", []), str(standardised_sub_project_root))
+
+        specs_to_jlcpcb = ChainMap(top_level_specs_to_jlcpcb, *bom_map_by_specs.values())
 
         # build up component to jlcpcb map
         component_to_jlcpcb_map = {}
@@ -233,7 +272,8 @@ class BomJlcpcbTarget(Target):
             comment = component_view.get_data("value", "")
 
             # designator map's paths are relative to the root node
-            root_node = ModelVertexView.from_path(self.model, self.build_config.root_node)
+            entry = AddrStr(self.project.config.selected_build.entry)
+            root_node = ModelVertexView.from_path(self.model, entry)
             like_components = [ModelVertexView.from_path(self.model, p) for p in component_paths]
             designators = ",".join(component_to_designator_map[root_node.relative_path(p)] for p in like_components)
             if len(component_paths) > 1:
