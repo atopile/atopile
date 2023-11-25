@@ -5,20 +5,23 @@ from pathlib import Path
 from antlr4 import CommonTokenStream, FileStream, InputStream
 from antlr4.error.ErrorListener import ErrorListener
 
-from atopile.model2.errors import AtoSyntaxError
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
+
+from .errors import AtoSyntaxError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
 class ErrorListenerConverter(ErrorListener):
+    """Converts an error into an AtoSyntaxError."""
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
         raise AtoSyntaxError.from_ctx(f"{str(e)} '{msg}'", offendingSymbol)
 
 
 class ErrorListenerCollector(ErrorListenerConverter):
+    """Collects errors into a list."""
     def __init__(self) -> None:
         self.errors = []
         super().__init__()
@@ -28,6 +31,7 @@ class ErrorListenerCollector(ErrorListenerConverter):
 
 
 def make_parser(src_stream: InputStream) -> AtopileParser:
+    """Make a parser from a stream."""
     lexer = AtopileLexer(src_stream)
     stream = CommonTokenStream(lexer)
     parser = AtopileParser(stream)
@@ -36,12 +40,14 @@ def make_parser(src_stream: InputStream) -> AtopileParser:
 
 
 def set_error_listener(parser: AtopileParser, error_listener: ErrorListener) -> None:
+    """Utility function to set the error listener on a parser."""
     parser.removeErrorListeners()
     parser.addErrorListener(error_listener)
 
 
 @contextmanager
 def defer_parser_errors(parser: AtopileParser) -> None:
+    """Defer errors from a parser until the end of the context manager."""
     error_listener = ErrorListenerCollector()
     set_error_listener(parser, error_listener)
 

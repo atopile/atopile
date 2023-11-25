@@ -1,3 +1,4 @@
+import enum
 import logging
 import textwrap
 import traceback
@@ -5,19 +6,10 @@ from contextlib import contextmanager
 from enum import IntEnum
 from pathlib import Path
 from typing import Optional, Type
-
-from antlr4 import InputStream, Token
+from .parse_utils import get_src_info_from_ctx
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
-
-# I think it'd make far more sense for this to exist in .parse
-# however, it'd become a circular import
-def get_src_info_from_ctx(ctx) -> tuple[str, str, str]:
-    """Get the source path, line, and column from a context"""
-    token: Token = ctx.start
-    input_stream: InputStream = ctx.start.source[1]
-    return input_stream.name, token.line, token.column
 
 
 class AtoError(Exception):
@@ -27,11 +19,11 @@ class AtoError(Exception):
 
     def __init__(
         self,
+        *args: object,
         message: str = "",
         src_path: Optional[str | Path] = None,
         src_line: Optional[int] = None,
         src_col: Optional[int] = None,
-        *args: object,
     ) -> None:
         super().__init__(message, *args)
         self.message = message
@@ -41,11 +33,13 @@ class AtoError(Exception):
 
     @classmethod
     def from_ctx(cls, message: str, ctx) -> "AtoError":
+        """Create an AtoError from an ANTLR context."""
         src_path, src_line, src_col = get_src_info_from_ctx(ctx)
         return cls(message, src_path, src_line, src_col)
 
     @property
     def user_facing_name(self):
+        """Return the name of this error, without the "Ato" prefix."""
         error_name = self.__class__.__name__
         if error_name.startswith("Ato"):
             return error_name[3:]
@@ -88,7 +82,15 @@ class AtoImportNotFoundError(AtoError):
     """
 
 
+class _Sentinel(enum.Enum):
+    NOTHING = enum.auto()
+
+
+NOTHING = _Sentinel.NOTHING
+
+
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
+    """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
         if isinstance(tb.f_locals.get("self"), class_):
             return tb.f_locals
@@ -167,7 +169,7 @@ def write_errors_to_log(
 
     try:
         yield
-    except (Exception, ExceptionGroup) as ex:
+    except (Exception, ExceptionGroup) as ex:  # pylint: disable=broad-except
         _process_error(ex, visitor_type, logger)
         if reraise == ReraiseBehavior.RERAISE:
             raise
