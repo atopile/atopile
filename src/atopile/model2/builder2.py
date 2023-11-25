@@ -2,12 +2,13 @@
 Find import references.
 """
 
-from typing import Any, Mapping
+from typing import Mapping
 
 from . import errors
 from .datamodel import Import, Object
-from .datatypes import Ref
+# from .lookup import downward_lookup_ref
 from .parse_utils import get_src_info_from_ctx
+from .datatypes import Ref
 
 
 def lookup_filename(cwd: str, filename: str) -> str:
@@ -15,37 +16,13 @@ def lookup_filename(cwd: str, filename: str) -> str:
     raise NotImplementedError
 
 
-def lookup_ref(obj: Object, ref: Ref) -> Any:
-    """
-    Look up a ref as a path.
-
-    Say you're looking for a.b.c
-
-    Start by looking for a.b.c in the current object
-    If that doesn't exist, look for a.b
-    If that doesn't exist, look for a
-    We start this way because imports can be multipart
-
-    Once we find something, recurse to look for the remaining section of the reference, or return if we're done
-    """
-    if len(ref) == 0:
-        return (obj,)
+def lookup_ref(obj: Object, ref: Ref) -> Object:
+    """Basic ref lookup"""
+    if ref.count() != 1:
+        raise NotImplementedError
 
     if ref in obj.named_locals:
         return obj.named_locals[ref]
-
-    for ref_len in range(len(ref)-1, 0, -1):
-        ref_part = ref[:ref_len]
-        if ref_part in obj.named_locals:
-            remaining_ref = ref[ref_len:]
-            next_obj = obj.named_locals[ref_part]
-            if isinstance(next_obj, Object):
-                return lookup_ref(next_obj, remaining_ref)
-
-            if isinstance(next_obj, Import):
-                raise TypeError("Importing from other files' import is not supported.")
-
-            raise TypeError(f"Cannot look up {remaining_ref} in {next_obj}")
 
     raise KeyError(f"Name '{ref}' not found.")
 
