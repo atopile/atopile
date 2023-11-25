@@ -4,19 +4,17 @@ import pytest
 
 from atopile.dev.parse import parse_as_file, parser_from_src_code
 from atopile.model2 import errors
-from atopile.model2.datamodel1 import (
+from atopile.model2.builder1 import Dizzy
+from atopile.model2.datamodel import (
     COMPONENT,
     INTERFACE,
     MODULE,
     PIN,
     SIGNAL,
-    Dizzy,
     Import,
     Link,
     Object,
     Replace,
-    KeyOptItem,
-    KeyOptMap,
 )
 
 # =========================
@@ -152,16 +150,16 @@ def test_interface():
     dizzy = Dizzy(True)
     results = dizzy.visitFile_input(tree)
     results.src_ctx = None
-    assert results.supers == MODULE
+    assert results.supers_refs == MODULE
     assert len(results.locals_) == 1
     assert results.locals_[0].ref == ("interface1",)
     interface: Object = results.locals_[0].value
-    assert interface.supers == INTERFACE
+    assert interface.supers_refs == INTERFACE
     assert len(interface.locals_) == 2
     assert interface.locals_[0].ref == ("signal_a",)
-    assert interface.locals_[0].value.supers == SIGNAL
+    assert interface.locals_[0].value.supers_refs == SIGNAL
     assert interface.locals_[1].ref == ("signal_b",)
-    assert interface.locals_[1].value.supers == SIGNAL
+    assert interface.locals_[1].value.supers_refs == SIGNAL
 
 
 def test_visitSignaldef_stmt():
@@ -176,7 +174,7 @@ def test_visitSignaldef_stmt():
     assert ret[0].ref == ("signal_a",)
 
     assert isinstance(ret[0].value, Object)
-    assert ret[0].value.supers == SIGNAL
+    assert ret[0].value.supers_refs == SIGNAL
 
 
 def test_visitPindef_stmt():
@@ -189,7 +187,7 @@ def test_visitPindef_stmt():
     assert len(ret) == 1
     assert ret[0].ref == ("pin_a",)
     assert isinstance(ret[0].value, Object)
-    assert ret[0].value.supers == PIN
+    assert ret[0].value.supers_refs == PIN
 
 
 # Connect statement return a tuple as there might be signal or pin instantiation within it
@@ -201,8 +199,8 @@ def test_visitConnect_stmt_simple():
     ret = dizzy.visitConnect_stmt(ctx)
     assert len(ret[0]) == 2
     link = ret[0][1]
-    assert link.source == ("pin_a",)
-    assert link.target == ("pin_b",)
+    assert link.source_ref == ("pin_a",)
+    assert link.target_ref == ("pin_b",)
 
 
 def test_visitRetype_stmt():
@@ -212,7 +210,7 @@ def test_visitRetype_stmt():
     dizzy = Dizzy(True)
     ret = dizzy.visitRetype_stmt(ctx)
     assert len(ret) == 1
-    assert ret[0] == (None, Replace(original=("a",), replacement=("b",)))
+    assert ret[0] == (None, Replace(original_ref=("a",), replacement_ref=("b",)))
 
 
 def test_visitConnect_stmt_instance():
@@ -227,16 +225,16 @@ def test_visitConnect_stmt_instance():
 
     assert ret[0].ref is None
     assert isinstance(ret[0].value, Link)
-    assert ret[0].value.source == ("pin_a",)
-    assert ret[0].value.target == ("sig_b",)
+    assert ret[0].value.source_ref == ("pin_a",)
+    assert ret[0].value.target_ref == ("sig_b",)
 
     assert ret[1].ref == ("pin_a",)
     assert isinstance(ret[1].value, Object)
-    assert ret[1].value.supers == PIN
+    assert ret[1].value.supers_refs == PIN
 
     assert ret[2].ref == ("sig_b",)
     assert isinstance(ret[2].value, Object)
-    assert ret[2].value.supers == SIGNAL
+    assert ret[2].value.supers_refs == SIGNAL
 
 
 def test_visitImport_stmt():
@@ -246,7 +244,7 @@ def test_visitImport_stmt():
     dizzy = Dizzy(True)
     ret = dizzy.visitImport_stmt(ctx)
     assert len(ret) == 1
-    assert ret[0] == (("Module1",), Import(what=("Module1",), from_="test_import.ato"))
+    assert ret[0] == (("Module1",), Import(what_ref=("Module1",), from_name="test_import.ato"))
 
 
 def test_visitBlockdef():
@@ -265,13 +263,13 @@ def test_visitBlockdef():
 
     comp1: Object = results.value
     assert isinstance(comp1, Object)
-    assert comp1.supers == (("comp2",),)
+    assert comp1.supers_refs == (("comp2",),)
     assert len(comp1.locals_) == 1
 
     assert comp1.locals_[0].ref == ("signal_a",)
     comp2: Object = comp1.locals_[0].value
     assert isinstance(comp2, Object)
-    assert comp2.supers == SIGNAL
+    assert comp2.supers_refs == SIGNAL
 
 
 def test_visitAssign_stmt_value():
@@ -301,7 +299,7 @@ def test_visitNew_stmt():
     dizzy = Dizzy(True)
     results = dizzy.visitNew_stmt(ctx)
     assert isinstance(results, Object)
-    assert results.supers == (("Bar",),)
+    assert results.supers_refs == (("Bar",),)
     assert results.locals_ == ()
 
 
@@ -317,22 +315,22 @@ def test_visitModule1LayerDeep():
     dizzy = Dizzy(True)
     results = dizzy.visitFile_input(tree)
     assert isinstance(results, Object)
-    assert results.supers == MODULE
+    assert results.supers_refs == MODULE
     assert len(results.locals_) == 1
     assert results.locals_[0].ref == ("comp1",)
     comp1: Object = results.locals_[0].value
-    assert comp1.supers == COMPONENT
+    assert comp1.supers_refs == COMPONENT
     assert len(comp1.locals_) == 3
     assert comp1.locals_[0].ref == ("signal_a",)
     assert isinstance(comp1.locals_[0].value, Object)
-    assert comp1.locals_[0].value.supers == SIGNAL
+    assert comp1.locals_[0].value.supers_refs == SIGNAL
     assert comp1.locals_[1].ref == ("signal_b",)
     assert isinstance(comp1.locals_[1].value, Object)
-    assert comp1.locals_[1].value.supers == SIGNAL
+    assert comp1.locals_[1].value.supers_refs == SIGNAL
     assert comp1.locals_[2].ref is None
     assert isinstance(comp1.locals_[2].value, Link)
-    assert comp1.locals_[2].value.source == ("signal_a",)
-    assert comp1.locals_[2].value.target == ("signal_b",)
+    assert comp1.locals_[2].value.source_ref == ("signal_a",)
+    assert comp1.locals_[2].value.target_ref == ("signal_b",)
 
 
 def test_visitModule_pin_to_signal():
@@ -345,24 +343,24 @@ def test_visitModule_pin_to_signal():
     dizzy = Dizzy(True)
     results = dizzy.visitFile_input(tree)
     assert isinstance(results, Object)
-    assert results.supers == MODULE
+    assert results.supers_refs == MODULE
     assert len(results.locals_) == 1
 
     assert results.locals_[0].ref == ("comp1",)
     comp1: Object = results.locals_[0].value
-    assert comp1.supers == COMPONENT
+    assert comp1.supers_refs == COMPONENT
     assert len(comp1.locals_) == 3
 
     assert comp1.locals_[0].ref is None
     link = comp1.locals_[0].value
     assert isinstance(link, Link)
-    assert link.source == ("signal_a",)
-    assert link.target == ("p1",)
+    assert link.source_ref == ("signal_a",)
+    assert link.target_ref == ("p1",)
 
     assert comp1.locals_[1].ref == ("signal_a",)
     assert isinstance(comp1.locals_[1].value, Object)
-    assert comp1.locals_[1].value.supers == SIGNAL
+    assert comp1.locals_[1].value.supers_refs == SIGNAL
 
     assert comp1.locals_[2].ref == ("p1",)
     assert isinstance(comp1.locals_[2].value, Object)
-    assert comp1.locals_[2].value.supers == PIN
+    assert comp1.locals_[2].value.supers_refs == PIN

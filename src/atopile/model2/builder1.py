@@ -6,190 +6,30 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 import enum
 import itertools
 import logging
-from itertools import chain
-from typing import Any, Iterable, Mapping, Optional
+from typing import Iterable, Optional
 
 from antlr4 import ParserRuleContext
-from attrs import define, field, resolve_types
 
 from atopile.model2 import errors
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
+from .datamodel import (
+    COMPONENT,
+    INTERFACE,
+    MODULE,
+    PIN,
+    SIGNAL,
+    Import,
+    Link,
+    Object,
+    Replace,
+)
+from .datatypes import KeyOptItem, KeyOptMap, Ref
+
+
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
-
-
-class Ref(tuple[str | int]):
-    """Shell class to provide basic utils for a reference."""
-
-    @classmethod
-    def from_one(cls, name: str | int) -> "Ref":
-        """Return a Ref with a single item."""
-        return cls((name,))
-
-
-class KeyOptItem(tuple[Optional[Ref], Any]):
-    """A class representing anf optionally-named thing."""
-
-    @property
-    def ref(self) -> Optional[Ref]:
-        """Return the name of this item, if it has one."""
-        return self[0]
-
-    @property
-    def value(self) -> Any:
-        """Return the value of this item."""
-        return self[1]
-
-    @classmethod
-    def from_kv(cls, key: Optional[Ref], value: Any) -> "KeyOptItem":
-        """Return a KeyOptItem with a single item."""
-        return KeyOptItem((key, value))
-
-
-class KeyOptMap(tuple[KeyOptItem]):
-    """A class representing a set of optionally-named things."""
-
-    def get_named_items(self) -> Mapping[str, Any]:
-        """Return all the named items in this set, ignoring the unnamed ones."""
-        return dict(filter(lambda x: x.ref is not None, self))
-
-    def get_unnamed_items(self) -> Iterable[Any]:
-        """Return an interable of all the unnamed items in this set."""
-        return map(lambda x: x.value, filter(lambda x: x.ref is None, self))
-
-    def keys(self) -> Iterable[Ref]:
-        """Return an iterable of all the names in this set."""
-        return map(lambda x: x.ref, filter(lambda x: x.ref is not None, self))
-
-    def values(self) -> Iterable[Any]:
-        """Return an iterable of all the values in this set."""
-        return map(lambda x: x.value, self)
-
-    @classmethod
-    def from_item(cls, item: KeyOptItem) -> "KeyOptMap":
-        """Return a KeyOptMap with a single item."""
-        return KeyOptMap((item,))
-
-    @classmethod
-    def from_kv(cls, key: Optional[Ref], value: Any) -> "KeyOptMap":
-        """Return a KeyOptMap with a single item."""
-        return cls.from_item(KeyOptItem.from_kv(key, value))
-
-
-@define
-class Base:
-    """Base class for all objects in the datamodel."""
-
-    # this is optional only because it makes testing convenient
-    src_ctx: ParserRuleContext = field(default=None, kw_only=True, eq=False)
-
-
-@define
-class Link(Base):
-    """Represent a connection between two connectable things."""
-
-    source: Ref
-    target: Ref
-
-
-@define
-class Replace(Base):
-    """Represent a replacement of one object with another."""
-
-    original: Ref
-    replacement: Ref
-
-
-@define
-class Import(Base):
-    """Represent an import statement."""
-
-    what: Ref
-    from_: str
-
-
-@define
-class Object(Base):
-    """Represent a container class."""
-
-    supers: tuple[Ref]
-    locals_: KeyOptMap
-    name_bindings: Mapping[str, Any]
-
-    # configured after construction
-    closure: Optional[tuple["Object"]] = None
-    # closure_map: Mapping[Optional[Ref], "Object"] = None
-
-    @property
-    def _closures_and_self(self) -> Iterable["Object"]:
-        """Return the closure and self."""
-        assert self.closure is not None
-        return reversed(chain(self.closure, (self,)))
-
-    def downward_name_lookup(self, name: str | int) -> Any:
-        """Look up a name in the locals."""
-        return self.name_bindings[name]
-
-    def advanced_downward_lookup(self, ref: Ref) -> tuple[Any]:
-        """Look up a name in the closure."""
-        next_obj = self.downward_name_lookup(ref[0])
-        if len(ref) == 1:
-            return (next_obj,)
-        assert isinstance(next_obj, Object)
-        return (next_obj,) + next_obj.advanced_downward_lookup(ref[1:])
-
-    def downward_lookup(self, ref: Ref) -> Any:
-        """Look up a name in the closure."""
-        return self.advanced_downward_lookup(ref)[-1]
-
-    def closure_name_lookup(self, name: str | int) -> tuple["Object", Any]:
-        """Look up a name in the closure."""
-        for obj in self._closures_and_self:
-            if name in obj.name_bindings:
-                return obj, obj.name_bindings[name]
-
-    def advanced_closure_lookup(self, ref: Ref) -> tuple["Object", tuple[Any]]:
-        """
-        Look up a ref in the closure.
-        This function returns:
-        1. the "peak" object in the closure chain that it had to go to before descending.
-        2. the tuple of objects / values it went through to find the ref
-        """
-
-        for obj in self._closures_and_self:
-            if ref in obj.name_bindings:
-                return obj, obj.name_bindings[ref]
-
-
-resolve_types(Object)
-
-
-def _fix_object_closure(obj: Object) -> None:
-    """Fix the closure of an object."""
-    if obj.closure is None:
-        local_closure = (obj,)
-    else:
-        local_closure = obj.closure + (obj,)
-
-    for local in obj.locals_.values():
-        if isinstance(local, Object):
-            local.closure = local_closure
-            # local.closure_map = ChainMap(o.name_bindings for o in local_closure)
-            _fix_object_closure(local)
-
-
-# these are the build-in superclasses that have special meaning to the compiler
-MODULE = (Ref.from_one("module"),)
-COMPONENT = MODULE + (Ref.from_one("component"),)
-
-PIN = (Ref.from_one("pin"),)
-SIGNAL = (Ref.from_one("signal"),)
-INTERFACE = (Ref.from_one("interface"),)
-
-
-## Builder
 
 
 def build(tree: ParserRuleContext, fail_fast: bool = False) -> Object:
@@ -197,7 +37,6 @@ def build(tree: ParserRuleContext, fail_fast: bool = False) -> Object:
     dizzy = Dizzy(fail_fast)
     result = dizzy.visit(tree)
     assert isinstance(result, Object)
-    _fix_object_closure(result)
     return result
 
 
@@ -222,14 +61,18 @@ class Dizzy(AtopileParserVisitor):
         self.errors: list[Exception] = []
         super().__init__()
 
-    def handle_error(self_, error: Exception) -> Exception:
+    def handle_error(self, error: Exception) -> Exception:
         """
         Deal with an error, either by shoving it in the error list or raising it.
-        NOTE: self_ is named strangely because it's detected by the error handler otherwise.
         """
-        if self_.fail_fast:
+        # This means that the automatic error handler won't show this function as the source of the error
+        # Instead, it'll continue down the traceback to whatever called this function
+        IGNORE_MY_EXCEPTIONS = errors.IGNORE_MY_EXCEPTIONS  # pylint: disable=unused-variable,invalid-name
+
+        if self.fail_fast:
             raise error
-        self_.errors.append(error)
+
+        self.errors.append(error)
         return error
 
     def defaultResult(self):
@@ -289,8 +132,7 @@ class Dizzy(AtopileParserVisitor):
 
         return Object(
             locals_=locals_,
-            name_bindings=locals_.get_named_items(),
-            supers=MODULE,
+            supers_refs=MODULE,
             src_ctx=ctx,
         )
 
@@ -378,9 +220,8 @@ class Dizzy(AtopileParserVisitor):
         return KeyOptItem.from_kv(
             self.visit_ref_helper(ctx.name()),
             Object(
-                supers=block_supers,
+                supers_refs=block_supers,
                 locals_=block_returns,
-                name_bindings=block_returns.get_named_items(),
                 src_ctx=ctx,
             ),
         )
@@ -394,9 +235,8 @@ class Dizzy(AtopileParserVisitor):
 
         # TODO: reimplement this error handling at the above level
         created_pin = Object(
-            supers=PIN,
+            supers_refs=PIN,
             locals_=KeyOptMap(),
-            name_bindings={},
             src_ctx=ctx,
         )
 
@@ -411,9 +251,8 @@ class Dizzy(AtopileParserVisitor):
             return NOTHING
 
         created_signal = Object(
-            supers=SIGNAL,
+            supers_refs=SIGNAL,
             locals_=KeyOptMap(),
-            name_bindings={},
             src_ctx=ctx,
         )
         # TODO: reimplement this error handling at the above level
@@ -444,8 +283,8 @@ class Dizzy(AtopileParserVisitor):
             raise NotImplementedError("import *")
 
         import_ = Import(
-            what=imported_element,
-            from_=from_file,
+            what_ref=imported_element,
+            from_name=from_file,
             src_ctx=ctx,
         )
 
@@ -497,9 +336,8 @@ class Dizzy(AtopileParserVisitor):
         class_to_init = self.visit_ref_helper(ctx.name_or_attr())
 
         return Object(
-            supers=(class_to_init,),
+            supers_refs=(class_to_init,),
             locals_=KeyOptMap(),
-            name_bindings={},
             src_ctx=ctx,
         )
 
@@ -551,8 +389,8 @@ class Dizzy(AtopileParserVisitor):
 
         replace = Replace(
             src_ctx=ctx,
-            original=original_name,
-            replacement=replaced_name,
+            original_ref=original_name,
+            replacement_ref=replaced_name,
         )
 
         return KeyOptMap.from_kv(None, replace)
