@@ -69,25 +69,11 @@ class Dizzy(AtopileParserVisitor):
 
     def __init__(
         self,
-        fail_fast: bool = False,
+        error_handler: errors.ErrorHandler,
     ) -> None:
-        self.fail_fast = fail_fast
+        self.error_handler = error_handler
         self.errors: list[Exception] = []
         super().__init__()
-
-    def handle_error(self, error: Exception) -> Exception:
-        """
-        Deal with an error, either by shoving it in the error list or raising it.
-        """
-        # This means that the automatic error handler won't show this function as the source of the error
-        # Instead, it'll continue down the traceback to whatever called this function
-        IGNORE_MY_EXCEPTIONS = errors.IGNORE_MY_EXCEPTIONS  # pylint: disable=unused-variable,invalid-name
-
-        if self.fail_fast:
-            raise error
-
-        self.errors.append(error)
-        return error
 
     def defaultResult(self):
         return NOTHING
@@ -124,7 +110,7 @@ class Dizzy(AtopileParserVisitor):
         elif ctx.compound_stmt():
             value = KeyOptMap((self.visit(ctx.compound_stmt()),))
         else:
-            self.handle_error(errors.AtoError("Unexpected statement type"))
+            self.error_handler.handle(errors.AtoError("Unexpected statement type"))
             value = NOTHING
         return value
 
@@ -136,7 +122,7 @@ class Dizzy(AtopileParserVisitor):
         try:
             return int(text)
         except ValueError:
-            self.handle_error(
+            self.error_handler.handle(
                 errors.AtoTypeError(f"Expected an integer, but got {text}")
             )
             return NOTHING
@@ -160,7 +146,7 @@ class Dizzy(AtopileParserVisitor):
             case "interface":
                 return INTERFACE
             case _:
-                self.handle_error(
+                self.error_handler.handle(
                     errors.AtoError(f"Unknown block type '{block_type_name}'")
                 )
                 return NOTHING
@@ -184,7 +170,7 @@ class Dizzy(AtopileParserVisitor):
             return Ref(
                 map(str, self.visit(ctx)),
             )
-        self.handle_error(errors.AtoError(f"Unknown reference type: {type(ctx)}"))
+        self.error_handler.handle(errors.AtoError(f"Unknown reference type: {type(ctx)}"))
         return NOTHING
 
     def visitName(self, ctx: ap.NameContext) -> str | int:
@@ -206,7 +192,7 @@ class Dizzy(AtopileParserVisitor):
         elif ctx.attr():
             return self.visitAttr(ctx.attr())
 
-        self.handle_error(errors.AtoError("Expected a name or attribute"))
+        self.error_handler.handle(errors.AtoError("Expected a name or attribute"))
         return NOTHING
 
     def visitBlock(self, ctx) -> KeyOptMap:
@@ -215,7 +201,7 @@ class Dizzy(AtopileParserVisitor):
         elif ctx.stmt():
             return self.visit_iterable_helper(ctx.stmt())
         else:
-            self.handle_error(errors.AtoError("Unexpected block type"))
+            self.error_handler.handle(errors.AtoError("Unexpected block type"))
             return NOTHING
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptItem:
@@ -223,7 +209,7 @@ class Dizzy(AtopileParserVisitor):
 
         if ctx.FROM():
             if not ctx.name_or_attr():
-                self.handle_error(
+                self.error_handler.handle(
                     errors.AtoError("Expected a name or attribute after 'from'")
                 )
                 return NOTHING
@@ -244,7 +230,7 @@ class Dizzy(AtopileParserVisitor):
         ref = self.visit_ref_helper(ctx.totally_an_integer() or ctx.name())
 
         if not ref:
-            self.handle_error(errors.AtoError("Pins must have a name"))
+            self.error_handler.handle(errors.AtoError("Pins must have a name"))
             return NOTHING
 
         # TODO: reimplement this error handling at the above level
@@ -261,7 +247,7 @@ class Dizzy(AtopileParserVisitor):
 
         # TODO: provide context of where this error was found within the file
         if not name:
-            self.handle_error(errors.AtoError("Signals must have a name"))
+            self.error_handler.handle(errors.AtoError("Signals must have a name"))
             return NOTHING
 
         created_signal = Object(
@@ -282,12 +268,12 @@ class Dizzy(AtopileParserVisitor):
         imported_element = self.visit_ref_helper(ctx.name_or_attr())
 
         if not from_file:
-            self.handle_error(
+            self.error_handler.handle(
                 errors.AtoError("Expected a 'from <file-path>' after 'import'")
             )
             return NOTHING
         if not imported_element:
-            self.handle_error(
+            self.error_handler.handle(
                 errors.AtoError("Expected a name or attribute to import after 'import'")
             )
             return NOTHING

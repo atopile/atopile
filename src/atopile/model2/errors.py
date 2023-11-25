@@ -1,9 +1,8 @@
-import enum
 import logging
 import textwrap
 import traceback
 from contextlib import contextmanager
-from enum import IntEnum
+from enum import Enum, auto, IntEnum
 from pathlib import Path
 from typing import Optional, Type
 from .parse_utils import get_src_info_from_ctx
@@ -82,20 +81,10 @@ class AtoImportNotFoundError(AtoError):
     """
 
 
-class _Sentinel(enum.Enum):
-    IGNORE_MY_EXCEPTIONS = enum.auto()
-
-
-IGNORE_MY_EXCEPTIONS = _Sentinel.IGNORE_MY_EXCEPTIONS
-
-
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
         if isinstance(tb.f_locals.get("self"), class_):
-            if "IGNORE_MY_EXCEPTIONS" in tb.f_locals:
-                if tb.f_locals["IGNORE_MY_EXCEPTIONS"] is IGNORE_MY_EXCEPTIONS:
-                    continue
             return tb.f_locals
     return {}
 
@@ -148,6 +137,52 @@ def _process_error(
     )
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("Error info:\n", exc_info=ex)
+
+
+
+class ErrorHandlerMode(Enum):
+    """The mode to use when an error occurs."""
+    COLLECT_ALL = auto()
+    RAISE_NON_ATO = auto()
+    RAISE_ALL = auto()
+
+
+class ErrorHandler:
+    """Handles errors in the compiler."""
+    def __init__(self, logger: logging.Logger, error_mode: ErrorHandlerMode = ErrorHandlerMode.COLLECT_ALL) -> None:
+        self.logger = logger
+        self.error_mode = error_mode
+        self.errors: list[Exception] = []
+
+    @property
+    def exception_group(self) -> ExceptionGroup:
+        """Return an exception group of all the errors."""
+        return ExceptionGroup("Errors occurred during compilation", self.errors)
+
+    def do_raise(self) -> None:
+        """Raise an exception group of all the errors."""
+        raise self.exception_group
+
+    def do_raise_if_errors(self) -> None:
+        """Raise an exception group of all the errors if there are any."""
+        if len(self.errors) > 0:
+            self.do_raise()
+
+    def handle(self, error: Exception, from_: Exception) -> Exception:
+        """
+        Deal with an error, either by shoving it in the error list or raising it.
+        """
+        if self.error_mode == ErrorHandlerMode.RAISE_ALL:
+            raise error from from_
+
+        self.errors.append(error)
+        _process_error(error, None, self.logger)
+
+        if self.error_mode == ErrorHandlerMode.RAISE_NON_ATO:
+            if not isinstance(error, AtoError):
+                raise self.exception_group from from_
+
+        return error
 
 
 class ReraiseBehavior(IntEnum):

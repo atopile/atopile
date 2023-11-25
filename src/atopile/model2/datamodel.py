@@ -71,71 +71,16 @@ class Object(Base):
     unnamed_locals: Iterable[Any] = field(init=False)
     locals_by_type: Mapping[Type, tuple[Ref, Any]] = field(init=False)
 
-    # configured after construction
+    # configured post-construction
     closure: Optional[tuple["Object"]] = None
 
     supers_objs: Optional[tuple["Object"]] = None
 
     def __attrs_post_init__(self) -> None:
-        """Set up the named locals."""
+        """Set up the shortcuts to locals."""
         self.named_locals = self.locals_.get_named_items()
         self.unnamed_locals = self.locals_.get_unnamed_items()
         self.locals_by_type = self.locals_.get_items_by_type((Link, Replace, Import, Object))
-
-    def get_ref_in_locals(self, ref: Ref) -> Any:
-        """
-        Returns the value of the ref in the locals of the object.
-        """
-        return self.named_locals[ref]
-
-    def get_ref_in_closure(self, ref: Ref) -> tuple["Object", Any]:
-        """
-        Get a ref in the current object's closure, returning the object and the value.
-        """
-        assert isinstance(self.closure, tuple)
-        for obj in reversed(self.closure):  # pylint: disable=bad-reversed-sequence
-            try:
-                return obj, obj.get_ref_in_locals(ref)
-            except KeyError:
-                pass
-        raise KeyError(f"Name '{ref}' not found.")
-
-    def internal_ref_lookup(self, ref: Ref) -> tuple[Any]:
-        """
-        Look up a ref as a path.
-
-        That is, if given a ref a.b.c; that is find the object
-        named a, then b, then c, all internally.
-
-        Returns a tuple of the objects along the path.
-        """
-        if len(ref) == 0:
-            return (self,)
-
-        for lookup_len in reversed(range(1, len(ref))):
-            try:
-                next_obj = self.get_ref_in_locals(ref[0:lookup_len])
-                if len(ref) == 1:
-                    return (next_obj,)
-
-                assert isinstance(next_obj, Object)
-                return (next_obj,) + next_obj.internal_ref_lookup(ref[lookup_len:])
-            except KeyError:
-                pass
-
-        raise KeyError(f"Name '{ref}' not found.")
-
-    def closure_ref_path_lookup(self, ref: Ref) -> tuple[Any]:
-        """Look up a ref in the closure."""
-        if len(ref) == 0:
-            return (self,)
-
-        _, next_obj = self.get_ref_in_closure(ref[0:1])
-        if len(ref) == 1:
-            return (next_obj,)
-
-        assert isinstance(next_obj, Object)
-        return next_obj.internal_ref_lookup(ref[1:])[-1]
 
 
 resolve_types(Link)
