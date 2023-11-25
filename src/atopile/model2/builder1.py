@@ -6,7 +6,8 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 import enum
 import itertools
 import logging
-from typing import Iterable, Optional
+from pathlib import Path
+from typing import Iterable, Mapping, Optional
 
 from antlr4 import ParserRuleContext
 
@@ -27,7 +28,6 @@ from .datamodel import (
 )
 from .datatypes import KeyOptItem, KeyOptMap, Ref
 
-
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
@@ -45,13 +45,24 @@ def _attach_closures(obj: Object) -> None:
             _attach_closures(local)
 
 
-def build(tree: ParserRuleContext, fail_fast: bool = False) -> Object:
+def build(paths_to_trees: Mapping[Path, ParserRuleContext], error_handler: errors.ErrorHandler) -> Mapping[Path, Object]:
     """Build the datamodel from an ANTLR context."""
-    dizzy = Dizzy(fail_fast)
-    result = dizzy.visit(tree)
-    assert isinstance(result, Object)
-    _attach_closures(result)
-    return result
+    dizzy = Dizzy(error_handler)
+
+    results: Mapping[Path, Object] = {}
+
+    for path, tree in paths_to_trees.items():
+        try:
+            result = dizzy.visit(tree)
+            assert isinstance(result, Object)
+            _attach_closures(result)
+            results[path] = result
+        except errors.AtoError as e:
+            error_handler.handle(e)
+
+    error_handler.do_raise_if_errors()
+
+    return results
 
 
 class _Sentinel(enum.Enum):
@@ -72,7 +83,6 @@ class Dizzy(AtopileParserVisitor):
         error_handler: errors.ErrorHandler,
     ) -> None:
         self.error_handler = error_handler
-        self.errors: list[Exception] = []
         super().__init__()
 
     def defaultResult(self):

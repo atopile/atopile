@@ -2,13 +2,14 @@
 Find import references.
 """
 
+from pathlib import Path
 from typing import Mapping
 
 from . import errors
 from .datamodel import Import, Object
-# from .lookup import downward_lookup_ref
-from .parse_utils import get_src_info_from_ctx
 from .datatypes import Ref
+
+from .parse_utils import get_src_info_from_ctx
 
 
 def lookup_filename(cwd: str, filename: str) -> str:
@@ -27,8 +28,23 @@ def lookup_ref(obj: Object, ref: Ref) -> Object:
     raise KeyError(f"Name '{ref}' not found.")
 
 
+def build(
+    paths_to_objs: Mapping[Path, Object], error_handler: errors.ErrorHandler
+) -> Mapping[Path, Object]:
+    """Build the model."""
+    lofty = Lofty(paths_to_objs, error_handler)
+
+    for obj in paths_to_objs.values():
+        lofty.visit_object(obj)
+
+    error_handler.do_raise_if_errors()
+
+    return paths_to_objs
+
+
 class Lofty:
     """Lofty's job is to walk through the tree and resolve imports."""
+
     def __init__(
         self, paths_to_objs: Mapping[str, Object], error_handler: errors.ErrorHandler
     ) -> None:
