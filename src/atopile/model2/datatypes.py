@@ -2,7 +2,7 @@
 Datatypes used in the model.
 """
 import logging
-from typing import Any, Iterable, Mapping, Optional, Type
+from typing import Any, Iterable, Mapping, Optional, Type, Iterator
 
 
 log = logging.getLogger(__name__)
@@ -40,21 +40,25 @@ class KeyOptItem(tuple[Optional[Ref], Any]):
 class KeyOptMap(tuple[KeyOptItem]):
     """A class representing a set of optionally-named things."""
 
-    def get_named_items(self) -> Mapping[Ref, Any]:
+    def named_items(self) -> Mapping[Ref, Any]:
         """Return all the named items in this set, ignoring the unnamed ones."""
         return dict(filter(lambda x: x.ref is not None, self))
 
-    def get_items_by_type(
-        self, types: Iterable[Type]
+    def map_items_by_type(
+        self, types: Iterable[Type | Iterable[Type]]
     ) -> Mapping[Type, "KeyOptMap"]:
         """Return a mapping of items in this set by type."""
         return {
-            t: filter(lambda x: isinstance(x.value, t), self) for t in types
+            t: tuple(self.filter_items_by_type(t)) for t in types
         }
 
-    def get_unnamed_items(self) -> Iterable[Any]:
+    def unnamed_items(self) -> Iterable[Any]:
         """Return an interable of all the unnamed items in this set."""
         return map(lambda x: x.value, filter(lambda x: x.ref is None, self))
+
+    def filter_items_by_type(self, types: Type | Iterable[Type]) -> Iterator:
+        """Helper function to filter by type."""
+        return filter(lambda x: isinstance(x.value, types), self)
 
     def keys(self) -> Iterable[Ref]:
         """Return an iterable of all the names in this set."""

@@ -19,28 +19,64 @@ def test_keyoptitem_ref():
 
 
 def test_keyoptmap_get_named_items():
-    assert KeyOptMap((
+    assert dict(KeyOptMap((
         KeyOptItem((None, "foo")),
         KeyOptItem((Ref.from_one("bar"), "baz")),
-    )).get_named_items() == {
+    )).named_items()) == {
         ("bar",): "baz",
     }
 
-def test_keyoptmap_get_items_by_type():
-    items_by_type = KeyOptMap((
+
+def test_filter_items_by_type():
+    strs = KeyOptMap((
         KeyOptItem((None, "foo")),
         KeyOptItem((Ref.from_one("bar"), "baz")),
-        KeyOptItem((None, 42)),
-    )).get_items_by_type((str,))
+    ))
 
-    assert tuple(items_by_type[str]) == ((None, "foo"), (Ref.from_one("bar"), "baz"))
+    ints = KeyOptMap((
+        KeyOptItem((None, 42)),
+        KeyOptItem(("test", 43)),
+    ))
+
+    nones = KeyOptMap((
+        KeyOptItem((None, None)),
+    ))
+
+    items = KeyOptMap(strs + ints + nones)
+
+    assert tuple(items.filter_items_by_type(int)) == ints
+    assert tuple(items.filter_items_by_type(str)) == strs
+    assert tuple(items.filter_items_by_type((int, str))) == strs + ints
+
+
+def test_keyoptmap_get_items_by_type():
+    strs = KeyOptMap((
+        KeyOptItem((None, "foo")),
+        KeyOptItem((Ref.from_one("bar"), "baz")),
+    ))
+
+    ints = KeyOptMap((
+        KeyOptItem((None, 42)),
+        KeyOptItem(("test", 43)),
+    ))
+
+    nones = KeyOptMap((
+        KeyOptItem((None, None)),
+    ))
+
+    items = KeyOptMap(strs + ints + nones)
+
+    items_by_type = items.map_items_by_type((int, str))
+
+    assert items_by_type[str] == strs
+    assert items_by_type[int] == ints
 
 def test_keyoptmap_get_unnamed_items():
     assert tuple(KeyOptMap((
         KeyOptItem((None, "foo")),
         KeyOptItem((Ref.from_one("bar"), "baz")),
         KeyOptItem((None, 42)),
-    )).get_unnamed_items()) == ("foo", 42)
+    )).unnamed_items()) == ("foo", 42)
 
 def test_keyoptmap_keys():
     assert tuple(KeyOptMap((
