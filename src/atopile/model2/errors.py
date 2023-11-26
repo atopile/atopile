@@ -19,13 +19,13 @@ class AtoError(Exception):
 
     def __init__(
         self,
-        *args: object,
         message: str = "",
         src_path: Optional[str | Path] = None,
         src_line: Optional[int] = None,
         src_col: Optional[int] = None,
+        **kwargs,
     ) -> None:
-        super().__init__(message, *args)
+        super().__init__(message, **kwargs)
         self.message = message
         self.src_path = src_path
         self.src_line = src_line
@@ -157,10 +157,10 @@ class ErrorHandler:
 
     def __init__(
         self,
-        logger: logging.Logger,
+        logger: Optional[logging.Logger] = None,
         error_mode: ErrorHandlerMode = ErrorHandlerMode.COLLECT_ALL,
     ) -> None:
-        self.logger = logger
+        self.logger = logger or log
         self.error_mode = error_mode
         self.errors: list[Exception] = []
 
@@ -178,19 +178,23 @@ class ErrorHandler:
         if len(self.errors) > 0:
             self.do_raise()
 
-    def handle(self, error: Exception, from_: Exception) -> Exception:
+    def handle(self, error: Exception, from_: Optional[Exception] = None) -> Exception:
         """
         Deal with an error, either by shoving it in the error list or raising it.
         """
         if self.error_mode == ErrorHandlerMode.RAISE_ALL:
-            raise error from from_
+            if from_ is not None:
+                raise error from from_
+            raise error
 
         self.errors.append(error)
         _process_error(error, None, self.logger)
 
         if self.error_mode == ErrorHandlerMode.RAISE_NON_ATO:
             if not isinstance(error, AtoError):
-                raise self.exception_group from from_
+                if from_ is not None:
+                    raise self.exception_group from from_
+                raise self.exception_group
 
         return error
 
