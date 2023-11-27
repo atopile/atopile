@@ -14,11 +14,11 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-
 @define
 class Link:
     """Represent a connection between two connectable things."""
     origin_link: dm1.Link
+
     origin_instance: "Instance"
     source: "Instance"
     target: "Instance"
@@ -29,9 +29,12 @@ class Instance:
     """Represent a concrete object class."""
     path: tuple[str]
     class_: tuple[dm1.Object]
+
     parent: Optional["Instance"]
     children: dict[str, "Instance"]
-    links_: tuple[Link]
+
+    links: tuple[Link]
+    linked_to_me: tuple[Link]
 
 
 resolve_types(Link)
