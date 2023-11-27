@@ -1,4 +1,4 @@
-from atopile.iterutils import bfs, ordered_unique
+from atopile.iterutils import bfs, unique_by_id, unique_list
 
 
 def test_bfs():
@@ -23,12 +23,23 @@ def test_bfs():
     assert list(bfs(a, lambda n: n.children)) == [a, b, c, d, e, f, g, h]
 
 
-def test_ordered_unique_empty():
-    assert ordered_unique(()) == (set(), [])
+def test_unique_list_empty():
+    assert unique_list(()) == []
 
 
-def test_ordered_unique():
-    assert ordered_unique((1,2,2,3,4,4,5)) == (
-        {1,2,3,4,5},
-        [1,2,3,4,5]
+def test_unique_list():
+    assert unique_list((1,2,3,3,3,2,1)) == [1,2,3]
+
+
+def test_unique_by_id_empty():
+    assert unique_by_id(()) == (set(), [])
+
+
+def test_unique_by_id():
+    a = 1
+    b = 2
+    c = 3
+    assert unique_by_id((a,b,c,c,c,b,a)) == (
+        {id(a), id(b), id(c)},
+        [a, b, c]
     )

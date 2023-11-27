@@ -19,14 +19,25 @@ def bfs(obj: T, child_getter: Callable[[T], Iterable[T]]) -> Iterator[T]:
             queue.append(child)
 
 
-def ordered_unique(iterable: Iterable[T]) -> tuple[set[T], list[T]]:
-    """Return a set and list (matching the order of the iterable) of unique items."""
+def unique_by_id(iterable: Iterable[T]) -> tuple[set[T], list[T]]:
+    """Return a set of ids and a list of unique items. The list is in the same order as the iterable."""
     seen = set()
     unique_list = []
 
     for item in iterable:
-        if item not in seen:
-            seen.add(item)
+        item_id = id(item)
+        if item_id not in seen:
+            seen.add(item_id)
             unique_list.append(item)
 
     return seen, unique_list
+
+def unique_list(iterable: Iterable[T]) -> list[T]:
+    """Return a list of unique items is in the same order as the iterable."""
+    unique_list = []
+
+    for item in iterable:
+        if item not in unique_list:
+            unique_list.append(item)
+
+    return unique_list
