@@ -1,5 +1,8 @@
+# a minimal Dockerfile for CI
+
 FROM python:latest
 
+# so we can spec the version number from the command line
 ARG SETUPTOOLS_SCM_PRETEND_VERSION
 
 RUN mkdir -p /atopile/src/atopile
