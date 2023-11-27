@@ -35,9 +35,9 @@ log.setLevel(logging.INFO)
 def _attach_closures(obj: Object) -> None:
     """Fix the closure of an object."""
     if obj.closure is None:
-        local_closure = (obj,)
-    else:
-        local_closure = obj.closure + (obj,)
+        obj.closure = ()
+
+    local_closure = obj.closure + (obj,)
 
     for local in obj.locals_.values():
         if isinstance(local, Object):
@@ -59,8 +59,6 @@ def build(paths_to_trees: Mapping[Path, ParserRuleContext], error_handler: error
             results[path] = result
         except errors.AtoError as e:
             error_handler.handle(e)
-
-    error_handler.do_raise_if_errors()
 
     return results
 

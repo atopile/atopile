@@ -2,21 +2,14 @@
 Find import references.
 """
 
+from itertools import chain
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Iterable
 
 from . import errors
 from .datamodel import Import, Object
 from .datatypes import Ref
-
 from .parse_utils import get_src_info_from_ctx
-
-
-SEARCH_PATHS = (
-    Path("/Users/mattwildoer/Projects/atopile-workspace/skate-board-brake-light/elec/src"),
-    Path("/Users/mattwildoer/Projects/atopile-workspace/skate-board-brake-light/elec/src/.ato/modules"),
-    Path("/Users/mattwildoer/Projects/atopile-workspace/skate-board-brake-light/elec/src/.ato/modules/modules"),
-)
 
 
 def lookup_ref(obj: Object, ref: Ref) -> Object:
@@ -31,15 +24,15 @@ def lookup_ref(obj: Object, ref: Ref) -> Object:
 
 
 def build(
-    paths_to_objs: Mapping[Path, Object], error_handler: errors.ErrorHandler
+    paths_to_objs: Mapping[Path, Object],
+    error_handler: errors.ErrorHandler,
+    search_paths: tuple[Path],
 ) -> Mapping[Path, Object]:
     """Build the model."""
-    lofty = Lofty(paths_to_objs, error_handler)
+    lofty = Lofty(paths_to_objs, error_handler, search_paths)
 
     for obj in paths_to_objs.values():
         lofty.visit_object(obj)
-
-    error_handler.do_raise_if_errors()
 
     return paths_to_objs
 
@@ -48,10 +41,14 @@ class Lofty:
     """Lofty's job is to walk through the tree and resolve imports."""
 
     def __init__(
-        self, paths_to_objs: Mapping[str, Object], error_handler: errors.ErrorHandler
+        self,
+        paths_to_objs: Mapping[str, Object],
+        error_handler: errors.ErrorHandler,
+        search_paths: Iterable[Path]
     ) -> None:
         self.error_handler = error_handler
         self.paths_to_objs = paths_to_objs
+        self.search_paths = search_paths
 
     def lookup_filename(self, cwd: str | Path, from_name: str) -> Path:
         """Look up a filename from a from_name."""
@@ -59,7 +56,7 @@ class Lofty:
         if cwd.is_file():
             cwd = cwd.parent
 
-        for search_path in (cwd,) + SEARCH_PATHS:
+        for search_path in chain((cwd,) + self.search_paths):
             if (search_path / from_name) in self.paths_to_objs:
                 return search_path / from_name
 
@@ -81,23 +78,16 @@ class Lofty:
 
         try:
             foreign_filename = self.lookup_filename(cwd, imp.from_name)
-        except FileNotFoundError:
+        except FileNotFoundError as ex:
             self.error_handler.handle(
                 errors.AtoImportNotFoundError.from_ctx(
                     f"File '{imp.from_name}' not found.", imp.src_ctx
-                )
+                ),
+                ex
             )
             return
 
-        try:
-            foreign_root = self.paths_to_objs[foreign_filename]
-        except KeyError:
-            self.error_handler.handle(
-                errors.AtoImportNotFoundError.from_ctx(
-                    f"File '{foreign_filename}' not parsed.", imp.src_ctx
-                )
-            )
-            return
+        foreign_root = self.paths_to_objs[foreign_filename]
 
         try:
             imp.what_obj = lookup_ref(foreign_root, imp.what_ref)

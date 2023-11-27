@@ -19,48 +19,41 @@ log.setLevel(logging.INFO)
 
 
 @define
-class Link:
-    """Represent a connection between two connectable things."""
+class Base:
+    """Represent a base class for all things."""
+    src_ctx: Optional[ParserRuleContext] = field(kw_only=True, default=None)
 
+@define
+class Link(Base):
+    """Represent a connection between two connectable things."""
     source_ref: Ref
     target_ref: Ref
-    src_ctx: Optional[ParserRuleContext] = None
-
-    source_obj: Optional["Object"] = None
-    target_obj: Optional["Object"] = None
-    source_node: Optional["Object"] = None
-    target_node: Optional["Object"] = None
+     #FIXME: what to do here
 
 
 @define
-class Replace:
+class Replace(Base):
     """Represent a replacement of one object with another."""
-
     original_ref: Ref
     replacement_ref: Ref
-    src_ctx: Optional[ParserRuleContext] = None
 
-    # FIXME: I haven't finished planning how to represent this yet
+    replacement_obj: Optional["Object"] = None
 
 
 @define
-class Import:
+class Import(Base):
     """Represent an import statement."""
-
     what_ref: Ref
     from_name: str
-    src_ctx: Optional[ParserRuleContext] = None
 
     what_obj: Optional["Object"] = None
 
 
 @define
-class Object:
+class Object(Base):
     """Represent a container class."""
-
     supers_refs: tuple[Ref]
     locals_: KeyOptMap
-    src_ctx: Optional[ParserRuleContext] = None
 
     # these are a shortcut to the named locals - they're the same thing
     # this is here purely for efficiency
@@ -72,6 +65,7 @@ class Object:
     closure: Optional[tuple["Object"]] = None
 
     supers_objs: Optional[tuple["Object"]] = None
+    supers_bfs: Optional[tuple["Object"]] = None
 
     def __attrs_post_init__(self) -> None:
         """Set up the shortcuts to locals."""
@@ -97,9 +91,9 @@ INTERFACE = (Ref.from_one("interface"),)
 
 root_object = partial(Object, supers_refs=(), locals_=KeyOptMap(()), closure=())
 BUILTINS = {
-    MODULE: root_object(),
-    COMPONENT: root_object(),
-    PIN: root_object(),
-    SIGNAL: root_object(),
-    INTERFACE: root_object(),
+    MODULE[0]: root_object(),
+    COMPONENT[0]: Object(supers_refs=MODULE, locals_=KeyOptMap(()), closure=()),
+    PIN[0]: root_object(),
+    SIGNAL[0]: root_object(),
+    INTERFACE[0]: root_object(),
 }

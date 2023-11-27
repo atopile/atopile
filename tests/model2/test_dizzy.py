@@ -23,7 +23,7 @@ from atopile.model2.datamodel import (
 
 @pytest.fixture
 def dizzy():
-    return Dizzy(errors.ErrorHandler(error_mode=errors.ErrorHandlerMode.RAISE_ALL))
+    return Dizzy(errors.ErrorHandler(handel_mode=errors.HandlerMode.RAISE_ALL))
 
 
 # test Totally_an_integer

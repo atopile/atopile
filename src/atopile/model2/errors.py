@@ -144,12 +144,18 @@ def _process_error(
         logger.debug("Error info:\n", exc_info=ex)
 
 
-class ErrorHandlerMode(Enum):
+class HandlerMode(Enum):
     """The mode to use when an error occurs."""
 
     COLLECT_ALL = auto()
     RAISE_NON_ATO = auto()
     RAISE_ALL = auto()
+
+
+class ErrorsHandled(Exception):
+    """
+    An exception that's raised when errors have been handled.
+    """
 
 
 class ErrorHandler:
@@ -158,39 +164,42 @@ class ErrorHandler:
     def __init__(
         self,
         logger: Optional[logging.Logger] = None,
-        error_mode: ErrorHandlerMode = ErrorHandlerMode.COLLECT_ALL,
+        handel_mode: Optional[HandlerMode] = HandlerMode.RAISE_NON_ATO,
+        log_on_error: bool = True,
+        exception_on_do_raise: BaseException = ErrorsHandled,
     ) -> None:
         self.logger = logger or log
-        self.error_mode = error_mode
+        self.handel_mode = handel_mode
         self.errors: list[Exception] = []
+        self.log_on_error = log_on_error
+        self.exception_on_do_raise = exception_on_do_raise
 
     @property
     def exception_group(self) -> ExceptionGroup:
         """Return an exception group of all the errors."""
         return ExceptionGroup("Errors occurred during compilation", self.errors)
 
-    def do_raise(self) -> None:
-        """Raise an exception group of all the errors."""
-        raise self.exception_group
-
     def do_raise_if_errors(self) -> None:
         """Raise an exception group of all the errors if there are any."""
         if len(self.errors) > 0:
-            self.do_raise()
+            if self.exception_on_do_raise is ExceptionGroup:
+                raise self.exception_group
+            raise self.exception_on_do_raise
 
     def handle(self, error: Exception, from_: Optional[Exception] = None) -> Exception:
         """
         Deal with an error, either by shoving it in the error list or raising it.
         """
-        if self.error_mode == ErrorHandlerMode.RAISE_ALL:
+        if self.handel_mode == HandlerMode.RAISE_ALL:
             if from_ is not None:
                 raise error from from_
             raise error
 
         self.errors.append(error)
-        _process_error(error, None, self.logger)
+        if self.log_on_error:
+            _process_error(error, None, self.logger)
 
-        if self.error_mode == ErrorHandlerMode.RAISE_NON_ATO:
+        if self.handel_mode == HandlerMode.RAISE_NON_ATO:
             if not isinstance(error, AtoError):
                 if from_ is not None:
                     raise self.exception_group from from_
