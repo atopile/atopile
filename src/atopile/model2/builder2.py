@@ -14,12 +14,11 @@ from .parse_utils import get_src_info_from_ctx
 
 def lookup_ref(obj: Object, ref: Ref) -> Object:
     """Basic ref lookup"""
-    if len(ref) != 1:
-        raise NotImplementedError
-
-    if ref in obj.named_locals:
-        return obj.named_locals[ref]
-
+    for ref_part in ref:
+        assert isinstance(ref_part, str)
+        if not isinstance(obj, Object):
+            raise TypeError(f"Ref {ref} points to non-object {obj}.")
+        obj = obj.named_locals[(ref_part,)]
     raise KeyError(f"Name '{ref}' not found.")
 
 
@@ -56,9 +55,11 @@ class Lofty:
         if cwd.is_file():
             cwd = cwd.parent
 
-        for search_path in chain((cwd,) + self.search_paths):
-            if (search_path / from_name) in self.paths_to_objs:
-                return search_path / from_name
+        search_paths: Iterable[Path] = chain((cwd,) + self.search_paths)
+        for search_path in search_paths:
+            candidate_path = search_path / from_name
+            if candidate_path.exists():
+                return candidate_path
 
         raise FileNotFoundError
 
