@@ -6,16 +6,19 @@ from atopile.dev.parse import parse_as_file, parser_from_src_code
 from atopile.model2 import errors
 from atopile.model2.builder1 import Dizzy
 from atopile.model2.datamodel import (
-    COMPONENT_REF,
-    INTERFACE_REF,
-    MODULE_REF,
-    PIN_REF,
-    SIGNAL_REF,
     Import,
     Link,
     Object,
     Replace,
 )
+from atopile.model2 import datamodel as dm
+
+
+COMPONENT = (dm.COMPONENT_REF,)
+INTERFACE = (dm.INTERFACE_REF,)
+MODULE = (dm.MODULE_REF,)
+PIN = (dm.PIN_REF,)
+SIGNAL = (dm.SIGNAL_REF,)
 
 # =========================
 # test individual functions
@@ -145,16 +148,16 @@ def test_interface(dizzy: Dizzy):
     )
     results = dizzy.visitFile_input(tree)
     results.src_ctx = None
-    assert results.supers_refs == MODULE_REF
+    assert results.supers_refs == MODULE
     assert len(results.locals_) == 1
     assert results.locals_[0].ref == ("interface1",)
     interface: Object = results.locals_[0].value
     assert interface.supers_refs == INTERFACE
     assert len(interface.locals_) == 2
     assert interface.locals_[0].ref == ("signal_a",)
-    assert interface.locals_[0].value.supers_refs == SIGNAL_REF
+    assert interface.locals_[0].value.supers_refs == SIGNAL
     assert interface.locals_[1].ref == ("signal_b",)
-    assert interface.locals_[1].value.supers_refs == SIGNAL_REF
+    assert interface.locals_[1].value.supers_refs == SIGNAL
 
 
 def test_visitSignaldef_stmt(dizzy: Dizzy):
@@ -168,7 +171,7 @@ def test_visitSignaldef_stmt(dizzy: Dizzy):
     assert ret[0].ref == ("signal_a",)
 
     assert isinstance(ret[0].value, Object)
-    assert ret[0].value.supers_refs == SIGNAL_REF
+    assert ret[0].value.supers_refs == SIGNAL
 
 
 def test_visitPindef_stmt(dizzy: Dizzy):
@@ -180,7 +183,7 @@ def test_visitPindef_stmt(dizzy: Dizzy):
     assert len(ret) == 1
     assert ret[0].ref == ("pin_a",)
     assert isinstance(ret[0].value, Object)
-    assert ret[0].value.supers_refs == PIN_REF
+    assert ret[0].value.supers_refs == PIN
 
 
 # Connect statement return a tuple as there might be signal or pin instantiation within it
@@ -221,11 +224,11 @@ def test_visitConnect_stmt_instance(dizzy: Dizzy):
 
     assert ret[1].ref == ("pin_a",)
     assert isinstance(ret[1].value, Object)
-    assert ret[1].value.supers_refs == PIN_REF
+    assert ret[1].value.supers_refs == PIN
 
     assert ret[2].ref == ("sig_b",)
     assert isinstance(ret[2].value, Object)
-    assert ret[2].value.supers_refs == SIGNAL_REF
+    assert ret[2].value.supers_refs == SIGNAL
 
 
 def test_visitImport_stmt(dizzy: Dizzy):
@@ -259,7 +262,7 @@ def test_visitBlockdef(dizzy: Dizzy):
     assert comp1.locals_[0].ref == ("signal_a",)
     comp2: Object = comp1.locals_[0].value
     assert isinstance(comp2, Object)
-    assert comp2.supers_refs == SIGNAL_REF
+    assert comp2.supers_refs == SIGNAL
 
 
 def test_visitAssign_stmt_value(dizzy: Dizzy):
@@ -301,18 +304,18 @@ def test_visitModule1LayerDeep(dizzy: Dizzy):
     )
     results = dizzy.visitFile_input(tree)
     assert isinstance(results, Object)
-    assert results.supers_refs == MODULE_REF
+    assert results.supers_refs == MODULE
     assert len(results.locals_) == 1
     assert results.locals_[0].ref == ("comp1",)
     comp1: Object = results.locals_[0].value
-    assert comp1.supers_refs == COMPONENT_REF
+    assert comp1.supers_refs == COMPONENT
     assert len(comp1.locals_) == 3
     assert comp1.locals_[0].ref == ("signal_a",)
     assert isinstance(comp1.locals_[0].value, Object)
-    assert comp1.locals_[0].value.supers_refs == SIGNAL_REF
+    assert comp1.locals_[0].value.supers_refs == SIGNAL
     assert comp1.locals_[1].ref == ("signal_b",)
     assert isinstance(comp1.locals_[1].value, Object)
-    assert comp1.locals_[1].value.supers_refs == SIGNAL_REF
+    assert comp1.locals_[1].value.supers_refs == SIGNAL
     assert comp1.locals_[2].ref is None
     assert isinstance(comp1.locals_[2].value, Link)
     assert comp1.locals_[2].value.source_ref == ("signal_a",)
@@ -328,12 +331,12 @@ def test_visitModule_pin_to_signal(dizzy: Dizzy):
     )
     results = dizzy.visitFile_input(tree)
     assert isinstance(results, Object)
-    assert results.supers_refs == MODULE_REF
+    assert results.supers_refs == MODULE
     assert len(results.locals_) == 1
 
     assert results.locals_[0].ref == ("comp1",)
     comp1: Object = results.locals_[0].value
-    assert comp1.supers_refs == COMPONENT_REF
+    assert comp1.supers_refs == COMPONENT
     assert len(comp1.locals_) == 3
 
     assert comp1.locals_[0].ref is None
@@ -344,8 +347,8 @@ def test_visitModule_pin_to_signal(dizzy: Dizzy):
 
     assert comp1.locals_[1].ref == ("signal_a",)
     assert isinstance(comp1.locals_[1].value, Object)
-    assert comp1.locals_[1].value.supers_refs == SIGNAL_REF
+    assert comp1.locals_[1].value.supers_refs == SIGNAL
 
     assert comp1.locals_[2].ref == ("p1",)
     assert isinstance(comp1.locals_[2].value, Object)
-    assert comp1.locals_[2].value.supers_refs == PIN_REF
+    assert comp1.locals_[2].value.supers_refs == PIN
