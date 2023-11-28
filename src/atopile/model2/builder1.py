@@ -16,11 +16,11 @@ from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
 from .datamodel import (
-    COMPONENT,
-    INTERFACE,
-    MODULE,
-    PIN,
-    SIGNAL,
+    COMPONENT_REF,
+    INTERFACE_REF,
+    MODULE_REF,
+    PIN_REF,
+    SIGNAL_REF,
     Import,
     Link,
     Object,
@@ -30,6 +30,13 @@ from .datatypes import KeyOptItem, KeyOptMap, Ref
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
+
+
+MODULE = (MODULE_REF,)
+COMPONENT = (COMPONENT_REF,)
+PIN = (PIN_REF,)
+SIGNAL = (SIGNAL_REF,)
+INTERFACE = (INTERFACE_REF,)
 
 
 def _attach_closures(obj: Object) -> None:
