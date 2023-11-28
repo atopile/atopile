@@ -97,13 +97,11 @@ def filter_by_supers(iterable: Iterable[Instance], supers: dm1.Object | Iterable
 
 
 def extract_unique(instance: Instance, types: dm1.Object | tuple[dm1.Object], keys: tuple[str]) -> defaultdict:
-    unique_elements = defaultdict(list)
-    # instance_key = tuple(instance.children.get(key_n) for key_n in keys)
-    # unique_elements[instance_key].append(instance)
-    components = filter_by_supers(dfs(instance), dm1.COMPONENT)
+    unique_instances: defaultdict[Any, list] = defaultdict(list)
+    found_candidate_iterator = filter_by_supers(dfs(instance), dm1.COMPONENT)
 
-    for element in components:
+    for element in found_candidate_iterator:
         instance_key = tuple(element.children.get(key_n) for key_n in keys)
-        unique_elements[instance_key].append(element)
+        unique_instances[instance_key].append(element)
 
-    return
+    return unique_instances
