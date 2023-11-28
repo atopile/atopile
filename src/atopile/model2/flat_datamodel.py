@@ -6,11 +6,12 @@ Bottom's up!
 """
 import logging
 from collections import ChainMap
-from typing import Any, Iterator, Iterable, Optional
+from typing import Any, Iterable, Iterator, Optional
 
 from attrs import define, field, resolve_types
 
 from . import datamodel as dm1
+from .datatypes import Ref
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -21,12 +22,15 @@ class Joint:
     """Represent a connection between two connectable things."""
     origin_link: dm1.Link
 
-    origin_instance: "Instance"
+    contained_by: "Instance"
+    source_connected: "Instance"
+    target_connected: "Instance"
+
     source: "Instance"
     target: "Instance"
 
     def __repr__(self) -> str:
-        return f"<Link {self.source.addr} -> {self.target.addr}>"
+        return f"<Link {repr(self.source)} -> {repr(self.target)}>"
 
 
 @define
@@ -63,6 +67,17 @@ def dfs(instance: Instance) -> Iterator[Instance]:
             yield from dfs(child)
 
 
+def dfs_with_ref(instance: Instance, start_ref: Optional[Ref] = None) -> Iterator[tuple[Ref, Instance]]:
+    """Depth-first search of the instance tree."""
+    if start_ref is None:
+        start_ref = Ref(())
+
+    yield (start_ref, instance)
+    for name, child in instance.children.items():
+        if isinstance(child, Instance):
+            yield from dfs_with_ref(child, start_ref.add_name(name))
+
+
 def find_all_with_super(root: Instance, types: dm1.Object | tuple[dm1.Object]) -> Iterator[Instance]:
     """Find all instances of a certain type."""
     if isinstance(types, dm1.Object):
@@ -78,6 +93,5 @@ def find_all_with_super(root: Instance, types: dm1.Object | tuple[dm1.Object]) -
             yield instance
 
 
-def find_nets(root: Instance) -> Iterator[Iterable[Instance]]:
+def find_nets(root: Instance) -> Iterable[Iterable[Instance]]:
     """Find all nets in the circuit."""
-    
