@@ -4,7 +4,7 @@ Find import references.
 from typing import Optional
 
 from . import datamodel as dm1
-from .datamodel_flat import Instance, Link
+from .flat_datamodel import Instance, Link
 from .datatypes import Ref
 
 
