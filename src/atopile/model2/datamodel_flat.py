@@ -29,12 +29,11 @@ class Instance:
     """Represent a concrete object class."""
     path: tuple[str]
     class_: dm1.Object
-
-    parent: Optional["Instance"]
     children: dict[str, Any | "Instance"]
-
     links: tuple[Link]
-    linked_to_me: tuple[Link]
+
+    linked_to_me: Optional[tuple[Link]]
+    parent: Optional["Instance"]
 
 
 resolve_types(Link)
