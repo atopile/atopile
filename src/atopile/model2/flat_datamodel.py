@@ -6,7 +6,7 @@ Bottom's up!
 """
 import logging
 from collections import ChainMap
-from typing import Any, Optional
+from typing import Any, Iterator, Iterable, Optional
 
 from attrs import define, field, resolve_types
 
@@ -17,7 +17,7 @@ log.setLevel(logging.INFO)
 
 
 @define
-class Link:
+class Joint:
     """Represent a connection between two connectable things."""
     origin_link: dm1.Link
 
@@ -39,8 +39,8 @@ class Instance:
     children_from_classes: dict[str, Any] = field(factory=dict)
     children_from_mods: dict[str, Any] = field(factory=dict)
 
-    links: list[Link] = field(factory=list)
-    linked_to_me: list[Link] = field(factory=list)
+    links: list[Joint] = field(factory=list)
+    linked_to_me: list[Joint] = field(factory=list)
 
     children: ChainMap[str, Any] = field(init=False)
 
@@ -51,5 +51,33 @@ class Instance:
         return f"<Instance {self.addr}>"
 
 
-resolve_types(Link)
+resolve_types(Joint)
 resolve_types(Instance)
+
+
+def dfs(instance: Instance) -> Iterator[Instance]:
+    """Depth-first search of the instance tree."""
+    yield instance
+    for child in instance.children.values():
+        if isinstance(child, Instance):
+            yield from dfs(child)
+
+
+def find_all_instances_of_types(root: Instance, types: dm1.Object | tuple[dm1.Object]) -> Iterator[Instance]:
+    """Find all instances of a certain type."""
+    if isinstance(types, dm1.Object):
+        types = (types,)
+
+    types_identity_set = set(id(s) for s in types)
+
+    for instance in dfs(root):
+        super_identity_set = set(id(s) for s in instance.origin.supers_bfs)
+        # If there's overlap between the type's we're searching for
+        # and the instance's supers
+        if types_identity_set & super_identity_set:
+            yield instance
+
+
+def find_nets(root: Instance) -> Iterator[Iterable[Instance]]:
+    """Find all nets in the circuit."""
+    

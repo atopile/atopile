@@ -4,7 +4,7 @@
 
 from pathlib import Path
 from atopile.dev.parse import parse_as_file
-from atopile.model2 import builder1, builder2, builder3, builder_flat
+from atopile.model2 import builder1, builder2, builder3, flatten
 from atopile.model2.errors import ErrorHandler, HandlerMode
 from atopile.address import AddrStr
 
@@ -13,13 +13,13 @@ import rich
 
 # %%
 
-def make_tree(instance: builder_flat.Instance, tree: rich.tree.Tree = None) -> rich.tree.Tree:
+def make_tree(instance: flatten.Instance, tree: rich.tree.Tree = None) -> rich.tree.Tree:
     if tree is None:
         addr_str = AddrStr.from_parts(node=instance.addr)
         tree = rich.tree.Tree(addr_str)
 
     for child_name, child in instance.children.items():
-        if isinstance(child, builder_flat.Instance):
+        if isinstance(child, flatten.Instance):
             make_tree(child, tree.add(child_name))
         else:
             tree.add(f"{child_name} == {str(child)}")
@@ -82,7 +82,7 @@ paths_to_objs3 = builder3.build(paths_to_objs2, error_handler)
 
 # %%
 vdiv = list(paths_to_objs.values())[0].named_locals[("Root",)]
-flat = builder_flat.build(vdiv)
+flat = flatten.build(vdiv)
 print_tree(make_tree(flat))
 
 # %%

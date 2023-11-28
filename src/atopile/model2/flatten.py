@@ -4,7 +4,7 @@ Find import references.
 from typing import Optional
 
 from . import datamodel as dm1
-from .flat_datamodel import Instance, Link
+from .flat_datamodel import Instance, Joint
 from .datatypes import Ref
 
 
@@ -61,7 +61,7 @@ def _build(addr: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> I
         source_instance = get_ref_from_instance(link.source_ref, instance)
         target_instance = get_ref_from_instance(link.target_ref, instance)
 
-        flat_link = Link(link, instance, source_instance, target_instance)
+        flat_link = Joint(link, instance, source_instance, target_instance)
 
         source_instance.linked_to_me.append(flat_link)
         target_instance.linked_to_me.append(flat_link)
