@@ -1,14 +1,16 @@
 """
 This datamodel represents the circuit from a specific point of view - eg. through a certain path.
 It's entirely invalidated when the circuit changes at all and needs to be rebuilt.
+
+Bottom's up!
 """
 import logging
+from collections import ChainMap
 from typing import Any, Optional
 
-from attrs import define, resolve_types
+from attrs import define, field, resolve_types
 
 from . import datamodel as dm1
-
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -23,17 +25,30 @@ class Link:
     source: "Instance"
     target: "Instance"
 
+    def __repr__(self) -> str:
+        return f"<Link {self.source.addr} -> {self.target.addr}>"
+
 
 @define
 class Instance:
     """Represent a concrete object class."""
-    path: tuple[str]
-    class_: dm1.Object
-    children: dict[str, Any | "Instance"]
-    links: tuple[Link]
+    addr: tuple[str]
 
-    linked_to_me: Optional[tuple[Link]]
-    parent: Optional["Instance"]
+    origin: Optional[dm1.Object] = None
+
+    children_from_classes: dict[str, Any] = field(factory=dict)
+    children_from_mods: dict[str, Any] = field(factory=dict)
+
+    links: list[Link] = field(factory=list)
+    linked_to_me: list[Link] = field(factory=list)
+
+    children: ChainMap[str, Any] = field(init=False)
+
+    def __attrs_post_init__(self) -> None:
+        self.children = ChainMap(self.children_from_mods, self.children_from_classes)
+
+    def __repr__(self) -> str:
+        return f"<Instance {self.addr}>"
 
 
 resolve_types(Link)

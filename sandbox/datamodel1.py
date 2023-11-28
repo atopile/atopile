@@ -4,44 +4,72 @@
 
 from pathlib import Path
 from atopile.dev.parse import parse_as_file
-from atopile.model2 import builder1, builder2, builder3, parse
+from atopile.model2 import builder1, builder2, builder3, builder_flat
 from atopile.model2.errors import ErrorHandler, HandlerMode
+from atopile.address import AddrStr
 
-#%%
-
-SEARCH_PATHS = (
-    Path("/Users/mattwildoer/Projects/atopile-workspace/skate-board-brake-light/elec/src"),
-    Path("/Users/mattwildoer/Projects/atopile-workspace/skate-board-brake-light/elec/src/.ato/modules"),
-    Path("/Users/mattwildoer/Projects/atopile-workspace/skate-board-brake-light/elec/src/.ato/modules/modules"),
-)
-
+import rich.tree
+import rich
 
 # %%
-# src = Path("/Users/mattwildoer/Projects/atopile-workspace/skate-board-brake-light/elec/src")
-# paths_to_trees = {}
-# for src_path in src.glob("**/*.ato"):
-#     if src_path.is_file():
-#         paths_to_trees[src_path] = parse.parse_file(src_path)
+
+def make_tree(instance: builder_flat.Instance, tree: rich.tree.Tree = None) -> rich.tree.Tree:
+    if tree is None:
+        addr_str = AddrStr.from_parts(node=instance.addr)
+        tree = rich.tree.Tree(addr_str)
+
+    for child_name, child in instance.children.items():
+        if isinstance(child, builder_flat.Instance):
+            make_tree(child, tree.add(child_name))
+        else:
+            tree.add(f"{child_name} == {str(child)}")
+
+    for link in instance.links:
+        tree.add(f"{AddrStr.from_parts(node=link.source.addr)} ~ {AddrStr.from_parts(node=link.target.addr)}")
+
+    return tree
+
+def print_tree(tree: rich.tree.Tree) -> None:
+    rich.print(tree)
+
+#%%
 
 paths_to_trees = {
     "<empty>": parse_as_file(
         """
         component Resistor:
-            pin 1
-            pin 2
+            pin p1
+            pin p2
+
+        component FancyResistor from Resistor:
+            pin p3
 
         module VDiv:
             r_top = new Resistor
             r_bottom = new Resistor
 
-            signal top ~ r_top.1
-            signal output ~ r_top.2
-            output ~ r_bottom.1
-            signal bottom ~ r_bottom.2
+            signal top ~ r_top.p1
+            signal output ~ r_top.p2
+            output ~ r_bottom.p1
+            signal bottom ~ r_bottom.p2
+
+            r_top.value = 1000
+
+        module FancyVDiv from VDiv:
+            r_middle = new Resistor
+            r_middle.value = 5
+
+        module SomeModule:
+            vdiv = new VDiv
+            vdiv.r_bottom.value = 1000
+
+        module Root from SomeModule:
+            vdiv.r_middle.value = 1000
+            vdiv.r_middle -> FancyResistor
+            vdiv -> FancyVDiv
         """
     )
 }
-
 
 
 # %%
@@ -53,8 +81,10 @@ error_handler.do_raise_if_errors()
 paths_to_objs3 = builder3.build(paths_to_objs2, error_handler)
 
 # %%
-list(paths_to_objs.values())[0]
+vdiv = list(paths_to_objs.values())[0].named_locals[("Root",)]
+flat = builder_flat.build(vdiv)
+print_tree(make_tree(flat))
 
 # %%
-paths_to_objs2["<empty>"]
+# flat.children["vdiv"].children["r_middle"].addr
 # %%

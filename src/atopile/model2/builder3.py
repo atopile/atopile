@@ -4,7 +4,7 @@ Find supers and replacements
 
 from itertools import chain
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Iterable
 
 from atopile.iterutils import bfs, unique_list
 
@@ -22,7 +22,8 @@ def lookup_super(obj: Object, ref: Ref) -> Object:
     if len(ref) != 1:
         raise NotImplementedError("Multipart supers not implemented.")
 
-    scope = chain((obj,), obj.closure)
+    assert obj.closure is not None
+    scope: Iterable[Object] = chain((obj,), obj.closure)
 
     for candidate_obj in scope:
         if ref in candidate_obj.named_locals:
@@ -75,6 +76,6 @@ class Wendy:
         for _, obj in obj.locals_by_type[Object]:
             self.visit_object(obj)
 
-    def visit_replacements(self, replace: Replace) -> None:
-        """Visit and resolve replacements in an object."""
-        replace.replacement_obj = self.lookup_super(replace.obj, replace.replacement_ref)
+        for _, replace in obj.locals_by_type[Replace]:
+            assert isinstance(replace, Replace)
+            replace.replacement_obj = self.lookup_super(obj, replace.replacement_ref)

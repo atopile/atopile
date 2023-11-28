@@ -17,13 +17,16 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-
 @define
 class Base:
     """Represent a base class for all things."""
     src_ctx: Optional[ParserRuleContext] = field(kw_only=True, default=None)
 
-@define
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}>"
+
+
+@define(repr=False)
 class Link(Base):
     """Represent a connection between two connectable things."""
     source_ref: Ref
@@ -31,7 +34,7 @@ class Link(Base):
      #FIXME: what to do here
 
 
-@define
+@define(repr=False)
 class Replace(Base):
     """Represent a replacement of one object with another."""
     original_ref: Ref
@@ -40,7 +43,7 @@ class Replace(Base):
     replacement_obj: Optional["Object"] = None
 
 
-@define
+@define(repr=False)
 class Import(Base):
     """Represent an import statement."""
     what_ref: Ref
@@ -49,7 +52,7 @@ class Import(Base):
     what_obj: Optional["Object"] = None
 
 
-@define
+@define(repr=False)
 class Object(Base):
     """Represent a container class."""
     supers_refs: tuple[Ref]
@@ -89,11 +92,11 @@ INTERFACE_REF = Ref.from_one("interface")
 
 
 root_object = partial(Object, supers_refs=(), locals_=KeyOptMap(()), closure=())
-MODULE = root_object(),
-COMPONENT = Object(supers_refs=(MODULE_REF,), locals_=KeyOptMap(()), closure=()),
-PIN = root_object(),
-SIGNAL = root_object(),
-INTERFACE = root_object(),
+MODULE = root_object()
+COMPONENT = Object(supers_refs=(MODULE_REF,), locals_=KeyOptMap(()), closure=())
+PIN = root_object()
+SIGNAL = root_object()
+INTERFACE = root_object()
 
 
 BUILTINS = {
