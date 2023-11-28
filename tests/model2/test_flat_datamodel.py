@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from atopile.model2.flat_datamodel import Instance, dfs, find_all_instances_of_types
+from atopile.model2.flat_datamodel import Instance, dfs, find_all_with_super
 
 
 def test_dfs():
@@ -34,9 +34,9 @@ def test_find_all_instances_of_types():
     b = Instance(addr=("b",), children_from_mods={"c": c, "d": d}, origin=origin_a)
     a = Instance(addr=("a",), children_from_mods={"b": b}, origin=origin_a)
 
-    assert list(find_all_instances_of_types(a, (A,))) == [a, b, c]
-    assert list(find_all_instances_of_types(a, (A,C))) == [a, b, c, d, e, f]
-    assert list(find_all_instances_of_types(a, (B,))) == [a, b, c, d, e, f]
-    assert list(find_all_instances_of_types(a, (C,))) == [d, e, f]
+    assert list(find_all_with_super(a, (A,))) == [a, b, c]
+    assert list(find_all_with_super(a, (A,C))) == [a, b, c, d, e, f]
+    assert list(find_all_with_super(a, (B,))) == [a, b, c, d, e, f]
+    assert list(find_all_with_super(a, (C,))) == [d, e, f]
 
 

@@ -63,7 +63,7 @@ def dfs(instance: Instance) -> Iterator[Instance]:
             yield from dfs(child)
 
 
-def find_all_instances_of_types(root: Instance, types: dm1.Object | tuple[dm1.Object]) -> Iterator[Instance]:
+def find_all_with_super(root: Instance, types: dm1.Object | tuple[dm1.Object]) -> Iterator[Instance]:
     """Find all instances of a certain type."""
     if isinstance(types, dm1.Object):
         types = (types,)
