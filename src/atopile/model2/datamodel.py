@@ -71,7 +71,7 @@ class Object(Base):
         """Set up the shortcuts to locals."""
         self.named_locals = self.locals_.named_items()
         self.unnamed_locals = tuple(self.locals_.unnamed_items())  # cast to tuple because otherwise it's lazy
-        self.locals_by_type = self.locals_.map_items_by_type((Link, Replace, Import, Object))
+        self.locals_by_type = self.locals_.map_items_by_type((Link, Replace, Import, Object, (str, int)))
 
 
 resolve_types(Link)
