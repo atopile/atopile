@@ -7,6 +7,10 @@ from atopile.dev.parse import parse_as_file
 from atopile.model2 import builder1, builder2, builder3, flatten
 from atopile.model2.errors import ErrorHandler, HandlerMode
 from atopile.address import AddrStr
+from atopile.model2.datamodel import COMPONENT
+from atopile.model2.flat_datamodel import find_all_with_super
+
+from collections import defaultdict
 
 import rich.tree
 import rich
@@ -47,6 +51,13 @@ paths_to_trees = {
         module VDiv:
             r_top = new Resistor
             r_bottom = new Resistor
+            r_2 = new Resistor
+            r_2.value = 3
+            r_3 = new Resistor
+            r_3.value = 3
+            r_4 = new Resistor
+            r_5 = new Resistor
+            r_5.value = 5
 
             signal top ~ r_top.p1
             signal output ~ r_top.p2
@@ -64,9 +75,11 @@ paths_to_trees = {
             vdiv.r_bottom.value = 1000
 
         module Root from SomeModule:
-            vdiv.r_middle.value = 1000
             vdiv.r_middle -> FancyResistor
             vdiv -> FancyVDiv
+            vdiv.r_bottom.test = 5
+            value = 1
+            mfn = "test"
         """
     )
 }
@@ -86,5 +99,6 @@ flat = flatten.build(vdiv)
 print_tree(make_tree(flat))
 
 # %%
-# flat.children["vdiv"].children["r_middle"].addr
+
+
 # %%
