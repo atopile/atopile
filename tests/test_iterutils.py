@@ -20,7 +20,7 @@ def test_bfs():
     b.children = [e, f]
     c.children = [g, h]
 
-    assert list(bfs(a, lambda n: n.children)) == [a, b, c, d, e, f, g, h]
+    assert list(bfs(a, lambda n: n.children)) == [b, c, d, e, f, g, h]
 
 
 def test_unique_list_empty():

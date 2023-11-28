@@ -7,15 +7,15 @@ from typing import Callable, Iterable, Iterator, TypeVar
 T = TypeVar("T")
 
 
-def bfs(obj: T, child_getter: Callable[[T], Iterable[T]]) -> Iterator[T]:
+def bfs(start: T, child_getter: Callable[[T], Iterable[T]]) -> Iterator[T]:
     """Breadth-first search."""
-    queue = deque([obj])
+    queue = deque(child_getter(start))
 
     while queue:
-        obj = queue.popleft()
-        yield obj
+        start = queue.popleft()
+        yield start
 
-        for child in child_getter(obj):
+        for child in child_getter(start):
             queue.append(child)
 
 
@@ -34,10 +34,10 @@ def unique_by_id(iterable: Iterable[T]) -> tuple[set[T], list[T]]:
 
 def unique_list(iterable: Iterable[T]) -> list[T]:
     """Return a list of unique items is in the same order as the iterable."""
-    unique_list = []
+    unique_items = []
 
     for item in iterable:
-        if item not in unique_list:
-            unique_list.append(item)
+        if item not in unique_items:
+            unique_items.append(item)
 
-    return unique_list
+    return unique_items
