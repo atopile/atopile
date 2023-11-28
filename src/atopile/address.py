@@ -91,6 +91,15 @@ class AddrStr(str):
         """Return the node section of the address as a reference"""
         return get_node_as_ref(self)
 
+    def add_node(self, node: str) -> "AddrStr":
+        """
+        Add a node to the address.
+        """
+        # check if there is already a node
+        if ":" in self:
+            return self.__class__(f"{self}.{node}")
+        return self.__class__(f"{self}:{node}")
+
     @classmethod
     def from_str(cls, address: str) -> "AddrStr":
         """

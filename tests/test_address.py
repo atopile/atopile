@@ -43,6 +43,21 @@ def test_addrstr_properties3():
 def test_addrstr_from_parts(path, node, expected):
     assert AddrStr.from_parts(path, node) == expected
 
+@pytest.mark.parametrize(
+    "address_string, node_string, expectted",
+    [
+        ("/path/to/file", "test_node", "/path/to/file:test_node"),
+        ("/path/to/file:node1", "test_node", "/path/to/file:node1.test_node"),
+        (Path("/path/to/file"), "test_node", "/path/to/file:test_node"),
+        (Path("/path/to/file"), "test_node", "/path/to/file:test_node"),    ],
+)
+
+def test_add_node(address_string, node_string, expectted):
+    address = AddrStr(address_string)
+    node = AddrStr(node_string)
+
+    assert address.add_node(node) == expectted
+
 
 @pytest.mark.parametrize(
     "address",
