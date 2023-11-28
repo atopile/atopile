@@ -31,7 +31,7 @@ class Link(Base):
     """Represent a connection between two connectable things."""
     source_ref: Ref
     target_ref: Ref
-     #FIXME: what to do here
+    # FIXME: what to do here
 
 
 @define(repr=False)
