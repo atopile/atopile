@@ -5,13 +5,8 @@ It's entirely invalidated when the circuit changes at all and needs to be rebuil
 Bottom's up!
 """
 import logging
-from collections import ChainMap
-<<<<<<< HEAD
+from collections import ChainMap, defaultdict
 from typing import Any, Iterable, Iterator, Optional
-=======
-from typing import Any, Iterator, Iterable, Optional
-from collections import defaultdict
->>>>>>> 929e31f (extract unique helper fct wip)
 
 from attrs import define, field, resolve_types
 
@@ -64,6 +59,9 @@ resolve_types(Joint)
 resolve_types(Instance)
 
 
+# Methods to access this datamodel
+
+
 def dfs(instance: Instance) -> Iterator[Instance]:
     """Depth-first search of the instance tree."""
     yield instance
@@ -83,35 +81,29 @@ def dfs_with_ref(instance: Instance, start_ref: Optional[Ref] = None) -> Iterato
             yield from dfs_with_ref(child, start_ref.add_name(name))
 
 
-def find_all_with_super(root: Instance, types: dm1.Object | tuple[dm1.Object]) -> Iterator[Instance]:
-    """Find all instances of a certain type."""
-    if isinstance(types, dm1.Object):
-        types = (types,)
+def filter_by_supers(iterable: Iterable[Instance], supers: dm1.Object | Iterable[dm1.Object]) -> Iterator[Instance]:
+    """Filter an iterable of instances for those that are of a certain type."""
+    if isinstance(supers, dm1.Object):
+        supers = (supers,)
 
-    types_identity_set = set(id(s) for s in types)
+    allowed_supers_identity_set = set(id(s) for s in supers)
 
-    for instance in dfs(root):
-        super_identity_set = set(id(s) for s in instance.origin.supers_bfs)
+    for instance in iterable:
+        instance_supers_identity_set = set(id(s) for s in instance.origin.supers_bfs)
         # If there's overlap between the type's we're searching for
         # and the instance's supers
-        if types_identity_set & super_identity_set:
+        if instance_supers_identity_set & allowed_supers_identity_set:
             yield instance
 
 
-def find_nets(root: Instance) -> Iterable[Iterable[Instance]]:
-    """Find all nets in the circuit."""
-<<<<<<< HEAD
-=======
-    
 def extract_unique(instance: Instance, types: dm1.Object | tuple[dm1.Object], keys: tuple[str]) -> defaultdict:
     unique_elements = defaultdict(list)
     # instance_key = tuple(instance.children.get(key_n) for key_n in keys)
     # unique_elements[instance_key].append(instance)
-    list_ = find_all_with_super(instance, COMPONENT)
+    components = filter_by_supers(dfs(instance), dm1.COMPONENT)
 
-    for element in list_:
+    for element in components:
         instance_key = tuple(element.children.get(key_n) for key_n in keys)
         unique_elements[instance_key].append(element)
-    
-    return 
->>>>>>> 929e31f (extract unique helper fct wip)
+
+    return
