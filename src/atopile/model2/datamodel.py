@@ -81,19 +81,25 @@ resolve_types(Object)
 
 
 # these are the build-in superclasses that have special meaning to the compiler
-MODULE = (Ref.from_one("module"),)
-COMPONENT = (Ref.from_one("component"),)
-
-PIN = (Ref.from_one("pin"),)
-SIGNAL = (Ref.from_one("signal"),)
-INTERFACE = (Ref.from_one("interface"),)
+MODULE_REF = Ref.from_one("module")
+COMPONENT_REF = Ref.from_one("component")
+PIN_REF = Ref.from_one("pin")
+SIGNAL_REF = Ref.from_one("signal")
+INTERFACE_REF = Ref.from_one("interface")
 
 
 root_object = partial(Object, supers_refs=(), locals_=KeyOptMap(()), closure=())
+MODULE = root_object(),
+COMPONENT = Object(supers_refs=(MODULE_REF,), locals_=KeyOptMap(()), closure=()),
+PIN = root_object(),
+SIGNAL = root_object(),
+INTERFACE = root_object(),
+
+
 BUILTINS = {
-    MODULE[0]: root_object(),
-    COMPONENT[0]: Object(supers_refs=MODULE, locals_=KeyOptMap(()), closure=()),
-    PIN[0]: root_object(),
-    SIGNAL[0]: root_object(),
-    INTERFACE[0]: root_object(),
+    MODULE_REF: MODULE,
+    COMPONENT_REF: COMPONENT,
+    PIN_REF: PIN,
+    SIGNAL_REF: SIGNAL,
+    INTERFACE_REF: INTERFACE,
 }
