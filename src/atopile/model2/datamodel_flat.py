@@ -3,7 +3,7 @@ This datamodel represents the circuit from a specific point of view - eg. throug
 It's entirely invalidated when the circuit changes at all and needs to be rebuilt.
 """
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from attrs import define, resolve_types
 
@@ -28,10 +28,10 @@ class Link:
 class Instance:
     """Represent a concrete object class."""
     path: tuple[str]
-    class_: tuple[dm1.Object]
+    class_: dm1.Object
 
     parent: Optional["Instance"]
-    children: dict[str, "Instance"]
+    children: dict[str, Any | "Instance"]
 
     links: tuple[Link]
     linked_to_me: tuple[Link]
