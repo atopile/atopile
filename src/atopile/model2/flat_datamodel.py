@@ -6,7 +6,12 @@ Bottom's up!
 """
 import logging
 from collections import ChainMap
+<<<<<<< HEAD
 from typing import Any, Iterable, Iterator, Optional
+=======
+from typing import Any, Iterator, Iterable, Optional
+from collections import defaultdict
+>>>>>>> 929e31f (extract unique helper fct wip)
 
 from attrs import define, field, resolve_types
 
@@ -95,3 +100,18 @@ def find_all_with_super(root: Instance, types: dm1.Object | tuple[dm1.Object]) -
 
 def find_nets(root: Instance) -> Iterable[Iterable[Instance]]:
     """Find all nets in the circuit."""
+<<<<<<< HEAD
+=======
+    
+def extract_unique(instance: Instance, types: dm1.Object | tuple[dm1.Object], keys: tuple[str]) -> defaultdict:
+    unique_elements = defaultdict(list)
+    # instance_key = tuple(instance.children.get(key_n) for key_n in keys)
+    # unique_elements[instance_key].append(instance)
+    list_ = find_all_with_super(instance, COMPONENT)
+
+    for element in list_:
+        instance_key = tuple(element.children.get(key_n) for key_n in keys)
+        unique_elements[instance_key].append(element)
+    
+    return 
+>>>>>>> 929e31f (extract unique helper fct wip)
