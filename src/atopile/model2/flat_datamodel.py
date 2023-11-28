@@ -100,18 +100,14 @@ def find_all_with_super(root: Instance, types: dm1.Object | tuple[dm1.Object]) -
 
 def find_nets(root: Instance) -> Iterable[Iterable[Instance]]:
     """Find all nets in the circuit."""
-<<<<<<< HEAD
-=======
-    
-def extract_unique(instance: Instance, types: dm1.Object | tuple[dm1.Object], keys: tuple[str]) -> defaultdict:
-    unique_elements = defaultdict(list)
-    # instance_key = tuple(instance.children.get(key_n) for key_n in keys)
-    # unique_elements[instance_key].append(instance)
-    list_ = find_all_with_super(instance, COMPONENT)
 
-    for element in list_:
+
+def extract_unique(instance: Instance, types: dm1.Object | tuple[dm1.Object], keys: tuple[str]) -> defaultdict:
+    unique_instances: defaultdict() = defaultdict(list)
+    found_candidate_iterator = find_all_with_super(instance, types)
+
+    for element in found_candidate_iterator:
         instance_key = tuple(element.children.get(key_n) for key_n in keys)
-        unique_elements[instance_key].append(element)
-    
-    return 
->>>>>>> 929e31f (extract unique helper fct wip)
+        unique_instances[instance_key].append(element)
+
+    return unique_instances
