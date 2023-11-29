@@ -6,7 +6,7 @@ Bottom's up!
 """
 import logging
 from collections import ChainMap, defaultdict
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any, Callable, Iterable, Iterator, Optional
 
 from attrs import define, field, resolve_types
 
@@ -65,6 +65,7 @@ resolve_types(Instance)
 def dfs(instance: Instance) -> Iterator[Instance]:
     """Depth-first search of the instance tree."""
     yield instance
+
     for child in instance.children.values():
         if isinstance(child, Instance):
             yield from dfs(child)
@@ -76,24 +77,29 @@ def dfs_with_ref(instance: Instance, start_ref: Optional[Ref] = None) -> Iterato
         start_ref = Ref(())
 
     yield (start_ref, instance)
+
     for name, child in instance.children.items():
         if isinstance(child, Instance):
             yield from dfs_with_ref(child, start_ref.add_name(name))
 
 
-def filter_by_supers(iterable: Iterable[Instance], supers: dm1.Object | Iterable[dm1.Object]) -> Iterator[Instance]:
-    """Filter an iterable of instances for those that are of a certain type."""
+def supers_match(supers: dm1.Object | Iterable[dm1.Object]) -> Callable[[Instance], Iterator[bool]]:
+    """Has any of the given supers."""
     if isinstance(supers, dm1.Object):
         supers = (supers,)
 
     allowed_supers_identity_set = set(id(s) for s in supers)
 
-    for instance in iterable:
-        instance_supers_identity_set = set(id(s) for s in instance.origin.supers_bfs)
-        # If there's overlap between the type's we're searching for
-        # and the instance's supers
-        if instance_supers_identity_set & allowed_supers_identity_set:
-            yield instance
+    def _filter(instance: Instance) -> bool:
+        yield from (id(s) in allowed_supers_identity_set for s in instance.origin.supers_bfs)
+
+    return _filter
+
+
+def filter_by_supers(iterable: Iterable[Instance], supers: dm1.Object | Iterable[dm1.Object]) -> Iterator[Instance]:
+    """Filter an iterable of instances for those that are of a certain type."""
+    _supers_match = supers_match(supers)
+    return filter(lambda x: any(_supers_match(x)), iterable)
 
 
 def extract_unique(instance: Instance, types: dm1.Object | tuple[dm1.Object], keys: tuple[str]) -> defaultdict:
