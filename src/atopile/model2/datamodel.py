@@ -12,6 +12,7 @@ from attrs import define, field, resolve_types
 
 from .datatypes import KeyOptMap, Ref
 
+from atopile.address import AddrStr
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -32,6 +33,9 @@ class Link(Base):
     source_ref: Ref
     target_ref: Ref
     # FIXME: what to do here
+
+    def __repr__(self) -> str:
+        return super().__repr__() + f" {self.source_ref} -> {self.target_ref}"
 
 
 @define(repr=False)
@@ -66,6 +70,7 @@ class Object(Base):
 
     # configured post-construction
     closure: Optional[tuple["Object"]] = None
+    address: Optional[AddrStr] = None
 
     supers_objs: Optional[tuple["Object"]] = None
     supers_bfs: Optional[tuple["Object"]] = None
@@ -75,6 +80,9 @@ class Object(Base):
         self.named_locals = self.locals_.named_items()
         self.unnamed_locals = tuple(self.locals_.unnamed_items())  # cast to tuple because otherwise it's lazy
         self.locals_by_type = self.locals_.map_items_by_type((Link, Replace, Import, Object, (str, int)))
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.address}>"
 
 
 resolve_types(Link)
@@ -92,12 +100,11 @@ INTERFACE_REF = Ref.from_one("interface")
 
 
 root_object = partial(Object, supers_refs=(), locals_=KeyOptMap(()), closure=())
-MODULE = root_object()
+MODULE = root_object(address=AddrStr("<Built-in> Module"))
 COMPONENT = Object(supers_refs=(MODULE_REF,), locals_=KeyOptMap(()), closure=())
-PIN = root_object()
-SIGNAL = root_object()
-INTERFACE = root_object()
-
+PIN = root_object(address=AddrStr("<Built-in> Pin"))
+SIGNAL = root_object(adress=AddrStr("<Built-in> Signal"))
+INTERFACE = root_object(adress=AddrStr("<Built-in> Interface"))
 
 BUILTINS = {
     MODULE_REF: MODULE,
