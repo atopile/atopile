@@ -12,6 +12,10 @@ log.setLevel(logging.INFO)
 class Ref(tuple[str | int]):
     """Shell class to provide basic utils for a reference."""
 
+    def add_name(self, name: str | int) -> "Ref":
+        """Return a new Ref with the given name."""
+        return Ref((*self, name))
+
     @classmethod
     def from_one(cls, name: str | int) -> "Ref":
         """Return a Ref with a single item."""

@@ -4,6 +4,9 @@ def test_ref_from_one():
     assert Ref.from_one("foo") == ("foo",)
     assert Ref.from_one(42) == (42,)
 
+def test_ref_add_name():
+    assert Ref.from_one("foo").add_name("bar") == ("foo", "bar")
+
 def test_keyoptitem_from_kv():
     assert KeyOptItem.from_kv(None, "foo") == (None, "foo")
 

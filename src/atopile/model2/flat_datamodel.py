@@ -5,12 +5,13 @@ It's entirely invalidated when the circuit changes at all and needs to be rebuil
 Bottom's up!
 """
 import logging
-from collections import ChainMap
-from typing import Any, Iterator, Iterable, Optional
+from collections import ChainMap, defaultdict
+from typing import Any, Iterable, Iterator, Optional
 
 from attrs import define, field, resolve_types
 
 from . import datamodel as dm1
+from .datatypes import Ref
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -21,12 +22,15 @@ class Joint:
     """Represent a connection between two connectable things."""
     origin_link: dm1.Link
 
-    origin_instance: "Instance"
+    contained_by: "Instance"
+    source_connected: "Instance"
+    target_connected: "Instance"
+
     source: "Instance"
     target: "Instance"
 
     def __repr__(self) -> str:
-        return f"<Link {self.source.addr} -> {self.target.addr}>"
+        return f"<Link {repr(self.source)} -> {repr(self.target)}>"
 
 
 @define
@@ -55,6 +59,9 @@ resolve_types(Joint)
 resolve_types(Instance)
 
 
+# Methods to access this datamodel
+
+
 def dfs(instance: Instance) -> Iterator[Instance]:
     """Depth-first search of the instance tree."""
     yield instance
@@ -63,21 +70,38 @@ def dfs(instance: Instance) -> Iterator[Instance]:
             yield from dfs(child)
 
 
-def find_all_with_super(root: Instance, types: dm1.Object | tuple[dm1.Object]) -> Iterator[Instance]:
-    """Find all instances of a certain type."""
-    if isinstance(types, dm1.Object):
-        types = (types,)
+def dfs_with_ref(instance: Instance, start_ref: Optional[Ref] = None) -> Iterator[tuple[Ref, Instance]]:
+    """Depth-first search of the instance tree."""
+    if start_ref is None:
+        start_ref = Ref(())
 
-    types_identity_set = set(id(s) for s in types)
+    yield (start_ref, instance)
+    for name, child in instance.children.items():
+        if isinstance(child, Instance):
+            yield from dfs_with_ref(child, start_ref.add_name(name))
 
-    for instance in dfs(root):
-        super_identity_set = set(id(s) for s in instance.origin.supers_bfs)
+
+def filter_by_supers(iterable: Iterable[Instance], supers: dm1.Object | Iterable[dm1.Object]) -> Iterator[Instance]:
+    """Filter an iterable of instances for those that are of a certain type."""
+    if isinstance(supers, dm1.Object):
+        supers = (supers,)
+
+    allowed_supers_identity_set = set(id(s) for s in supers)
+
+    for instance in iterable:
+        instance_supers_identity_set = set(id(s) for s in instance.origin.supers_bfs)
         # If there's overlap between the type's we're searching for
         # and the instance's supers
-        if types_identity_set & super_identity_set:
+        if instance_supers_identity_set & allowed_supers_identity_set:
             yield instance
 
 
-def find_nets(root: Instance) -> Iterator[Iterable[Instance]]:
-    """Find all nets in the circuit."""
-    
+def extract_unique(instance: Instance, types: dm1.Object | tuple[dm1.Object], keys: tuple[str]) -> defaultdict:
+    unique_instances: defaultdict[Any, list] = defaultdict(list)
+    found_candidate_iterator = filter_by_supers(dfs(instance), dm1.COMPONENT)
+
+    for element in found_candidate_iterator:
+        instance_key = tuple(element.children.get(key_n) for key_n in keys)
+        unique_instances[instance_key].append(element)
+
+    return unique_instances
