@@ -3,7 +3,7 @@ A mapping that lazily builds its values.
 """
 
 import collections.abc
-from typing import Callable, Hashable, Iterable, TypeVar, Mapping
+from typing import Callable, Hashable, Iterable, TypeVar, Mapping, Optional
 
 
 K = TypeVar("K", bound=Hashable)  # the keys must be hashable
@@ -24,11 +24,13 @@ class LazyMap(collections.abc.MutableMapping[K, V]):
         self,
         builder: Callable[[K], V],
         known_keys: Iterable[K],
-        initial_values: Mapping[K, V],
+        initial_values: Optional[Mapping[K, V]],
     ) -> None:
         self.builder = builder
         self._map: dict[K, V] = {k: EMPTY_SENTINEL for k in known_keys}
-        self._map.update(initial_values)
+
+        if initial_values is not None:
+            self._map.update(initial_values)
 
     def __getitem__(self, key: K):
         if self._map[key] is EMPTY_SENTINEL:
