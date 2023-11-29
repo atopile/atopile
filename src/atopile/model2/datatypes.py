@@ -16,6 +16,9 @@ class Ref(tuple[str | int]):
         """Return a new Ref with the given name."""
         return Ref((*self, name))
 
+    def __str__(self) -> str:
+        return ".".join(map(str, self))
+
     @classmethod
     def from_one(cls, name: str | int) -> "Ref":
         """Return a Ref with a single item."""
