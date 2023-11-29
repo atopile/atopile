@@ -39,7 +39,7 @@ def build(
     paths_to_objs: Mapping[Path, Object], error_handler: errors.ErrorHandler
 ) -> dict[str, Object]:
     """Build the model."""
-    wendy = Wendy(error_handler)
+    wendy = Muck(error_handler)
 
     for obj in paths_to_objs.values():
         wendy.visit_object(obj)
@@ -47,7 +47,7 @@ def build(
     return paths_to_objs
 
 
-class Wendy:
+class Muck:
     """Wendy's job is to replace all the references to supers to actual objects."""
 
     def __init__(self, error_handler: errors.ErrorHandler) -> None:
