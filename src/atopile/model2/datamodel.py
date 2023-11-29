@@ -103,7 +103,7 @@ root_object = partial(Object, supers_refs=(), locals_=KeyOptMap(()), closure=())
 MODULE = root_object(address=AddrStr("<Built-in> Module"))
 COMPONENT = Object(supers_refs=(MODULE_REF,), locals_=KeyOptMap(()), closure=())
 PIN = root_object(address=AddrStr("<Built-in> Pin"))
-SIGNAL = root_object(adress=AddrStr("<Built-in> Signal"))
+SIGNAL = root_object(address=AddrStr("<Built-in> Signal"))
 INTERFACE = root_object(adress=AddrStr("<Built-in> Interface"))
 
 BUILTINS = {
