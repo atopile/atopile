@@ -44,6 +44,7 @@ paths_to_trees = {
         component Resistor:
             pin p1
             pin p2
+            p1 ~ p2
 
         component FancyResistor from Resistor:
             pin p3
