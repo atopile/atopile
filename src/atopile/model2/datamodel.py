@@ -32,7 +32,6 @@ class Link(Base):
     """Represent a connection between two connectable things."""
     source_ref: Ref
     target_ref: Ref
-    # FIXME: what to do here
 
     def __repr__(self) -> str:
         return super().__repr__() + f" {self.source_ref} -> {self.target_ref}"
