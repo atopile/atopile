@@ -28,7 +28,7 @@ def ref_and_connectable_pairs(instance: Instance) -> Iterable[tuple[Ref, Instanc
     return filter(lambda kv: _IS_A_PIN_OR_SIGNAL(kv[1]), dfs_with_ref(instance))
 
 
-def _build(addr: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> Instance:
+def _build(ref: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> Instance:
     """Visit an object."""
     if instance and obj in instance.origin.supers_bfs:
         # if an instance is already provided, then don't attempt to rewrite existing layers
@@ -36,10 +36,10 @@ def _build(addr: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> I
         return instance
     elif obj.supers_bfs:
         # if there are supers to visit, then visit them first write those higher layers
-        instance = _build(addr, obj.supers_bfs[0], instance)
+        instance = _build(ref, obj.supers_bfs[0], instance)
     else:
         # if there are no supers to visit, we're at the base layer, and we need to create a new object
-        instance = Instance(addr=addr)
+        instance = Instance(ref=ref)
 
     # at this point, we know we're traveling back down the layers
     # we set the origin here, because we want it to point at the last layer applied to this instance
@@ -51,7 +51,7 @@ def _build(addr: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> I
     # may override or reference these children
     child_objects = obj.locals_by_type[dm1.Object]
     instance.children_from_classes.update(
-        {ref[0]: _build(addr + ref, value) for ref, value in child_objects}
+        {ref[0]: _build(ref + ref, value) for ref, value in child_objects}
     )
 
     # visit replacements after the children are created
@@ -63,7 +63,7 @@ def _build(addr: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> I
         assert isinstance(replace, dm1.Replace)
         instance_to_replace = get_ref_from_instance(replace.original_ref, instance)
         _build(
-            instance_to_replace.addr,
+            instance_to_replace.ref,
             replace.replacement_obj,
             instance_to_replace
         )

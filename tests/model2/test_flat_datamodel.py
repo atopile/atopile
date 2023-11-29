@@ -22,13 +22,13 @@ from atopile.model2.datatypes import KeyOptMap
 
 @pytest.fixture
 def instance_structure():
-    f = Instance(addr=("f",))
-    e = Instance(addr=("e",))
+    f = Instance(ref=("f",))
+    e = Instance(ref=("e",))
 
-    d = Instance(addr=("d",), children_from_mods={"e": e, "f": f})
-    c = Instance(addr=("c",))
-    b = Instance(addr=("b",), children_from_mods={"c": c, "d": d})
-    a = Instance(addr=("a",), children_from_mods={"b": b})
+    d = Instance(ref=("d",), children_from_mods={"e": e, "f": f})
+    c = Instance(ref=("c",))
+    b = Instance(ref=("b",), children_from_mods={"c": c, "d": d})
+    a = Instance(ref=("a",), children_from_mods={"b": b})
 
     return a, b, c, d, e, f
 
@@ -91,13 +91,13 @@ def unique_structure():
     m_obj.supers_bfs=(MODULE,)
     m_obj.locals_ = ((("foo",), foo),)
 
-    b = Instance(addr=("b",), origin=c_obj, children_from_mods={"value":"1"})
-    c = Instance(addr=("c",), origin=c_obj, children_from_mods={"value":"1"})
-    g = Instance(addr=("g",), origin=c_obj, children_from_mods={"value":"2"})
-    d = Instance(addr=("d",), origin=m_obj)
-    e = Instance(addr=("e",), origin=c_obj, children_from_mods={"b": b, "c": c, "d": d, "value":"1"})
+    b = Instance(ref=("b",), origin=c_obj, children_from_mods={"value":"1"})
+    c = Instance(ref=("c",), origin=c_obj, children_from_mods={"value":"1"})
+    g = Instance(ref=("g",), origin=c_obj, children_from_mods={"value":"2"})
+    d = Instance(ref=("d",), origin=m_obj)
+    e = Instance(ref=("e",), origin=c_obj, children_from_mods={"b": b, "c": c, "d": d, "value":"1"})
 
-    a = Instance(addr=("a",), origin=m_obj, children_from_mods={"g": g, "e": e})
+    a = Instance(ref=("a",), origin=m_obj, children_from_mods={"g": g, "e": e})
 
     return a, b, c, d, e, g
 

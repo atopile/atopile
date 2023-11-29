@@ -36,7 +36,7 @@ class Joint:
 @define
 class Instance:
     """Represent a concrete object class."""
-    addr: tuple[str]
+    ref: tuple[str]
 
     origin: Optional[dm1.Object] = None
 
@@ -52,7 +52,7 @@ class Instance:
         self.children = ChainMap(self.children_from_mods, self.children_from_classes)
 
     def __repr__(self) -> str:
-        return f"<Instance {self.addr}>"
+        return f"<Instance {self.ref}>"
 
 
 resolve_types(Joint)
