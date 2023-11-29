@@ -22,6 +22,7 @@ log.setLevel(logging.INFO)
 class Base:
     """Represent a base class for all things."""
     src_ctx: Optional[ParserRuleContext] = field(kw_only=True, default=None)
+    valid: bool = field(kw_only=True, default=True)
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}>"

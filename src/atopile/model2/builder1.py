@@ -11,7 +11,6 @@ from typing import Iterable, Mapping, Optional
 
 from antlr4 import ParserRuleContext
 
-from .parse_utils import get_src_info_from_ctx
 from atopile.address import AddrStr
 from atopile.model2 import errors
 from atopile.parser.AtopileParser import AtopileParser as ap
@@ -29,6 +28,7 @@ from .datamodel import (
     Replace,
 )
 from .datatypes import KeyOptItem, KeyOptMap, Ref
+from .parse_utils import get_src_info_from_ctx
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -48,7 +48,9 @@ def _attach_downward_info(obj: Object) -> None:
 
     if obj.address is None:
         assert isinstance(obj.src_ctx, ParserRuleContext)
-        obj.address = AddrStr.from_parts(path=get_src_info_from_ctx(obj.src_ctx)[0])
+        obj.address = AddrStr.from_parts(
+            path = get_src_info_from_ctx(obj.src_ctx)[0]
+        )
 
     local_closure = obj.closure + (obj,)
 
@@ -60,7 +62,10 @@ def _attach_downward_info(obj: Object) -> None:
             _attach_downward_info(local)
 
 
-def build(paths_to_trees: Mapping[Path, ParserRuleContext], error_handler: errors.ErrorHandler) -> Mapping[Path, Object]:
+def build(
+    paths_to_trees: Mapping[Path, ParserRuleContext],
+    error_handler: errors.ErrorHandler
+) -> Mapping[Path, Object]:
     """Build the datamodel from an ANTLR context."""
     dizzy = Dizzy(error_handler)
 
@@ -109,6 +114,15 @@ class Dizzy(AtopileParserVisitor):
         """
         results = (self.visit(child) for child in children)
         return KeyOptMap(itertools.chain(*filter(lambda x: x is not NOTHING, results)))
+
+    def build(self, ctx: ParserRuleContext) -> Object:
+        """
+        Build the object from the given context
+        """
+        obj = self.visit(ctx)
+        assert isinstance(obj, Object)
+        _attach_downward_info(obj)
+        return obj
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> _Sentinel | KeyOptItem:
         """

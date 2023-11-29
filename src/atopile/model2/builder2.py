@@ -58,7 +58,7 @@ class Lofty:
         search_paths: Iterable[Path] = chain((cwd,) + self.search_paths)
         for search_path in search_paths:
             candidate_path = search_path / from_name
-            if candidate_path.exists():
+            if candidate_path in self.paths_to_objs:
                 return candidate_path
 
         raise FileNotFoundError
