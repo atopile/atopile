@@ -8,7 +8,7 @@ from atopile.model2 import builder1, builder2, builder3, flatten
 from atopile.model2.errors import ErrorHandler, HandlerMode
 from atopile.address import AddrStr
 from atopile.model2.datamodel import COMPONENT
-from atopile.model2.flat_datamodel import extract_unique, filter_by_supers, dfs
+from atopile.model2.flat_datamodel import find_like, filter_by_supers, dfs
 
 from collections import defaultdict
 
@@ -100,7 +100,7 @@ print_tree(make_tree(flat))
 
 # %%
 found_candidate_iterator = filter_by_supers(dfs(flat), COMPONENT)
-ret = extract_unique(found_candidate_iterator,("value",))
+ret = find_like(found_candidate_iterator,("value",))
 
 for e in ret:
     print(e, ' : ', ret[e])

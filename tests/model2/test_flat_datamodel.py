@@ -9,7 +9,7 @@ from atopile.model2.flat_datamodel import (
     dfs,
     dfs_with_ref,
     filter_by_supers,
-    extract_unique
+    find_like
 )
 
 from atopile.model2.datamodel import Object, COMPONENT, MODULE
@@ -48,7 +48,7 @@ def test_dfs_with_ref(instance_structure: tuple[Instance]):
     ]
 
 
-def test_find_all_instances_of_types(instance_structure: tuple[Instance]):
+def test_filter_by_supers(instance_structure: tuple[Instance]):
     a, b, c, d, e, f = instance_structure
 
     A = 1
@@ -61,17 +61,17 @@ def test_find_all_instances_of_types(instance_structure: tuple[Instance]):
     origin_b = MagicMock()
     origin_b.supers_bfs = [B, C]
 
-    f.origin=origin_b
-    e.origin=origin_b
-    d.origin=origin_b
-    c.origin=origin_a
-    b.origin=origin_a
-    a.origin=origin_a
+    f.origin = origin_b
+    e.origin = origin_b
+    d.origin = origin_b
+    c.origin = origin_a
+    b.origin = origin_a
+    a.origin = origin_a
 
-    assert list(find_all_with_super(a, (A,))) == [a, b, c]
-    assert list(find_all_with_super(a, (A,C))) == [a, b, c, d, e, f]
-    assert list(find_all_with_super(a, (B,))) == [a, b, c, d, e, f]
-    assert list(find_all_with_super(a, (C,))) == [d, e, f]
+    assert list(filter_by_supers(instance_structure, (A,))) == [a, b, c]
+    assert list(filter_by_supers(instance_structure, (A,C))) == [a, b, c, d, e, f]
+    assert list(filter_by_supers(instance_structure, (B,))) == [a, b, c, d, e, f]
+    assert list(filter_by_supers(instance_structure, (C,))) == [d, e, f]
 
 @pytest.fixture
 def unique_structure():
@@ -102,7 +102,7 @@ def test_extract_unique(unique_structure: tuple[Instance]):
     a, b, c, d, e, g = unique_structure
 
     test = filter_by_supers(dfs(a), COMPONENT)
-    ret = extract_unique(test,("value",))
+    ret = find_like(test,("value",))
 
     expected_ret = defaultdict(list)
     expected_ret[('1',)] = [e,b,c]
