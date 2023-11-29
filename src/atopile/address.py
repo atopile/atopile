@@ -93,7 +93,7 @@ class AddrStr(str):
 
     def add_node(self, node: str) -> "AddrStr":
         """
-        Add a node to the address.
+        Add a node to the address. There should not be a colon on the end of the node.
         """
         # check if there is already a node
         if ":" in self:

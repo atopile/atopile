@@ -11,6 +11,8 @@ from typing import Iterable, Mapping, Optional
 
 from antlr4 import ParserRuleContext
 
+from .parse_utils import get_src_info_from_ctx
+from atopile.address import AddrStr
 from atopile.model2 import errors
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
@@ -39,17 +41,23 @@ SIGNAL = (SIGNAL_REF,)
 INTERFACE = (INTERFACE_REF,)
 
 
-def _attach_closures(obj: Object) -> None:
+def _attach_downward_info(obj: Object) -> None:
     """Fix the closure of an object."""
     if obj.closure is None:
         obj.closure = ()
 
+    if obj.address is None:
+        assert isinstance(obj.src_ctx, ParserRuleContext)
+        obj.address = AddrStr.from_parts(file=get_src_info_from_ctx(obj.src_ctx)[0])
+
     local_closure = obj.closure + (obj,)
 
-    for local in obj.locals_.values():
+    for ref, local in obj.locals_:
         if isinstance(local, Object):
+            assert len(ref) == 1
             local.closure = local_closure
-            _attach_closures(local)
+            local.address = obj.address.add_node(ref[0])
+            _attach_downward_info(local)
 
 
 def build(paths_to_trees: Mapping[Path, ParserRuleContext], error_handler: errors.ErrorHandler) -> Mapping[Path, Object]:
@@ -62,7 +70,7 @@ def build(paths_to_trees: Mapping[Path, ParserRuleContext], error_handler: error
         try:
             result = dizzy.visit(tree)
             assert isinstance(result, Object)
-            _attach_closures(result)
+            _attach_downward_info(result)
             results[path] = result
         except errors.AtoError as e:
             error_handler.handle(e)
