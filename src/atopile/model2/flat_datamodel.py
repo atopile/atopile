@@ -11,7 +11,7 @@ from typing import Any, Callable, Iterable, Iterator, Optional
 from attrs import define, field, resolve_types
 
 from . import datamodel as dm1
-from .datatypes import Ref
+from .datatypes import Ref, KeyOptItem
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -30,7 +30,7 @@ class Joint:
     target: "Instance"
 
     def __repr__(self) -> str:
-        return f"<Link {repr(self.source)} -> {repr(self.target)}>"
+        return f"<Joint {repr(self.source)} -> {repr(self.target)}>"
 
 
 @define
@@ -71,12 +71,12 @@ def dfs(instance: Instance) -> Iterator[Instance]:
             yield from dfs(child)
 
 
-def dfs_with_ref(instance: Instance, start_ref: Optional[Ref] = None) -> Iterator[tuple[Ref, Instance]]:
+def dfs_with_ref(instance: Instance, start_ref: Optional[Ref] = None) -> Iterator[KeyOptItem[Ref, Instance]]:
     """Depth-first search of the instance tree."""
     if start_ref is None:
         start_ref = Ref(())
 
-    yield (start_ref, instance)
+    yield KeyOptItem.from_kv(start_ref, instance)
 
     for name, child in instance.children.items():
         if isinstance(child, Instance):
@@ -102,12 +102,15 @@ def filter_by_supers(iterable: Iterable[Instance], supers: dm1.Object | Iterable
     return filter(lambda x: any(_supers_match(x)), iterable)
 
 
-def extract_unique(instance: Instance, types: dm1.Object | tuple[dm1.Object], keys: tuple[str]) -> defaultdict:
-    unique_instances: defaultdict[Any, list] = defaultdict(list)
-    found_candidate_iterator = filter_by_supers(dfs(instance), dm1.COMPONENT)
+def find_like(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] = None) -> defaultdict:
+    """Extract "like" Instances, where "likeness" is qualified by equalities of keys."""
+    if default_keys is None:
+        default_keys = ("mfn", "value", "footprint")
 
-    for element in found_candidate_iterator:
+    like_instances = defaultdict(list)
+    for element in iterable:
+        keys = element.children.get("__keys__", default_keys)
         instance_key = tuple(element.children.get(key_n) for key_n in keys)
-        unique_instances[instance_key].append(element)
+        like_instances[instance_key].append(element)
 
-    return unique_instances
+    return like_instances

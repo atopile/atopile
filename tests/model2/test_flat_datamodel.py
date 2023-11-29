@@ -1,13 +1,20 @@
 from unittest.mock import MagicMock
 
+from collections import defaultdict
+
 import pytest
 
 from atopile.model2.flat_datamodel import (
     Instance,
     dfs,
     dfs_with_ref,
-    find_all_with_super,
+    filter_by_supers,
+    find_like
 )
+
+from atopile.model2.datamodel import Object, COMPONENT, MODULE
+from atopile.address import AddrStr
+from atopile.model2.datatypes import KeyOptMap
 
 
 @pytest.fixture
@@ -41,7 +48,7 @@ def test_dfs_with_ref(instance_structure: tuple[Instance]):
     ]
 
 
-def test_find_all_instances_of_types(instance_structure: tuple[Instance]):
+def test_filter_by_supers(instance_structure: tuple[Instance]):
     a, b, c, d, e, f = instance_structure
 
     A = 1
@@ -54,14 +61,51 @@ def test_find_all_instances_of_types(instance_structure: tuple[Instance]):
     origin_b = MagicMock()
     origin_b.supers_bfs = [B, C]
 
-    f.origin=origin_b
-    e.origin=origin_b
-    d.origin=origin_b
-    c.origin=origin_a
-    b.origin=origin_a
-    a.origin=origin_a
+    f.origin = origin_b
+    e.origin = origin_b
+    d.origin = origin_b
+    c.origin = origin_a
+    b.origin = origin_a
+    a.origin = origin_a
 
-    assert list(find_all_with_super(a, (A,))) == [a, b, c]
-    assert list(find_all_with_super(a, (A,C))) == [a, b, c, d, e, f]
-    assert list(find_all_with_super(a, (B,))) == [a, b, c, d, e, f]
-    assert list(find_all_with_super(a, (C,))) == [d, e, f]
+    assert list(filter_by_supers(instance_structure, (A,))) == [a, b, c]
+    assert list(filter_by_supers(instance_structure, (A,C))) == [a, b, c, d, e, f]
+    assert list(filter_by_supers(instance_structure, (B,))) == [a, b, c, d, e, f]
+    assert list(filter_by_supers(instance_structure, (C,))) == [d, e, f]
+
+@pytest.fixture
+def unique_structure():
+    def _make_obj() -> Object:
+        return Object(supers_refs=(), locals_=KeyOptMap(()))
+
+    foo = _make_obj()
+
+    c_obj = _make_obj()
+    c_obj.supers_bfs=(COMPONENT,)
+    c_obj.locals_ = ((("foo",), foo),)
+
+    m_obj = _make_obj()
+    m_obj.supers_bfs=(MODULE,)
+    m_obj.locals_ = ((("foo",), foo),)
+
+    b = Instance(addr=("b",), origin=c_obj, children_from_mods={"value":"1"})
+    c = Instance(addr=("c",), origin=c_obj, children_from_mods={"value":"1"})
+    g = Instance(addr=("g",), origin=c_obj, children_from_mods={"value":"2"})
+    d = Instance(addr=("d",), origin=m_obj)
+    e = Instance(addr=("e",), origin=c_obj, children_from_mods={"b": b, "c": c, "d": d, "value":"1"})
+
+    a = Instance(addr=("a",), origin=m_obj, children_from_mods={"g": g, "e": e})
+
+    return a, b, c, d, e, g
+
+def test_extract_unique(unique_structure: tuple[Instance]):
+    a, b, c, d, e, g = unique_structure
+
+    test = filter_by_supers(dfs(a), COMPONENT)
+    ret = find_like(test,("value",))
+
+    expected_ret = defaultdict(list)
+    expected_ret[('1',)] = [e,b,c]
+    expected_ret[('2',)] = [g]
+
+    assert ret == expected_ret

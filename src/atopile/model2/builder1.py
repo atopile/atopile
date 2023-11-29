@@ -48,7 +48,7 @@ def _attach_downward_info(obj: Object) -> None:
 
     if obj.address is None:
         assert isinstance(obj.src_ctx, ParserRuleContext)
-        obj.address = AddrStr.from_parts(file=get_src_info_from_ctx(obj.src_ctx)[0])
+        obj.address = AddrStr.from_parts(path=get_src_info_from_ctx(obj.src_ctx)[0])
 
     local_closure = obj.closure + (obj,)
 
