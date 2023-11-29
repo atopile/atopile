@@ -104,7 +104,7 @@ MODULE = root_object(address=AddrStr("<Built-in> Module"))
 COMPONENT = Object(supers_refs=(MODULE_REF,), locals_=KeyOptMap(()), closure=())
 PIN = root_object(address=AddrStr("<Built-in> Pin"))
 SIGNAL = root_object(address=AddrStr("<Built-in> Signal"))
-INTERFACE = root_object(adress=AddrStr("<Built-in> Interface"))
+INTERFACE = root_object(address=AddrStr("<Built-in> Interface"))
 
 BUILTINS = {
     MODULE_REF: MODULE,
