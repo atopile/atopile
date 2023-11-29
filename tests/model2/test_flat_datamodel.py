@@ -6,13 +6,16 @@ import pytest
 
 from atopile.model2.flat_datamodel import (
     Instance,
+    Joint,
     dfs,
     dfs_with_ref,
     filter_by_supers,
-    find_like
+    find_like,
+    joined_to_me,
+    iter_nets
 )
 
-from atopile.model2.datamodel import Object, COMPONENT, MODULE
+from atopile.model2.datamodel import Object, COMPONENT, MODULE, PIN, SIGNAL
 from atopile.address import AddrStr
 from atopile.model2.datatypes import KeyOptMap
 
@@ -109,3 +112,42 @@ def test_extract_unique(unique_structure: tuple[Instance]):
     expected_ret[('2',)] = [g]
 
     assert ret == expected_ret
+
+@pytest.fixture
+def typed_structure(instance_structure):
+    a, b, c, d, e, f = instance_structure
+
+    signal_origin = MagicMock(supers_bfs=(SIGNAL,))
+    pin_origin = MagicMock(supers_bfs=(PIN,))
+    empty_origin = MagicMock(supers_bfs=())
+
+    a.origin = empty_origin
+    b.origin = empty_origin
+    c.origin = pin_origin
+    d.origin = empty_origin
+    e.origin = signal_origin
+    f.origin = signal_origin
+
+    return a, b, c, d, e, f
+
+def test_iter_nets_no_joints(typed_structure: tuple[Instance]):
+    a, b, c, d, e, f = typed_structure
+
+    for net in iter_nets(a):
+        assert len(list(net)) == 1
+
+def test_joints(typed_structure: tuple[Instance]):
+    a, b, c, d, e, f = typed_structure
+
+    joint = MagicMock(source=c, target=f)
+    c.joined_to_me = [joint]
+    f.joined_to_me = [joint]
+
+    results = list(list(net) for net in iter_nets(a))
+
+    assert len(results[0]) == 2
+    assert results[0][0] == c
+    assert results[0][1] == f
+
+    assert len(results[1]) == 1
+    assert results[1][0] == e

@@ -28,7 +28,7 @@ def make_tree(instance: flatten.Instance, tree: rich.tree.Tree = None) -> rich.t
         else:
             tree.add(f"{child_name} == {str(child)}")
 
-    for link in instance.links:
+    for link in instance.joints:
         tree.add(f"{AddrStr.from_parts(node=link.source.addr)} ~ {AddrStr.from_parts(node=link.target.addr)}")
 
     return tree

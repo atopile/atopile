@@ -43,8 +43,8 @@ class Instance:
     children_from_classes: dict[str, Any] = field(factory=dict)
     children_from_mods: dict[str, Any] = field(factory=dict)
 
-    links: list[Joint] = field(factory=list)
-    linked_to_me: list[Joint] = field(factory=list)
+    joints: list[Joint] = field(factory=list)
+    joined_to_me: list[Joint] = field(factory=list)
 
     children: ChainMap[str, Any] = field(init=False)
 
@@ -114,3 +114,32 @@ def find_like(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] =
         like_instances[instance_key].append(element)
 
     return like_instances
+
+def joined_to_me(instance: Instance) -> Iterator[Instance]:
+    """Iterate over instances that are joined to me."""
+    for joint in instance.joined_to_me:
+        if joint.source is instance:
+            yield joint.target
+        else:
+            yield joint.source
+
+# dfs with an ignore filter
+def iter_nets(root: Instance) -> Iterator[Iterator[Instance]]:
+    seen: set[int] = set()
+
+    def _dfs_joins(instance: Instance) -> Iterator[Instance]:
+        if id(instance) in seen:
+            return
+
+        seen.add(id(instance))
+
+        yield instance
+
+        for other in joined_to_me(instance):
+            yield from _dfs_joins(other)
+
+    for connectable in filter_by_supers(dfs(root), (dm1.SIGNAL, dm1.PIN)):
+        if id(connectable) in seen:
+            continue
+        yield _dfs_joins(connectable)
+
