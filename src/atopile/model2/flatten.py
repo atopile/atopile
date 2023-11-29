@@ -17,43 +17,15 @@ def get_ref_from_instance(ref: Ref, instance: Instance) -> Instance:
 
 def build(obj: dm1.Object) -> Instance:
     """Build a flat datamodel."""
-    return _build((), obj)
+    return _build(Ref(()), obj)
 
 
-def _make_joints(instance: Instance, link: dm1.Link) -> Iterable[Joint]:
-    """
-    Make a link or links
-    If linking an interface, we need to link up all the pins and signals within them.
-    """
-    supers_are_pin_or_signal = make_supers_match_filter((dm1.PIN, dm1.SIGNAL))
+_IS_A_PIN_OR_SIGNAL = make_supers_match_filter((dm1.PIN, dm1.SIGNAL))
 
-    source_connected = get_ref_from_instance(link.source_ref, instance)
-    target_connected = get_ref_from_instance(link.target_ref, instance)
 
-    def ref_and_connectable_pairs(instance: Instance) -> Iterable[tuple[Ref, Instance]]:
-        """Get all the pins and signals from an instance."""
-        return filter(lambda kv: supers_are_pin_or_signal(kv[1]), dfs_with_ref(instance))
-
-    sources = ref_and_connectable_pairs(source_connected)
-    targets = ref_and_connectable_pairs(target_connected)
-
-    for (source_ref, source_instance), (target_ref, target_instance) in zip(sources, targets):
-        assert source_ref == target_ref
-        joint = Joint(
-            link,  # the link that created this joint
-            instance,  # the instance that contains this joint
-            # the connected objects as spec'd by the user
-            source_connected,
-            target_connected,
-            # the actual objects this link connects
-            source_instance,
-            target_instance
-        )
-        source_instance.linked_to_me.append(joint)
-        target_instance.linked_to_me.append(joint)
-        instance.links.append(joint)
-
-        yield joint
+def ref_and_connectable_pairs(instance: Instance) -> Iterable[tuple[Ref, Instance]]:
+    """Get all the pins and signals from an instance."""
+    return filter(lambda kv: _IS_A_PIN_OR_SIGNAL(kv[1]), dfs_with_ref(instance))
 
 
 def _build(addr: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> Instance:
@@ -100,7 +72,27 @@ def _build(addr: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> I
     links = obj.locals_by_type[dm1.Link]
     for _, link in links:
         assert isinstance(link, dm1.Link)
-        instance.links.extend(_make_joints(instance, link))
+        source_connected = get_ref_from_instance(link.source_ref, instance)
+        target_connected = get_ref_from_instance(link.target_ref, instance)
+
+        sources = ref_and_connectable_pairs(source_connected)
+        targets = ref_and_connectable_pairs(target_connected)
+
+        for (source_ref, source_instance), (target_ref, target_instance) in zip(sources, targets):
+            assert source_ref == target_ref
+            joint = Joint(
+                link,  # the link that created this joint
+                instance,  # the instance that contains this joint
+                # the connected objects as spec'd by the user
+                source_connected,
+                target_connected,
+                # the actual objects this link connects
+                source_instance,
+                target_instance
+            )
+            source_instance.linked_to_me.append(joint)
+            target_instance.linked_to_me.append(joint)
+            instance.links.append(joint)
 
     # visit all the child params
     # params last, since they might well modify named links in the future

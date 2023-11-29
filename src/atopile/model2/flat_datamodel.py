@@ -30,7 +30,7 @@ class Joint:
     target: "Instance"
 
     def __repr__(self) -> str:
-        return f"<Link {repr(self.source)} -> {repr(self.target)}>"
+        return f"<Joint {repr(self.source)} -> {repr(self.target)}>"
 
 
 @define
