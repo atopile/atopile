@@ -1,18 +1,19 @@
-from atopile.model2.datamodel1 import (
+from atopile.model2.datamodel import (
     Object,
     Link,
     Import,
     Replace,
-    MODULE,
-    COMPONENT,
-    PIN,
-    SIGNAL,
-    INTERFACE,
-    NOTHING,
+    MODULE_REF,
+    COMPONENT_REF,
+    PIN_REF,
+    SIGNAL_REF,
+    INTERFACE_REF,
 )
 from rich.tree import Tree
 from rich import print
 from typing import Iterable
+
+from atopile.model2.datatypes import Ref
 
 
 def dot(strs: Iterable[str]) -> str:
@@ -24,38 +25,40 @@ def dot(strs: Iterable[str]) -> str:
 
 
 class Wendy:
-    def get_label(self, name, supers):
+    def get_label(self, name, super_refs: tuple[Ref], address=None):
         # Check the type of the node and return the label
-        if supers == MODULE:
-            return f"🎁 {name} (module)"
-        elif supers == COMPONENT:
+        if MODULE_REF in super_refs:
+            return f"🎁 {name} address: {address} (module)"
+        elif COMPONENT_REF in super_refs:
             return f"⚙️ {name} (component)"
-        elif supers == SIGNAL:
+        elif SIGNAL_REF in super_refs:
             return f"⚡️ {name} (signal)"
-        elif supers == PIN:
+        elif PIN_REF in super_refs:
             return f"📍 {name} (pin)"
-        elif supers == INTERFACE:
+        elif INTERFACE_REF in super_refs:
             return f"🔌 {name} (interface)"
         else:
-            return f"❓ {name} (unknown)"
+            # find anything that is not a builtin
+            friendly_supers = ", ".join(map(str, super_refs))
+            return f"❓ {name} ({friendly_supers})"
 
     def parse_link(self, name, obj, parent_tree):
-        parent_tree.add(dot(obj.source) + " 🔗 " + dot(obj.target) + " (Link)")
+        parent_tree.add(dot(obj.source_ref) + " 🔗 " + dot(obj.target_ref) + " (Link)")
 
     def parse_replace(self, name, obj, parent_tree):
-        parent_tree.add(dot(obj.original) + " 👉 " + dot(obj.replacement) + " (Replace)")
+        parent_tree.add(dot(obj.original_ref) + " 👉 " + dot(obj.replacement_ref) + " (Replace)")
 
     def parse_import(self, name, obj, parent_tree):
-        parent_tree.add(dot(obj.what) + " 📦 " + obj.from_ + " (Import)")
+        parent_tree.add(dot(obj.what_ref) + " 📦 " + obj.from_name + " (Import)")
 
     def visit(self, ref: None | tuple[str], input_node, rich_tree: Tree):
         # Check the input node type and call the appropriate function
         if isinstance(input_node, Link):
-            self.parse_link(input_node.source, input_node, rich_tree)
+            self.parse_link(input_node.source_ref, input_node, rich_tree)
         elif isinstance(input_node, Replace):
-            self.parse_replace(input_node.original, input_node, rich_tree)
+            self.parse_replace(input_node.original_ref, input_node, rich_tree)
         elif isinstance(input_node, Import):
-            self.parse_import(input_node.what, input_node, rich_tree)
+            self.parse_import(input_node.what_ref, input_node, rich_tree)
         elif isinstance(input_node, str):
             rich_tree.add(ref[0] + " = " + input_node)
         # objects have locals, which can be nested, so we need to recursively call visit
@@ -65,8 +68,8 @@ class Wendy:
             else:
                 name = str(ref[0])
             # add a label for the object
-            subtree = rich_tree.add(self.get_label(name, input_node.supers))
-            if input_node.locals_ == NOTHING:
+            subtree = rich_tree.add(self.get_label(name, input_node.supers_refs, input_node.address))
+            if input_node.locals_ == ():
                 label = "📦 Sentinel.Nothing (Empty)"
                 rich_tree.add(label)
             else:
@@ -90,51 +93,3 @@ class Wendy:
         # Create a tree structure using rich.tree
         tree = self.build_tree(dm1_tree)
         print(tree)
-
-
-# =========================
-# example usage
-# # Display the tree
-# dm1 = Object(
-#         supers=MODULE,
-#         locals_=(
-#             (("comp1",), Object(
-#                 supers=COMPONENT,
-#                 locals_=((("comp1","comp2"), Object(
-#                 supers=COMPONENT,
-#                 locals_=(
-#                     (("signal_a",), Object(
-#                         supers=SIGNAL,
-#                         locals_=()
-#                     )),(("signal_b",), Object(
-#                         supers=SIGNAL,
-#                         locals_=()
-#                     ))
-#                 )
-#             )),
-#                     (("signal_a",), Object(
-#                         supers=SIGNAL,
-#                         locals_=()
-#                     )),(("signal_b",), Object(
-#                         supers=SIGNAL,
-#                         locals_=()
-#                     ))
-#                 )
-#             )),
-#             (("comp1",), Object(
-#                 supers=COMPONENT,
-#                 locals_=(
-#                     (("interface1",), Object(
-#                         supers=INTERFACE,
-#                         locals_=()
-#                     )),(("pin1",), Object(
-#                         supers=PIN,
-#                         locals_=()
-#                     ))
-#                 )
-#             )),
-#         )
-# )
-# tree_builder = Wendy()
-# tree = tree_builder.build_tree(dm2)
-# print(tree)
