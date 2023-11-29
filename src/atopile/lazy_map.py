@@ -24,7 +24,7 @@ class LazyMap(collections.abc.MutableMapping[K, V]):
         self,
         builder: Callable[[K], V],
         known_keys: Iterable[K],
-        initial_values: Optional[Mapping[K, V]],
+        initial_values: Optional[Mapping[K, V]] = None,
     ) -> None:
         self.builder = builder
         self._map: dict[K, V] = {k: EMPTY_SENTINEL for k in known_keys}
