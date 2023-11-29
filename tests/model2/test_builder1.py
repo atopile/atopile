@@ -4,7 +4,10 @@ import pytest
 
 from atopile.dev.parse import parse_as_file, parser_from_src_code
 from atopile.model2 import errors
-from atopile.model2.builder1 import Dizzy
+from atopile.model2.builder1 import Dizzy, _attach_downward_info
+from typing import Mapping
+from atopile.address import AddrStr
+from atopile.model2.datatypes import KeyOptMap, KeyOptItem, Ref
 from atopile.model2.datamodel import (
     Import,
     Link,
@@ -12,6 +15,7 @@ from atopile.model2.datamodel import (
     Replace,
 )
 from atopile.model2 import datamodel as dm
+
 
 
 COMPONENT = (dm.COMPONENT_REF,)
@@ -23,6 +27,21 @@ SIGNAL = (dm.SIGNAL_REF,)
 # =========================
 # test individual functions
 # =========================
+
+def test_attach_downward_info_address():
+    def _make_obj():
+        return Object(supers_refs=(), locals_=KeyOptMap(()))
+
+    obj = _make_obj()
+    obj.address = AddrStr("bar.ato")
+
+    foo = _make_obj()
+    obj.locals_ = ((("foo",), foo),)
+
+    _attach_downward_info(obj)
+
+    assert foo.closure == (obj,)
+    assert foo.address == "bar.ato:foo"
 
 @pytest.fixture
 def dizzy():
