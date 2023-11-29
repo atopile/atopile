@@ -83,7 +83,7 @@ def dfs_with_ref(instance: Instance, start_ref: Optional[Ref] = None) -> Iterato
             yield from dfs_with_ref(child, start_ref.add_name(name))
 
 
-def supers_match(supers: dm1.Object | Iterable[dm1.Object]) -> Callable[[Instance], Iterator[bool]]:
+def make_supers_match_filter(supers: dm1.Object | Iterable[dm1.Object]) -> Callable[[Instance], Iterator[bool]]:
     """Has any of the given supers."""
     if isinstance(supers, dm1.Object):
         supers = (supers,)
@@ -98,7 +98,7 @@ def supers_match(supers: dm1.Object | Iterable[dm1.Object]) -> Callable[[Instanc
 
 def filter_by_supers(iterable: Iterable[Instance], supers: dm1.Object | Iterable[dm1.Object]) -> Iterator[Instance]:
     """Filter an iterable of instances for those that are of a certain type."""
-    _supers_match = supers_match(supers)
+    _supers_match = make_supers_match_filter(supers)
     return filter(lambda x: any(_supers_match(x)), iterable)
 
 
