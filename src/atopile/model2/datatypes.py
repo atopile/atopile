@@ -2,7 +2,7 @@
 Datatypes used in the model.
 """
 import logging
-from typing import Any, Iterable, Mapping, Optional, Type, Iterator
+from typing import Any, Iterable, Mapping, Optional, Type, Iterator, TypeVar
 
 
 log = logging.getLogger(__name__)
@@ -25,7 +25,10 @@ class Ref(tuple[str | int]):
         return cls((name,))
 
 
-class KeyOptItem(tuple[Optional[Ref], Any]):
+T = TypeVar("T")
+
+
+class KeyOptItem(tuple[Optional[Ref], T]):
     """A class representing anf optionally-named thing."""
 
     @property
@@ -34,36 +37,36 @@ class KeyOptItem(tuple[Optional[Ref], Any]):
         return self[0]
 
     @property
-    def value(self) -> Any:
+    def value(self) -> T:
         """Return the value of this item."""
         return self[1]
 
     @classmethod
-    def from_kv(cls, key: Optional[Ref], value: Any) -> "KeyOptItem":
+    def from_kv(cls, key: Optional[Ref], value: T) -> "KeyOptItem[T]":
         """Return a KeyOptItem with a single item."""
         return KeyOptItem((key, value))
 
 
-class KeyOptMap(tuple[KeyOptItem]):
+class KeyOptMap(tuple[KeyOptItem[T]]):
     """A class representing a set of optionally-named things."""
 
-    def named_items(self) -> Mapping[Ref, Any]:
+    def named_items(self) -> Mapping[Ref, T]:
         """Return all the named items in this set, ignoring the unnamed ones."""
         return dict(filter(lambda x: x.ref is not None, self))
 
     def map_items_by_type(
         self, types: Iterable[Type | Iterable[Type]]
-    ) -> Mapping[Type, "KeyOptMap"]:
+    ) -> Mapping[Type, "KeyOptMap[T]"]:
         """Return a mapping of items in this set by type."""
         return {
             t: tuple(self.filter_items_by_type(t)) for t in types
         }
 
-    def unnamed_items(self) -> Iterable[Any]:
+    def unnamed_items(self) -> Iterable[T]:
         """Return an interable of all the unnamed items in this set."""
         return map(lambda x: x.value, filter(lambda x: x.ref is None, self))
 
-    def filter_items_by_type(self, types: Type | Iterable[Type]) -> Iterator:
+    def filter_items_by_type(self, types: Type | Iterable[Type]) -> Iterator[T]:
         """Helper function to filter by type."""
         return filter(lambda x: isinstance(x.value, types), self)
 
@@ -71,16 +74,16 @@ class KeyOptMap(tuple[KeyOptItem]):
         """Return an iterable of all the names in this set."""
         return map(lambda x: x.ref, filter(lambda x: x.ref is not None, self))
 
-    def values(self) -> Iterable[Any]:
+    def values(self) -> Iterable[T]:
         """Return an iterable of all the values in this set."""
         return map(lambda x: x.value, self)
 
     @classmethod
-    def from_item(cls, item: KeyOptItem) -> "KeyOptMap":
+    def from_item(cls, item: KeyOptItem[T]) -> "KeyOptMap[T]":
         """Return a KeyOptMap with a single item."""
         return KeyOptMap((item,))
 
     @classmethod
-    def from_kv(cls, key: Optional[Ref], value: Any) -> "KeyOptMap":
+    def from_kv(cls, key: Optional[Ref], value: T) -> "KeyOptMap[T]":
         """Return a KeyOptMap with a single item."""
         return cls.from_item(KeyOptItem.from_kv(key, value))
