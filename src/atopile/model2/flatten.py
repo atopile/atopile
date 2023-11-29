@@ -90,9 +90,9 @@ def _build(addr: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> I
                 source_instance,
                 target_instance
             )
-            source_instance.linked_to_me.append(joint)
-            target_instance.linked_to_me.append(joint)
-            instance.links.append(joint)
+            source_instance.joined_to_me.append(joint)
+            target_instance.joined_to_me.append(joint)
+            instance.joints.append(joint)
 
     # visit all the child params
     # params last, since they might well modify named links in the future
