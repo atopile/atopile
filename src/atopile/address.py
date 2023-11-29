@@ -123,7 +123,7 @@ class AddrStr(str):
             path = str(path)
 
         if node is None:
-            node = ""
+            return cls.from_str(f"{path}")
         elif isinstance(node, tuple):
             node = ".".join(node)
 
