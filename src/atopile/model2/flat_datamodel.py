@@ -10,8 +10,8 @@ from typing import Any, Callable, Iterable, Iterator, Optional, Hashable
 
 from attrs import define, field, resolve_types
 
-from . import datamodel as dm1
-from .datatypes import Ref, KeyOptItem
+from atopile.model2 import datamodel as dm1
+from atopile.model2.datatypes import Ref, KeyOptItem
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -46,6 +46,7 @@ class Instance:
     joints: list[Joint] = field(factory=list)
     joined_to_me: list[Joint] = field(factory=list)
 
+    parent: Optional["Instance"] = None
     children: ChainMap[str, Any] = field(init=False)
 
     def __attrs_post_init__(self) -> None:

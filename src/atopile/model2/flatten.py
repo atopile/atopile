@@ -17,7 +17,7 @@ def get_ref_from_instance(ref: Ref, instance: Instance) -> Instance:
 
 def build(obj: dm1.Object) -> Instance:
     """Build a flat datamodel."""
-    return _build(Ref(()), obj)
+    return _build(obj, name="entry")
 
 
 
@@ -26,15 +26,20 @@ def ref_and_connectable_pairs(instance: Instance) -> Iterable[tuple[Ref, Instanc
     return filter_values_by_supers(dfs_with_ref(instance), (dm1.PIN, dm1.SIGNAL))
 
 
-def _build(ref: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> Instance:
+def _build(obj: dm1.Object, name: Optional[str] = None, parent: Optional[Instance] = None, instance: Optional[Instance] = None) -> Instance:
     """Visit an object."""
+    if name is not None and parent is not None:
+        ref = Ref(parent.ref + (name,))
+    else:
+        ref = Ref(())
+
     if instance and obj in instance.origin.supers_bfs:
         # if an instance is already provided, then don't attempt to rewrite existing layers
         # we stop and return the instance here, because we've hit one of the layers we've already built
         return instance
     elif obj.supers_bfs:
         # if there are supers to visit, then visit them first write those higher layers
-        instance = _build(ref, obj.supers_bfs[0], instance)
+        instance = _build(obj.supers_bfs[0], name, parent, instance)
     else:
         # if there are no supers to visit, we're at the base layer, and we need to create a new object
         instance = Instance(ref=ref)
@@ -47,9 +52,10 @@ def _build(ref: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> In
     # visit all the child objects
     # we do this first, because subsequent operations of creating links, replacements or attributes
     # may override or reference these children
+    # it's already been checked that child refs are only one string long
     child_objects = obj.locals_by_type[dm1.Object]
     instance.children_from_classes.update(
-        {ref[0]: _build(ref + ref, value) for ref, value in child_objects}
+        {child_ref[0]: _build(child_obj, name=child_ref[0], parent=instance) for child_ref, child_obj in child_objects}
     )
 
     # visit replacements after the children are created
@@ -61,9 +67,8 @@ def _build(ref: Ref, obj: dm1.Object, instance: Optional[Instance] = None) -> In
         assert isinstance(replace, dm1.Replace)
         instance_to_replace = get_ref_from_instance(replace.original_ref, instance)
         _build(
-            instance_to_replace.ref,
             replace.replacement_obj,
-            instance_to_replace
+            instance=instance_to_replace
         )
 
     # visit all the child links
