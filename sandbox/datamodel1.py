@@ -7,7 +7,8 @@ from atopile.model2.build import Spud
 from atopile.model2.errors import ErrorHandler, HandlerMode
 from atopile.address import AddrStr
 from atopile.model2.datamodel import COMPONENT
-from atopile.model2.flat_datamodel import find_like, filter_by_supers, dfs, Instance
+from atopile.model2.flat_datamodel import find_like, filter_by_supers, dfs, iter_nets, Instance
+from atopile.model2.net_naming import generate_base_net_name, resolve_name_conflicts
 
 
 from atopile.targets.netlist.kicad6_m2 import KicadNetlist, KicadNode, KicadComponent, KicadSheetpath, KicadLibpart, KicadPin, KicadField
@@ -84,7 +85,43 @@ src_code = """
         value = 1
         mfn = "test"
 """
+#%%
+src_code = """
+    interface Power:
+        signal vcc
+        signal gnd
 
+    component Resistor:
+        pin p1
+        pin p2
+
+    module Root:
+        r1 = new Resistor
+        power = new Power
+        r1.p1 ~ power.vcc
+        r1.p2 ~ power.gnd
+
+        vdiv = new VDiv
+
+        pin p1
+        pin p2
+        pin p3
+        pin p4
+
+        p1 ~ p2
+
+    module VDiv:
+        r_top = new Resistor
+        r_bottom = new Resistor
+
+        signal top ~ r_top.p1
+        signal output ~ r_top.p2
+        output ~ r_bottom.p1
+        signal bottom ~ r_bottom.p2
+
+        r_top.value = 1000
+
+"""
 
 # %%
 error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
@@ -101,10 +138,26 @@ ret = find_like(found_candidate_iterator,("value",))
 for e in ret:
     print(e, ' : ', ret[e])
 # %%
+<<<<<<< Updated upstream
 
 
 netlist = KicadNetlist.from_instance(flat)
 
 # for e in netlist:
 #     print(e, ' : ', ret[e])
+=======
+nets = list(list(net) for net in iter_nets(flat))
+
+# %%
+net_names = {}
+
+from itertools import count
+net_counter = count(1)
+
+for net in nets:
+    net_names[generate_base_net_name(net, net_counter)] = net
+
+# %%
+print(resolve_name_conflicts(net_names).keys())
+>>>>>>> Stashed changes
 # %%
