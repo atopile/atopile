@@ -3,6 +3,8 @@ Find import references.
 """
 from typing import Optional, Iterable
 
+from itertools import starmap
+
 from atopile.model2.datamodel import Base, Object, Replace, Link, Instance, Joint
 from atopile.model2.generic_methods import match_values
 from atopile.model2.instance_methods import dfs_with_ref, match_pins_and_signals
@@ -66,9 +68,19 @@ def _build(
     # may override or reference these children
     # it's already been checked that child refs are only one string long
     child_objects = obj.locals_by_type[Object]
-    instance.children_from_classes.update(
-        {child_ref[0]: _build(child_obj, name=child_ref[0], parent=instance) for child_ref, child_obj in child_objects}
-    )
+
+    def __process_child(child_ref: Ref, child_obj: Object) -> tuple[str, Instance]:
+        # ensure the child is healthy
+        assert isinstance(child_obj, Object)
+        assert_no_errors(child_obj)
+        assert len(child_ref) == 1
+
+        # create the child instance
+        child_name = child_ref[0]
+        child_instance = _build(child_obj, name=child_name, parent=instance)
+        return child_name, child_instance
+
+    instance.children_from_classes.update(dict(starmap(__process_child, child_objects)))
 
     # visit replacements after the children are created
     # we make replacements next, because, again, the subsequent operations may
