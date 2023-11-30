@@ -42,11 +42,6 @@ def _build(
     instance: Optional[Instance] = None
 ) -> Instance:
     """Visit an object."""
-    if name is not None and parent is not None:
-        ref = Ref(parent.ref + (name,))
-    else:
-        ref = Ref(())
-
     if instance and obj in instance.origin.supers_bfs:
         # if an instance is already provided, then don't attempt to rewrite existing layers
         # we stop and return the instance here, because we've hit one of the layers we've already built
@@ -56,7 +51,12 @@ def _build(
         instance = _build(obj.supers_bfs[0], name, parent, instance)
     else:
         # if there are no supers to visit, we're at the base layer, and we need to create a new object
-        instance = Instance(ref=ref)
+        if parent is None:
+            ref = Ref(())
+        else:
+            ref = Ref(parent.ref + (name,))
+
+        instance = Instance(ref=ref, parent=parent)
 
     # at this point, we know we're traveling back down the layers
     # we set the origin here, because we want it to point at the last layer applied to this instance
@@ -127,8 +127,8 @@ def _build(
     # visit all the child params
     # params last, since they might well modify named links in the future
     params = obj.locals_by_type[(str, int)]
-    for ref, value in params:
-        to_mod = get_ref_from_instance(ref[:-1], instance)
-        to_mod.children_from_mods[ref[-1]] = value
+    for param_ref, value in params:
+        to_mod = get_ref_from_instance(param_ref[:-1], instance)
+        to_mod.children_from_mods[param_ref[-1]] = value
 
     return instance
