@@ -1,8 +1,10 @@
+import functools
+import itertools
 from collections import defaultdict
 from typing import Any, Callable, Hashable, Iterable, Iterator, Optional, TypeVar
 
-from toolz import groupby, compose
 import toolz.curried
+from toolz import compose, groupby
 from toolz.curried import map as _map
 
 from atopile.model2 import datamodel as dm1
@@ -119,24 +121,45 @@ def iter_parents(instance: Instance, include_self: bool = True) -> Iterator[Inst
         yield instance
 
 
+def closest_common(things: Iterable[Iterable[T]], __key: Callable[[T], Hashable] = hash) -> T:
+    """Returns the closest common item between a set of iterables."""
+    if not things:
+        raise ValueError("No things given.")
+
+    things = iter(things)
+
+    # make a yardstick of the first iterable
+    # this is a dict with the keys being the __key() of the items
+    # and the values being the index of the item in the iterable
+    index_and_item = itertools.tee(enumerate(next(things)))
+    key_to_index_map = dict((__key(item), i) for i, item in index_and_item[0])
+    index_to_item_map = dict((i, item) for i, item in index_and_item[1])
+
+    # set the index of the common item
+    # this starts at 0 because if there's no other item we
+    # just want to return the first item
+    common_i = 0
+
+    for thing in things:
+        for item in thing:
+            key = __key(item)
+            if key in key_to_index_map:
+                # if the item is in the yardstick, then we've found a common item
+                # if the new common item is further than the old common item, we update it
+                item_common_i = key_to_index_map[key]
+                if item_common_i > common_i:
+                    common_i = item_common_i
+                break
+        else:
+            # if we didn't find a common item, then we raise an error
+            raise ValueError("No common item found.")
+
+    return index_to_item_map[common_i]
+
+
 def lowest_common_parent(instances: Iterable[Instance], include_self: bool = True) -> Instance:
     """
     Return the lowest common parent of a set of instances.
     """
-    layers = zip(*(reversed(list(iter_parents(i, include_self))) for i in instances))
-
-    first_layer = iter(next(layers))
-
-    common_parent = next(first_layer)
-
-    if any(x is not common_parent for x in first_layer):
-        raise ValueError("No common root found.")
-
-    for layer in layers:
-        layer = iter(layer)
-        candidate = next(layer)
-        if any(x is not candidate for x in layer):
-            break
-        common_parent = candidate
-
-    return common_parent
+    __iter_parents = functools.partial(iter_parents, include_self=include_self)
+    return closest_common(map(__iter_parents, instances), __key=id)
