@@ -121,7 +121,11 @@ def iter_parents(instance: Instance, include_self: bool = True) -> Iterator[Inst
         yield instance
 
 
-def closest_common(things: Iterable[Iterable[T]], __key: Callable[[T], Hashable] = hash) -> T:
+def closest_common(
+    things: Iterable[Iterable[T]],
+    __key: Callable[[T], Hashable] = hash,
+    validate_common_root: bool = False
+) -> T:
     """Returns the closest common item between a set of iterables."""
     if not things:
         raise ValueError("No things given.")
@@ -139,6 +143,15 @@ def closest_common(things: Iterable[Iterable[T]], __key: Callable[[T], Hashable]
     # this starts at 0 because if there's no other item we
     # just want to return the first item
     common_i = 0
+    max_i = len(key_to_index_map) - 1
+
+    def shortcut_if_common_is_already_root():
+        if not validate_common_root:
+            if common_i == max_i:
+                # return early in the case we're already at the root
+                return index_to_item_map[common_i]
+
+    shortcut_if_common_is_already_root()
 
     for thing in things:
         for item in thing:
@@ -149,6 +162,7 @@ def closest_common(things: Iterable[Iterable[T]], __key: Callable[[T], Hashable]
                 item_common_i = key_to_index_map[key]
                 if item_common_i > common_i:
                     common_i = item_common_i
+                    shortcut_if_common_is_already_root()
                 break
         else:
             # if we didn't find a common item, then we raise an error
