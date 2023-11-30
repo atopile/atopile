@@ -1,22 +1,20 @@
 from unittest.mock import MagicMock
 
-from collections import defaultdict
-
 import pytest
 
-from atopile.model2.flat_datamodel import (
+from atopile.model2.lazy_methods import (
     Instance,
-    Joint,
     dfs,
     dfs_with_ref,
-    filter_by_supers,
-    find_like,
-    joined_to_me,
-    iter_nets
+    iter_nets,
+    find_like_instances,
+    any_supers_match,
+    match_components,
+    iter_parents,
+    lowest_common_parent,
 )
 
 from atopile.model2.datamodel import Object, COMPONENT, MODULE, PIN, SIGNAL
-from atopile.address import AddrStr
 from atopile.model2.datatypes import KeyOptMap
 
 
@@ -29,6 +27,12 @@ def instance_structure():
     c = Instance(ref=("c",))
     b = Instance(ref=("b",), children_from_mods={"c": c, "d": d})
     a = Instance(ref=("a",), children_from_mods={"b": b})
+
+    b.parent = a
+    c.parent = b
+    d.parent = b
+    e.parent = d
+    f.parent = d
 
     return a, b, c, d, e, f
 
@@ -51,7 +55,7 @@ def test_dfs_with_ref(instance_structure: tuple[Instance]):
     ]
 
 
-def test_filter_by_supers(instance_structure: tuple[Instance]):
+def test_any_supers_match(instance_structure: tuple[Instance]):
     a, b, c, d, e, f = instance_structure
 
     A = 1
@@ -71,10 +75,10 @@ def test_filter_by_supers(instance_structure: tuple[Instance]):
     b.origin = origin_a
     a.origin = origin_a
 
-    assert list(filter_by_supers(instance_structure, (A,))) == [a, b, c]
-    assert list(filter_by_supers(instance_structure, (A,C))) == [a, b, c, d, e, f]
-    assert list(filter_by_supers(instance_structure, (B,))) == [a, b, c, d, e, f]
-    assert list(filter_by_supers(instance_structure, (C,))) == [d, e, f]
+    assert all(any_supers_match(A, )(i) for i in  [a, b, c])
+    assert all(any_supers_match(A,C)(i) for i in  [a, b, c, d, e, f])
+    assert all(any_supers_match(B, )(i) for i in  [a, b, c, d, e, f])
+    assert all(any_supers_match(C, )(i) for i in  [d, e, f])
 
 @pytest.fixture
 def unique_structure():
@@ -104,14 +108,13 @@ def unique_structure():
 def test_extract_unique(unique_structure: tuple[Instance]):
     a, b, c, d, e, g = unique_structure
 
-    test = filter_by_supers(dfs(a), COMPONENT)
-    ret = find_like(test,("value",))
+    to_test = list(filter(match_components, dfs(a)))
+    ret = find_like_instances(to_test, ("value",))
 
-    expected_ret = defaultdict(list)
-    expected_ret[('1',)] = [e,b,c]
-    expected_ret[('2',)] = [g]
-
-    assert ret == expected_ret
+    assert ret == {
+        ('1',): [e,b,c],
+        ('2',): [g]
+    }
 
 @pytest.fixture
 def typed_structure(instance_structure):
@@ -151,3 +154,23 @@ def test_joints(typed_structure: tuple[Instance]):
 
     assert len(results[1]) == 1
     assert results[1][0] == e
+
+
+def test_iter_parents(instance_structure: tuple[Instance]):
+    a, b, c, d, e, f = instance_structure
+
+    assert list(iter_parents(a)) == []
+    assert list(iter_parents(b)) == [a]
+    assert list(iter_parents(c)) == [b, a]
+    assert list(iter_parents(d)) == [b, a]
+    assert list(iter_parents(e)) == [d, b, a]
+    assert list(iter_parents(f)) == [d, b, a]
+
+
+def test_lowest_common_parent(instance_structure: tuple[Instance]):
+    a, b, c, d, e, f = instance_structure
+
+    assert lowest_common_parent([a, b, c, d, e, f]) == a
+    assert lowest_common_parent([b, c, d, e, f]) == b
+    assert lowest_common_parent([c, e, f]) == b
+    assert lowest_common_parent([e, f]) == d

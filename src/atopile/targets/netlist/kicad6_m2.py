@@ -1,15 +1,19 @@
 import datetime
 import logging
+from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Iterator
 
 from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from atopile.address import AddrStr
+from atopile.model.utils import generate_uid_from_path
 from atopile.model2.flat_datamodel import Instance
-from atopile.model2.datamodel import COMPONENT
-from atopile.model2.flat_datamodel import extract_unique, filter_by_supers, dfs
+from atopile.model2.datamodel import COMPONENT, PIN
+from atopile.model2.flat_datamodel import find_like, filter_by_supers, dfs, filter_values_by_supers, make_supers_match_filter
+
+from atopile.targets.designators import DEFAULT_DESIGNATOR_PREFIX
 
 # from atopile.model.accessors import ModelVertexView
 # from atopile.model.model import EdgeType, Model, VertexType
@@ -22,8 +26,8 @@ log.setLevel(logging.INFO)
 
 @define
 class KicadField:
-    name: str  # eg?
-    value: str  # eg?
+    name: str  # eg value
+    value: str  # eg 10 Ohms
 
 @define
 class KicadPin:
@@ -132,6 +136,52 @@ class KicadLibraries:
         # don't believe these are mandatory and I don't think they're useful in the context of atopile
         raise NotImplementedError
 
+def get_child_pins(instance: Instance) -> Iterator[Instance]:
+    _supers_are_a_pin = make_supers_match_filter(PIN)
+    for child_name, child in instance.children.items():
+        if isinstance(child, Instance):
+            if any(_supers_are_a_pin(child)):
+                yield child_name, child
+
+#TODO: in the future, we might want to wrap data fields in proper objects the same way we do with instances
+def get_child_data_field(instance: Instance) -> Iterator[str | int]:
+    for child_name, child in instance.children.items():
+        #FIXME: making the asumption that all the ints and strings are fields. Can't guarantee that is the case tho
+        if isinstance(child, str) or isinstance(child, int):
+            yield child_name, child
+
+def create_libpart_from_instance(representative_instance: Instance) -> KicadLibpart:
+    instance_pins = get_child_pins(representative_instance)
+    instance_data_fields = get_child_data_field(representative_instance)
+
+    constructed_libpart = KicadLibpart(
+        lib="component_class_path",  # FIXME: this may require sanitisation (eg. no slashes, for Kicad)
+        part=representative_instance.children.get(key="mpn", default="No mpn set"),
+        description=representative_instance.origin.supers_refs[0][0],  # here we should find the lowest common ancestor
+        fields=[KicadField(name=field[0], value=field[1]) for field in instance_data_fields],
+        pins=[KicadPin(num=pin_index, name=instance_pin[0], type="stereo") for pin_index, instance_pin in enumerate(instance_pins, start=1)],
+        # TODO: something better for these:
+        docs="~",
+        footprints=["*"],
+    )
+    return constructed_libpart
+
+def create_component_from_instance(component_instance: Instance) -> KicadComponent:
+    instance_data_fields = get_child_data_field(component_instance)
+    concatenated_path = '.'.join(component_instance.ref) # legacy representation of the path
+
+    constructed_component = KicadComponent(
+        ref="designator",
+        value=component_instance.children.get("value", ""),
+        footprint="footprint_path",
+        libsource="libparts[component_class_path]",
+        tstamp=generate_uid_from_path(concatenated_path),
+        fields=[KicadField(name=field[0], value=field[1]) for field in instance_data_fields],
+        sheetpath="sheetpath",
+        src_path=concatenated_path,
+    )
+    return constructed_component
+
 @define
 class KicadNetlist:
     version: str = "E"  # What does this mean?
@@ -166,66 +216,90 @@ class KicadNetlist:
     def from_instance(
         cls,
         instance: Instance,
-        designators: Dict[str, str], # Can we delete this? I don't like it
-        components_to_lib_map: dict[str, str],
-        target: "Kicad6NetlistTarget",
+        #designators: Dict[str, str], # Can we delete this?
+        #components_to_lib_map: dict[str, str],
+        #target: "Kicad6NetlistTarget",
     ) -> "KicadNetlist":
         """
         makes a kicad netlist from a flat model instance
         """
         netlist = cls()
 
-        # Extract the components under "main"
-        NON_FIELD_DATA = ["value", "footprint", "designator_prefix"]
-
         # Create the libparts (~component_classes)
-        libparts: Dict[str, KicadLibpart] = {}
 
-        uniqueness_filter = ("value",)
-        unique_components = extract_unique(filter_by_supers(dfs(instance), COMPONENT), uniqueness_filter)
+        # The values we use to extract individual components.
+        # If one of the value below ends up being unique, we generate a libpart off it
+        filter_by = ("value", "footprint", "mpn")
+
+        libparts: list[KicadLibpart] = []
+
+        unique_components_dict: defaultdict[tuple, list[Instance]]
+        unique_components_dict = find_like(filter_by_supers(dfs(instance), COMPONENT), filter_by)
+        for unique_components in unique_components_dict.values():
+            rep_comp = unique_components[0] # all the elements in the list should be similar. We inspect element 0 only.
+            libparts.append(create_libpart_from_instance(rep_comp))
+
+        # create a designator map
+        filter_by = ("designator_prefix",)
+        unique_designator = find_like(filter_by_supers(dfs(instance), COMPONENT), filter_by)
+        for ud in unique_designator:
+            print(ud)
+
+        # Create the components (represents all the individual components on the board)
+        kicad_components: list[KicadComponent] = []
+
+        component_instance_list: list[Instance] = filter_by_supers(dfs(instance), COMPONENT)
+        for component_instance in component_instance_list:
+            kicad_components.append(create_component_from_instance(component_instance))
+        for kc in kicad_components:
+            print(kc)
+
+        return unique_components
+    
+        # Notes: currently osrting by default designators so I can assign one based on their index.
 
         ## Below is the code we had before
 
-        # Extract the components under "main"
-        # TODO: move at least large chunks of this elsewhere. It's too entangled with the guts of the Model class
-        part_of_view = model.get_graph_view([EdgeType.part_of])
-        instance_of_view = model.get_graph_view([EdgeType.instance_of])
-        main_vertex = model.graph.vs.find(path_eq=root_node)
-        vidxs_within_main = part_of_view.subcomponent(main_vertex.index, mode="in")
+        # # Extract the components under "main"
+        # # TODO: move at least large chunks of this elsewhere. It's too entangled with the guts of the Model class
+        # part_of_view = model.get_graph_view([EdgeType.part_of])
+        # instance_of_view = model.get_graph_view([EdgeType.instance_of])
+        # main_vertex = model.graph.vs.find(path_eq=root_node)
+        # vidxs_within_main = part_of_view.subcomponent(main_vertex.index, mode="in")
 
-        component_vs = model.graph.vs[vidxs_within_main].select(type_eq=VertexType.component.name)
-        root_mvv = ModelVertexView.from_path(model, root_node)
-        component_mvvs = {component_vs["path"]: ModelVertexView(model, component_vs.index) for component_vs in component_vs}
+        # component_vs = model.graph.vs[vidxs_within_main].select(type_eq=VertexType.component.name)
+        # root_mvv = ModelVertexView.from_path(model, root_node)
+        # component_mvvs = {component_vs["path"]: ModelVertexView(model, component_vs.index) for component_vs in component_vs}
 
-        component_class_vidxs: Dict[str, int] = {}  # by component path
-        for component_v in component_vs:
-            component_class_vidx = instance_of_view.neighbors(component_v.index, mode="out")
-            if len(component_class_vidx) < 1:
-                component_class_vidxs[component_v["path"]] = component_v.index
-            else:
-                component_class_vidxs[component_v["path"]] = component_class_vidx[0]
+        # component_class_vidxs: Dict[str, int] = {}  # by component path
+        # for component_v in component_vs:
+        #     component_class_vidx = instance_of_view.neighbors(component_v.index, mode="out")
+        #     if len(component_class_vidx) < 1:
+        #         component_class_vidxs[component_v["path"]] = component_v.index
+        #     else:
+        #         component_class_vidxs[component_v["path"]] = component_class_vidx[0]
 
-        unique_component_class_vidxs = set(component_class_vidxs.values())
+        # unique_component_class_vidxs = set(component_class_vidxs.values())
 
-        # Create all the pins under main
-        pins_by_path: Dict[str, KicadPin] = {}  # by component class's pin path
-        pins_by_ref_by_component: Dict[str, Dict[str, KicadPin]] = {}  # by component class's pin path
-        for component_class_idx in unique_component_class_vidxs:
-            component_class_v = model.graph.vs[component_class_idx]
-            component_class_path = component_class_v["path"]
-            vidxs_within_component_class = part_of_view.subcomponent(component_class_idx, mode="in")
-            pin_vs = model.graph.vs[vidxs_within_component_class].select(type_eq=VertexType.pin.name)
+        # # Create all the pins under main
+        # pins_by_path: Dict[str, KicadPin] = {}  # by component class's pin path
+        # pins_by_ref_by_component: Dict[str, Dict[str, KicadPin]] = {}  # by component class's pin path
+        # for component_class_idx in unique_component_class_vidxs:
+        #     component_class_v = model.graph.vs[component_class_idx]
+        #     component_class_path = component_class_v["path"]
+        #     vidxs_within_component_class = part_of_view.subcomponent(component_class_idx, mode="in")
+        #     pin_vs = model.graph.vs[vidxs_within_component_class].select(type_eq=VertexType.pin.name)
 
-            for pin_v in pin_vs:
-                pin_ref = pin_v["ref"].lstrip("p")
-                pin = KicadPin(
-                    num=pin_ref,
-                    name=pin_ref,
-                    type="",   # TODO:
-                )
+        #     for pin_v in pin_vs:
+        #         pin_ref = pin_v["ref"].lstrip("p")
+        #         pin = KicadPin(
+        #             num=pin_ref,
+        #             name=pin_ref,
+        #             type="",   # TODO:
+        #         )
 
-                pins_by_path[pin_v["path"]] = pin
-                pins_by_ref_by_component.setdefault(component_class_path, {})[pin_v["ref"]] = pin
+        #         pins_by_path[pin_v["path"]] = pin
+        #         pins_by_ref_by_component.setdefault(component_class_path, {})[pin_v["ref"]] = pin
 
         # Create the libparts (~component_classes)
         libparts: Dict[str, KicadLibpart] = {}  # by component class path
@@ -254,160 +328,160 @@ class KicadNetlist:
                 footprints=["*"],
             )
 
-            libparts[component_class_path] = libpart
+        #     libparts[component_class_path] = libpart
 
-        # Create the component instances
-        components: Dict[str, KicadComponent] = {}  # by component path
-        nodes: Dict[str, KicadNode] = {}  # by component pin path
-        for component_v in component_vs:
-            # there should always be at least one parent, even if only the file
-            component_mvv = ModelVertexView(model, component_v.index)
-            component_parent_mvv = component_mvv.parent
+        # # Create the component instances
+        # components: Dict[str, KicadComponent] = {}  # by component path
+        # nodes: Dict[str, KicadNode] = {}  # by component pin path
+        # for component_v in component_vs:
+        #     # there should always be at least one parent, even if only the file
+        #     component_mvv = ModelVertexView(model, component_v.index)
+        #     component_parent_mvv = component_mvv.parent
 
-            component_path = component_v["path"]
-            component_class_idx = component_class_vidxs[component_path]
-            component_class_v = model.graph.vs[component_class_idx]
-            component_class_path = component_class_v["path"]
+        #     component_path = component_v["path"]
+        #     component_class_idx = component_class_vidxs[component_path]
+        #     component_class_v = model.graph.vs[component_class_idx]
+        #     component_class_path = component_class_v["path"]
 
-            component_data = component_mvv.get_all_data()
-            if component_data is not None:
-                fields = [KicadField(k, v) for k, v in component_data.items() if k not in NON_FIELD_DATA]
+        #     component_data = component_mvv.get_all_data()
+        #     if component_data is not None:
+        #         fields = [KicadField(k, v) for k, v in component_data.items() if k not in NON_FIELD_DATA]
 
-            sheetpath = KicadSheetpath(
-                names=component_parent_mvv.path,
-                tstamps=generate_uid_from_path(component_parent_mvv.path),
-            )
+        #     sheetpath = KicadSheetpath(
+        #         names=component_parent_mvv.path,
+        #         tstamps=generate_uid_from_path(component_parent_mvv.path),
+        #     )
 
-            # figure out the designators
-            designator = designators[root_mvv.relative_path(component_mvvs[component_path])]
-            try:
-                footprint = component_data["footprint"]
-            except KeyError:
-                log.error("Component %s has no footprint", component_path)
-                target.elevate_check_result(TargetCheckResult.UNSOLVABLE)
-                continue
+        #     # figure out the designators
+        #     designator = designators[root_mvv.relative_path(component_mvvs[component_path])]
+        #     try:
+        #         footprint = component_data["footprint"]
+        #     except KeyError:
+        #         log.error("Component %s has no footprint", component_path)
+        #         target.elevate_check_result(TargetCheckResult.UNSOLVABLE)
+        #         continue
 
-            # if there is a 'lib:' prefix, strip it
-            #TODO: this is a bit of a hack, we should clean up the libs and delete this
-            footprint_path = ""
-            if footprint.startswith("lib:"):
-                footprint = footprint[4:]
-            if ":" in footprint:
-                footprint_path = footprint
-            else:
-                try:
-                    footprint_lib_name = components_to_lib_map[component_path]
-                except KeyError:
-                    log.error("Component %s has no lib", component_path)
-                    target.elevate_check_result(TargetCheckResult.UNSOLVABLE)
-                    continue
-                footprint_path = f"{footprint_lib_name}:{footprint}"
+        #     # if there is a 'lib:' prefix, strip it
+        #     #TODO: this is a bit of a hack, we should clean up the libs and delete this
+        #     footprint_path = ""
+        #     if footprint.startswith("lib:"):
+        #         footprint = footprint[4:]
+        #     if ":" in footprint:
+        #         footprint_path = footprint
+        #     else:
+        #         try:
+        #             footprint_lib_name = components_to_lib_map[component_path]
+        #         except KeyError:
+        #             log.error("Component %s has no lib", component_path)
+        #             target.elevate_check_result(TargetCheckResult.UNSOLVABLE)
+        #             continue
+        #         footprint_path = f"{footprint_lib_name}:{footprint}"
 
-            # make the component of your dreams
-            component = KicadComponent(
-                ref=designator,
-                value=component_data.get("value", ""),
-                footprint=footprint_path,
-                libsource=libparts[component_class_path],
-                tstamp=generate_uid_from_path(component_path),
-                fields=fields,
-                sheetpath=sheetpath,
-                src_path=component_path,
-            )
+        #     # make the component of your dreams
+        #     component = KicadComponent(
+        #         ref=designator,
+        #         value=component_data.get("value", ""),
+        #         footprint=footprint_path,
+        #         libsource=libparts[component_class_path],
+        #         tstamp=generate_uid_from_path(component_path),
+        #         fields=fields,
+        #         sheetpath=sheetpath,
+        #         src_path=component_path,
+        #     )
 
-            components[component_path] = component
+        #     components[component_path] = component
 
-            # Generate the component's nodes
-            # FIXME: all the components are referencing back to their components class's pins
-            pins_by_ref = pins_by_ref_by_component[component_class_path]
-            for ref, pin in pins_by_ref.items():
-                # FIXME: this manual path generation is what got us into strife in the first place... don't do it
-                nodes[f"{component_path}.{ref}"] = KicadNode(component=component, pin=pin)
+        #     # Generate the component's nodes
+        #     # FIXME: all the components are referencing back to their components class's pins
+        #     pins_by_ref = pins_by_ref_by_component[component_class_path]
+        #     for ref, pin in pins_by_ref.items():
+        #         # FIXME: this manual path generation is what got us into strife in the first place... don't do it
+        #         nodes[f"{component_path}.{ref}"] = KicadNode(component=component, pin=pin)
 
-        if target.check_result == TargetCheckResult.UNSOLVABLE:
-            raise ResourceWarning("Not generating netlist because of unsolvable errors")
+        # if target.check_result == TargetCheckResult.UNSOLVABLE:
+        #     raise ResourceWarning("Not generating netlist because of unsolvable errors")
 
-        # Create the nets
-        electrical_graph = model.get_graph_view([EdgeType.connects_to])
-        electrical_graph_within_main = electrical_graph.subgraph(vidxs_within_main)
-        clusters = electrical_graph_within_main.connected_components(mode="weak")
-        nets = []
+        # # Create the nets
+        # electrical_graph = model.get_graph_view([EdgeType.connects_to])
+        # electrical_graph_within_main = electrical_graph.subgraph(vidxs_within_main)
+        # clusters = electrical_graph_within_main.connected_components(mode="weak")
+        # nets = []
 
-        # TODO: slapping this on the side to unblock Narayan's layout
-        # This deserves rebuilding
-        nets_by_name = find_net_names(model)
+        # # TODO: slapping this on the side to unblock Narayan's layout
+        # # This deserves rebuilding
+        # nets_by_name = find_net_names(model)
 
-        for i, cluster in enumerate(clusters):
-            log.info(f"Processing cluster {i+1}/{len(clusters)}")
-            cluster_vs = electrical_graph_within_main.vs[cluster]
-            cluster_paths = cluster_vs["path"]
+        # for i, cluster in enumerate(clusters):
+        #     log.info(f"Processing cluster {i+1}/{len(clusters)}")
+        #     cluster_vs = electrical_graph_within_main.vs[cluster]
+        #     cluster_paths = cluster_vs["path"]
 
-            # this works naturally to filter out signals, because only pins are present in the nodes dict
-            nodes_in_cluster = [nodes[path] for path in cluster_paths if path in nodes]
+        #     # this works naturally to filter out signals, because only pins are present in the nodes dict
+        #     nodes_in_cluster = [nodes[path] for path in cluster_paths if path in nodes]
 
-            # find which net this cluster matches with
-            rep_mvv = ModelVertexView.from_path(model, cluster_paths[0])
-            for net_name, net_mvvs in nets_by_name.items():
-                if rep_mvv in net_mvvs:
-                    break
-            else:
-                net_name = generate_net_name([ModelVertexView.from_path(model, p) for p in cluster_paths])
-                log.warning(f"Couldn't find net properly, but using name: {net_name}, which is hopefully good enough")
+        #     # find which net this cluster matches with
+        #     rep_mvv = ModelVertexView.from_path(model, cluster_paths[0])
+        #     for net_name, net_mvvs in nets_by_name.items():
+        #         if rep_mvv in net_mvvs:
+        #             break
+        #     else:
+        #         net_name = generate_net_name([ModelVertexView.from_path(model, p) for p in cluster_paths])
+        #         log.warning(f"Couldn't find net properly, but using name: {net_name}, which is hopefully good enough")
 
-            # the cluster only represents a net if it contains eletrical pins
-            if nodes_in_cluster:
-                net = KicadNet(
-                    code=str(len(nets) + 1), # code has to start at 1 and increment
-                    name=net_name,
-                    nodes=nodes_in_cluster,
-                )
+        #     # the cluster only represents a net if it contains eletrical pins
+        #     if nodes_in_cluster:
+        #         net = KicadNet(
+        #             code=str(len(nets) + 1), # code has to start at 1 and increment
+        #             name=net_name,
+        #             nodes=nodes_in_cluster,
+        #         )
 
-                nets.append(net)
+        #         nets.append(net)
 
-        netlist = KicadNetlist(
-            source=root_node,
-            date=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            components=list(components.values()),
-            libparts=list(libparts.values()),
-            nets=nets,
-        )
+        # netlist = KicadNetlist(
+        #     source=root_node,
+        #     date=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        #     components=list(components.values()),
+        #     libparts=list(libparts.values()),
+        #     nets=nets,
+        # )
 
-        return netlist
+        #return netlist
 
-class Kicad6NetlistTarget(Target):
-    name = "netlist-kicad6"
-    def __init__(self, muster: TargetMuster) -> None:
-        self._netlist: Optional[KicadNetlist] = None
-        self._designator_target = muster.ensure_target("designators")
-        self._kicad_lib_paths_target = muster.ensure_target("kicad-lib-paths")
-        super().__init__(muster)
+# class Kicad6NetlistTarget(Target):
+#     name = "netlist-kicad6"
+#     def __init__(self, muster: TargetMuster) -> None:
+#         self._netlist: Optional[KicadNetlist] = None
+#         self._designator_target = muster.ensure_target("designators")
+#         self._kicad_lib_paths_target = muster.ensure_target("kicad-lib-paths")
+#         super().__init__(muster)
 
-    def generate(self) -> KicadNetlist:
-        entry = AddrStr(self.project.config.selected_build.entry)
-        if self._netlist is None:
-            self._kicad_lib_paths_target.generate()
-            self._netlist = KicadNetlist.from_model(
-                self.model,
-                root_node=entry,
-                designators=self._designator_target.generate(),
-                components_to_lib_map=self._kicad_lib_paths_target.component_path_to_lib_name,
-                target=self,
-            )
-        return self._netlist
+#     def generate(self) -> KicadNetlist:
+#         entry = AddrStr(self.project.config.selected_build.entry)
+#         if self._netlist is None:
+#             self._kicad_lib_paths_target.generate()
+#             self._netlist = KicadNetlist.from_model(
+#                 self.model,
+#                 root_node=entry,
+#                 designators=self._designator_target.generate(),
+#                 components_to_lib_map=self._kicad_lib_paths_target.component_path_to_lib_name,
+#                 target=self,
+#             )
+#         return self._netlist
 
-    def check(self) -> TargetCheckResult:
-        return self._designator_target.check()
+#     def check(self) -> TargetCheckResult:
+#         return self._designator_target.check()
 
-    @property
-    def check_has_been_run(self) -> bool:
-        return self._designator_target.check_has_been_run
+#     @property
+#     def check_has_been_run(self) -> bool:
+#         return self._designator_target.check_has_been_run
 
-    def build(self) -> None:
-        netlist = self.generate()
-        entry = AddrStr(self.project.config.selected_build.abs_entry)
-        build_dir = self.project.config.paths.selected_build_path
-        output_file = build_dir / entry.file.with_suffix(".net").name
-        netlist.to_file(output_file)
+#     def build(self) -> None:
+#         netlist = self.generate()
+#         entry = AddrStr(self.project.config.selected_build.abs_entry)
+#         build_dir = self.project.config.paths.selected_build_path
+#         output_file = build_dir / entry.file.with_suffix(".net").name
+#         netlist.to_file(output_file)
 
-    def resolve(self, *args, clean=None, **kwargs) -> None:
-        log.info(f"No direct resolve action for {self.name}")
+#     def resolve(self, *args, clean=None, **kwargs) -> None:
+#         log.info(f"No direct resolve action for {self.name}")

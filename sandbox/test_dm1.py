@@ -33,6 +33,8 @@ ato_file = next(ato_files)
 print(ato_file)
 # tree = dizzy.visitFile_input(parse_as_file(file_contents))
 tree = parse_file(ato_file)
+
+# TODO: replace this with Spud's build
 dizzy_map = build({ato_file: tree}, None)
 
 wendy.print_tree(dizzy_map[ato_file])

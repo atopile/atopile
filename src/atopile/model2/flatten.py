@@ -4,7 +4,7 @@ Find import references.
 from typing import Optional, Iterable
 
 from . import datamodel as dm1
-from .flat_datamodel import Instance, Joint, make_supers_match_filter, dfs_with_ref
+from .flat_datamodel import Instance, Joint, dfs_with_ref, filter_values_by_supers
 from .datatypes import Ref
 
 
@@ -20,12 +20,10 @@ def build(obj: dm1.Object) -> Instance:
     return _build(obj, name="entry")
 
 
-_IS_A_PIN_OR_SIGNAL = make_supers_match_filter((dm1.PIN, dm1.SIGNAL))
-
 
 def ref_and_connectable_pairs(instance: Instance) -> Iterable[tuple[Ref, Instance]]:
     """Get all the pins and signals from an instance."""
-    return filter(lambda kv: _IS_A_PIN_OR_SIGNAL(kv[1]), dfs_with_ref(instance))
+    return filter_values_by_supers(dfs_with_ref(instance), (dm1.PIN, dm1.SIGNAL))
 
 
 def _build(obj: dm1.Object, name: Optional[str] = None, parent: Optional[Instance] = None, instance: Optional[Instance] = None) -> Instance:
