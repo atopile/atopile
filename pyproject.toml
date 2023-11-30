@@ -42,6 +42,7 @@ dependencies = [
     "gitpython",
     "easyeda2kicad",
     "atopile-omegaconf",
+    "toolz",
 ]
 dynamic = ["version"]
 
