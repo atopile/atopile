@@ -6,8 +6,7 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 import enum
 import itertools
 import logging
-from pathlib import Path
-from typing import Iterable, Mapping, Optional
+from typing import Iterable, Optional
 
 from antlr4 import ParserRuleContext
 
@@ -29,6 +28,8 @@ from .datamodel import (
 )
 from .datatypes import KeyOptItem, KeyOptMap, Ref
 from .parse_utils import get_src_info_from_ctx
+
+import toolz
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -104,8 +105,14 @@ class Dizzy(AtopileParserVisitor):
         discard any results that are NOTHING and flattening the children's results.
         It is assumed the children are returning their own OptionallyNamedItems.
         """
-        results = (self.visit(child) for child in children)
-        return KeyOptMap(itertools.chain.from_iterable(filter(lambda x: x is not NOTHING, results)))
+        items: Iterable[KeyOptItem] = toolz.pipe(
+            children,  # stick in data
+            toolz.curried.map(self.visit),  # visit each child
+            toolz.curried.concat,  # flatten the results
+            toolz.curried.filter(lambda x: x is not NOTHING),  # filter out nothings
+            toolz.curried.map(KeyOptItem)  # ensure they are all optionally named items
+        )
+        return KeyOptMap(items)
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> _Sentinel | KeyOptItem:
         """

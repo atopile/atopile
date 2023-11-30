@@ -2,21 +2,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from atopile.address import AddrStr
 from atopile.dev.parse import parse_as_file, parser_from_src_code
+from atopile.model2 import datamodel as dm
 from atopile.model2 import errors
 from atopile.model2.builder1 import Dizzy, _attach_downward_info
-from typing import Mapping
-from atopile.address import AddrStr
-from atopile.model2.datatypes import KeyOptMap, KeyOptItem, Ref
-from atopile.model2.datamodel import (
-    Import,
-    Link,
-    Object,
-    Replace,
-)
-from atopile.model2 import datamodel as dm
-
-
+from atopile.model2.datamodel import Import, Link, Object, Replace
+from atopile.model2.datatypes import KeyOptMap
 
 COMPONENT = (dm.COMPONENT_REF,)
 INTERFACE = (dm.INTERFACE_REF,)
