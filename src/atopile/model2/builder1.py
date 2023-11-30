@@ -4,7 +4,6 @@ but doesn't resolve names of things.
 In building this datamodel, we check for name collisions, but we don't resolve them yet.
 """
 import enum
-import itertools
 import logging
 from typing import Iterable, Optional
 
@@ -99,20 +98,37 @@ class Dizzy(AtopileParserVisitor):
         """
         return NOTHING
 
-    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
+    def visit_iterable_helper(
+        self,
+        children: Iterable
+    ) -> tuple[list[errors.AtoError], KeyOptMap]:
         """
         Visit multiple children and return a tuple of their results,
         discard any results that are NOTHING and flattening the children's results.
         It is assumed the children are returning their own OptionallyNamedItems.
         """
+
+        _errors = []
+
+        def __visit(child: ParserRuleContext) -> Iterable[_Sentinel | KeyOptItem]:
+            try:
+                child_result = self.visit(child)
+                assert isinstance(child_result, KeyOptMap)
+                return child_result
+            except errors.AtoError as err:
+                _errors.append(err)
+                self.error_handler.handle(err)
+                return (NOTHING,)
+
         items: Iterable[KeyOptItem] = toolz.pipe(
-            children,  # stick in data
-            toolz.curried.map(self.visit),  # visit each child
-            toolz.curried.concat,  # flatten the results
+            children,                                          # stick in data
+            toolz.curried.map(__visit),                        # visit each child
+            toolz.curried.concat,                              # flatten the results
             toolz.curried.filter(lambda x: x is not NOTHING),  # filter out nothings
-            toolz.curried.map(KeyOptItem)  # ensure they are all optionally named items
+            toolz.curried.map(KeyOptItem)                      # ensure they are all KeyOptItem
         )
-        return KeyOptMap(items)
+
+        return _errors, KeyOptMap(items)
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> _Sentinel | KeyOptItem:
         """
@@ -121,25 +137,37 @@ class Dizzy(AtopileParserVisitor):
         result = self.visitChildren(ctx)
         if result is not NOTHING:
             if len(result) > 0:
-                if result[0].ref is not None:
-                    assert isinstance(result[0].ref, Ref)
                 assert len(result[0]) == 2
         return result
 
     def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
         """
-        Ensure consistency of return type
+        Ensure consistency of return type.
+        We choose to raise any below exceptions here, because stmts can be nested,
+        and raising exceptions serves as our collection mechanism.
         """
         if ctx.simple_stmts():
-            value = self.visitSimple_stmts(ctx.simple_stmts())
-        elif ctx.compound_stmt():
-            value = KeyOptMap((self.visit(ctx.compound_stmt()),))
-        else:
-            self.error_handler.handle(errors.AtoError("Unexpected statement type"))
-            value = NOTHING
-        return value
+            stmt_errors, stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
 
-    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
+            if stmt_errors:
+                if len(stmt_errors) == 1:
+                    raise stmt_errors[0]
+                else:
+                    raise errors.AtoErrorGroup.from_ctx(
+                        "Errors occured in nested statements",
+                        stmt_errors,
+                        ctx
+                    )
+
+            return stmt_returns
+        elif ctx.compound_stmt():
+            item = self.visit(ctx.compound_stmt())
+            assert isinstance(item, KeyOptItem)
+            return KeyOptMap.from_item(item)
+
+        raise TypeError("Unexpected statement type")
+
+    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> tuple[list[errors.AtoError], KeyOptMap]:
         return self.visit_iterable_helper(ctx.simple_stmt())
 
     def visitTotally_an_integer(self, ctx: ap.Totally_an_integerContext) -> int:
@@ -150,12 +178,25 @@ class Dizzy(AtopileParserVisitor):
             raise errors.AtoTypeError.from_ctx(f"Expected an integer, but got {text}", ctx)  # pylint: disable=raise-missing-from
 
     def visitFile_input(self, ctx: ap.File_inputContext) -> Object:
-        locals_ = self.visit_iterable_helper(ctx.stmt())
+        file_errors, locals_ = self.visit_iterable_helper(ctx.stmt())
+
+        if file_errors:
+            if len(file_errors) == 1:
+                fatal_error = file_errors[0]
+            else:
+                fatal_error = errors.AtoErrorGroup.from_ctx(
+                    "Errors occured in this file",
+                    file_errors,
+                    ctx
+                )
+        else:
+            fatal_error = None
 
         return Object(
             locals_=locals_,
             supers_refs=MODULE,
             src_ctx=ctx,
+            fatal_error=fatal_error,
         )
 
     def visitBlocktype(self, ctx: ap.BlocktypeContext) -> tuple[Ref]:
@@ -168,10 +209,7 @@ class Dizzy(AtopileParserVisitor):
             case "interface":
                 return INTERFACE
             case _:
-                self.error_handler.handle(
-                    errors.AtoError(f"Unknown block type '{block_type_name}'")
-                )
-                return NOTHING
+                raise errors.AtoError(f"Unknown block type '{block_type_name}'")
 
     def visit_ref_helper(
         self,
@@ -192,8 +230,7 @@ class Dizzy(AtopileParserVisitor):
             return Ref(
                 map(str, self.visit(ctx)),
             )
-        self.error_handler.handle(errors.AtoError(f"Unknown reference type: {type(ctx)}"))
-        return NOTHING
+        raise errors.AtoError(f"Unknown reference type: {type(ctx)}")
 
     def visitName(self, ctx: ap.NameContext) -> str | int:
         """
@@ -214,27 +251,33 @@ class Dizzy(AtopileParserVisitor):
         elif ctx.attr():
             return self.visitAttr(ctx.attr())
 
-        self.error_handler.handle(errors.AtoError("Expected a name or attribute"))
-        return NOTHING
+        raise errors.AtoError("Expected a name or attribute")
 
-    def visitBlock(self, ctx) -> KeyOptMap:
+    def visitBlock(self, ctx) -> tuple[list[errors.AtoError], KeyOptMap]:
         if ctx.simple_stmts():
             return self.visitSimple_stmts(ctx.simple_stmts())
         elif ctx.stmt():
             return self.visit_iterable_helper(ctx.stmt())
-        else:
-            self.error_handler.handle(errors.AtoError("Unexpected block type"))
-            return NOTHING
+        raise ValueError  # this should be protected because it shouldn't be parseable
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptItem:
-        block_returns = self.visitBlock(ctx.block())
+        block_errors, block_returns = self.visitBlock(ctx.block())
+
+        if block_errors:
+            if len(block_errors) == 1:
+                fatal_error = block_errors[0]
+            else:
+                fatal_error = errors.AtoErrorGroup.from_ctx(
+                    "Errors occured in this block",
+                    block_errors,
+                    ctx
+                )
+        else:
+            fatal_error = None
 
         if ctx.FROM():
             if not ctx.name_or_attr():
-                self.error_handler.handle(
-                    errors.AtoError("Expected a name or attribute after 'from'")
-                )
-                return NOTHING
+                raise errors.AtoSyntaxError("Expected a name or attribute after 'from'")
             block_supers = (self.visit_ref_helper(ctx.name_or_attr()),)
         else:
             block_supers = self.visitBlocktype(ctx.blocktype())
@@ -245,6 +288,7 @@ class Dizzy(AtopileParserVisitor):
                 supers_refs=block_supers,
                 locals_=block_returns,
                 src_ctx=ctx,
+                fatal_error=fatal_error,
             ),
         )
 
