@@ -66,7 +66,7 @@ class Object(Base):
     # this is here purely for efficiency
     named_locals: Mapping[Ref, Any] = field(init=False)
     unnamed_locals: Iterable[Any] = field(init=False)
-    locals_by_type: Mapping[Type, tuple[Ref, Any]] = field(init=False)
+    locals_by_type: Mapping[Type, Iterable[tuple[Ref, Any]]] = field(init=False)
 
     # configured post-construction
     closure: Optional[tuple["Object"]] = None
