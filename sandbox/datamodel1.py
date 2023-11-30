@@ -6,11 +6,9 @@ from pathlib import Path
 from atopile.model2.build import Spud
 from atopile.model2.errors import ErrorHandler, HandlerMode
 from atopile.address import AddrStr
-from atopile.model2.datamodel import COMPONENT
-from atopile.model2.flat_datamodel import find_like, filter_by_supers, dfs, Instance
+from atopile.model2.datamodel import Instance, COMPONENT
 
-
-from atopile.targets.netlist.kicad6_m2 import KicadNetlist, KicadNode, KicadComponent, KicadSheetpath, KicadLibpart, KicadPin, KicadField
+# from atopile.targets.netlist.kicad6_m2 import KicadNetlist, KicadNode, KicadComponent, KicadSheetpath, KicadLibpart, KicadPin, KicadField
 
 from textwrap import dedent
 

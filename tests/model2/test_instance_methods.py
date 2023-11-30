@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from atopile.model2.lazy_methods import (
+from atopile.model2.instance_methods import (
     Instance,
     dfs,
     dfs_with_ref,
@@ -159,12 +159,12 @@ def test_joints(typed_structure: tuple[Instance]):
 def test_iter_parents(instance_structure: tuple[Instance]):
     a, b, c, d, e, f = instance_structure
 
-    assert list(iter_parents(a)) == []
-    assert list(iter_parents(b)) == [a]
-    assert list(iter_parents(c)) == [b, a]
-    assert list(iter_parents(d)) == [b, a]
-    assert list(iter_parents(e)) == [d, b, a]
-    assert list(iter_parents(f)) == [d, b, a]
+    assert list(iter_parents(a, include_self=False)) == []
+    assert list(iter_parents(b, include_self=False)) == [a]
+    assert list(iter_parents(c, include_self=False)) == [b, a]
+    assert list(iter_parents(d, include_self=False)) == [b, a]
+    assert list(iter_parents(e, include_self=False)) == [d, b, a]
+    assert list(iter_parents(f, include_self=False)) == [d, b, a]
 
 
 def test_lowest_common_parent(instance_structure: tuple[Instance]):

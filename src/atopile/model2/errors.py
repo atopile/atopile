@@ -4,7 +4,7 @@ import traceback
 from contextlib import contextmanager
 from enum import Enum, auto, IntEnum
 from pathlib import Path
-from typing import Optional, Type
+from typing import Optional, Type, Iterable, TypeVar, Callable
 from antlr4 import Token, ParserRuleContext
 from .parse_utils import get_src_info_from_ctx, get_src_info_from_token
 
@@ -48,6 +48,12 @@ class AtoError(Exception):
         if error_name.startswith("Ato"):
             return error_name[3:]
         return error_name
+
+
+class AtoFatalError(AtoError):
+    """
+    Something in your code meant we weren't able to continue building your code
+    """
 
 
 class AtoSyntaxError(AtoError):
@@ -152,10 +158,12 @@ class HandlerMode(Enum):
     RAISE_ALL = auto()
 
 
-class ErrorsHandled(Exception):
-    """
-    An exception that's raised when errors have been handled.
-    """
+I = TypeVar("I")
+O = TypeVar("O")
+
+
+class DONT_FILL:
+    """A sentinel value to indicate that a spot with an error should not be filled."""
 
 
 class ErrorHandler:
@@ -166,52 +174,61 @@ class ErrorHandler:
         logger: Optional[logging.Logger] = None,
         handel_mode: Optional[HandlerMode] = HandlerMode.RAISE_NON_ATO,
         log_on_error: bool = True,
-        exception_on_do_raise: BaseException = ErrorsHandled,
     ) -> None:
         self.logger = logger or log
         self.handel_mode = handel_mode
         self.errors: list[Exception] = []
         self.log_on_error = log_on_error
-        self.exception_on_do_raise = exception_on_do_raise
 
     @property
     def exception_group(self) -> ExceptionGroup:
         """Return an exception group of all the errors."""
         return ExceptionGroup("Errors occurred during compilation", self.errors)
 
-    def do_raise_if_errors(self) -> None:
+    def assert_no_errors(self) -> None:
         """Raise an exception group of all the errors if there are any."""
         if len(self.errors) > 0:
-            if self.exception_on_do_raise is ExceptionGroup:
-                raise self.exception_group
-            raise self.exception_on_do_raise
+            raise AtoFatalError from self.exception_group
 
     def handle(self, error: Exception, from_: Optional[Exception] = None) -> Exception:
         """
         Deal with an error, either by shoving it in the error list or raising it.
         """
-        if self.handel_mode == HandlerMode.RAISE_ALL:
-            if from_ is not None:
-                raise error from from_
-            raise error
-
         self.errors.append(error)
         if self.log_on_error:
             _process_error(error, None, self.logger)
 
+        def _do_raise() -> None:
+            if from_ is not None:
+                raise error from from_
+            raise error
+
+        if self.handel_mode == HandlerMode.RAISE_ALL:
+            _do_raise()
+
         if self.handel_mode == HandlerMode.RAISE_NON_ATO:
             if not isinstance(error, AtoError):
-                if from_ is not None:
-                    raise self.exception_group from from_
-                raise self.exception_group
+                _do_raise()
 
         return error
+
+    def map_filtering_errors(self, func: Callable[[I], O], iterable: Iterable[I], default = DONT_FILL) -> Iterable[O]:
+        """Yield values from an iterable, but catch and handle errors."""
+        for item in iterable:
+            try:
+                transformed_item = func(item)
+            except Exception as ex:  # pylint: disable=broad-except
+                self.handle(ex)
+                if default is not DONT_FILL:
+                    yield default
+            else:
+                yield transformed_item
 
 
 class ReraiseBehavior(IntEnum):
     IGNORE = 0
     RERAISE = 1
-    RAISE_ATO_ERROR = 2
+    RAISE_ATO_FATAL_ERROR = 2
 
 
 @contextmanager
@@ -234,5 +251,5 @@ def write_errors_to_log(
         _process_error(ex, visitor_type, logger)
         if reraise == ReraiseBehavior.RERAISE:
             raise
-        elif reraise == ReraiseBehavior.RAISE_ATO_ERROR:
-            raise AtoError from ex
+        elif reraise == ReraiseBehavior.RAISE_ATO_FATAL_ERROR:
+            raise AtoFatalError from ex

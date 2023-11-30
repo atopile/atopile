@@ -3,26 +3,22 @@ This datamodel represents the code in a clean, simple and traversable way,
 but doesn't resolve names of things.
 In building this datamodel, we check for name collisions, but we don't resolve them yet.
 """
-import logging
+from collections import ChainMap
 from functools import partial
-from typing import Any, Mapping, Optional, Iterable, Type
+from typing import Any, Iterable, Mapping, Optional, Type
 
 from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
-from .datatypes import KeyOptMap, Ref
-
 from atopile.address import AddrStr
-
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+from atopile.model2.datatypes import Ref, KeyOptMap
 
 
 @define
 class Base:
     """Represent a base class for all things."""
     src_ctx: Optional[ParserRuleContext] = field(kw_only=True, default=None)
-    valid: bool = field(kw_only=True, default=True)
+    fatal_error: Optional[Exception] = field(kw_only=True, default=None)
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}>"
@@ -113,3 +109,49 @@ BUILTINS = {
     SIGNAL_REF: SIGNAL,
     INTERFACE_REF: INTERFACE,
 }
+
+
+## The below datastructures are created from the above datamodel as a second stage
+
+
+@define
+class Joint:
+    """Represent a connection between two connectable things."""
+    origin_link: Link
+
+    contained_by: "Instance"
+    source_connected: "Instance"
+    target_connected: "Instance"
+
+    source: "Instance"
+    target: "Instance"
+
+    def __repr__(self) -> str:
+        return f"<Joint {repr(self.source)} -> {repr(self.target)}>"
+
+
+@define
+class Instance:
+    """Represent a concrete object class."""
+    ref: Ref
+
+    origin: Optional[Object] = None
+
+    children_from_classes: dict[str, Any] = field(factory=dict)
+    children_from_mods: dict[str, Any] = field(factory=dict)
+
+    joints: list[Joint] = field(factory=list)
+    joined_to_me: list[Joint] = field(factory=list)
+
+    parent: Optional["Instance"] = None
+    children: ChainMap[str, Any] = field(init=False)
+
+    def __attrs_post_init__(self) -> None:
+        self.children = ChainMap(self.children_from_mods, self.children_from_classes)
+
+    def __repr__(self) -> str:
+        return f"<Instance {self.ref}>"
+
+
+resolve_types(Joint)
+resolve_types(Instance)
