@@ -9,6 +9,9 @@ from atopile.address import AddrStr
 from atopile.model2.datamodel import COMPONENT
 from atopile.model2.flat_datamodel import find_like, filter_by_supers, dfs, Instance
 
+
+from atopile.targets.netlist.kicad6_m2 import KicadNetlist, KicadNode, KicadComponent, KicadSheetpath, KicadLibpart, KicadPin, KicadField
+
 from textwrap import dedent
 
 import rich.tree
@@ -42,6 +45,7 @@ src_code = """
         pin p1
         pin p2
         p1 ~ p2
+        mpn = "generic_resistor"
 
     component FancyResistor from Resistor:
         pin p3
@@ -54,23 +58,24 @@ src_code = """
         r_3 = new Resistor
         r_3.value = 3
         r_4 = new Resistor
+        r_4.value = 3
         r_5 = new Resistor
-        r_5.value = 5
+        r_5.value = 3
 
         signal top ~ r_top.p1
         signal output ~ r_top.p2
         output ~ r_bottom.p1
         signal bottom ~ r_bottom.p2
 
-        r_top.value = 1000
+        r_top.value = 3
 
     module FancyVDiv from VDiv:
         r_middle = new Resistor
-        r_middle.value = 5
+        r_middle.value = 3
 
     module SomeModule:
         vdiv = new VDiv
-        vdiv.r_bottom.value = 1000
+        vdiv.r_bottom.value = 3
 
     module Root from SomeModule:
         vdiv.r_middle -> FancyResistor
@@ -95,4 +100,11 @@ ret = find_like(found_candidate_iterator,("value",))
 
 for e in ret:
     print(e, ' : ', ret[e])
+# %%
+
+
+netlist = KicadNetlist.from_instance(flat)
+
+# for e in netlist:
+#     print(e, ' : ', ret[e])
 # %%

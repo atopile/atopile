@@ -6,7 +6,7 @@ Bottom's up!
 """
 import logging
 from collections import ChainMap, defaultdict
-from typing import Any, Callable, Iterable, Iterator, Optional
+from typing import Any, Callable, Iterable, Iterator, Optional, Hashable
 
 from attrs import define, field, resolve_types
 
@@ -102,7 +102,12 @@ def filter_by_supers(iterable: Iterable[Instance], supers: dm1.Object | Iterable
     return filter(lambda x: any(_supers_match(x)), iterable)
 
 
-def find_like(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] = None) -> defaultdict:
+def filter_values_by_supers(iterable: Iterable[tuple[Hashable, Instance]], supers: dm1.Object | Iterable[dm1.Object]) -> Iterator[tuple[Hashable, Instance]]:
+    _supers_match = make_supers_match_filter(supers)
+    return filter(lambda x: any(_supers_match(x[1])), iterable)
+
+
+def find_like(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] = None) -> defaultdict[tuple, list[Instance]]:
     """Extract "like" Instances, where "likeness" is qualified by equalities of keys."""
     if default_keys is None:
         default_keys = ("mfn", "value", "footprint")
@@ -114,6 +119,7 @@ def find_like(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] =
         like_instances[instance_key].append(element)
 
     return like_instances
+
 
 def joined_to_me(instance: Instance) -> Iterator[Instance]:
     """Iterate over instances that are joined to me."""
