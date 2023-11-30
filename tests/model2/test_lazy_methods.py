@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock
 
-from collections import defaultdict
-
 import pytest
 
 from atopile.model2.lazy_methods import (
@@ -13,6 +11,7 @@ from atopile.model2.lazy_methods import (
     any_supers_match,
     match_components,
     iter_parents,
+    lowest_common_parent,
 )
 
 from atopile.model2.datamodel import Object, COMPONENT, MODULE, PIN, SIGNAL
@@ -166,3 +165,12 @@ def test_iter_parents(instance_structure: tuple[Instance]):
     assert list(iter_parents(d)) == [b, a]
     assert list(iter_parents(e)) == [d, b, a]
     assert list(iter_parents(f)) == [d, b, a]
+
+
+def test_lowest_common_parent(instance_structure: tuple[Instance]):
+    a, b, c, d, e, f = instance_structure
+
+    assert lowest_common_parent([a, b, c, d, e, f]) == a
+    assert lowest_common_parent([b, c, d, e, f]) == b
+    assert lowest_common_parent([c, e, f]) == b
+    assert lowest_common_parent([e, f]) == d

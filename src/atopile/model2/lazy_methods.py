@@ -1,8 +1,9 @@
 from collections import defaultdict
 from typing import Any, Callable, Hashable, Iterable, Iterator, Optional, TypeVar
 
-from toolz import groupby
+from toolz import groupby, compose
 import toolz.curried
+from toolz.curried import map as _map
 
 from atopile.model2 import datamodel as dm1
 from atopile.model2.datatypes import KeyOptItem, Ref
@@ -109,8 +110,33 @@ def iter_nets(root: Instance) -> Iterator[Iterator[Instance]]:
         yield _dfs_joins(connectable)
 
 
-def iter_parents(instance: Instance) -> Iterator[Instance]:
+def iter_parents(instance: Instance, include_self: bool = True) -> Iterator[Instance]:
     """Iterate over all the parents of an instance."""
+    if include_self:
+        yield instance
     while instance.parent is not None:
         instance = instance.parent
         yield instance
+
+
+def lowest_common_parent(instances: Iterable[Instance], include_self: bool = True) -> Instance:
+    """
+    Return the lowest common parent of a set of instances.
+    """
+    layers = zip(*(reversed(list(iter_parents(i, include_self))) for i in instances))
+
+    first_layer = iter(next(layers))
+
+    common_parent = next(first_layer)
+
+    if any(x is not common_parent for x in first_layer):
+        raise ValueError("No common root found.")
+
+    for layer in layers:
+        layer = iter(layer)
+        candidate = next(layer)
+        if any(x is not candidate for x in layer):
+            break
+        common_parent = candidate
+
+    return common_parent
