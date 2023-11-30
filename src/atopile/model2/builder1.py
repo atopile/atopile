@@ -62,27 +62,6 @@ def _attach_downward_info(obj: Object) -> None:
             _attach_downward_info(local)
 
 
-def build(
-    paths_to_trees: Mapping[Path, ParserRuleContext],
-    error_handler: errors.ErrorHandler
-) -> Mapping[Path, Object]:
-    """Build the datamodel from an ANTLR context."""
-    dizzy = Dizzy(error_handler)
-
-    results: Mapping[Path, Object] = {}
-
-    for path, tree in paths_to_trees.items():
-        try:
-            result = dizzy.visit(tree)
-            assert isinstance(result, Object)
-            _attach_downward_info(result)
-            results[path] = result
-        except errors.AtoError as e:
-            error_handler.handle(e)
-
-    return results
-
-
 class _Sentinel(enum.Enum):
     NOTHING = enum.auto()
 
@@ -103,18 +82,6 @@ class Dizzy(AtopileParserVisitor):
         self.error_handler = error_handler
         super().__init__()
 
-    def defaultResult(self):
-        return NOTHING
-
-    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
-        """
-        Visit multiple children and return a tuple of their results,
-        discard any results that are NOTHING and flattening the children's results.
-        It is assumed the children are returning their own OptionallyNamedItems.
-        """
-        results = (self.visit(child) for child in children)
-        return KeyOptMap(itertools.chain(*filter(lambda x: x is not NOTHING, results)))
-
     def build(self, ctx: ParserRuleContext) -> Object:
         """
         Build the object from the given context
@@ -124,15 +91,29 @@ class Dizzy(AtopileParserVisitor):
         _attach_downward_info(obj)
         return obj
 
+    def defaultResult(self):
+        """
+        Override the default "None" return type
+        (for things that return nothing) with the Sentinel NOTHING
+        """
+        return NOTHING
+
+    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
+        """
+        Visit multiple children and return a tuple of their results,
+        discard any results that are NOTHING and flattening the children's results.
+        It is assumed the children are returning their own OptionallyNamedItems.
+        """
+        results = (self.visit(child) for child in children)
+        return KeyOptMap(itertools.chain.from_iterable(filter(lambda x: x is not NOTHING, results)))
+
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> _Sentinel | KeyOptItem:
         """
         This is practically here as a development shim to assert the result is as intended
         """
         result = self.visitChildren(ctx)
         if result is not NOTHING:
-            assert isinstance(result, KeyOptMap)
             if len(result) > 0:
-                assert isinstance(result[0], KeyOptItem)
                 if result[0].ref is not None:
                     assert isinstance(result[0].ref, Ref)
                 assert len(result[0]) == 2
@@ -159,10 +140,7 @@ class Dizzy(AtopileParserVisitor):
         try:
             return int(text)
         except ValueError:
-            self.error_handler.handle(
-                errors.AtoTypeError(f"Expected an integer, but got {text}")
-            )
-            return NOTHING
+            raise errors.AtoTypeError.from_ctx(f"Expected an integer, but got {text}", ctx)  # pylint: disable=raise-missing-from
 
     def visitFile_input(self, ctx: ap.File_inputContext) -> Object:
         locals_ = self.visit_iterable_helper(ctx.stmt())

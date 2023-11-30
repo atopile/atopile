@@ -36,7 +36,7 @@ class Joint:
 @define
 class Instance:
     """Represent a concrete object class."""
-    ref: tuple[str]
+    ref: Ref
 
     origin: Optional[dm1.Object] = None
 
