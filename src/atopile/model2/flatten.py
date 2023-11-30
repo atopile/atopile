@@ -29,8 +29,8 @@ def ref_and_connectable_pairs(instance: Instance) -> Iterable[tuple[Ref, Instanc
 
 def assert_no_errors(thing: Base) -> None:
     """Assert that there are no errors."""
-    if thing.fatal_error:
-        raise errors.AtoFatalError from thing.fatal_error
+    if thing.errors:
+        raise errors.AtoErrorGroup("Cannot continue build", thing.errors)
 
 
 def _build(

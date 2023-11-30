@@ -7,6 +7,7 @@ import enum
 import logging
 from typing import Iterable, Optional
 
+import toolz
 from antlr4 import ParserRuleContext
 
 from atopile.address import AddrStr
@@ -27,8 +28,6 @@ from .datamodel import (
 )
 from .datatypes import KeyOptItem, KeyOptMap, Ref
 from .parse_utils import get_src_info_from_ctx
-
-import toolz
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -180,23 +179,11 @@ class Dizzy(AtopileParserVisitor):
     def visitFile_input(self, ctx: ap.File_inputContext) -> Object:
         file_errors, locals_ = self.visit_iterable_helper(ctx.stmt())
 
-        if file_errors:
-            if len(file_errors) == 1:
-                fatal_error = file_errors[0]
-            else:
-                fatal_error = errors.AtoErrorGroup.from_ctx(
-                    "Errors occured in this file",
-                    file_errors,
-                    ctx
-                )
-        else:
-            fatal_error = None
-
         return Object(
             locals_=locals_,
             supers_refs=MODULE,
             src_ctx=ctx,
-            fatal_error=fatal_error,
+            errors=file_errors,
         )
 
     def visitBlocktype(self, ctx: ap.BlocktypeContext) -> tuple[Ref]:
@@ -263,18 +250,6 @@ class Dizzy(AtopileParserVisitor):
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptItem:
         block_errors, block_returns = self.visitBlock(ctx.block())
 
-        if block_errors:
-            if len(block_errors) == 1:
-                fatal_error = block_errors[0]
-            else:
-                fatal_error = errors.AtoErrorGroup.from_ctx(
-                    "Errors occured in this block",
-                    block_errors,
-                    ctx
-                )
-        else:
-            fatal_error = None
-
         if ctx.FROM():
             if not ctx.name_or_attr():
                 raise errors.AtoSyntaxError("Expected a name or attribute after 'from'")
@@ -288,18 +263,15 @@ class Dizzy(AtopileParserVisitor):
                 supers_refs=block_supers,
                 locals_=block_returns,
                 src_ctx=ctx,
-                fatal_error=fatal_error,
+                errors=block_errors,
             ),
         )
 
     def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
         ref = self.visit_ref_helper(ctx.totally_an_integer() or ctx.name())
-
         if not ref:
-            self.error_handler.handle(errors.AtoError("Pins must have a name"))
-            return NOTHING
+            raise errors.AtoError("Pins must have a name")
 
-        # TODO: reimplement this error handling at the above level
         created_pin = Object(
             supers_refs=PIN,
             locals_=KeyOptMap(),
@@ -310,22 +282,14 @@ class Dizzy(AtopileParserVisitor):
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visit_ref_helper(ctx.name())
-
-        # TODO: provide context of where this error was found within the file
         if not name:
-            self.error_handler.handle(errors.AtoError("Signals must have a name"))
-            return NOTHING
+            raise errors.AtoError("Signals must have a name")
 
         created_signal = Object(
             supers_refs=SIGNAL,
             locals_=KeyOptMap(),
             src_ctx=ctx,
         )
-        # TODO: reimplement this error handling at the above level
-        # if name in self.scope:
-        #    .handle_error.handel_error(errors.AtoNameConflictError()
-        #         f"Cannot redefine '{name}' in the same scope"
-        #     )
         return KeyOptMap.from_kv(name, created_signal)
 
     # Import statements have no ref
@@ -333,25 +297,25 @@ class Dizzy(AtopileParserVisitor):
         from_file: str = self.visitString(ctx.string())
         imported_element = self.visit_ref_helper(ctx.name_or_attr())
 
+        _errors = []
+
         if not from_file:
-            self.error_handler.handle(
-                errors.AtoError("Expected a 'from <file-path>' after 'import'")
-            )
-            return NOTHING
+            _errors.append(errors.AtoError("Expected a 'from <file-path>' after 'import'"))
         if not imported_element:
-            self.error_handler.handle(
-                errors.AtoError("Expected a name or attribute to import after 'import'")
-            )
-            return NOTHING
+            _errors.append(errors.AtoError("Expected a name or attribute to import after 'import'"))
 
         if imported_element == "*":
             # import everything
             raise NotImplementedError("import *")
 
+        for error in _errors:
+            self.error_handler.handle(error)
+
         import_ = Import(
             what_ref=imported_element,
             from_name=from_file,
             src_ctx=ctx,
+            errors=_errors
         )
 
         return KeyOptMap.from_kv(imported_element, import_)

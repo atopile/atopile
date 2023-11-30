@@ -18,7 +18,7 @@ from atopile.model2.datatypes import Ref, KeyOptMap
 class Base:
     """Represent a base class for all things."""
     src_ctx: Optional[ParserRuleContext] = field(kw_only=True, default=None)
-    fatal_error: Optional[Exception | ExceptionGroup] = field(kw_only=True, default=None)
+    errors: list[Exception] = field(kw_only=True, factory=list)
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}>"
