@@ -107,3 +107,10 @@ def iter_nets(root: Instance) -> Iterator[Iterator[Instance]]:
         if id(connectable) in seen:
             continue
         yield _dfs_joins(connectable)
+
+
+def iter_parents(instance: Instance) -> Iterator[Instance]:
+    """Iterate over all the parents of an instance."""
+    while instance.parent is not None:
+        instance = instance.parent
+        yield instance

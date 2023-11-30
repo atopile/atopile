@@ -11,8 +11,8 @@ from atopile.model2.lazy_methods import (
     iter_nets,
     find_like_instances,
     any_supers_match,
-    filter_values,
-    match_components
+    match_components,
+    iter_parents,
 )
 
 from atopile.model2.datamodel import Object, COMPONENT, MODULE, PIN, SIGNAL
@@ -28,6 +28,12 @@ def instance_structure():
     c = Instance(ref=("c",))
     b = Instance(ref=("b",), children_from_mods={"c": c, "d": d})
     a = Instance(ref=("a",), children_from_mods={"b": b})
+
+    b.parent = a
+    c.parent = b
+    d.parent = b
+    e.parent = d
+    f.parent = d
 
     return a, b, c, d, e, f
 
@@ -149,3 +155,14 @@ def test_joints(typed_structure: tuple[Instance]):
 
     assert len(results[1]) == 1
     assert results[1][0] == e
+
+
+def test_iter_parents(instance_structure: tuple[Instance]):
+    a, b, c, d, e, f = instance_structure
+
+    assert list(iter_parents(a)) == []
+    assert list(iter_parents(b)) == [a]
+    assert list(iter_parents(c)) == [b, a]
+    assert list(iter_parents(d)) == [b, a]
+    assert list(iter_parents(e)) == [d, b, a]
+    assert list(iter_parents(f)) == [d, b, a]
