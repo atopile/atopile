@@ -51,6 +51,8 @@ match_pins = any_supers_match(dm1.PIN)
 match_interfaces = any_supers_match(dm1.INTERFACE)
 match_components = any_supers_match(dm1.COMPONENT)
 match_modules = any_supers_match(dm1.MODULE)
+match_signals = any_supers_match(dm1.SIGNAL)
+match_pins = any_supers_match(dm1.PIN)
 
 
 def find_like_instances(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] = None) -> defaultdict[tuple, list[Instance]]:
