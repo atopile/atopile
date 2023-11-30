@@ -47,6 +47,7 @@ def any_supers_match(*supers: dm1.Object) -> Callable[[Instance], bool]:
 # pre-created filters for common types
 match_connectables = any_supers_match(dm1.PIN, dm1.SIGNAL, dm1.INTERFACE)
 match_pins_and_signals = any_supers_match(dm1.PIN, dm1.SIGNAL)
+match_pins = any_supers_match(dm1.PIN)
 match_interfaces = any_supers_match(dm1.INTERFACE)
 match_components = any_supers_match(dm1.COMPONENT)
 match_modules = any_supers_match(dm1.MODULE)
@@ -55,7 +56,7 @@ match_modules = any_supers_match(dm1.MODULE)
 def find_like_instances(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] = None) -> defaultdict[tuple, list[Instance]]:
     """Extract "like" Instances, where "likeness" is qualified by equalities of keys."""
     if default_keys is None:
-        default_keys = ("mfn", "value", "footprint")
+        default_keys = ("mpn", "value", "footprint")
 
     def __key(instance: Instance) -> tuple:
         keys = instance.children.get("__keys__", default_keys)
