@@ -3,13 +3,15 @@ Net naming algorithm.
 """
 import logging
 from collections import ChainMap, defaultdict
-from typing import Any, Callable, Iterable, Iterator, Optional
+from typing import Any, Callable, Iterable, Iterator, Optional, Hashable, List
 
 from attrs import define, field, resolve_types
 
 from atopile.model2 import datamodel as dm1
 from atopile.model2.datatypes import Ref, KeyOptItem
 from atopile.model2.flat_datamodel import Instance, Joint, dfs_with_ref, filter_by_supers
+from atopile.model2.lazy_methods import closest_common
+
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -46,27 +48,66 @@ def generate_base_net_name(net_objects: Iterable[Instance], net_index: Iterator[
     else:
         return f"Net_{next(net_index)}"
 
-def resolve_name_conflicts(net_names: dict[str, Instance]) -> dict[str, Instance]:
+def remove_common_prefix(ref: Ref, prefix: Ref) -> Ref:
+    """Remove the common prefix from a ref."""
+    if len(prefix) > len(ref):
+        raise ValueError("Prefix is longer than ref.")
+
+    for i in range(len(prefix)):
+        if prefix[i] != ref[i]:
+            raise ValueError("Prefix does not match ref.")
+
+    return ref[len(prefix):]
+
+def rename_net_instances(net_names: dict[str, Instance]) -> dict[str, Instance]:
+    """Rename all the nets that are named 'Net'."""
     unique_net_counter = 1
-    new_net_names = {}
+    renamed_net_names = {}
 
     for name, instance in net_names.items():
+        new_name = f"Net{unique_net_counter}" if name == "Net" else name
+        renamed_net_names[new_name] = instance
         if name == "Net":
-            # Rename the 'Net' instance with a unique identifier
-            new_name = f"Net{unique_net_counter}"
             unique_net_counter += 1
+
+    return renamed_net_names
+
+def find_conflicts(net_names: dict[str, Instance]) -> dict[str, List[Instance]]:
+    """Find conflicts in net names."""
+    conflicts = defaultdict(list)
+
+    for name, instance in net_names.items():
+        conflicts[name].append(instance)
+
+    return conflicts
+
+def resolve_conflicts(conflicts: dict[str, List[Instance]]) -> dict[str, Instance]:
+    """Resolve conflicts in net names."""
+    resolved_net_names = {}
+
+    for name, instances in conflicts.items():
+        common_parent = closest_common(instances)
+        for instance in instances:
+            new_name = remove_common_prefix(instance.ref, common_parent.ref)
+            resolved_net_names[new_name] = instance
+
+    return resolved_net_names
+
+def ensure_uniqueness(net_names: dict[str, Instance]) -> dict[str, Instance]:
+    """Ensure all net names are unique by appending integers to duplicates."""
+    final_conflicts = find_conflicts(net_names)
+    unique_net_names = {}
+    for name, instances in final_conflicts.items():
+        if len(instances) > 1:
+            for i, instance in enumerate(instances):
+                unique_net_names[f"{name}_{i+1}"] = instance
         else:
-            new_name = name
+            unique_net_names[name] = instances[0]
+    return unique_net_names
 
-        new_net_names[new_name] = instance
-
-    return new_net_names
-
-    # If net name is unique, then leave it alone.
-
-    # If net name is not unique, then add parent name to net name.
-
-# def generate_net_names(root: Instance) -> dict[str, Instance]:
-#     """Generate names for nets."""
-
-
+def resolve_name_conflicts(net_names: dict[str, Instance]) -> dict[str, Instance]:
+    """Resolve name conflicts."""
+    renamed_net_names = rename_net_instances(net_names)
+    conflicts = find_conflicts(renamed_net_names)
+    resolved_net_names = resolve_conflicts(conflicts)
+    return ensure_uniqueness(resolved_net_names)
