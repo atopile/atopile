@@ -3,9 +3,11 @@ Find import references.
 """
 from typing import Optional, Iterable
 
-from . import datamodel as dm1
-from .flat_datamodel import Instance, Joint, dfs_with_ref, filter_values_by_supers
-from .datatypes import Ref
+from atopile.model2.datamodel import Base, Object, Replace, Link, Instance, Joint
+from atopile.model2.generic_methods import match_values
+from atopile.model2.instance_methods import dfs_with_ref, match_pins_and_signals
+from atopile.model2.datatypes import Ref
+from atopile.model2 import errors
 
 
 def get_ref_from_instance(ref: Ref, instance: Instance) -> Instance:
@@ -15,18 +17,28 @@ def get_ref_from_instance(ref: Ref, instance: Instance) -> Instance:
     return instance
 
 
-def build(obj: dm1.Object) -> Instance:
+def build(obj: Object) -> Instance:
     """Build a flat datamodel."""
     return _build(obj, name="entry")
 
 
-
 def ref_and_connectable_pairs(instance: Instance) -> Iterable[tuple[Ref, Instance]]:
     """Get all the pins and signals from an instance."""
-    return filter_values_by_supers(dfs_with_ref(instance), (dm1.PIN, dm1.SIGNAL))
+    return filter(match_values(match_pins_and_signals), dfs_with_ref(instance))
 
 
-def _build(obj: dm1.Object, name: Optional[str] = None, parent: Optional[Instance] = None, instance: Optional[Instance] = None) -> Instance:
+def assert_no_errors(thing: Base) -> None:
+    """Assert that there are no errors."""
+    if thing.fatal_error:
+        raise errors.AtoFatalError from thing.fatal_error
+
+
+def _build(
+    obj: Object,
+    name: Optional[str] = None,
+    parent: Optional[Instance] = None,
+    instance: Optional[Instance] = None
+) -> Instance:
     """Visit an object."""
     if name is not None and parent is not None:
         ref = Ref(parent.ref + (name,))
@@ -53,7 +65,7 @@ def _build(obj: dm1.Object, name: Optional[str] = None, parent: Optional[Instanc
     # we do this first, because subsequent operations of creating links, replacements or attributes
     # may override or reference these children
     # it's already been checked that child refs are only one string long
-    child_objects = obj.locals_by_type[dm1.Object]
+    child_objects = obj.locals_by_type[Object]
     instance.children_from_classes.update(
         {child_ref[0]: _build(child_obj, name=child_ref[0], parent=instance) for child_ref, child_obj in child_objects}
     )
@@ -61,10 +73,11 @@ def _build(obj: dm1.Object, name: Optional[str] = None, parent: Optional[Instanc
     # visit replacements after the children are created
     # we make replacements next, because, again, the subsequent operations may
     # reference things from these replacements
-    replacements = obj.locals_by_type[dm1.Replace]
+    replacements = obj.locals_by_type[Replace]
     replacements_deepest_first = sorted(replacements, key=lambda x: len(x[1].original_ref))
     for _, replace in replacements_deepest_first:
-        assert isinstance(replace, dm1.Replace)
+        assert isinstance(replace, Replace)
+        assert_no_errors(replace)
         instance_to_replace = get_ref_from_instance(replace.original_ref, instance)
         _build(
             replace.replacement_obj,
@@ -72,9 +85,11 @@ def _build(obj: dm1.Object, name: Optional[str] = None, parent: Optional[Instanc
         )
 
     # visit all the child links
-    links = obj.locals_by_type[dm1.Link]
+    links = obj.locals_by_type[Link]
     for _, link in links:
-        assert isinstance(link, dm1.Link)
+        assert isinstance(link, Link)
+        assert_no_errors(link)
+
         source_connected = get_ref_from_instance(link.source_ref, instance)
         target_connected = get_ref_from_instance(link.target_ref, instance)
 

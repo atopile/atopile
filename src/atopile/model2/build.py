@@ -13,9 +13,9 @@ from atopile.model2 import datamodel as dm
 from atopile.model2.builder1 import Dizzy
 from atopile.model2.builder2 import Lofty
 from atopile.model2.builder3 import Muck
+from atopile.model2.datamodel import Instance
 from atopile.model2.datatypes import Ref
 from atopile.model2.errors import ErrorHandler
-from atopile.model2.flat_datamodel import Instance
 from atopile.model2.flatten import build as flatten
 from atopile.model2.parse import parse_file, parse_text_as_file
 
