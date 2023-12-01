@@ -18,8 +18,11 @@ def lookup_ref(obj: Object, ref: Ref) -> Object:
         assert isinstance(ref_part, str)
         if not isinstance(obj, Object):
             raise TypeError(f"Ref {ref} points to non-object {obj}.")
-        obj = obj.named_locals[(ref_part,)]
-    raise KeyError(f"Name '{ref}' not found.")
+        try:
+            obj = obj.named_locals[(ref_part,)]
+        except KeyError:
+            raise KeyError(ref) from KeyError
+    return obj
 
 
 def build(
