@@ -9,7 +9,7 @@ from typing import Mapping, Iterable
 from atopile.iterutils import bfs, unique_list
 
 from . import errors
-from .datamodel import BUILTINS, Object, Replace
+from .datamodel import BUILTINS, Object, Replace, Import
 from .datatypes import Ref
 
 
@@ -56,10 +56,16 @@ class Muck:
     def lookup_super(self, obj: Object, ref: Ref) -> Object:
         """Wrapper to catch errors"""
         try:
-            return lookup_super(obj, ref)
+            _super = lookup_super(obj, ref)
         except KeyError as e:
             self.error_handler.handle(e)
             raise
+
+        # Check super type
+        if isinstance(_super, Object):
+            return _super
+        elif isinstance(_super, Import):
+            return _super.what_obj
 
     def visit_supers(self, obj: Object) -> tuple[Object]:
         """Visit and resolve supers in an object."""
