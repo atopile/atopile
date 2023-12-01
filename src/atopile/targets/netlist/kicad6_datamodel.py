@@ -8,6 +8,15 @@ class KicadField:
     name: str  # eg value
     value: str  # eg 10 Ohms
 
+@define
+class KicadPin:
+    """
+    eg. (pin (num "1") (name "") (type "passive"))
+    """
+    num: str
+    name: str = ""
+    type: str = ""
+
 
 @define
 class KicadPin:
@@ -62,7 +71,7 @@ class KicadComponent:
     """
     eg.
     (comp (ref "R4")
-      (value "R")
+      (value "5R")
       (libsource (lib "Device") (part "R") (description "Resistor"))
       (property (name "Sheetname") (value ""))
       (property (name "Sheetfile") (value "example.kicad_sch"))
