@@ -1,12 +1,3 @@
-"""
-Pipe that takes in a list of instances and gives them a designator.
-- Iterates over the list once to find lock file names
-   - adds lock file names to a set (prefix + integer)
-   - gives each instance a designator from the lock file names
-- Iterates over the list again to find the designators for unnamed instances
-    - For each prefix, increment the integer until it is not in the set
-    - A counter is used to keep track of the integer
-"""
 from typing import Any, Iterable, Mapping, Optional, Type
 
 from .datamodel import Instance
@@ -14,6 +5,7 @@ from .instance_methods import match_components, dfs
 
 
 def make_designators(root: Instance) -> Instance:
+    """Assign designators to all components."""
     instances = list(filter(match_components, dfs(root)))
 
     used_names = set()
