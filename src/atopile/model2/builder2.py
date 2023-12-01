@@ -80,29 +80,22 @@ class Lofty:
         assert imp.src_ctx is not None
         cwd, _, _ = get_src_info_from_ctx(imp.src_ctx)
 
-        try:
-            foreign_filename = self.lookup_filename(cwd, imp.from_name)
-        except FileNotFoundError as ex:
-            self.error_handler.handle(
-                errors.AtoImportNotFoundError.from_ctx(
+        try:  # TODO: there's probably a better way to rewrite this than as a nested try/except
+            try:
+                foreign_filename = self.lookup_filename(cwd, imp.from_name)
+                foreign_root = self.paths_to_objs[foreign_filename]
+                imp.what_obj = lookup_ref(foreign_root, imp.what_ref)
+            except KeyError as ex:
+                raise errors.AtoImportNotFoundError.from_ctx(
+                        f"Name '{imp.what_ref}' not found in '{foreign_filename}'.",
+                        imp.src_ctx,
+                    ) from ex
+            except ValueError as ex:
+                raise errors.AtoError.from_ctx(ex.args[0], imp.src_ctx)
+            except FileNotFoundError as ex:
+                raise errors.AtoImportNotFoundError.from_ctx(
                     f"File '{imp.from_name}' not found.", imp.src_ctx
-                ),
-                ex
-            )
-            return
-
-        foreign_root = self.paths_to_objs[foreign_filename]
-
-        try:
-            imp.what_obj = lookup_ref(foreign_root, imp.what_ref)
-        except KeyError:
-            self.error_handler.handle(
-                errors.AtoImportNotFoundError.from_ctx(
-                    f"Name '{imp.what_ref}' not found in '{foreign_filename}'.",
-                    imp.src_ctx,
-                )
-            )
-            return
-        except ValueError as ex:
-            self.error_handler.handle(errors.AtoError.from_ctx(ex.args[0], imp.src_ctx))
-            return
+                ) from ex
+        except errors.AtoError as ex:
+            imp.errors.append(ex)
+            self.error_handler.handle(ex)
