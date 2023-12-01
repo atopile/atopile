@@ -48,17 +48,30 @@ def any_supers_match(*supers: dm1.Object) -> Callable[[Instance], bool]:
 match_connectables = any_supers_match(dm1.PIN, dm1.SIGNAL, dm1.INTERFACE)
 match_pins_and_signals = any_supers_match(dm1.PIN, dm1.SIGNAL)
 match_pins = any_supers_match(dm1.PIN)
+match_signals = any_supers_match(dm1.SIGNAL)
 match_interfaces = any_supers_match(dm1.INTERFACE)
 match_components = any_supers_match(dm1.COMPONENT)
 match_modules = any_supers_match(dm1.MODULE)
-match_signals = any_supers_match(dm1.SIGNAL)
-match_pins = any_supers_match(dm1.PIN)
+
+
+def link_instance_key(instance: Instance, default_keys: Optional[tuple[str]] = None) -> Callable[[Instance], tuple]:
+    """Generate a key for this component to define its likeness."""
+    if default_keys is None:
+        default_keys = ("mpn", "value", "footprint")
+
+    try:
+        keying_values: str = instance.children.get("__keys__")
+    except KeyError:
+        keys = default_keys
+    else:
+        keys = [k.strip() for k in keying_values.split(",")]
+
+    return tuple(instance.children.get(k) for k in keys)
+
 
 
 def find_like_instances(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] = None) -> defaultdict[tuple, list[Instance]]:
     """Extract "like" Instances, where "likeness" is qualified by equalities of keys."""
-    if default_keys is None:
-        default_keys = ("mpn", "value", "footprint")
 
     def __key(instance: Instance) -> tuple:
         keys = instance.children.get("__keys__", default_keys)

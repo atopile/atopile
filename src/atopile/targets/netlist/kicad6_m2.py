@@ -2,16 +2,22 @@ import datetime
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Iterator
+from typing import Dict, List, Optional, Iterator, Mapping, Callable
 
 from attrs import define, field
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from atopile.address import AddrStr
 from atopile.model.utils import generate_uid_from_path
-from atopile.model2.flat_datamodel import Instance
-from atopile.model2.datamodel import COMPONENT, PIN
-from atopile.model2.flat_datamodel import find_like, filter_by_supers, dfs, filter_values_by_supers, make_supers_match_filter
+from atopile.model2.datamodel import Instance
+from atopile.model2.datamodel import COMPONENT, PIN, Object
+from atopile.model2.instance_methods import dfs, dfs_with_ref, find_like_instances, iter_nets
+from atopile.model2.instance_methods import match_components, match_pins
+from atopile.model2.object_methods import lowest_common_super
+from atopile.model2.net_naming import generate_base_net_name
+from toolz import groupby
+import itertools
+import functools
 
 from atopile.targets.designators import DEFAULT_DESIGNATOR_PREFIX
 
@@ -136,12 +142,10 @@ class KicadLibraries:
         # don't believe these are mandatory and I don't think they're useful in the context of atopile
         raise NotImplementedError
 
-def get_child_pins(instance: Instance) -> Iterator[Instance]:
-    _supers_are_a_pin = make_supers_match_filter(PIN)
-    for child_name, child in instance.children.items():
-        if isinstance(child, Instance):
-            if any(_supers_are_a_pin(child)):
-                yield child_name, child
+def get_child_pins(instance: Instance) -> Iterator[tuple[str, Instance]]:
+    for child_name, child in dfs_with_ref(instance):
+        if match_pins(child):
+            yield child_name, child
 
 #TODO: in the future, we might want to wrap data fields in proper objects the same way we do with instances
 def get_child_data_field(instance: Instance) -> Iterator[str | int]:
@@ -150,37 +154,57 @@ def get_child_data_field(instance: Instance) -> Iterator[str | int]:
         if isinstance(child, str) or isinstance(child, int):
             yield child_name, child
 
-def create_libpart_from_instance(representative_instance: Instance) -> KicadLibpart:
-    instance_pins = get_child_pins(representative_instance)
-    instance_data_fields = get_child_data_field(representative_instance)
+def create_libpart_from_group(instances: Iterator[Instance]) -> KicadLibpart:
+    """
+    Create a KiCAD libpart from the
+    """
+    instance_pins = get_child_pins(instance)
+    instance_data_fields = get_child_data_field(instance)
+
+    pins = []
+    for pin_i, pin in enumerate(filter(match_pins, dfs(rep_instance))):
+        new_pin = KicadPin(
+            num=pin_i,
+            name=pin.ref[-1],
+            type="stereo"
+        )
+        pins.append(new_pin)
+
 
     constructed_libpart = KicadLibpart(
         lib="component_class_path",  # FIXME: this may require sanitisation (eg. no slashes, for Kicad)
-        part=representative_instance.children.get(key="mpn", default="No mpn set"),
-        description=representative_instance.origin.supers_refs[0][0],  # here we should find the lowest common ancestor
+        part=instance.children.get(key="mpn", default="No mpn set"),
+        description=lowest_common_ancestor.address,  # here we should find the lowest common ancestor
         fields=[KicadField(name=field[0], value=field[1]) for field in instance_data_fields],
-        pins=[KicadPin(num=pin_index, name=instance_pin[0], type="stereo") for pin_index, instance_pin in enumerate(instance_pins, start=1)],
+        pins=pins,
         # TODO: something better for these:
         docs="~",
         footprints=["*"],
     )
     return constructed_libpart
 
-def create_component_from_instance(component_instance: Instance) -> KicadComponent:
+def create_component_from_instance(component_instance: Instance, designator: str) -> KicadComponent:
     instance_data_fields = get_child_data_field(component_instance)
-    concatenated_path = '.'.join(component_instance.ref) # legacy representation of the path
+
+    sheetpath = KicadSheetpath( # That's not actually what we want. Will have to fix
+        names=str(component_instance.ref),
+        tstamps=generate_uid_from_path(str(component_instance.ref))
+    )
 
     constructed_component = KicadComponent(
-        ref="designator",
+        ref=designator,
         value=component_instance.children.get("value", ""),
-        footprint="footprint_path",
+        footprint=component_instance.children.get("footprint", ""), #TODO: have to associate this with the lib
         libsource="libparts[component_class_path]",
-        tstamp=generate_uid_from_path(concatenated_path),
+        tstamp=generate_uid_from_path(str(component_instance.ref)),
         fields=[KicadField(name=field[0], value=field[1]) for field in instance_data_fields],
-        sheetpath="sheetpath",
-        src_path=concatenated_path,
+        sheetpath=sheetpath,
+        src_path=str(component_instance.ref),
     )
     return constructed_component
+
+def create_node_from_instance(node_instance: Instance) -> KicadNode:
+
 
 @define
 class KicadNetlist:
@@ -225,38 +249,78 @@ class KicadNetlist:
         """
         netlist = cls()
 
-        # Create the libparts (~component_classes)
+        # Make designators map
+        def _designtator_prefix(instance: Instance) -> str:
+            return str(instance.children.get("desginator_prefix", "U"))
 
-        # The values we use to extract individual components.
-        # If one of the value below ends up being unique, we generate a libpart off it
-        filter_by = ("value", "footprint", "mpn")
+        components_grouped_by_designator: dict[str, list[Instance]] = groupby(_designtator_prefix, components)
+        component_instance_id_to_designator_map: dict[int, str] = {}
+        for designator_prefix, components_with_prefix in components_grouped_by_designator.items():
+            for designator_index, component_instance in enumerate(components_with_prefix, start=1):
+                designator = designator_prefix + str(designator_index)
+                component_instance_id_to_designator_map[id[component_instance]] = designator_index
+
+        designator_counters = defaultdict()
+
+
+        # Create the libparts (~component_classes)
 
         libparts: list[KicadLibpart] = []
 
-        unique_components_dict: defaultdict[tuple, list[Instance]]
-        unique_components_dict = find_like(filter_by_supers(dfs(instance), COMPONENT), filter_by)
-        for unique_components in unique_components_dict.values():
-            rep_comp = unique_components[0] # all the elements in the list should be similar. We inspect element 0 only.
-            libparts.append(create_libpart_from_instance(rep_comp))
+        components = list(filter(match_components, dfs(instance)))
 
-        # create a designator map
-        filter_by = ("designator_prefix",)
-        unique_designator = find_like(filter_by_supers(dfs(instance), COMPONENT), filter_by)
-        for ud in unique_designator:
-            print(ud)
+        unique_components_dict = find_like_instances(components)
+        for unique_components in unique_components_dict.values():
+            def __get_origin_of_instance(instance: Instance) -> Object:
+                return instance.origin
+            lcs = lowest_common_super(__get_origin_of_instance(inst) for inst in unique_components)
+            rep_comp = unique_components[0] # all the elements in the list should be similar. We inspect element 0 only.
+            libparts.append(create_libpart_from_group(rep_comp, lcs))
 
         # Create the components (represents all the individual components on the board)
-        kicad_components: list[KicadComponent] = []
 
-        component_instance_list: list[Instance] = filter_by_supers(dfs(instance), COMPONENT)
-        for component_instance in component_instance_list:
-            kicad_components.append(create_component_from_instance(component_instance))
-        for kc in kicad_components:
-            print(kc)
+        kicad_components: list[KicadComponent] = []
+        kicad_nodes: dict[tuple, KicadNode] = {} # {pin.ref: KicadNode}
+
+        # create a designator map
+
+
+        filter_by = ("designator_prefix",)
+        components = filter(match_components, dfs(instance))
+        unique_designator_comp_clusters = find_like_instances(components, filter_by)
+        for key, unique_designator_comp_cluster in unique_designator_comp_clusters.items():
+            if key[0] == None:
+                designator_pref = "U" #Might want to put this in a more legit place
+            else:
+                designator_pref = key[0]
+            for index, comp in enumerate(unique_designator_comp_cluster, start=1):
+                designator = designator_pref + str(index)
+                kicad_created_comp = create_component_from_instance(comp, designator)
+                kicad_components.append(kicad_created_comp)
+                comp_pins = get_child_pins(comp)
+                for pin_index, pin_instance in enumerate(comp_pins, start=1):
+                    kicad_created_pin = KicadPin(num=pin_index, name=pin_instance[0], type="stereo")
+                    kicad_nodes[pin_instance[1].id] = KicadNode(designator, kicad_created_pin)
+
+        # Create the nets
+        nets = list(list(net) for net in iter_nets(instance))
+        named_nets: dict('str',list(list(Instance))) = {}
+        for net in nets:
+            name = generate_base_net_name(net)
+            named_nets[name] = net
+
+
+        kicad_nets: list[KicadNode] = []
+        for net_name, net in named_nets:
+            for pin in net:
+                kicad_net_node: list[KicadNode] = []
+                if match_pins(pin): # we care about the pins only
+                    kicad_net_node.append(kicad_nodes[pin.ref])
+
+
 
         return unique_components
-    
-        # Notes: currently osrting by default designators so I can assign one based on their index.
+        
 
         ## Below is the code we had before
 
@@ -485,3 +549,39 @@ class KicadNetlist:
 
 #     def resolve(self, *args, clean=None, **kwargs) -> None:
 #         log.info(f"No direct resolve action for {self.name}")
+
+
+class Builder:
+    def __init__(self):
+        """"""
+        self.libparts: Mapping[tuple, KicadLibpart] = defaultdict(self.make_libpart)
+        self.designator_counter: Mapping[str, Callable[[], int]] = defaultdict(functools.partial(itertools.count, firstval=1))
+
+    def make_designator(self, component: Instance) -> str:
+        """Give me a designator"""
+        prefix = str(component.children.get("designator_prefix", "U"))
+        index = next(self.designator_counter[prefix])
+        return prefix + str(index)
+
+    def make_libpart(self, instance: Instance) -> KicadLibpart:
+        """Make a KiCAD libpart object from a representative instance object."""
+        raise NotImplementedError
+
+    def dispatch(self, instance: Instance) -> list:
+        if match_components(instance):
+            return self.visit_component(instance)
+        if match_pins(instance):
+            return self.visit_pin(instance)
+
+    def visit(self, instance: Instance) -> list:
+        """Visit an instance"""
+        for child in instance.children.values():
+            if 
+
+
+    def visit_component(self, component: Instance) -> list[KicadComponent]:
+        """Visit and create a KiCAD component"""
+        uniqueness_key = 
+
+    def visit_pin(self, pin: Instance) -> list[KicadPin]:
+        """Visit and create a KiCAD pin"""
