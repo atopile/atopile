@@ -5,17 +5,17 @@ import logging
 from collections import ChainMap, defaultdict
 from typing import Any, Callable, Hashable, Iterable, Iterator, List, Optional, Tuple
 
-from attrs import define, field, resolve_types
+from attrs import define
 
 from atopile.model2 import datamodel as dm1
 from atopile.model2.datamodel import Instance, Joint
 from atopile.model2.datatypes import KeyOptItem, Ref
 from atopile.model2.instance_methods import (
     am_in_interface,
-    iter_parents,
     lowest_common_parent,
-    match_interfaces,
+    iter_parents,
     match_signals,
+    match_modules,
 )
 
 from toolz import groupby
@@ -37,7 +37,8 @@ class Net:
 
     def get_name(self) -> str:
         """Get the name of the net."""
-        return (f"{self.prefix + '_' if self.prefix else ''}"
+        #suffix is a ref (tuple of strings)
+        return (f"{'_'.join(self.prefix) + '_' if self.prefix else ''}"
                 f"{self.base_name or 'NET'}"
                 f"{'_' + str(self.suffix) if self.suffix else ''}")
 
@@ -76,13 +77,6 @@ def find_net_names(nets: Iterable[Iterable[Instance]]) -> dict[str, list[Instanc
     add_suffix(conflicing_nets)
     return nets
 
-    # check again for conflicts
-    conflicing_nets = find_conflicts(nets)
-    fuck_it_slap_some_numbers_on_it(conflicing_nets)
-
-
-def fuck_it_slap_some_numbers_on_it(nets: Iterable[Net]):
-    raise NotImplementedError
 
 def find_conflicts(nets: Iterable[Net]) -> Iterable[Iterable[Net]]:
     """"""
@@ -92,25 +86,26 @@ def find_conflicts(nets: Iterable[Net]) -> Iterable[Iterable[Net]]:
             yield nets
 
 
+
 def add_prefix(conflicts: Iterator[list[Net]]):
     """Resolve conflicts in net names."""
-    # Find lcp for each conflicting set of net names
-    # for each list of conflicts, get the instances from the net
     for conflict_nets in conflicts:
-        for i, net in enumerate(conflict_nets):
+        for net in conflict_nets:
             if net.base_name:
-                net.prefix = net.nodes_on_net[0].ref[0]
+                # Find the parent of the net that is a module
+                parent_module_iter = filter(match_modules, iter_parents(net.nodes_on_net[0]))
+
+                # Get the first parent module that matches, or None if there's no match
+                parent_module = next(parent_module_iter, None)
+
+                # Check if a parent module was found
+                if parent_module:
+                    # Get the ref of the parent module
+                    net.prefix = parent_module.parent.ref
+
 
 def add_suffix(conflicts: Iterator[list[Net]]):
     """Add an integer suffix to the nets to resolve conflicts."""
     for conflict_nets in conflicts:
         for i, net in enumerate(conflict_nets):
             net.suffix = i
-
-
-def remove_lcp_from_ref(ref: Ref, lcp) -> Ref:
-    """
-    Remove the lcp from the reference and return a new Ref object.
-    """
-    # Assuming that the lcp is always a part of the reference and needs to be removed
-    return Ref(tuple(part for part in ref if part != lcp))
