@@ -65,10 +65,14 @@ src_code = """
 
 #%% Create a simple netlist
 error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
-spud = Spud(error_handler, (Path("."),))
+file = Path("/Users/narayanpowderly/Documents/atopile-workspace/servo-drive/elec/src/spin_servo_nema17.ato")
+spud = Spud(error_handler, (file.parent,))
 
 #%%
-flat = spud.build_instance_from_text(dedent(src_code).strip(), ("Root",))
+flat = spud.build_file(file)
+# print_tree(make_tree(flat))
+
+#%%
 print_tree(make_tree(flat))
 # %%
 nets = find_net_names(iter_nets(flat))
