@@ -3,6 +3,8 @@ Find import references.
 """
 from typing import Optional, Iterable
 
+from itertools import starmap
+
 from atopile.model2.datamodel import Base, Object, Replace, Link, Instance, Joint
 from atopile.model2.generic_methods import match_values
 from atopile.model2.instance_methods import dfs_with_ref, match_pins_and_signals
@@ -29,8 +31,8 @@ def ref_and_connectable_pairs(instance: Instance) -> Iterable[tuple[Ref, Instanc
 
 def assert_no_errors(thing: Base) -> None:
     """Assert that there are no errors."""
-    if thing.fatal_error:
-        raise errors.AtoFatalError from thing.fatal_error
+    if thing.errors:
+        raise errors.AtoErrorGroup("Cannot continue build", thing.errors)
 
 
 def _build(
@@ -40,11 +42,6 @@ def _build(
     instance: Optional[Instance] = None
 ) -> Instance:
     """Visit an object."""
-    if name is not None and parent is not None:
-        ref = Ref(parent.ref + (name,))
-    else:
-        ref = Ref(())
-
     if instance and obj in instance.origin.supers_bfs:
         # if an instance is already provided, then don't attempt to rewrite existing layers
         # we stop and return the instance here, because we've hit one of the layers we've already built
@@ -54,7 +51,12 @@ def _build(
         instance = _build(obj.supers_bfs[0], name, parent, instance)
     else:
         # if there are no supers to visit, we're at the base layer, and we need to create a new object
-        instance = Instance(ref=ref)
+        if parent is None:
+            ref = Ref(())
+        else:
+            ref = Ref(parent.ref + (name,))
+
+        instance = Instance(ref=ref, parent=parent)
 
     # at this point, we know we're traveling back down the layers
     # we set the origin here, because we want it to point at the last layer applied to this instance
@@ -66,9 +68,19 @@ def _build(
     # may override or reference these children
     # it's already been checked that child refs are only one string long
     child_objects = obj.locals_by_type[Object]
-    instance.children_from_classes.update(
-        {child_ref[0]: _build(child_obj, name=child_ref[0], parent=instance) for child_ref, child_obj in child_objects}
-    )
+
+    def __process_child(child_ref: Ref, child_obj: Object) -> tuple[str, Instance]:
+        # ensure the child is healthy
+        assert isinstance(child_obj, Object)
+        assert_no_errors(child_obj)
+        assert len(child_ref) == 1
+
+        # create the child instance
+        child_name = child_ref[0]
+        child_instance = _build(child_obj, name=child_name, parent=instance)
+        return child_name, child_instance
+
+    instance.children_from_classes.update(dict(starmap(__process_child, child_objects)))
 
     # visit replacements after the children are created
     # we make replacements next, because, again, the subsequent operations may
@@ -115,8 +127,8 @@ def _build(
     # visit all the child params
     # params last, since they might well modify named links in the future
     params = obj.locals_by_type[(str, int)]
-    for ref, value in params:
-        to_mod = get_ref_from_instance(ref[:-1], instance)
-        to_mod.children_from_mods[ref[-1]] = value
+    for param_ref, value in params:
+        to_mod = get_ref_from_instance(param_ref[:-1], instance)
+        to_mod.children_from_mods[param_ref[-1]] = value
 
     return instance

@@ -4,7 +4,7 @@ import traceback
 from contextlib import contextmanager
 from enum import Enum, auto, IntEnum
 from pathlib import Path
-from typing import Optional, Type, Iterable, TypeVar, Callable
+from typing import Optional, Type, Iterable, TypeVar, Callable, Sequence
 from antlr4 import Token, ParserRuleContext
 from .parse_utils import get_src_info_from_ctx, get_src_info_from_token
 
@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-class AtoError(Exception):
+class _BaseAtoError:
     """
     This exception is thrown when there's an error in the syntax of the language
     """
@@ -32,12 +32,12 @@ class AtoError(Exception):
         self.src_col = src_col
 
     @classmethod
-    def from_token(cls, message: str, token: Token) -> "AtoError":
+    def from_token(cls, message: str, token: Token) -> "_BaseAtoError":
         src_path, src_line, src_col = get_src_info_from_token(token)
         return cls(message, src_path, src_line, src_col)
 
     @classmethod
-    def from_ctx(cls, message: str, ctx: ParserRuleContext) -> "AtoError":
+    def from_ctx(cls, message: str, ctx: ParserRuleContext) -> "_BaseAtoError":
         src_path, src_line, src_col = get_src_info_from_ctx(ctx)
         return cls(message, src_path, src_line, src_col)
 
@@ -48,6 +48,44 @@ class AtoError(Exception):
         if error_name.startswith("Ato"):
             return error_name[3:]
         return error_name
+
+
+class AtoError(_BaseAtoError, Exception):
+    """
+    This exception is thrown when there's an error in ato code
+    """
+
+
+class AtoErrorGroup(_BaseAtoError, ExceptionGroup):
+    """
+    This exception is thrown when there's an error in ato code
+    """
+
+    def __init__(
+        self,
+        message: str,
+        exceptions: Sequence[AtoError],
+        src_path: Optional[str | Path] = None,
+        src_line: Optional[int] = None,
+        src_col: Optional[int] = None,
+        **kwargs,
+    ) -> None:
+        assert all(isinstance(e, AtoError) for e in exceptions)
+        super(ExceptionGroup, self).__init__(message, exceptions, **kwargs)
+        self.src_path = src_path
+        self.src_line = src_line
+        self.src_col = src_col
+
+    @classmethod
+    def from_ctx(  # pylint: disable=arguments-differ
+        cls,
+        message: str,
+        exceptions: Sequence[AtoError],
+        ctx: ParserRuleContext
+    ) -> "AtoErrorGroup":
+        """Create an error group from a context."""
+        src_path, src_line, src_col = get_src_info_from_ctx(ctx)
+        return cls(message, exceptions, src_path, src_line, src_col)
 
 
 class AtoFatalError(AtoError):
@@ -211,18 +249,6 @@ class ErrorHandler:
                 _do_raise()
 
         return error
-
-    def map_filtering_errors(self, func: Callable[[I], O], iterable: Iterable[I], default = DONT_FILL) -> Iterable[O]:
-        """Yield values from an iterable, but catch and handle errors."""
-        for item in iterable:
-            try:
-                transformed_item = func(item)
-            except Exception as ex:  # pylint: disable=broad-except
-                self.handle(ex)
-                if default is not DONT_FILL:
-                    yield default
-            else:
-                yield transformed_item
 
 
 class ReraiseBehavior(IntEnum):

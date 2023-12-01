@@ -32,24 +32,3 @@ def test_assert_no_errors():
 
     with pytest.raises(AtoFatalError):
         handler.assert_no_errors()
-
-
-def test_map_filtering_errors():
-    log = MagicMock()
-    handler = ErrorHandler(log)
-
-    def func(x):
-        if issubclass(x, Exception) or isinstance(x, Exception):
-            raise x
-        return x
-
-    assert list(handler.map_filtering_errors(func, [1, 2, 3])) == [1, 2, 3]
-
-    # assert list(handler.map_filtering_errors(func, [1, AtoError, 3])) == [1, 3]
-
-    with pytest.raises(TypeError):
-        list(handler.map_filtering_errors(func, [1, TypeError, 3]))
-
-
-
-filter()

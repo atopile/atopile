@@ -125,3 +125,16 @@ def lowest_common_parent(instances: Iterable[Instance], include_self: bool = Tru
     """
     __iter_parents = functools.partial(iter_parents, include_self=include_self)
     return closest_common(map(__iter_parents, instances), __key=id)
+
+
+def am_in_interface(instance: Instance) -> bool:
+    """
+    Am I in an interface?
+    - check if any parernts are interfaces
+    - return True if so
+    - return False if not
+    """
+    for parent in iter_parents(instance):
+        if match_interfaces(parent):
+            return True
+    return False
