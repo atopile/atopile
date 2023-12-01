@@ -54,7 +54,10 @@ match_components = any_supers_match(dm1.COMPONENT)
 match_modules = any_supers_match(dm1.MODULE)
 
 
-def link_instance_key(instance: Instance, default_keys: Optional[tuple[str]] = None) -> Callable[[Instance], tuple]:
+def get_instance_key(
+    instance: Instance,
+    default_keys: Optional[tuple[str]] = None
+) -> tuple:
     """Generate a key for this component to define its likeness."""
     if default_keys is None:
         default_keys = ("mpn", "value", "footprint")
@@ -69,14 +72,9 @@ def link_instance_key(instance: Instance, default_keys: Optional[tuple[str]] = N
     return tuple(instance.children.get(k) for k in keys)
 
 
-
 def find_like_instances(iterable: Iterable[Instance], default_keys: Optional[tuple[str]] = None) -> defaultdict[tuple, list[Instance]]:
     """Extract "like" Instances, where "likeness" is qualified by equalities of keys."""
-
-    def __key(instance: Instance) -> tuple:
-        keys = instance.children.get("__keys__", default_keys)
-        return tuple(instance.children.get(key_n) for key_n in keys)
-
+    __key = functools.partial(get_instance_key, default_keys=default_keys)
     return groupby(__key, iterable)
 
 
