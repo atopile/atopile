@@ -43,7 +43,7 @@ def make_designators(root: Instance) -> Instance:
 
 def get_designator(prefix: str, used_names: set[str]) -> str:
     """Get a designator."""
-    i = 0
+    i = 1
     while True:
         name = f"{prefix}{i}"
         if name not in used_names:
@@ -53,3 +53,6 @@ def get_designator(prefix: str, used_names: set[str]) -> str:
 def get_prefix(instance: Instance) -> str:
     """Get the prefix of an instance."""
     return instance.children.get("designator_prefix", "U")
+
+# first attempt
+# 1.55 ms ± 27.7 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
