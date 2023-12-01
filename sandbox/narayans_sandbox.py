@@ -12,8 +12,11 @@ from atopile.model2.datamodel import Instance
 from atopile.model2.errors import ErrorHandler, HandlerMode
 from atopile.model2.net_naming import find_net_names
 from atopile.model2.instance_methods import iter_nets
+from atopile.model2.designators import make_designators
 
 from datamodel1 import make_tree, print_tree
+
+
 
 
 #%%
@@ -69,7 +72,8 @@ file = Path("/Users/narayanpowderly/Documents/atopile-workspace/servo-drive/elec
 spud = Spud(error_handler, (file.parent,))
 
 #%%
-flat = spud.build_file(file)
+# flat = spud.build_file(file)
+flat = spud.build_instance(AddrStr.from_parts(path=file, node="SpinServoNEMA17"))
 # print_tree(make_tree(flat))
 
 #%%
@@ -82,3 +86,23 @@ for net in nets:
     # print_tree(make_tree(net))
 # %%
 
+spud.obj_map[file].named_locals
+# %%
+
+# time how long it takes to build the designators
+# %timeit make_designators(flat)
+named = make_designators(flat)
+
+
+# %%
+from atopile.model2.instance_methods import match_components, dfs
+instances = filter(match_components, dfs(named))
+
+designators = []
+for instance in instances:
+    designators.append((instance.children["designator"], instance.ref))
+designators
+# %%
+#check that the designators are unique
+assert len(set(designators)) == len(designators)
+# %%
