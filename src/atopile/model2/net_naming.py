@@ -38,9 +38,9 @@ class Net:
     def get_name(self) -> str:
         """Get the name of the net."""
         #suffix is a ref (tuple of strings)
-        return (f"{'_'.join(self.prefix) + '_' if self.prefix else ''}"
-                f"{self.base_name or 'NET'}"
-                f"{'_' + str(self.suffix) if self.suffix else ''}")
+        return (f"{'-'.join(self.prefix) + '-' if self.prefix else ''}"
+                f"{self.base_name or 'net'}"
+                f"{'-' + str(self.suffix) if self.suffix else ''}")
 
     def generate_base_net_name(self) -> Optional[str]:
         """TODO:"""
@@ -101,7 +101,8 @@ def add_prefix(conflicts: Iterator[list[Net]]):
                 # Check if a parent module was found
                 if parent_module:
                     # Get the ref of the parent module
-                    net.prefix = parent_module.parent.ref
+                    if hasattr(parent_module, "ref"):
+                        net.prefix = parent_module.ref
 
 
 def add_suffix(conflicts: Iterator[list[Net]]):
