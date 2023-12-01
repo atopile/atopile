@@ -14,45 +14,30 @@ from .instance_methods import match_components, dfs
 
 
 def make_designators(root: Instance) -> Instance:
-    """Make designators for instances."""
-
-    # add a filter to the input to only accept components
     instances = list(filter(match_components, dfs(root)))
-
 
     used_names = set()
     unnamed_instances = []
 
-    # Iterate over all instances
+    # First pass to find used designators
     for instance in instances:
-        # Check if the instance already has a designator
         designator = instance.children.get("designator", None)
         if designator is not None:
             used_names.add(designator)
         else:
             unnamed_instances.append(instance)
 
-    # Give each unnamed instance a designator
+    # Assign designators to unnamed instances
     for instance in unnamed_instances:
-        prefix = get_prefix(instance)
-        designator = get_designator(prefix, used_names)  # Assuming "prefix" is a valid prefix
-        used_names.add(designator)
-        instance.children["designator"] = designator
+        prefix = instance.children.get("designator_prefix", "U")
+        i = 1
+        while f"{prefix}{i}" in used_names:
+            i += 1
+        new_designator = f"{prefix}{i}"
+        used_names.add(new_designator)
+        instance.children["designator"] = new_designator
 
     return root
-
-def get_designator(prefix: str, used_names: set[str]) -> str:
-    """Get a designator."""
-    i = 1
-    while True:
-        name = f"{prefix}{i}"
-        if name not in used_names:
-            return name
-        i += 1
-
-def get_prefix(instance: Instance) -> str:
-    """Get the prefix of an instance."""
-    return instance.children.get("designator_prefix", "U")
 
 # first attempt
 # 1.55 ms ± 27.7 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
