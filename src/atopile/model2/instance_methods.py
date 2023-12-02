@@ -136,3 +136,8 @@ def am_in_interface(instance: Instance) -> bool:
         if match_interfaces(parent):
             return True
     return False
+
+
+def get_address(instance: Instance) -> dm1.AddrStr:
+    """Get the address of an instance."""
+    return str(instance.ref)

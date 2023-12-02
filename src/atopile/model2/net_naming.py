@@ -67,15 +67,21 @@ class Net:
 def find_net_names(nets: Iterable[Iterable[Instance]]) -> dict[str, list[Instance]]:
     """Find the names of the nets."""
     # make net objects
-    nets = [Net(list(net)) for net in nets]
+    net_objs = [Net(list(net)) for net in nets]
+
     # grab all the nets base names
-    [net.generate_base_net_name() for net in nets]
+    for net in net_objs:
+        net.generate_base_net_name()
+
     # for the net objects that still conflict, grab a prefix
-    conflicing_nets = find_conflicts(nets)
+    conflicing_nets = find_conflicts(net_objs)
     add_prefix(conflicing_nets)
-    conflicing_nets = find_conflicts(nets)
+
+    # if they still conflict, slap a suffix on that bad boi
+    conflicing_nets = find_conflicts(net_objs)
     add_suffix(conflicing_nets)
-    return nets
+
+    return {net.get_name(): net.nodes_on_net for net in net_objs}
 
 
 def find_conflicts(nets: Iterable[Net]) -> Iterable[Iterable[Net]]:

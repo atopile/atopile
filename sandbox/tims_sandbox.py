@@ -1,15 +1,18 @@
 # %%
+import logging
 from pathlib import Path
 from textwrap import dedent
-
 from atopile.address import AddrStr
-from atopile.model2.build import Spud
-from atopile.model2.datamodel import Instance
-from atopile.model2.errors import ErrorHandler, HandlerMode
-from atopile.model2.designators import make_designators
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from atopile.model2.build import Spud
+from atopile.model2.designators import make_designators
+from atopile.model2.errors import ErrorHandler, HandlerMode
 from atopile.targets.netlist.kicad6_m2 import Builder
 
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+log.addHandler(logging.StreamHandler())
 
 
 #%%
@@ -21,18 +24,19 @@ src_code = """
     component Resistor:
         pin p1
         pin p2
+        footprint = "Resistor_SMD:R_0603_1608Metric"
 
     module Root:
         power = new Power
 
         vdiv = new VDiv
 
-        pin p1
-        pin p2
-        pin p3
-        pin p4
+        # pin p1
+        # pin p2
+        # pin p3
+        # pin p4
 
-        p1 ~ p2
+        # p1 ~ p2
 
     module VDiv:
         r_top = new Resistor
@@ -49,20 +53,39 @@ src_code = """
 
 # %%
 error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
-spud = Spud(error_handler, (Path("."),))
+file = Path("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/spin_servo_nema17.ato")
+spud = Spud(error_handler, (file.parent,))
 
 #%%
-flat = spud.build_instance_from_text(dedent(src_code).strip(), ("Root",))
+flat = spud.build_instance(AddrStr.from_parts(path=file, node="SpinServoNEMA17"))
+# flat = spud.build_instance_from_text(dedent(src_code).strip(), ("Root",))
+
+#%%
 make_designators(flat)
 
 # %%
+builder = Builder()
+builder.build(flat)
 
-built = Builder()
-built.visit_children(flat)
-for part, libpart in built.libparts.items():
+#%%
+for part, libpart in builder._libparts.items():
     print(libpart)
 
-for comp in built.components:
+for comp in builder.netlist.components:
     print(comp)
 
+# %%
+print(builder.netlist)
+# %%
+
+# Create a Jinja2 environment
+# this_dir = Path(__file__).parent
+this_dir = Path(__file__).parent
+env = Environment(loader=FileSystemLoader("/Users/mattwildoer/Projects/atopile-workspace/atopile/src/atopile/targets/netlist/"), undefined=StrictUndefined)
+
+# Create the complete netlist
+template = env.get_template("kicad6.j2")
+netlist_str = template.render(nl=builder.netlist)
+
+print(netlist_str)
 # %%
