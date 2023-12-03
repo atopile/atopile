@@ -79,3 +79,10 @@ flat = spud.build_instance_from_text(dedent(src_code).strip(), ("Root",))
 print_tree(make_tree(flat))
 
 # %%
+from atopile.model2.instance_methods import iter_parents, dfs
+
+for instance in dfs(flat):
+    parents = tuple(p.ref for p in iter_parents(instance))
+    print(f"{instance.ref} -> {parents}")
+
+# %%

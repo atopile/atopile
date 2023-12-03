@@ -88,11 +88,11 @@ def unique_structure():
     foo = _make_obj()
 
     c_obj = _make_obj()
-    c_obj.supers_bfs=(COMPONENT,)
+    c_obj.all_supers=(COMPONENT,)
     c_obj.locals_ = ((("foo",), foo),)
 
     m_obj = _make_obj()
-    m_obj.supers_bfs=(MODULE,)
+    m_obj.all_supers=(MODULE,)
     m_obj.locals_ = ((("foo",), foo),)
 
     b = Instance(ref=("b",), origin=c_obj, children_from_mods={"value":"1"})

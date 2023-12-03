@@ -130,6 +130,17 @@ class AtoImportNotFoundError(AtoError):
     """
 
 
+class AtoAmbiguousReferenceError(AtoError):
+    """
+    Raised if something has a conflicting name in the same scope.
+    """
+
+class AtoPreexistingError(AtoError):
+    """
+    Raise if the thing we're visiting already has errors and therefore we stop processing.
+    """
+
+
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
@@ -192,7 +203,7 @@ class HandlerMode(Enum):
     """The mode to use when an error occurs."""
 
     COLLECT_ALL = auto()
-    RAISE_NON_ATO = auto()
+    RAISE_NON_ATO_EXCEPT_FATAL = auto()
     RAISE_ALL = auto()
 
 
@@ -210,7 +221,7 @@ class ErrorHandler:
     def __init__(
         self,
         logger: Optional[logging.Logger] = None,
-        handel_mode: Optional[HandlerMode] = HandlerMode.RAISE_NON_ATO,
+        handel_mode: Optional[HandlerMode] = HandlerMode.RAISE_NON_ATO_EXCEPT_FATAL,
         log_on_error: bool = True,
     ) -> None:
         self.logger = logger or log
@@ -244,8 +255,8 @@ class ErrorHandler:
         if self.handel_mode == HandlerMode.RAISE_ALL:
             _do_raise()
 
-        if self.handel_mode == HandlerMode.RAISE_NON_ATO:
-            if not isinstance(error, AtoError):
+        if self.handel_mode == HandlerMode.RAISE_NON_ATO_EXCEPT_FATAL:
+            if not isinstance(error, AtoError) or isinstance(error, AtoFatalError):
                 _do_raise()
 
         return error

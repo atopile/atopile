@@ -42,13 +42,13 @@ def _build(
     instance: Optional[Instance] = None
 ) -> Instance:
     """Visit an object."""
-    if instance and obj in instance.origin.supers_bfs:
+    if instance and obj in instance.origin.all_supers:
         # if an instance is already provided, then don't attempt to rewrite existing layers
         # we stop and return the instance here, because we've hit one of the layers we've already built
         return instance
-    elif obj.supers_bfs:
+    elif obj.all_supers:
         # if there are supers to visit, then visit them first write those higher layers
-        instance = _build(obj.supers_bfs[0], name, parent, instance)
+        instance = _build(obj.all_supers[0], name, parent, instance)
     else:
         # if there are no supers to visit, we're at the base layer, and we need to create a new object
         if parent is None:

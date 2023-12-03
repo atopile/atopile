@@ -1,42 +1,15 @@
 """
-Find import references.
+Find the objects imports reference, and link them up to the import objects.
 """
 
 from itertools import chain
 from pathlib import Path
-from typing import Mapping, Iterable
+from typing import Iterable, Mapping
 
-from . import errors
-from .datamodel import Import, Object
-from .datatypes import Ref
-from .parse_utils import get_src_info_from_ctx
-
-
-def lookup_ref(obj: Object, ref: Ref) -> Object:
-    """Basic ref lookup"""
-    for ref_part in ref:
-        assert isinstance(ref_part, str)
-        if not isinstance(obj, Object):
-            raise TypeError(f"Ref {ref} points to non-object {obj}.")
-        try:
-            obj = obj.named_locals[(ref_part,)]
-        except KeyError:
-            raise KeyError(ref) from KeyError
-    return obj
-
-
-def build(
-    paths_to_objs: Mapping[Path, Object],
-    error_handler: errors.ErrorHandler,
-    search_paths: tuple[Path],
-) -> Mapping[Path, Object]:
-    """Build the model."""
-    lofty = Lofty(paths_to_objs, error_handler, search_paths)
-
-    for obj in paths_to_objs.values():
-        lofty.visit_object(obj)
-
-    return paths_to_objs
+from atopile.model2 import errors
+from atopile.model2.datamodel import Import, Object
+from atopile.model2.object_methods import lookup_obj_in_closure
+from atopile.model2.parse_utils import get_src_info_from_ctx
 
 
 class Lofty:
@@ -54,6 +27,7 @@ class Lofty:
 
     def lookup_filename(self, cwd: str | Path, from_name: str) -> Path:
         """Look up a filename from a from_name."""
+        # FIXME: we should probably only check the cwd is the part starts with ./
         cwd = Path(cwd)
         if cwd.is_file():
             cwd = cwd.parent
@@ -68,15 +42,24 @@ class Lofty:
 
     def visit_object(self, obj: Object) -> None:
         """Visit and resolve imports in an object."""
-        for _, imp in obj.locals_by_type[Import]:
-            assert isinstance(imp, Import)
+        if obj.errors:
+            # don't process dud objects
+            return
+
+        # sort out all the import statements in this object
+        for imp in obj.imports:
             self.visit_import(imp)
 
-        for _, next_obj in obj.locals_by_type[Object]:
+        # ... then on to its locals!
+        for next_obj in obj.objs:
             self.visit_object(next_obj)
 
     def visit_import(self, imp: Import) -> None:
         """Visit and resolve an import."""
+        if imp.errors:
+            # don't process dud imports
+            return
+
         assert imp.src_ctx is not None
         cwd, _, _ = get_src_info_from_ctx(imp.src_ctx)
 
@@ -84,7 +67,7 @@ class Lofty:
             try:
                 foreign_filename = self.lookup_filename(cwd, imp.from_name)
                 foreign_root = self.paths_to_objs[foreign_filename]
-                imp.what_obj = lookup_ref(foreign_root, imp.what_ref)
+                imp.what_obj = lookup_obj_in_closure(foreign_root, imp.what_ref)
             except KeyError as ex:
                 raise errors.AtoImportNotFoundError.from_ctx(
                         f"Name '{imp.what_ref}' not found in '{foreign_filename}'.",

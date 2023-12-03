@@ -12,6 +12,8 @@ from antlr4 import ParserRuleContext
 
 from atopile.address import AddrStr
 from atopile.model2 import errors
+from atopile.model2.datatypes import KeyOptItem, KeyOptMap, Ref
+from atopile.model2.parse_utils import get_src_info_from_ctx
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
@@ -26,39 +28,9 @@ from .datamodel import (
     Object,
     Replace,
 )
-from .datatypes import KeyOptItem, KeyOptMap, Ref
-from .parse_utils import get_src_info_from_ctx
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
-
-
-MODULE = (MODULE_REF,)
-COMPONENT = (COMPONENT_REF,)
-PIN = (PIN_REF,)
-SIGNAL = (SIGNAL_REF,)
-INTERFACE = (INTERFACE_REF,)
-
-
-def _attach_downward_info(obj: Object) -> None:
-    """Fix the closure of an object."""
-    if obj.closure is None:
-        obj.closure = ()
-
-    if obj.address is None:
-        assert isinstance(obj.src_ctx, ParserRuleContext)
-        obj.address = AddrStr.from_parts(
-            path = get_src_info_from_ctx(obj.src_ctx)[0]
-        )
-
-    local_closure = obj.closure + (obj,)
-
-    for ref, local in obj.locals_:
-        if isinstance(local, Object):
-            assert len(ref) == 1
-            local.closure = local_closure
-            local.address = obj.address.add_node(ref[0])
-            _attach_downward_info(local)
 
 
 class _Sentinel(enum.Enum):
@@ -66,6 +38,18 @@ class _Sentinel(enum.Enum):
 
 
 NOTHING = _Sentinel.NOTHING
+
+
+def _attach_downward_info(obj: Object) -> None:
+    """Fix the closure of an object."""
+    local_closure = (obj,) + obj.closure
+    for ref, local in obj.objs.items():
+        if isinstance(local, Object):
+            assert len(ref) == 1
+            local.closure = local_closure
+            local.ref = obj.ref.add_name(ref[0])
+            local.address = obj.address.add_node(ref[0])
+            _attach_downward_info(local)
 
 
 class Dizzy(AtopileParserVisitor):
@@ -87,7 +71,16 @@ class Dizzy(AtopileParserVisitor):
         """
         obj = self.visit(ctx)
         assert isinstance(obj, Object)
+        assert isinstance(obj.src_ctx, ParserRuleContext)
+
+        obj.closure = ()
+        obj.ref = Ref.empty()
+        obj.address = AddrStr.from_parts(
+            path = get_src_info_from_ctx(obj.src_ctx)[0]
+        )
+
         _attach_downward_info(obj)
+
         return obj
 
     def defaultResult(self):
@@ -128,6 +121,74 @@ class Dizzy(AtopileParserVisitor):
         )
 
         return _errors, KeyOptMap(items)
+
+    def make_object(
+        self,
+        locals_: KeyOptMap,
+        super_ref: Ref,
+        src_ctx: ParserRuleContext,
+        errors_: Optional[list[errors.AtoError]] = None,
+    ) -> Object:
+        """Make an Object."""
+        obj = Object(
+            super_ref=super_ref,
+            src_ctx=src_ctx,
+            errors=errors_ or [],
+        )
+
+        # find name conflicts
+        def __get_effective_name(item: KeyOptItem) -> str:
+            key, value = item
+            if isinstance(value, Import):
+                # Looking up imports is a little weird
+                # they will cause conflicts if they share a name with another import
+                return key[:1]
+
+            # default case
+            return key
+
+        name_usage = toolz.groupby(__get_effective_name, locals_)
+        for name, usages in name_usage.items():
+            if len(usages) > 1:
+                # TODO: make this error more friendly by listing the things that share this name
+                raise errors.AtoNameConflictError.from_ctx(
+                    f"Conflicting name '{name}'",
+                    obj.src_ctx
+                )
+
+        # stick all the locals in the right buckets
+        for ref, local in locals_:
+            try:
+                if isinstance(local, Object):
+                    if len(ref) > 1:
+                        raise errors.AtoError(f"Cannot implicitly nest objects: {ref}")
+                    obj.objs[ref[0]] = local
+                elif isinstance(local, Import):
+                    obj.imports[ref] = local
+                elif isinstance(local, Replace):
+                    obj.replacements.append(local)
+                elif isinstance(local, Link):
+                    if ref:
+                        raise NotImplementedError("Named links not yet supported")
+                    obj.links.append(local)
+                elif isinstance(local, (int, float, str, bool)):
+                    # TODO: make a parameter object
+                    if len(ref) == 1:
+                        obj.data[ref[0]] = local
+                    else:
+                        obj.instance_overrides[ref] = local
+
+                else:
+                    raise errors.AtoTypeError.from_ctx(
+                        f"Unknown local type: {type(local)} of {ref}",
+                        obj.src_ctx
+                    )
+
+            except errors.AtoError as err:
+                self.error_handler.handle(err)
+                obj.errors.append(err)
+
+        return obj
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> _Sentinel | KeyOptItem:
         """
@@ -179,22 +240,22 @@ class Dizzy(AtopileParserVisitor):
     def visitFile_input(self, ctx: ap.File_inputContext) -> Object:
         file_errors, locals_ = self.visit_iterable_helper(ctx.stmt())
 
-        return Object(
+        return self.make_object(
             locals_=locals_,
-            supers_refs=MODULE,
+            super_ref=MODULE_REF,
             src_ctx=ctx,
-            errors=file_errors,
+            errors_=file_errors,
         )
 
-    def visitBlocktype(self, ctx: ap.BlocktypeContext) -> tuple[Ref]:
+    def visitBlocktype(self, ctx: ap.BlocktypeContext) -> Ref:
         block_type_name = ctx.getText()
         match block_type_name:
             case "module":
-                return MODULE
+                return MODULE_REF
             case "component":
-                return COMPONENT
+                return COMPONENT_REF
             case "interface":
-                return INTERFACE
+                return INTERFACE_REF
             case _:
                 raise errors.AtoError(f"Unknown block type '{block_type_name}'")
 
@@ -210,7 +271,11 @@ class Dizzy(AtopileParserVisitor):
         """
         if isinstance(
             ctx,
-            (ap.NameContext, ap.Totally_an_integerContext, ap.Numerical_pin_refContext),
+            (
+                ap.NameContext,
+                ap.Totally_an_integerContext,
+                ap.Numerical_pin_refContext
+            ),
         ):
             return Ref.from_one(str(self.visit(ctx)))
         if isinstance(ctx, (ap.AttrContext, ap.Name_or_attrContext)):
@@ -253,17 +318,17 @@ class Dizzy(AtopileParserVisitor):
         if ctx.FROM():
             if not ctx.name_or_attr():
                 raise errors.AtoSyntaxError("Expected a name or attribute after 'from'")
-            block_supers = (self.visit_ref_helper(ctx.name_or_attr()),)
+            block_super = (self.visit_ref_helper(ctx.name_or_attr()),)
         else:
-            block_supers = self.visitBlocktype(ctx.blocktype())
+            block_super = self.visitBlocktype(ctx.blocktype())
 
         return KeyOptItem.from_kv(
             self.visit_ref_helper(ctx.name()),
-            Object(
-                supers_refs=block_supers,
+            self.make_object(
+                super_ref=block_super,
                 locals_=block_returns,
                 src_ctx=ctx,
-                errors=block_errors,
+                errors_=block_errors,
             ),
         )
 
@@ -272,8 +337,8 @@ class Dizzy(AtopileParserVisitor):
         if not ref:
             raise errors.AtoError("Pins must have a name")
 
-        created_pin = Object(
-            supers_refs=PIN,
+        created_pin = self.make_object(
+            super_ref=PIN_REF,
             locals_=KeyOptMap(),
             src_ctx=ctx,
         )
@@ -285,8 +350,8 @@ class Dizzy(AtopileParserVisitor):
         if not name:
             raise errors.AtoError("Signals must have a name")
 
-        created_signal = Object(
-            supers_refs=SIGNAL,
+        created_signal = self.make_object(
+            super_ref=SIGNAL_REF,
             locals_=KeyOptMap(),
             src_ctx=ctx,
         )
@@ -365,8 +430,8 @@ class Dizzy(AtopileParserVisitor):
     def visitNew_stmt(self, ctx: ap.New_stmtContext) -> Object:
         class_to_init = self.visit_ref_helper(ctx.name_or_attr())
 
-        return Object(
-            supers_refs=(class_to_init,),
+        return self.make_object(
+            super_ref=class_to_init,
             locals_=KeyOptMap(),
             src_ctx=ctx,
         )
@@ -379,7 +444,7 @@ class Dizzy(AtopileParserVisitor):
 
     def visitAssignable(
         self, ctx: ap.AssignableContext
-    ) -> KeyOptItem | int | float | str:
+    ) -> Object | int | float | str | bool:
         """Yield something we can place in a set of locals."""
         if ctx.name_or_attr():
             raise errors.AtoError(
@@ -387,7 +452,7 @@ class Dizzy(AtopileParserVisitor):
             )
 
         if ctx.new_stmt():
-            return self.visit(ctx.new_stmt())
+            return self.visitNew_stmt(ctx.new_stmt())
 
         if ctx.NUMBER():
             value = float(ctx.NUMBER().getText())

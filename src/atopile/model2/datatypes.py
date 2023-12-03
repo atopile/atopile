@@ -20,6 +20,11 @@ class Ref(tuple[str | int]):
         return ".".join(map(str, self))
 
     @classmethod
+    def empty(cls) -> "Ref":
+        """Return an empty Ref."""
+        return cls(())
+
+    @classmethod
     def from_one(cls, name: str | int) -> "Ref":
         """Return a Ref with a single item."""
         return cls((name,))

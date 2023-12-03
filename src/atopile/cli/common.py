@@ -81,9 +81,9 @@ def project_options(f):
         # layer on the selected addrs config
         if entry and entry.file.is_file():
             # NOTE: we already check that entry.file isn't None if entry is specified
-            if entry.node:
+            if entry.ref:
                 std_entry_file = project.standardise_import_path(entry.file.expanduser().resolve().absolute())
-                project.config.selected_build.entry = AddrStr.from_parts(std_entry_file, entry.node)
+                project.config.selected_build.entry = AddrStr.from_parts(std_entry_file, entry.ref)
             else:
                 raise click.BadParameter(
                     "If an entry of a file is specified, you must specify"

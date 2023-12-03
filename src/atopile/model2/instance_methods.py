@@ -36,7 +36,7 @@ def any_supers_match(*supers: dm1.Object) -> Callable[[Instance], bool]:
     allowed_supers_identity_set = set(id(s) for s in supers)
 
     def _filter(instance: Instance) -> bool:
-        for s in instance.origin.supers_bfs:
+        for s in instance.origin.all_supers:
             if id(s) in allowed_supers_identity_set:
                 return True
         return False
@@ -122,7 +122,7 @@ def lowest_common_parent(instances: Iterable[Instance], include_self: bool = Tru
     Return the lowest common parent of a set of instances.
     """
     __iter_parents = functools.partial(iter_parents, include_self=include_self)
-    return closest_common(map(__iter_parents, instances), __key=id)
+    return closest_common(map(__iter_parents, instances), get_key=id)
 
 
 def am_in_interface(instance: Instance) -> bool:

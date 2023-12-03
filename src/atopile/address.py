@@ -33,7 +33,7 @@ def get_file(address: str) -> Optional[Path]:
     return Path(path_str)
 
 
-def get_node_str(address: str) -> str:
+def get_ref_str(address: str) -> str:
     """
     Extract the node path from an address.
     """
@@ -43,11 +43,11 @@ def get_node_str(address: str) -> str:
         return ""
 
 
-def get_node_as_ref(address: str) -> tuple[str]:
+def get_ref(address: str) -> tuple[str]:
     """
     Extract the node path from an address.
     """
-    str_node = get_node_str(address)
+    str_node = get_ref_str(address)
     return tuple(str_node.split(".") if str_node else [])
 
 
@@ -82,23 +82,23 @@ class AddrStr(str):
         return get_file(self)
 
     @property
-    def node_as_str(self) -> str:
+    def ref_as_str(self) -> str:
         """Return the node section of the address as a string."""
-        return get_node_str(self)
+        return get_ref_str(self)
 
     @property
-    def node(self) -> tuple[str]:
+    def ref(self) -> tuple[str]:
         """Return the node section of the address as a reference"""
-        return get_node_as_ref(self)
+        return get_ref(self)
 
     def add_node(self, node: str) -> "AddrStr":
         """
         Add a node to the address. There should not be a colon on the end of the node.
         """
         # check if there is already a node
-        if ":" in self:
-            return self.__class__(f"{self}.{node}")
-        return self.__class__(f"{self}:{node}")
+        if self.ref:
+            return self.from_parts(self.file, self.ref + (node,))
+        return self.from_parts(self.file, node)
 
     @classmethod
     def from_str(cls, address: str) -> "AddrStr":

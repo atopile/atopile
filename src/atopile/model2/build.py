@@ -59,7 +59,7 @@ class Spud:
         obj = self.obj_map[addr.file]
 
         obj_to_build = obj
-        for ref_part in addr.node:
+        for ref_part in addr.ref:
             obj_to_build = obj_to_build.named_locals[(ref_part,)]
         assert isinstance(obj_to_build, dm.Object)
 

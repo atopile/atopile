@@ -52,30 +52,46 @@ class Import(Base):
     what_obj: Optional["Object"] = None
 
 
+# NOTE:
+#  Perhaps we should consider splitting out instantiated objects from classes?
+#  While there's a lot in common between those two things (eg. lookup semantics)
+#  there's also some baggage which comes with this model, like that declaring
+#  classes within a class mean that you will init the inner class every time
+#  you init the outer class.
 @define(repr=False)
 class Object(Base):
     """Represent a container class."""
-    supers_refs: tuple[Ref]
-    locals_: KeyOptMap
+    # base information required whenever an object is created
+    super_ref: Optional[Ref]
 
-    # these are a shortcut to the named locals - they're the same thing
-    # this is here purely for efficiency
-    named_locals: Mapping[Ref, Any] = field(init=False)
-    unnamed_locals: Iterable[Any] = field(init=False)
-    locals_by_type: Mapping[Type, Iterable[tuple[Ref, Any]]] = field(init=False)
+    # the local objects and vars are things we navigate to a lot
+    objs: Mapping[str, "Object"] = {}
+    data: Mapping[str, Any] = {}
+    # TODO: override_data eg. Resistor.footprint = ... to set a default on a module level
+    links: list[Link] = []
 
-    # configured post-construction
-    closure: Optional[tuple["Object"]] = None
-    address: Optional[AddrStr] = None
+    # data used in the construction of objects
+    imports: Mapping[Ref, Import] = {}
+    replacements: list[Replace] = []
 
-    supers_objs: Optional[tuple["Object"]] = None
-    supers_bfs: Optional[tuple["Object"]] = None
+    # data that modifies children (presumable instances) in this object
+    instance_overrides: Mapping[Ref, Any] = {}
 
-    def __attrs_post_init__(self) -> None:
-        """Set up the shortcuts to locals."""
-        self.named_locals = self.locals_.named_items()
-        self.unnamed_locals = tuple(self.locals_.unnamed_items())  # cast to tuple because otherwise it's lazy
-        self.locals_by_type = self.locals_.map_items_by_type((Link, Replace, Import, Object, (str, int)))
+    # data from the lock-file entry associated with this object
+    lock_data: Mapping[str, Any] = {}  # TODO: this should point to a lockfile entry
+
+    # information about where this object is found in multiple forms
+    # this is redundant with one another (eg. you can compute one from the other)
+    # but it's useful to have all of them for different purposes
+    closure: tuple["Object"] = field(init=False)  # in order of lookup
+    ref: Ref = field(init=False)
+    address: AddrStr = field(init=False)
+
+    # information attached post-init
+    # these are the objects that the super_refs resolve to
+    super_obj: Optional["Object"] = None
+    # these are the full list of supers (in lookup order) that this object inherits from
+    all_supers: Optional[tuple["Object"]] = None
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.address}>"
@@ -95,7 +111,7 @@ SIGNAL_REF = Ref.from_one("signal")
 INTERFACE_REF = Ref.from_one("interface")
 
 
-root_object = partial(Object, supers_refs=(), locals_=KeyOptMap(()), closure=())
+root_object = partial(Object, supers_refs=None, locals_=KeyOptMap(()), closure=())
 MODULE = root_object(address=AddrStr("<Built-in> Module"))
 COMPONENT = Object(supers_refs=(MODULE_REF,), locals_=KeyOptMap(()), closure=())
 PIN = root_object(address=AddrStr("<Built-in> Pin"))
@@ -117,6 +133,11 @@ BUILTINS = {
 @define
 class Joint:
     """Represent a connection between two connectable things."""
+    # TODO: we may not need this using loop-soup
+    # the reason this currently exists is to allow us to map joints between instances
+    # these make sense only in the context of the pins and signals, which aren't
+    # language fundamentals as much as net objects - eg. they're useful only from
+    # a specific electrical perspective
     origin_link: Link
 
     contained_by: "Instance"
@@ -133,21 +154,26 @@ class Joint:
 @define
 class Instance:
     """Represent a concrete object class."""
+    # origin information
+    # much of this information is redundant, however it's all highly referenced
+    # so it's useful to have it all at hand
+    address: AddrStr
     ref: Ref
+    parents: tuple["Instance"] = field(init=False)
 
-    origin: Optional[Object] = None
+    origin: Object = field(init=False)
+    super: Object = field(init=False)
 
-    children_from_classes: dict[str, Any] = field(factory=dict)
-    children_from_mods: dict[str, Any] = field(factory=dict)
+    children: Mapping[str, "Instance"] = field(init=False)
+    data: Mapping[str, Any] = field(init=False)
+
+    override_data: Mapping[str, Any] = field(init=False)
+
+    lock_data: Mapping[str, Any] = field(init=False)
 
     joints: list[Joint] = field(factory=list)
     joined_to_me: list[Joint] = field(factory=list)
 
-    parent: Optional["Instance"] = None
-    children: ChainMap[str, Any] = field(init=False)
-
-    def __attrs_post_init__(self) -> None:
-        self.children = ChainMap(self.children_from_mods, self.children_from_classes)
 
     def __repr__(self) -> str:
         return f"<Instance {self.ref}>"

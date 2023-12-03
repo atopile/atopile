@@ -9,24 +9,24 @@ def test_addrstr_properties():
     addr = AddrStr("/path/to/file:test.node")
 
     assert addr.file == Path("/path/to/file")
-    assert addr.node_as_str == "test.node"
-    assert addr.node == ("test", "node")
+    assert addr.ref_as_str == "test.node"
+    assert addr.ref == ("test", "node")
 
 
 def test_addrstr_properties2():
     addr = AddrStr("/path/to/file")
 
     assert addr.file == Path("/path/to/file")
-    assert addr.node_as_str == ""
-    assert addr.node == tuple()
+    assert addr.ref_as_str == ""
+    assert addr.ref == tuple()
 
 
 def test_addrstr_properties3():
     addr = AddrStr(":node.path")
 
     assert addr.file is None
-    assert addr.node_as_str == "node.path"
-    assert addr.node == ("node", "path")
+    assert addr.ref_as_str == "node.path"
+    assert addr.ref == ("node", "path")
 
 
 @pytest.mark.parametrize(
