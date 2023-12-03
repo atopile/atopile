@@ -112,7 +112,7 @@ class AddrStr(str):
     def from_parts(
         cls,
         path: Optional[str | PathLike] = None,
-        node: Optional[str | tuple[str]] = None
+        ref: Optional[str | tuple[str]] = None
     ) -> "AddrStr":
         """
         Create an address from a path and a node.
@@ -122,9 +122,9 @@ class AddrStr(str):
         else:
             path = str(path)
 
-        if node is None:
+        if ref is None:
             return cls.from_str(f"{path}")
-        elif isinstance(node, tuple):
-            node = ".".join(node)
+        elif isinstance(ref, tuple):
+            ref = ".".join(ref)
 
-        return cls.from_str(f"{path}:{node}")
+        return cls.from_str(f"{path}:{ref}")

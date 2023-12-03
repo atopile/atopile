@@ -24,70 +24,83 @@ class Base:
         return f"<{self.__class__.__name__}>"
 
 
-@define(repr=False)
-class Link(Base):
-    """Represent a connection between two connectable things."""
-    source_ref: Ref
-    target_ref: Ref
+# @define(repr=False)
+# class Link(Base):
+#     """Represent a connection between two connectable things."""
+#     source_ref: Ref
+#     target_ref: Ref
 
-    def __repr__(self) -> str:
-        return super().__repr__() + f" {self.source_ref} -> {self.target_ref}"
-
-
-@define(repr=False)
-class Replace(Base):
-    """Represent a replacement of one object with another."""
-    original_ref: Ref
-    replacement_obj: "Object"
+#     def __repr__(self) -> str:
+#         return super().__repr__() + f" {self.source_ref} -> {self.target_ref}"
 
 
 @define(repr=False)
 class Import(Base):
     """Represent an import statement."""
-    what_obj: "Object"
+    obj_addr: AddrStr
+
+    def __repr__(self) -> str:
+        return f"<Import {self.obj_addr}>"
 
 
-# NOTE:
-#  Perhaps we should consider splitting out instantiated objects from classes?
-#  While there's a lot in common between those two things (eg. lookup semantics)
-#  there's also some baggage which comes with this model, like that declaring
-#  classes within a class mean that you will init the inner class every time
-#  you init the outer class.
+@define
+class Replacement(Base):
+    """Represent a replacement statement."""
+    new_super_ref: Ref
+
+    def __repr__(self) -> str:
+        return f"<Replacement {self.new_super_ref}>"
+
+
 @define(repr=False)
-class Object(Base):
-    """Represent a container class."""
-    # information about where this object is found in multiple forms
-    # this is redundant with one another (eg. you can compute one from the other)
-    # but it's useful to have all of them for different purposes
-    closure: tuple["Object"]  # in order of lookup
-    address: AddrStr
-    supers: tuple["Object"]
+class ObjectDef(Base):
+    """Represent the definition or skeleton of an object."""
+    super_ref: Optional[Ref]
+    imports: Mapping[Ref, Import]
+    local_defs: Mapping[Ref, "ObjectDef"]
+    replacements: Mapping[Ref, Replacement]
 
-    # the local objects and vars are things we navigate to a lot
-    objs: Optional[Mapping[str, "Object"]] = None
-    data: Optional[Mapping[str, Any]] = None
-    # TODO: override_data eg. Resistor.footprint = ... to set a default on a module level
-
-    # data used in the construction of objects
-    imports: Optional[Mapping[Ref, Import]] = None
-
-    # data from the lock-file entry associated with this object
-    # lock_data: Mapping[str, Any] = {}  # TODO: this should point to a lockfile entry
+    # attached immediately to the object post construction
+    closure: Optional[tuple["ObjectDef"]] = None # in order of lookup
+    address: Optional[AddrStr] = None
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.address}>"
 
 
-resolve_types(Link)
-resolve_types(Replace)
-resolve_types(Import)
-resolve_types(Object)
+@define(repr=False)
+class ObjectLayer(Base):
+    """Represent a container class."""
+    # information about where this object is found in multiple forms
+    # this is redundant with one another (eg. you can compute one from the other)
+    # but it's useful to have all of them for different purposes
+    obj_def: ObjectDef
+
+    # None indicates that this is a root object
+    super: Optional["ObjectLayer"]
+
+    # the local objects and vars are things we navigate to a lot
+    # objs: Optional[Mapping[str, "Object"]] = None
+    data: Optional[Mapping[str, Any]] = None
+
+    # data from the lock-file entry associated with this object
+    # lock_data: Mapping[str, Any] = {}  # TODO: this should point to a lockfile entry
+
+    @property
+    def address(self) -> AddrStr:
+        return self.obj_def.address
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.obj_def.address}>"
+
+
+resolve_types(ObjectLayer)
 
 
 # These are the build-in superclasses that have special meaning to the compiler
 
 root_object = partial(
-    Object,
+    ObjectLayer,
     closure=(),
     objs={},
     data={},
@@ -95,59 +108,75 @@ root_object = partial(
     imports=(),
     replacements=(),
 )
-MODULE = root_object(address=AddrStr("<Built-in> Module"), supers=())
-COMPONENT = root_object(address=AddrStr("<Built-in> Component"), supers=(MODULE,))
-PIN = root_object(address=AddrStr("<Built-in> Pin"), supers=())
-SIGNAL = root_object(address=AddrStr("<Built-in> Signal"), supers=())
-INTERFACE = root_object(address=AddrStr("<Built-in> Interface"), supers=())
+MODULE: ObjectLayer = root_object(address=AddrStr("<Built-in> Module"), supers=())
+COMPONENT: ObjectLayer = root_object(address=AddrStr("<Built-in> Component"), supers=(MODULE,))
+PIN: ObjectLayer = root_object(address=AddrStr("<Built-in> Pin"), supers=())
+SIGNAL: ObjectLayer = root_object(address=AddrStr("<Built-in> Signal"), supers=())
+INTERFACE: ObjectLayer = root_object(address=AddrStr("<Built-in> Interface"), supers=())
 
 
 ## The below datastructures are created from the above datamodel as a second stage
 
 
 @define
-class Joint:
+class LinkDef(Base):
     """Represent a connection between two connectable things."""
     # TODO: we may not need this using loop-soup
     # the reason this currently exists is to allow us to map joints between instances
     # these make sense only in the context of the pins and signals, which aren't
     # language fundamentals as much as net objects - eg. they're useful only from
     # a specific electrical perspective
-    origin_link: Link
+    # origin_link: Link
 
-    contained_by: "Instance"
-    source_connected: "Instance"
-    target_connected: "Instance"
+    source: Ref
+    target: Ref
+
+    def __repr__(self) -> str:
+        return f"<LinkDef {repr(self.source)} -> {repr(self.target)}>"
+
+
+@define
+class Link(Base):
+    """Represent a connection between two connectable things."""
+    # TODO: we may not need this using loop-soup
+    # the reason this currently exists is to allow us to map joints between instances
+    # these make sense only in the context of the pins and signals, which aren't
+    # language fundamentals as much as net objects - eg. they're useful only from
+    # a specific electrical perspective
+    # origin_link: Link
+
+    parent: "Instance"
 
     source: "Instance"
     target: "Instance"
 
     def __repr__(self) -> str:
-        return f"<Joint {repr(self.source)} -> {repr(self.target)}>"
+        return f"<Link {repr(self.source)} -> {repr(self.target)}>"
 
 
 @define
-class Instance:
+class Instance(Base):
     """Represent a concrete object class."""
     # origin information
     # much of this information is redundant, however it's all highly referenced
     # so it's useful to have it all at hand
     ref: Ref
-    parents: tuple["Instance"]
-    super: Object
+    supers: tuple["ObjectLayer"]
+    children: dict[str, "Instance"]
+    links: list[LinkDef]
 
-    children: Optional[Mapping[str, "Instance"]] = None
-    data: Optional[Mapping[str, Any]] = None
+    data: Mapping[str, Any]  # this is a chainmap inheriting from the supers as well
+    override_data: dict[str, Any]
 
     # TODO: for later
     # lock_data: Optional[Mapping[str, Any]] = None
 
-    joints: list[Joint] = field(factory=list)
-    joined_to_me: list[Joint] = field(factory=list)
+    # attached immediately after construction
+    parents: Optional[tuple["Instance"]] = None
 
     def __repr__(self) -> str:
         return f"<Instance {self.ref}>"
 
 
-resolve_types(Joint)
+resolve_types(LinkDef)
 resolve_types(Instance)

@@ -73,7 +73,7 @@ spud = Spud(error_handler, (file.parent,))
 
 #%%
 # flat = spud.build_file(file)
-flat = spud.build_instance(AddrStr.from_parts(path=file, node="SpinServoNEMA17"))
+flat = spud.build_instance(AddrStr.from_parts(path=file, ref="SpinServoNEMA17"))
 # print_tree(make_tree(flat))
 
 #%%

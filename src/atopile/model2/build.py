@@ -74,6 +74,6 @@ class Spud:
 
     def build_instance_from_text(self, text: str, ref: Ref, name = "<empty>") -> Instance:
         """Build an instance from text."""
-        addr = AddrStr.from_parts(path=name, node=ref)
+        addr = AddrStr.from_parts(path=name, ref=ref)
         self.add_obj_from_text(text, name)
         return self.build_instance(addr)

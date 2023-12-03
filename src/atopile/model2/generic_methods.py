@@ -1,9 +1,8 @@
 import itertools
 from collections import deque
-from typing import Any, Callable, Hashable, Iterable, TypeVar
+from typing import Any, Callable, Hashable, Iterable, Optional, TypeVar
 
 import toolz.curried
-
 
 T = TypeVar("T")
 
@@ -105,3 +104,15 @@ def bfs(
 
         for child in get_children(start):
             queue.append(child)
+
+
+def recurse(
+    get_next: Callable[[T], Optional[T]],
+    start: T,
+) -> Iterable[T]:
+    """Recursively yield items, optionally including the starting item and its children."""
+    yield start
+    next_item = get_next(start)
+    if next_item is not None:
+        yield from recurse(get_next, next_item)
+

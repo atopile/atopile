@@ -14,7 +14,7 @@ from atopile.model2.errors import ErrorHandler, HandlerMode
 
 def make_tree(instance: Instance, tree: rich.tree.Tree = None) -> rich.tree.Tree:
     if tree is None:
-        addr_str = AddrStr.from_parts(node=instance.ref)
+        addr_str = AddrStr.from_parts(ref=instance.ref)
         tree = rich.tree.Tree(addr_str)
 
     for child_name, child in instance.children.items():
@@ -24,7 +24,7 @@ def make_tree(instance: Instance, tree: rich.tree.Tree = None) -> rich.tree.Tree
             tree.add(f"{child_name} == {str(child)}")
 
     for link in instance.joints:
-        tree.add(f"{AddrStr.from_parts(node=link.source.ref)} ~ {AddrStr.from_parts(node=link.target.ref)}")
+        tree.add(f"{AddrStr.from_parts(ref=link.source.ref)} ~ {AddrStr.from_parts(ref=link.target.ref)}")
 
     return tree
 

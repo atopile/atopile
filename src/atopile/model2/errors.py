@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-class _BaseAtoError:
+class _BaseAtoError(Exception):
     """
     This exception is thrown when there's an error in the syntax of the language
     """
@@ -50,7 +50,7 @@ class _BaseAtoError:
         return error_name
 
 
-class AtoError(_BaseAtoError, Exception):
+class AtoError(_BaseAtoError):
     """
     This exception is thrown when there's an error in ato code
     """

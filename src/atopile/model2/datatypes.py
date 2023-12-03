@@ -2,14 +2,14 @@
 Datatypes used in the model.
 """
 import logging
-from typing import Any, Iterable, Mapping, Optional, Type, Iterator, TypeVar
+from typing import Any, Iterable, Mapping, Optional, Type, Iterator, TypeVar, Generic
 
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-class Ref(tuple[str | int]):
+class Ref(tuple[str]):
     """Shell class to provide basic utils for a reference."""
 
     def add_name(self, name: str | int) -> "Ref":
@@ -33,7 +33,7 @@ class Ref(tuple[str | int]):
 T = TypeVar("T")
 
 
-class KeyOptItem(tuple[Optional[Ref], T]):
+class KeyOptItem(tuple[Optional[Ref], T], Generic[T]):
     """A class representing anf optionally-named thing."""
 
     @property
@@ -92,3 +92,8 @@ class KeyOptMap(tuple[KeyOptItem[T]]):
     def from_kv(cls, key: Optional[Ref], value: T) -> "KeyOptMap[T]":
         """Return a KeyOptMap with a single item."""
         return cls.from_item(KeyOptItem.from_kv(key, value))
+
+    @classmethod
+    def empty(cls) -> "KeyOptMap[T]":
+        """Return an empty KeyOptMap."""
+        return cls(())

@@ -24,7 +24,7 @@ from .datamodel import (
     PIN_REF,
     SIGNAL_REF,
     Import,
-    Link,
+    LinkDef,
     Object,
     Replace,
 )
@@ -167,7 +167,7 @@ class Dizzy(AtopileParserVisitor):
                     obj.imports[ref] = local
                 elif isinstance(local, Replace):
                     obj.replacements.append(local)
-                elif isinstance(local, Link):
+                elif isinstance(local, LinkDef):
                     if ref:
                         raise NotImplementedError("Named links not yet supported")
                     obj.links.append(local)
@@ -413,7 +413,7 @@ class Dizzy(AtopileParserVisitor):
         returns = [
             KeyOptItem.from_kv(
                 None,
-                Link(source_name, target_name, src_ctx=ctx),
+                LinkDef(source_name, target_name, src_ctx=ctx),
             )
         ]
 

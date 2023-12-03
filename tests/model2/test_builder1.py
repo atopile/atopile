@@ -7,7 +7,7 @@ from atopile.dev.parse import parse_as_file, parser_from_src_code
 from atopile.model2 import datamodel as dm
 from atopile.model2 import errors
 from atopile.model2.builder1 import Dizzy, _attach_downward_info
-from atopile.model2.datamodel import Import, Link, Object, Replace
+from atopile.model2.datamodel import Import, LinkDef, Object, Replace
 from atopile.model2.datatypes import KeyOptMap
 
 COMPONENT = (dm.COMPONENT_REF,)
@@ -229,7 +229,7 @@ def test_visitConnect_stmt_instance(dizzy: Dizzy):
     assert len(ret) == 3
 
     assert ret[0].ref is None
-    assert isinstance(ret[0].value, Link)
+    assert isinstance(ret[0].value, LinkDef)
     assert ret[0].value.source_ref == ("pin_a",)
     assert ret[0].value.target_ref == ("sig_b",)
 
@@ -328,7 +328,7 @@ def test_visitModule1LayerDeep(dizzy: Dizzy):
     assert isinstance(comp1.locals_[1].value, Object)
     assert comp1.locals_[1].value.supers_refs == SIGNAL
     assert comp1.locals_[2].ref is None
-    assert isinstance(comp1.locals_[2].value, Link)
+    assert isinstance(comp1.locals_[2].value, LinkDef)
     assert comp1.locals_[2].value.source_ref == ("signal_a",)
     assert comp1.locals_[2].value.target_ref == ("signal_b",)
 
@@ -352,7 +352,7 @@ def test_visitModule_pin_to_signal(dizzy: Dizzy):
 
     assert comp1.locals_[0].ref is None
     link = comp1.locals_[0].value
-    assert isinstance(link, Link)
+    assert isinstance(link, LinkDef)
     assert link.source_ref == ("signal_a",)
     assert link.target_ref == ("p1",)
 

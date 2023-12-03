@@ -5,7 +5,7 @@ from typing import Optional, Iterable
 
 from itertools import starmap
 
-from atopile.model2.datamodel import Base, Object, Replace, Link, Instance, Joint
+from atopile.model2.datamodel import Base, Object, Replace, LinkDef, Instance, Joint
 from atopile.model2.generic_methods import match_values
 from atopile.model2.instance_methods import dfs_with_ref, match_pins_and_signals
 from atopile.model2.datatypes import Ref
@@ -97,9 +97,9 @@ def _build(
         )
 
     # visit all the child links
-    links = obj.locals_by_type[Link]
+    links = obj.locals_by_type[LinkDef]
     for _, link in links:
-        assert isinstance(link, Link)
+        assert isinstance(link, LinkDef)
         assert_no_errors(link)
 
         source_connected = get_ref_from_instance(link.source_ref, instance)

@@ -1,6 +1,6 @@
 from atopile.model2.datamodel import (
     Object,
-    Link,
+    LinkDef,
     Import,
     Replace,
     MODULE_REF,
@@ -53,7 +53,7 @@ class Wendy:
 
     def visit(self, ref: None | tuple[str], input_node, rich_tree: Tree):
         # Check the input node type and call the appropriate function
-        if isinstance(input_node, Link):
+        if isinstance(input_node, LinkDef):
             self.parse_link(input_node.source_ref, input_node, rich_tree)
         elif isinstance(input_node, Replace):
             self.parse_replace(input_node.original_ref, input_node, rich_tree)

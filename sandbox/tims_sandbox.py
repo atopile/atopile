@@ -57,7 +57,7 @@ file = Path("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/
 spud = Spud(error_handler, (file.parent,))
 
 #%%
-flat = spud.build_instance(AddrStr.from_parts(path=file, node="SpinServoNEMA17"))
+flat = spud.build_instance(AddrStr.from_parts(path=file, ref="SpinServoNEMA17"))
 # flat = spud.build_instance_from_text(dedent(src_code).strip(), ("Root",))
 
 #%%

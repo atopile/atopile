@@ -28,7 +28,7 @@ from .datamodel import (
     SIGNAL,
     Base,
     Import,
-    Link,
+    LinkDef,
     Object,
     Replace,
     Instance,
@@ -74,12 +74,12 @@ def fill_object(obj: Object, locals_: KeyOptMap) -> None:
                 obj.objs[ref[0]] = local
             elif isinstance(local, Import):
                 obj.imports[ref] = local
-            elif isinstance(local, Replace):
-                obj.replacements.append(local)
-            elif isinstance(local, Link):
-                if ref:
-                    raise NotImplementedError("Named links not yet supported")
-                obj.links.append(local)
+            # elif isinstance(local, Replace):
+            #     obj.replacements.append(local)
+            # elif isinstance(local, Link):
+            #     if ref:
+            #         raise NotImplementedError("Named links not yet supported")
+            #     obj.links.append(local)
             elif isinstance(local, (int, float, str, bool)):
                 # TODO: make a parameter object
                 # TODO: there's something better than ignoring the overrides we can do here
@@ -420,7 +420,7 @@ class Dizzy(BaseTranslator):
         for error in _errors:
             self.error_handler.handle(error)
 
-        import_addr = AddrStr.from_parts(path=from_file, node=import_what_ref)
+        import_addr = AddrStr.from_parts(path=from_file, ref=import_what_ref)
         import_what_obj = self[import_addr]
 
         import_ = Import(
@@ -544,7 +544,7 @@ class Lofty(BaseTranslator):
         returns = [
             KeyOptItem.from_kv(
                 None,
-                Link(source_name, target_name, src_ctx=ctx),
+                LinkDef(source_name, target_name, src_ctx=ctx),
             )
         ]
 
