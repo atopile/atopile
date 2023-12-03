@@ -38,18 +38,13 @@ class Link(Base):
 class Replace(Base):
     """Represent a replacement of one object with another."""
     original_ref: Ref
-    replacement_ref: Ref
-
-    replacement_obj: Optional["Object"] = None
+    replacement_obj: "Object"
 
 
 @define(repr=False)
 class Import(Base):
     """Represent an import statement."""
-    what_ref: Ref
-    from_name: str
-
-    what_obj: Optional["Object"] = None
+    what_obj: "Object"
 
 
 # NOTE:
@@ -61,37 +56,23 @@ class Import(Base):
 @define(repr=False)
 class Object(Base):
     """Represent a container class."""
-    # base information required whenever an object is created
-    super_ref: Optional[Ref]
-
-    # the local objects and vars are things we navigate to a lot
-    objs: Mapping[str, "Object"] = {}
-    data: Mapping[str, Any] = {}
-    # TODO: override_data eg. Resistor.footprint = ... to set a default on a module level
-    links: list[Link] = []
-
-    # data used in the construction of objects
-    imports: Mapping[Ref, Import] = {}
-    replacements: list[Replace] = []
-
-    # data that modifies children (presumable instances) in this object
-    instance_overrides: Mapping[Ref, Any] = {}
-
-    # data from the lock-file entry associated with this object
-    lock_data: Mapping[str, Any] = {}  # TODO: this should point to a lockfile entry
-
     # information about where this object is found in multiple forms
     # this is redundant with one another (eg. you can compute one from the other)
     # but it's useful to have all of them for different purposes
-    closure: tuple["Object"] = field(init=False)  # in order of lookup
-    ref: Ref = field(init=False)
-    address: AddrStr = field(init=False)
+    closure: tuple["Object"]  # in order of lookup
+    address: AddrStr
+    supers: tuple["Object"]
 
-    # information attached post-init
-    # these are the objects that the super_refs resolve to
-    super_obj: Optional["Object"] = None
-    # these are the full list of supers (in lookup order) that this object inherits from
-    all_supers: Optional[tuple["Object"]] = None
+    # the local objects and vars are things we navigate to a lot
+    objs: Optional[Mapping[str, "Object"]] = None
+    data: Optional[Mapping[str, Any]] = None
+    # TODO: override_data eg. Resistor.footprint = ... to set a default on a module level
+
+    # data used in the construction of objects
+    imports: Optional[Mapping[Ref, Import]] = None
+
+    # data from the lock-file entry associated with this object
+    # lock_data: Mapping[str, Any] = {}  # TODO: this should point to a lockfile entry
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.address}>"
@@ -103,28 +84,22 @@ resolve_types(Import)
 resolve_types(Object)
 
 
-# these are the build-in superclasses that have special meaning to the compiler
-MODULE_REF = Ref.from_one("module")
-COMPONENT_REF = Ref.from_one("component")
-PIN_REF = Ref.from_one("pin")
-SIGNAL_REF = Ref.from_one("signal")
-INTERFACE_REF = Ref.from_one("interface")
+# These are the build-in superclasses that have special meaning to the compiler
 
-
-root_object = partial(Object, supers_refs=None, locals_=KeyOptMap(()), closure=())
-MODULE = root_object(address=AddrStr("<Built-in> Module"))
-COMPONENT = Object(supers_refs=(MODULE_REF,), locals_=KeyOptMap(()), closure=())
-PIN = root_object(address=AddrStr("<Built-in> Pin"))
-SIGNAL = root_object(address=AddrStr("<Built-in> Signal"))
-INTERFACE = root_object(address=AddrStr("<Built-in> Interface"))
-
-BUILTINS = {
-    MODULE_REF: MODULE,
-    COMPONENT_REF: COMPONENT,
-    PIN_REF: PIN,
-    SIGNAL_REF: SIGNAL,
-    INTERFACE_REF: INTERFACE,
-}
+root_object = partial(
+    Object,
+    closure=(),
+    objs={},
+    data={},
+    links=[],
+    imports=(),
+    replacements=(),
+)
+MODULE = root_object(address=AddrStr("<Built-in> Module"), supers=())
+COMPONENT = root_object(address=AddrStr("<Built-in> Component"), supers=(MODULE,))
+PIN = root_object(address=AddrStr("<Built-in> Pin"), supers=())
+SIGNAL = root_object(address=AddrStr("<Built-in> Signal"), supers=())
+INTERFACE = root_object(address=AddrStr("<Built-in> Interface"), supers=())
 
 
 ## The below datastructures are created from the above datamodel as a second stage
@@ -157,23 +132,18 @@ class Instance:
     # origin information
     # much of this information is redundant, however it's all highly referenced
     # so it's useful to have it all at hand
-    address: AddrStr
     ref: Ref
-    parents: tuple["Instance"] = field(init=False)
+    parents: tuple["Instance"]
+    super: Object
 
-    origin: Object = field(init=False)
-    super: Object = field(init=False)
+    children: Optional[Mapping[str, "Instance"]] = None
+    data: Optional[Mapping[str, Any]] = None
 
-    children: Mapping[str, "Instance"] = field(init=False)
-    data: Mapping[str, Any] = field(init=False)
-
-    override_data: Mapping[str, Any] = field(init=False)
-
-    lock_data: Mapping[str, Any] = field(init=False)
+    # TODO: for later
+    # lock_data: Optional[Mapping[str, Any]] = None
 
     joints: list[Joint] = field(factory=list)
     joined_to_me: list[Joint] = field(factory=list)
-
 
     def __repr__(self) -> str:
         return f"<Instance {self.ref}>"

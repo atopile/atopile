@@ -48,38 +48,40 @@ def lookup_obj_in_obj(start: Object, ref: Ref) -> Object:
     return lookup_obj_in_obj(obj, ref[1:])
 
 
-def lookup_obj_in_closure(start: Object, ref: Ref) -> Object:
+def lookup_obj_in_closure(closure: tuple[Object], ref: Ref) -> Object:
     """
     This method finds an object in the closure of another object, traversing import statements.
     """
-    closure_scope = (start,) + start.closure
-    imports_in_closure_scope: Mapping[Ref, Import] = collections.ChainMap(scope.imports for scope in closure_scope)
-    # TODO: I don't like dealing with these builtins do uniquely. Can we make them more part of the closure easily?
-    objs_in_closure_scope: Mapping[str, Object] = collections.ChainMap(*(scope.objs for scope in closure_scope), BUILTINS)
+    for scope in closure:
 
-    obj_lead = objs_in_closure_scope.get(ref[0])
-    import_leads = {
-        imp_ref: imp for imp_ref, imp in imports_in_closure_scope.items() if ref[0] == imp_ref[0]
-    }
+        obj_lead = scope.objs.get(ref[0])
+        import_leads = {
+            imp_ref: imp for imp_ref, imp in scope.imports.items() if ref[0] == imp_ref[0]
+        }
 
-    if import_leads and obj_lead:
-        # TODO: improve error message with details about what items are conflicting
-        raise errors.AtoAmbiguousReferenceError.from_ctx(
-            f"Name '{ref[0]}' is ambiguous in '{start}'.",
-            start.src_ctx
-        )
+        if import_leads and obj_lead:
+            # TODO: improve error message with details about what items are conflicting
+            raise errors.AtoAmbiguousReferenceError.from_ctx(
+                f"Name '{ref[0]}' is ambiguous in '{scope}'.",
+                scope.src_ctx
+            )
 
-    if obj_lead is not None:
-        return lookup_obj_in_obj(obj_lead, ref[1:])
+        if obj_lead is not None:
+            return lookup_obj_in_obj(obj_lead, ref[1:])
 
-    if import_leads:
-        for ref_len in range(len(ref), 0, -1):
-            trimmed_ref = ref[:ref_len]
-            if trimmed_ref in import_leads:
-                remaining_ref = ref[ref_len:]
-                if remaining_ref:
-                    return lookup_obj_in_obj(
-                        import_leads[trimmed_ref].what_obj,
-                        remaining_ref
-                    )
-                return import_leads[trimmed_ref].what_obj
+        if import_leads:
+            for ref_len in range(len(ref), 0, -1):
+                trimmed_ref = ref[:ref_len]
+                if trimmed_ref in import_leads:
+                    remaining_ref = ref[ref_len:]
+                    if remaining_ref:
+                        return lookup_obj_in_obj(
+                            import_leads[trimmed_ref].what_obj,
+                            remaining_ref
+                        )
+                    return import_leads[trimmed_ref].what_obj
+
+    if ref in BUILTINS:
+        return BUILTINS[ref]
+
+    raise KeyError(ref)
