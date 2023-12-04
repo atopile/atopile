@@ -21,11 +21,6 @@ from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
 from .datamodel import (
-    COMPONENT,
-    INTERFACE,
-    MODULE,
-    PIN,
-    SIGNAL,
     Import,
     Instance,
     LinkDef,
@@ -45,9 +40,51 @@ class _Sentinel(enum.Enum):
 NOTHING = _Sentinel.NOTHING
 
 
-class Spud:
-    def __init__(self, error_handler: errors.ErrorHandler) -> None:
-        self.error_handler = error_handler
+
+def make_obj_layer(address: AddrStr, super: Optional[ObjectLayer] = None) -> ObjectLayer:
+    """Create a new object layer from an address and a set of supers."""
+    obj_def = ObjectDef(
+        address=address,
+        super_ref=Ref.empty(),
+        imports={},
+        local_defs={},
+        replacements={},
+    )
+    return ObjectLayer(
+        obj_def=obj_def,
+        super=super,
+        data={},
+    )
+
+
+MODULE: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Module"))
+COMPONENT: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Component"), super=MODULE)
+PIN: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Pin"))
+SIGNAL: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Signal"))
+INTERFACE: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Interface"))
+
+
+BUILTINS_BY_REF = {
+    Ref.from_one("MODULE"): MODULE,
+    Ref.from_one("COMPONENT"): COMPONENT,
+    Ref.from_one("INTERFACE"): INTERFACE,
+    Ref.from_one("PIN"): PIN,
+    Ref.from_one("SIGNAL"): SIGNAL,
+}
+
+
+BUILTINS_BY_ADDR = {
+    MODULE.address: MODULE,
+    COMPONENT.address: COMPONENT,
+    PIN.address: PIN,
+    SIGNAL.address: SIGNAL,
+    INTERFACE.address: INTERFACE,
+}
+
+
+# class Spud:
+#     def __init__(self, error_handler: errors.ErrorHandler) -> None:
+#         self.error_handler = error_handler
 
 
 class BaseTranslator(AtopileParserVisitor):
@@ -85,7 +122,9 @@ class BaseTranslator(AtopileParserVisitor):
         def __visit(child: ParserRuleContext) -> Iterable[_Sentinel | KeyOptItem]:
             try:
                 child_result = self.visit(child)
-                assert isinstance(child_result, KeyOptMap)
+                for item in child_result:
+                    if item is not NOTHING:
+                        assert isinstance(item, KeyOptItem)
                 return child_result
             except errors.AtoError as err:
                 _errors.append(err)
@@ -151,14 +190,14 @@ class BaseTranslator(AtopileParserVisitor):
     def visitBoolean_(self, ctx: ap.Boolean_Context) -> bool:
         return ctx.getText().lower() == "true"
 
-    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> _Sentinel | KeyOptItem:
+    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> Iterable[_Sentinel | KeyOptItem]:
         """
         This is practically here as a development shim to assert the result is as intended
         """
         result = self.visitChildren(ctx)
-        if result is not NOTHING:
-            if len(result) > 0:
-                assert len(result[0]) == 2
+        for item in result:
+            if item is not NOTHING:
+                assert isinstance(item, KeyOptItem)
         return result
 
     def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
@@ -183,6 +222,8 @@ class BaseTranslator(AtopileParserVisitor):
             return stmt_returns
         elif ctx.compound_stmt():
             item = self.visit(ctx.compound_stmt())
+            if item is NOTHING:
+                return KeyOptMap.empty()
             assert isinstance(item, KeyOptItem)
             return KeyOptMap.from_item(item)
 
@@ -192,10 +233,10 @@ class BaseTranslator(AtopileParserVisitor):
         return self.visit_iterable_helper(ctx.simple_stmt())
 
     def visitBlock(self, ctx) -> tuple[list[errors.AtoError], KeyOptMap]:
+        if ctx.stmt():
+            return self.visit_iterable_helper(ctx.stmt())
         if ctx.simple_stmts():
             return self.visitSimple_stmts(ctx.simple_stmts())
-        elif ctx.stmt():
-            return self.visit_iterable_helper(ctx.stmt())
         raise ValueError  # this should be protected because it shouldn't be parseable
 
     def visitAssignable(
@@ -226,7 +267,7 @@ class Scoop(BaseTranslator):
     def __init__(
         self,
         error_handler: errors.ErrorHandler,
-        input_map: Mapping[Path, ParserRuleContext],
+        input_map: Mapping[str | Path, ParserRuleContext],
     ) -> None:
         self.input_map = input_map
         self._output_cache: dict[AddrStr, ObjectDef] = {}
@@ -239,7 +280,7 @@ class Scoop(BaseTranslator):
             obj = self.visitFile_input(file_ast)
             assert isinstance(obj, ObjectDef)
             # this operation puts it and it's children in the cache
-            self._register_obj_tree(obj, addr, ())
+            self._register_obj_tree(obj, AddrStr(addr.file), ())
         return self._output_cache[addr]
 
     def _register_obj_tree(self, obj: ObjectDef, addr: AddrStr, closure: tuple[ObjectDef]) -> None:
@@ -318,7 +359,7 @@ class Scoop(BaseTranslator):
             replacements=replacements,
         )
 
-        block_name = self.visit_ref_helper(ctx.name_or_attr())
+        block_name = self.visit_ref_helper(ctx.name())
 
         return KeyOptItem.from_kv(block_name, block_obj)
 
@@ -346,10 +387,6 @@ class Scoop(BaseTranslator):
         )
 
         return KeyOptMap.from_kv(import_what_ref, import_)
-
-    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> _Sentinel:
-        """Ignore assign statements for the second, we'll deal with them later."""
-        return NOTHING
 
     def visitBlocktype(self, ctx: ap.BlocktypeContext) -> Ref:
         """Return the address of a block type."""
@@ -379,6 +416,13 @@ class Scoop(BaseTranslator):
 
         return KeyOptMap.from_kv(to_replace, replacement)
 
+    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> Iterable[_Sentinel | KeyOptItem]:
+        """We have to be selective here to deal with the ignored children properly."""
+        if (ctx.retype_stmt() or ctx.import_stmt()):
+            return super().visitSimple_stmt(ctx)
+
+        return (NOTHING,) # FIXME:  change this to return an empty KeyOptMap
+
 
 def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
     """
@@ -387,7 +431,7 @@ def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
     assert context.closure is not None
     for scope in context.closure:
 
-        obj_lead = scope.local_defs.get(ref[0])
+        obj_lead = scope.local_defs.get(ref[:1])
         import_leads = {
             imp_ref: imp for imp_ref, imp in scope.imports.items() if ref[0] == imp_ref[0]
         }
@@ -405,6 +449,9 @@ def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
         if ref in scope.imports:
             return scope.imports[ref].obj_addr
 
+    if ref in BUILTINS_BY_REF:
+        return BUILTINS_BY_REF[ref].address
+
     raise KeyError(ref)
 
 
@@ -416,7 +463,7 @@ class Dizzy(BaseTranslator):
         input_map: Mapping[AddrStr, ObjectDef],
     ) -> None:
         self.input_map = input_map
-        self._output_cache: dict[AddrStr, ObjectLayer] = {}
+        self._output_cache: dict[AddrStr, ObjectLayer] = {k: v for k, v in BUILTINS_BY_ADDR.items()}
         super().__init__(error_handler)
 
     def __getitem__(self, addr: AddrStr) -> ObjectLayer:
@@ -439,7 +486,11 @@ class Dizzy(BaseTranslator):
 
         # FIXME: visiting the block here relies upon the fact that both
         # file inputs and blocks have stmt children to be handled the same way.
-        errors_, locals_ = self.visitBlock(ctx)
+        if isinstance(ctx, ap.BlockdefContext):
+            ctx_with_stmts = ctx.block()
+        else:
+            ctx_with_stmts = ctx
+        errors_, locals_ = self.visitBlock(ctx_with_stmts)
 
         if errors_:
             raise errors.AtoFatalError
@@ -448,8 +499,10 @@ class Dizzy(BaseTranslator):
         data = {ref[0]: v for ref, v in locals_}
 
         obj = ObjectLayer(
-            src_ctx=ctx,
+            src_ctx=ctx_with_stmts,  # here we save something that's "block-like"
             errors=errors_,
+
+            obj_def=obj_def,
 
             super=super,
             data=data
@@ -461,9 +514,9 @@ class Dizzy(BaseTranslator):
         """I'm not sure how we'd end up here, but if we do, don't go down here"""
         raise RuntimeError("File inputs should not be visited")
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> tuple[_Sentinel]:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
         """Don't go down blockdefs, they're just for defining objects."""
-        return (NOTHING,)
+        return NOTHING
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         assignable_ctx = ctx.assignable()
@@ -479,6 +532,13 @@ class Dizzy(BaseTranslator):
 
         assigned_value = self.visitAssignable(ctx.assignable())
         return KeyOptMap.from_kv(assigned_value_ref, assigned_value)
+
+    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> Iterable[_Sentinel | KeyOptItem]:
+        """We have to be selective here to deal with the ignored children properly."""
+        if ctx.assign_stmt():
+            return super().visitSimple_stmt(ctx)
+
+        return (NOTHING,)
 
 
 class Lofty(BaseTranslator):
@@ -503,19 +563,14 @@ class Lofty(BaseTranslator):
     def __getitem__(self, addr: AddrStr) -> Instance:
         if addr not in self._output_cache:
             obj_layer = self.input_map[addr]
-            obj = self.make_instance(Ref(addr.ref), None, obj_layer)
+            obj = self.make_instance(addr.ref, obj_layer)
             assert isinstance(obj, Instance)
             self._output_cache[addr] = obj
         return self._output_cache[addr]
 
     @contextmanager
     def _context(self, ref: Ref, parent_obj_layer: ObjectLayer):
-        if not self._ref_stack:
-            assert not self._obj_layer_stack
-            self._ref_stack.append(ref)
-        else:
-            self._ref_stack.append(Ref(self._ref_stack[-1] + ref))
-
+        self._ref_stack.append(Ref(ref))
         self._obj_layer_stack.append(parent_obj_layer)
 
         try:
@@ -525,44 +580,40 @@ class Lofty(BaseTranslator):
             self._ref_stack.pop()
             self._obj_layer_stack.pop()
 
-    def make_instance(
-        self,
-        ref: Ref,
-        creation_ctx: ParserRuleContext,
-        immediate_super: ObjectLayer
-    ) -> Instance:
-        """Create an instance of an object."""
-        object_context = self._obj_layer_stack[-1]
+    def make_instance(self, new_ref: Ref, super: ObjectLayer) -> Instance:
+        """Create an instance from a reference and a super object layer."""
+        supers = list(recurse(lambda x: x.super, super))
 
-        # FIXME: this is a giant fucking mess
-        new_ref = Ref(self._ref_stack[-1] + ref)
+        commanded_replacements = []
+        for super_obj in supers:
+            for ref, replacement in super_obj.obj_def.replacements.items():
+                abs_ref = new_ref + ref
+                if abs_ref not in self._known_replacements:
+                    self._known_replacements[abs_ref] = replacement
+                    commanded_replacements.append(abs_ref)
 
-        if new_ref in self._known_replacements:
-            super_addr = lookup_obj_in_closure(
-                object_context.obj_def,
-                self._known_replacements[new_ref].new_super_ref
-            )
-            actual_super = self.input_map[super_addr]
-        else:
-            actual_super = immediate_super
-
-        supers = list(recurse(lambda x: x.super, actual_super))
-
-        with self._context(ref, actual_super):
+        with self._context(new_ref, super):
             # FIXME: can we make this functional easily?
             # FIXME: this should deal with name collisions and type collisions
             _errors = []
             all_internal_items: list[KeyOptItem] = []
             for super in reversed(supers):
+                if super.src_ctx is None:
+                    # FIXME: this is currently the case for the builtins
+                    continue
                 internal_errors, internal_items = self.visitBlock(super.src_ctx)
                 _errors.extend(internal_errors)
                 all_internal_items.extend(internal_items)
+
+        for ref in commanded_replacements:
+            self._known_replacements.pop(ref)
 
         if _errors:
             raise errors.AtoFatalError
 
         links = [link for _, link in all_internal_items if isinstance(link, LinkDef)]
-        children = {k[0]: v for k, v in all_internal_items if isinstance(k, Instance)}
+
+        children = {k[0]: v for k, v in all_internal_items if isinstance(v, Instance)}
 
         # we don't yet know about any of the overrides we may encounter
         # we pre-define this variable so we can stick it in the right slot and in the chain map
@@ -570,9 +621,8 @@ class Lofty(BaseTranslator):
         data = ChainMap(override_data, *[s.data for s in supers])
 
         new_instance = Instance(
-            src_ctx=creation_ctx,
-            errors=[],
-            ref=ref,
+            errors=_errors,
+            ref=new_ref,
             supers=supers,
             children=children,
             links=links,
@@ -581,6 +631,10 @@ class Lofty(BaseTranslator):
         )
 
         return new_instance
+
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
+        """Don't go down blockdefs, they're just for defining objects."""
+        return NOTHING
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
@@ -594,10 +648,23 @@ class Lofty(BaseTranslator):
                 raise errors.AtoError("Cannot assign a new object to a multi-part reference")
 
             new_class_ref = self.visitName_or_attr(new_stmt.name_or_attr())
-            new_class_addr = lookup_obj_in_closure(self._obj_layer_stack[-1].obj_def, new_class_ref)
-            new_class_obj = self.input_map[new_class_addr]
 
-            new_instance = self.make_instance(assigned_ref, ctx, new_class_obj)
+            object_context = self._obj_layer_stack[-1]
+
+            # FIXME: this is a giant fucking mess
+            new_ref = Ref(self._ref_stack[-1] + assigned_ref)
+
+            if new_ref in self._known_replacements:
+                super_addr = lookup_obj_in_closure(
+                    object_context.obj_def,
+                    self._known_replacements[new_ref].new_super_ref
+                )
+                actual_super = self.input_map[super_addr]
+            else:
+                new_class_addr = lookup_obj_in_closure(self._obj_layer_stack[-1].obj_def, new_class_ref)
+                actual_super = self.input_map[new_class_addr]
+
+            new_instance = self.make_instance(new_ref, actual_super)
 
             return KeyOptMap.from_kv(assigned_ref, new_instance)
 
@@ -698,3 +765,10 @@ class Lofty(BaseTranslator):
             return ref, connectable[0]
         else:
             raise ValueError("Unexpected context in visitConnectable")
+
+    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> KeyOptMap:
+        """We have to be selective here to deal with the ignored children properly."""
+        if ctx.assign_stmt() or ctx.connect_stmt() or ctx.pindef_stmt() or ctx.signaldef_stmt():
+            return super().visitSimple_stmt(ctx)
+
+        return KeyOptMap.empty()

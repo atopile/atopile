@@ -97,24 +97,6 @@ class ObjectLayer(Base):
 resolve_types(ObjectLayer)
 
 
-# These are the build-in superclasses that have special meaning to the compiler
-
-root_object = partial(
-    ObjectLayer,
-    closure=(),
-    objs={},
-    data={},
-    links=[],
-    imports=(),
-    replacements=(),
-)
-MODULE: ObjectLayer = root_object(address=AddrStr("<Built-in> Module"), supers=())
-COMPONENT: ObjectLayer = root_object(address=AddrStr("<Built-in> Component"), supers=(MODULE,))
-PIN: ObjectLayer = root_object(address=AddrStr("<Built-in> Pin"), supers=())
-SIGNAL: ObjectLayer = root_object(address=AddrStr("<Built-in> Signal"), supers=())
-INTERFACE: ObjectLayer = root_object(address=AddrStr("<Built-in> Interface"), supers=())
-
-
 ## The below datastructures are created from the above datamodel as a second stage
 
 

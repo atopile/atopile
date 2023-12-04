@@ -9,6 +9,7 @@ from atopile.address import AddrStr
 from atopile.model2.build import Spud
 from atopile.model2.datamodel import Instance
 from atopile.model2.errors import ErrorHandler, HandlerMode
+from atopile.model2.parse import parse_text_as_file
 
 # %%
 
