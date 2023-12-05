@@ -54,9 +54,18 @@ class Replacement(Base):
 
 @define(repr=False)
 class ObjectDef(Base):
-    """Represent the definition or skeleton of an object."""
+    """
+    Represent the definition or skeleton of an object
+    so we know where we can go to find the object later
+    without actually building the whole file.
+
+    This is mainly because we don't want to hit errors that
+    aren't relevant to the current build - instead leaving them
+    to be hit in the case we're actually building that object.
+    """
     super_ref: Optional[Ref]
     imports: Mapping[Ref, Import]
+
     local_defs: Mapping[Ref, "ObjectDef"]
     replacements: Mapping[Ref, Replacement]
 
@@ -70,7 +79,10 @@ class ObjectDef(Base):
 
 @define(repr=False)
 class ObjectLayer(Base):
-    """Represent a container class."""
+    """
+    Represent a layer in the object hierarchy.
+    This holds all the values assigned to the object.
+    """
     # information about where this object is found in multiple forms
     # this is redundant with one another (eg. you can compute one from the other)
     # but it's useful to have all of them for different purposes
@@ -102,14 +114,16 @@ resolve_types(ObjectLayer)
 
 @define
 class LinkDef(Base):
-    """Represent a connection between two connectable things."""
+    """
+    Represent a connection between two connectable things.
+
     # TODO: we may not need this using loop-soup
     # the reason this currently exists is to allow us to map joints between instances
     # these make sense only in the context of the pins and signals, which aren't
     # language fundamentals as much as net objects - eg. they're useful only from
     # a specific electrical perspective
     # origin_link: Link
-
+    """
     source: Ref
     target: Ref
 
@@ -128,7 +142,6 @@ class Link(Base):
     # origin_link: Link
 
     parent: "Instance"
-
     source: "Instance"
     target: "Instance"
 
@@ -138,17 +151,22 @@ class Link(Base):
 
 @define
 class Instance(Base):
-    """Represent a concrete object class."""
+    """
+    Represents the specific instance, capturing, the story you told of
+    how to get there in it's mapping stacks.
+    """
     # origin information
     # much of this information is redundant, however it's all highly referenced
     # so it's useful to have it all at hand
     ref: Ref
     supers: tuple["ObjectLayer"]
     children: dict[str, "Instance"]
-    links: list[LinkDef]
+    links: list[Link]
 
     data: Mapping[str, Any]  # this is a chainmap inheriting from the supers as well
+
     override_data: dict[str, Any]
+    _override_location: dict[str, ObjectLayer] = {}  # FIXME: this is a hack to define it here
 
     # TODO: for later
     # lock_data: Optional[Mapping[str, Any]] = None

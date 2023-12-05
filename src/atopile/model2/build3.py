@@ -24,6 +24,7 @@ from .datamodel import (
     Import,
     Instance,
     LinkDef,
+    Link,
     ObjectDef,
     ObjectLayer,
     Replacement,
@@ -156,10 +157,12 @@ class BaseTranslator(AtopileParserVisitor):
             (
                 ap.NameContext,
                 ap.Totally_an_integerContext,
-                ap.Numerical_pin_refContext
             ),
         ):
             return Ref.from_one(str(self.visit(ctx)))
+        if isinstance(ctx, ap.Numerical_pin_refContext):
+            name_part = self.visit_ref_helper(ctx.name_or_attr())
+            return name_part.add_name(str(self.visit(ctx)))
         if isinstance(ctx, (ap.AttrContext, ap.Name_or_attrContext)):
             return Ref(
                 map(str, self.visit(ctx)),
@@ -421,7 +424,7 @@ class Scoop(BaseTranslator):
         if (ctx.retype_stmt() or ctx.import_stmt()):
             return super().visitSimple_stmt(ctx)
 
-        return (NOTHING,) # FIXME:  change this to return an empty KeyOptMap
+        return KeyOptMap.empty()
 
 
 def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
@@ -611,9 +614,52 @@ class Lofty(BaseTranslator):
         if _errors:
             raise errors.AtoFatalError
 
-        links = [link for _, link in all_internal_items if isinstance(link, LinkDef)]
+        internal_by_type = KeyOptMap(all_internal_items).map_items_by_type(
+            [
+                Instance,
+                LinkDef,
+                (str, int, float, bool)
+            ]
+        )
 
-        children = {k[0]: v for k, v in all_internal_items if isinstance(v, Instance)}
+        children: dict[Ref, Instance] = {k[0]: v for k, v in internal_by_type[Instance]}
+
+        def _lookup_item_in_children(
+                _children: dict[Ref, Instance],
+                ref: Ref
+            ) -> Instance:
+            if ref[0] not in _children:
+                raise errors.AtoError(f"Unknown reference: {ref}")
+            if len(ref) == 1:
+                return _children[ref[0]]
+
+            sub_children = _children[ref[0]].children
+            return _lookup_item_in_children(
+                sub_children,
+                ref[1:]
+            )
+
+        # make links
+        links: list[Link] = []
+        for _, link_def in internal_by_type[LinkDef]:
+            assert isinstance(link_def, LinkDef)
+            source_instance = _lookup_item_in_children(children, link_def.source)
+            target_instance = _lookup_item_in_children(children, link_def.target)
+            link = Link(
+                src_ctx=link_def.src_ctx,
+                errors=[],
+                parent=source_instance,
+                source=source_instance,
+                target=target_instance,
+            )
+            links.append(link)
+
+        for key, value in internal_by_type[(str, int, float, bool)]:
+            # TODO: make sure key exists?
+            to_override_in = _lookup_item_in_children(children, key[:-1])
+            key_name = key[-1]
+            to_override_in.override_data[key_name] = value
+            to_override_in._override_location[key_name] = super
 
         # we don't yet know about any of the overrides we may encounter
         # we pre-define this variable so we can stick it in the right slot and in the chain map
@@ -629,6 +675,9 @@ class Lofty(BaseTranslator):
             data=data,
             override_data=override_data,
         )
+
+        for link in links:
+            link.parent = new_instance
 
         return new_instance
 

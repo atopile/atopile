@@ -24,8 +24,8 @@ def make_tree(instance: Instance, tree: rich.tree.Tree = None) -> rich.tree.Tree
     for child_name, child in instance.children.items():
         make_tree(child, tree.add(child_name))
 
-    # for link in instance.joints:
-    #     tree.add(f"{AddrStr.from_parts(ref=link.source.ref)} ~ {AddrStr.from_parts(ref=link.target.ref)}")
+    for link in instance.links:
+        tree.add(repr(link))
 
     return tree
 
@@ -42,41 +42,27 @@ src_code = """
     module Resistor:
         pin 1
         pin 2
-        res_value = 4
-
-    component FancyResistor from Resistor:
-        signal test_signal
-        value = 1000
 
     module Root:
-        r1 = new FancyResistor
+        r1 = new Resistor
         power = new Power
-        r1.p1 ~ power.vcc
-        r1.p2 ~ power.gnd
+        r1.1 ~ power.vcc
+        r1.2 ~ power.gnd
         r1.res_value = 100
 
         vdiv = new VDiv
-        # vdiv.r_top -> FancyResistor
-
-        p1 ~ p2
+        vdiv.top.value = 123
 
     module VDiv:
         r_top = new Resistor
         r_bottom = new Resistor
 
-        signal top ~ r_top.p1
-        signal output ~ r_top.p2
-        output ~ r_bottom.p1
-        signal bottom ~ r_bottom.p2
+        signal top ~ r_top.1
+        signal output ~ r_top.2
+        output ~ r_bottom.1
+        signal bottom ~ r_bottom.2
 
         r_top.value = 1000
-
-    module FancyVdiv from VDiv:
-        r_top.value = 2000
-
-    module Root2 from Root:
-        vdiv -> FancyVdiv
-
 
 """
 
