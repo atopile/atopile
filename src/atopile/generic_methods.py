@@ -2,6 +2,7 @@ import itertools
 from collections import deque
 from typing import Any, Callable, Hashable, Iterable, Optional, TypeVar
 
+import toolz
 import toolz.curried
 
 T = TypeVar("T")
@@ -23,7 +24,7 @@ def map_values(__function: Callable[[T], Any]) -> Callable[[tuple[Hashable, T]],
 
 def closest_common(
     things: Iterable[Iterable[T]],
-    get_key: Callable[[T], Hashable] = hash,
+    get_key: Callable[[T], Hashable] = toolz.identity,
     validate_common_root: bool = False
 ) -> T:
     """Returns the closest common item between a set of iterables."""
