@@ -1,3 +1,5 @@
+
+
 #######
 
 # For Tim
@@ -73,6 +75,16 @@ class LazyMap(collections.abc.MutableMapping[K, V]):
 
 # %%
 
+def get_children(address: str) -> Iterable[Instance]:
+    
+
+
+
+
+
+
+
+
 
 def make_tree(instance: Instance, tree: rich.tree.Tree = None) -> rich.tree.Tree:
     if tree is None:
@@ -145,12 +157,7 @@ dizzy = Dizzy(error_handler, scoop)
 lofty = Lofty(error_handler, dizzy)
 
 # %%
-flat = lofty[
-    AddrStr.from_parts(
-        path="/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/spin_servo_nema17.ato",
-        ref="SpinServoNEMA17"
-    )
-]
+flat = lofty[AddrStr.from_parts(path="src_code", ref="Root")]
 # %%
 lofty._output_cache
 # %%
