@@ -15,10 +15,10 @@ import toolz
 from antlr4 import ParserRuleContext
 
 from atopile.address import AddrStr
-from atopile.model2 import errors
-from atopile.model2.datatypes import KeyOptItem, KeyOptMap, Ref
-from atopile.model2.generic_methods import recurse
-from atopile.model2.parse_utils import get_src_info_from_ctx
+from atopile import errors
+from atopile.datatypes import KeyOptItem, KeyOptMap, Ref
+from atopile.generic_methods import recurse
+from atopile.parse_utils import get_src_info_from_ctx
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
