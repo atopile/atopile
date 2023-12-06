@@ -17,7 +17,7 @@ from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
 from atopile import errors
-from atopile.address import AddrStr
+from atopile.address import AddrStr, add_instance
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref
 from atopile.generic_methods import recurse
 from atopile.parse_utils import get_src_info_from_ctx
@@ -158,7 +158,7 @@ class Instance(Base):
     # origin information
     # much of this information is redundant, however it's all highly referenced
     # so it's useful to have it all at hand
-    ref: Ref
+    addr: AddrStr
     supers: tuple["ObjectLayer"]
     children: dict[str, "Instance"]
     links: list[Link]
@@ -723,11 +723,11 @@ class Lofty(BaseTranslator):
         # known replacements are represented as the reference of the instance
         # to be replaced, and a tuple containing the length of the ref of the
         # thing that called for that replacement, and the object that will replace it
-        self._known_replacements: dict[Ref, Replacement] = {}
+        self._known_replacements: dict[AddrStr, Replacement] = {}
         self.obj_layer_getter = obj_layer_getter
 
         self._instance_context_stack: list[AddrStr] = []
-        self._obj_layer_stack: list[AddrStr] = []
+        self._obj_context_stack: list[AddrStr] = []
         super().__init__(
             error_handler,
         )
@@ -742,30 +742,47 @@ class Lofty(BaseTranslator):
         return self._output_cache[addr]
 
     @contextmanager
-    def _context(self, ref: Ref, parent_obj_layer: ObjectLayer):
-        self._ref_stack.append(Ref(ref))
-        self._obj_layer_stack.append(parent_obj_layer)
-
+    def enter_instance(self, instance: AddrStr):
+        self._instance_context_stack.append(instance)
         try:
             yield
-
         finally:
-            self._ref_stack.pop()
-            self._obj_layer_stack.pop()
+            self._instance_context_stack.pop()
+
+    @contextmanager
+    def enter_obj(self, instance: AddrStr):
+        self._obj_context_stack.append(instance)
+        try:
+            yield
+        finally:
+            self._obj_context_stack.pop()
+
+    def apply_replacements_from_objs(self, objs: Iterable[ObjectLayer]) -> Iterable[AddrStr]:
+        """
+        Apply the replacements defined in the given objects,
+        returning which replacements were applied
+        """
+        commanded_replacements = []
+
+        for obj in objs:
+            for ref, replacement in obj.obj_def.replacements.items():
+                to_be_replaced_addr = add_instance(
+                    self._instance_context_stack[-1],
+                    ".".join(ref)
+                )
+                if to_be_replaced_addr not in self._known_replacements:
+                    self._known_replacements[to_be_replaced_addr] = replacement
+                    commanded_replacements.append(to_be_replaced_addr)
+
+        return commanded_replacements
 
     def make_instance(self, new_ref: Ref, super: ObjectLayer) -> Instance:
         """Create an instance from a reference and a super object layer."""
         supers = list(recurse(lambda x: x.super, super))
 
-        commanded_replacements = []
-        for super_obj in supers:
-            for ref, replacement in super_obj.obj_def.replacements.items():
-                abs_ref = new_ref + ref
-                if abs_ref not in self._known_replacements:
-                    self._known_replacements[abs_ref] = replacement
-                    commanded_replacements.append(abs_ref)
+        commanded_replacements = self.apply_replacements_from_objs(supers)
 
-        with self._context(new_ref, super):
+        with self.enter_instance(new_ref, super):
             # FIXME: can we make this functional easily?
             # FIXME: this should deal with name collisions and type collisions
             all_internal_items: list[KeyOptItem] = []
@@ -834,6 +851,8 @@ class Lofty(BaseTranslator):
         for link in links:
             link.parent = new_instance
 
+        self._output_cache[new_ref] = new_instance
+
         return new_instance
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
@@ -842,9 +861,16 @@ class Lofty(BaseTranslator):
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
+        if len(assigned_ref) == 1:
+            # we've already dealt with this!
+            return KeyOptMap(())
+
+        assigned_name: str = assigned_ref[-1]
 
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
+
+        # handle new statements
         if assignable_ctx.new_stmt():
             new_stmt = assignable_ctx.new_stmt()
             assert isinstance(new_stmt, ap.New_stmtContext)
@@ -881,10 +907,6 @@ class Lofty(BaseTranslator):
             new_instance = self.make_instance(new_ref, actual_super)
 
             return KeyOptMap.from_kv(assigned_ref, new_instance)
-
-        if len(assigned_ref) == 1:
-            # we've already dealt with this!
-            return KeyOptMap(())
 
         assigned_value = self.visitAssignable(ctx.assignable())
         return KeyOptMap.from_kv(assigned_ref, assigned_value)
