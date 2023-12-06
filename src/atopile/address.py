@@ -32,13 +32,21 @@ def get_file(address: str) -> Optional[Path]:
         return None
     return Path(path_str)
 
+def get_entry(address: str) -> str:
+    """
+    Extract the root path from an address.
+    """
+    try:
+        return address.split(":")[1]
+    except IndexError:
+        return ""
 
 def get_ref_str(address: str) -> str:
     """
     Extract the node path from an address.
     """
     try:
-        return address.split(":")[1]
+        return address.split(":")[3]
     except IndexError:
         return ""
 
