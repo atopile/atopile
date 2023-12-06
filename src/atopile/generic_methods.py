@@ -70,10 +70,11 @@ def dfs(
     start: T,
 ) -> Iterable[T]:
     """Depth-first search, first yielding the starting item."""
-    yield start
 
     for child in get_children(start):
         yield from dfs(get_children, child)
+
+    yield start
 
 
 def bfs(
