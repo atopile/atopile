@@ -7,11 +7,9 @@ import rich
 import rich.tree
 
 from atopile.address import AddrStr
-from atopile.lazy_map import LazyMap
-from atopile.model2.build3 import Dizzy, Lofty, Scoop
-from atopile.model2.datamodel import Instance
-from atopile.model2.errors import ErrorHandler, HandlerMode
-from atopile.model2.parse import parse_file, parse_text_as_file
+from atopile.front_end import Dizzy, Lofty, Scoop
+from atopile.errors import ErrorHandler, HandlerMode
+from atopile.parse import parse_file, parse_text_as_file
 
 # %%
 

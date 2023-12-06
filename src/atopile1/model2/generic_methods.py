@@ -8,20 +8,6 @@ import toolz.curried
 T = TypeVar("T")
 
 
-def match_values(__function: Callable[[T], bool]) -> Callable[[tuple[Hashable, T]], bool]:
-    """Curried function that acts on the values of key-value pairs passed to it."""
-    def __value_filter(item: tuple[Hashable, T]) -> bool:
-        return __function(item[1])
-    return __value_filter
-
-
-def map_values(__function: Callable[[T], Any]) -> Callable[[tuple[Hashable, T]], tuple[Hashable, Any]]:
-    """Curried function that maps the values of key-value pairs passed to it."""
-    def __value_map(item: tuple[Hashable, T]) -> tuple[Hashable, Any]:
-        return (item[0], __function(item[1]))
-    return toolz.curried.map(__value_map)
-
-
 def closest_common(
     things: Iterable[Iterable[T]],
     get_key: Callable[[T], Hashable] = toolz.identity,
