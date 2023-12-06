@@ -14,7 +14,7 @@ class AddrStr(str):
     """
 
 
-def get_file_section(address: str) -> str:
+def get_file_section(address: AddrStr) -> str:
     """
     Extract the file path from an address.
 
@@ -28,14 +28,14 @@ def get_file_section(address: str) -> str:
     return address.split(":")[0]
 
 
-def get_entry(address: str) -> AddrStr:
+def get_entry(address: AddrStr) -> AddrStr:
     """
     Extract the root path from an address.
     """
     return address.split("::")[0]
 
 
-def get_entry_section(address: str) -> Optional[str]:
+def get_entry_section(address: AddrStr) -> Optional[str]:
     """
     Extract the root path from an address.
     """
@@ -45,7 +45,7 @@ def get_entry_section(address: str) -> Optional[str]:
         return None
 
 
-def get_instance_section(address: str) -> Optional[str]:
+def get_instance_section(address: AddrStr) -> Optional[str]:
     """
     Extract the node path from an address.
     """
@@ -55,7 +55,7 @@ def get_instance_section(address: str) -> Optional[str]:
         return None
 
 
-def add_instance(address: str, instance: str) -> AddrStr:
+def add_instance(address: AddrStr, instance: str) -> AddrStr:
     """
     Add an instance to an address.
     """
@@ -65,7 +65,7 @@ def add_instance(address: str, instance: str) -> AddrStr:
         return f"{address}.{instance}"
 
 
-def add_entry(address: str, entry: str) -> AddrStr:
+def add_entry(address: AddrStr, entry: str) -> AddrStr:
     """
     Add an entry to an address.
     """
