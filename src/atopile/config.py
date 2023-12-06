@@ -86,6 +86,8 @@ def _sanitise_item(item: tuple[Any, Any]) -> tuple[Any, Any]:
 
 def _sanitise_dict_keys(d: collections.abc.Mapping) -> collections.abc.Mapping:
     """Sanitise the keys of a dictionary to be valid python identifiers."""
+    if d is None:
+        return {}
     return dict(_sanitise_item(item) for item in d.items())
 
 

@@ -1,0 +1,65 @@
+(export (version "E")
+  (design
+    (source "{{ nl.source }}")
+    (date "{{ nl.date }}")
+    (tool "{{ nl.tool }}"))
+{%- if nl.components %}
+  (components
+  {%- for component in nl.components %}
+    (comp (ref "{{ component.ref }}")
+      (value "{{ component.value }}")
+    {%- if component.footprint %}
+      (footprint "{{ component.footprint }}")
+    {%- endif %}
+    {%- if component.fields %}
+      (fields
+      {%- for field in component.fields %}
+        (field (name "{{ field.name }}") "{{ field.value }}")
+      {%- endfor %})
+    {%- endif %}
+      (libsource (lib "{{ component.libsource.lib }}") (part "{{ component.libsource.part }}") (description "{{ component.libsource.description }}"))
+      (sheetpath (names "{{ component.sheetpath.names}}") (tstamps "{{ component.sheetpath.tstamps}}"))
+      (tstamps "{{ component.tstamp }}"))
+  {%- endfor %})
+{%- endif %}
+{%- if nl.libparts %}
+  (libparts
+  {%- for libpart in nl.libparts %}
+    (libpart (lib "{{ libpart.lib }}") (part "{{ libpart.part }}")
+    {%- if libpart.description %}
+      (description "{{ libpart.description }}")
+    {%- endif %}
+    {%- if libpart.docs %}
+      (docs "{{ libpart.docs }}")
+    {%- endif %}
+    {%- if libpart.footprints %}
+      (footprints
+      {%- for footprint in libpart.footprints %}
+        (fp "{{ footprint }}")
+      {%- endfor %})
+    {%- endif %}
+    {%- if libpart.fields %}
+      (fields
+    {%- for field in libpart.fields %}
+        (field (name "{{ field.name }}") "{{ field.value }}")
+      {%- endfor %})
+      {%- endif %}
+    {%- if libpart.pins %}
+      (pins
+      {%- for pin in libpart.pins %}
+        (pin (num "{{ pin.num }}") (name "{{ pin.name }}") (type "{{ pin.type }}"))
+      {%- endfor %}
+    {%- endif %}))
+  {%- endfor %})
+{%- endif %}
+{%- if nl.nets %}
+  (nets
+  {%- for net in nl.nets %}
+    (net (code "{{ net.code }}") (name "{{ net.name }}")
+      {%- for node in net.nodes %}
+      (node (ref "{{ node.ref }}") (pin "{{ node.pin }}") (pintype "{{ node.pintype }}"))
+    {%- endfor %})
+  {%- endfor %})
+{%- endif %}
+{#- #})
+

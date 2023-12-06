@@ -87,12 +87,16 @@ class LoopItem(collections.abc.Iterable[T]):
             a_old_next.prev = b_old_prev
 
 
+def _simple_return(x: T) -> T:
+    return x
+
+
 class LoopSoup:
     """
     Helper function to associate data with the loop class
     """
 
-    def __init__(self, key_func: Callable[[T], Hashable] = hash):
+    def __init__(self, key_func: Callable[[T], Hashable] = _simple_return):
         self.key_func = key_func
         self._map: dict[Hashable, T] = {}
 

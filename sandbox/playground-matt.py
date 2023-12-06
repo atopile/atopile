@@ -1,4 +1,5 @@
 # %%
+from itertools import chain
 from pathlib import Path
 from textwrap import dedent
 
@@ -6,10 +7,11 @@ import rich
 import rich.tree
 
 from atopile.address import AddrStr
+from atopile.lazy_map import LazyMap
+from atopile.model2.build3 import Dizzy, Lofty, Scoop
 from atopile.model2.datamodel import Instance
 from atopile.model2.errors import ErrorHandler, HandlerMode
-from atopile.model2.parse import parse_text_as_file
-from atopile.model2.build3 import Scoop, Dizzy, Lofty
+from atopile.model2.parse import parse_file, parse_text_as_file
 
 # %%
 
@@ -67,6 +69,9 @@ src_code = """
 """
 
 #%%
+search_paths = [
+    Path("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/"),
+]
 
 paths_to_ast = {
     Path("src_code"): parse_text_as_file(dedent(src_code).strip(), "src_code"),
@@ -74,12 +79,19 @@ paths_to_ast = {
 
 error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
 
-scoop = Scoop(error_handler, paths_to_ast)
+known_files = chain.from_iterable(search_path.glob("**/*.ato") for search_path in search_paths)
+ast_map = LazyMap(parse_file, known_files, paths_to_ast)
+scoop = Scoop(error_handler, ast_map, search_paths)
 dizzy = Dizzy(error_handler, scoop)
 lofty = Lofty(error_handler, dizzy)
 
 # %%
-flat = lofty[AddrStr.from_parts(path="src_code", ref="Root")]
+flat = lofty[
+    AddrStr.from_parts(
+        path="/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/spin_servo_nema17.ato",
+        ref="SpinServoNEMA17"
+    )
+]
 # %%
 lofty._output_cache
 # %%

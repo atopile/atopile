@@ -7,6 +7,7 @@ import enum
 import logging
 from collections import ChainMap
 from contextlib import contextmanager
+from itertools import chain
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
@@ -17,14 +18,15 @@ from atopile.address import AddrStr
 from atopile.model2 import errors
 from atopile.model2.datatypes import KeyOptItem, KeyOptMap, Ref
 from atopile.model2.generic_methods import recurse
+from atopile.model2.parse_utils import get_src_info_from_ctx
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
 from .datamodel import (
     Import,
     Instance,
-    LinkDef,
     Link,
+    LinkDef,
     ObjectDef,
     ObjectLayer,
     Replacement,
@@ -271,8 +273,10 @@ class Scoop(BaseTranslator):
         self,
         error_handler: errors.ErrorHandler,
         input_map: Mapping[str | Path, ParserRuleContext],
+        search_paths: Iterable[Path | str],
     ) -> None:
         self.input_map = input_map
+        self.search_paths = search_paths
         self._output_cache: dict[AddrStr, ObjectDef] = {}
         super().__init__(error_handler)
 
@@ -381,7 +385,30 @@ class Scoop(BaseTranslator):
             # import everything
             raise NotImplementedError("import *")
 
-        import_addr = AddrStr.from_parts(path=from_file, ref=import_what_ref)
+        # get the current working directory
+        current_file, _, _ = get_src_info_from_ctx(ctx)
+        try:
+            current_file = Path(current_file)
+            if current_file.is_file():
+                candidate_path = current_file.parent / from_file
+                self.input_map[candidate_path]
+            else:
+                raise TypeError
+        except (KeyError, TypeError):
+            for search_path in self.search_paths:
+                candidate_path = search_path / from_file
+                try:
+                    self.input_map[candidate_path]
+                except KeyError:
+                    continue
+                else:
+                    break
+            else:
+                raise errors.AtoImportNotFoundError.from_ctx(  # pylint: disable=raise-missing-from
+                    f"File '{from_file}' not found.", ctx
+                )
+
+        import_addr = AddrStr.from_parts(path=candidate_path, ref=import_what_ref)
 
         import_ = Import(
             src_ctx=ctx,
@@ -710,7 +737,15 @@ class Lofty(BaseTranslator):
                 )
                 actual_super = self.input_map[super_addr]
             else:
-                new_class_addr = lookup_obj_in_closure(self._obj_layer_stack[-1].obj_def, new_class_ref)
+                try:
+                    new_class_addr = lookup_obj_in_closure(
+                        self._obj_layer_stack[-1].obj_def, new_class_ref
+                    )
+                except KeyError as ex:
+                    raise errors.AtoKeyError.from_ctx(
+                        f"Couldn't find ref {new_class_ref}",
+                        ctx
+                    ) from ex
                 actual_super = self.input_map[new_class_addr]
 
             new_instance = self.make_instance(new_ref, actual_super)

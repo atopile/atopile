@@ -180,3 +180,4 @@ class Instance(Base):
 
 resolve_types(LinkDef)
 resolve_types(Instance)
+resolve_types(Link)
