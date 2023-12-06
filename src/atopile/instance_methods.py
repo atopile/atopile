@@ -73,17 +73,6 @@ class LazyMap(collections.abc.MutableMapping[K, V]):
     def __len__(self) -> int:
         return len(self._map)
 
-# %%
-
-def get_children(address: str) -> Iterable[Instance]:
-    
-
-
-
-
-
-
-
 
 
 def make_tree(instance: Instance, tree: rich.tree.Tree = None) -> rich.tree.Tree:
@@ -169,3 +158,39 @@ r_top = flat.children["vdiv"].children["r_top"]
 # %%
 r_top.supers
 # %%
+# %%
+from atopile.datatypes import Ref
+
+root_name = Ref(())
+c1_name = Ref(('a',))
+c2_name = Ref(('a', 'b',))
+c2_name = Ref(('a', 'b', 'c',))
+
+def get_children(address: str) -> Iterable[Instance]:
+    root_addr = get_entry(address)
+    root_instance = lofty[root_addr]
+    ref_str = get_ref(address)
+    for child_ref in ref_str:
+        nested_instance = root_instance.children[child_ref]
+    children_to_return = {}
+    for child_key, child_to_return in nested_instance.children.items():
+        children_to_return[address + child_key] = child_to_return #TODO: might want to add a function to append two strings together
+
+    return children_to_return
+
+
+# %%
+
+from atopile.address import get_entry, get_file, get_ref
+ROOT = "test.ato:Root::"
+ELEMENT = "test.ato:Root::a.b.c"
+print(get_entry(ROOT))
+print(get_file(ROOT))
+print(get_ref(ELEMENT))
+
+
+
+# %%
+
+get_children(flat)
+
