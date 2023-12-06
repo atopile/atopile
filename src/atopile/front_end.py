@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from functools import partial
 from itertools import chain
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional, Type
+from typing import Any, Iterable, Mapping, Optional, Callable
 
 import toolz
 from antlr4 import ParserRuleContext
@@ -33,11 +33,7 @@ class Base:
     """Represent a base class for all things."""
     src_ctx: Optional[ParserRuleContext] = field(kw_only=True, default=None)
 
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}>"
-
-
-@define(repr=False)
+@define
 class Import(Base):
     """Represent an import statement."""
     obj_addr: AddrStr
@@ -45,14 +41,10 @@ class Import(Base):
     def __repr__(self) -> str:
         return f"<Import {self.obj_addr}>"
 
-
 @define
 class Replacement(Base):
     """Represent a replacement statement."""
     new_super_ref: Ref
-
-    def __repr__(self) -> str:
-        return f"<Replacement {self.new_super_ref}>"
 
 
 @define(repr=False)
@@ -284,20 +276,17 @@ class BaseTranslator(AtopileParserVisitor):
             except errors.AtoError as err:
                 _errors.append(err)
                 self.error_handler.handle(err)
-                return (NOTHING,)
+                return KeyOptMap.empty()
 
-        items: Iterable[KeyOptItem] = toolz.pipe(
-            children,  # stick in data
-            toolz.curried.map(__visit),  # visit each child
-            toolz.curried.concat,  # flatten the results
-            toolz.curried.filter(lambda x: x is not NOTHING),  # filter out nothings
-            toolz.curried.map(KeyOptItem),  # ensure they are all KeyOptItem
-        )
-
+        child_results = list(__visit(child) for child in children)
         if _errors:
             raise ExceptionGroup("Errors occured in nested statements", _errors)
 
-        return KeyOptMap(items)
+        child_results = chain.from_iterable(child_results)
+        child_results = list(item for item in child_results if item is not NOTHING)
+        child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
+
+        return KeyOptMap(child_results)
 
     def visit_ref_helper(
         self,
@@ -369,16 +358,7 @@ class BaseTranslator(AtopileParserVisitor):
         and raising exceptions serves as our collection mechanism.
         """
         if ctx.simple_stmts():
-            stmt_errors, stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
-
-            if stmt_errors:
-                if len(stmt_errors) == 1:
-                    raise stmt_errors[0]
-                else:
-                    raise errors.AtoErrorGroup.from_ctx(
-                        "Errors occured in nested statements", stmt_errors, ctx
-                    )
-
+            stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
             return stmt_returns
         elif ctx.compound_stmt():
             item = self.visit(ctx.compound_stmt())
@@ -391,10 +371,10 @@ class BaseTranslator(AtopileParserVisitor):
 
     def visitSimple_stmts(
         self, ctx: ap.Simple_stmtsContext
-    ) -> tuple[list[errors.AtoError], KeyOptMap]:
+    ) -> KeyOptMap:
         return self.visit_iterable_helper(ctx.simple_stmt())
 
-    def visitBlock(self, ctx) -> tuple[list[errors.AtoError], KeyOptMap]:
+    def visitBlock(self, ctx) -> KeyOptMap:
         if ctx.stmt():
             return self.visit_iterable_helper(ctx.stmt())
         if ctx.simple_stmts():
@@ -423,25 +403,25 @@ class BaseTranslator(AtopileParserVisitor):
         ), "New statements should have already been filtered out."
         raise TypeError(f"Unexpected assignable type {type(ctx)}")
 
-
 class Scoop(BaseTranslator):
     """Scoop's job is to map out all the object definitions in the code."""
 
     def __init__(
         self,
         error_handler: errors.ErrorHandler,
-        input_map: Mapping[str | Path, ParserRuleContext],
+        ast_getter: Callable[[str | Path], ParserRuleContext],
         search_paths: Iterable[Path | str],
     ) -> None:
-        self.input_map = input_map
+        self.ast_getter = ast_getter
         self.search_paths = search_paths
         self._output_cache: dict[AddrStr, ObjectDef] = {}
         super().__init__(error_handler)
 
-    def __getitem__(self, addr: AddrStr) -> ObjectDef:
+    def get_obj_def(self, addr: AddrStr) -> ObjectDef:
+        """Returns the ObjectDef for a given address."""
         if addr not in self._output_cache:
             assert addr.file is not None
-            file_ast = self.input_map[addr.file]
+            file_ast = self.ast_getter(addr.file)
             obj = self.visitFile_input(file_ast)
             assert isinstance(obj, ObjectDef)
             # this operation puts it and it's children in the cache
@@ -464,7 +444,7 @@ class Scoop(BaseTranslator):
 
     def visitFile_input(self, ctx: ap.File_inputContext) -> ObjectDef:
         """Visit a file input and return it's object."""
-        file_errors, locals_ = self.visit_iterable_helper(ctx.stmt())
+        locals_ = self.visit_iterable_helper(ctx.stmt())
 
         # FIXME: clean this up, and do much better name collision detection on it
         local_defs = {}
@@ -480,7 +460,6 @@ class Scoop(BaseTranslator):
 
         file_obj = ObjectDef(
             src_ctx=ctx,
-            errors=file_errors,
             super_ref=Ref.from_one("MODULE"),
             imports=imports,
             local_defs=local_defs,
@@ -498,10 +477,7 @@ class Scoop(BaseTranslator):
         else:
             block_super_ref = self.visitBlocktype(ctx.blocktype())
 
-        block_errors, locals_ = self.visitBlock(ctx.block())
-
-        if block_errors:
-            raise errors.AtoFatalError
+        locals_ = self.visitBlock(ctx.block())
 
         # FIXME: this needs far better name collision detection
         local_defs = {}
@@ -519,7 +495,6 @@ class Scoop(BaseTranslator):
 
         block_obj = ObjectDef(
             src_ctx=ctx,
-            errors=block_errors,
             super_ref=block_super_ref,
             imports=imports,
             local_defs=local_defs,
@@ -551,32 +526,30 @@ class Scoop(BaseTranslator):
 
         # get the current working directory
         current_file, _, _ = get_src_info_from_ctx(ctx)
-        try:
-            current_file = Path(current_file)
-            if current_file.is_file():
-                candidate_path = current_file.parent / from_file
-                self.input_map[candidate_path]
-            else:
-                raise TypeError
-        except (KeyError, TypeError):
-            for search_path in self.search_paths:
-                candidate_path = search_path / from_file
-                try:
-                    self.input_map[candidate_path]
-                except KeyError:
-                    continue
-                else:
-                    break
-            else:
-                raise errors.AtoImportNotFoundError.from_ctx(  # pylint: disable=raise-missing-from
-                    f"File '{from_file}' not found.", ctx
-                )
+        current_file = Path(current_file)
+        if current_file.is_file():
+            search_paths = chain((current_file.parent,), self.search_paths)
+        else:
+            search_paths = self.search_paths
+
+        for search_path in search_paths:
+            candidate_path: Path = (search_path / from_file).resolve().absolute()
+            if candidate_path.exists():
+                break
+        else:
+            raise errors.AtoImportNotFoundError.from_ctx(  # pylint: disable=raise-missing-from
+                f"File '{from_file}' not found.", ctx
+            )
+
+        if _errors:
+            raise errors.AtoErrorGroup.from_ctx(
+                "Errors occured in nested statements", _errors, ctx
+            )
 
         import_addr = AddrStr.from_parts(path=candidate_path, ref=import_what_ref)
 
         import_ = Import(
             src_ctx=ctx,
-            errors=_errors,
             obj_addr=import_addr,
         )
 
@@ -604,7 +577,6 @@ class Scoop(BaseTranslator):
 
         replacement = Replacement(
             src_ctx=ctx,
-            errors=[],
             new_super_ref=new_class,
         )
 
@@ -659,17 +631,18 @@ class Dizzy(BaseTranslator):
     def __init__(
         self,
         error_handler: errors.ErrorHandler,
-        input_map: Mapping[AddrStr, ObjectDef],
+        obj_def_getter: Callable[[AddrStr], ObjectDef],
     ) -> None:
-        self.input_map = input_map
+        self.obj_def_getter = obj_def_getter
         self._output_cache: dict[AddrStr, ObjectLayer] = {
             k: v for k, v in BUILTINS_BY_ADDR.items()
         }
         super().__init__(error_handler)
 
-    def __getitem__(self, addr: AddrStr) -> ObjectLayer:
+    def get_obj_layer(self, addr: AddrStr) -> ObjectLayer:
+        """Returns the ObjectLayer for a given address."""
         if addr not in self._output_cache:
-            obj_def = self.input_map[addr]
+            obj_def = self.obj_def_getter(addr)
             obj = self.make_object(obj_def)
             assert isinstance(obj, ObjectLayer)
             self._output_cache[addr] = obj
@@ -681,7 +654,7 @@ class Dizzy(BaseTranslator):
         assert isinstance(ctx, (ap.File_inputContext, ap.BlockdefContext))
         if obj_def.super_ref is not None:
             super_addr = lookup_obj_in_closure(obj_def, obj_def.super_ref)
-            super = self[super_addr]
+            super = self.get_obj_layer(super_addr)
         else:
             super = None
 
@@ -691,17 +664,13 @@ class Dizzy(BaseTranslator):
             ctx_with_stmts = ctx.block()
         else:
             ctx_with_stmts = ctx
-        errors_, locals_ = self.visitBlock(ctx_with_stmts)
-
-        if errors_:
-            raise errors.AtoFatalError
+        locals_ = self.visitBlock(ctx_with_stmts)
 
         # TODO: check for name collisions
         data = {ref[0]: v for ref, v in locals_}
 
         obj = ObjectLayer(
             src_ctx=ctx_with_stmts,  # here we save something that's "block-like"
-            errors=errors_,
             obj_def=obj_def,
             super=super,
             data=data,
@@ -748,23 +717,25 @@ class Lofty(BaseTranslator):
     def __init__(
         self,
         error_handler: errors.ErrorHandler,
-        input_map: Mapping[AddrStr, ObjectLayer],
+        obj_layer_getter: Callable[[AddrStr], ObjectLayer],
     ) -> None:
+        self._output_cache: dict[AddrStr, Instance] = {}
         # known replacements are represented as the reference of the instance
         # to be replaced, and a tuple containing the length of the ref of the
         # thing that called for that replacement, and the object that will replace it
         self._known_replacements: dict[Ref, Replacement] = {}
-        self.input_map = input_map
-        self._output_cache: dict[AddrStr, Instance] = {}
-        self._ref_stack: list[Ref] = []
-        self._obj_layer_stack: list[ObjectLayer] = []
+        self.obj_layer_getter = obj_layer_getter
+
+        self._instance_context_stack: list[AddrStr] = []
+        self._obj_layer_stack: list[AddrStr] = []
         super().__init__(
             error_handler,
         )
 
-    def __getitem__(self, addr: AddrStr) -> Instance:
+    def get_instance_tree(self, addr: AddrStr) -> Instance:
+        """Return an instance object represented by the given address."""
         if addr not in self._output_cache:
-            obj_layer = self.input_map[addr]
+            obj_layer = self.obj_layer_getter(addr)
             obj = self.make_instance(addr.ref, obj_layer)
             assert isinstance(obj, Instance)
             self._output_cache[addr] = obj
@@ -797,21 +768,16 @@ class Lofty(BaseTranslator):
         with self._context(new_ref, super):
             # FIXME: can we make this functional easily?
             # FIXME: this should deal with name collisions and type collisions
-            _errors = []
             all_internal_items: list[KeyOptItem] = []
             for super in reversed(supers):
                 if super.src_ctx is None:
                     # FIXME: this is currently the case for the builtins
                     continue
-                internal_errors, internal_items = self.visitBlock(super.src_ctx)
-                _errors.extend(internal_errors)
+                internal_items = self.visitBlock(super.src_ctx)
                 all_internal_items.extend(internal_items)
 
         for ref in commanded_replacements:
             self._known_replacements.pop(ref)
-
-        if _errors:
-            raise errors.AtoFatalError
 
         internal_by_type = KeyOptMap(all_internal_items).map_items_by_type(
             [Instance, LinkDef, (str, int, float, bool)]
@@ -838,7 +804,6 @@ class Lofty(BaseTranslator):
             target_instance = _lookup_item_in_children(children, link_def.target)
             link = Link(
                 src_ctx=link_def.src_ctx,
-                errors=[],
                 parent=source_instance,
                 source=source_instance,
                 target=target_instance,
@@ -858,7 +823,6 @@ class Lofty(BaseTranslator):
         data = ChainMap(override_data, *[s.data for s in supers])
 
         new_instance = Instance(
-            errors=_errors,
             ref=new_ref,
             supers=supers,
             children=children,
@@ -891,7 +855,7 @@ class Lofty(BaseTranslator):
 
             new_class_ref = self.visitName_or_attr(new_stmt.name_or_attr())
 
-            object_context = self._obj_layer_stack[-1]
+            object_context = self.
 
             # FIXME: this is a giant fucking mess
             new_ref = Ref(self._ref_stack[-1] + assigned_ref)
@@ -901,17 +865,18 @@ class Lofty(BaseTranslator):
                     object_context.obj_def,
                     self._known_replacements[new_ref].new_super_ref,
                 )
-                actual_super = self.input_map[super_addr]
+                actual_super = self.obj_layer_getter(super_addr)
             else:
                 try:
                     new_class_addr = lookup_obj_in_closure(
-                        self._obj_layer_stack[-1].obj_def, new_class_ref
+                        object_context.obj_def,
+                        new_class_ref
                     )
                 except KeyError as ex:
                     raise errors.AtoKeyError.from_ctx(
                         f"Couldn't find ref {new_class_ref}", ctx
                     ) from ex
-                actual_super = self.input_map[new_class_addr]
+                actual_super = self.obj_layer_getter(new_class_addr)
 
             new_instance = self.make_instance(new_ref, actual_super)
 

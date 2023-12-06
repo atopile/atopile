@@ -9,7 +9,25 @@ import rich.tree
 from atopile.address import AddrStr
 from atopile.front_end import Dizzy, Lofty, Scoop
 from atopile.errors import ErrorHandler, HandlerMode
-from atopile.parse import parse_file, parse_text_as_file
+from atopile.parse import FileParser
+
+
+error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
+
+search_paths = [
+    Path("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/"),
+]
+
+parser = FileParser()
+
+scoop = Scoop(error_handler, parser.get_ast_from_file, search_paths)
+dizzy = Dizzy(error_handler, scoop.get_obj_def)
+lofty = Lofty(error_handler, dizzy.get_obj_layer)
+
+# %%
+test_def = lofty.get_instance_tree(AddrStr.from_parts("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/spin_servo_nema17.ato", "SpinServoNEMA17"))
+#%%
+scoop._output_cache["/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/spin_servo_nema17.ato"].imports
 
 # %%
 
@@ -79,9 +97,7 @@ error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
 
 known_files = chain.from_iterable(search_path.glob("**/*.ato") for search_path in search_paths)
 ast_map = LazyMap(parse_file, known_files, paths_to_ast)
-scoop = Scoop(error_handler, ast_map, search_paths)
-dizzy = Dizzy(error_handler, scoop)
-lofty = Lofty(error_handler, dizzy)
+
 
 # %%
 flat = lofty[

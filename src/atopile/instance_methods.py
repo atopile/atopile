@@ -181,11 +181,11 @@ def get_children(address: str) -> Iterable[Instance]:
 
 # %%
 
-from atopile.address import get_entry, get_file, get_ref
+from atopile.address import get_entry, get_file_section, get_ref
 ROOT = "test.ato:Root::"
 ELEMENT = "test.ato:Root::a.b.c"
 print(get_entry(ROOT))
-print(get_file(ROOT))
+print(get_file_section(ROOT))
 print(get_ref(ELEMENT))
 
 
