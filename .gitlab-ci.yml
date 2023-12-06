@@ -38,16 +38,23 @@ docs-deploy:
 
 docker-build:
   stage: build
+
+  parallel:
+    matrix:
+      - DOCKERFILE:
+        - ci
+        - user
+
   image:
-    # consider upgrading to a newer version of kaniko?
-    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
+
   script:
     - /kaniko/executor
       --context "${CI_PROJECT_DIR}"
-      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
-      --destination "${CI_REGISTRY_IMAGE}:latest"
-      --destination "${CI_REGISTRY_IMAGE}:$CI_COMMIT_TAG"
+      --dockerfile "${CI_PROJECT_DIR}/dockerfiles/Dockerfile.${DOCKERFILE}"
+      --destination "${CI_REGISTRY_IMAGE}/${DOCKERFILE}:latest"
+      --destination "${CI_REGISTRY_IMAGE}/${DOCKERFILE}:$CI_COMMIT_TAG"
       --build-arg SETUPTOOLS_SCM_PRETEND_VERSION="$CI_COMMIT_TAG"
   rules:
     - if: $CI_COMMIT_TAG
@@ -86,10 +93,7 @@ cli-test:
 cli-build:
   stage: build
   image: python:latest
-  needs:
-    - viewer-build
   script:
-    - cp -r dist/ src/atopile/viewer/static
     - pip install build twine
     - python -m build
     - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*

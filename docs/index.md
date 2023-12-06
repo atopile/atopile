@@ -14,8 +14,37 @@ You can find inspiration in a more advanced project like the servo-drive: [https
 
 ## Intentional Omissions
 
-- Detailed Installation -> instructions are in the `atopile` project's (README.md)[https://gitlab.atopile.io/atopile/atopile/-/blob/main/README.md?ref_type=heads] and are fluid since there's a bunch of not-so-well-packaged components at the moment
-- Creating new projects -> we are activelly working on the language synthax. New keywords and features will be intorduced in the future with potential breaking changes to previous versions of `.ato` files.
+- Developer installation -> REAMDE.md
+
+## Installation
+
+There's two basic routes to installing atopile; either you're familiar with python, sysadminy stuff and the command line, and you'd like to use it -- or you're not.
+
+### For the sane
+
+- Install [VSCode](https://code.visualstudio.com/)
+- Install the [dev containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+- Clone your template repo
+- Open it in VSCode
+
+![docs/images/dev-container-question.png](images/dev-container-question.png)
+
+Click the "Show Log" at the top of this modal
+
+![docs/images/get-to-code-loading.png](images/get-to-code-loading.png)
+
+Wait a sec for the container's image to download and the container to start
+
+![docs/images/code-loading.png](images/code-loading.png)
+
+### For the adventurous
+
+- Requires:
+  - `python3.11` or later
+  - `pip`
+  - `git`
+  - perhaps manually installing some deps we've forked
+
 
 ## Project structure
 
