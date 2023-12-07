@@ -1,120 +1,227 @@
 # %%
-import toolz
 import logging
-import sys
-from itertools import chain
-from pathlib import Path
-from textwrap import dedent
-
-import click
-import rich
-import rich.tree
-from omegaconf import OmegaConf
-
-from atopile import address
-from atopile.address import AddrStr
-# from atopile.cli.common import project_options
-# from atopile.config import Config
-from atopile.errors import ErrorHandler, HandlerMode
-from atopile.front_end import Dizzy, Instance, Lofty, Scoop
-from atopile.parse import FileParser
-
 from collections import ChainMap, defaultdict
 from pathlib import Path
 from typing import Any, Callable, Hashable, Iterable, Iterator, List, Optional, Tuple
 
 from attrs import define, frozen
 from toolz import groupby
-from pathlib import Path
 
 from atopile.datatypes import Ref
 from atopile.loop_soup import LoopSoup
+from atopile.front_end import Instance
 
 # %%
 
-error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
+ato_src = """
+interface Power:
+    signal vcc
+    signal gnd
 
-search_paths = [
-    Path("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/"),
-]
+component Resistor:
+    pin 1
+    pin 2
+    designator_prefix = "R"
 
-parser = FileParser()
+module VDiv:
+    signal top
+    signal out
+    signal bottom
 
-scoop = Scoop(error_handler, parser.get_ast_from_file, search_paths)
-dizzy = Dizzy(error_handler, scoop.get_obj_def)
-lofty = Lofty(error_handler, dizzy.get_obj_layer)
+    power = new Power
+    power.vcc ~ top
+    power.gnd ~ bottom
 
-# entry_instance_tree = lofty.get_instance_tree(config.selected_build.abs_entry)
+    r_top = new Resistor
+    r_bottom = new Resistor
+    top ~ r_top.1
+    r_top.2 ~ out
+    r_top.2 ~ r_bottom.1
+    r_bottom.2 ~ bottom
 
-ROOT = address.from_parts("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/spin_servo_nema17.ato", "SpinServoNEMA17")
-lofty.get_instance_tree(ROOT)
+module Root:
+    vdiv = new VDiv
+    vdiv.r_top.value = 123
+    vdiv.r_bottom.value = 456
+"""
+
+# example addr str:
+ROOT = ":Root::"
+
+_children: dict[str, list[str]] = {
+    ":Root::": [":Root::vdiv"],
+    ":Root::vdiv": [
+        ":Root::vdiv.top",
+        ":Root::vdiv.out",
+        ":Root::vdiv.bottom",
+        ":Root::vdiv.r_top",
+        ":Root::vdiv.r_bottom",
+        ":Root::vdiv.power",
+    ],
+    ":Root::vdiv.top": [],
+    ":Root::vdiv.out": [],
+    ":Root::vdiv.bottom": [],
+    ":Root::vdiv.r_top": [":Root::vdiv.r_top.1", ":Root::vdiv.r_top.2"],
+    ":Root::vdiv.r_bottom": [":Root::vdiv.r_bottom.1", ":Root::vdiv.r_bottom.2"],
+    ":Root::vdiv.r_top.1": [],
+    ":Root::vdiv.r_top.2": [],
+    ":Root::vdiv.r_bottom.1": [],
+    ":Root::vdiv.r_bottom.2": [],
+    ":Root::vdiv.power": [":Root::vdiv.power.vcc", ":Root::vdiv.power.gnd"],
+    ":Root::vdiv.power.vcc": [],
+    ":Root::vdiv.power.gnd": [],
+}
+
+# def get_children(addr: str) -> list[str]:
+#     # TODO: write me irl
+#     return _children[addr]
+
+from atopile.address import get_entry, get_instance_section
+
+def get_children(address: str) -> Iterable[Instance]:
+    root_addr = get_entry(address)
+    root_instance = lofty[root_addr]
+    ref_str = get_instance_section(address)
+    for child_ref in ref_str:
+        nested_instance = root_instance.children[child_ref]
+    children_to_return = {}
+    for child_key, child_to_return in nested_instance.children.items():
+        children_to_return[address + child_key] = child_to_return #TODO: might want to add a function to append two strings together
+
+    return children_to_return
+
+_data: dict[str, dict[str, Any]] = {
+    ":Root::": {},
+    ":Root::vdiv": {},
+    ":Root::vdiv.top": {},
+    ":Root::vdiv.out": {},
+    ":Root::vdiv.bottom": {},
+    ":Root::vdiv.r_top": {
+        "value": 123,
+        "designator_prefix": "R",
+        "footprint": "0402",
+    },
+    ":Root::vdiv.r_bottom": {
+        "value": 456,
+        "designator_prefix": "R",
+        "footprint": "0402",
+    },
+    ":Root::vdiv.r_top.1": {},
+    ":Root::vdiv.r_top.2": {},
+    ":Root::vdiv.r_bottom.1": {},
+    ":Root::vdiv.r_bottom.2": {},
+    ":Root::vdiv.power": {},
+    ":Root::vdiv.power.vcc": {},
+    ":Root::vdiv.power.gnd": {},
+}
+
+_lock_data: dict[str, dict[str, Any]] = {
+    ":Root::": {},
+    ":Root::vdiv": {},
+    ":Root::vdiv.top": {},
+    ":Root::vdiv.out": {},
+    ":Root::vdiv.bottom": {},
+    ":Root::vdiv.r_top": {},
+    ":Root::vdiv.r_bottom": {"designator": "R10",},
+    ":Root::vdiv.r_top.1": {},
+    ":Root::vdiv.r_top.2": {},
+    ":Root::vdiv.r_bottom.1": {},
+    ":Root::vdiv.r_bottom.2": {},
+    ":Root::vdiv.power": {},
+    ":Root::vdiv.power.vcc": {},
+    ":Root::vdiv.power.gnd": {},
+}
 
 # %%
-
-def get_children(addr: str) -> Iterable[Instance]:
-    root_addr = address.get_entry(addr)
-    root_instance = lofty.get_instance_tree(root_addr)
-    ref_str = address.get_instance_section(addr)
-
-    nested_instance = root_instance
-    if ref_str:
-        for child_ref in ref_str.split("."):
-            nested_instance = nested_instance.children[child_ref]
-
-    for child in nested_instance.children.values():
-        yield child.addr
 
 def get_data_dict(addr: str) -> dict[str, str | int | bool | float]:
     """
     Return the data at the given address
     """
-    return lofty._output_cache[addr].data
+    root_addr = get_entry(addr)
+    root_instance = lofty[root_addr]
+    ref_str = get_instance_section(address)
+    for child_ref in ref_str:
+        nested_instance = root_instance.children[child_ref]
+    return nested_intance.
+
+    return children_to_return
+    return _data[addr]
 
 def get_lock_data_dict(addr: str) -> dict[str, str | int | bool | float]:
     """
     Return the data at the given address
     """
     # TODO: write me irl
-    return {}
     return _lock_data[addr]
 
 def set_lock_data_dict(addr: str, data: dict[str, str | int | bool | float]) -> None:
     """
     Set the data at the given address
     """
-    return
     _lock_data[addr] = data
 
-def all_descendants(addr: str) -> Iterable[str]:
+
+# %%
+
+def all_descendants(root: str) -> Iterable[str]:
     """
     Return a list of addresses in depth-first order
     """
-    for child in get_children(addr):
+    for child in get_children(root):
         yield from all_descendants(child)
-    yield addr
+    yield root
 
-#%%
 
-def _make_dumb_matcher(pass_list: Iterable[str]) -> Callable[[str], bool]:
+def _make_dumb_matcher(pass_list) -> Callable[[str], bool]:
     """
     Return a filter that checks if the addr is in the pass_list
     """
-    # TODO: write me irl
-    def _filter(addr: AddrStr) -> bool:
-        instance = lofty._output_cache[addr]
-        for super_ in reversed(instance.supers):
-            if super_.address in pass_list:
-                return True
+    def _filter(addr: str) -> bool:
+        if addr in pass_list:
+            return True
         return False
     return _filter
 
+_component_addrs = [
+    ":Root::vdiv.r_top",
+    ":Root::vdiv.r_bottom",
+]
+match_components = _make_dumb_matcher(_component_addrs)
 
-match_components = _make_dumb_matcher(["<Built-in>:Component"])
-match_modules = _make_dumb_matcher(["<Built-in>:Module"])
-match_signals = _make_dumb_matcher(["<Built-in>:Signal"])
-match_pins = _make_dumb_matcher("<Built-in>:Pin")
-match_pins_and_signals = _make_dumb_matcher(["<Built-in>:Pin", "<Built-in>:Signal"])
-match_interfaces = _make_dumb_matcher(["<Built-in>:Interface"])
+_module_addrs = [
+    ":Root::vdiv",
+    ":Root::",
+]
+match_modules = _make_dumb_matcher(_module_addrs)
+
+_pin_addrs = [
+    ":Root::vdiv.r_top.1",
+    ":Root::vdiv.r_top.2",
+    ":Root::vdiv.r_bottom.1",
+    ":Root::vdiv.r_bottom.2",
+]
+
+match_pins = _make_dumb_matcher(_pin_addrs)
+
+_signal_addrs = [
+    ":Root::vdiv.top",
+    ":Root::vdiv.bottom",
+    ":Root::vdiv.out",
+    ":Root::vdiv.power.vcc",
+    ":Root::vdiv.power.gnd",
+]
+
+match_signals = _make_dumb_matcher(_signal_addrs)
+
+match_pins_and_signals = _make_dumb_matcher([*_pin_addrs, *_signal_addrs])
+
+_interface_addrs = [":Root::vdiv.power"]
+
+match_interfaces = _make_dumb_matcher(_interface_addrs)
+
+
+# %%
 
 def get_parent(addr: str) -> Optional[str]:
     """
@@ -122,17 +229,21 @@ def get_parent(addr: str) -> Optional[str]:
     """
     # TODO: write me irl
     if "::" not in addr:
-        return None
+        raise ValueError("Address isn't an instance")
     root_path, instance_path = addr.rsplit("::", 1)
     if "." in instance_path:
         return addr.rsplit(".", 1)[0]
     elif instance_path:
-        return root_path
+        return root_path + "::"
+    return None  # there is no parent
 
 def get_name(addr: str) -> list[str]:
     # TODO: write me irl
     addr_list = addr.split(".")
     return addr_list[-1]
+
+
+# %%
 
 def iter_parents(addr: str) -> Iterator[str]:
     """
@@ -141,26 +252,49 @@ def iter_parents(addr: str) -> Iterator[str]:
     while addr := get_parent(addr):
         yield addr
 
+
 # %%
 
-def _get_links(addr: AddrStr) -> Iterable[tuple[AddrStr, AddrStr]]:
-    """TODO: write me irl"""
-    links = lofty._output_cache[addr].links
-    for link in links:
-        yield (link.source.addr, link.target.addr)
 
-def _get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
+_links: dict[str, list[tuple[str, str]]] = {
+    ":Root::": [],
+    ":Root::vdiv": [
+        (":Root::vdiv.top", ":Root::vdiv.r_top.1"),
+        (":Root::vdiv.out", ":Root::vdiv.r_top.2"),
+        (":Root::vdiv.r_top.2", ":Root::vdiv.r_bottom.1"),
+        (":Root::vdiv.r_bottom.2", ":Root::vdiv.bottom"),
+        (":Root::vdiv.power.vcc", ":Root::vdiv.top"),
+        (":Root::vdiv.power.gnd", ":Root::vdiv.bottom"),
+    ],
+    ":Root::vdiv.top": [],
+    ":Root::vdiv.out": [],
+    ":Root::vdiv.bottom": [],
+    ":Root::vdiv.r_top": [],
+    ":Root::vdiv.r_bottom": [],
+    ":Root::vdiv.r_top.1": [],
+    ":Root::vdiv.r_top.2": [],
+    ":Root::vdiv.r_bottom.1": [],
+    ":Root::vdiv.r_bottom.2": [],
+    ":Root::vdiv.power": [],
+    ":Root::vdiv.power.vcc": [],
+    ":Root::vdiv.power.gnd": [],
+}
+
+
+# %%
+
+def _get_nets(root: str) -> Iterable[Iterable[str]]:
     # TODO: support interfaces
     net_soup = LoopSoup()
     for addr in all_descendants(root):
         if match_pins_and_signals(addr):
             net_soup.add(addr)
-        for source, target in _get_links(addr):
-            if match_interfaces(source) or match_interfaces(target):
-                pass  # FIXME:
-            else:
-                net_soup.join(source, target)
+        for source, target in _links[addr]:
+            net_soup.join(source, target)
     return net_soup.groups()
+
+
+# %%
 
 @define
 class Net:
@@ -245,7 +379,7 @@ def add_prefix(conflicts: Iterator[list[Net]]):
                 if parent_module:
                     # Get the ref of the parent module
                     if hasattr(parent_module, "ref"):
-                        net.prefix = address.get_instance_section(parent_module)
+                        net.prefix = address.get_instparent_module
 
 
 def add_suffix(conflicts: Iterator[list[Net]]):
@@ -274,8 +408,6 @@ def get_nets(root: str) -> dict[str, list[str]]:
         raise NotImplementedError("Only ROOT is supported for now")
     return _net_names_to_nodes
 
-# print(_net_names_to_nodes)
-
 # %%
 
 def get_mpn(addr: str) -> str:
@@ -283,8 +415,11 @@ def get_mpn(addr: str) -> str:
     Return the MPN for a component
     """
     # TODO: write me irl
-    comp_data = get_data_dict(addr)
-    return comp_data["mpn"]
+    _mpns = {
+        ":Root::vdiv.r_top": "LCSC-123",
+        ":Root::vdiv.r_bottom": "LCSC-456",
+    }
+    return _mpns[addr]
 
 def get_value(addr: str) -> str:
     """
@@ -296,24 +431,24 @@ def get_value(addr: str) -> str:
 
 # %%
 
-# import tempfile
-# import textwrap
+import tempfile
+import textwrap
 
-# from atopile.project.config import Config, make_config
+from atopile.project.config import Config, make_config
 
-# with tempfile.NamedTemporaryFile() as fp:
-#     fp.write(
-#         textwrap.dedent(
-#             """
-#             ato-version: ^0.0.21
-#             paths:
-#                 footprints: footprints
-#             """
-#         ).encode("utf-8")
-#     )
-#     fp.flush()
+with tempfile.NamedTemporaryFile() as fp:
+    fp.write(
+        textwrap.dedent(
+            """
+            ato-version: ^0.0.21
+            paths:
+                footprints: footprints
+            """
+        ).encode("utf-8")
+    )
+    fp.flush()
 
-#     _config = make_config(Path(fp.name))
+    _config = make_config(Path(fp.name))
 
 # pylint: disable=pointless-string-statement
 """
@@ -333,6 +468,23 @@ def get_footprint(addr: str) -> str:
     user_footprint_name = comp_data["footprint"]
     return user_footprint_name
 
+
+# %%
+
+"""
+Dicts we will need at the end:
+- COMPONENTS: List of [AddrStr] for all components
+- BOM: Dict of [('value', 'mpn') : ['compAddrStr']]
+- LIBPART: Dict of ['footprint' : ['compAddrStr']]
+- DESIGNATOR: Dict [compAddrStr : "Designator"]
+- NETS: List of signals and pins representing netlist -> netlist naming algorithm should produce: Dict ["net name" : [pinAddrStr]]
+- VALUE: [compAddrStr : value]
+- MPN: [[compAddrStr : mpn]
+"""
+
+
+
+
 # %%
 """
 Designators
@@ -344,12 +496,13 @@ from typing import Any, Iterable, Mapping, Optional, Type
 
 
 def _make_designators(root: str) -> dict[str,str]:
+    components = filter(match_components, all_descendants(root))
     designators: dict[str, str] = {}
     unnamed_components = []
     used_designators = set()
 
     # first pass: grab all the designators from the lock data
-    for component in filter(match_components, all_descendants(root)):
+    for component in components:
         designator = get_lock_data_dict(component).get("designator")
         if designator:
             used_designators.add(designator)
@@ -364,16 +517,11 @@ def _make_designators(root: str) -> dict[str,str]:
         while f"{prefix}{i}" in used_designators:
             i += 1
         designators[component] = f"{prefix}{i}"
-        used_designators.add(designators[component])
         set_lock_data_dict(component, {"designator": f"{prefix}{i}"})
 
     return designators
 
 _designators = _make_designators(ROOT)
-
-_designators
-
-#%%
 
 def get_designator(addr: str) -> str:
     """Return a mapping of instance address to designator."""
@@ -385,10 +533,6 @@ def set_designator(addr: str, designator: str) -> None:
     """Set the designator for the given address. To its lock data."""
     set_lock_data_dict(addr, {"designator": designator})
 
-# print(get_designator(":Root::vdiv.r_top"))
-# print(get_designator(":Root::vdiv.r_bottom"))
-
-# print(_lock_data)
 # %%
 """
 BOM
@@ -397,14 +541,11 @@ BOM
 - LCSC part number for each component
 """
 
-components = list(filter(match_components, all_descendants(ROOT)))
+components = filter(match_components, all_descendants(ROOT))
 bom = defaultdict(dict)
 #JLC format: Comment(whatever might be helpful)	Designator	Footprint	LCSC
 for component in components:
-    try:
-        mpn = get_mpn(component)
-    except KeyError:
-        continue
+    mpn = get_mpn(component)
     # add to bom keyed on mpn
     bom[mpn]["value"] = get_value(component)
     bom[mpn]["footprint"] = get_footprint(component)
@@ -426,8 +567,6 @@ table.add_column("LCSC")
 for mpn, data in bom.items():
     table.add_row(str(data['value']), data['designator'], data['footprint'], mpn)
 
-# Print the table
-print(table)
 
 # generate csv
 # with open('bom.csv', 'w', newline='') as csvfile:
@@ -469,18 +608,6 @@ def get_libpart_unique_components() -> dict:
 
     return libparts
 
-# %%
-
-def _get_footprint(addr: str) -> str:
-    """
-    Return the footprint for a component
-    """
-    try:
-        return get_footprint(addr)
-    except KeyError:
-        return "<FIXME: footprint>"
-
-# groupby(_get_footprint, filter(match_components, all_descendants(ROOT)))
 
 #%%
 def get_pins(component) -> dict:
@@ -489,18 +616,22 @@ def get_pins(component) -> dict:
 
 
 #%%
+# def get_component_footprints(root) -> dict:
+#     """Get a libpart from the instance"""
+#     libparts = defaultdict(list)
+#     footprints = {}
+#     components = filter(match_components, all_descendants(root))
+#     for component in components:
+#         footprint = get_footprint(component)
+#         footprints[component] = footprint
 
-import uuid
-import hashlib
+#     return footprints
 
-def generate_uid_from_path(path: str) -> str:
-    path_as_bytes = path.encode('utf-8')
-    hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
-    return str(uuid.UUID(bytes=hashed_path))
 
+from atopile.model.utils import generate_uid_from_path
 
 #%%
-from atopile.kicad6_datamodel import (
+from atopile.targets.netlist.kicad6_datamodel import (
     KicadComponent,
     KicadLibpart,
     KicadNet,
@@ -535,14 +666,8 @@ class Builder:
         # lowest_common_ancestor = lowest_common_super(map(_get_origin_of_instance, component))
         # lowest_common_ancestor = "FIXME: lowest_common_ancestor"
 
-        def _get_mpn(addr: AddrStr) -> str:
-            try:
-                return get_mpn(addr)
-            except KeyError:
-                return "<FIXME: MPN>"
-
         constructed_libpart = KicadLibpart(
-            part=_get_mpn(compAddrStr),
+            part=get_mpn(compAddrStr),
             description="lowest_common_ancestor",
             fields=[],
             pins=pins,
@@ -579,23 +704,11 @@ class Builder:
             tstamps=generate_uid_from_path(str(compAddrStr))
         )
 
-        def _get_value(addr: AddrStr) -> str:
-            try:
-                return get_value(addr)
-            except KeyError:
-                return "<FIXME: value>"
-
-        def _get_footprint(addr: AddrStr) -> str:
-            try:
-                return get_footprint(addr)
-            except KeyError:
-                return "<FIXME: footprint>"
-
         designator = get_designator(compAddrStr)
         constructed_component = KicadComponent(
             ref=designator,
-            value=_get_value(compAddrStr),
-            footprint=_get_footprint(compAddrStr),
+            value=get_value(compAddrStr),
+            footprint=get_footprint(compAddrStr),
             libsource=libsource,
             tstamp=generate_uid_from_path(str(compAddrStr)),
             fields=[],
@@ -609,7 +722,7 @@ class Builder:
         self.netlist = KicadNetlist()
 
         ######
-        for footprint, components in groupby(_get_footprint, filter(match_components, all_descendants(root))).items():
+        for footprint, components in groupby(get_footprint, filter(match_components, all_descendants(root))).items():
             libsource = self._libparts[footprint] = self.make_libpart(components[0])
 
             for component in components:
@@ -636,7 +749,6 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 builder = Builder()
 
 netlist = builder.build(ROOT)
-print(netlist)
 
 # Create a Jinja2 environment
 # this_dir = Path(__file__).parent
@@ -646,7 +758,6 @@ env = Environment(loader=FileSystemLoader(this_dir), undefined=StrictUndefined)
 # Create the complete netlist
 template = env.get_template("kicad6.j2")
 netlist_str = template.render(nl=builder.netlist)
-print(netlist_str)
 
 # %%
 
@@ -659,3 +770,5 @@ for fp in Path("/Users/mattwildoer/Projects/atopile-workspace/servo-drive").glob
         shutil.copy(fp, fp_target)
     except shutil.SameFileError:
         print(f"same file error {fp}")
+
+# %%

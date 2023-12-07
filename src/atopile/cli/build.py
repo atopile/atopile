@@ -18,6 +18,17 @@ from atopile.config import Config
 from atopile.errors import ErrorHandler, HandlerMode
 from atopile.front_end import Dizzy, Instance, Lofty, Scoop
 from atopile.parse import FileParser
+import logging
+from collections import ChainMap, defaultdict
+from pathlib import Path
+from typing import Any, Callable, Hashable, Iterable, Iterator, List, Optional, Tuple
+
+from attrs import define, frozen
+from toolz import groupby
+from pathlib import Path
+
+from atopile.datatypes import Ref
+from atopile.loop_soup import LoopSoup 
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -50,18 +61,3 @@ def build(
     config.paths.abs_build.mkdir(parents=True, exist_ok=True)
 
     # Do the build
-    error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
-
-    search_paths = [
-        Path("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/"),
-    ]
-
-    parser = FileParser()
-
-    scoop = Scoop(error_handler, parser.get_ast_from_file, search_paths)
-    dizzy = Dizzy(error_handler, scoop.get_obj_def)
-    lofty = Lofty(error_handler, dizzy.get_obj_layer)
-
-    entry_instance_tree = lofty.get_instance_tree(from_parts("/Users/mattwildoer/Projects/atopile-workspace/servo-drive/elec/src/spin_servo_nema17.ato", "SpinServoNEMA17"))
-
-    
