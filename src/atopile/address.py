@@ -27,6 +27,11 @@ def get_file(address: AddrStr) -> str:
     """
     return address.split(":")[0]
 
+def get_relative_addr_str(address: AddrStr) -> AddrStr:
+    """
+    Extract the relative address starting with the .ato file
+    """
+    return address.split("/")[-1]
 
 def get_entry(address: AddrStr) -> AddrStr:
     """

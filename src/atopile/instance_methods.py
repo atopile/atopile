@@ -1,6 +1,6 @@
 from typing import Iterable, Optional, Callable
 
-from atopile.front_end import lofty, Instance
+from atopile.front_end import lofty, Instance, ObjectLayer
 from atopile import address
 from atopile.address import AddrStr
 
@@ -88,6 +88,12 @@ match_sentinels = _make_dumb_matcher([
     "<Built-in>:Pin",
     "<Built-in>:Interface"])
 
+def get_supers_list(addr: AddrStr) -> ObjectLayer:
+    return lofty._output_cache[addr].supers
+
+def get_next_super(addr: AddrStr) -> ObjectLayer:
+    return get_supers_list(addr)[0]
+
 
 def get_parent(addr: str) -> Optional[str]:
     """
@@ -101,13 +107,6 @@ def get_parent(addr: str) -> Optional[str]:
         return addr.rsplit(".", 1)[0]
     elif instance_path:
         return root_path
-
-
-def get_name(addr: str) -> list[str]:
-    """Return the name of a given address"""
-    # TODO: write me irl
-    addr_list = addr.split(".")
-    return addr_list[-1]
 
 
 def iter_parents(addr: str) -> Iterable[str]:

@@ -10,7 +10,6 @@ from atopile import address, components, nets
 from atopile.address import AddrStr
 from atopile.instance_methods import (
     get_children,
-    get_name,
     get_parent,
     match_components,
     match_interfaces,
@@ -19,6 +18,7 @@ from atopile.instance_methods import (
     match_pins_and_signals,
     match_signals,
     all_descendants,
+    get_next_super,
 )
 from atopile.kicad6_datamodel import (
     KicadComponent,
@@ -29,6 +29,7 @@ from atopile.kicad6_datamodel import (
     KicadPin,
     KicadSheetpath,
 )
+from atopile.address import get_name, get_relative_addr_str
 
 
 def get_value(addr: AddrStr) -> str:
@@ -79,19 +80,18 @@ class NetlistBuilder:
         """Make a KiCAD pin object from a representative instance object."""
         return KicadPin(name=get_name(pin_addr), type="stereo")
 
-    def make_libpart(self, comp_addr) -> KicadLibpart:
+    def make_libpart(self, comp_addr: AddrStr) -> KicadLibpart:
         """Make a KiCAD libpart object from a representative instance object."""
         model_pins = filter(match_pins, get_children(comp_addr))
         pins = [self.make_kicad_pin(pin) for pin in model_pins]
         # def _get_origin_of_instance(instance: Instance) -> Object:
         #     return instance.origin
 
-        # lowest_common_ancestor = lowest_common_super(map(_get_origin_of_instance, component))
-        # lowest_common_ancestor = "FIXME: lowest_common_ancestor"
-
+        super_abs_addr = get_next_super(comp_addr).obj_def.address
+        super_addr = get_relative_addr_str(super_abs_addr)
         constructed_libpart = KicadLibpart(
             part=get_mpn(comp_addr),
-            description="lowest_common_ancestor",
+            description=super_addr,
             fields=[],
             pins=pins,
             # TODO: something better for these:

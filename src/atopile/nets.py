@@ -10,7 +10,6 @@ from atopile.front_end import Instance, lofty
 from atopile.instance_methods import (
     all_descendants,
     get_links,
-    get_name,
     get_parent,
     iter_parents,
     match_interfaces,
@@ -19,6 +18,7 @@ from atopile.instance_methods import (
     match_modules,
 )
 from atopile.loop_soup import LoopSoup
+from atopile.address import get_name
 
 
 def get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
