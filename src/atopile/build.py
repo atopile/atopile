@@ -659,3 +659,5 @@ for fp in Path("/Users/mattwildoer/Projects/atopile-workspace/servo-drive").glob
         shutil.copy(fp, fp_target)
     except shutil.SameFileError:
         print(f"same file error {fp}")
+
+# %%
