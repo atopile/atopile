@@ -15,13 +15,6 @@ from atopile.instance_methods import (
     match_components,
 )
 
-# %%
-# load csv into pandas dataframe
-components_df = pd.read_csv("Basic_Parts.csv")
-
-
-#%%
-
 def get_resistor_lcsc(min_value: float, max_value: float, package: str) -> list[str]:
     """
     Return the LCSC Part # for a resistor given a value and package.
@@ -71,16 +64,16 @@ def get_capacitor_lcsc(min_value: float, max_value: float, package: str, voltage
     except Exception as e:
         return f"Error: {e}"
 
-# function to return all data for a component given LCSC Part #
+
 def get_component_data_by_lscs(lcsc: str) -> dict:
     """
     Return all data for a component given LCSC Part #
     """
     # get the LCSC Part # for the component
-    # lcsc = get_mpn(addr)
+    component_data = pd.read_csv("Basic_Parts.csv")
 
     # filter the components dataframe by LCSC Part #
-    filtered_components = components_df[lcsc == components_df["LCSC Part #"]]
+    filtered_components = component_data[lcsc == component_data["LCSC Part #"]]
 
     # if the filtered dataframe is empty, return an empty dictionary
     if filtered_components.empty:
@@ -89,21 +82,6 @@ def get_component_data_by_lscs(lcsc: str) -> dict:
     # otherwise, return the dictionary of data for the component
     return filtered_components.to_dict(orient="records")[0]
 
-
-#%%
-
-# lcsc = get_capacitor_lcsc(components_df, 0, 1, "0603", 10)
-lcsc = (get_resistor_lcsc(min_value=1500, max_value=3000, package="0402"))
-
-for lcsc in lcsc:
-    print(get_component_data_by_lscs(lcsc))
-    # print(lcsc)
-#%%
-lcsc = get_capacitor_lcsc(min_value=1e-12, max_value=9.5e-12, package="0603", voltage=10)
-for lcsc in lcsc:
-    print(get_component_data_by_lscs(lcsc))
-    print(lcsc)
-#%%
 
 def get_mpn(addr: AddrStr) -> str:
     """
