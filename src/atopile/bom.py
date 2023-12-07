@@ -33,7 +33,7 @@ def _default_to_none(func, addr):
     try:
         return func(addr)
     except KeyError:
-        return None
+        return "None"
 
 
 def generate_bom(entry_addr: address.AddrStr) -> str:
@@ -67,6 +67,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
                 "LCSC": mpn,
             }
         )
+        console_table.add_row(value, designator, footprint, mpn)
 
     # Populate the tables
     for mpn, components_in_group in bom.items():
