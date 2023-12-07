@@ -5,7 +5,7 @@ Addresses go by other names in various files for historical reasons - but should
 
 This file provides utilities for working with addresses.
 """
-from typing import Optional
+from typing import Optional, Iterable
 
 
 class AddrStr(str):
@@ -14,7 +14,7 @@ class AddrStr(str):
     """
 
 
-def get_file_section(address: AddrStr) -> str:
+def get_file(address: AddrStr) -> str:
     """
     Extract the file path from an address.
 
@@ -55,27 +55,57 @@ def get_instance_section(address: AddrStr) -> Optional[str]:
         return None
 
 
+def get_name(address: AddrStr) -> str:
+    """
+    Extract name from the end of the sequence.
+    """
+    return address.split(":")[-1].split(".")[-1]
+
+
 def add_instance(address: AddrStr, instance: str) -> AddrStr:
     """
     Add an instance to an address.
     """
+    assert isinstance(instance, str)
+
     if not get_instance_section(address):
-        return f"{address}::{instance}"
+        return address + "::" + instance
     else:
-        return f"{address}.{instance}"
+        return address + "." + instance
+
+def add_instances(address: AddrStr, instances: Iterable[str]) -> AddrStr:
+    """
+    Add multiple instances to an address.
+    """
+    assert not isinstance(instances, str)
+    for instance in instances:
+        address = add_instance(address, instance)
+    return address
 
 
 def add_entry(address: AddrStr, entry: str) -> AddrStr:
     """
     Add an entry to an address.
     """
+    assert isinstance(entry, str)
+
     if get_instance_section(address):
         raise ValueError("Cannot add entry to an instance address.")
 
     if not get_entry_section(address):
-        return f"{address}:{entry}"
+        return address + ":" + entry
     else:
-        return f"{address}.{entry}"
+        return address + "." + entry
+
+
+def add_entries(address: AddrStr, entries: Iterable[str]) -> AddrStr:
+    """
+    Add multiple entries to an address.
+    """
+    assert not isinstance(entries, str)
+    for entry in entries:
+        address = add_entry(address, entry)
+    return address
 
 
 def from_parts(file: str, entry: Optional[str] = None, instance: Optional[str] = None) -> AddrStr:

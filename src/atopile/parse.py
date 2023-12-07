@@ -84,9 +84,10 @@ class FileParser:
     def __init__(self) -> None:
         self.cache = {}
 
-    def get_ast_from_file(self, src_path: Path) -> AtopileParser.File_inputContext:
+    def get_ast_from_file(self, src_path: str | Path) -> AtopileParser.File_inputContext:
         """Get the AST from a file."""
         if src_path not in self.cache:
+            src_path = Path(src_path)
             if not src_path.exists():
                 raise FileNotFoundError
             self.cache[src_path] = parse_file(src_path)
