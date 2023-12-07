@@ -42,8 +42,8 @@ class Paths:
 @define
 class BuildConfig:
     """Config for a build."""
-    entry: str = MISSING
-    abs_entry: str = "${paths.abs_src}/${.entry}"
+    # entry: str = MISSING
+    abs_entry: str = MISSING
 
     targets: list[str] = [
         "designators",

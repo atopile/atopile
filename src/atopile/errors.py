@@ -290,3 +290,6 @@ def write_errors_to_log(
             raise
         elif reraise == ReraiseBehavior.RAISE_ATO_FATAL_ERROR:
             raise AtoFatalError from ex
+
+
+error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)

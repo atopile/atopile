@@ -93,3 +93,6 @@ class FileParser:
             self.cache[src_path] = parse_file(src_path)
 
         return self.cache[src_path]
+
+
+parser = FileParser()

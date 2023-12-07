@@ -7,7 +7,6 @@ import enum
 import logging
 from collections import ChainMap
 from contextlib import ExitStack, contextmanager
-from functools import partial
 from itertools import chain
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
@@ -21,6 +20,7 @@ from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref
 from atopile.generic_methods import recurse
 from atopile.parse_utils import get_src_info_from_ctx
+from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
@@ -110,26 +110,6 @@ resolve_types(ObjectLayer)
 
 
 @define
-class LinkDef(Base):
-    """
-    Represent a connection between two connectable things.
-
-    # TODO: we may not need this using loop-soup
-    # the reason this currently exists is to allow us to map joints between instances
-    # these make sense only in the context of the pins and signals, which aren't
-    # language fundamentals as much as net objects - eg. they're useful only from
-    # a specific electrical perspective
-    # origin_link: Link
-    """
-
-    source: Ref
-    target: Ref
-
-    def __repr__(self) -> str:
-        return f"<LinkDef {repr(self.source)} -> {repr(self.target)}>"
-
-
-@define
 class Link(Base):
     """Represent a connection between two connectable things."""
 
@@ -166,9 +146,7 @@ class Instance(Base):
     data: Optional[Mapping[str, Any]] = None # this is a chainmap inheriting from the supers as well
 
     override_data: dict[str, Any] = field(factory=dict)
-    _override_location: dict[
-        str, ObjectLayer
-    ] = field(factory=dict)  # FIXME: this is a hack to define it here
+    _override_location: dict[str, ObjectLayer] = field(factory=dict)
 
     # TODO: for later
     # lock_data: Optional[Mapping[str, Any]] = None
@@ -180,7 +158,6 @@ class Instance(Base):
         return f"<Instance {self.addr}>"
 
 
-resolve_types(LinkDef)
 resolve_types(Instance)
 resolve_types(Link)
 
@@ -987,3 +964,13 @@ class Lofty(BaseTranslator):
             self.visitChildren(ctx)
 
         return KeyOptMap.empty()
+
+
+scoop = Scoop(errors.error_handler, parser.get_ast_from_file, [])
+dizzy = Dizzy(errors.error_handler, scoop.get_obj_def)
+lofty = Lofty(errors.error_handler, dizzy.get_obj_layer)
+
+
+def set_search_paths(paths: Iterable[Path | str]) -> None:
+    """Set the search paths for the scoop."""
+    scoop.search_paths = paths
