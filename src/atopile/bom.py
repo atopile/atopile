@@ -1,45 +1,91 @@
 """
-TODO: stick this in a useful function or class of some kind
+This is a terminal target that will generate BoMs
 """
 
-
-components = list(filter(match_components, all_descendants(ROOT)))
-bom = defaultdict(dict)
-#JLC format: Comment(whatever might be helpful)	Designator	Footprint	LCSC
-for component in components:
-    try:
-        mpn = get_mpn(component)
-    except KeyError:
-        continue
-    # add to bom keyed on mpn
-    bom[mpn]["value"] = get_value(component)
-    bom[mpn]["footprint"] = get_footprint(component)
-    bom[mpn]["designator"] = get_designator(component)
-
 import csv
+import logging
+from io import StringIO
+from typing import Optional
 
-from rich import print
+import rich
 from rich.table import Table
+from toolz import groupby
 
-# Create a table
-table = Table(show_header=True, header_style="bold magenta")
-table.add_column("Comment")
-table.add_column("Designator")
-table.add_column("Footprint")
-table.add_column("LCSC")
+import atopile.components
+from atopile import address
+from atopile.instance_methods import all_descendants, match_components
 
-# Add rows to the table
-for mpn, data in bom.items():
-    table.add_row(str(data['value']), data['designator'], data['footprint'], mpn)
+log = logging.getLogger("build.bom")
 
-# Print the table
-print(table)
 
-# generate csv
-# with open('bom.csv', 'w', newline='') as csvfile:
-#     fieldnames = ['Comment', 'Designator', 'Footprint', 'LCSC']
-#     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+def _get_mpn(addr: address.AddrStr) -> Optional[str]:
+    """
+    Return the MPN for a component, or None of it's unavailable
+    """
+    try:
+        return atopile.components.get_mpn(addr)
+    except KeyError:
+        log.error("No MPN for for %s", addr)
+        return None
 
-#     writer.writeheader()
-#     for mpn, data in bom.items():
-#         writer.writerow({'Comment': data['value'], 'Designator': data['designator'], 'Footprint': data['footprint'], 'LCSC': mpn})
+
+def _default_to_none(func, addr):
+    try:
+        return func(addr)
+    except KeyError:
+        return "None"
+
+
+def generate_bom(entry_addr: address.AddrStr) -> str:
+    """Generate a BoM for the and print it to a CSV."""
+
+    if address.get_instance_section(entry_addr):
+        raise ValueError("Cannot generate a BoM for an instance address.")
+
+    all_components = list(filter(match_components, all_descendants(entry_addr)))
+    bom = groupby(_get_mpn, all_components)
+
+    # JLC format: Comment (whatever might be helpful) Designator Footprint LCSC
+    COLUMNS = ["Comment", "Designator", "Footprint", "LCSC"]
+
+    # Create tables to print to the terminal and to the disc
+    console_table = Table(show_header=True, header_style="bold magenta")
+    for column in COLUMNS:
+        console_table.add_column(column)
+
+    csv_table = StringIO()
+    writer = csv.DictWriter(csv_table, fieldnames=COLUMNS)
+    writer.writeheader()
+
+    # Help to fill both tables
+    def _add_row(value, designator, footprint, mpn):
+        writer.writerow(
+            {
+                "Comment": value,
+                "Designator": designator,
+                "Footprint": footprint,
+                "LCSC": mpn,
+            }
+        )
+        console_table.add_row(value, designator, footprint, mpn)
+
+    # Populate the tables
+    for mpn, components_in_group in bom.items():
+        if not mpn:
+            continue  # skip
+
+        # representative component
+        component = components_in_group[0]
+
+        _add_row(
+            _default_to_none(atopile.components.get_value, component),
+            _default_to_none(atopile.components.get_designator, component),
+            _default_to_none(atopile.components.get_footprint, component),
+            mpn,
+        )
+
+    # Print the table
+    rich.print(console_table)
+
+    # Return the CSV
+    return csv_table.getvalue()

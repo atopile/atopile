@@ -118,7 +118,6 @@ def get_value(addr: AddrStr) -> str:
     """
     Return the value for a component
     """
-    # TODO: write me irl
     comp_data = get_data_dict(addr)
     return comp_data["value"]
 

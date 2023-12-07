@@ -10,6 +10,7 @@ from typing import Any, Optional
 import yaml
 from attrs import Factory, define
 from omegaconf import MISSING, OmegaConf
+from atopile import address
 
 
 log = logging.getLogger(__name__)
@@ -17,6 +18,9 @@ log.setLevel(logging.INFO)
 
 
 USER_CONFIG_PATH = Path("~/.atopile/config.yaml").expanduser().resolve().absolute()
+CONFIG_FILENAME = "ato.yaml"
+ATO_DIR_NAME = ".ato"
+MODULE_DIR_NAME = "modules"
 
 
 @define
@@ -115,3 +119,30 @@ def make_config(project_config: Path, build: Optional[str] = None) -> Config:
         user_config,  # user config
         OmegaConf.create(_sanitise_dict_keys(config_data)),  # project config
     )
+
+
+def get_project_dir_from_path(path: Path) -> Path:
+    """
+    Resolve the project directory from the specified path.
+    """
+    for p in [path] + list(path.parents):
+        clean_path = p.resolve().absolute()
+        if (clean_path / CONFIG_FILENAME).exists():
+            return clean_path
+    raise FileNotFoundError(
+        f"Could not find {CONFIG_FILENAME} in {path} or any parents"
+    )
+
+
+_loaded_configs: dict[Path, str] = {}
+
+
+def get_project_config_from_addr(addr: str) -> Config:
+    """
+    Get the project config from an address.
+    """
+    project_dir = get_project_dir_from_path(Path(address.get_file((addr))))
+    project_config_file = project_dir / CONFIG_FILENAME
+    if project_config_file not in _loaded_configs:
+        _loaded_configs[project_config_file] = make_config(project_config_file)
+    return _loaded_configs[project_config_file]

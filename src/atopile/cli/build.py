@@ -12,6 +12,7 @@ from atopile.cli.common import project_options
 from atopile.config import Config
 
 from atopile.netlist import get_netlist_as_str
+from atopile.bom import generate_bom
 from atopile.front_end import set_search_paths
 
 
@@ -37,5 +38,10 @@ def build(config: Config, debug: bool):
 
     set_search_paths([config.paths.abs_src])
 
-    with open(config.paths.abs_build / "netlist.net", "w", encoding="utf-8") as f:
+    output_base_name = Path(config.selected_build.abs_entry).with_suffix("").name
+
+    with open(config.paths.abs_build / f"{output_base_name}.net", "w", encoding="utf-8") as f:
         f.write(get_netlist_as_str(config.selected_build.abs_entry))
+
+    with open(config.paths.abs_build / f"{output_base_name}.csv", "w", encoding="utf-8") as f:
+        f.write(generate_bom(config.selected_build.abs_entry))

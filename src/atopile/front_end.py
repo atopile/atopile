@@ -899,7 +899,7 @@ class Lofty(BaseTranslator):
         pin_or_signal = Instance(
             src_ctx=ctx,
             addr=new_addr,
-            supers=(super_,),
+            supers=[super_],
             override_data=override_data,
             data=ChainMap(override_data, super_.data),
         )
