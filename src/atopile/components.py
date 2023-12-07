@@ -1,6 +1,9 @@
+#%%
 import logging
 import shutil
 from pathlib import Path
+import csv
+import pandas as pd
 
 from atopile import address
 from atopile.address import AddrStr
@@ -11,6 +14,73 @@ from atopile.instance_methods import (
     get_lock_data_dict,
     match_components,
 )
+
+def get_resistor_lcsc(min_value: float, max_value: float, package: str) -> list[str]:
+    """
+    Return the LCSC Part # for a resistor given a value and package.
+    """
+    try:
+        component_data = pd.read_csv("Basic_Parts.csv")
+        resistors = component_data[component_data["type"] == "Resistor"]
+        # Ensure input values are valid
+        if min_value > max_value:
+            raise ValueError("Minimum value cannot be greater than maximum value")
+
+        filtered_resistors = resistors[(resistors["min_value"] >= min_value) &
+                                       (max_value >= resistors["max_value"])&
+                                       (resistors["Package"] == package)]
+
+
+        if filtered_resistors.empty:
+            return ""
+        # return a list of LCSC Part #s
+        return filtered_resistors["LCSC Part #"].to_list()
+
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def get_capacitor_lcsc(min_value: float, max_value: float, package: str, voltage: float = None) -> str:
+    """
+    Return the LCSC Part # for a capacitor given a value, package, and optional voltage.
+    """
+    try:
+        component_data = pd.read_csv("Basic_Parts.csv")
+        capacitors = component_data[component_data["type"] == "Capacitor"]
+        # Ensure input values are valid
+        if min_value > max_value:
+            raise ValueError("Minimum value cannot be greater than maximum value")
+        filtered_capacitors = capacitors[(capacitors["min_value"] >= min_value) &
+                                        (capacitors["max_value"] <= max_value) &
+                                        (capacitors["Package"] == package)]
+
+        if voltage is not None:
+            filtered_capacitors = filtered_capacitors[filtered_capacitors["voltage"] >= voltage]
+
+        if filtered_capacitors.empty:
+            return ""
+        return filtered_capacitors["LCSC Part #"].to_list()
+
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def get_component_data_by_lscs(lcsc: str) -> dict:
+    """
+    Return all data for a component given LCSC Part #
+    """
+    # get the LCSC Part # for the component
+    component_data = pd.read_csv("Basic_Parts.csv")
+
+    # filter the components dataframe by LCSC Part #
+    filtered_components = component_data[lcsc == component_data["LCSC Part #"]]
+
+    # if the filtered dataframe is empty, return an empty dictionary
+    if filtered_components.empty:
+        return {}
+
+    # otherwise, return the dictionary of data for the component
+    return filtered_components.to_dict(orient="records")[0]
 
 
 def get_mpn(addr: AddrStr) -> str:
