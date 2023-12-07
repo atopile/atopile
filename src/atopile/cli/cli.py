@@ -21,6 +21,7 @@ logging.root.addHandler(stream_handler)
 def cli():
     pass
 
+
 cli.add_command(build.build)
 
 
