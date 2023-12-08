@@ -62,11 +62,12 @@ test = [
 docs = [
     "mkdocs",
     "mkdocs-material",
-    "mkdocs-drawio-file >= 1.5.2"
+    "mkdocs-drawio-file >= 1.5.2",
 ]
 
 dev = [
     "ruff",
+    "black",
 ]
 
 [project.scripts]

@@ -48,7 +48,9 @@ def project_options(f):
             if entry is None:
                 entry_arg_file_path = Path.cwd()
             else:
-                entry_arg_file_path = Path(address.get_file(entry)).expanduser().resolve().absolute()
+                entry_arg_file_path = (
+                    Path(address.get_file(entry)).expanduser().resolve().absolute()
+                )
 
             project_config = get_project_config_from_addr(str(entry_arg_file_path))
 
