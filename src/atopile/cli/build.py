@@ -35,7 +35,7 @@ def build(config: Config, debug: bool):
     search_paths = [config.paths.abs_src]
 
     try:
-        ato_module_dir = get_ato_modules_dir(config.paths.abs_src)
+        ato_module_dir = get_ato_modules_dir(config.paths.project)
     except FileNotFoundError:
         log.warning(f"Could not find {ATO_DIR_NAME}/{MODULE_DIR_NAME}")
     else:
