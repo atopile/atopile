@@ -31,11 +31,11 @@ def _get_mpn(addr: address.AddrStr) -> Optional[str]:
         return None
 
 
-def _default_to_none(func, addr):
+def _default_to(func, addr, default):
     try:
         return func(addr)
     except KeyError:
-        return "None"
+        return default
 
 
 def generate_designator_map(entry_addr: address.AddrStr) -> str:
@@ -57,8 +57,8 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     sorted_designator_dict = {}
     sorted_comp_name_dict = {}
     for component in all_components:
-        c_des = _default_to_none(atopile.components.get_designator, component)
-        c_name = _default_to_none(address.get_instance_section, component)
+        c_des = atopile.components.get_designator(component)
+        c_name = address.get_instance_section(component)
         sorted_designator_dict[c_des] = c_name
         sorted_comp_name_dict[c_name] = c_des
 
@@ -118,10 +118,18 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
         component = components_in_group[0]
 
         _add_row(
-            _default_to_none(atopile.components.get_value, component),
-            _default_to_none(atopile.components.get_designator, component),
-            _default_to_none(atopile.components.get_footprint, component),
+            _default_to(atopile.components.get_value, component, ""),
+            _default_to(atopile.components.get_designator, component, "<empty>"),
+            _default_to(atopile.components.get_footprint, component, "<empty>"),
             mpn,
+        )
+
+    for component in bom[None]:
+        _add_row(
+            _default_to(atopile.components.get_value, component, ""),
+            _default_to(atopile.components.get_designator, component, "<empty>"),
+            _default_to(atopile.components.get_footprint, component, "<empty>"),
+            "<empty>",
         )
 
     # Print the table
