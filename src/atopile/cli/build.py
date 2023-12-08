@@ -12,7 +12,7 @@ from atopile.cli.common import project_options
 from atopile.config import Config
 
 from atopile.netlist import get_netlist_as_str
-from atopile.bom import generate_bom
+from atopile.bom import generate_bom, generate_designator_map
 from atopile.front_end import set_search_paths
 
 
@@ -45,3 +45,5 @@ def build(config: Config, debug: bool):
 
     with open(config.paths.abs_build / f"{output_base_name}.csv", "w", encoding="utf-8") as f:
         f.write(generate_bom(config.selected_build.abs_entry))
+
+    generate_designator_map(config.selected_build.abs_entry)
