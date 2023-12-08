@@ -46,18 +46,12 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
 
     all_components = list(filter(match_components, all_descendants(entry_addr)))
 
-    COLUMNS = ["Name", "Des", "Name", "Des"]
-
     # Create tables to print to the terminal and to the disc
     console_table = Table(show_header=True, header_style="bold green")
-    console_table.add_column("des", justify="right")
-    console_table.add_column("name", justify="left")
-    console_table.add_column("name", justify="right")
-    console_table.add_column("des", justify="left")
-
-    csv_table = StringIO()
-    writer = csv.DictWriter(csv_table, fieldnames=COLUMNS)
-    writer.writeheader()
+    console_table.add_column("Des", justify="right")
+    console_table.add_column("Name", justify="left")
+    console_table.add_column("Name", justify="right")
+    console_table.add_column("Des", justify="left")
 
     # Populate the tables
     sorted_designator_dict = {}
