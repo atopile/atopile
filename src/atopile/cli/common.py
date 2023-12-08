@@ -1,16 +1,15 @@
 import functools
 import logging
-import sys
 from pathlib import Path
 from typing import Iterable
 
 import click
 from omegaconf import OmegaConf
+from omegaconf.errors import InterpolationToMissingValueError
 
-from atopile.address import AddrStr, AddrValueError
-from atopile.project.config import Config
-from atopile.project.project import Project
-from atopile.version import check_project_version
+from atopile import address
+from atopile.address import AddrStr
+from atopile.config import get_project_config_from_addr
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -36,15 +35,9 @@ def project_options(f):
     ):
         # basic the entry address if provided, otherwise leave it as None
         if entry is not None:
-            try:
-                entry = AddrStr(entry)
-            except AddrValueError as ex:
-                raise click.BadParameter(
-                    f"Invalid entry address {entry}.",
-                    param_hint="entry",
-                ) from ex
+            entry = AddrStr(entry)
 
-            if entry.file is None:
+            if address.get_file(entry) is None:
                 raise click.BadParameter(
                     f"Invalid entry address {entry} - entry must specify a file.",
                     param_hint="entry",
@@ -52,21 +45,32 @@ def project_options(f):
 
         # get the project
         try:
-            project: Project = Project.from_path(entry.file if entry else Path.cwd())
+            if entry is None:
+                entry_arg_file_path = Path.cwd()
+            else:
+                entry_arg_file_path = (
+                    Path(address.get_file(entry)).expanduser().resolve().absolute()
+                )
+
+            project_config = get_project_config_from_addr(str(entry_arg_file_path))
+
+            log.info("Using project %s", project_config.paths.project)
+            # layer on selected targets
+            if target:
+                project_config.selected_build.targets = list(target)
         except FileNotFoundError as ex:
             raise click.BadParameter(
-                f"Could not find project from path {str(entry.file)}. Is this file path within a project?"
+                f"Could not find project from path {str(address.get_file(entry))}. Is this file path within a project?"
             ) from ex
-
-        log.info("Using project %s", project.root)
 
         # set the build config
         if build is not None:
-            if build not in project.config.builds:
+            if build not in project_config.builds:
                 raise click.BadParameter(
-                    f'Could not find build-config "{build}". Available build configs are: {", ".join(project.config.builds.keys())}.'
+                    f'Could not find build-config "{build}". Available build configs are: {", ".join(project_config.builds.keys())}.'
                 )
-            project.config.selected_build_name = build
+            selected_build_name = build
+            log.info("Selected build: %s", selected_build_name)
 
         # add custom config overrides
         if config:
@@ -76,30 +80,30 @@ def project_options(f):
 
         # finally smoosh them all back together like a delicious cake
         # FIXME: why are we smooshing this -> does this need to be mutable?
-        project.config: Config = OmegaConf.merge(project.config, cli_conf)
+        config = OmegaConf.merge(project_config, cli_conf)
 
-        # layer on the selected addrs config
-        if entry and entry.file.is_file():
-            # NOTE: we already check that entry.file isn't None if entry is specified
-            if entry.node:
-                std_entry_file = project.standardise_import_path(entry.file.expanduser().resolve().absolute())
-                project.config.selected_build.entry = AddrStr.from_parts(std_entry_file, entry.node)
-            else:
-                raise click.BadParameter(
-                    "If an entry of a file is specified, you must specify"
-                    " the node within it you want to build.",
-                    param_hint="entry",
-                )
+        # # layer on the selected addrs config
+        if entry:
+            if entry_arg_file_path.is_file():
+                if entry_section := address.get_entry_section(entry):
+                    config.selected_build.abs_entry = address.from_parts(
+                        str(entry_arg_file_path.absolute()),
+                        entry_section,
+                    )
+                else:
+                    raise click.BadParameter(
+                        "If an entry of a file is specified, you must specify"
+                        " the node within it you want to build.",
+                        param_hint="entry",
+                    )
 
-        # layer on selected targets
-        if target:
-            project.config.selected_build.targets = list(target)
-
-        # perform pre-build checks
-        if not check_project_version(project):
-            sys.exit(1)
+        # ensure we have an entry-point
+        try:
+            config.selected_build.abs_entry
+        except InterpolationToMissingValueError as ex:
+            raise click.BadParameter("No entry point to build from!") from ex
 
         # do the thing
-        return f(*args, **kwargs, project=project)
+        return f(*args, **kwargs, config=config)
 
     return wrapper

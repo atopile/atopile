@@ -1,22 +1,20 @@
 """
 Addresses are references to a specific node.
-They take the form: "path/to/file.ato:node.path"
+They take the form: "path/to/file.ato:Entry.Path::instance.path"
 Addresses go by other names in various files for historical reasons - but should be upgraded.
 
 This file provides utilities for working with addresses.
 """
-from pathlib import Path
-from os import PathLike
-from typing import Optional
+from typing import Optional, Iterable
 
 
-class AddrValueError(ValueError):
+class AddrStr(str):
     """
-    Raised when an address is invalid.
+    Represents address strings
     """
 
 
-def get_file(address: str) -> Optional[Path]:
+def get_file(address: AddrStr) -> str:
     """
     Extract the file path from an address.
 
@@ -27,95 +25,106 @@ def get_file(address: str) -> Optional[Path]:
     This is because an "empty" file path is a valid address,
     to the current working directory, which is confusing.
     """
-    path_str = address.split(":")[0]
-    if not path_str:
-        return None
-    return Path(path_str)
+    return address.split(":")[0]
 
 
-def get_node_str(address: str) -> str:
+def get_relative_addr_str(address: AddrStr) -> AddrStr:
     """
-    Extract the node path from an address.
+    Extract the relative address starting with the .ato file
+    """
+    return address.split("/")[-1]
+
+
+def get_entry(address: AddrStr) -> AddrStr:
+    """
+    Extract the root path from an address.
+    """
+    return address.split("::")[0]
+
+
+def get_entry_section(address: AddrStr) -> Optional[str]:
+    """
+    Extract the root path from an address.
     """
     try:
         return address.split(":")[1]
     except IndexError:
-        return ""
+        return None
 
 
-def get_node_as_ref(address: str) -> tuple[str]:
+def get_instance_section(address: AddrStr) -> Optional[str]:
     """
     Extract the node path from an address.
     """
-    str_node = get_node_str(address)
-    return tuple(str_node.split(".") if str_node else [])
-
-
-def validate_address(address: str) -> None:
-    """
-    Validate an address, raising an exception if it is invalid.
-    """
-    # check there are 0 or 1 ":" in the string
-    if address.count(":") > 1:
-        raise AddrValueError(f"Address {address} has more than one ':'.")
-
-
-def is_address_valid(address: str) -> bool:
-    """
-    Check if an address is valid, returning True if it is and False if it is not.
-    """
     try:
-        validate_address(address)
-    except AddrValueError:
-        return False
-    return True
+        return address.split(":")[3]
+    except IndexError:
+        return None
 
 
-class AddrStr(str):
+def get_name(address: AddrStr) -> str:
     """
-    Thin wrapper class to represent specifically addresses.
+    Extract name from the end of the sequence.
     """
+    return address.split(":")[-1].split(".")[-1]
 
-    @property
-    def file(self) -> Optional[Path]:
-        """Return the file section of the address as a Path."""
-        return get_file(self)
 
-    @property
-    def node_as_str(self) -> str:
-        """Return the node section of the address as a string."""
-        return get_node_str(self)
+def add_instance(address: AddrStr, instance: str) -> AddrStr:
+    """
+    Add an instance to an address.
+    """
+    assert isinstance(instance, str)
 
-    @property
-    def node(self) -> tuple[str]:
-        """Return the node section of the address as a reference"""
-        return get_node_as_ref(self)
+    if not get_instance_section(address):
+        return address + "::" + instance
+    else:
+        return address + "." + instance
 
-    @classmethod
-    def from_str(cls, address: str) -> "AddrStr":
-        """
-        Create an address from a string and validates it.
-        """
-        validate_address(address)
-        return cls(address)
 
-    @classmethod
-    def from_parts(
-        cls,
-        path: Optional[str | PathLike] = None,
-        node: Optional[str | tuple[str]] = None
-    ) -> "AddrStr":
-        """
-        Create an address from a path and a node.
-        """
-        if path is None:
-            path = ""
-        else:
-            path = str(path)
+def add_instances(address: AddrStr, instances: Iterable[str]) -> AddrStr:
+    """
+    Add multiple instances to an address.
+    """
+    assert not isinstance(instances, str)
+    for instance in instances:
+        address = add_instance(address, instance)
+    return address
 
-        if node is None:
-            node = ""
-        elif isinstance(node, tuple):
-            node = ".".join(node)
 
-        return cls.from_str(f"{path}:{node}")
+def add_entry(address: AddrStr, entry: str) -> AddrStr:
+    """
+    Add an entry to an address.
+    """
+    assert isinstance(entry, str)
+
+    if get_instance_section(address):
+        raise ValueError("Cannot add entry to an instance address.")
+
+    if not get_entry_section(address):
+        return address + ":" + entry
+    else:
+        return address + "." + entry
+
+
+def add_entries(address: AddrStr, entries: Iterable[str]) -> AddrStr:
+    """
+    Add multiple entries to an address.
+    """
+    assert not isinstance(entries, str)
+    for entry in entries:
+        address = add_entry(address, entry)
+    return address
+
+
+def from_parts(
+    file: str, entry: Optional[str] = None, instance: Optional[str] = None
+) -> AddrStr:
+    """
+    Create an address from its parts.
+    """
+    address = file
+    if entry:
+        address = add_entry(address, entry)
+    if instance:
+        address = add_instance(address, instance)
+    return address

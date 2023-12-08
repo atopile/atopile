@@ -1,94 +1,80 @@
 """CLI command definition for `ato build`."""
 
 import logging
-import sys
+import shutil
+from pathlib import Path
 
 import click
 
+from atopile.bom import generate_bom, generate_designator_map
 from atopile.cli.common import project_options
-from atopile.parser.parser import build_model
-from atopile.project.project import Project
-from atopile.targets.targets import Target, TargetCheckResult, TargetMuster
+from atopile.config import ATO_DIR_NAME, MODULE_DIR_NAME, Config
+from atopile.front_end import set_search_paths
+from atopile.netlist import get_netlist_as_str
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("build")
 log.setLevel(logging.INFO)
 
 
 @click.command()
 @project_options
 @click.option("--debug/--no-debug", default=None)
-@click.option("--strict/--no-strict", default=None)
-def build(
-    project: Project,
-    debug: bool,
-    strict: bool,
-):
+def build(config: Config, debug: bool):
     """
     Build the specified --target(s) or the targets specified by the build config.
     Specify the root source file with the argument SOURCE.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
-    # input sanitisation
     if debug:
-        import atopile.parser.parser  # pylint: disable=import-outside-toplevel
+        log.setLevel(logging.DEBUG)
 
-        atopile.parser.parser.log.setLevel(logging.DEBUG)
+    log.info("Writing build output to %s", config.paths.abs_build)
+    config.paths.abs_build.mkdir(parents=True, exist_ok=True)
 
-    if strict is None:
-        strict = False
+    search_paths = [config.paths.abs_src]
 
-    # build core model
-    model = build_model(project)
-    exit_code = 0
-
-    # generate targets
-    target_muster = TargetMuster.from_project_and_model(project, model)
-
-    # check targets
-    if strict:
-        passable_check_level = TargetCheckResult.UNTIDY
+    try:
+        ato_module_dir = get_ato_modules_dir(config.paths.project)
+    except FileNotFoundError:
+        log.warning(f"Could not find {ATO_DIR_NAME}/{MODULE_DIR_NAME}")
     else:
-        passable_check_level = TargetCheckResult.SOLVABLE
+        search_paths.append(ato_module_dir)
 
-    for target in target_muster.targets:
-        assert isinstance(target, Target)
-        result = target.check()
-        if result > passable_check_level:
-            exit_code = 1
-        if result == TargetCheckResult.UNSOLVABLE:
-            log.error(
-                "Target %s is unsolvable. Attempting to generate remaining targets.",
-                target.name,
-            )
-            target_muster.targets.remove(target)
-        elif result == TargetCheckResult.SOLVABLE:
-            log.warning(
-                "Target %s is solvable, but is unstable. Use `ato resolve"
-                "--build-config=%s --target=%s %s` to stabalise as desired.",
-                target.name,
-                project.config.selected_build_name,
-                target.name,
-                project.root,
-            )
-        elif result == TargetCheckResult.UNTIDY:
-            log.warning("Target %s is solvable, but is untidy.", target.name)
-        elif result == TargetCheckResult.COMPLETE:
-            log.info("Target %s passes check.", target.name)
+    set_search_paths(search_paths)
 
-    # generate targets
-    build_path = project.config.paths.selected_build_path
-    log.info("Writing build output to %s", build_path)
-    build_path.mkdir(parents=True, exist_ok=True)
+    output_base_name = Path(config.selected_build.abs_entry).with_suffix("").name
 
-    targets_string = ", ".join(target.name for target in target_muster.targets)
-    log.info("Generating targets %s", targets_string)
-    for target in target_muster.targets:
-        assert isinstance(target, Target)
-        target.build()
+    with open(
+        config.paths.abs_build / f"{output_base_name}.net", "w", encoding="utf-8"
+    ) as f:
+        f.write(get_netlist_as_str(config.selected_build.abs_entry))
 
-    if exit_code == 0:
-        log.info("All checks passed.")
-        sys.exit(0)
-    else:
-        log.error("Targets failed.")
-        sys.exit(1)
+    with open(
+        config.paths.abs_build / f"{output_base_name}.csv", "w", encoding="utf-8"
+    ) as f:
+        f.write(generate_bom(config.selected_build.abs_entry))
+
+    generate_designator_map(config.selected_build.abs_entry)
+    consolidate_footprints(config)
+
+
+# TODO: move this to somewhere more generic
+def get_ato_modules_dir(path: Path) -> Path:
+    """
+    Find the .ato/modules dir
+    """
+    if (path / ATO_DIR_NAME / MODULE_DIR_NAME).exists():
+        return path / ATO_DIR_NAME / MODULE_DIR_NAME
+    raise FileNotFoundError
+
+
+def consolidate_footprints(project_config: Config) -> None:
+    """Consolidate all the project's footprints into a single directory."""
+    fp_target = project_config.paths.abs_build / "footprints" / "footprints.pretty"
+    fp_target.mkdir(exist_ok=True, parents=True)
+
+    for fp in project_config.paths.project.glob("**/*.kicad_mod"):
+        try:
+            shutil.copy(fp, fp_target)
+        except shutil.SameFileError:
+            log.warning("Footprint %s already exists in the target directory", fp)

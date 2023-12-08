@@ -41,7 +41,10 @@ dependencies = [
     "rich",
     "gitpython",
     "easyeda2kicad",
-    "atopile-omegaconf",
+    "omegaconf==2.4.0.dev1",
+    "toolz",
+    "pandas",
+    "natsort",
 ]
 dynamic = ["version"]
 
@@ -54,24 +57,17 @@ test = [
     "pytest-html",
     "pytest-datafiles",
     "pytest-asyncio",
-    # "coverage[toml] >= 6.5.0,< 8.0",
-    # "mypy ==0.982",
-    # "ruff ==0.0.138",
-    # "black == 23.1.0",
-    # "isort >=5.0.6,<6.0.0",
-
-    # # types
-    # "types-ujson ==5.7.0.1",
-    # "types-orjson ==3.6.2",
 ]
+
 docs = [
     "mkdocs",
     "mkdocs-material",
-    "mkdocs-drawio-file >= 1.5.2"
+    "mkdocs-drawio-file >= 1.5.2",
 ]
 
 dev = [
     "ruff",
+    "black",
 ]
 
 [project.scripts]
@@ -84,18 +80,6 @@ source = "vcs"
 profile = "black"
 known_third_party = []
 
-# [tool.mypy]
-# strict = true
-# TODO: you made it roughly to here
-# [[tool.mypy.overrides]]
-# module = "fastapi.concurrency"
-# warn_unused_ignores = false
-# ignore_missing_imports = true
-
-# [[tool.mypy.overrides]]
-# module = "fastapi.tests.*"
-# ignore_missing_imports = true
-# check_untyped_defs = true
 
 [tool.pytest.ini_options]
 addopts = [
@@ -124,3 +108,8 @@ ignore-paths = [
     "tests",
     "src/atopile/parser/",
 ]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+extend-exclude = "atopile/parser/"
