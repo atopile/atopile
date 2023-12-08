@@ -65,14 +65,14 @@ def closest_common(
 #    signatures are the same as map and filter
 
 
-def dfs(
+def dfs_postorder(
     get_children: Callable[[T], Iterable[T]],
     start: T,
 ) -> Iterable[T]:
-    """Depth-first search, first yielding the starting item."""
+    """Depth-first search, yielding the leaves first."""
 
     for child in get_children(start):
-        yield from dfs(get_children, child)
+        yield from dfs_postorder(get_children, child)
 
     yield start
 

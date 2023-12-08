@@ -1,5 +1,5 @@
 import pytest
-from atopile.model2.generic_methods import dfs, bfs
+from atopile.generic_methods import dfs_postorder, bfs
 
 
 class Node:
@@ -10,6 +10,18 @@ class Node:
 
 @pytest.fixture
 def tree():
+    """
+    a
+    |- b
+    |  |- e
+    |  |- f
+    |
+    |- c
+    |  |- g
+    |  |- h
+    |
+    |- d
+    """
     a = Node("a", [])
     b = Node("b", [])
     c = Node("c", [])
@@ -31,6 +43,6 @@ def test_bfs(tree: tuple[Node]):
     assert list(bfs(lambda n: n.children, a)) == [a, b, c, d, e, f, g, h]
 
 
-def test_dfs(tree: tuple[Node]):
+def test_dfs_postorder(tree: tuple[Node]):
     a, b, c, d, e, f, g, h = tree
-    assert list(dfs(lambda n: n.children, a)) == [a, b, e, f, c, g, h, d]
+    assert list(dfs_postorder(lambda n: n.children, a)) == [e, f, b, g, h, c, d, a]

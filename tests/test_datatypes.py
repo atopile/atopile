@@ -1,4 +1,4 @@
-from atopile.model2.datatypes import Ref, KeyOptMap, KeyOptItem
+from atopile.datatypes import Ref, KeyOptMap, KeyOptItem
 
 def test_ref_from_one():
     assert Ref.from_one("foo") == ("foo",)

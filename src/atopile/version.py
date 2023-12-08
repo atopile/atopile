@@ -7,9 +7,6 @@ import logging
 
 import semver
 
-from atopile.project.project import Project
-from atopile.utils import is_editable_install
-
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
@@ -132,38 +129,3 @@ def match(spec: str, version: semver.Version):
 
     if operator == "<":
         return version < specd_version
-
-
-def check_project_version(project: Project) -> bool:
-    """
-    Check if the current version of Atopile matches the
-    version specified in the project's configuration file.
-
-    :param project: The project to check the version for.
-    :type project: Project
-    :return: True if the current version matches the project's
-    version specification, False otherwise.
-    :rtype: bool
-    """
-    version_spec = project.config.ato_version
-    if version_spec is None:
-        log.warning("No atopile version requirement specified in ato.yaml")
-        return True
-
-    installed_version = get_version()
-    is_match = match(version_spec, installed_version)
-
-    if not is_match and is_editable_install():
-        log.warning(
-            "atopile is installed in editable mode, so version checks can be erroneous. "
-            "Consider running `ato meta update` and trying again."
-        )
-
-    if not is_match:
-        log.error(
-            "Project demands atopile version %s, but you have %s installed.",
-            project.config.ato_version,
-            get_version(),
-        )
-
-    return is_match

@@ -1,6 +1,6 @@
 import pytest
 
-from atopile.model2.errors import ErrorHandler, AtoError, AtoFatalError, DONT_FILL
+from atopile.errors import ErrorHandler, AtoError, AtoFatalError, DONT_FILL
 from unittest.mock import MagicMock
 
 

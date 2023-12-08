@@ -39,28 +39,6 @@ You'll need `npm` for front-end development (`brew install node`).
 For any front-end development, you'll also need to install the front-end dependencies: `npm install`
 
 
-## CLI development
-
-ANTLR (or more specifically Java) was a PITA to get working on my Mac... so, I didn't 🤷‍♂️, I just wrapped up ANTLR in a neat little dockerised bundle and make a script that calls out to it easily.
-
-As of writing, that lives in [mawildoer/antlr4](https://github.com/mawildoer/antlr4/tree/mawildoer/simplified-portable-docker/docker-simplified), but [hopefully we can get it into ANTLR mainline](https://github.com/antlr/antlr4/pull/4244) soon.
-
-For now, clone the branch in the first link (eg. to your "repos" or "projects" directory), and then follow the [instructions](https://github.com/mawildoer/antlr4/tree/mawildoer/simplified-portable-docker/docker-simplified) on how to build it.
-
-You can build the grammer to python source with the following command (modified with the appropriate paths for you).
-
-`cd src/atopile/parser`
-
-`/Users/mattwildoer/Projects/antlr4/docker-simplified/antlr4 -Dlanguage=Python3 -visitor AtopileParser.g4 AtopileLexer.g4`
-
-
-## Front end development
-
-To check out front-end changes live, run `npm run serve` in one terminal and make sure to run `ato view` on a project in another (to provide API access).
-
-This will start the front-end server at `localhost:1234` and the backend at `localhost:2860`. The front-end's development server (`pracel`) will proxy API requests to the backend.
-
-
 ## Syntax highlighting is pretty nice...
 
 You can download the extension from CI here:
