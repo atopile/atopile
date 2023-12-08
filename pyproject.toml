@@ -41,8 +41,10 @@ dependencies = [
     "rich",
     "gitpython",
     "easyeda2kicad",
-    "atopile-omegaconf",
+    "omegaconf==2.4.0.dev1",
     "toolz",
+    "pandas",
+    "natsort",
 ]
 dynamic = ["version"]
 

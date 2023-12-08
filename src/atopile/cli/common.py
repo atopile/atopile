@@ -5,6 +5,7 @@ from typing import Iterable
 
 import click
 from omegaconf import OmegaConf
+from omegaconf.errors import InterpolationToMissingValueError
 
 from atopile import address
 from atopile.address import AddrStr
@@ -45,11 +46,12 @@ def project_options(f):
         # get the project
         try:
             if entry is None:
-                prj_search_path = Path.cwd()
+                entry_arg_file_path = Path.cwd()
             else:
-                prj_search_path = Path(address.get_file(entry)).parent
+                entry_arg_file_path = Path(address.get_file(entry)).expanduser().resolve().absolute()
 
-            project_config = get_project_config_from_addr(str(prj_search_path))
+            project_config = get_project_config_from_addr(str(entry_arg_file_path))
+
             log.info("Using project %s", project_config.paths.project)
             # layer on selected targets
             if target:
@@ -78,15 +80,13 @@ def project_options(f):
         # FIXME: why are we smooshing this -> does this need to be mutable?
         config = OmegaConf.merge(project_config, cli_conf)
 
-        # TODO:
         # # layer on the selected addrs config
         if entry:
-            entry_file = Path(address.get_file(entry))
-            if entry_file.is_file():
-                # NOTE: we already check that entry.file isn't None if entry is specified
-                if entry_module := address.get_entry_section(entry):
+            if entry_arg_file_path.is_file():
+                if entry_section := address.get_entry_section(entry):
                     config.selected_build.abs_entry = address.from_parts(
-                        str(entry_file.absolute()), entry_module
+                        str(entry_arg_file_path.absolute()),
+                        entry_section,
                     )
                 else:
                     raise click.BadParameter(
@@ -95,9 +95,11 @@ def project_options(f):
                         param_hint="entry",
                     )
 
-        # perform pre-build checks
-        # if not check_project_version(project_config.ato_version):
-        #     sys.exit(1)
+        # ensure we have an entry-point
+        try:
+            config.selected_build.abs_entry
+        except InterpolationToMissingValueError as ex:
+            raise click.BadParameter("No entry point to build from!") from ex
 
         # do the thing
         return f(*args, **kwargs, config=config)

@@ -48,8 +48,8 @@ class Paths:
 class BuildConfig:
     """Config for a build."""
 
-    # entry: str = MISSING
-    abs_entry: str = MISSING
+    entry: str = MISSING
+    abs_entry: str = "${paths.abs_src}/${.entry}"
 
     targets: list[str] = [
         "designators",
