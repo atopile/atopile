@@ -77,14 +77,17 @@ class LoopItem(collections.abc.Iterable[T]):
             b.next = old_next
             old_next.prev = b
 
-        # if neither is lonely, join them together
+        # if neither is lonely, check if they are already joined
+        # If not, join them
         else:
-            a_old_next = a.next
-            b_old_prev = b.prev
-            a.next = b
-            b.prev = a
-            b_old_prev.next = a_old_next
-            a_old_next.prev = b_old_prev
+            a_loop_items = list(a.iter_loop())
+            if b not in a_loop_items:
+                a_old_next = a.next
+                b_old_prev = b.prev
+                a.next = b
+                b.prev = a
+                b_old_prev.next = a_old_next
+                a_old_next.prev = b_old_prev
 
 
 def _simple_return(x: T) -> T:

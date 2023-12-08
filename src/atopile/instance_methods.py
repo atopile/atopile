@@ -5,7 +5,7 @@ from atopile import address
 from atopile.address import AddrStr
 
 
-def get_children(addr: str) -> Iterable[Instance]:
+def get_children(addr: str) -> Iterable[AddrStr]:
     root_addr = address.get_entry(addr)
     root_instance = lofty.get_instance_tree(root_addr)
     ref_str = address.get_instance_section(addr)

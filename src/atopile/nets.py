@@ -6,9 +6,9 @@ from attr import define
 from atopile import address
 from atopile.address import AddrStr
 from atopile.datatypes import Ref
-from atopile.front_end import Instance, lofty
 from atopile.instance_methods import (
     all_descendants,
+    get_children,
     get_links,
     get_parent,
     iter_parents,
@@ -18,7 +18,7 @@ from atopile.instance_methods import (
     match_modules,
 )
 from atopile.loop_soup import LoopSoup
-from atopile.address import get_name
+from atopile.address import get_name, add_instance
 
 
 def get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
@@ -28,8 +28,14 @@ def get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
         if match_pins_and_signals(addr):
             net_soup.add(addr)
         for source, target in get_links(addr):
-            if match_interfaces(source) or match_interfaces(target):
-                pass  # FIXME: support interfaces
+            if match_interfaces(source) and match_interfaces(target):
+                for int_pin in get_children(source):
+                    if match_pins_and_signals(int_pin):
+                        net_soup.join(int_pin, add_instance(target, get_name(int_pin)))
+                    else:
+                        raise NotImplementedError
+            elif match_interfaces(source) or match_interfaces(source):
+                raise NotImplementedError
             else:
                 net_soup.join(source, target)
     return net_soup.groups()
