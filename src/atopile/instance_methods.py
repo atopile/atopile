@@ -23,6 +23,9 @@ def get_data_dict(addr: str) -> dict[str, str | int | bool | float]:
     """
     Return the data at the given address
     """
+    # FIXME: this is a hack around the fact that the getter won't currently return a subtree
+    root_addr = address.get_entry(addr)
+    lofty.get_instance_tree(root_addr)
     return lofty._output_cache[addr].data
 
 
@@ -57,6 +60,7 @@ def _make_dumb_matcher(pass_list: Iterable[str]) -> Callable[[str], bool]:
         return False
 
     return _filter
+
 
 def _any_super_match(super: str) -> Callable[[str], bool]:
     """
