@@ -105,3 +105,8 @@ ignore-paths = [
     "tests",
     "src/atopile/parser/",
 ]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+extend-exclude = "atopile/parser/"

@@ -152,8 +152,12 @@ class NetlistBuilder:
         self.netlist = KicadNetlist()
 
         all_components = filter(match_components, all_descendants(root))
-        for footprint, group_components in groupby(get_footprint, all_components).items():
-            libsource = self._libparts[footprint] = self.make_libpart(group_components[0])
+        for footprint, group_components in groupby(
+            get_footprint, all_components
+        ).items():
+            libsource = self._libparts[footprint] = self.make_libpart(
+                group_components[0]
+            )
 
             for component in group_components:
                 self._components[component] = self.make_component(component, libsource)

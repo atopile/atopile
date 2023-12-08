@@ -9,8 +9,8 @@ from .AtopileParser import AtopileParser
 
 
 class AtopileLexerBase(Lexer):
-    NEW_LINE_PATTERN = re.compile("[^\r\n\f]+")
-    SPACES_PATTERN = re.compile("[\r\n\f]+")
+    NEW_LINE_PATTERN = re.compile('[^\r\n\f]+')
+    SPACES_PATTERN = re.compile('[\r\n\f]+')
 
     def __init__(self, input: InputStream, output: TextIO = sys.stdout):
         super().__init__(input, output)
@@ -32,12 +32,10 @@ class AtopileLexerBase(Lexer):
         # Check if the end-of-file is ahead and there are still some DEDENTS expected.
         if self._input.LA(1) == AtopileParser.EOF and len(self.indents) != 0:
             # Remove any trailing EOF tokens from our buffer.
-            self.tokens = [
-                token for token in self.tokens if token.type != AtopileParser.EOF
-            ]
+            self.tokens = [token for token in self.tokens if token.type != AtopileParser.EOF]
 
             # First emit an extra line break that serves as the end of the statement.
-            self.emitToken(self.commonToken(AtopileParser.NEWLINE, "\n"))
+            self.emitToken(self.commonToken(AtopileParser.NEWLINE, '\n'))
 
             # Now emit as much DEDENT tokens as needed.
             while len(self.indents) != 0:
@@ -45,29 +43,23 @@ class AtopileLexerBase(Lexer):
                 self.indents.pop()
 
             # Put the EOF back on the token stream.
-            self.emitToken(self.commonToken(AtopileParser.EOF, "<EOF>"))
+            self.emitToken(self.commonToken(AtopileParser.EOF, '<EOF>'))
 
         next_ = super().nextToken()
         return next_ if len(self.tokens) == 0 else self.tokens.pop(0)
 
     def createDedent(self):
-        return self.commonToken(AtopileParser.DEDENT, "")
+        return self.commonToken(AtopileParser.DEDENT, '')
 
     def commonToken(self, type_: int, text: str):
         stop = self.getCharIndex() - 1
-        start = stop if text == "" else stop - len(text) + 1
-        return CommonToken(
-            self._tokenFactorySourcePair,
-            type_,
-            Lexer.DEFAULT_TOKEN_CHANNEL,
-            start,
-            stop,
-        )
+        start = stop if text == '' else stop - len(text) + 1
+        return CommonToken(self._tokenFactorySourcePair, type_, Lexer.DEFAULT_TOKEN_CHANNEL, start, stop)
 
     def getIndentationCount(self, whitespace: str):
         count = 0
         for c in whitespace:
-            if c == "\t":
+            if c == '\t':
                 count += 8 - count % 8
             else:
                 count += 1
@@ -83,8 +75,8 @@ class AtopileLexerBase(Lexer):
         self.opened -= 1
 
     def onNewLine(self):
-        new_line = self.NEW_LINE_PATTERN.sub("", self.text)
-        spaces = self.SPACES_PATTERN.sub("", self.text)
+        new_line = self.NEW_LINE_PATTERN.sub('', self.text)
+        spaces = self.SPACES_PATTERN.sub('', self.text)
 
         # Strip newlines inside open clauses except if we are near EOF. We keep NEWLINEs near EOF to
         # satisfy the final newline needed by the single_put rule used by the REPL.

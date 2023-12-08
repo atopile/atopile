@@ -72,6 +72,7 @@ def test_joining_many_with_many():
 
     assert set(many1) == set(many2) == set(range(1, 10))
 
+
 def test_joining_loop_onto_itself():
     itself1 = LoopItem(1)
     itself2 = LoopItem(2)
@@ -85,6 +86,7 @@ def test_joining_loop_onto_itself():
     LoopItem.join(itself1, itself3)
 
     assert set(itself1) == set(itself2) == set(itself3) == set(itself4)
+
 
 def test_limit():
     loop = LoopItem(1)
