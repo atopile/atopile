@@ -164,17 +164,3 @@ def get_designator(addr: str) -> str:
     Return the designator for a component
     """
     return designator_manager.get_designator(addr)
-
-
-def consolidate_footprints(project_config: Config) -> None:
-    """Consolidate all the project's footprints into a single directory."""
-    log = logging.getLogger("build.footprints")
-
-    fp_target = project_config.paths.abs_build / "footprints" / "footprints.pretty"
-    fp_target.mkdir(exist_ok=True)
-
-    for fp in project_config.paths.abs_src.glob("**/*.kicad_mod"):
-        try:
-            shutil.copy(fp, fp_target)
-        except shutil.SameFileError:
-            log.warning("Footprint %s already exists in the target directory", fp)

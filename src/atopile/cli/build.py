@@ -1,17 +1,16 @@
 """CLI command definition for `ato build`."""
 
 import logging
+import shutil
 from pathlib import Path
 
 import click
 
-from atopile.cli.common import project_options
-from atopile.config import Config, ATO_DIR_NAME, MODULE_DIR_NAME
-
-from atopile.netlist import get_netlist_as_str
 from atopile.bom import generate_bom, generate_designator_map
+from atopile.cli.common import project_options
+from atopile.config import ATO_DIR_NAME, MODULE_DIR_NAME, Config
 from atopile.front_end import set_search_paths
-
+from atopile.netlist import get_netlist_as_str
 
 log = logging.getLogger("build")
 log.setLevel(logging.INFO)
@@ -56,9 +55,10 @@ def build(config: Config, debug: bool):
         f.write(generate_bom(config.selected_build.abs_entry))
 
     generate_designator_map(config.selected_build.abs_entry)
+    consolidate_footprints(config)
 
 
-#TODO: move this to somewhere more generic
+# TODO: move this to somewhere more generic
 def get_ato_modules_dir(path: Path) -> Path:
     """
     Find the .ato/modules dir
@@ -66,3 +66,15 @@ def get_ato_modules_dir(path: Path) -> Path:
     if (path / ATO_DIR_NAME / MODULE_DIR_NAME).exists():
         return path / ATO_DIR_NAME / MODULE_DIR_NAME
     raise FileNotFoundError
+
+
+def consolidate_footprints(project_config: Config) -> None:
+    """Consolidate all the project's footprints into a single directory."""
+    fp_target = project_config.paths.abs_build / "footprints" / "footprints.pretty"
+    fp_target.mkdir(exist_ok=True, parents=True)
+
+    for fp in project_config.paths.project.glob("**/*.kicad_mod"):
+        try:
+            shutil.copy(fp, fp_target)
+        except shutil.SameFileError:
+            log.warning("Footprint %s already exists in the target directory", fp)
