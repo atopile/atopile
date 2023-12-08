@@ -1,10 +1,7 @@
-import logging
-import shutil
 import pandas as pd
 
 from atopile import address
 from atopile.address import AddrStr
-from atopile.config import Config
 from atopile.instance_methods import (
     all_descendants,
     get_data_dict,
