@@ -1,6 +1,6 @@
 import pytest
 
-from atopile.model2.loop_soup import LoopItem, LoopSoup
+from atopile.loop_soup import LoopItem, LoopSoup
 
 
 def assert_loop_is_lonely(loop: LoopItem) -> None:
@@ -72,6 +72,19 @@ def test_joining_many_with_many():
 
     assert set(many1) == set(many2) == set(range(1, 10))
 
+def test_joining_loop_onto_itself():
+    itself1 = LoopItem(1)
+    itself2 = LoopItem(2)
+    itself3 = LoopItem(3)
+    itself4 = LoopItem(4)
+
+    LoopItem.join(itself1, itself2)
+    LoopItem.join(itself2, itself3)
+    LoopItem.join(itself3, itself4)
+
+    LoopItem.join(itself1, itself3)
+
+    assert set(itself1) == set(itself2) == set(itself3) == set(itself4)
 
 def test_limit():
     loop = LoopItem(1)
