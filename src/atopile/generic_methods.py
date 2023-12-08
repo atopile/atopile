@@ -1,6 +1,6 @@
 import itertools
 from collections import deque
-from typing import Any, Callable, Hashable, Iterable, Optional, TypeVar
+from typing import Callable, Hashable, Iterable, Optional, TypeVar
 
 import toolz
 import toolz.curried
@@ -11,7 +11,7 @@ T = TypeVar("T")
 def closest_common(
     things: Iterable[Iterable[T]],
     get_key: Callable[[T], Hashable] = toolz.identity,
-    validate_common_root: bool = False
+    validate_common_root: bool = False,
 ) -> T:
     """Returns the closest common item between a set of iterables."""
     if not things:
@@ -92,6 +92,7 @@ def bfs(
 
         for child in get_children(start):
             queue.append(child)
+
 
 def recurse(
     get_next: Callable[[T], Optional[T]],

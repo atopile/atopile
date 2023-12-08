@@ -27,11 +27,13 @@ def get_file(address: AddrStr) -> str:
     """
     return address.split(":")[0]
 
+
 def get_relative_addr_str(address: AddrStr) -> AddrStr:
     """
     Extract the relative address starting with the .ato file
     """
     return address.split("/")[-1]
+
 
 def get_entry(address: AddrStr) -> AddrStr:
     """
@@ -78,6 +80,7 @@ def add_instance(address: AddrStr, instance: str) -> AddrStr:
     else:
         return address + "." + instance
 
+
 def add_instances(address: AddrStr, instances: Iterable[str]) -> AddrStr:
     """
     Add multiple instances to an address.
@@ -113,7 +116,9 @@ def add_entries(address: AddrStr, entries: Iterable[str]) -> AddrStr:
     return address
 
 
-def from_parts(file: str, entry: Optional[str] = None, instance: Optional[str] = None) -> AddrStr:
+def from_parts(
+    file: str, entry: Optional[str] = None, instance: Optional[str] = None
+) -> AddrStr:
     """
     Create an address from its parts.
     """

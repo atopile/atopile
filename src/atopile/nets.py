@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Callable, Iterable, Optional
+from typing import Iterable, Optional
 from toolz import groupby
 from attr import define
 

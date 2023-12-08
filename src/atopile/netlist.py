@@ -1,24 +1,20 @@
 import hashlib
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Hashable, Iterable, Iterator, List, Optional, Tuple
+from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from toolz import groupby
 
-from atopile import address, components, nets
-from atopile.address import AddrStr
+from atopile import components, nets
+from atopile.address import AddrStr, get_name, get_relative_addr_str
 from atopile.instance_methods import (
+    all_descendants,
     get_children,
+    get_next_super,
     get_parent,
     match_components,
-    match_interfaces,
-    match_modules,
     match_pins,
-    match_pins_and_signals,
-    match_signals,
-    all_descendants,
-    get_next_super,
 )
 from atopile.kicad6_datamodel import (
     KicadComponent,
@@ -29,7 +25,6 @@ from atopile.kicad6_datamodel import (
     KicadPin,
     KicadSheetpath,
 )
-from atopile.address import get_name, get_relative_addr_str
 
 
 def get_value(addr: AddrStr) -> str:
@@ -157,10 +152,10 @@ class NetlistBuilder:
         self.netlist = KicadNetlist()
 
         all_components = filter(match_components, all_descendants(root))
-        for footprint, components in groupby(get_footprint, all_components).items():
-            libsource = self._libparts[footprint] = self.make_libpart(components[0])
+        for footprint, group_components in groupby(get_footprint, all_components).items():
+            libsource = self._libparts[footprint] = self.make_libpart(group_components[0])
 
-            for component in components:
+            for component in group_components:
                 self._components[component] = self.make_component(component, libsource)
 
         for code, (net_name, pin_signal_list) in enumerate(

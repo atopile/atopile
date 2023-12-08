@@ -2,8 +2,7 @@
 Datatypes used in the model.
 """
 import logging
-from typing import Any, Iterable, Mapping, Optional, Type, Iterator, TypeVar, Generic
-
+from typing import Generic, Iterable, Iterator, Mapping, Optional, Type, TypeVar
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -63,9 +62,7 @@ class KeyOptMap(tuple[KeyOptItem[T]]):
         self, types: Iterable[Type | Iterable[Type]]
     ) -> Mapping[Type, "KeyOptMap[T]"]:
         """Return a mapping of items in this set by type."""
-        return {
-            t: tuple(self.filter_items_by_type(t)) for t in types
-        }
+        return {t: tuple(self.filter_items_by_type(t)) for t in types}
 
     def unnamed_items(self) -> Iterable[T]:
         """Return an interable of all the unnamed items in this set."""

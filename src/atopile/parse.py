@@ -16,18 +16,22 @@ log.setLevel(logging.INFO)
 
 class ErrorListenerConverter(ErrorListener):
     """Converts an error into an AtoSyntaxError."""
+
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
         raise AtoSyntaxError.from_token(f"{str(e)} '{msg}'", offendingSymbol)
 
 
 class ErrorListenerCollector(ErrorListenerConverter):
     """Collects errors into a list."""
+
     def __init__(self) -> None:
         self.errors = []
         super().__init__()
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
-        self.errors.append(AtoSyntaxError.from_token(f"{str(e)} '{msg}'", offendingSymbol))
+        self.errors.append(
+            AtoSyntaxError.from_token(f"{str(e)} '{msg}'", offendingSymbol)
+        )
 
 
 def make_parser(src_stream: InputStream) -> AtopileParser:
@@ -57,7 +61,9 @@ def defer_parser_errors(parser: AtopileParser) -> None:
         raise ExceptionGroup("Errors caused parsing failure", error_listener.errors)
 
 
-def parse_text_as_file(src_code: str, src_path: None | str | Path = None) -> AtopileParser.File_inputContext:
+def parse_text_as_file(
+    src_code: str, src_path: None | str | Path = None
+) -> AtopileParser.File_inputContext:
     """Parse a string as a file input."""
     input = InputStream(src_code)
     input.name = src_path
@@ -81,10 +87,13 @@ def parse_file(src_path: Path) -> AtopileParser.File_inputContext:
 
 class FileParser:
     """Parses a file."""
+
     def __init__(self) -> None:
         self.cache = {}
 
-    def get_ast_from_file(self, src_path: str | Path) -> AtopileParser.File_inputContext:
+    def get_ast_from_file(
+        self, src_path: str | Path
+    ) -> AtopileParser.File_inputContext:
         """Get the AST from a file."""
         if src_path not in self.cache:
             src_path = Path(src_path)

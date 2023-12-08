@@ -11,7 +11,6 @@ from itertools import chain
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
 
-import toolz
 from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
@@ -31,19 +30,24 @@ log.setLevel(logging.INFO)
 @define
 class Base:
     """Represent a base class for all things."""
+
     src_ctx: Optional[ParserRuleContext] = field(kw_only=True, default=None)
+
 
 @define
 class Import(Base):
     """Represent an import statement."""
+
     obj_addr: AddrStr
 
     def __repr__(self) -> str:
         return f"<Import {self.obj_addr}>"
 
+
 @define
 class Replacement(Base):
     """Represent a replacement statement."""
+
     new_super_ref: Ref
 
 
@@ -143,7 +147,9 @@ class Instance(Base):
     children: dict[str, "Instance"] = field(factory=dict)
     links: list[Link] = field(factory=list)
 
-    data: Optional[Mapping[str, Any]] = None # this is a chainmap inheriting from the supers as well
+    data: Optional[
+        Mapping[str, Any]
+    ] = None  # this is a chainmap inheriting from the supers as well
 
     override_data: dict[str, Any] = field(factory=dict)
     _override_location: dict[str, ObjectLayer] = field(factory=dict)
@@ -232,9 +238,7 @@ class BaseTranslator(AtopileParserVisitor):
         """
         return NOTHING
 
-    def visit_iterable_helper(
-        self, children: Iterable
-    ) -> KeyOptMap:
+    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
         """
         Visit multiple children and return a tuple of their results,
         discard any results that are NOTHING and flattening the children's results.
@@ -346,9 +350,7 @@ class BaseTranslator(AtopileParserVisitor):
 
         raise TypeError("Unexpected statement type")
 
-    def visitSimple_stmts(
-        self, ctx: ap.Simple_stmtsContext
-    ) -> KeyOptMap:
+    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
         return self.visit_iterable_helper(ctx.simple_stmt())
 
     def visitBlock(self, ctx) -> KeyOptMap:
@@ -388,6 +390,7 @@ class BaseTranslator(AtopileParserVisitor):
             raise errors.AtoTypeError.from_ctx(  # pylint: disable=raise-missing-from
                 f"Expected an integer, but got {text}", ctx
             )
+
 
 class Scoop(BaseTranslator):
     """Scoop's job is to map out all the object definitions in the code."""
@@ -748,7 +751,9 @@ class Lofty(BaseTranslator):
             self._obj_context_stack.pop()
 
     @contextmanager
-    def apply_replacements_from_objs(self, objs: Iterable[ObjectLayer]) -> Iterable[AddrStr]:
+    def apply_replacements_from_objs(
+        self, objs: Iterable[ObjectLayer]
+    ) -> Iterable[AddrStr]:
         """
         Apply the replacements defined in the given objects,
         returning which replacements were applied
@@ -757,10 +762,7 @@ class Lofty(BaseTranslator):
 
         for obj in objs:
             for ref, replacement in obj.obj_def.replacements.items():
-                to_be_replaced_addr = (
-                    self._instance_context_stack[-1],
-                    ".".join(ref)
-                )
+                to_be_replaced_addr = (self._instance_context_stack[-1], ".".join(ref))
                 if to_be_replaced_addr not in self._known_replacements:
                     replace_with_addr = lookup_obj_in_closure(
                         obj.obj_def,
@@ -838,16 +840,19 @@ class Lofty(BaseTranslator):
 
             new_class_ref = self.visitName_or_attr(new_stmt.name_or_attr())
 
-            new_addr = address.add_instance(self._instance_context_stack[-1], assigned_name)
+            new_addr = address.add_instance(
+                self._instance_context_stack[-1], assigned_name
+            )
 
             if new_addr in self._known_replacements:
                 actual_super = self.obj_layer_getter(self._known_replacements[new_addr])
             else:
                 try:
-                    current_obj_def = self.obj_layer_getter(self._obj_context_stack[-1]).obj_def
+                    current_obj_def = self.obj_layer_getter(
+                        self._obj_context_stack[-1]
+                    ).obj_def
                     new_class_addr = lookup_obj_in_closure(
-                        current_obj_def,
-                        new_class_ref
+                        current_obj_def, new_class_ref
                     )
                 except KeyError as ex:
                     raise errors.AtoKeyError.from_ctx(
@@ -859,7 +864,6 @@ class Lofty(BaseTranslator):
             self.make_instance(new_addr, actual_super)
             return KeyOptMap.empty()
 
-
         # Handle Overrides
 
         # We've already dealt with direct assignments in the previous layer
@@ -868,8 +872,7 @@ class Lofty(BaseTranslator):
 
         assigned_value = self.visitAssignable(ctx.assignable())
         instance_addr_assigned_to = address.add_instances(
-            self._instance_context_stack[-1],
-            assigned_ref[:-1]
+            self._instance_context_stack[-1], assigned_ref[:-1]
         )
         instance_assigned_to = self._output_cache[instance_addr_assigned_to]
 
@@ -879,11 +882,11 @@ class Lofty(BaseTranslator):
         return KeyOptMap.empty()
 
     def visit_pin_or_signal_helper(
-        self,
-        ctx: ap.Pindef_stmtContext | ap.Signaldef_stmtContext
+        self, ctx: ap.Pindef_stmtContext | ap.Signaldef_stmtContext
     ) -> AddrStr:
         """This function makes a pin or signal instance and sticks it in the instance tree."""
-        # NOTE: name has to come first because both have names, but only pins have a "totally an integer"
+        # NOTE: name has to come first because both have names,
+        # but only pins have a "totally an integer"
         ref = self.visit_ref_helper(ctx.name() or ctx.totally_an_integer())
         assert len(ref) == 1  # TODO: unwrap these refs, now they're always one long
         if not ref:
@@ -940,9 +943,7 @@ class Lofty(BaseTranslator):
 
         return KeyOptMap.empty()
 
-    def visitConnectable(
-        self, ctx: ap.ConnectableContext
-    ) -> AddrStr:
+    def visitConnectable(self, ctx: ap.ConnectableContext) -> AddrStr:
         """TODO:"""
         if ctx.name_or_attr() or ctx.numerical_pin_ref():
             ref = self.visit_ref_helper(ctx.name_or_attr() or ctx.numerical_pin_ref())
@@ -954,10 +955,7 @@ class Lofty(BaseTranslator):
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> KeyOptMap:
         """We have to be selective here to deal with the ignored children properly."""
-        if (
-            ctx.assign_stmt()
-            or ctx.connect_stmt()
-        ):
+        if ctx.assign_stmt() or ctx.connect_stmt():
             return super().visitSimple_stmt(ctx)
 
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():

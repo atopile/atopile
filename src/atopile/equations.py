@@ -46,9 +46,9 @@ class EquationBuilder:
             symbol_key = sani_addr + "_" + key
             if isinstance(value, Number) or value == "UNKNOWN":
                 assert key not in local_symbols, "duplicate symbol name"
-                self._symbols[address.add_instance(instance, key)] = local_symbols[key] = sympy.Symbol(
-                    symbol_key
-                )
+                self._symbols[address.add_instance(instance, key)] = local_symbols[
+                    key
+                ] = sympy.Symbol(symbol_key)
 
         # then make equations
         equation_str = get_data_dict(instance).get("equations")
@@ -74,7 +74,9 @@ class EquationBuilder:
         elif address.get_entry(root) != self._entry:
             raise ValueError("EquationBuilder only supports one entry point")
 
-    def solve(self, known_values: dict[str, Number], solve_for: Iterable[AddrStr]) -> dict[AddrStr, Number]:
+    def solve(
+        self, known_values: dict[str, Number], solve_for: Iterable[AddrStr]
+    ) -> dict[AddrStr, Number]:
         """Solve the equation set for everything we can, given a set of known values."""
         known_symbol_values = {
             self._symbols[addr]: value for addr, value in known_values.items()

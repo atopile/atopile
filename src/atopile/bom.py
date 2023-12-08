@@ -37,6 +37,7 @@ def _default_to_none(func, addr):
     except KeyError:
         return "None"
 
+
 def generate_designator_map(entry_addr: address.AddrStr) -> str:
     """Generate a map between the designator and the component name"""
 
@@ -49,10 +50,10 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
 
     # Create tables to print to the terminal and to the disc
     console_table = Table(show_header=True, header_style="bold green")
-    console_table.add_column("des", justify = 'right')
-    console_table.add_column("name", justify = 'left')
-    console_table.add_column("name", justify = 'right')
-    console_table.add_column("des", justify = 'left')
+    console_table.add_column("des", justify="right")
+    console_table.add_column("name", justify="left")
+    console_table.add_column("name", justify="right")
+    console_table.add_column("des", justify="left")
 
     csv_table = StringIO()
     writer = csv.DictWriter(csv_table, fieldnames=COLUMNS)
@@ -67,14 +68,19 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
         sorted_designator_dict[c_des] = c_name
         sorted_comp_name_dict[c_name] = c_des
 
-    sorted_designator_dict = OrderedDict(natsort.natsorted(sorted_designator_dict.items()))
+    sorted_designator_dict = OrderedDict(
+        natsort.natsorted(sorted_designator_dict.items())
+    )
     sorted_comp_name_dict = OrderedDict(sorted(sorted_comp_name_dict.items()))
 
-    for (s_des, n_comp), (s_comp, n_des) in zip(sorted_designator_dict.items(), sorted_comp_name_dict.items()):
+    for (s_des, n_comp), (s_comp, n_des) in zip(
+        sorted_designator_dict.items(), sorted_comp_name_dict.items()
+    ):
         console_table.add_row(s_des, n_comp, s_comp, n_des)
 
     # Print the table
     rich.print(console_table)
+
 
 def generate_bom(entry_addr: address.AddrStr) -> str:
     """Generate a BoM for the and print it to a CSV."""

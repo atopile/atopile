@@ -26,6 +26,7 @@ MODULE_DIR_NAME = "modules"
 @define
 class Paths:
     """Config grouping for all the paths in a project."""
+
     project: Path = MISSING  # should be the absolute path to the project root
 
     src: Path = "./"
@@ -46,6 +47,7 @@ class Paths:
 @define
 class BuildConfig:
     """Config for a build."""
+
     # entry: str = MISSING
     abs_entry: str = MISSING
 
@@ -64,6 +66,7 @@ class Config:
     NOTE: this is the config for both the project, and the user.
     Project settings take precedent over user settings.
     """
+
     ato_version: str = "^0.0.0"
 
     paths: Paths = Factory(Paths)
@@ -102,7 +105,9 @@ def make_config(project_config: Path, build: Optional[str] = None) -> Config:
     The typing on this is a little white lie... because they're really OmegaConf objects.
     """
     structure = Config()
-    structure.paths.project = project_config.parent  # pylint: disable=assigning-non-slot
+    structure.paths.project = (
+        project_config.parent
+    )  # pylint: disable=assigning-non-slot
     if build is not None:
         structure.selected_build_name = build
 

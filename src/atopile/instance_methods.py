@@ -1,6 +1,6 @@
 from typing import Iterable, Optional, Callable
 
-from atopile.front_end import lofty, Instance, ObjectLayer
+from atopile.front_end import lofty, ObjectLayer
 from atopile import address
 from atopile.address import AddrStr
 
@@ -66,6 +66,7 @@ def _any_super_match(super: str) -> Callable[[str], bool]:
     """
     Return a filter that checks if the super is in the instance
     """
+
     # TODO: write me irl
     def _filter(addr: AddrStr) -> bool:
         instance = lofty._output_cache[addr]
@@ -85,15 +86,19 @@ match_signals = _make_dumb_matcher(["<Built-in>:Signal"])
 match_pins = _make_dumb_matcher("<Built-in>:Pin")
 match_pins_and_signals = _make_dumb_matcher(["<Built-in>:Pin", "<Built-in>:Signal"])
 match_interfaces = _make_dumb_matcher(["<Built-in>:Interface"])
-match_sentinels = _make_dumb_matcher([
-    "<Built-in>:Component",
-    "<Built-in>:Module"
-    "<Built-in>:Signal",
-    "<Built-in>:Pin",
-    "<Built-in>:Interface"])
+match_sentinels = _make_dumb_matcher(
+    [
+        "<Built-in>:Component",
+        "<Built-in>:Module" "<Built-in>:Signal",
+        "<Built-in>:Pin",
+        "<Built-in>:Interface",
+    ]
+)
+
 
 def get_supers_list(addr: AddrStr) -> ObjectLayer:
     return lofty._output_cache[addr].supers
+
 
 def get_next_super(addr: AddrStr) -> ObjectLayer:
     return get_supers_list(addr)[0]

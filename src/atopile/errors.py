@@ -2,10 +2,12 @@ import logging
 import textwrap
 import traceback
 from contextlib import contextmanager
-from enum import Enum, auto, IntEnum
+from enum import Enum, IntEnum, auto
 from pathlib import Path
-from typing import Optional, Type, Iterable, TypeVar, Callable, Sequence
-from antlr4 import Token, ParserRuleContext
+from typing import Optional, Sequence, Type
+
+from antlr4 import ParserRuleContext, Token
+
 from .parse_utils import get_src_info_from_ctx, get_src_info_from_token
 
 log = logging.getLogger(__name__)
@@ -78,10 +80,7 @@ class AtoErrorGroup(_BaseAtoError, ExceptionGroup):
 
     @classmethod
     def from_ctx(  # pylint: disable=arguments-differ
-        cls,
-        message: str,
-        exceptions: Sequence[AtoError],
-        ctx: ParserRuleContext
+        cls, message: str, exceptions: Sequence[AtoError], ctx: ParserRuleContext
     ) -> "AtoErrorGroup":
         """Create an error group from a context."""
         src_path, src_line, src_col = get_src_info_from_ctx(ctx)
@@ -134,6 +133,7 @@ class AtoAmbiguousReferenceError(AtoError):
     """
     Raised if something has a conflicting name in the same scope.
     """
+
 
 class AtoPreexistingError(AtoError):
     """
@@ -205,14 +205,6 @@ class HandlerMode(Enum):
     COLLECT_ALL = auto()
     RAISE_NON_ATO_EXCEPT_FATAL = auto()
     RAISE_ALL = auto()
-
-
-I = TypeVar("I")
-O = TypeVar("O")
-
-
-class DONT_FILL:
-    """A sentinel value to indicate that a spot with an error should not be filled."""
 
 
 class ErrorHandler:

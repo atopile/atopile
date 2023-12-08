@@ -6,14 +6,17 @@ from attrs import define, field
 @define
 class KicadField:
     """KV pair"""
+
     name: str  # eg value
     value: str  # eg 10 Ohms
+
 
 @define
 class KicadPin:
     """
     eg. (pin (num "1") (name "") (type "passive"))
     """
+
     name: str
     type: str
 
@@ -88,6 +91,7 @@ class KicadNode:
     """
     eg. (node (ref "R1") (pin "1") (pintype "passive"))
     """
+
     ref: str
     pin: str
     pintype: str = "stereo"

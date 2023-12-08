@@ -1,8 +1,5 @@
-#%%
 import logging
 import shutil
-from pathlib import Path
-import csv
 import pandas as pd
 
 from atopile import address
@@ -15,6 +12,7 @@ from atopile.instance_methods import (
     match_components,
 )
 
+
 def get_resistor_lcsc(min_value: float, max_value: float, package: str) -> list[str]:
     """
     Return the LCSC Part # for a resistor given a value and package.
@@ -26,10 +24,11 @@ def get_resistor_lcsc(min_value: float, max_value: float, package: str) -> list[
         if min_value > max_value:
             raise ValueError("Minimum value cannot be greater than maximum value")
 
-        filtered_resistors = resistors[(resistors["min_value"] >= min_value) &
-                                       (max_value >= resistors["max_value"])&
-                                       (resistors["Package"] == package)]
-
+        filtered_resistors = resistors[
+            (resistors["min_value"] >= min_value)
+            & (max_value >= resistors["max_value"])
+            & (resistors["Package"] == package)
+        ]
 
         if filtered_resistors.empty:
             return ""
@@ -40,7 +39,9 @@ def get_resistor_lcsc(min_value: float, max_value: float, package: str) -> list[
         return f"Error: {e}"
 
 
-def get_capacitor_lcsc(min_value: float, max_value: float, package: str, voltage: float = None) -> str:
+def get_capacitor_lcsc(
+    min_value: float, max_value: float, package: str, voltage: float = None
+) -> str:
     """
     Return the LCSC Part # for a capacitor given a value, package, and optional voltage.
     """
@@ -50,12 +51,16 @@ def get_capacitor_lcsc(min_value: float, max_value: float, package: str, voltage
         # Ensure input values are valid
         if min_value > max_value:
             raise ValueError("Minimum value cannot be greater than maximum value")
-        filtered_capacitors = capacitors[(capacitors["min_value"] >= min_value) &
-                                        (capacitors["max_value"] <= max_value) &
-                                        (capacitors["Package"] == package)]
+        filtered_capacitors = capacitors[
+            (capacitors["min_value"] >= min_value)
+            & (capacitors["max_value"] <= max_value)
+            & (capacitors["Package"] == package)
+        ]
 
         if voltage is not None:
-            filtered_capacitors = filtered_capacitors[filtered_capacitors["voltage"] >= voltage]
+            filtered_capacitors = filtered_capacitors[
+                filtered_capacitors["voltage"] >= voltage
+            ]
 
         if filtered_capacitors.empty:
             return ""
