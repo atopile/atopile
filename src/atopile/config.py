@@ -77,6 +77,8 @@ class Config:
     selected_build_name: str = "default"
     selected_build: BuildConfig = "${.builds[${.selected_build_name}]}"
 
+    dependencies: list[str] = []
+
 
 def _sanitise_key(s: str) -> str:
     """Sanitise a string to be a valid python identifier."""

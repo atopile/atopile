@@ -3,7 +3,7 @@ import logging
 import click
 from uvicorn.logging import ColourizedFormatter
 
-from atopile.cli import build
+from . import build, create, install
 
 # configure logging
 log = logging.getLogger(__name__)
@@ -23,6 +23,8 @@ def cli():
 
 
 cli.add_command(build.build)
+cli.add_command(create.create)
+cli.add_command(install.install)
 
 
 if __name__ == "__main__":
