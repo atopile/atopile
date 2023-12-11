@@ -15,6 +15,7 @@ def install_dependency(module_name: str, top_level_path: Path):
     modules_path = top_level_path / ".ato" / "modules"
     modules_path.mkdir(parents=True, exist_ok=True)
     clone_url = f"https://gitlab.atopile.io/packages/{module_name}"
+    log.info(f"cloning {module_name} dependency")
     Repo.clone_from(clone_url, modules_path / module_name)
 
 
@@ -36,24 +37,19 @@ def install_dependencies_from_yaml(top_level_path: Path):
 @click.argument("module_name", required=False)
 @click.option("--jlcpcb", required=False, help="JLCPCB component ID")
 def install(module_name: str, jlcpcb: str):
-    try:
-        repo = Repo(".", search_parent_directories=True)
-        top_level_path = Path(repo.working_tree_dir)
+    repo = Repo(".", search_parent_directories=True)
+    top_level_path = Path(repo.working_tree_dir)
 
-        if module_name:
-            # eg. "ato install some-atopile-module"
-            install_dependency(module_name, top_level_path)
-            add_dependency_to_ato_yaml(top_level_path, module_name)
-        elif jlcpcb:
-            # eg. "ato install --jlcpcb=C123"
-            install_jlcpcb(jlcpcb)
-        else:
-            # eg. "ato install"
-            install_dependencies_from_yaml(top_level_path)
-
-    except GitCommandError:
-        logging.error("Not a git repository (or any of the parent directories)")
-        sys.exit(1)
+    if module_name:
+        # eg. "ato install some-atopile-module"
+        install_dependency(module_name, top_level_path)
+        add_dependency_to_ato_yaml(top_level_path, module_name)
+    elif jlcpcb:
+        # eg. "ato install --jlcpcb=C123"
+        install_jlcpcb(jlcpcb)
+    else:
+        # eg. "ato install"
+        install_dependencies_from_yaml(top_level_path)
 
 
 def install_jlcpcb(component_id: str):
