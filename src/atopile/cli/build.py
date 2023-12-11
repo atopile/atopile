@@ -77,4 +77,4 @@ def consolidate_footprints(project_config: Config) -> None:
         try:
             shutil.copy(fp, fp_target)
         except shutil.SameFileError:
-            log.warning("Footprint %s already exists in the target directory", fp)
+            log.debug("Footprint %s already exists in the target directory", fp)
