@@ -24,6 +24,7 @@ def project_options(f):
     @click.option("-b", "--build", default=None)
     @click.option("-c", "--config", multiple=True)
     @click.option("-t", "--target", multiple=True)
+    @click.option("--debugpy", is_flag=True)
     @functools.wraps(f)
     def wrapper(
         *args,
@@ -31,8 +32,18 @@ def project_options(f):
         build: str,
         config: Iterable[str],
         target: Iterable[str],
+        debugpy: bool,
         **kwargs,
     ):
+        """Wrap a CLI command to ingest common config options to build a project."""
+        # we process debugpy first, so we can attach the debugger ASAP into the process
+        if debugpy:
+            import debugpy  # pylint: disable=import-outside-toplevel
+            debug_port = 5678
+            debugpy.listen(("localhost", debug_port))
+            log.info("Starting debugpy on port %s", debug_port)
+            debugpy.wait_for_client()
+
         # basic the entry address if provided, otherwise leave it as None
         if entry is not None:
             entry = AddrStr(entry)
