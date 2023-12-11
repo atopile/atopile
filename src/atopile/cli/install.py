@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 import yaml
-from git import GitCommandError, Repo
+from git import Repo, InvalidGitRepositoryError, NoSuchPathError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -14,8 +14,16 @@ log.setLevel(logging.INFO)
 def install_dependency(module_name: str, top_level_path: Path):
     modules_path = top_level_path / ".ato" / "modules"
     modules_path.mkdir(parents=True, exist_ok=True)
-    clone_url = f"https://gitlab.atopile.io/packages/{module_name}"
-    Repo.clone_from(clone_url, modules_path / module_name)
+    target_dir = modules_path / module_name
+    try:
+        repo = Repo(modules_path / module_name)
+        log.info(f"{module_name} already exists. pulling latest changes.")
+        repo.remotes.origin.pull()
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        # Directory does not contain a valid repo, clone into it
+        log.info(f"cloning {module_name} dependency")
+        clone_url = f"https://gitlab.atopile.io/packages/{module_name}"
+        Repo.clone_from(clone_url, modules_path / module_name)
 
 
 def install_dependencies_from_yaml(top_level_path: Path):
