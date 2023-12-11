@@ -5,21 +5,33 @@ from pathlib import Path
 
 import click
 import yaml
-from git import Repo
+from git import Repo, InvalidGitRepositoryError, NoSuchPathError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-def install_dependency(module_name: str, top_level_path: Path):
+def install_dependency(module_name: str, top_level_path: Path, upgrade: bool = False):
     modules_path = top_level_path / ".ato" / "modules"
     modules_path.mkdir(parents=True, exist_ok=True)
-    clone_url = f"https://gitlab.atopile.io/packages/{module_name}"
-    log.info(f"cloning {module_name} dependency")
-    Repo.clone_from(clone_url, modules_path / module_name)
+    try:
+        # This will raise an exception if the directory does not exist
+        repo = Repo(modules_path / module_name)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        # Directory does not contain a valid repo, clone into it
+        log.info(f"cloning {module_name} dependency")
+        clone_url = f"https://gitlab.atopile.io/packages/{module_name}"
+        Repo.clone_from(clone_url, modules_path / module_name)
+    else:
+        # In this case the directory exists and contains a valid repo
+        if upgrade:
+            log.info(f"pulling latest changes for {module_name}")
+            repo.remotes.origin.pull()
+        else:
+            log.info(f"{module_name} already exists. skipping. If you wish to upgrade, use --upgrade")
 
 
-def install_dependencies_from_yaml(top_level_path: Path):
+def install_dependencies_from_yaml(top_level_path: Path, upgrade: bool = False):
     ato_yaml_path = top_level_path / "ato.yaml"
     if not ato_yaml_path.exists():
         logging.error("ato.yaml not found at the top level of the repo")
@@ -30,26 +42,27 @@ def install_dependencies_from_yaml(top_level_path: Path):
 
     dependencies = data.get("dependencies", [])
     for module_name in dependencies:
-        install_dependency(module_name, top_level_path)
+        install_dependency(module_name, top_level_path, upgrade)
 
 
 @click.command()
 @click.argument("module_name", required=False)
 @click.option("--jlcpcb", required=False, help="JLCPCB component ID")
-def install(module_name: str, jlcpcb: str):
+@click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
+def install(module_name: str, jlcpcb: str, upgrade: bool):
     repo = Repo(".", search_parent_directories=True)
     top_level_path = Path(repo.working_tree_dir)
 
     if module_name:
         # eg. "ato install some-atopile-module"
-        install_dependency(module_name, top_level_path)
+        install_dependency(module_name, top_level_path, upgrade)
         add_dependency_to_ato_yaml(top_level_path, module_name)
     elif jlcpcb:
         # eg. "ato install --jlcpcb=C123"
         install_jlcpcb(jlcpcb)
     else:
         # eg. "ato install"
-        install_dependencies_from_yaml(top_level_path)
+        install_dependencies_from_yaml(top_level_path, upgrade)
 
 
 def install_jlcpcb(component_id: str):
