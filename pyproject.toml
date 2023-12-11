@@ -69,6 +69,7 @@ docs = [
 dev = [
     "ruff",
     "black",
+    "debugpy",
 ]
 
 [project.scripts]
