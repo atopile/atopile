@@ -124,7 +124,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
             mpn,
         )
 
-    for component in bom[None]:
+    for component in bom.get(None, []):
         _add_row(
             _default_to(atopile.components.get_value, component, ""),
             _default_to(atopile.components.get_designator, component, "<empty>"),

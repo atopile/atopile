@@ -929,8 +929,13 @@ class Lofty(BaseTranslator):
         current_instance_addr = self._instance_context_stack[-1]
         current_instance = self._output_cache[current_instance_addr]
 
-        source_instance = self._output_cache[source_addr]
-        target_instance = self._output_cache[target_addr]
+        try:
+            source_instance = self._output_cache[source_addr]
+            target_instance = self._output_cache[target_addr]
+        except KeyError as ex:
+            raise errors.AtoKeyError.from_ctx(
+                f"Couldn't find ref {source_addr} or {target_addr}", ctx
+            ) from ex
 
         link = Link(
             src_ctx=ctx,
