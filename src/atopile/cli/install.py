@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 import yaml
-from git import GitCommandError, Repo
+from git import Repo
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
