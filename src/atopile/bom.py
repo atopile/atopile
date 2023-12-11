@@ -25,10 +25,19 @@ def _get_mpn(addr: address.AddrStr) -> Optional[str]:
     Return the MPN for a component, or None of it's unavailable
     """
     try:
-        return atopile.components.get_mpn(addr)
+        mpn = atopile.components.get_mpn(addr)
     except KeyError:
         log.error("No MPN for for %s", addr)
         return None
+
+    # FIXME: this is a hack we should remove as soon as
+    # we add the generics component selector back in
+    if mpn.startswith("generic_"):
+        footprint = _default_to(atopile.components.get_footprint, addr, "<no-footprint>")
+        value = _default_to(atopile.components.get_value, addr, "<no-value>")
+        return f"{mpn}-{footprint}-{value}"
+
+    return mpn
 
 
 def _default_to(func, addr, default):
@@ -117,9 +126,14 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
         # representative component
         component = components_in_group[0]
 
+        friendly_designators = ",".join(
+            _default_to(atopile.components.get_designator, component, "?")
+            for component in components_in_group
+        )
+
         _add_row(
             _default_to(atopile.components.get_value, component, ""),
-            _default_to(atopile.components.get_designator, component, "<empty>"),
+            friendly_designators,
             _default_to(atopile.components.get_footprint, component, "<empty>"),
             mpn,
         )
