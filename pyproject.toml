@@ -31,7 +31,7 @@ dependencies = [
     "attrs",
     "case-converter",
     "click",
-    "easyeda2kicad",
+    "easyeda2ato",
     "fastapi",
     "gitpython",
     "igraph",
