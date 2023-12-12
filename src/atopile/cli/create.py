@@ -113,7 +113,7 @@ def init_project(project_path: Path, top_level_dir, name):
     # encounter the string "template123", we should
     # replace it with the project name
     rename_lines_in = [
-        "elec/layout/template123.kicad_pro",
+        "elec/layout/default/template123.kicad_pro",
         "README.md",
         "elec/src/template123.ato",
     ]
