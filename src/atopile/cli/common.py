@@ -107,8 +107,17 @@ def project_options(f):
                         " the node within it you want to build.",
                         param_hint="entry",
                     )
+            elif entry_arg_file_path.is_dir():
+                pass  # ignore this case, we'll use the entry point in the ato.yaml
+            elif not entry_arg_file_path.exists():
+                raise click.BadParameter(
+                    "The entry you have specified does not exist.",
+                    param_hint="entry",
+                )
             else:
-                log.error(f"Entry {entry_arg_file_path} can't be found.")
+                raise ValueError(
+                    f"Unexpected entry path type {entry_arg_file_path} - this should never happen!"
+                )
 
         # ensure we have an entry-point
         try:
