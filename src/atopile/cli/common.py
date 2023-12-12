@@ -108,7 +108,7 @@ def project_options(f):
                         param_hint="entry",
                     )
             else:
-                log.warning(f"Entry {entry} is not a file. Ignoring.")
+                log.error(f"Entry {entry_arg_file_path} can't be found.")
 
         # ensure we have an entry-point
         try:
