@@ -85,11 +85,17 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
 
 #TODO: currently a hack until we develop the required infrastructure
 footprint_to_package_map = {
-    "Resistor_SMD:R_0402_1005Metric" : "0402",
-    "Resistor_SMD:R_0603_1608Metric" : "0603",
-    "Capacitor_SMD:C_0402_1005Metric" : "0402",
-    "Capacitor_SMD:C_0603_1608Metric" : "0603",
-    "Capacitor_SMD:C_1206_3216Metric" : "1206",
+    "R01005" : "01005",
+    "R0201" : "0201",
+    "R0402" : "0402",
+    "R0603" : "0603",
+    "R0805" : "0805",
+    "C01005" : "01005",
+    "C0201" : "0201",
+    "C0402" : "0402",
+    "C0603" : "0603",
+    "C0805" : "0805",
+    "C1206" : "1206",
 }
 
 def _strip_letter_if_r_or_f(s):
