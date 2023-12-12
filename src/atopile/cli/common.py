@@ -107,6 +107,8 @@ def project_options(f):
                         " the node within it you want to build.",
                         param_hint="entry",
                     )
+            else:
+                log.warning(f"Entry {entry} is not a file. Ignoring.")
 
         # ensure we have an entry-point
         try:
