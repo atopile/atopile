@@ -39,9 +39,8 @@ def _get_mpn(addr: address.AddrStr) -> Optional[str]:
     try:
         mpn = atopile.components.get_mpn(addr)
     except KeyError:
-        log.error("No MPN for for %s", addr)
+        log.warning("No MPN for for %s", addr)
         return None
-
     return mpn
 
 
@@ -49,6 +48,8 @@ def _default_to(func, addr, default):
     try:
         return func(addr)
     except KeyError:
+        name = func.__name__.split("_")[-1]
+        log.warning("No %s for for %s", name, addr)
         return default
 
 
