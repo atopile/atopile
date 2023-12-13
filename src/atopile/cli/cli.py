@@ -7,7 +7,9 @@ from rich.theme import Theme
 
 from . import build, create, install
 
-console = Console(theme=Theme({"logging.level.warning": "yellow"}))
+console = Console(
+    theme=Theme({"logging.level.warning": "yellow"})
+)
 
 
 FORMAT = "%(message)s"
@@ -16,7 +18,10 @@ logging.basicConfig(
     format=FORMAT,
     datefmt="[%X]",
     handlers=[
-        RichHandler(console=console)
+        RichHandler(
+            console=console,
+            tracebacks_suppress=[click],
+        )
     ]
 )
 
