@@ -18,7 +18,7 @@ class ErrorListenerConverter(ErrorListener):
     """Converts an error into an AtoSyntaxError."""
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
-        raise AtoSyntaxError.from_token(f"{str(e)} '{msg}'", offendingSymbol)
+        raise AtoSyntaxError.from_token(offendingSymbol, f"{str(e)} '{msg}'", )
 
 
 class ErrorListenerCollector(ErrorListenerConverter):
@@ -30,7 +30,7 @@ class ErrorListenerCollector(ErrorListenerConverter):
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
         self.errors.append(
-            AtoSyntaxError.from_token(f"{str(e)} '{msg}'", offendingSymbol)
+            AtoSyntaxError.from_token(offendingSymbol, f"{str(e)} '{msg}'")
         )
 
 

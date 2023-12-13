@@ -24,8 +24,10 @@ class _BaseAtoError(Exception):
 
     def __init__(
         self,
-        message: str = "",
+        message: str,
         *args,
+        title: Optional[str] = None,
+        addr: Optional[str] = None,
         src_path: Optional[str | Path] = None,
         src_line: Optional[int] = None,
         src_col: Optional[int] = None,
@@ -33,25 +35,30 @@ class _BaseAtoError(Exception):
     ) -> None:
         super().__init__(message, *args, **kwargs)
         self.message = message
+        self._title = title
+        self.addr = addr
         self.src_path = src_path
         self.src_line = src_line
         self.src_col = src_col
 
     @classmethod
-    def from_token(cls, message: str, token: Token) -> "_BaseAtoError":
+    def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseAtoError":
         """Create an error from a token."""
         src_path, src_line, src_col = get_src_info_from_token(token)
-        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col)
+        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
 
     @classmethod
-    def from_ctx(cls, message: str, ctx: ParserRuleContext) -> "_BaseAtoError":
+    def from_ctx(cls, ctx: ParserRuleContext, message: str, *args, **kwargs) -> "_BaseAtoError":
         """Create an error from a context."""
         src_path, src_line, src_col = get_src_info_from_ctx(ctx)
-        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col)
+        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
 
     @property
-    def user_facing_name(self):
+    def title(self):
         """Return the name of this error, without the "Ato" prefix."""
+        if self._title is not None:
+            return self._title
+
         error_name = self.__class__.__name__
         if error_name.startswith("Ato"):
             return error_name[3:]
@@ -128,7 +135,7 @@ def _log_ato_errors(
         return
 
     # ensure we have values for all the components on the error string
-    message = ex.user_facing_name + "\n"
+    message = ex.title + "\n"
 
     if ex.src_path or ex.src_line or ex.src_col:
         message += (
@@ -199,6 +206,11 @@ def accumulate_errors(
             yield
         except error_types as ex:
             errors.append(ex)
+        except ExceptionGroup as ex:
+            nice, naughty = ex.split(error_types)
+            errors.extend(nice.exceptions)
+            if naughty:
+                errors.append(naughty)
 
     for item in gen:
         # NOTE: we don't create a single context manager for the whole generator

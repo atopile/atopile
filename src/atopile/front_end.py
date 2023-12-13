@@ -371,7 +371,7 @@ class BaseTranslator(AtopileParserVisitor):
             return int(text)
         except ValueError:
             raise errors.AtoTypeError.from_ctx(  # pylint: disable=raise-missing-from
-                f"Expected an integer, but got {text}", ctx
+                ctx, f"Expected an integer, but got {text}"
             )
 
 
@@ -509,7 +509,7 @@ class Scoop(BaseTranslator):
                 break
         else:
             raise errors.AtoImportNotFoundError.from_ctx(  # pylint: disable=raise-missing-from
-                f"File '{from_file}' not found.", ctx
+                ctx, f"File '{from_file}' not found."
             )
 
         import_addr = address.add_entries(str(candidate_path), import_what_ref)
@@ -574,7 +574,7 @@ def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
         if import_leads and obj_lead:
             # TODO: improve error message with details about what items are conflicting
             raise errors.AtoAmbiguousReferenceError.from_ctx(
-                f"Name '{ref[0]}' is ambiguous in '{scope}'.", scope.src_ctx
+                scope.src_ctx, f"Name '{ref[0]}' is ambiguous in '{scope}'."
             )
 
         if obj_lead is not None:
@@ -684,7 +684,7 @@ def _translate_addr_key_errors(ctx: ParserRuleContext):
         addr = ex.args[0]
         terse_addr = address.get_instance_section(addr)
         raise errors.AtoKeyError.from_ctx(
-            f"Couldn't find {terse_addr}", ctx
+            ctx, f"Couldn't find {terse_addr}"
         ) from ex
 
 
