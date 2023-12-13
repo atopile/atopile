@@ -296,7 +296,14 @@ def downgrade(
         try:
             return func(*args, **kwargs)
         except exs as ex:
-            logger.log(to_level, format_error(ex), extra={"markup": True})
+            logger.log(
+                to_level,
+                format_error(
+                    ex,
+                    logger.isEnabledFor(logging.DEBUG)
+                ),
+                extra={"markup": True}
+            )
             if isinstance(default, collections.abc.Callable):
                 return default()
             return default
