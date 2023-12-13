@@ -13,7 +13,7 @@ from atopile.instance_methods import (
 def _get_pandas_data() -> Path:
     current_file = Path(__file__)
     current_dir = current_file.parent
-    data_file = current_dir / 'Basic_Parts.csv'
+    data_file = current_dir / 'jlc_parts.csv'
     return pd.read_csv(data_file)
 
 def get_resistor_lcsc(min_value: float, max_value: float, package: str) -> list[str]:
