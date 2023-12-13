@@ -860,7 +860,8 @@ class Lofty(BaseTranslator):
         instance_addr_assigned_to = address.add_instances(
             self._instance_context_stack[-1], assigned_ref[:-1]
         )
-        instance_assigned_to = self._output_cache[instance_addr_assigned_to]
+        with _translate_addr_key_errors(ctx):
+            instance_assigned_to = self._output_cache[instance_addr_assigned_to]
 
         instance_assigned_to.override_data[assigned_name] = assigned_value
         instance_assigned_to._override_location[assigned_name] = self.obj_layer_getter
