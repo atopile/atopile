@@ -188,12 +188,15 @@ def muffle_fatalities(func):
 
 
 @contextmanager
-def error_accumulator(
+def _error_accumulator(
     accumulate_types: Optional[Type | tuple[Type]] = None,
     group_message: Optional[str] = None,
 ) -> Iterator[Callable[[], ContextManager]]:
     """
     Wraps a block of code and collects any ato errors raised while executing it.
+
+    This is private because I'm not sure it's a good idea to use on its own.
+    It's indented for use with the iter_through_errors function below.
     """
     errors: list[Exception] = []
 
@@ -240,7 +243,7 @@ def iter_through_errors(
     - the item from the iterable
     """
 
-    with error_accumulator(accumulate_types, group_message) as err_cltr:
+    with _error_accumulator(accumulate_types, group_message) as err_cltr:
         for item in gen:
             # NOTE: we don't create a single context manager for the whole generator
             # because generator context managers are a bit special
