@@ -240,7 +240,7 @@ class BaseTranslator(AtopileParserVisitor):
         """
 
         def __visit() -> KeyOptMap:
-            for err_cltr, child in errors.accumulate_errors(children):
+            for err_cltr, child in errors.iter_through_errors(children):
                 with err_cltr():
                     child_result = self.visit(child)
                     if child_result is not NOTHING:

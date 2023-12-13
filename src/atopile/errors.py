@@ -5,7 +5,7 @@ import traceback
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Callable, ContextManager, Iterable, Optional, Type, TypeVar
+from typing import Callable, ContextManager, Iterable, Iterator, Optional, Type, TypeVar
 
 from antlr4 import ParserRuleContext, Token
 
@@ -187,34 +187,61 @@ def muffle_fatalities(func):
     return wrapper
 
 
-def accumulate_errors(
+@contextmanager
+def error_accumulator(
+    accumulate_types: Optional[Type | tuple[Type]] = None,
+    group_message: Optional[str] = None,
+) -> Iterator[Callable[[], ContextManager]]:
+    """
+    Wraps a block of code and collects any ato errors raised while executing it.
+    """
+    errors: list[Exception] = []
+
+    # Set default values for the arguments
+    # NOTE: we don't do this in the function signature because
+    # we want the defaults to be the same here as in the iter_through_errors
+    # function below
+    if accumulate_types is None:
+        accumulate_types = AtoError
+
+    if not group_message:
+        group_message = ""
+
+    @contextmanager
+    def _collect_ato_errors():
+        try:
+            yield
+        except accumulate_types as ex:
+            errors.append(ex)
+        except ExceptionGroup as ex:
+            nice, naughty = ex.split(accumulate_types)
+            if nice:
+                errors.extend(nice.exceptions)
+            if naughty:
+                raise naughty from ex
+
+    # FIXME: do we wanna slap this in a try-finally
+    #  block so we also get to raise the exceptions
+    #  we collected if a naughty error throws us out?
+    yield _collect_ato_errors
+
+    if errors:
+        raise ExceptionGroup(group_message, errors)
+
+
+def iter_through_errors(
     gen: Iterable[T],
-    error_types: Type | tuple[Type] = AtoError,
-    fatal_message: str = "",
+    accumulate_types: Optional[Type | tuple[Type]] = None,
+    group_message: Optional[str] = None,
 ) -> Iterable[tuple[Callable[[], ContextManager], T]]:
     """
     Wraps an iterable and yields:
     - a context manager that collects any ato errors raised while processing the iterable
     - the item from the iterable
     """
-    errors: list[Exception] = []
 
-    @contextmanager
-    def _collect_ato_errors():
-        try:
-            yield
-        except error_types as ex:
-            errors.append(ex)
-        except ExceptionGroup as ex:
-            nice, naughty = ex.split(error_types)
-            errors.extend(nice.exceptions)
-            if naughty:
-                errors.append(naughty)
-
-    for item in gen:
-        # NOTE: we don't create a single context manager for the whole generator
-        # because generator context managers are a bit special
-        yield _collect_ato_errors, item
-
-    if errors:
-        raise ExceptionGroup(fatal_message, errors)
+    with error_accumulator(accumulate_types, group_message) as err_cltr:
+        for item in gen:
+            # NOTE: we don't create a single context manager for the whole generator
+            # because generator context managers are a bit special
+            yield err_cltr, item

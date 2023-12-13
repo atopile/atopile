@@ -15,7 +15,7 @@ from atopile.bom import (
 )
 from atopile.cli.common import project_options
 from atopile.config import Config
-from atopile.errors import accumulate_errors, muffle_fatalities, handle_ato_errors
+from atopile.errors import iter_through_errors, muffle_fatalities, handle_ato_errors
 from atopile.front_end import set_search_paths
 from atopile.netlist import get_netlist_as_str
 from atopile import address
@@ -49,7 +49,7 @@ def build(config: Config, debug: bool):
     build_args.build_path.mkdir(parents=True, exist_ok=True)
 
     targets = muster.targets.keys() if config.selected_build.targets == ["*"] else config.selected_build.targets
-    for err_cltr, target in accumulate_errors(targets):
+    for err_cltr, target in iter_through_errors(targets):
         with err_cltr():
             muster.targets[target](build_args)
 
