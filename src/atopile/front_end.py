@@ -842,7 +842,7 @@ class Lofty(BaseTranslator):
                     )
                 except KeyError as ex:
                     raise errors.AtoKeyError.from_ctx(
-                        f"Couldn't find ref {new_class_ref}", current_obj_def.src_ctx
+                        current_obj_def.src_ctx, f"Couldn't find ref {new_class_ref}"
                     ) from ex
                 actual_super = self.obj_layer_getter(new_class_addr)
 
