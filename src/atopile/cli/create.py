@@ -30,6 +30,18 @@ def create(name: str):
     """
     processed_proj_name = kebabcase(name)
     project_type, project_path, top_level_dir = determine_project_type_and_path(processed_proj_name)
+
+    # Confirm that the user wants to create a module
+    if project_type == "module":
+        proceed = click.prompt(
+            f'A module named {processed_proj_name} will be added to your .ato/ directory and pushed remotely. Proceed? (y/n)', type=str)
+        if proceed != 'y':
+            log.info('Aborting.')
+            return
+        else:
+            log.info('Proceeding.')
+
+    # Clone the project template 
     clone_project_template(project_type, project_path)
 
     if project_type == "module":
@@ -64,7 +76,7 @@ def determine_project_type_and_path(name):
         top_level_dir = Path(repo.git.rev_parse("--show-toplevel"))
         project_type = "module"
         project_path = top_level_dir / ".ato" / "modules" / name
-        log.info("Detected existing ato project. Creating a module.")
+        log.info("You are within an ato project. Creating a module.")
     except InvalidGitRepositoryError:
         project_type = "project"
         project_path = Path(name).resolve()
