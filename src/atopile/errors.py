@@ -277,13 +277,16 @@ def iter_through_errors(
             yield err_cltr, item
 
 
+C = TypeVar("C", bound=Callable)
+
+
 def downgrade(
-    func: Callable[..., T],
+    func: C,
     exs: Type | tuple[Type],
     default = None,
     to_level: int = logging.WARNING,
     logger: logging.Logger = log,
-) -> Callable[..., T]:
+) -> C:
     """
     Return a wrapped version of your function that catches the given exceptions
     and logs their contents as warning, instead returning a default value
