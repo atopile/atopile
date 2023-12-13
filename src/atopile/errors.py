@@ -9,6 +9,7 @@ from typing import Callable, ContextManager, Iterable, Iterator, Optional, Type,
 
 from antlr4 import ParserRuleContext, Token
 
+from atopile import address
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
 
 log = logging.getLogger(__name__)
@@ -115,6 +116,37 @@ def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     return {}
 
 
+def format_error(ex: AtoError, debug: bool = False) -> str:
+    """
+    Format an error into a string.
+    """
+    # Ensure we have values for all the components on the error string
+    message = f"[bold]{ex.title}[/]\n"
+
+    # Attach source info if we have it
+    if ex.src_path:
+        source_info = str(ex.src_path)
+        if ex.src_line:
+            source_info += f":{ex.src_line}"
+            if ex.src_col:
+                source_info += f":{ex.src_col}"
+        message += f"{source_info}\n"
+
+    # Add the message from the exception
+    message += textwrap.indent(ex.message, "--> ")
+
+    # Replace the address in the string, if we have it attached
+    if ex.addr:
+        if debug:
+            addr = ex.addr
+        else:
+            addr = address.get_instance_section(ex.addr)
+        escaped_addr = addr.replace(":", r"\:")
+        message = message.replace("$addr", f"[bold cyan]{escaped_addr}[/]")
+
+    return message.strip()
+
+
 def _log_ato_errors(
     ex: AtoError | ExceptionGroup,
     logger: logging.Logger,
@@ -133,17 +165,14 @@ def _log_ato_errors(
 
         return
 
-    # ensure we have values for all the components on the error string
-    message = ex.title + "\n"
-
-    if ex.src_path or ex.src_line or ex.src_col:
-        message += (
-            f"{ex.src_path or '<?>'}:{ex.src_line or '<?>'}:{ex.src_col or '<?>'}:\n"
-        )
-
-    message += textwrap.indent(ex.message, "--> ")
-
-    logger.error(message.strip())
+    # Format and printout the error
+    logger.error(
+        format_error(
+            ex,
+            logger.isEnabledFor(logging.DEBUG)
+        ),
+        extra={"markup": True}
+    )
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("Error info:\n", exc_info=ex)
 
