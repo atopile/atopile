@@ -115,7 +115,7 @@ class Muster:
 muster = Muster()
 
 
-@muster.register()
+@muster.register("copy-footprints")
 def consolidate_footprints(build_args: BuildArgs) -> None:
     """Consolidate all the project's footprints into a single directory."""
     fp_target = build_args.config.paths.abs_build / "footprints" / "footprints.pretty"
@@ -128,21 +128,21 @@ def consolidate_footprints(build_args: BuildArgs) -> None:
             log.debug("Footprint %s already exists in the target directory", fp)
 
 
-@muster.register()
+@muster.register("netlist")
 def generate_netlist(build_args: BuildArgs) -> None:
     """Generate a netlist for the project."""
     with open(build_args.output_base.with_suffix(".net"), "w", encoding="utf-8") as f:
         f.write(get_netlist_as_str(build_args.entry))
 
 
-@muster.register()
+@muster.register("bom")
 def generate_bom(build_args: BuildArgs) -> None:
     """Generate a BOM for the project."""
     with open(build_args.output_base.with_suffix(".csv"), "w", encoding="utf-8") as f:
         f.write(_generate_bom(build_args.entry))
 
 
-@muster.register()
+@muster.register("designator-map")
 def generate_designator_map(build_args: BuildArgs) -> None:
     """Generate a designator map for the project."""
     _generate_designator_map(build_args.entry)
