@@ -1,7 +1,6 @@
 import pytest
 
 from atopile.errors import AtoError, _error_accumulator, iter_through_errors
-from unittest.mock import MagicMock
 
 
 def test_error_accumulator():
