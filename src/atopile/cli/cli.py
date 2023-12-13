@@ -1,18 +1,24 @@
 import logging
 
 import click
-from uvicorn.logging import ColourizedFormatter
+from rich.logging import RichHandler
+
+from atopile.cli.rich_console import console
 
 from . import build, create, install
 
-# configure logging
-log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
-stream_handler = logging.StreamHandler()
-stream_handler.formatter = ColourizedFormatter(
-    fmt="%(levelprefix)s %(name)s %(message)s", use_colors=None
+FORMAT = "%(message)s"
+logging.basicConfig(
+    level="INFO",
+    format=FORMAT,
+    datefmt="[%X]",
+    handlers=[
+        RichHandler(
+            console=console,
+            tracebacks_suppress=[click],
+        )
+    ]
 )
-logging.root.addHandler(stream_handler)
 
 
 # cli root

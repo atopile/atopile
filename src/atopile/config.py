@@ -3,7 +3,6 @@
 """Schema and utils for atopile config files."""
 
 import collections.abc
-import logging
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,10 +10,6 @@ import yaml
 from attrs import Factory, define
 from omegaconf import MISSING, OmegaConf
 from atopile import address
-
-
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
 
 
 USER_CONFIG_PATH = Path("~/.atopile/config.yaml").expanduser().resolve().absolute()
@@ -41,7 +36,9 @@ class Paths:
     kicad_project: Path = "elec/layout"
     abs_kicad_project: Path = "${.project}/${.kicad_project}"
 
-    selected_build_path: Path = "${.abs_build}/${selected_build_name}"
+    abs_module_path: Path = "${.project}/" + f"{ATO_DIR_NAME}/{MODULE_DIR_NAME}"
+
+    abs_selected_build_path: Path = "${.abs_build}/${selected_build_name}"
 
 
 @define
@@ -51,12 +48,7 @@ class BuildConfig:
     entry: str = MISSING
     abs_entry: str = "${paths.abs_src}/${.entry}"
 
-    targets: list[str] = [
-        "designators",
-        "netlist-kicad6",
-        "bom-jlcpcb",
-        "kicad-lib-paths",
-    ]
+    targets: list[str] = ["*"]
 
 
 @define
@@ -107,9 +99,7 @@ def make_config(project_config: Path, build: Optional[str] = None) -> Config:
     The typing on this is a little white lie... because they're really OmegaConf objects.
     """
     structure = Config()
-    structure.paths.project = (
-        project_config.parent
-    )  # pylint: disable=assigning-non-slot
+    structure.paths.project = project_config.parent # pylint: disable=assigning-non-slot
     if build is not None:
         structure.selected_build_name = build
 

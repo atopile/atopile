@@ -12,7 +12,6 @@ from atopile.address import AddrStr
 from atopile.config import get_project_config_from_addr
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
 
 
 def project_options(f):

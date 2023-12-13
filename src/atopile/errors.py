@@ -1,17 +1,22 @@
+import collections.abc
 import logging
+import sys
 import textwrap
 import traceback
 from contextlib import contextmanager
-from enum import Enum, IntEnum, auto
+from functools import wraps
 from pathlib import Path
-from typing import Optional, Sequence, Type
+from typing import Callable, ContextManager, Iterable, Iterator, Optional, Type, TypeVar
 
 from antlr4 import ParserRuleContext, Token
 
-from .parse_utils import get_src_info_from_ctx, get_src_info_from_token
+from atopile import address
+from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+
+
+T = TypeVar("T")
 
 
 class _BaseAtoError(Exception):
@@ -21,75 +26,56 @@ class _BaseAtoError(Exception):
 
     def __init__(
         self,
-        message: str = "",
+        *args,
+        title: Optional[str] = None,
+        addr: Optional[str] = None,
         src_path: Optional[str | Path] = None,
         src_line: Optional[int] = None,
         src_col: Optional[int] = None,
         **kwargs,
     ) -> None:
-        super().__init__(message, **kwargs)
-        self.message = message
+        super().__init__(*args, **kwargs)
+        self.message = args[0] if args else ""
+        self._title = title
+        self.addr = addr
         self.src_path = src_path
         self.src_line = src_line
         self.src_col = src_col
 
     @classmethod
-    def from_token(cls, message: str, token: Token) -> "_BaseAtoError":
+    def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseAtoError":
+        """Create an error from a token."""
         src_path, src_line, src_col = get_src_info_from_token(token)
-        return cls(message, src_path, src_line, src_col)
+        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
 
     @classmethod
-    def from_ctx(cls, message: str, ctx: ParserRuleContext) -> "_BaseAtoError":
+    def from_ctx(cls, ctx: ParserRuleContext, message: str, *args, **kwargs) -> "_BaseAtoError":
+        """Create an error from a context."""
         src_path, src_line, src_col = get_src_info_from_ctx(ctx)
-        return cls(message, src_path, src_line, src_col)
+        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
 
     @property
-    def user_facing_name(self):
+    def title(self):
         """Return the name of this error, without the "Ato" prefix."""
+        if self._title is not None:
+            return self._title
+
         error_name = self.__class__.__name__
         if error_name.startswith("Ato"):
             return error_name[3:]
         return error_name
 
 
+class AtoFatalError(_BaseAtoError):
+    """
+    Something in the user's code meant we weren't able to continue.
+    Don't display a traceback on these because we'll have already printed one.
+    """
+
+
 class AtoError(_BaseAtoError):
     """
     This exception is thrown when there's an error in ato code
-    """
-
-
-class AtoErrorGroup(_BaseAtoError, ExceptionGroup):
-    """
-    This exception is thrown when there's an error in ato code
-    """
-
-    def __init__(
-        self,
-        message: str,
-        exceptions: Sequence[AtoError],
-        src_path: Optional[str | Path] = None,
-        src_line: Optional[int] = None,
-        src_col: Optional[int] = None,
-        **kwargs,
-    ) -> None:
-        assert all(isinstance(e, AtoError) for e in exceptions)
-        super(ExceptionGroup, self).__init__(message, exceptions, **kwargs)
-        self.src_path = src_path
-        self.src_line = src_line
-        self.src_col = src_col
-
-    @classmethod
-    def from_ctx(  # pylint: disable=arguments-differ
-        cls, message: str, exceptions: Sequence[AtoError], ctx: ParserRuleContext
-    ) -> "AtoErrorGroup":
-        """Create an error group from a context."""
-        src_path, src_line, src_col = get_src_info_from_ctx(ctx)
-        return cls(message, exceptions, src_path, src_line, src_col)
-
-
-class AtoFatalError(AtoError):
-    """
-    Something in your code meant we weren't able to continue building your code
     """
 
 
@@ -111,18 +97,6 @@ class AtoTypeError(AtoError):
     """
 
 
-class AtoNameConflictError(AtoError):
-    """
-    Raised if something has a conflicting name in the same scope.
-    """
-
-
-class AtoCircularDependencyError(AtoError):
-    """
-    Raised if something has a conflicting name in the same scope.
-    """
-
-
 class AtoImportNotFoundError(AtoError):
     """
     Raised if something has a conflicting name in the same scope.
@@ -135,12 +109,6 @@ class AtoAmbiguousReferenceError(AtoError):
     """
 
 
-class AtoPreexistingError(AtoError):
-    """
-    Raise if the thing we're visiting already has errors and therefore we stop processing.
-    """
-
-
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
@@ -149,139 +117,195 @@ def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     return {}
 
 
-def _process_error(
-    ex: Exception | ExceptionGroup,
-    visitor_type: Type,
+def format_error(ex: AtoError, debug: bool = False) -> str:
+    """
+    Format an error into a string.
+    """
+    # Ensure we have values for all the components on the error string
+    message = f"[bold]{ex.title}[/]\n"
+
+    # Attach source info if we have it
+    if ex.src_path:
+        source_info = str(ex.src_path)
+        if ex.src_line:
+            source_info += f":{ex.src_line}"
+            if ex.src_col:
+                source_info += f":{ex.src_col}"
+        message += f"{source_info}\n"
+
+    # Add the message from the exception
+    message += textwrap.indent(ex.message, "--> ")
+
+    # Replace the address in the string, if we have it attached
+    if ex.addr:
+        if debug:
+            addr = ex.addr
+        else:
+            addr = address.get_instance_section(ex.addr)
+        # FIXME: we ignore the escaping of the address here
+        message = message.replace("$addr", f"[bold cyan]{addr}[/]")
+
+    return message.strip()
+
+
+def _log_ato_errors(
+    ex: AtoError | ExceptionGroup,
     logger: logging.Logger,
 ):
     """Helper function to consistently write errors to the log"""
     if isinstance(ex, ExceptionGroup):
-        for e in ex.exceptions:
-            _process_error(e, visitor_type, logger)
+        if ex.message:
+            logger.error(ex.message)
+
+        nice_errors, naughty_errors = ex.split((AtoError, ExceptionGroup))
+        for e in nice_errors.exceptions:
+            _log_ato_errors(e, logger)
+
+        if naughty_errors:
+            raise naughty_errors
+
         return
 
-    src_path = None
-    start_line = None
-    start_column = None
-
-    # if we catch an ato error, we can reliably get the line and column from the exception itself
-    # if not, we need to get the error's line and column from the context, if possible
-    if isinstance(ex, AtoError):
-        message = ex.user_facing_name + ": " + ex.message
-        src_path = ex.src_path
-        start_line = ex.src_line
-        start_column = ex.src_col
-    else:
-        message = f"Unprocessed '{repr(ex)}' occurred during compilation"
-        if visitor_type is not None:
-            if ctx := get_locals_from_exception_in_class(ex, visitor_type).get("ctx"):
-                src_path, start_line, start_column = get_src_info_from_ctx(ctx)
-
-    # ensure we have values for all the components on the error string
-    if src_path is None:
-        src_path = "<?>"
-    if start_line is None:
-        start_line = "<?>"
-    if start_column is None:
-        start_column = "<?>"
-
-    indented_message = textwrap.indent(message, "--> ")
-
+    # Format and printout the error
     logger.error(
-        textwrap.dedent(
-            f"""
-            {src_path}:{start_line}:{start_column}:
-            {indented_message}
-            """
-        ).strip()
+        format_error(
+            ex,
+            logger.isEnabledFor(logging.DEBUG)
+        ),
+        extra={"markup": True}
     )
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("Error info:\n", exc_info=ex)
 
 
-class HandlerMode(Enum):
-    """The mode to use when an error occurs."""
+@contextmanager
+def handle_ato_errors(logger: logging.Logger = log) -> None:
+    """
+    This helper function catches ato exceptions and logs them.
+    """
+    try:
+        yield
 
-    COLLECT_ALL = auto()
-    RAISE_NON_ATO_EXCEPT_FATAL = auto()
-    RAISE_ALL = auto()
-
-
-class ErrorHandler:
-    """Handles errors in the compiler."""
-
-    def __init__(
-        self,
-        logger: Optional[logging.Logger] = None,
-        handel_mode: Optional[HandlerMode] = HandlerMode.RAISE_NON_ATO_EXCEPT_FATAL,
-        log_on_error: bool = True,
-    ) -> None:
-        self.logger = logger or log
-        self.handel_mode = handel_mode
-        self.errors: list[Exception] = []
-        self.log_on_error = log_on_error
-
-    @property
-    def exception_group(self) -> ExceptionGroup:
-        """Return an exception group of all the errors."""
-        return ExceptionGroup("Errors occurred during compilation", self.errors)
-
-    def assert_no_errors(self) -> None:
-        """Raise an exception group of all the errors if there are any."""
-        if len(self.errors) > 0:
-            raise AtoFatalError from self.exception_group
-
-    def handle(self, error: Exception, from_: Optional[Exception] = None) -> Exception:
-        """
-        Deal with an error, either by shoving it in the error list or raising it.
-        """
-        self.errors.append(error)
-        if self.log_on_error:
-            _process_error(error, None, self.logger)
-
-        def _do_raise() -> None:
-            if from_ is not None:
-                raise error from from_
-            raise error
-
-        if self.handel_mode == HandlerMode.RAISE_ALL:
-            _do_raise()
-
-        if self.handel_mode == HandlerMode.RAISE_NON_ATO_EXCEPT_FATAL:
-            if not isinstance(error, AtoError) or isinstance(error, AtoFatalError):
-                _do_raise()
-
-        return error
+    except (AtoError, ExceptionGroup) as ex:
+        # FIXME: we're gonna repeat ourselves a lot if the same
+        # error causes an issue multiple times (which they do)
+        _log_ato_errors(ex, logger)
+        raise AtoFatalError from ex
 
 
-class ReraiseBehavior(IntEnum):
-    IGNORE = 0
-    RERAISE = 1
-    RAISE_ATO_FATAL_ERROR = 2
+def muffle_fatalities(func):
+    """
+    Decorator to quietly exit if a fatal error is raised.
+    This is useful for the CLI, where we don't want to show a traceback.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except AtoFatalError:
+            sys.exit(1)
+        except ExceptionGroup as ex:
+            _, not_fatal_errors = ex.split(AtoFatalError)
+            if not_fatal_errors:
+                raise not_fatal_errors from ex
+            sys.exit(1)
+
+    return wrapper
 
 
 @contextmanager
-def write_errors_to_log(
-    visitor_type: Optional[Type] = None,
-    logger: Optional[logging.Logger] = None,
-    reraise: ReraiseBehavior = ReraiseBehavior.RERAISE,
-) -> None:
+def _error_accumulator(
+    accumulate_types: Optional[Type | tuple[Type]] = None,
+    group_message: Optional[str] = None,
+) -> Iterator[Callable[[], ContextManager]]:
     """
-    This helper function catches all exception and attempts to add "best effort" source info to them.
-    It's designed to be used on visitors that are the first stage of compilation after parsing.
-    It detects if the exception came from inside the visitor, and if so, attempts to add source info from the ANTLR ctx.
+    Wraps a block of code and collects any ato errors raised while executing it.
+
+    This is private because I'm not sure it's a good idea to use on its own.
+    It's indented for use with the iter_through_errors function below.
     """
-    if logger is None:
-        logger = log
+    errors: list[Exception] = []
 
-    try:
-        yield
-    except (Exception, ExceptionGroup) as ex:  # pylint: disable=broad-except
-        _process_error(ex, visitor_type, logger)
-        if reraise == ReraiseBehavior.RERAISE:
-            raise
-        elif reraise == ReraiseBehavior.RAISE_ATO_FATAL_ERROR:
-            raise AtoFatalError from ex
+    # Set default values for the arguments
+    # NOTE: we don't do this in the function signature because
+    # we want the defaults to be the same here as in the iter_through_errors
+    # function below
+    if accumulate_types is None:
+        accumulate_types = AtoError
+
+    if not group_message:
+        group_message = ""
+
+    @contextmanager
+    def _collect_ato_errors():
+        try:
+            yield
+        except accumulate_types as ex:
+            errors.append(ex)
+        except ExceptionGroup as ex:
+            nice, naughty = ex.split(accumulate_types)
+            if nice:
+                errors.extend(nice.exceptions)
+            if naughty:
+                raise naughty from ex
+
+    # FIXME: do we wanna slap this in a try-finally
+    #  block so we also get to raise the exceptions
+    #  we collected if a naughty error throws us out?
+    yield _collect_ato_errors
+
+    if errors:
+        raise ExceptionGroup(group_message, errors)
 
 
-error_handler = ErrorHandler(handel_mode=HandlerMode.RAISE_ALL)
+def iter_through_errors(
+    gen: Iterable[T],
+    accumulate_types: Optional[Type | tuple[Type]] = None,
+    group_message: Optional[str] = None,
+) -> Iterable[tuple[Callable[[], ContextManager], T]]:
+    """
+    Wraps an iterable and yields:
+    - a context manager that collects any ato errors raised while processing the iterable
+    - the item from the iterable
+    """
+
+    with _error_accumulator(accumulate_types, group_message) as err_cltr:
+        for item in gen:
+            # NOTE: we don't create a single context manager for the whole generator
+            # because generator context managers are a bit special
+            yield err_cltr, item
+
+
+C = TypeVar("C", bound=Callable)
+
+
+def downgrade(
+    func: C,
+    exs: Type | tuple[Type],
+    default = None,
+    to_level: int = logging.WARNING,
+    logger: logging.Logger = log,
+) -> C:
+    """
+    Return a wrapped version of your function that catches the given exceptions
+    and logs their contents as warning, instead returning a default value
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except exs as ex:
+            logger.log(
+                to_level,
+                format_error(
+                    ex,
+                    logger.isEnabledFor(logging.DEBUG)
+                ),
+                extra={"markup": True}
+            )
+            if isinstance(default, collections.abc.Callable):
+                return default()
+            return default
+
+    return wrapper

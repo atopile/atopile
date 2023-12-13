@@ -4,7 +4,6 @@ but doesn't resolve names of things.
 In building this datamodel, we check for name collisions, but we don't resolve them yet.
 """
 import enum
-import logging
 from collections import ChainMap
 from contextlib import ExitStack, contextmanager
 from itertools import chain
@@ -22,9 +21,6 @@ from atopile.parse_utils import get_src_info_from_ctx
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
-
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
 
 
 @define
@@ -226,9 +222,7 @@ class BaseTranslator(AtopileParserVisitor):
 
     def __init__(
         self,
-        error_handler: errors.ErrorHandler,
     ) -> None:
-        self.error_handler = error_handler
         super().__init__()
 
     def defaultResult(self):
@@ -245,25 +239,14 @@ class BaseTranslator(AtopileParserVisitor):
         It is assumed the children are returning their own OptionallyNamedItems.
         """
 
-        _errors = []
+        def __visit() -> KeyOptMap:
+            for err_cltr, child in errors.iter_through_errors(children):
+                with err_cltr():
+                    child_result = self.visit(child)
+                    if child_result is not NOTHING:
+                        yield child_result
 
-        def __visit(child: ParserRuleContext) -> Iterable[_Sentinel | KeyOptItem]:
-            try:
-                child_result = self.visit(child)
-                for item in child_result:
-                    if item is not NOTHING:
-                        assert isinstance(item, KeyOptItem)
-                return child_result
-            except errors.AtoError as err:
-                _errors.append(err)
-                self.error_handler.handle(err)
-                return KeyOptMap.empty()
-
-        child_results = list(__visit(child) for child in children)
-        if _errors:
-            raise ExceptionGroup("Errors occured in nested statements", _errors)
-
-        child_results = chain.from_iterable(child_results)
+        child_results = chain.from_iterable(__visit())
         child_results = list(item for item in child_results if item is not NOTHING)
         child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
 
@@ -388,7 +371,7 @@ class BaseTranslator(AtopileParserVisitor):
             return int(text)
         except ValueError:
             raise errors.AtoTypeError.from_ctx(  # pylint: disable=raise-missing-from
-                f"Expected an integer, but got {text}", ctx
+                ctx, f"Expected an integer, but got {text}"
             )
 
 
@@ -397,14 +380,13 @@ class Scoop(BaseTranslator):
 
     def __init__(
         self,
-        error_handler: errors.ErrorHandler,
         ast_getter: Callable[[str | Path], ParserRuleContext],
         search_paths: Iterable[Path | str],
     ) -> None:
         self.ast_getter = ast_getter
         self.search_paths = search_paths
         self._output_cache: dict[AddrStr, ObjectDef] = {}
-        super().__init__(error_handler)
+        super().__init__()
 
     def get_obj_def(self, addr: AddrStr) -> ObjectDef:
         """Returns the ObjectDef for a given address."""
@@ -527,12 +509,7 @@ class Scoop(BaseTranslator):
                 break
         else:
             raise errors.AtoImportNotFoundError.from_ctx(  # pylint: disable=raise-missing-from
-                f"File '{from_file}' not found.", ctx
-            )
-
-        if _errors:
-            raise errors.AtoErrorGroup.from_ctx(
-                "Errors occured in nested statements", _errors, ctx
+                ctx, f"File '{from_file}' not found."
             )
 
         import_addr = address.add_entries(str(candidate_path), import_what_ref)
@@ -597,7 +574,7 @@ def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
         if import_leads and obj_lead:
             # TODO: improve error message with details about what items are conflicting
             raise errors.AtoAmbiguousReferenceError.from_ctx(
-                f"Name '{ref[0]}' is ambiguous in '{scope}'.", scope.src_ctx
+                scope.src_ctx, f"Name '{ref[0]}' is ambiguous in '{scope}'."
             )
 
         if obj_lead is not None:
@@ -619,14 +596,13 @@ class Dizzy(BaseTranslator):
 
     def __init__(
         self,
-        error_handler: errors.ErrorHandler,
         obj_def_getter: Callable[[AddrStr], ObjectDef],
     ) -> None:
         self.obj_def_getter = obj_def_getter
         self._output_cache: dict[AddrStr, ObjectLayer] = {
             k: v for k, v in BUILTINS_BY_ADDR.items()
         }
-        super().__init__(error_handler)
+        super().__init__()
 
     def get_obj_layer(self, addr: AddrStr) -> ObjectLayer:
         """Returns the ObjectLayer for a given address."""
@@ -700,12 +676,23 @@ class Dizzy(BaseTranslator):
         return (NOTHING,)
 
 
+@contextmanager
+def _translate_addr_key_errors(ctx: ParserRuleContext):
+    try:
+        yield
+    except KeyError as ex:
+        addr = ex.args[0]
+        terse_addr = address.get_instance_section(addr)
+        raise errors.AtoKeyError.from_ctx(
+            ctx, f"Couldn't find {terse_addr}"
+        ) from ex
+
+
 class Lofty(BaseTranslator):
     """Lofty's job is to walk orthogonally down (or really up) the instance tree."""
 
     def __init__(
         self,
-        error_handler: errors.ErrorHandler,
         obj_layer_getter: Callable[[AddrStr], ObjectLayer],
     ) -> None:
         self._output_cache: dict[AddrStr, Instance] = {}
@@ -717,9 +704,7 @@ class Lofty(BaseTranslator):
 
         self._instance_context_stack: list[AddrStr] = []
         self._obj_context_stack: list[AddrStr] = []
-        super().__init__(
-            error_handler,
-        )
+        super().__init__()
 
     def get_instance_tree(self, addr: AddrStr) -> Instance:
         """Return an instance object represented by the given address."""
@@ -730,6 +715,7 @@ class Lofty(BaseTranslator):
             obj_layer = self.obj_layer_getter(addr)
             self.make_instance(addr, obj_layer)
             assert isinstance(self._output_cache[addr], Instance)
+
         return self._output_cache[addr]
 
     @contextmanager
@@ -856,7 +842,7 @@ class Lofty(BaseTranslator):
                     )
                 except KeyError as ex:
                     raise errors.AtoKeyError.from_ctx(
-                        f"Couldn't find ref {new_class_ref}", current_obj_def.src_ctx
+                        current_obj_def.src_ctx, f"Couldn't find ref {new_class_ref}"
                     ) from ex
                 actual_super = self.obj_layer_getter(new_class_addr)
 
@@ -874,7 +860,8 @@ class Lofty(BaseTranslator):
         instance_addr_assigned_to = address.add_instances(
             self._instance_context_stack[-1], assigned_ref[:-1]
         )
-        instance_assigned_to = self._output_cache[instance_addr_assigned_to]
+        with _translate_addr_key_errors(ctx):
+            instance_assigned_to = self._output_cache[instance_addr_assigned_to]
 
         instance_assigned_to.override_data[assigned_name] = assigned_value
         instance_assigned_to._override_location[assigned_name] = self.obj_layer_getter
@@ -929,13 +916,9 @@ class Lofty(BaseTranslator):
         current_instance_addr = self._instance_context_stack[-1]
         current_instance = self._output_cache[current_instance_addr]
 
-        try:
+        with _translate_addr_key_errors(ctx):
             source_instance = self._output_cache[source_addr]
             target_instance = self._output_cache[target_addr]
-        except KeyError as ex:
-            raise errors.AtoKeyError.from_ctx(
-                f"Couldn't find {source_addr} or {target_addr}", ctx
-            ) from ex
 
         link = Link(
             src_ctx=ctx,
@@ -969,9 +952,9 @@ class Lofty(BaseTranslator):
         return KeyOptMap.empty()
 
 
-scoop = Scoop(errors.error_handler, parser.get_ast_from_file, [])
-dizzy = Dizzy(errors.error_handler, scoop.get_obj_def)
-lofty = Lofty(errors.error_handler, dizzy.get_obj_layer)
+scoop = Scoop(parser.get_ast_from_file, [])
+dizzy = Dizzy(scoop.get_obj_def)
+lofty = Lofty(dizzy.get_obj_layer)
 
 
 def set_search_paths(paths: Iterable[Path | str]) -> None:

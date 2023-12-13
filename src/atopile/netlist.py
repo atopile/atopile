@@ -6,7 +6,7 @@ from typing import Optional
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from toolz import groupby
 
-from atopile import components, nets
+from atopile import components, nets, errors
 from atopile.address import AddrStr, get_name, get_relative_addr_str
 from atopile.instance_methods import (
     all_descendants,
@@ -27,31 +27,11 @@ from atopile.kicad6_datamodel import (
 )
 
 
-def get_value(addr: AddrStr) -> str:
-    try:
-        return components.get_value(addr)
-    except KeyError:
-        return "<help! no value>"
-
-
-def get_footprint(addr: AddrStr) -> str:
-    """
-    Return the footprint for a component
-    """
-    try:
-        return components.get_footprint(addr)
-    except KeyError:
-        return "<help! no footprint>"
-
-
-def get_mpn(addr: AddrStr) -> str:
-    """
-    Return the footprint for a component
-    """
-    try:
-        return components.get_mpn(addr)
-    except KeyError:
-        return "<help! no mpn>"
+# These functions are used to downgrade the errors to warnings.
+# Those warnings are logged and the default value is returned.
+get_mpn = errors.downgrade(components.get_mpn, components.MissingData, default="<help! no mpn>")
+get_value = errors.downgrade(components.get_value, components.MissingData, default="<help! no value>")
+get_footprint = errors.downgrade(components.get_footprint, components.MissingData, default="<help! no footprint>")
 
 
 def generate_uid_from_path(path: str) -> str:
