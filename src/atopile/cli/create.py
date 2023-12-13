@@ -41,7 +41,7 @@ def create(name: str):
         else:
             log.info('Proceeding.')
 
-    # Clone the project template 
+    # Clone the project template
     clone_project_template(project_type, project_path)
 
     if project_type == "module":
@@ -57,17 +57,13 @@ def create(name: str):
     log.info(f"New project created at {PROJECT_BASE_URL}/{processed_proj_name}")
 
     if project_type == "module":
-        logging.log(
-            msg=f"New module created at {MODULES_BASE_URL}/{processed_proj_name}", level=logging.INFO
-        )
+        log.info(f"New module created at {MODULES_BASE_URL}/{processed_proj_name}")
     else:
         cwd = Path.cwd()
         prj_path = Path(processed_proj_name+"/")
         log.info(f"Installing dependencies for {cwd/prj_path}")
         install_dependencies_from_yaml(cwd/prj_path)
-        logging.log(
-            msg=f"New project created at {PROJECT_BASE_URL}/{processed_proj_name}", level=logging.INFO
-        )
+        log.info(f"New project created at {PROJECT_BASE_URL}/{processed_proj_name}")
 
 
 def determine_project_type_and_path(name):
