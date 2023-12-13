@@ -216,7 +216,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
                     log.warning("Could not generate LCSC for %s", component)
             for lcsc_pn, components in generated_lcsc_dict.items():
                 _add_row(
-                    str(get_component_data_by_lscs(lcsc_pn)['value']),
+                    str(get_component_data_by_lscs(lcsc_pn)['value']) + ' ' + str(get_component_data_by_lscs(lcsc_pn)['unit']),
                     ",".join([_default_to(atopile.components.get_designator, component, "<empty>") for component in components]),
                     _default_to(atopile.components.get_footprint, component, "<empty>"),
                     lcsc_pn,
