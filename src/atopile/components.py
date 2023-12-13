@@ -10,18 +10,24 @@ from atopile.instance_methods import (
     match_components,
 )
 
-def _get_pandas_data() -> Path:
-    current_file = Path(__file__)
-    current_dir = current_file.parent
-    data_file = current_dir / 'jlc_parts.csv'
-    return pd.read_csv(data_file)
+class ComponentData:
+    _data_cache = None
+
+    @classmethod
+    def _get_pandas_data(cls) -> pd.DataFrame:
+        if cls._data_cache is None:
+            current_file = Path(__file__)
+            current_dir = current_file.parent
+            data_file = current_dir / 'jlc_parts.csv'
+            cls._data_cache = pd.read_csv(data_file)
+        return cls._data_cache
 
 def get_resistor_lcsc(min_value: float, max_value: float, package: str) -> list[str]:
     """
     Return the LCSC Part # for a resistor given a value and package.
     """
     try:
-        component_data = _get_pandas_data()
+        component_data = ComponentData._get_pandas_data()
         resistors = component_data[component_data["type"] == "Resistor"]
         # Ensure input values are valid
         if min_value > max_value:
@@ -49,7 +55,7 @@ def get_capacitor_lcsc(
     Return the LCSC Part # for a capacitor given a value, package, and optional voltage.
     """
     try:
-        component_data = _get_pandas_data()
+        component_data = ComponentData._get_pandas_data()
         capacitors = component_data[component_data["type"] == "Capacitor"]
         # Ensure input values are valid
         if min_value > max_value:
@@ -78,7 +84,7 @@ def get_component_data_by_lscs(lcsc: str) -> dict:
     Return all data for a component given LCSC Part #
     """
 
-    component_data = _get_pandas_data()
+    component_data = ComponentData._get_pandas_data()
 
     filtered_components = component_data[lcsc == component_data["LCSC Part #"]]
 
