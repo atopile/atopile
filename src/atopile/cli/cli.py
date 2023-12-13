@@ -1,16 +1,11 @@
 import logging
 
 import click
-from rich.console import Console
 from rich.logging import RichHandler
-from rich.theme import Theme
+
+from atopile.cli.rich_console import console
 
 from . import build, create, install
-
-console = Console(
-    theme=Theme({"logging.level.warning": "yellow"})
-)
-
 
 FORMAT = "%(message)s"
 logging.basicConfig(
