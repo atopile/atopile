@@ -1,3 +1,4 @@
+import collections.abc
 import logging
 import sys
 import textwrap
@@ -141,8 +142,8 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
             addr = ex.addr
         else:
             addr = address.get_instance_section(ex.addr)
-        escaped_addr = addr.replace(":", r"\:")
-        message = message.replace("$addr", f"[bold cyan]{escaped_addr}[/]")
+        # FIXME: we ignore the escaping of the address here
+        message = message.replace("$addr", f"[bold cyan]{addr}[/]")
 
     return message.strip()
 
@@ -178,13 +179,10 @@ def _log_ato_errors(
 
 
 @contextmanager
-def handle_ato_errors(logger: Optional[logging.Logger] = None) -> None:
+def handle_ato_errors(logger: logging.Logger = log) -> None:
     """
     This helper function catches ato exceptions and logs them.
     """
-    if logger is None:
-        logger = log
-
     try:
         yield
 
@@ -277,3 +275,27 @@ def iter_through_errors(
             # NOTE: we don't create a single context manager for the whole generator
             # because generator context managers are a bit special
             yield err_cltr, item
+
+
+def downgrade(
+    func: Callable[..., T],
+    exs: Type | tuple[Type],
+    default = None,
+    to_level: int = logging.WARNING,
+    logger: logging.Logger = log,
+) -> Callable[..., T]:
+    """
+    Return a wrapped version of your function that catches the given exceptions
+    and logs their contents as warning, instead returning a default value
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except exs as ex:
+            logger.log(to_level, format_error(ex), extra={"markup": True})
+            if isinstance(default, collections.abc.Callable):
+                return default()
+            return default
+
+    return wrapper
