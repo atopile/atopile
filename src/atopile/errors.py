@@ -24,7 +24,6 @@ class _BaseAtoError(Exception):
 
     def __init__(
         self,
-        message: str,
         *args,
         title: Optional[str] = None,
         addr: Optional[str] = None,
@@ -33,8 +32,8 @@ class _BaseAtoError(Exception):
         src_col: Optional[int] = None,
         **kwargs,
     ) -> None:
-        super().__init__(message, *args, **kwargs)
-        self.message = message
+        super().__init__(*args, **kwargs)
+        self.message = args[0] if args else ""
         self._title = title
         self.addr = addr
         self.src_path = src_path
