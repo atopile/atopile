@@ -23,7 +23,9 @@ from atopile.components import (
 )
 from atopile.instance_methods import all_descendants, match_components
 
-log = logging.getLogger("build.bom")
+
+log = logging.getLogger(__name__)
+
 
 GENERIC_RESISTOR = 'generic_resistor'
 GENERIC_CAPACITOR = 'generic_capacitor'
