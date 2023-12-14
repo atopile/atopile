@@ -21,12 +21,6 @@ from atopile.instance_methods import all_descendants, match_components
 log = logging.getLogger(__name__)
 
 
-GENERIC_RESISTOR = "generic_resistor"
-GENERIC_CAPACITOR = "generic_capacitor"
-
-GENERICS_KEYS = [GENERIC_RESISTOR, GENERIC_CAPACITOR]
-
-
 # These functions are used to downgrade the errors to warnings.
 # Those warnings are logged and the default value is returned.
 _get_mpn = errors.downgrade(atopile.components.get_mpn, atopile.components.MissingData)
@@ -147,7 +141,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
             for component in components_in_group:
                 _add_row(
                     _get_value(component),
-                    atopile.components.get_designator,
+                    atopile.components.get_designator(component),
                     _get_footprint(component),
                     "<empty>",
                 )
