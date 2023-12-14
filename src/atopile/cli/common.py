@@ -54,24 +54,25 @@ def project_options(f):
                 )
 
         # get the project
+        if entry is None:
+            entry_arg_file_path = Path.cwd()
+        else:
+            entry_arg_file_path = (
+                Path(address.get_file(entry)).expanduser().resolve().absolute()
+            )
+
         try:
-            if entry is None:
-                entry_arg_file_path = Path.cwd()
-            else:
-                entry_arg_file_path = (
-                    Path(address.get_file(entry)).expanduser().resolve().absolute()
-                )
-
             project_config = get_project_config_from_addr(str(entry_arg_file_path))
-
-            log.info("Using project %s", project_config.paths.project)
-            # layer on selected targets
-            if target:
-                project_config.selected_build.targets = list(target)
         except FileNotFoundError as ex:
+            # FIXME: this raises an exception when the entry is not in a project
             raise click.BadParameter(
-                f"Could not find project from path {str(address.get_file(entry))}. Is this file path within a project?"
+                f"Could not find project from path {str(entry_arg_file_path)}. Is this file path within a project?"
             ) from ex
+
+        log.info("Using project %s", project_config.paths.project)
+        # layer on selected targets
+        if target:
+            project_config.selected_build.targets = list(target)
 
         # set the build config
         if build is not None:
