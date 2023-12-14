@@ -245,7 +245,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
             for component in components_in_group:
                 _add_row(
                     _get_value(component),
-                    atopile.components.get_designator,
+                    atopile.components.get_designator(component),
                     _get_footprint(component),
                     "<empty>",
                 )
