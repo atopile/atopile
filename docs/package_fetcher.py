@@ -34,14 +34,15 @@ for project in projects:
         # Create a dicretory to store the project
         if not os.path.exists(f"docs/{project_name}"):
             os.makedirs(f"docs/{project_name}")
-        with open(f"docs/{project_name}/readme_{project_name}.md", 'w') as file:
+        with open(f"docs/readme_{project_name}.md", 'w') as file:
             pattern = r'(!\[.*?\]\()(docs/)'
 
             # Replace 'docs/' with an empty string in image paths
-            readme_content = re.sub(pattern, r'\1', readme_content)
+            readme_content = readme_content.replace('](docs/', f']({project_name}/')
+            #readme_content = re.sub(pattern, r'\1', readme_content)
             file.write(readme_content)
 
-        packages_to_add[project_name] = f"{project_name}/readme_{project_name}.md"
+        packages_to_add[project_name] = f"readme_{project_name}.md"
         # handle the images
         for img_path in image_paths:
             img_url = f"{gitlab_packages}{project_name}/-/raw/main/{img_path}"
