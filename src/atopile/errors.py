@@ -178,6 +178,17 @@ def _log_ato_errors(
         logger.debug("Error info:\n", exc_info=ex)
 
 
+def in_debug_session() -> bool:
+    """
+    Return whether we're in a debug session.
+    """
+    try:
+        import debugpy  # pylint: disable=import-outside-toplevel
+    except ImportError:
+        return False
+    return debugpy.is_client_connected()
+
+
 @contextmanager
 def handle_ato_errors(logger: logging.Logger = log) -> None:
     """
@@ -187,6 +198,12 @@ def handle_ato_errors(logger: logging.Logger = log) -> None:
         yield
 
     except (AtoError, ExceptionGroup) as ex:
+        # If we're in a debug session, we want to see the
+        # unadulterated exception. We do this pre-logging because
+        # we don't want the logging to potentially obstruct the debugger.
+        if in_debug_session():
+            raise
+
         # FIXME: we're gonna repeat ourselves a lot if the same
         # error causes an issue multiple times (which they do)
         _log_ato_errors(ex, logger)
@@ -305,7 +322,7 @@ def downgrade(
                 extra={"markup": True}
             )
             if isinstance(default, collections.abc.Callable):
-                return default()
+                return default(*args, *kwargs)
             return default
 
     return wrapper
