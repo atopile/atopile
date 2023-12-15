@@ -58,6 +58,7 @@ test = [
     "pytest-html",
     "pytest-datafiles",
     "pytest-asyncio",
+    "requests",
 ]
 
 docs = [

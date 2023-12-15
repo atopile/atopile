@@ -1,5 +1,17 @@
+nav:
+- Home: index.md
+- Modules:
+  - blank: readme_blank.md
+plugins:
+- drawio_file
+repo_name: atopile/atopile
+repo_url: https://gitlab.atopile.io/atopile/atopile
 site_name: atopile
 theme:
+  features:
+  - navigation.tabs
+  - navigation.sections
+  - toc.follow
+  icon:
+    repo: fontawesome/brands/git-alt
   name: material
-plugins:
-  - drawio_file
