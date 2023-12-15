@@ -6,7 +6,7 @@ from typing import Optional
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from toolz import groupby
 
-from atopile import components, nets, errors
+from atopile import components, errors, nets
 from atopile.address import AddrStr, get_name, get_relative_addr_str
 from atopile.instance_methods import (
     all_descendants,
@@ -27,11 +27,14 @@ from atopile.kicad6_datamodel import (
 )
 
 
-# These functions are used to downgrade the errors to warnings.
-# Those warnings are logged and the default value is returned.
-get_mpn = errors.downgrade(components.get_mpn, components.MissingData, default="<help! no mpn>")
-get_value = errors.downgrade(components.get_value, components.MissingData, default="<help! no value>")
-get_footprint = errors.downgrade(components.get_footprint, components.MissingData, default="<help! no footprint>")
+_get_mpn = errors.downgrade(
+    components.get_mpn, (components.MissingData, components.NoMatchingComponent)
+)
+_get_value = errors.downgrade(
+    components.get_value,
+    (components.MissingData, components.NoMatchingComponent),
+    default="?",
+)
 
 
 def generate_uid_from_path(path: str) -> str:
@@ -65,7 +68,7 @@ class NetlistBuilder:
         super_abs_addr = get_next_super(comp_addr).obj_def.address
         super_addr = get_relative_addr_str(super_abs_addr)
         constructed_libpart = KicadLibpart(
-            part=get_mpn(comp_addr),
+            part=_get_mpn(comp_addr),
             description=super_addr,
             fields=[],
             pins=pins,
@@ -108,17 +111,11 @@ class NetlistBuilder:
             )
         )
 
-        def _get_footprint(addr: AddrStr) -> str:
-            try:
-                return get_footprint(addr)
-            except KeyError:
-                return "<FIXME: footprint>"
-
         designator = components.get_designator(comp_addr)
         constructed_component = KicadComponent(
             ref=designator,
-            value=get_value(comp_addr),
-            footprint=_get_footprint(comp_addr),
+            value=_get_value(comp_addr),
+            footprint=components.get_footprint(comp_addr),
             libsource=libsource,
             tstamp=generate_uid_from_path(str(comp_addr)),
             fields=[],
@@ -132,8 +129,17 @@ class NetlistBuilder:
         self.netlist = KicadNetlist()
 
         all_components = filter(match_components, all_descendants(root))
+
+        # first check that all the components have a footprint
+        # otherwise we can't continue the netlist build
+        for cltr, component in errors.iter_through_errors(all_components):
+            with cltr():
+                components.get_footprint(component)
+
+        # group the components by their footprint - because that seems
+        # to be the only distinguishing feature KiCAD cares about
         for footprint, group_components in groupby(
-            get_footprint, all_components
+            components.get_footprint, all_components
         ).items():
             libsource = self._libparts[footprint] = self.make_libpart(
                 group_components[0]

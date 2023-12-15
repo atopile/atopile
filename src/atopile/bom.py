@@ -14,8 +14,7 @@ from rich.style import Style
 from rich.table import Table
 from toolz import groupby
 
-import atopile.components
-from atopile import address, errors
+from atopile import address, errors, components
 from atopile.instance_methods import all_descendants, match_components
 
 log = logging.getLogger(__name__)
@@ -23,12 +22,18 @@ log = logging.getLogger(__name__)
 
 # These functions are used to downgrade the errors to warnings.
 # Those warnings are logged and the default value is returned.
-_get_mpn = errors.downgrade(atopile.components.get_mpn, atopile.components.MissingData)
+_get_mpn = errors.downgrade(
+    components.get_mpn, (components.MissingData, components.NoMatchingComponent)
+)
 _get_value = errors.downgrade(
-    atopile.components.get_value, atopile.components.MissingData, default=""
+    components.get_value,
+    (components.MissingData, components.NoMatchingComponent),
+    default=errors.downgrade(
+        components.get_specd_value, components.MissingData, default="?"
+    ),
 )
 _get_footprint = errors.downgrade(
-    atopile.components.get_footprint, atopile.components.MissingData, default=""
+    components.get_footprint, components.MissingData, default="?"
 )
 
 
@@ -55,7 +60,7 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     sorted_designator_dict = {}
     sorted_comp_name_dict = {}
     for component in all_components:
-        c_des = atopile.components.get_designator(component)
+        c_des = components.get_designator(component)
         c_name = address.get_instance_section(component)
         sorted_designator_dict[c_des] = c_name
         sorted_comp_name_dict[c_name] = c_des
@@ -125,7 +130,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
             component = components_in_group[0]
 
             friendly_designators = ",".join(
-                atopile.components.get_designator(component)
+                components.get_designator(component)
                 for component in components_in_group
             )
 
@@ -141,9 +146,9 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
             for component in components_in_group:
                 _add_row(
                     _get_value(component),
-                    atopile.components.get_designator(component),
+                    components.get_designator(component),
                     _get_footprint(component),
-                    "<empty>",
+                    "?",
                 )
 
     # Print the table
