@@ -44,8 +44,11 @@ _generic_to_type_map = {
     _GENERIC_CAPACITOR: "Capacitor",
 }
 
-
-_VALUE_TOLERANCE = 0.05
+# FIXME:
+_generic_to_tolerance_map = {
+    _GENERIC_RESISTOR: 0.05,
+    _GENERIC_CAPACITOR: 0.25,
+}
 
 
 def _get_specd_mpn(addr: AddrStr) -> str:
@@ -88,7 +91,7 @@ def _get_generic_from_db(component_addr: str) -> dict:
     filters = []
 
     specd_type = _generic_to_type_map[specd_mpn]
-    filters.append(df["type"] == specd_type)
+    filters.append(f"type == '{specd_type}'")
 
     # Apply filters we know how to process
     # FIXME: currently this is hard-coded, but once we have the infra for it
@@ -97,22 +100,33 @@ def _get_generic_from_db(component_addr: str) -> dict:
 
     # Ensure the component's value is completely contained within the specd value
     float_value = units.parse_number(specd_data["value"])
-    filters.append(df["min_value"] > float_value * (1 - _VALUE_TOLERANCE))
-    filters.append(df["max_value"] < float_value * (1 + _VALUE_TOLERANCE))
+    tolerance = _generic_to_tolerance_map[specd_mpn]
+
+    filters.append(f"min_value > {float_value * (1 - tolerance)}")
+    filters.append(f"max_value < {float_value * (1 + tolerance)}")
 
     # Ensure the component's footprint is correct
-    filters.append(df["Package"] == _generics_to_db_fp_map[specd_data["footprint"]])
+    filters.append(f"Package == '{_generics_to_db_fp_map[specd_data['footprint']]}'")
 
     # Combine filters using reduce
-    combined_filter = reduce(lambda x, y: x & y, filters)
-    filtered_df = df[combined_filter]
+    combined_filter = " & ".join(filters)
+    filtered_df = df.query(combined_filter)
     if filtered_df.empty:
-        raise NoMatchingComponent("Couldn't find a component matching spec for $addr", addr=component_addr)
+        msg = "No component matching spec for $addr \n"
+        msg += "\n & ".join(filters)
+        raise NoMatchingComponent(msg, addr=component_addr)
 
     # FIXME: Currently our cost function is dumb - it only knows dollars
     # In the future this cost function should incorporate other things the user is
     # likely to care about
     idx_min = filtered_df["Price (USD)"].idxmin()
+
+    # In this case we seem to hit NaN, which implies we don't have
+    # cost info - which is really a bug in the db, but for the users' sake
+    # we'll just return the first component
+    if pd.isna(idx_min):
+        return filtered_df.iloc[0].to_dict()
+
     return filtered_df.loc[idx_min].to_dict()
 
 
