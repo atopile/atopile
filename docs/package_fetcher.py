@@ -32,10 +32,15 @@ for project in projects:
 
     if readme_response.status_code == 200:
         # Create a dicretory to store the project
-        if not os.path.exists(f"docs/{project_name}/docs"):
-            os.makedirs(f"docs/{project_name}/docs")
+        if not os.path.exists(f"docs/{project_name}"):
+            os.makedirs(f"docs/{project_name}")
         with open(f"docs/{project_name}/readme_{project_name}.md", 'w') as file:
+            pattern = r'(!\[.*?\]\()(docs/)'
+
+            # Replace 'docs/' with an empty string in image paths
+            readme_content = re.sub(pattern, r'\1', readme_content)
             file.write(readme_content)
+
         packages_to_add[project_name] = f"{project_name}/readme_{project_name}.md"
         # handle the images
         for img_path in image_paths:
@@ -43,7 +48,8 @@ for project in projects:
             img_response = requests.get(img_url)
 
             if img_response.status_code == 200:
-                with open(f"docs/{project_name}/{img_path}", 'wb') as img_file:
+                file_name = os.path.basename(img_path)
+                with open(f"docs/{project_name}/{file_name}", 'wb') as img_file:
                     img_file.write(img_response.content)
             else:
                 print(f"Failed to fetch image: {img_path}")
