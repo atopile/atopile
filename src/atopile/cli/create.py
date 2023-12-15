@@ -7,7 +7,7 @@ import yaml
 from caseconverter import kebabcase, pascalcase
 from git import InvalidGitRepositoryError, Repo
 
-from .install import add_dependency_to_ato_yaml
+from .install import install_dependencies_from_yaml, add_dependency_to_ato_yaml
 
 # Set up logging
 log = logging.getLogger(__name__)
@@ -28,29 +28,42 @@ def create(name: str):
     Create a new project or module. If within a repo, creates a module.
     Otherwise, creates a new project.
     """
-    project_type, project_path, top_level_dir = determine_project_type_and_path(name)
+    processed_proj_name = kebabcase(name)
+    project_type, project_path, top_level_dir = determine_project_type_and_path(processed_proj_name)
+
+    # Confirm that the user wants to create a module
+    if project_type == "module":
+        proceed = click.prompt(
+            f'A module named {processed_proj_name} will be added to your .ato/ directory and pushed remotely. Proceed? (y/n)', type=str)
+        if proceed != 'y':
+            log.info('Aborting.')
+            return
+        else:
+            log.info('Proceeding.')
+
+    # Clone the project template
     clone_project_template(project_type, project_path)
 
     if project_type == "module":
-        project_path, new_repo_url = init_module(project_path, top_level_dir, name)
+        project_path, new_repo_url = init_module(project_path, top_level_dir, processed_proj_name)
     else:
-        project_path, new_repo_url = init_project(project_path, top_level_dir, name)
+        project_path, new_repo_url = init_project(project_path, top_level_dir, processed_proj_name)
 
-    commit_message = f"Initial commit for {name}"
+    commit_message = f"Initial commit for {processed_proj_name}"
     commit_changes(project_path, commit_message)
 
     push_to_new_repo(project_path, new_repo_url)
 
-    log.info(f"New project created at {PROJECT_BASE_URL}/{name}")
+    log.info(f"New project created at {PROJECT_BASE_URL}/{processed_proj_name}")
 
     if project_type == "module":
-        logging.log(
-            msg=f"New module created at {MODULES_BASE_URL}/{name}", level=logging.INFO
-        )
+        log.info(f"New module created at {MODULES_BASE_URL}/{processed_proj_name}")
     else:
-        logging.log(
-            msg=f"New project created at {PROJECT_BASE_URL}/{name}", level=logging.INFO
-        )
+        cwd = Path.cwd()
+        prj_path = Path(processed_proj_name+"/")
+        log.info(f"Installing dependencies for {cwd/prj_path}")
+        install_dependencies_from_yaml(cwd/prj_path)
+        log.info(f"New project created at {PROJECT_BASE_URL}/{processed_proj_name}")
 
 
 def determine_project_type_and_path(name):
@@ -58,11 +71,11 @@ def determine_project_type_and_path(name):
         repo = Repo(".", search_parent_directories=True)
         top_level_dir = Path(repo.git.rev_parse("--show-toplevel"))
         project_type = "module"
-        project_path = top_level_dir / ".ato" / "modules" / kebabcase(name)
-        log.info("Detected existing ato project. Creating a module.")
+        project_path = top_level_dir / ".ato" / "modules" / name
+        log.info("You are within an ato project. Creating a module.")
     except InvalidGitRepositoryError:
         project_type = "project"
-        project_path = Path(kebabcase(name)).resolve()
+        project_path = Path(name).resolve()
         top_level_dir = project_path.parent
         log.info("No ato project detected. Creating a new project.")
     return project_type, project_path, top_level_dir
