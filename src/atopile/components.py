@@ -46,7 +46,7 @@ _generic_to_type_map = {
 
 # FIXME:
 _generic_to_tolerance_map = {
-    _GENERIC_RESISTOR: 0.05,
+    _GENERIC_RESISTOR: 0.10,
     _GENERIC_CAPACITOR: 0.25,
 }
 
