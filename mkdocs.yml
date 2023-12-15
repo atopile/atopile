@@ -1,6 +1,6 @@
 nav:
 - Home: index.md
-- Modules:
+- Packages:
   - blank: readme_blank.md
 plugins:
 - drawio_file

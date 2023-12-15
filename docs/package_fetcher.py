@@ -43,7 +43,7 @@ with open('mkdocs.yml', 'r') as file:
     package_list = []
     for package_name, package_file_path in packages_to_add.items():
         package_list.append({package_name : package_file_path})
-    mkdocs_yaml_dict['nav'][1]['Modules'] = package_list
+    mkdocs_yaml_dict['nav'][1]['Packages'] = package_list
 
 with open('mkdocs.yml', 'w') as file:
     yaml.dump(mkdocs_yaml_dict, file)
