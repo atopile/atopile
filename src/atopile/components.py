@@ -1,5 +1,5 @@
 import logging
-from functools import cache, reduce
+from functools import cache
 from pathlib import Path
 
 import pandas as pd
