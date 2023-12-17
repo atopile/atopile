@@ -128,7 +128,8 @@ class NetlistBuilder:
         """Build a netlist from an instance"""
         self.netlist = KicadNetlist()
 
-        all_components = filter(match_components, all_descendants(root))
+        # We need to cast this to a list, otherwise we're trying to reuse a generator
+        all_components = list(filter(match_components, all_descendants(root)))
 
         # first check that all the components have a footprint
         # otherwise we can't continue the netlist build
