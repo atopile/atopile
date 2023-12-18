@@ -99,7 +99,12 @@ def _get_generic_from_db(component_addr: str) -> dict:
     # component definitions
 
     # Ensure the component's value is completely contained within the specd value
-    float_value = units.parse_number(specd_data["value"])
+    try:
+        float_value = units.parse_number(specd_data["value"])
+    except units.InvalidPhysicalValue as ex:
+        ex.addr = component_addr + ".value"
+        raise ex
+
     tolerance = _generic_to_tolerance_map[specd_mpn]
 
     filters.append(f"min_value > {float_value * (1 - tolerance)}")
