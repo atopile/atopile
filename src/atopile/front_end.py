@@ -397,7 +397,10 @@ class Scoop(BaseTranslator):
             assert isinstance(obj, ObjectDef)
             # this operation puts it and it's children in the cache
             self._register_obj_tree(obj, AddrStr(file), ())
-        return self._output_cache[addr]
+        try:
+            return self._output_cache[addr]
+        except KeyError as ex:
+            raise BlockNotFoundError(f"No block named $addr in {address.get_file(addr)}", addr=addr) from ex
 
     def _register_obj_tree(
         self, obj: ObjectDef, addr: AddrStr, closure: tuple[ObjectDef]
@@ -591,6 +594,12 @@ def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
     raise KeyError(ref)
 
 
+class BlockNotFoundError(errors.AtoKeyError):
+    """
+    Raised when a block doesn't exist.
+    """
+
+
 class Dizzy(BaseTranslator):
     """Dizzy's job is to create object layers."""
 
@@ -611,7 +620,10 @@ class Dizzy(BaseTranslator):
             obj = self.make_object(obj_def)
             assert isinstance(obj, ObjectLayer)
             self._output_cache[addr] = obj
-        return self._output_cache[addr]
+        try:
+            return self._output_cache[addr]
+        except KeyError as ex:
+            raise BlockNotFoundError(f"No block named $addr in {address.get_file(addr)}", addr=addr) from ex
 
     def make_object(self, obj_def: ObjectDef) -> ObjectLayer:
         """Create an object layer from an object definition."""
@@ -715,7 +727,6 @@ class Lofty(BaseTranslator):
             obj_layer = self.obj_layer_getter(addr)
             self.make_instance(addr, obj_layer)
             assert isinstance(self._output_cache[addr], Instance)
-
         return self._output_cache[addr]
 
     @contextmanager
@@ -806,7 +817,7 @@ class Lofty(BaseTranslator):
         return NOTHING
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
-        """TODO:"""
+        """Assignments override values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
 
         assigned_name: str = assigned_ref[-1]
@@ -815,7 +826,6 @@ class Lofty(BaseTranslator):
 
         # Handle New Statements
         # FIXME: this is a giant fucking mess
-
         if assignable_ctx.new_stmt():
             new_stmt = assignable_ctx.new_stmt()
             assert isinstance(new_stmt, ap.New_stmtContext)
@@ -844,7 +854,11 @@ class Lofty(BaseTranslator):
                     raise errors.AtoKeyError.from_ctx(
                         current_obj_def.src_ctx, f"Couldn't find ref {new_class_ref}"
                     ) from ex
-                actual_super = self.obj_layer_getter(new_class_addr)
+                try:
+                    actual_super = self.obj_layer_getter(new_class_addr)
+                except (BlockNotFoundError, errors.AtoFileNotFoundError) as ex:
+                    ex.set_src_from_ctx(ctx)
+                    raise ex
 
             # Create and register the new instance to the output cache
             self.make_instance(new_addr, actual_super)
@@ -864,7 +878,6 @@ class Lofty(BaseTranslator):
             instance_assigned_to = self._output_cache[instance_addr_assigned_to]
 
         instance_assigned_to.override_data[assigned_name] = assigned_value
-        instance_assigned_to._override_location[assigned_name] = self.obj_layer_getter
 
         return KeyOptMap.empty()
 
