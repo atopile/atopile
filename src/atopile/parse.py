@@ -8,7 +8,7 @@ from antlr4.error.ErrorListener import ErrorListener
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 
-from .errors import AtoSyntaxError
+from .errors import AtoSyntaxError, AtoFileNotFoundError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -98,7 +98,7 @@ class FileParser:
         if src_path not in self.cache:
             src_path = Path(src_path)
             if not src_path.exists():
-                raise FileNotFoundError(src_path)
+                raise AtoFileNotFoundError(src_path)
             self.cache[src_path] = parse_file(src_path)
 
         return self.cache[src_path]

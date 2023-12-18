@@ -54,6 +54,13 @@ class _BaseAtoError(Exception):
         src_path, src_line, src_col = get_src_info_from_ctx(ctx)
         return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
 
+    def set_src_from_ctx(self, ctx: ParserRuleContext):
+        """Add source info from a context."""
+        src_path, src_line, src_col = get_src_info_from_ctx(ctx)
+        self.src_path = src_path
+        self.src_line = src_line
+        self.src_col = src_col
+
     @property
     def title(self):
         """Return the name of this error, without the "Ato" prefix."""
@@ -109,6 +116,12 @@ class AtoAmbiguousReferenceError(AtoError):
     """
 
 
+class AtoFileNotFoundError(AtoError, FileNotFoundError):
+    """
+    Raised if a file couldn't be found.
+    """
+
+
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
@@ -133,17 +146,24 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
                 source_info += f":{ex.src_col}"
         message += f"{source_info}\n"
 
-    # Add the message from the exception
-    message += textwrap.indent(ex.message, "--> ")
-
     # Replace the address in the string, if we have it attached
+    fmt_message = textwrap.indent(ex.message, "--> ")
     if ex.addr:
         if debug:
             addr = ex.addr
         else:
             addr = address.get_instance_section(ex.addr)
         # FIXME: we ignore the escaping of the address here
-        message = message.replace("$addr", f"[bold cyan]{addr}[/]")
+        fmt_addr = f"[bold cyan]{addr}[/]"
+
+        if "$addr" in fmt_message:
+            fmt_message = fmt_message.replace("$addr", fmt_addr)
+        else:
+            if not ex.src_path:
+                message += f"Address: {fmt_addr}\n"
+
+    # Add the message from the exception
+    message += fmt_message
 
     return message.strip()
 
