@@ -119,7 +119,7 @@ def _get_generic_from_db(component_addr: str) -> dict:
     # FIXME: Currently our cost function is dumb - it only knows dollars
     # In the future this cost function should incorporate other things the user is
     # likely to care about
-    idx_min = filtered_df["Price (USD)"].idxmin()
+    idx_min = filtered_df["Price (USD)"].idxmin(skipna=True)
 
     # In this case we seem to hit NaN, which implies we don't have
     # cost info - which is really a bug in the db, but for the users' sake
