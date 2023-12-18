@@ -146,17 +146,24 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
                 source_info += f":{ex.src_col}"
         message += f"{source_info}\n"
 
-    # Add the message from the exception
-    message += textwrap.indent(ex.message, "--> ")
-
     # Replace the address in the string, if we have it attached
+    fmt_message = textwrap.indent(ex.message, "--> ")
     if ex.addr:
         if debug:
             addr = ex.addr
         else:
             addr = address.get_instance_section(ex.addr)
         # FIXME: we ignore the escaping of the address here
-        message = message.replace("$addr", f"[bold cyan]{addr}[/]")
+        fmt_addr = f"[bold cyan]{addr}[/]"
+
+        if "$addr" in fmt_message:
+            fmt_message = fmt_message.replace("$addr", fmt_addr)
+        else:
+            if not ex.src_path:
+                message += f"Address: {fmt_addr}\n"
+
+    # Add the message from the exception
+    message += fmt_message
 
     return message.strip()
 
