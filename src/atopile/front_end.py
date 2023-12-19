@@ -82,6 +82,21 @@ class Physical(Base):
     min_val: float
     max_val: float
 
+    def __str__(self) -> str:
+        return f"{self.nominal} +/- {self.tolerance} {self.unit}"
+
+    @property
+    def nominal(self) -> float:
+        return (self.min_val + self.max_val) / 2
+
+    @property
+    def tolerance(self) -> float:
+        return (self.max_val - self.min_val) / 2
+
+    @property
+    def tolerance_pct(self) -> float:
+        return self.tolerance / self.nominal * 100
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
 
