@@ -401,7 +401,11 @@ class BaseTranslator(AtopileParserVisitor):
     def visitBilateral_quantity(self, ctx: AtopileParser.Bilateral_quantityContext) -> Physical:
         """Yield a physical value from a bilateral quantity context."""
         nominal = float(ctx.bilateral_nominal().NUMBER().getText())
-        unit = _get_unit_from_ctx(ctx.bilateral_nominal().name())
+
+        if ctx.bilateral_nominal().name():
+            unit = _get_unit_from_ctx(ctx.bilateral_nominal().name())
+        else:
+            unit = pint.Unit("")
 
         tol_ctx: AtopileParser.Bilateral_toleranceContext = ctx.bilateral_tolerance()
         tol_num = float(tol_ctx.NUMBER().getText())
@@ -466,12 +470,8 @@ class BaseTranslator(AtopileParserVisitor):
         end_val, end_unit = _parse_end(ctx.quantity_end(1))
 
         if start_unit is None and end_unit is None:
-            raise errors.AtoTypeError.from_ctx(
-                ctx,
-                "At least one bound must have a unit",
-            )
-
-        if start_unit and end_unit:
+            unit = pint.Unit("")
+        elif start_unit and end_unit:
             unit = start_unit
             try:
                 end_val = (end_val * end_unit).to(start_unit).magnitude

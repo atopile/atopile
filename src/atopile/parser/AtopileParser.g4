@@ -34,7 +34,7 @@ assignable
 
 quantity_end: NUMBER name?;
 bound_quantity: quantity_end 'to' quantity_end;
-bilateral_nominal: NUMBER name;
+bilateral_nominal: NUMBER name?;
 bilateral_tolerance: NUMBER ('%' | name)?;
 bilateral_quantity: bilateral_nominal PLUS_OR_MINUS bilateral_tolerance;
 implicit_quantity: NUMBER name?;

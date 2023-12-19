@@ -15,7 +15,7 @@ else:
 
 def serializedATN():
     return [
-        4,1,79,223,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
+        4,1,79,224,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
         6,2,7,7,7,2,8,7,8,2,9,7,9,2,10,7,10,2,11,7,11,2,12,7,12,2,13,7,13,
         2,14,7,14,2,15,7,15,2,16,7,16,2,17,7,17,2,18,7,18,2,19,7,19,2,20,
         7,20,2,21,7,21,2,22,7,22,2,23,7,23,2,24,7,24,2,25,7,25,2,26,7,26,
@@ -26,26 +26,26 @@ def serializedATN():
         109,8,5,11,5,12,5,110,1,5,1,5,3,5,115,8,5,1,6,1,6,1,6,1,6,3,6,121,
         8,6,1,6,1,6,1,6,1,7,1,7,1,8,1,8,1,8,1,8,1,8,1,9,1,9,1,9,1,9,1,10,
         1,10,1,10,3,10,140,8,10,1,11,1,11,3,11,144,8,11,1,12,1,12,1,12,1,
-        12,1,13,1,13,1,13,1,14,1,14,1,14,3,14,156,8,14,1,15,1,15,1,15,1,
-        15,1,16,1,16,3,16,164,8,16,1,17,1,17,1,17,3,17,169,8,17,1,18,1,18,
-        1,18,1,18,1,19,1,19,1,19,1,19,1,20,1,20,1,20,1,20,3,20,183,8,20,
-        1,21,1,21,1,21,1,22,1,22,1,22,3,22,191,8,22,1,23,1,23,1,23,1,24,
-        1,24,1,25,1,25,1,26,1,26,3,26,202,8,26,1,27,1,27,1,27,1,27,1,28,
-        1,28,1,28,4,28,211,8,28,11,28,12,28,212,1,29,1,29,1,30,1,30,1,31,
-        1,31,1,32,1,32,1,32,0,0,33,0,2,4,6,8,10,12,14,16,18,20,22,24,26,
-        28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62,64,0,2,1,0,
-        6,8,1,0,16,17,218,0,70,1,0,0,0,2,77,1,0,0,0,4,79,1,0,0,0,6,100,1,
-        0,0,0,8,102,1,0,0,0,10,114,1,0,0,0,12,116,1,0,0,0,14,125,1,0,0,0,
-        16,127,1,0,0,0,18,132,1,0,0,0,20,139,1,0,0,0,22,141,1,0,0,0,24,145,
-        1,0,0,0,26,149,1,0,0,0,28,152,1,0,0,0,30,157,1,0,0,0,32,161,1,0,
-        0,0,34,168,1,0,0,0,36,170,1,0,0,0,38,174,1,0,0,0,40,182,1,0,0,0,
-        42,184,1,0,0,0,44,187,1,0,0,0,46,192,1,0,0,0,48,195,1,0,0,0,50,197,
-        1,0,0,0,52,201,1,0,0,0,54,203,1,0,0,0,56,207,1,0,0,0,58,214,1,0,
-        0,0,60,216,1,0,0,0,62,218,1,0,0,0,64,220,1,0,0,0,66,69,5,19,0,0,
-        67,69,3,2,1,0,68,66,1,0,0,0,68,67,1,0,0,0,69,72,1,0,0,0,70,68,1,
-        0,0,0,70,71,1,0,0,0,71,73,1,0,0,0,72,70,1,0,0,0,73,74,5,0,0,1,74,
-        1,1,0,0,0,75,78,3,4,2,0,76,78,3,8,4,0,77,75,1,0,0,0,77,76,1,0,0,
-        0,78,3,1,0,0,0,79,84,3,6,3,0,80,81,5,40,0,0,81,83,3,6,3,0,82,80,
+        12,1,13,1,13,3,13,152,8,13,1,14,1,14,1,14,3,14,157,8,14,1,15,1,15,
+        1,15,1,15,1,16,1,16,3,16,165,8,16,1,17,1,17,1,17,3,17,170,8,17,1,
+        18,1,18,1,18,1,18,1,19,1,19,1,19,1,19,1,20,1,20,1,20,1,20,3,20,184,
+        8,20,1,21,1,21,1,21,1,22,1,22,1,22,3,22,192,8,22,1,23,1,23,1,23,
+        1,24,1,24,1,25,1,25,1,26,1,26,3,26,203,8,26,1,27,1,27,1,27,1,27,
+        1,28,1,28,1,28,4,28,212,8,28,11,28,12,28,213,1,29,1,29,1,30,1,30,
+        1,31,1,31,1,32,1,32,1,32,0,0,33,0,2,4,6,8,10,12,14,16,18,20,22,24,
+        26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62,64,0,2,
+        1,0,6,8,1,0,16,17,220,0,70,1,0,0,0,2,77,1,0,0,0,4,79,1,0,0,0,6,100,
+        1,0,0,0,8,102,1,0,0,0,10,114,1,0,0,0,12,116,1,0,0,0,14,125,1,0,0,
+        0,16,127,1,0,0,0,18,132,1,0,0,0,20,139,1,0,0,0,22,141,1,0,0,0,24,
+        145,1,0,0,0,26,149,1,0,0,0,28,153,1,0,0,0,30,158,1,0,0,0,32,162,
+        1,0,0,0,34,169,1,0,0,0,36,171,1,0,0,0,38,175,1,0,0,0,40,183,1,0,
+        0,0,42,185,1,0,0,0,44,188,1,0,0,0,46,193,1,0,0,0,48,196,1,0,0,0,
+        50,198,1,0,0,0,52,202,1,0,0,0,54,204,1,0,0,0,56,208,1,0,0,0,58,215,
+        1,0,0,0,60,217,1,0,0,0,62,219,1,0,0,0,64,221,1,0,0,0,66,69,5,19,
+        0,0,67,69,3,2,1,0,68,66,1,0,0,0,68,67,1,0,0,0,69,72,1,0,0,0,70,68,
+        1,0,0,0,70,71,1,0,0,0,71,73,1,0,0,0,72,70,1,0,0,0,73,74,5,0,0,1,
+        74,1,1,0,0,0,75,78,3,4,2,0,76,78,3,8,4,0,77,75,1,0,0,0,77,76,1,0,
+        0,0,78,3,1,0,0,0,79,84,3,6,3,0,80,81,5,40,0,0,81,83,3,6,3,0,82,80,
         1,0,0,0,83,86,1,0,0,0,84,82,1,0,0,0,84,85,1,0,0,0,85,88,1,0,0,0,
         86,84,1,0,0,0,87,89,5,40,0,0,88,87,1,0,0,0,88,89,1,0,0,0,89,90,1,
         0,0,0,90,91,5,19,0,0,91,5,1,0,0,0,92,101,3,16,8,0,93,101,3,18,9,
@@ -66,29 +66,30 @@ def serializedATN():
         0,0,0,139,137,1,0,0,0,139,138,1,0,0,0,140,21,1,0,0,0,141,143,5,4,
         0,0,142,144,3,60,30,0,143,142,1,0,0,0,143,144,1,0,0,0,144,23,1,0,
         0,0,145,146,3,22,11,0,146,147,5,14,0,0,147,148,3,22,11,0,148,25,
-        1,0,0,0,149,150,5,4,0,0,150,151,3,60,30,0,151,27,1,0,0,0,152,155,
-        5,4,0,0,153,156,5,32,0,0,154,156,3,60,30,0,155,153,1,0,0,0,155,154,
-        1,0,0,0,155,156,1,0,0,0,156,29,1,0,0,0,157,158,3,26,13,0,158,159,
-        5,29,0,0,159,160,3,28,14,0,160,31,1,0,0,0,161,163,5,4,0,0,162,164,
-        3,60,30,0,163,162,1,0,0,0,163,164,1,0,0,0,164,33,1,0,0,0,165,169,
-        3,24,12,0,166,169,3,30,15,0,167,169,3,32,16,0,168,165,1,0,0,0,168,
-        166,1,0,0,0,168,167,1,0,0,0,169,35,1,0,0,0,170,171,3,52,26,0,171,
-        172,5,65,0,0,172,173,3,52,26,0,173,37,1,0,0,0,174,175,3,40,20,0,
-        175,176,5,54,0,0,176,177,3,40,20,0,177,39,1,0,0,0,178,183,3,52,26,
-        0,179,183,3,54,27,0,180,183,3,42,21,0,181,183,3,44,22,0,182,178,
-        1,0,0,0,182,179,1,0,0,0,182,180,1,0,0,0,182,181,1,0,0,0,183,41,1,
-        0,0,0,184,185,5,10,0,0,185,186,3,60,30,0,186,43,1,0,0,0,187,190,
-        5,9,0,0,188,191,3,60,30,0,189,191,3,58,29,0,190,188,1,0,0,0,190,
-        189,1,0,0,0,191,45,1,0,0,0,192,193,5,11,0,0,193,194,3,52,26,0,194,
-        47,1,0,0,0,195,196,3,62,31,0,196,49,1,0,0,0,197,198,5,18,0,0,198,
-        51,1,0,0,0,199,202,3,56,28,0,200,202,3,60,30,0,201,199,1,0,0,0,201,
-        200,1,0,0,0,202,53,1,0,0,0,203,204,3,52,26,0,204,205,5,33,0,0,205,
-        206,3,58,29,0,206,55,1,0,0,0,207,210,3,60,30,0,208,209,5,33,0,0,
-        209,211,3,60,30,0,210,208,1,0,0,0,211,212,1,0,0,0,212,210,1,0,0,
-        0,212,213,1,0,0,0,213,57,1,0,0,0,214,215,5,4,0,0,215,59,1,0,0,0,
-        216,217,5,20,0,0,217,61,1,0,0,0,218,219,5,3,0,0,219,63,1,0,0,0,220,
-        221,7,1,0,0,221,65,1,0,0,0,18,68,70,77,84,88,100,110,114,120,139,
-        143,155,163,168,182,190,201,212
+        1,0,0,0,149,151,5,4,0,0,150,152,3,60,30,0,151,150,1,0,0,0,151,152,
+        1,0,0,0,152,27,1,0,0,0,153,156,5,4,0,0,154,157,5,32,0,0,155,157,
+        3,60,30,0,156,154,1,0,0,0,156,155,1,0,0,0,156,157,1,0,0,0,157,29,
+        1,0,0,0,158,159,3,26,13,0,159,160,5,29,0,0,160,161,3,28,14,0,161,
+        31,1,0,0,0,162,164,5,4,0,0,163,165,3,60,30,0,164,163,1,0,0,0,164,
+        165,1,0,0,0,165,33,1,0,0,0,166,170,3,24,12,0,167,170,3,30,15,0,168,
+        170,3,32,16,0,169,166,1,0,0,0,169,167,1,0,0,0,169,168,1,0,0,0,170,
+        35,1,0,0,0,171,172,3,52,26,0,172,173,5,65,0,0,173,174,3,52,26,0,
+        174,37,1,0,0,0,175,176,3,40,20,0,176,177,5,54,0,0,177,178,3,40,20,
+        0,178,39,1,0,0,0,179,184,3,52,26,0,180,184,3,54,27,0,181,184,3,42,
+        21,0,182,184,3,44,22,0,183,179,1,0,0,0,183,180,1,0,0,0,183,181,1,
+        0,0,0,183,182,1,0,0,0,184,41,1,0,0,0,185,186,5,10,0,0,186,187,3,
+        60,30,0,187,43,1,0,0,0,188,191,5,9,0,0,189,192,3,60,30,0,190,192,
+        3,58,29,0,191,189,1,0,0,0,191,190,1,0,0,0,192,45,1,0,0,0,193,194,
+        5,11,0,0,194,195,3,52,26,0,195,47,1,0,0,0,196,197,3,62,31,0,197,
+        49,1,0,0,0,198,199,5,18,0,0,199,51,1,0,0,0,200,203,3,56,28,0,201,
+        203,3,60,30,0,202,200,1,0,0,0,202,201,1,0,0,0,203,53,1,0,0,0,204,
+        205,3,52,26,0,205,206,5,33,0,0,206,207,3,58,29,0,207,55,1,0,0,0,
+        208,211,3,60,30,0,209,210,5,33,0,0,210,212,3,60,30,0,211,209,1,0,
+        0,0,212,213,1,0,0,0,213,211,1,0,0,0,213,214,1,0,0,0,214,57,1,0,0,
+        0,215,216,5,4,0,0,216,59,1,0,0,0,217,218,5,20,0,0,218,61,1,0,0,0,
+        219,220,5,3,0,0,220,63,1,0,0,0,221,222,7,1,0,0,222,65,1,0,0,0,19,
+        68,70,77,84,88,100,110,114,120,139,143,151,156,164,169,183,191,202,
+        213
     ]
 
 class AtopileParser ( AtopileParserBase ):
@@ -1150,12 +1151,19 @@ class AtopileParser ( AtopileParserBase ):
 
         localctx = AtopileParser.Bilateral_nominalContext(self, self._ctx, self.state)
         self.enterRule(localctx, 26, self.RULE_bilateral_nominal)
+        self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 149
             self.match(AtopileParser.NUMBER)
-            self.state = 150
-            self.name()
+            self.state = 151
+            self._errHandler.sync(self)
+            _la = self._input.LA(1)
+            if _la==20:
+                self.state = 150
+                self.name()
+
+
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -1200,17 +1208,17 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 28, self.RULE_bilateral_tolerance)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 152
+            self.state = 153
             self.match(AtopileParser.NUMBER)
-            self.state = 155
+            self.state = 156
             self._errHandler.sync(self)
             token = self._input.LA(1)
             if token in [32]:
-                self.state = 153
+                self.state = 154
                 self.match(AtopileParser.PERCENT)
                 pass
             elif token in [20]:
-                self.state = 154
+                self.state = 155
                 self.name()
                 pass
             elif token in [19, 40]:
@@ -1262,11 +1270,11 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 30, self.RULE_bilateral_quantity)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 157
-            self.bilateral_nominal()
             self.state = 158
-            self.match(AtopileParser.PLUS_OR_MINUS)
+            self.bilateral_nominal()
             self.state = 159
+            self.match(AtopileParser.PLUS_OR_MINUS)
+            self.state = 160
             self.bilateral_tolerance()
         except RecognitionException as re:
             localctx.exception = re
@@ -1310,13 +1318,13 @@ class AtopileParser ( AtopileParserBase ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 161
+            self.state = 162
             self.match(AtopileParser.NUMBER)
-            self.state = 163
+            self.state = 164
             self._errHandler.sync(self)
             _la = self._input.LA(1)
             if _la==20:
-                self.state = 162
+                self.state = 163
                 self.name()
 
 
@@ -1365,24 +1373,24 @@ class AtopileParser ( AtopileParserBase ):
         localctx = AtopileParser.PhysicalContext(self, self._ctx, self.state)
         self.enterRule(localctx, 34, self.RULE_physical)
         try:
-            self.state = 168
+            self.state = 169
             self._errHandler.sync(self)
-            la_ = self._interp.adaptivePredict(self._input,13,self._ctx)
+            la_ = self._interp.adaptivePredict(self._input,14,self._ctx)
             if la_ == 1:
                 self.enterOuterAlt(localctx, 1)
-                self.state = 165
+                self.state = 166
                 self.bound_quantity()
                 pass
 
             elif la_ == 2:
                 self.enterOuterAlt(localctx, 2)
-                self.state = 166
+                self.state = 167
                 self.bilateral_quantity()
                 pass
 
             elif la_ == 3:
                 self.enterOuterAlt(localctx, 3)
-                self.state = 167
+                self.state = 168
                 self.implicit_quantity()
                 pass
 
@@ -1431,11 +1439,11 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 36, self.RULE_retype_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 170
-            self.name_or_attr()
             self.state = 171
-            self.match(AtopileParser.ARROW)
+            self.name_or_attr()
             self.state = 172
+            self.match(AtopileParser.ARROW)
+            self.state = 173
             self.name_or_attr()
         except RecognitionException as re:
             localctx.exception = re
@@ -1481,11 +1489,11 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 38, self.RULE_connect_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 174
-            self.connectable()
             self.state = 175
-            self.match(AtopileParser.NOT_OP)
+            self.connectable()
             self.state = 176
+            self.match(AtopileParser.NOT_OP)
+            self.state = 177
             self.connectable()
         except RecognitionException as re:
             localctx.exception = re
@@ -1536,30 +1544,30 @@ class AtopileParser ( AtopileParserBase ):
         localctx = AtopileParser.ConnectableContext(self, self._ctx, self.state)
         self.enterRule(localctx, 40, self.RULE_connectable)
         try:
-            self.state = 182
+            self.state = 183
             self._errHandler.sync(self)
-            la_ = self._interp.adaptivePredict(self._input,14,self._ctx)
+            la_ = self._interp.adaptivePredict(self._input,15,self._ctx)
             if la_ == 1:
                 self.enterOuterAlt(localctx, 1)
-                self.state = 178
+                self.state = 179
                 self.name_or_attr()
                 pass
 
             elif la_ == 2:
                 self.enterOuterAlt(localctx, 2)
-                self.state = 179
+                self.state = 180
                 self.numerical_pin_ref()
                 pass
 
             elif la_ == 3:
                 self.enterOuterAlt(localctx, 3)
-                self.state = 180
+                self.state = 181
                 self.signaldef_stmt()
                 pass
 
             elif la_ == 4:
                 self.enterOuterAlt(localctx, 4)
-                self.state = 181
+                self.state = 182
                 self.pindef_stmt()
                 pass
 
@@ -1605,9 +1613,9 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 42, self.RULE_signaldef_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 184
-            self.match(AtopileParser.SIGNAL)
             self.state = 185
+            self.match(AtopileParser.SIGNAL)
+            self.state = 186
             self.name()
         except RecognitionException as re:
             localctx.exception = re
@@ -1654,17 +1662,17 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 44, self.RULE_pindef_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 187
+            self.state = 188
             self.match(AtopileParser.PIN)
-            self.state = 190
+            self.state = 191
             self._errHandler.sync(self)
             token = self._input.LA(1)
             if token in [20]:
-                self.state = 188
+                self.state = 189
                 self.name()
                 pass
             elif token in [4]:
-                self.state = 189
+                self.state = 190
                 self.totally_an_integer()
                 pass
             else:
@@ -1711,9 +1719,9 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 46, self.RULE_new_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 192
-            self.match(AtopileParser.NEW)
             self.state = 193
+            self.match(AtopileParser.NEW)
+            self.state = 194
             self.name_or_attr()
         except RecognitionException as re:
             localctx.exception = re
@@ -1753,7 +1761,7 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 48, self.RULE_string_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 195
+            self.state = 196
             self.string()
         except RecognitionException as re:
             localctx.exception = re
@@ -1792,7 +1800,7 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 50, self.RULE_eqn_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 197
+            self.state = 198
             self.match(AtopileParser.EQUATION_STRING)
         except RecognitionException as re:
             localctx.exception = re
@@ -1835,18 +1843,18 @@ class AtopileParser ( AtopileParserBase ):
         localctx = AtopileParser.Name_or_attrContext(self, self._ctx, self.state)
         self.enterRule(localctx, 52, self.RULE_name_or_attr)
         try:
-            self.state = 201
+            self.state = 202
             self._errHandler.sync(self)
-            la_ = self._interp.adaptivePredict(self._input,16,self._ctx)
+            la_ = self._interp.adaptivePredict(self._input,17,self._ctx)
             if la_ == 1:
                 self.enterOuterAlt(localctx, 1)
-                self.state = 199
+                self.state = 200
                 self.attr()
                 pass
 
             elif la_ == 2:
                 self.enterOuterAlt(localctx, 2)
-                self.state = 200
+                self.state = 201
                 self.name()
                 pass
 
@@ -1896,11 +1904,11 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 54, self.RULE_numerical_pin_ref)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 203
-            self.name_or_attr()
             self.state = 204
-            self.match(AtopileParser.DOT)
+            self.name_or_attr()
             self.state = 205
+            self.match(AtopileParser.DOT)
+            self.state = 206
             self.totally_an_integer()
         except RecognitionException as re:
             localctx.exception = re
@@ -1949,23 +1957,23 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 56, self.RULE_attr)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 207
+            self.state = 208
             self.name()
-            self.state = 210 
+            self.state = 211 
             self._errHandler.sync(self)
             _alt = 1
             while _alt!=2 and _alt!=ATN.INVALID_ALT_NUMBER:
                 if _alt == 1:
-                    self.state = 208
-                    self.match(AtopileParser.DOT)
                     self.state = 209
+                    self.match(AtopileParser.DOT)
+                    self.state = 210
                     self.name()
 
                 else:
                     raise NoViableAltException(self)
-                self.state = 212 
+                self.state = 213 
                 self._errHandler.sync(self)
-                _alt = self._interp.adaptivePredict(self._input,17,self._ctx)
+                _alt = self._interp.adaptivePredict(self._input,18,self._ctx)
 
         except RecognitionException as re:
             localctx.exception = re
@@ -2004,7 +2012,7 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 58, self.RULE_totally_an_integer)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 214
+            self.state = 215
             self.match(AtopileParser.NUMBER)
         except RecognitionException as re:
             localctx.exception = re
@@ -2043,7 +2051,7 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 60, self.RULE_name)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 216
+            self.state = 217
             self.match(AtopileParser.NAME)
         except RecognitionException as re:
             localctx.exception = re
@@ -2082,7 +2090,7 @@ class AtopileParser ( AtopileParserBase ):
         self.enterRule(localctx, 62, self.RULE_string)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 218
+            self.state = 219
             self.match(AtopileParser.STRING)
         except RecognitionException as re:
             localctx.exception = re
@@ -2125,7 +2133,7 @@ class AtopileParser ( AtopileParserBase ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 220
+            self.state = 221
             _la = self._input.LA(1)
             if not(_la==16 or _la==17):
                 self._errHandler.recoverInline(self)
