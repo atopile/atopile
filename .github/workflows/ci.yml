@@ -12,7 +12,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: '3.x' # or the specific version you need
+        python-version: '3.11' # or the specific version you need
 
     - name: Install dependencies
       run: pip install -e ."[dev,test,docs]"
@@ -20,3 +20,26 @@ jobs:
 
     - name: Run linter
       run: ruff src/atopile
+
+  cli-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x' # Specify the Python version you need
+
+    - name: Install dependencies
+      run: pip install -e ."[dev,test,docs]"
+
+    - name: Run tests
+      run: pytest
+
+    - name: Upload Test Artifacts
+      uses: actions/upload-artifact@v2
+      if: failure()
+      with:
+        name: test-artifacts
+        path: artifacts
