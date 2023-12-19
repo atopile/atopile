@@ -17,5 +17,6 @@ jobs:
     - name: Install dependencies
       run: pip install -e ."[dev,test,docs]"
 
+
     - name: Run linter
       run: ruff src/atopile
