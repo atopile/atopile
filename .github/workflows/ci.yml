@@ -12,7 +12,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: '3.11' # or the specific version you need
+        python-version: '3.11'
 
     - name: Install dependencies
       run: pip install -e ."[dev,test,docs]"
@@ -29,7 +29,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: '3.x' # Specify the Python version you need
+        python-version: '3.11'
 
     - name: Install dependencies
       run: pip install -e ."[dev,test,docs]"
@@ -43,3 +43,27 @@ jobs:
       with:
         name: test-artifacts
         path: artifacts
+
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install -e .[docs]
+        pip install mkdocs
+
+    - name: Build Documentation
+      run: mkdocs build --site-dir build/docs/public
+
+    - name: Upload Documentation Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: documentation
+        path: build/docs/public
