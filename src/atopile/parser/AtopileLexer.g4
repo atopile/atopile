@@ -43,7 +43,6 @@ FROM : 'from';
 IMPORT : 'import';
 
 TO : 'to';
-PLUS_OR_MINUS: '+/-';
 EQN : 'eqn';
 
 TRUE : 'True';
@@ -112,6 +111,10 @@ FLOAT_NUMBER
 IMAG_NUMBER
  : ( FLOAT_NUMBER | INT_PART ) [jJ]
  ;
+
+PLUS_OR_MINUS: PLUS_SLASH_MINUS | PLUS_MINUS_SIGN;
+PLUS_SLASH_MINUS: '+/-';
+PLUS_MINUS_SIGN: '\u00B1';
 
 PERCENT : '%';
 DOT : '.';

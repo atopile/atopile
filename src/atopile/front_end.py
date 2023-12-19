@@ -403,17 +403,35 @@ class BaseTranslator(AtopileParserVisitor):
         nominal = float(ctx.bilateral_nominal().NUMBER().getText())
         unit = _get_unit_from_ctx(ctx.bilateral_nominal().name())
 
-        if ctx.bilateral_tolerance().name():
+        tol_ctx: AtopileParser.Bilateral_toleranceContext = ctx.bilateral_tolerance()
+        tol_num = float(tol_ctx.NUMBER().getText())
+
+        if tol_ctx.PERCENT():
+            tol_divider = 100
+        # FIXME: hardcoding this seems wrong, but the parser/lexer wasn't picking up on it
+        elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
+            tol_divider = 1E6
+        else:
+            tol_divider = None
+
+        if tol_divider:
+            # In this case, life's a little easier, and we can simply multiply the nominal
+            return Physical(
+                src_ctx=ctx,
+                min_val=nominal * (1 - tol_num / tol_divider),
+                max_val=nominal * (1 + tol_num / tol_divider),
+                unit=unit,
+            )
+
+        if tol_ctx.name():
             # In this case there's a named unit on the tolerance itself
             # We need to make sure it's dimensionally compatible with the nominal
-            tolerance_unit = _get_unit_from_ctx(ctx.bilateral_tolerance().name())
+            tolerance_unit = _get_unit_from_ctx(tol_ctx.name())
             try:
-                tolerance = (
-                    float(ctx.bilateral_tolerance().NUMBER().getText()) * tolerance_unit
-                ).to(unit).magnitude
+                tolerance = (tol_num * tolerance_unit).to(unit).magnitude
             except pint.DimensionalityError as ex:
                 raise errors.AtoTypeError.from_ctx(
-                    ctx.bilateral_tolerance().name(),
+                    tol_ctx.name(),
                     f"Tolerance unit '{tolerance_unit}' is not dimensionally"
                     f" compatible with nominal unit '{unit}'",
                 ) from ex
@@ -424,25 +442,15 @@ class BaseTranslator(AtopileParserVisitor):
                 max_val=nominal + tolerance,
                 unit=unit,
             )
-        elif ctx.bilateral_tolerance().PERCENT():
-            # In this case, life's a little easier, and we can simply multiply the nominal
-            tolerance_pct = float(ctx.bilateral_tolerance().NUMBER().getText())
-            return Physical(
-                src_ctx=ctx,
-                min_val=nominal * (1 - tolerance_pct / 100),
-                max_val=nominal * (1 + tolerance_pct / 100),
-                unit=unit,
-            )
-        else:
-            # If there's no unit or percent, then we have a simple tolerance in the same units
-            # as the nominal
-            tolerance = float(ctx.bilateral_tolerance().NUMBER().getText())
-            return Physical(
-                src_ctx=ctx,
-                min_val=nominal - tolerance,
-                max_val=nominal + tolerance,
-                unit=unit,
-            )
+
+        # If there's no unit or percent, then we have a simple tolerance in the same units
+        # as the nominal
+        return Physical(
+            src_ctx=ctx,
+            min_val=nominal - tol_num,
+            max_val=nominal + tol_num,
+            unit=unit,
+        )
 
     def visitBound_quantity(self, ctx: AtopileParser.Bound_quantityContext) -> Physical:
         """Yield a physical value from a bound quantity context."""

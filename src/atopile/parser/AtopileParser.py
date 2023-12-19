@@ -15,7 +15,7 @@ else:
 
 def serializedATN():
     return [
-        4,1,77,223,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
+        4,1,79,223,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
         6,2,7,7,7,2,8,7,8,2,9,7,9,2,10,7,10,2,11,7,11,2,12,7,12,2,13,7,13,
         2,14,7,14,2,15,7,15,2,16,7,16,2,17,7,17,2,18,7,18,2,19,7,19,2,20,
         7,20,2,21,7,21,2,22,7,22,2,23,7,23,2,24,7,24,2,25,7,25,2,26,7,26,
@@ -34,59 +34,59 @@ def serializedATN():
         1,28,1,28,4,28,211,8,28,11,28,12,28,212,1,29,1,29,1,30,1,30,1,31,
         1,31,1,32,1,32,1,32,0,0,33,0,2,4,6,8,10,12,14,16,18,20,22,24,26,
         28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62,64,0,2,1,0,
-        6,8,1,0,17,18,218,0,70,1,0,0,0,2,77,1,0,0,0,4,79,1,0,0,0,6,100,1,
+        6,8,1,0,16,17,218,0,70,1,0,0,0,2,77,1,0,0,0,4,79,1,0,0,0,6,100,1,
         0,0,0,8,102,1,0,0,0,10,114,1,0,0,0,12,116,1,0,0,0,14,125,1,0,0,0,
         16,127,1,0,0,0,18,132,1,0,0,0,20,139,1,0,0,0,22,141,1,0,0,0,24,145,
         1,0,0,0,26,149,1,0,0,0,28,152,1,0,0,0,30,157,1,0,0,0,32,161,1,0,
         0,0,34,168,1,0,0,0,36,170,1,0,0,0,38,174,1,0,0,0,40,182,1,0,0,0,
         42,184,1,0,0,0,44,187,1,0,0,0,46,192,1,0,0,0,48,195,1,0,0,0,50,197,
         1,0,0,0,52,201,1,0,0,0,54,203,1,0,0,0,56,207,1,0,0,0,58,214,1,0,
-        0,0,60,216,1,0,0,0,62,218,1,0,0,0,64,220,1,0,0,0,66,69,5,20,0,0,
+        0,0,60,216,1,0,0,0,62,218,1,0,0,0,64,220,1,0,0,0,66,69,5,19,0,0,
         67,69,3,2,1,0,68,66,1,0,0,0,68,67,1,0,0,0,69,72,1,0,0,0,70,68,1,
         0,0,0,70,71,1,0,0,0,71,73,1,0,0,0,72,70,1,0,0,0,73,74,5,0,0,1,74,
         1,1,0,0,0,75,78,3,4,2,0,76,78,3,8,4,0,77,75,1,0,0,0,77,76,1,0,0,
-        0,78,3,1,0,0,0,79,84,3,6,3,0,80,81,5,38,0,0,81,83,3,6,3,0,82,80,
+        0,78,3,1,0,0,0,79,84,3,6,3,0,80,81,5,40,0,0,81,83,3,6,3,0,82,80,
         1,0,0,0,83,86,1,0,0,0,84,82,1,0,0,0,84,85,1,0,0,0,85,88,1,0,0,0,
-        86,84,1,0,0,0,87,89,5,38,0,0,88,87,1,0,0,0,88,89,1,0,0,0,89,90,1,
-        0,0,0,90,91,5,20,0,0,91,5,1,0,0,0,92,101,3,16,8,0,93,101,3,18,9,
+        86,84,1,0,0,0,87,89,5,40,0,0,88,87,1,0,0,0,88,89,1,0,0,0,89,90,1,
+        0,0,0,90,91,5,19,0,0,91,5,1,0,0,0,92,101,3,16,8,0,93,101,3,18,9,
         0,94,101,3,38,19,0,95,101,3,36,18,0,96,101,3,44,22,0,97,101,3,42,
         21,0,98,101,3,48,24,0,99,101,3,50,25,0,100,92,1,0,0,0,100,93,1,0,
         0,0,100,94,1,0,0,0,100,95,1,0,0,0,100,96,1,0,0,0,100,97,1,0,0,0,
         100,98,1,0,0,0,100,99,1,0,0,0,101,7,1,0,0,0,102,103,3,12,6,0,103,
-        9,1,0,0,0,104,115,3,4,2,0,105,106,5,20,0,0,106,108,5,1,0,0,107,109,
+        9,1,0,0,0,104,115,3,4,2,0,105,106,5,19,0,0,106,108,5,1,0,0,107,109,
         3,2,1,0,108,107,1,0,0,0,109,110,1,0,0,0,110,108,1,0,0,0,110,111,
         1,0,0,0,111,112,1,0,0,0,112,113,5,2,0,0,113,115,1,0,0,0,114,104,
         1,0,0,0,114,105,1,0,0,0,115,11,1,0,0,0,116,117,3,14,7,0,117,120,
         3,60,30,0,118,119,5,12,0,0,119,121,3,52,26,0,120,118,1,0,0,0,120,
-        121,1,0,0,0,121,122,1,0,0,0,122,123,5,37,0,0,123,124,3,10,5,0,124,
+        121,1,0,0,0,121,122,1,0,0,0,122,123,5,39,0,0,123,124,3,10,5,0,124,
         13,1,0,0,0,125,126,7,0,0,0,126,15,1,0,0,0,127,128,5,13,0,0,128,129,
         3,52,26,0,129,130,5,12,0,0,130,131,3,62,31,0,131,17,1,0,0,0,132,
-        133,3,52,26,0,133,134,5,40,0,0,134,135,3,20,10,0,135,19,1,0,0,0,
+        133,3,52,26,0,133,134,5,42,0,0,134,135,3,20,10,0,135,19,1,0,0,0,
         136,140,3,62,31,0,137,140,3,46,23,0,138,140,3,34,17,0,139,136,1,
         0,0,0,139,137,1,0,0,0,139,138,1,0,0,0,140,21,1,0,0,0,141,143,5,4,
         0,0,142,144,3,60,30,0,143,142,1,0,0,0,143,144,1,0,0,0,144,23,1,0,
         0,0,145,146,3,22,11,0,146,147,5,14,0,0,147,148,3,22,11,0,148,25,
         1,0,0,0,149,150,5,4,0,0,150,151,3,60,30,0,151,27,1,0,0,0,152,155,
-        5,4,0,0,153,156,3,60,30,0,154,156,5,30,0,0,155,153,1,0,0,0,155,154,
+        5,4,0,0,153,156,5,32,0,0,154,156,3,60,30,0,155,153,1,0,0,0,155,154,
         1,0,0,0,155,156,1,0,0,0,156,29,1,0,0,0,157,158,3,26,13,0,158,159,
-        5,15,0,0,159,160,3,28,14,0,160,31,1,0,0,0,161,163,5,4,0,0,162,164,
+        5,29,0,0,159,160,3,28,14,0,160,31,1,0,0,0,161,163,5,4,0,0,162,164,
         3,60,30,0,163,162,1,0,0,0,163,164,1,0,0,0,164,33,1,0,0,0,165,169,
         3,24,12,0,166,169,3,30,15,0,167,169,3,32,16,0,168,165,1,0,0,0,168,
         166,1,0,0,0,168,167,1,0,0,0,169,35,1,0,0,0,170,171,3,52,26,0,171,
-        172,5,63,0,0,172,173,3,52,26,0,173,37,1,0,0,0,174,175,3,40,20,0,
-        175,176,5,52,0,0,176,177,3,40,20,0,177,39,1,0,0,0,178,183,3,52,26,
+        172,5,65,0,0,172,173,3,52,26,0,173,37,1,0,0,0,174,175,3,40,20,0,
+        175,176,5,54,0,0,176,177,3,40,20,0,177,39,1,0,0,0,178,183,3,52,26,
         0,179,183,3,54,27,0,180,183,3,42,21,0,181,183,3,44,22,0,182,178,
         1,0,0,0,182,179,1,0,0,0,182,180,1,0,0,0,182,181,1,0,0,0,183,41,1,
         0,0,0,184,185,5,10,0,0,185,186,3,60,30,0,186,43,1,0,0,0,187,190,
         5,9,0,0,188,191,3,60,30,0,189,191,3,58,29,0,190,188,1,0,0,0,190,
         189,1,0,0,0,191,45,1,0,0,0,192,193,5,11,0,0,193,194,3,52,26,0,194,
-        47,1,0,0,0,195,196,3,62,31,0,196,49,1,0,0,0,197,198,5,19,0,0,198,
+        47,1,0,0,0,195,196,3,62,31,0,196,49,1,0,0,0,197,198,5,18,0,0,198,
         51,1,0,0,0,199,202,3,56,28,0,200,202,3,60,30,0,201,199,1,0,0,0,201,
-        200,1,0,0,0,202,53,1,0,0,0,203,204,3,52,26,0,204,205,5,31,0,0,205,
-        206,3,58,29,0,206,55,1,0,0,0,207,210,3,60,30,0,208,209,5,31,0,0,
+        200,1,0,0,0,202,53,1,0,0,0,203,204,3,52,26,0,204,205,5,33,0,0,205,
+        206,3,58,29,0,206,55,1,0,0,0,207,210,3,60,30,0,208,209,5,33,0,0,
         209,211,3,60,30,0,210,208,1,0,0,0,211,212,1,0,0,0,212,210,1,0,0,
         0,212,213,1,0,0,0,213,57,1,0,0,0,214,215,5,4,0,0,215,59,1,0,0,0,
-        216,217,5,21,0,0,217,61,1,0,0,0,218,219,5,3,0,0,219,63,1,0,0,0,220,
+        216,217,5,20,0,0,217,61,1,0,0,0,218,219,5,3,0,0,219,63,1,0,0,0,220,
         221,7,1,0,0,221,65,1,0,0,0,18,68,70,77,84,88,100,110,114,120,139,
         143,155,163,168,182,190,201,212
     ]
@@ -104,29 +104,30 @@ class AtopileParser ( AtopileParserBase ):
     literalNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
                      "<INVALID>", "<INVALID>", "'component'", "'module'", 
                      "'interface'", "'pin'", "'signal'", "'new'", "'from'", 
-                     "'import'", "'to'", "'+/-'", "'eqn'", "'True'", "'False'", 
+                     "'import'", "'to'", "'eqn'", "'True'", "'False'", "<INVALID>", 
                      "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
                      "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
-                     "<INVALID>", "<INVALID>", "<INVALID>", "'%'", "'.'", 
-                     "'...'", "'*'", "'('", "')'", "','", "':'", "';'", 
-                     "'**'", "'='", "'['", "']'", "'|'", "'^'", "'&'", "'<<'", 
-                     "'>>'", "'+'", "'-'", "'/'", "'//'", "'~'", "'{'", 
-                     "'}'", "'<'", "'>'", "'=='", "'>='", "'<='", "'<>'", 
-                     "'!='", "'@'", "'->'", "'+='", "'-='", "'*='", "'@='", 
-                     "'/='", "'&='", "'|='", "'^='", "'<<='", "'>>='", "'**='", 
-                     "'//='" ]
+                     "<INVALID>", "<INVALID>", "<INVALID>", "'+/-'", "'\\u00B1'", 
+                     "'%'", "'.'", "'...'", "'*'", "'('", "')'", "','", 
+                     "':'", "';'", "'**'", "'='", "'['", "']'", "'|'", "'^'", 
+                     "'&'", "'<<'", "'>>'", "'+'", "'-'", "'/'", "'//'", 
+                     "'~'", "'{'", "'}'", "'<'", "'>'", "'=='", "'>='", 
+                     "'<='", "'<>'", "'!='", "'@'", "'->'", "'+='", "'-='", 
+                     "'*='", "'@='", "'/='", "'&='", "'|='", "'^='", "'<<='", 
+                     "'>>='", "'**='", "'//='" ]
 
     symbolicNames = [ "<INVALID>", "INDENT", "DEDENT", "STRING", "NUMBER", 
                       "INTEGER", "COMPONENT", "MODULE", "INTERFACE", "PIN", 
-                      "SIGNAL", "NEW", "FROM", "IMPORT", "TO", "PLUS_OR_MINUS", 
-                      "EQN", "TRUE", "FALSE", "EQUATION_STRING", "NEWLINE", 
-                      "NAME", "STRING_LITERAL", "BYTES_LITERAL", "DECIMAL_INTEGER", 
-                      "OCT_INTEGER", "HEX_INTEGER", "BIN_INTEGER", "FLOAT_NUMBER", 
-                      "IMAG_NUMBER", "PERCENT", "DOT", "ELLIPSIS", "STAR", 
-                      "OPEN_PAREN", "CLOSE_PAREN", "COMMA", "COLON", "SEMI_COLON", 
-                      "POWER", "ASSIGN", "OPEN_BRACK", "CLOSE_BRACK", "OR_OP", 
-                      "XOR", "AND_OP", "LEFT_SHIFT", "RIGHT_SHIFT", "ADD", 
-                      "MINUS", "DIV", "IDIV", "NOT_OP", "OPEN_BRACE", "CLOSE_BRACE", 
+                      "SIGNAL", "NEW", "FROM", "IMPORT", "TO", "EQN", "TRUE", 
+                      "FALSE", "EQUATION_STRING", "NEWLINE", "NAME", "STRING_LITERAL", 
+                      "BYTES_LITERAL", "DECIMAL_INTEGER", "OCT_INTEGER", 
+                      "HEX_INTEGER", "BIN_INTEGER", "FLOAT_NUMBER", "IMAG_NUMBER", 
+                      "PLUS_OR_MINUS", "PLUS_SLASH_MINUS", "PLUS_MINUS_SIGN", 
+                      "PERCENT", "DOT", "ELLIPSIS", "STAR", "OPEN_PAREN", 
+                      "CLOSE_PAREN", "COMMA", "COLON", "SEMI_COLON", "POWER", 
+                      "ASSIGN", "OPEN_BRACK", "CLOSE_BRACK", "OR_OP", "XOR", 
+                      "AND_OP", "LEFT_SHIFT", "RIGHT_SHIFT", "ADD", "MINUS", 
+                      "DIV", "IDIV", "NOT_OP", "OPEN_BRACE", "CLOSE_BRACE", 
                       "LESS_THAN", "GREATER_THAN", "EQUALS", "GT_EQ", "LT_EQ", 
                       "NOT_EQ_1", "NOT_EQ_2", "AT", "ARROW", "ADD_ASSIGN", 
                       "SUB_ASSIGN", "MULT_ASSIGN", "AT_ASSIGN", "DIV_ASSIGN", 
@@ -192,69 +193,71 @@ class AtopileParser ( AtopileParserBase ):
     FROM=12
     IMPORT=13
     TO=14
-    PLUS_OR_MINUS=15
-    EQN=16
-    TRUE=17
-    FALSE=18
-    EQUATION_STRING=19
-    NEWLINE=20
-    NAME=21
-    STRING_LITERAL=22
-    BYTES_LITERAL=23
-    DECIMAL_INTEGER=24
-    OCT_INTEGER=25
-    HEX_INTEGER=26
-    BIN_INTEGER=27
-    FLOAT_NUMBER=28
-    IMAG_NUMBER=29
-    PERCENT=30
-    DOT=31
-    ELLIPSIS=32
-    STAR=33
-    OPEN_PAREN=34
-    CLOSE_PAREN=35
-    COMMA=36
-    COLON=37
-    SEMI_COLON=38
-    POWER=39
-    ASSIGN=40
-    OPEN_BRACK=41
-    CLOSE_BRACK=42
-    OR_OP=43
-    XOR=44
-    AND_OP=45
-    LEFT_SHIFT=46
-    RIGHT_SHIFT=47
-    ADD=48
-    MINUS=49
-    DIV=50
-    IDIV=51
-    NOT_OP=52
-    OPEN_BRACE=53
-    CLOSE_BRACE=54
-    LESS_THAN=55
-    GREATER_THAN=56
-    EQUALS=57
-    GT_EQ=58
-    LT_EQ=59
-    NOT_EQ_1=60
-    NOT_EQ_2=61
-    AT=62
-    ARROW=63
-    ADD_ASSIGN=64
-    SUB_ASSIGN=65
-    MULT_ASSIGN=66
-    AT_ASSIGN=67
-    DIV_ASSIGN=68
-    AND_ASSIGN=69
-    OR_ASSIGN=70
-    XOR_ASSIGN=71
-    LEFT_SHIFT_ASSIGN=72
-    RIGHT_SHIFT_ASSIGN=73
-    POWER_ASSIGN=74
-    IDIV_ASSIGN=75
-    SKIP_=76
-    UNKNOWN_CHAR=77
+    EQN=15
+    TRUE=16
+    FALSE=17
+    EQUATION_STRING=18
+    NEWLINE=19
+    NAME=20
+    STRING_LITERAL=21
+    BYTES_LITERAL=22
+    DECIMAL_INTEGER=23
+    OCT_INTEGER=24
+    HEX_INTEGER=25
+    BIN_INTEGER=26
+    FLOAT_NUMBER=27
+    IMAG_NUMBER=28
+    PLUS_OR_MINUS=29
+    PLUS_SLASH_MINUS=30
+    PLUS_MINUS_SIGN=31
+    PERCENT=32
+    DOT=33
+    ELLIPSIS=34
+    STAR=35
+    OPEN_PAREN=36
+    CLOSE_PAREN=37
+    COMMA=38
+    COLON=39
+    SEMI_COLON=40
+    POWER=41
+    ASSIGN=42
+    OPEN_BRACK=43
+    CLOSE_BRACK=44
+    OR_OP=45
+    XOR=46
+    AND_OP=47
+    LEFT_SHIFT=48
+    RIGHT_SHIFT=49
+    ADD=50
+    MINUS=51
+    DIV=52
+    IDIV=53
+    NOT_OP=54
+    OPEN_BRACE=55
+    CLOSE_BRACE=56
+    LESS_THAN=57
+    GREATER_THAN=58
+    EQUALS=59
+    GT_EQ=60
+    LT_EQ=61
+    NOT_EQ_1=62
+    NOT_EQ_2=63
+    AT=64
+    ARROW=65
+    ADD_ASSIGN=66
+    SUB_ASSIGN=67
+    MULT_ASSIGN=68
+    AT_ASSIGN=69
+    DIV_ASSIGN=70
+    AND_ASSIGN=71
+    OR_ASSIGN=72
+    XOR_ASSIGN=73
+    LEFT_SHIFT_ASSIGN=74
+    RIGHT_SHIFT_ASSIGN=75
+    POWER_ASSIGN=76
+    IDIV_ASSIGN=77
+    SKIP_=78
+    UNKNOWN_CHAR=79
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
@@ -310,15 +313,15 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 70
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 3680200) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 1845192) != 0):
                 self.state = 68
                 self._errHandler.sync(self)
                 token = self._input.LA(1)
-                if token in [20]:
+                if token in [19]:
                     self.state = 66
                     self.match(AtopileParser.NEWLINE)
                     pass
-                elif token in [3, 6, 7, 8, 9, 10, 13, 19, 21]:
+                elif token in [3, 6, 7, 8, 9, 10, 13, 18, 20]:
                     self.state = 67
                     self.stmt()
                     pass
@@ -375,7 +378,7 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 77
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [3, 9, 10, 13, 19, 21]:
+            if token in [3, 9, 10, 13, 18, 20]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 75
                 self.simple_stmts()
@@ -457,7 +460,7 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 88
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==38:
+            if _la==40:
                 self.state = 87
                 self.match(AtopileParser.SEMI_COLON)
 
@@ -678,12 +681,12 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 114
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [3, 9, 10, 13, 19, 21]:
+            if token in [3, 9, 10, 13, 18, 20]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 104
                 self.simple_stmts()
                 pass
-            elif token in [20]:
+            elif token in [19]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 105
                 self.match(AtopileParser.NEWLINE)
@@ -698,7 +701,7 @@ class AtopileParser ( AtopileParserBase ):
                     self.state = 110 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 2631624) != 0)):
+                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 1320904) != 0)):
                         break
 
                 self.state = 112
@@ -1053,7 +1056,7 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 143
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==21:
+            if _la==20:
                 self.state = 142
                 self.name()
 
@@ -1172,12 +1175,12 @@ class AtopileParser ( AtopileParserBase ):
         def NUMBER(self):
             return self.getToken(AtopileParser.NUMBER, 0)
 
+        def PERCENT(self):
+            return self.getToken(AtopileParser.PERCENT, 0)
+
         def name(self):
             return self.getTypedRuleContext(AtopileParser.NameContext,0)
 
-
-        def PERCENT(self):
-            return self.getToken(AtopileParser.PERCENT, 0)
 
         def getRuleIndex(self):
             return AtopileParser.RULE_bilateral_tolerance
@@ -1202,15 +1205,15 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 155
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [21]:
+            if token in [32]:
                 self.state = 153
-                self.name()
-                pass
-            elif token in [30]:
-                self.state = 154
                 self.match(AtopileParser.PERCENT)
                 pass
-            elif token in [20, 38]:
+            elif token in [20]:
+                self.state = 154
+                self.name()
+                pass
+            elif token in [19, 40]:
                 pass
             else:
                 pass
@@ -1312,7 +1315,7 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 163
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==21:
+            if _la==20:
                 self.state = 162
                 self.name()
 
@@ -1656,7 +1659,7 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 190
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [21]:
+            if token in [20]:
                 self.state = 188
                 self.name()
                 pass
@@ -2124,7 +2127,7 @@ class AtopileParser ( AtopileParserBase ):
             self.enterOuterAlt(localctx, 1)
             self.state = 220
             _la = self._input.LA(1)
-            if not(_la==17 or _la==18):
+            if not(_la==16 or _la==17):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)
