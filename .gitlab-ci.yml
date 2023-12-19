@@ -69,18 +69,15 @@ cli-test:
     paths:
       - artifacts
 
-cli-build:
-  stage: build
+cli-deploy:
+  stage: deploy
   image: python:latest
   script:
     - pip install build twine
     - python -m build
-  artifacts:
-    paths:
-      - dist
-    # - TWINE_PASSWORD=${PYPI_TOKEN} TWINE_USERNAME=__token__ python -m twine upload -r testpypi dist/*
-  # rules:
-  #   - if: $CI_COMMIT_TAG
+    - TWINE_PASSWORD=${PYPI_TOKEN} TWINE_USERNAME=__token__ python -m twine upload dist/*
+  rules:
+    - if: $CI_COMMIT_TAG
 
 extension-build:
   stage: deploy
