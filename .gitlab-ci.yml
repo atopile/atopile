@@ -75,7 +75,7 @@ cli-deploy:
   script:
     - pip install build twine
     - python -m build
-    - python -m twine upload dist/* -u __token__ -p "${PYPI_TOKEN}"
+    - python -m twine upload dist/* -u __token__ -p "${PYPI_TOKEN}" --verbose
   # rules:
   #   - if: $CI_COMMIT_TAG
 
