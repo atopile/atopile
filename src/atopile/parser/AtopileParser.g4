@@ -10,7 +10,15 @@ file_input: (NEWLINE | stmt)* EOF;
 
 stmt: simple_stmts | compound_stmt;
 simple_stmts: simple_stmt (';' simple_stmt)* ';'? NEWLINE;
-simple_stmt: import_stmt | assign_stmt | connect_stmt | retype_stmt | pindef_stmt | signaldef_stmt | with_stmt;
+simple_stmt
+    : import_stmt
+    | assign_stmt
+    | connect_stmt
+    | retype_stmt
+    | pindef_stmt
+    | signaldef_stmt
+    | string_stmt
+    | eqn_stmt;
 compound_stmt: blockdef;
 block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 
@@ -19,18 +27,33 @@ blocktype: ('component' | 'module' | 'interface');
 
 import_stmt: 'import' name_or_attr 'from' string;
 assign_stmt: name_or_attr '=' assignable;
-assignable: string | NUMBER | name_or_attr | new_stmt | boolean_;
+assignable
+    : string
+    | new_stmt
+    | physical;
+
+quantity_end: NUMBER name?;
+bound_quantity: quantity_end 'to' quantity_end;
+bilateral_nominal: NUMBER name;
+bilateral_tolerance: NUMBER (name | '%')?;
+bilateral_quantity: bilateral_nominal '+/-' bilateral_tolerance;
+implicit_quantity: NUMBER name?;
+physical : bound_quantity | bilateral_quantity | implicit_quantity;
 
 retype_stmt: name_or_attr '->' name_or_attr;
 
 connect_stmt: connectable '~' connectable;
 connectable: name_or_attr | numerical_pin_ref | signaldef_stmt | pindef_stmt;
 
-signaldef_stmt: ('private')? 'signal' name;
+signaldef_stmt: 'signal' name;
 pindef_stmt: 'pin' (name | totally_an_integer);
-with_stmt: 'with' name_or_attr;
 
 new_stmt: 'new' name_or_attr;
+
+// the unbound string is a statement used to add doc-strings
+string_stmt: string;
+
+eqn_stmt: EQUATION_STRING;
 
 name_or_attr: attr | name;
 numerical_pin_ref: name_or_attr '.' totally_an_integer;
