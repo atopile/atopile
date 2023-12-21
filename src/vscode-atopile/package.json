@@ -1,8 +1,10 @@
 {
   "name": "atopile",
-  "displayName": ".ato",
-  "description": "atopile synthax highlighting",
-  "version": "0.0.1",
+  "displayName": "atopile",
+  "icon": "ato_logo_256x256.png",
+  "publisher": "atopile",
+  "description": "atopile syntax highlighting",
+  "version": "0.0.3",
   "repository": {
     "url": "https://gitlab.atopile.io/atopile/atopile",
     "directory": "src/vscode-atopile",
