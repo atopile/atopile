@@ -118,6 +118,7 @@ def init_project(project_path: Path, top_level_dir, name):
     Initialize a new project.
     """
     project_name = kebabcase(name)
+    module_name = pascalcase(name)
 
     # Create project directory and any necessary files
     project_path.mkdir(parents=True, exist_ok=True)
@@ -140,6 +141,8 @@ def init_project(project_path: Path, top_level_dir, name):
             for line in lines:
                 if "template123" in line:
                     line = line.replace("template123", project_name)
+                if "<template-module-name>" in line:
+                    line = line.replace("<template-module-name>", module_name)
                 f.write(line)
 
     # Rename layout files
@@ -152,7 +155,6 @@ def init_project(project_path: Path, top_level_dir, name):
         renamed_files.append(new_path)
 
     # Update the entrypoint's name
-    module_name = pascalcase(name)
     entry_file = project_path / f"elec/src/{project_name}.ato"
     with open(entry_file, "w") as f:
         f.write(
