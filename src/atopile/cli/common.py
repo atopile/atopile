@@ -11,6 +11,7 @@ from atopile import address
 from atopile.address import AddrStr
 from atopile.config import get_project_config_from_addr
 
+
 log = logging.getLogger(__name__)
 
 
@@ -35,14 +36,6 @@ def project_options(f):
         **kwargs,
     ):
         """Wrap a CLI command to ingest common config options to build a project."""
-        # we process debugpy first, so we can attach the debugger ASAP into the process
-        if debugpy:
-            import debugpy  # pylint: disable=import-outside-toplevel
-            debug_port = 5678
-            debugpy.listen(("localhost", debug_port))
-            log.info("Starting debugpy on port %s", debug_port)
-            debugpy.wait_for_client()
-
         # basic the entry address if provided, otherwise leave it as None
         if entry is not None:
             entry = AddrStr(entry)
@@ -93,7 +86,7 @@ def project_options(f):
         # FIXME: why are we smooshing this -> does this need to be mutable?
         config = OmegaConf.merge(project_config, cli_conf)
 
-        # # layer on the selected addrs config
+        # layer on the selected addrs config
         if entry:
             if entry_arg_file_path.is_file():
                 if entry_section := address.get_entry_section(entry):
