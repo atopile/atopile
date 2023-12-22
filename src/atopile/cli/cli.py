@@ -26,6 +26,7 @@ logging.basicConfig(
 @click.group()
 @click.option("--debugpy", is_flag=True)
 def cli(debugpy: bool):
+    """Base CLI group."""
     # we process debugpy first, so we can attach the debugger ASAP into the process
     if debugpy:
         import debugpy as debugpy_mod  # pylint: disable=import-outside-toplevel

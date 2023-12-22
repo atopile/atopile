@@ -1,6 +1,7 @@
 import pytest
 from semver import Version
 
+from atopile import errors
 from atopile.version import match, parse
 
 # disable docstring checks - it's a test file
@@ -79,7 +80,7 @@ def test_match_negation(version):
 
 
 def test_syntax_error(version):
-    with pytest.raises(SyntaxError):
+    with pytest.raises(errors.AtoError):
         match("abc", version)
 
 
@@ -104,3 +105,14 @@ def test_parse_version_with_hatch_shenanigans():
 def test_parse_invalid_version():
     with pytest.raises(ValueError):
         parse("not a version")
+
+
+def test_v_prefix(version):
+    assert parse("v1.2.3") == Version(1, 2, 3)
+    assert match("==v1.2.3", version)
+    assert match("==v1.2.4", version) is False
+    assert match("==v1.2.4", version) is False
+
+
+def test_stringify(version):
+    assert str(parse("v1.2.3")) == "1.2.3"
