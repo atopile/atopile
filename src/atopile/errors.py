@@ -122,6 +122,12 @@ class AtoFileNotFoundError(AtoError, FileNotFoundError):
     """
 
 
+class AtoUnknownUnitError(AtoError):
+    """
+    Raised if a unit couldn't be interpreted.
+    """
+
+
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:

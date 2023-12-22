@@ -25,16 +25,29 @@ log = logging.getLogger(__name__)
 _get_mpn = errors.downgrade(
     components.get_mpn, (components.MissingData, components.NoMatchingComponent)
 )
-_get_value = errors.downgrade(
-    components.get_value,
-    (components.MissingData, components.NoMatchingComponent),
-    default=errors.downgrade(
-        components.get_specd_value, components.MissingData, default="?"
-    ),
-)
+
 _get_footprint = errors.downgrade(
     components.get_footprint, components.MissingData, default="?"
 )
+
+
+def _get_value(addr: address.AddrStr) -> str:
+    value = errors.downgrade(
+        components.get_user_facing_value,
+        (components.MissingData, components.NoMatchingComponent)
+    )(addr)
+
+    if value is not None:
+        return value
+
+    value = str(errors.downgrade(
+        components.get_specd_value, components.MissingData
+    )(addr))
+
+    if value is not None:
+        return value
+
+    return "?"
 
 
 light_row = Style(color="bright_black")
