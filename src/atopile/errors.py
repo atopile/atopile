@@ -202,11 +202,10 @@ def in_debug_session() -> bool:
     """
     Return whether we're in a debug session.
     """
-    try:
-        import debugpy  # pylint: disable=import-outside-toplevel
-    except ImportError:
-        return False
-    return debugpy.is_client_connected()
+    if "debugpy" in sys.modules:
+        from debugpy import is_client_connected  # pylint: disable=import-outside-toplevel
+        return is_client_connected()
+    return False
 
 
 @contextmanager
