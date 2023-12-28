@@ -143,7 +143,7 @@ def create(
             repo = None
 
     # Configure the project
-    do_configure(name, repo, debug=False)
+    do_configure(name, repo_obj.working_tree_dir, debug=False)
 
     # Commit the configured project
     # force the add, because we're potentially modifying things in gitignored locations
@@ -156,15 +156,15 @@ def create(
 
 @dev.command()
 @click.argument("name")
-@click.argument("repo")
-def configure(name: str, repo: str):
+@click.argument("repo_path")
+def configure(name: str, repo_path: str):
     """Command useful in developing templates."""
-    do_configure(name, repo, debug=True)
+    do_configure(name, repo_path, debug=True)
 
 
-def do_configure(name: str, repo: str, debug: bool):
+def do_configure(name: str, _repo_path: str, debug: bool):
     """Configure the project."""
-    repo_path = Path(repo)
+    repo_path = Path(_repo_path)
     template_globals = {
         "name": name,
         "caseconverter": caseconverter,
