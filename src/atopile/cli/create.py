@@ -1,6 +1,5 @@
 import itertools
 import logging
-import os
 import re
 import sys
 import textwrap
@@ -11,6 +10,7 @@ from typing import Iterator, Optional
 import caseconverter
 import click
 import git
+import jinja2
 import rich
 import rich.prompt
 
@@ -49,14 +49,17 @@ def _stuck_user_helper() -> Iterator[bool]:
 stuck_user_helper_generator = _stuck_user_helper()
 
 
-PROJECT_TYPES = ["board", "module"]
+@click.group()
+def dev():
+    pass
 
 
-@click.command()
+@dev.command()
 @click.argument("name", required=False)
 @click.option("-r", "--repo", default=None)
 def create(
-    name: Optional[str], repo: Optional[str]
+    name: Optional[str],
+    repo: Optional[str],
 ):  # pylint: disable=redefined-builtin
     """
     Create a new ato project.
@@ -100,7 +103,9 @@ def create(
         if not repo:
             make_repo_url = f"https://github.com/new?name={name}&template_owner=atopile&template_name=project-template"
 
-            if rich.prompt.Confirm.ask(":rocket: Open browser to create Github repo?", default=True):
+            if rich.prompt.Confirm.ask(
+                ":rocket: Open browser to create Github repo?", default=True
+            ):
                 webbrowser.open(make_repo_url)
             else:
                 help(
@@ -118,6 +123,11 @@ def create(
             repo = rich.prompt.Prompt.ask(":rocket: What's the [cyan]repo's URL?[/]")
 
         # Try download the repo from the user-provided URL
+        if Path(name).exists():
+            raise click.ClickException(
+                f"Directory {name} already exists. Please put the repo elsewhere or choose a different name."
+            )
+
         try:
             repo_obj = git.Repo.clone_from(repo, name)
             break
@@ -133,21 +143,59 @@ def create(
             repo = None
 
     # Configure the project
-    configure_path = Path(repo_obj.working_tree_dir) / "configure.py"
-    if not configure_path.exists():
-        rich.print("[yellow]No configure.py found. Skipping.[/]")
-    else:
-        if os.system(f"{sys.executable} {configure_path} --no-debug {name}"):
-            rich.print("[red]configure.py failed.[/]")
-            raise click.Abort()
+    do_configure(name, repo, debug=False)
 
     # Commit the configured project
-    # force the add, because we're potentially modifying things in gitiignored locations
+    # force the add, because we're potentially modifying things in gitignored locations
     repo_obj.git.add(A=True, f=True)
     repo_obj.git.commit(m="Configure project")
 
     # Wew! New repo created!
-    rich.print(f":sparkles: [green]Created new project \"{name}\"![/] :sparkles:")
+    rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
+
+
+@dev.command()
+@click.argument("name")
+@click.argument("repo")
+def configure(name: str, repo: str):
+    """Command useful in developing templates."""
+    do_configure(name, repo, debug=True)
+
+
+def do_configure(name: str, repo: str, debug: bool):
+    """Configure the project."""
+    repo_path = Path(repo)
+    template_globals = {
+        "name": name,
+        "caseconverter": caseconverter,
+        "repo_root": repo_path,
+        "python_path": sys.executable,
+    }
+
+    # Load templates
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(repo_path)))
+
+    for template_path in repo_path.glob("**/*.j2"):
+        # Figure out the target path and variables and what not
+        target_path = template_path.parent / template_path.name.replace(
+            ".j2", ""
+        ).replace("__name__", caseconverter.kebabcase(name))
+
+        template_globals["rel_path"] = target_path
+
+        template = env.get_template(
+            str(template_path.relative_to(repo_path)), globals=template_globals
+        )
+
+        # Make the noise!
+        with target_path.open("w") as f:
+            for chunk in template.generate():
+                f.write(chunk)
+
+        # Remove the template
+        if not debug:
+            template_path.unlink()
+
 
 if __name__ == "__main__":
-    create()  # pylint: disable=no-value-for-parameter
+    dev()  # pylint: disable=no-value-for-parameter
