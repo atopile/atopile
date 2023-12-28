@@ -103,22 +103,25 @@ def create(
         if not repo:
             make_repo_url = f"https://github.com/new?name={name}&template_owner=atopile&template_name=project-template"
 
+            help(
+                f"""
+                We recommend you create a Github repo for your project.
+
+                If you already have a repo, you can respond [yellow]n[/]
+                to the next question and provide the URL to your repo.
+
+                If you don't have one, you can respond yes to the next question
+                or (Cmd/Ctrl +) click the link below to create one.
+
+                Just select the template you want to use.
+
+                {make_repo_url}
+                """
+            )
             if rich.prompt.Confirm.ask(
                 ":rocket: Open browser to create Github repo?", default=True
             ):
                 webbrowser.open(make_repo_url)
-            else:
-                help(
-                    f"""
-                    We recommend you create a Github repo for your project.
-
-                    If you don't have one, (Cmd/Ctrl +) click the link below to create one:
-
-                    [yellow]NOTE: only the public/private setting is important.[/]
-
-                    {make_repo_url}
-                    """
-                )
 
             repo = rich.prompt.Prompt.ask(":rocket: What's the [cyan]repo's URL?[/]")
 
@@ -146,9 +149,16 @@ def create(
     do_configure(name, repo_obj.working_tree_dir, debug=False)
 
     # Commit the configured project
-    # force the add, because we're potentially modifying things in gitignored locations
-    repo_obj.git.add(A=True, f=True)
-    repo_obj.git.commit(m="Configure project")
+    # force the add, because we're potentially
+    # modifying things in gitignored locations
+    if repo_obj.is_dirty():
+        repo_obj.git.add(A=True, f=True)
+        repo_obj.git.commit(m="Configure project")
+    else:
+        rich.print(
+            "[yellow]No changes to commit! Seems like the"
+            " template you used mightn't be configurable?[/]"
+        )
 
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
