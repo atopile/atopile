@@ -54,12 +54,9 @@ PROJECT_TYPES = ["board", "module"]
 
 @click.command()
 @click.argument("name", required=False)
-@click.option(
-    "--type", type=click.Choice(PROJECT_TYPES, case_sensitive=False), default=None
-)
 @click.option("-r", "--repo", default=None)
 def create(
-    name: Optional[str], type: Optional[str], repo: Optional[str]
+    name: Optional[str], repo: Optional[str]
 ):  # pylint: disable=redefined-builtin
     """
     Create a new ato project.
@@ -97,24 +94,6 @@ def create(
                 " contain only letters, numbers, dashes and underscores.[/]"
             )
             name = None
-
-    # Get a project type
-    for _ in stuck_user_helper_generator:
-        if not type:
-            type = rich.prompt.Prompt.ask(
-                ":rocket: What type of project is this?",
-                choices=PROJECT_TYPES,
-                default="board",
-            )
-
-        if type in PROJECT_TYPES:
-            break
-        else:
-            help(
-                f"[red]{type}[/] is not a valid project type."
-                f" Please choose one of [cyan]{', '.join(PROJECT_TYPES)}[/]."
-            )
-            type = None
 
     # Get a repo
     for _ in stuck_user_helper_generator:
