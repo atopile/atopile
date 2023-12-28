@@ -39,7 +39,6 @@ dependencies = [
     "natsort",
     "omegaconf==2.4.0.dev1",
     "pandas",
-    "requests",
     "rich",
     "ruamel.yaml",
     "schema",

@@ -1,13 +1,16 @@
 import itertools
 import logging
+import os
 import re
+import sys
 import textwrap
 import webbrowser
+from pathlib import Path
 from typing import Iterator, Optional
 
 import caseconverter
 import click
-import requests
+import git
 import rich
 import rich.prompt
 
@@ -116,80 +119,56 @@ def create(
     # Get a repo
     for _ in stuck_user_helper_generator:
         if not repo:
-            help(
-                f"""
-                We recommend you create a Github repo for your project.
+            make_repo_url = f"https://github.com/new?name={name}&template_owner=atopile&template_name=project-template"
 
-                If you don't have one, (Cmd/Ctrl +) click the link below to create one:
+            if rich.prompt.Confirm.ask(":rocket: Open browser to create Github repo?", default=True):
+                webbrowser.open(make_repo_url)
+            else:
+                help(
+                    f"""
+                    We recommend you create a Github repo for your project.
 
-                [yellow]NOTE: only the public/private setting is important.[/]
+                    If you don't have one, (Cmd/Ctrl +) click the link below to create one:
 
-                https://github.com/new?name={name}
-                """
-            )
+                    [yellow]NOTE: only the public/private setting is important.[/]
 
-            if rich.prompt.Confirm.ask(":rocket: Open browser to create repo?", default=True):
-                webbrowser.open(f"https://github.com/new?name={name}")
+                    {make_repo_url}
+                    """
+                )
 
             repo = rich.prompt.Prompt.ask(":rocket: What's the [cyan]repo's URL?[/]")
 
-        # Check if it's an SSH repo
-        if repo.startswith("git@"):
-            if not rich.prompt.Confirm.ask(
-                f"[cyan]{repo}[/] looks like an SSH repo. Is that correct?",
-                default=True,
-            ):
-                repo = None
-                continue
-            # We can't further validate this easily
-            break
-
-        # Sanity check that the thing the user entered looks
-        # like the repo for this project
-        if not repo.startswith("https://github.com/") or not repo.endswith(name):
-            if not rich.prompt.Confirm.ask(
-                f"[cyan]{repo}[/] doesn't look like the right"
-                " URL. Are you sure?",
-                default=False,
-            ):
-                repo = None
-                continue
-
-        # Check something exists at the repo URL
-        url_okay = True
+        # Try download the repo from the user-provided URL
         try:
-            if not requests.get(repo, timeout=3).status_code == 200:
-                url_okay = False
-        except requests.exceptions.ConnectionError:
-            url_okay = False
+            repo_obj = git.Repo.clone_from(repo, name)
+            break
+        except git.GitCommandError as ex:
+            help(
+                f"""
+                [red]Failed to clone repo from {repo}[/]
 
-        if not url_okay:
-            if not rich.prompt.Confirm.ask(
-                f"[cyan]{repo}[/] doesn't seem to exist."
-                " This may happen if the repo isn't public."
-                " Are you sure?",
-                default=False,
-            ):
-                repo = None
-                continue
+                {ex.stdout}
+                {ex.stderr}
+                """
+            )
+            repo = None
 
-        # If we made it this far, we're good
-        break
+    # Configure the project
+    configure_path = Path(repo_obj.working_tree_dir) / "configure.py"
+    if not configure_path.exists():
+        rich.print("[yellow]No configure.py found. Skipping.[/]")
+    else:
+        if os.system(f"{sys.executable} {configure_path} --no-debug {name}"):
+            rich.print("[red]configure.py failed.[/]")
+            raise click.Abort()
 
-    rich.print(
-        " ".join(
-            [
-                "ato create",
-                "name ==",
-                str(name),
-                "type ==",
-                str(type),
-                "repo ==",
-                str(repo),
-            ]
-        )
-    )
+    # Commit the configured project
+    # force the add, because we're potentially modifying things in gitiignored locations
+    repo_obj.git.add(A=True, f=True)
+    repo_obj.git.commit(m="Configure project")
 
+    # Wew! New repo created!
+    rich.print(f":sparkles: [green]Created new project \"{name}\"![/] :sparkles:")
 
 if __name__ == "__main__":
     create()  # pylint: disable=no-value-for-parameter
