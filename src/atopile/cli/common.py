@@ -1,4 +1,9 @@
+"""
+Common CLI writing utilities.
+"""
+
 import functools
+import itertools
 import logging
 from pathlib import Path
 from typing import Iterable
@@ -7,9 +12,13 @@ import click
 from omegaconf import OmegaConf
 from omegaconf.errors import InterpolationToMissingValueError
 
-from atopile import address
+from atopile import address, errors, version
 from atopile.address import AddrStr
-from atopile.config import get_project_config_from_addr
+from atopile.config import (
+    Config,
+    get_project_config_from_addr,
+    get_project_config_from_path,
+)
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +32,6 @@ def project_options(f):
     @click.option("-b", "--build", default=None)
     @click.option("-c", "--config", multiple=True)
     @click.option("-t", "--target", multiple=True)
-    @click.option("--debugpy", is_flag=True)
     @functools.wraps(f)
     def wrapper(
         *args,
@@ -31,18 +39,9 @@ def project_options(f):
         build: str,
         config: Iterable[str],
         target: Iterable[str],
-        debugpy: bool,
         **kwargs,
     ):
         """Wrap a CLI command to ingest common config options to build a project."""
-        # we process debugpy first, so we can attach the debugger ASAP into the process
-        if debugpy:
-            import debugpy  # pylint: disable=import-outside-toplevel
-            debug_port = 5678
-            debugpy.listen(("localhost", debug_port))
-            log.info("Starting debugpy on port %s", debug_port)
-            debugpy.wait_for_client()
-
         # basic the entry address if provided, otherwise leave it as None
         if entry is not None:
             entry = AddrStr(entry)
@@ -93,7 +92,7 @@ def project_options(f):
         # FIXME: why are we smooshing this -> does this need to be mutable?
         config = OmegaConf.merge(project_config, cli_conf)
 
-        # # layer on the selected addrs config
+        # layer on the selected addrs config
         if entry:
             if entry_arg_file_path.is_file():
                 if entry_section := address.get_entry_section(entry):
@@ -129,3 +128,32 @@ def project_options(f):
         return f(*args, **kwargs, config=config)
 
     return wrapper
+
+
+def check_compiler_versions(config: Config):
+    """Check that the compiler version is compatible with the version used to build the project."""
+    with errors.handle_ato_errors():
+        dependency_cfgs = (
+            errors.downgrade(get_project_config_from_path, FileNotFoundError)(p)
+            for p in Path(config.paths.abs_module_path).glob("*")
+        )
+
+        for cltr, cfg in errors.iter_through_errors(
+            itertools.chain([config], dependency_cfgs)
+        ):
+            if cfg is None:
+                continue
+
+            with cltr():
+                semver_str = cfg.ato_version
+                # FIXME: this is a hack to the moment to get around us breaking
+                # the versioning scheme in the ato.yaml files
+                for operator in version.OPERATORS:
+                    semver_str = semver_str.replace(operator, "")
+
+                built_with_version = version.parse(semver_str)
+
+                if not version.match_compiler_compatability(built_with_version):
+                    raise version.VersionMismatchError(
+                        f"{cfg.paths.project} can't be built with this version of atopile."
+                    )

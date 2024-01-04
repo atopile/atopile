@@ -7,7 +7,7 @@ import yaml
 from caseconverter import kebabcase, pascalcase
 from git import InvalidGitRepositoryError, Repo
 
-from .install import install_dependencies_from_yaml, add_dependency_to_ato_yaml
+from .install import install_dependencies_from_yaml, set_dependency_to_ato_yaml
 
 # Set up logging
 log = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ def init_module(module_path, top_level_dir, name):
     new_repo_url = f"{MODULES_BASE_URL}/{name}.git"
 
     # Add dependency to ato.yaml
-    add_dependency_to_ato_yaml(top_level_dir, name)
+    set_dependency_to_ato_yaml(top_level_dir, name)
 
     # Add to projects gitignore
     with open(top_level_dir / ".gitignore", "a") as gitignore:
