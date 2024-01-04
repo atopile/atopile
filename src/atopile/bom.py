@@ -50,11 +50,12 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     all_components = list(filter(match_components, all_descendants(entry_addr)))
 
     # Create tables to print to the terminal and to the disc
-    console_table = Table(show_header=True, header_style="bold green")
-    console_table.add_column("Des", justify="right")
-    console_table.add_column("Name", justify="left")
-    console_table.add_column("Name", justify="left")
-    console_table.add_column("Des", justify="left")
+    sorted_des_table = Table(show_header=True, header_style="bold green")
+    sorted_name_table = Table(show_header=True, header_style="bold green")
+    sorted_des_table.add_column("Designator ↓", justify="right")
+    sorted_des_table.add_column("Name", justify="left")
+    sorted_name_table.add_column("Name ↓", justify="left")
+    sorted_name_table.add_column("Designator", justify="left")
 
     # Populate the tables
     sorted_designator_dict = {}
@@ -73,12 +74,16 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     for row_index, ((s_des, n_comp), (s_comp, n_des)) in enumerate(
         zip(sorted_designator_dict.items(), sorted_comp_name_dict.items())
     ):
-        console_table.add_row(
-            s_des, n_comp, s_comp, n_des, style=dark_row if row_index % 2 else light_row
+        sorted_des_table.add_row(
+            s_des, n_comp, style=dark_row if row_index % 2 else light_row
+        )
+        sorted_name_table.add_row(
+            s_comp, n_des, style=dark_row if row_index % 2 else light_row
         )
 
     # Print the table
-    rich.print(console_table)
+    rich.print(sorted_des_table)
+    rich.print(sorted_name_table)
 
 
 def generate_bom(entry_addr: address.AddrStr) -> str:
