@@ -3,9 +3,11 @@ from functools import cache
 from pathlib import Path
 
 import pandas as pd
+import pint
 
-from atopile import address, errors, instance_methods, units
+from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
+from atopile.front_end import Physical
 
 log = logging.getLogger(__name__)
 
@@ -44,10 +46,10 @@ _generic_to_type_map = {
     _GENERIC_CAPACITOR: "Capacitor",
 }
 
-# FIXME:
-_generic_to_tolerance_map = {
-    _GENERIC_RESISTOR: 0.105,
-    _GENERIC_CAPACITOR: 0.25,
+
+_generic_to_unit_map = {
+    _GENERIC_RESISTOR: pint.Unit("ohm"),
+    _GENERIC_CAPACITOR: pint.Unit("farad"),
 }
 
 
@@ -94,21 +96,27 @@ def _get_generic_from_db(component_addr: str) -> dict:
     filters.append(f"type == '{specd_type}'")
 
     # Apply filters we know how to process
-    # FIXME: currently this is hard-coded, but once we have the infra for it
-    # these params should be toleranced and come straight from the generic
-    # component definitions
+    try:
+        value_range = specd_data["value"]
+    except KeyError as ex:
+        raise KeyError("Generics are missing data - internal error") from ex
+
+    if not isinstance(value_range, Physical):
+        raise ValueError(f"Value must be a Physical, not {type(value_range)}")
 
     # Ensure the component's value is completely contained within the specd value
     try:
-        float_value = units.parse_number(specd_data["value"])
-    except units.InvalidPhysicalValue as ex:
-        ex.addr = component_addr + ".value"
-        raise ex
+        generic_unit = _generic_to_unit_map[specd_mpn]
+        min_float_val = (value_range.min_val * value_range.unit).to(generic_unit).magnitude
+        max_float_val = (value_range.max_val * value_range.unit).to(generic_unit).magnitude
+    except pint.DimensionalityError as ex:
+        raise errors.AtoTypeError(
+            f"{value_range.unit} cannot be converted to {generic_unit}",
+            title="Invalid unit",
+        ) from ex
 
-    tolerance = _generic_to_tolerance_map[specd_mpn]
-
-    filters.append(f"min_value > {float_value * (1 - tolerance)}")
-    filters.append(f"max_value < {float_value * (1 + tolerance)}")
+    filters.append(f"min_value > {min_float_val}")
+    filters.append(f"max_value < {max_float_val}")
 
     # Ensure the component's footprint is correct
     filters.append(f"Package == '{_generics_to_db_fp_map[specd_data['footprint']]}'")
@@ -162,28 +170,35 @@ def get_specd_value(addr: AddrStr) -> str:
     comp_data = instance_methods.get_data_dict(addr)
     if not _is_generic(addr):
         # it's cool if there's no value for non-generics
-        return comp_data.get("value", "")
+        return str(comp_data.get("value", ""))
 
     try:
-        return comp_data["value"]
+        return str(comp_data["value"])
     except KeyError as ex:
-        raise MissingData("$addr has no value spec'd", title="No value", addr=addr) from ex
+        raise MissingData(
+            "$addr has no value spec'd",
+            title="No value",
+            addr=addr
+        ) from ex
 
 
 # Values come from the finally selected
 # component, so we need to arbitrate via that data
 @cache
-def get_value(addr: AddrStr) -> str:
+def get_user_facing_value(addr: AddrStr) -> str:
     """
-    Return the value for a component
+    Return a "value" of a component we can slap in things like
+    the BoM and netlist. Doesn't need to be perfect, just
+    something to look at.
     """
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
         return f"{db_data['value']} {db_data['unit']}"
 
     comp_data = instance_methods.get_data_dict(addr)
-    # The default is okay here, because we're only generics must have a value
-    return comp_data.get("value", "")
+    # The default is okay here, because we're only generics
+    # must have a value
+    return str(comp_data.get("value", ""))
 
 
 # Footprints come from the users' code, so we reference that directly

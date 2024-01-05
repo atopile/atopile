@@ -38,52 +38,22 @@ INTERFACE : 'interface';
 PIN : 'pin';
 SIGNAL : 'signal';
 
-WITH : 'with';
-OPTIONAL : 'optional';
 NEW : 'new';
 FROM : 'from';
 IMPORT : 'import';
-PRIVATE : 'private';
+
+TO : 'to';
+EQN : 'eqn';
 
 TRUE : 'True';
 FALSE : 'False';
 
-// python3 imports -- kept for reference
-// TODO: tidy up
-// AND : 'and';
-// AS : 'as';
-// ASSERT : 'assert';
-// ASYNC : 'async';
-// AWAIT : 'await';
-// BREAK : 'break';
-// CASE : 'case' ;
-// CLASS : 'class';
-// CONTINUE : 'continue';
-// DEF : 'def';
-// DEL : 'del';
-// ELIF : 'elif';
-// ELSE : 'else';
-// EXCEPT : 'except';
-// FINALLY : 'finally';
-// FOR : 'for';
-// GLOBAL : 'global';
-// IF : 'if';
-// IN : 'in';
-// IS : 'is';
-// LAMBDA : 'lambda';
-// MATCH : 'match' ;
-// NONE : 'None';
-// NONLOCAL : 'nonlocal';
-// NOT : 'not';
-// OR : 'or';
-// PASS : 'pass';
-// RAISE : 'raise';
-// RETURN : 'return';
-// TRY : 'try';
-// UNDERSCORE : '_' ;
-// WHILE : 'while';
-// WITH : 'with';
-// YIELD : 'yield';
+// TODO: this is a complete hack and could be an entrypoint for injection attacks
+EQUATION_STRING : 'eqn:' ~[\r\n\f]*;
+
+//
+// Stuff from the Python3 grammer we based this on
+//
 
 NEWLINE
  : ( {self.atStartOfInput()}?   SPACES
@@ -142,6 +112,11 @@ IMAG_NUMBER
  : ( FLOAT_NUMBER | INT_PART ) [jJ]
  ;
 
+PLUS_OR_MINUS: PLUS_SLASH_MINUS | PLUS_MINUS_SIGN;
+PLUS_SLASH_MINUS: '+/-';
+PLUS_MINUS_SIGN: '\u00B1';
+
+PERCENT : '%';
 DOT : '.';
 ELLIPSIS : '...';
 STAR : '*';
@@ -162,7 +137,6 @@ RIGHT_SHIFT : '>>';
 ADD : '+';
 MINUS : '-';
 DIV : '/';
-MOD : '%';
 IDIV : '//';
 NOT_OP : '~';
 OPEN_BRACE : '{' {self.openBrace();};
@@ -181,7 +155,6 @@ SUB_ASSIGN : '-=';
 MULT_ASSIGN : '*=';
 AT_ASSIGN : '@=';
 DIV_ASSIGN : '/=';
-MOD_ASSIGN : '%=';
 AND_ASSIGN : '&=';
 OR_ASSIGN : '|=';
 XOR_ASSIGN : '^=';
