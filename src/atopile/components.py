@@ -2,7 +2,8 @@ import logging
 from functools import cache
 from pathlib import Path
 
-import pandas as pd
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 from atopile import address, errors, instance_methods, units
 from atopile.address import AddrStr
@@ -10,12 +11,22 @@ from atopile.address import AddrStr
 log = logging.getLogger(__name__)
 
 
-@cache
-def _get_pandas_data() -> pd.DataFrame:
-    current_file = Path(__file__)
-    current_dir = current_file.parent
-    data_file = current_dir / "jlc_parts.csv"
-    return pd.read_csv(data_file)
+# @cache
+# def _get_pandas_data() -> pd.DataFrame:
+#     current_file = Path(__file__)
+#     current_dir = current_file.parent
+#     data_file = current_dir / "jlc_parts.csv"
+#     return pd.read_csv(data_file)
+# Initialize Firestore
+
+service_account_path = Path(__file__).parent / 'atopile-dacc978ae7cd.json'
+
+if not firebase_admin._apps:  # Check if already initialized to prevent reinitialization
+    cred = credentials.Certificate(service_account_path)
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+_components_db = db.collection('components')  # Replace 'modules' with your actual collection name
 
 
 # TODO: currently a hack until we develop the required infrastructure
@@ -78,61 +89,124 @@ class NoMatchingComponent(errors.AtoError):
 
     title = "No component matches parameters"
 
-
 @cache
 def _get_generic_from_db(component_addr: str) -> dict:
     """
     Return the MPN for a component given its address
     """
+    # split component_addr into its parts at the : and take the second part
+    name = component_addr.split("::")[1]
+    log.info(f"Fetching component from db for {name}")
     specd_mpn = _get_specd_mpn(component_addr)
     specd_data = instance_methods.get_data_dict(component_addr)
 
-    df = _get_pandas_data()
-    filters = []
-
     specd_type = _generic_to_type_map[specd_mpn]
-    filters.append(f"type == '{specd_type}'")
+    tolerance = _generic_to_tolerance_map[specd_mpn]
 
-    # Apply filters we know how to process
-    # FIXME: currently this is hard-coded, but once we have the infra for it
-    # these params should be toleranced and come straight from the generic
-    # component definitions
-
-    # Ensure the component's value is completely contained within the specd value
     try:
         float_value = units.parse_number(specd_data["value"])
     except units.InvalidPhysicalValue as ex:
         ex.addr = component_addr + ".value"
         raise ex
 
-    tolerance = _generic_to_tolerance_map[specd_mpn]
+    # Start building your Firestore query
+    query = db.collection("components").where("type", "==", specd_type)
 
-    filters.append(f"min_value > {float_value * (1 - tolerance)}")
-    filters.append(f"max_value < {float_value * (1 + tolerance)}")
+    # First, query with one range filter
+    min_value = float_value * (1 - tolerance)
+    query = query.where("min_value", ">", min_value)
+
+    # Fetch the results
+    results = query.stream()
+    components = [doc.to_dict() for doc in results]
+
+    # Then, filter in your application code for the second condition
+    max_value = float_value * (1 + tolerance)
+    filtered_components = [comp for comp in components if comp["max_value"] < max_value]
+
 
     # Ensure the component's footprint is correct
-    filters.append(f"Package == '{_generics_to_db_fp_map[specd_data['footprint']]}'")
+    footprint = _generics_to_db_fp_map[specd_data['footprint']]
+    query = query.where("Package", "==", footprint)
 
-    # Combine filters using reduce
-    combined_filter = " & ".join(filters)
-    filtered_df = df.query(combined_filter)
-    if filtered_df.empty:
-        msg = "No component matching spec for $addr \n"
-        msg += "\n & ".join(filters)
-        raise NoMatchingComponent(msg, addr=component_addr)
+    # Execute the query
+    try:
+        results = query.stream()
+        components = [doc.to_dict() for doc in results]
+    except Exception as e:
+        raise e
 
-    # FIXME: Currently our cost function is dumb - it only knows dollars
-    # In the future this cost function should incorporate other things the user is
-    # likely to care about
-    idx_min = filtered_df["Price (USD)"].idxmin(skipna=True)
+    # Filter in application code if necessary
+    # For example, if you need to further filter based on a complex condition not supported directly by Firestore
+    # filtered_components = [comp for comp in components if some_complex_condition(comp)]
+    # if not filtered_components:
+    #     msg = "No component matching spec for $addr \n"
+    #     msg += "\n & ".join(filters)  # Adjust this line as Firestore won't give you a neat filter string
+    #     raise NoMatchingComponent(msg, addr=component_addr)
 
-    # In this case we seem to hit NaN, which implies we don't have
-    # cost info - which is really a bug in the db, but for the users' sake
-    # we'll just return the first component
-    if pd.isna(idx_min):
-        return filtered_df.iloc[0].to_dict()
+    # Select the component with minimum price
+    # Assuming 'Price (USD)' is a field in your Firestore documents
+    min_price_comp = min(components, key=lambda x: x.get('Price (USD)', float('inf')))
 
-    return filtered_df.loc[idx_min].to_dict()
+    if min_price_comp is None:
+        # Handle case where no component is found or all components have NaN or missing price
+        raise NoMatchingComponent("No valid component found with a price", addr=component_addr)
+
+    return min_price_comp
+# @cache
+# def _get_generic_from_db(component_addr: str) -> dict:
+#     """
+#     Return the MPN for a component given its address
+#     """
+#     specd_mpn = _get_specd_mpn(component_addr)
+#     specd_data = instance_methods.get_data_dict(component_addr)
+
+#     # df = _get_pandas_data()
+#     filters = []
+
+#     specd_type = _generic_to_type_map[specd_mpn]
+#     filters.append(f"type == '{specd_type}'")
+
+#     # Apply filters we know how to process
+#     # FIXME: currently this is hard-coded, but once we have the infra for it
+#     # these params should be toleranced and come straight from the generic
+#     # component definitions
+
+#     # Ensure the component's value is completely contained within the specd value
+#     try:
+#         float_value = units.parse_number(specd_data["value"])
+#     except units.InvalidPhysicalValue as ex:
+#         ex.addr = component_addr + ".value"
+#         raise ex
+
+#     tolerance = _generic_to_tolerance_map[specd_mpn]
+
+#     filters.append(f"min_value > {float_value * (1 - tolerance)}")
+#     filters.append(f"max_value < {float_value * (1 + tolerance)}")
+
+#     # Ensure the component's footprint is correct
+#     filters.append(f"Package == '{_generics_to_db_fp_map[specd_data['footprint']]}'")
+
+#     # Combine filters using reduce
+#     combined_filter = " & ".join(filters)
+#     filtered_df = df.query(combined_filter)
+#     if filtered_df.empty:
+#         msg = "No component matching spec for $addr \n"
+#         msg += "\n & ".join(filters)
+#         raise NoMatchingComponent(msg, addr=component_addr)
+
+#     # FIXME: Currently our cost function is dumb - it only knows dollars
+#     # In the future this cost function should incorporate other things the user is
+#     # likely to care about
+#     idx_min = filtered_df["Price (USD)"].idxmin(skipna=True)
+
+#     # In this case we seem to hit NaN, which implies we don't have
+#     # cost info - which is really a bug in the db, but for the users' sake
+#     # we'll just return the first component
+#     if pd.isna(idx_min):
+#         return filtered_df.iloc[0].to_dict()
+
+#     return filtered_df.loc[idx_min].to_dict()
 
 
 class MissingData(errors.AtoError):
