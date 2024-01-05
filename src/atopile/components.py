@@ -10,7 +10,7 @@ from firebase_admin import credentials, firestore
 
 from atopile import address, errors, instance_methods, units
 from atopile.address import AddrStr
-from git import Repo, InvalidGitRepositoryError, NoSuchPathError
+from git import Repo
 import warnings
 
 # Filter out specific warnings
@@ -19,9 +19,7 @@ warnings.filterwarnings(
     message="Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.",
 )
 
-
 log = logging.getLogger(__name__)
-
 
 service_account_path = Path(__file__).parent / "atopile-dacc978ae7cd.json"
 
@@ -121,7 +119,7 @@ def has_component_changed(cached_entry, current_data):
     # Implement logic to compare relevant parts of current_data with cached_entry['address_data']
     # Return True if data has changed, False otherwise
     if current_data != cached_entry["address_data"]:
-        log.info(f"Component data has changed for updating cache")
+        log.info("Component data has changed for updating cache")
         return True
     return False
 
