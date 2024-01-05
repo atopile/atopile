@@ -14,20 +14,25 @@ from git import Repo, InvalidGitRepositoryError, NoSuchPathError
 import warnings
 
 # Filter out specific warnings
-warnings.filterwarnings("ignore", message="Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.")
+warnings.filterwarnings(
+    "ignore",
+    message="Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.",
+)
 
 
 log = logging.getLogger(__name__)
 
 
-service_account_path = Path(__file__).parent / 'atopile-dacc978ae7cd.json'
+service_account_path = Path(__file__).parent / "atopile-dacc978ae7cd.json"
 
 if not firebase_admin._apps:  # Check if already initialized to prevent reinitialization
     cred = credentials.Certificate(service_account_path)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
-_components_db = db.collection('components')  # Replace 'modules' with your actual collection name
+_components_db = db.collection(
+    "components"
+)  # Replace 'modules' with your actual collection name
 
 # TODO: currently a hack until we develop the required infrastructure
 _generics_to_db_fp_map = {
@@ -61,6 +66,7 @@ _generic_to_tolerance_map = {
     _GENERIC_CAPACITOR: 0.25,
 }
 
+
 def _get_specd_mpn(addr: AddrStr) -> str:
     """
     Return the MPN for a component given its address
@@ -88,6 +94,7 @@ class NoMatchingComponent(errors.AtoError):
 
     title = "No component matches parameters"
 
+
 # Define the cache file path
 repo = Repo(".", search_parent_directories=True)
 top_level_path = Path(repo.working_tree_dir)
@@ -100,6 +107,7 @@ if cache_file_path.exists():
 else:
     component_cache = {}
 
+
 def save_cache():
     """Saves the current state of the cache to a file."""
     with open(cache_file_path, "w") as cache_file:
@@ -107,41 +115,47 @@ def save_cache():
         serializable_cache = dict(component_cache)
         json.dump(serializable_cache, cache_file)
 
+
 def has_component_changed(cached_entry, current_data):
     """Check if the component data has changed based on the address."""
     # Implement logic to compare relevant parts of current_data with cached_entry['address_data']
     # Return True if data has changed, False otherwise
-    if current_data != cached_entry['address_data']:
+    if current_data != cached_entry["address_data"]:
         log.info(f"Component data has changed for updating cache")
         return True
     return False
+
 
 def get_component_from_cache(component_addr, current_data):
     """Retrieve a component from the cache, if available, not stale, and unchanged."""
     cached_entry = component_cache.get(component_addr)
     if cached_entry:
-        cached_timestamp = datetime.fromtimestamp(cached_entry['timestamp'])
-        if (datetime.now() - cached_timestamp < timedelta(days=1)
-                and not has_component_changed(cached_entry, current_data)):
-            return cached_entry['data']
+        cached_timestamp = datetime.fromtimestamp(cached_entry["timestamp"])
+        if datetime.now() - cached_timestamp < timedelta(
+            days=1
+        ) and not has_component_changed(cached_entry, current_data):
+            return cached_entry["data"]
     return None
+
 
 def update_cache(component_addr, component_data, address_data):
     """Update the cache with new component data and save it."""
     component_cache[component_addr] = {
-        'data': component_data,
-        'timestamp': time.time(),  # Current time as a timestamp
-        'address_data': dict(address_data)  # Data used to detect changes
+        "data": component_data,
+        "timestamp": time.time(),  # Current time as a timestamp
+        "address_data": dict(address_data),  # Data used to detect changes
     }
     save_cache()
+
 
 def clean_cache():
     """Clean out entries older than 1 day."""
     for addr, entry in list(component_cache.items()):
-        cached_timestamp = datetime.fromtimestamp(entry['timestamp'])
+        cached_timestamp = datetime.fromtimestamp(entry["timestamp"])
         if datetime.now() - cached_timestamp >= timedelta(days=1):
             del component_cache[addr]
     save_cache()
+
 
 def _get_generic_from_db(component_addr: str) -> dict:
     """
@@ -186,7 +200,7 @@ def _get_generic_from_db(component_addr: str) -> dict:
     filtered_components = [comp for comp in components if comp["max_value"] < max_value]
 
     # Ensure the component's footprint is correct
-    footprint = _generics_to_db_fp_map[specd_data['footprint']]
+    footprint = _generics_to_db_fp_map[specd_data["footprint"]]
     query = query.where("Package", "==", footprint)
 
     # Execute the query
@@ -196,13 +210,16 @@ def _get_generic_from_db(component_addr: str) -> dict:
     except Exception as e:
         raise e
 
-    min_price_comp = min(components, key=lambda x: x.get('Price (USD)', float('inf')))
+    min_price_comp = min(components, key=lambda x: x.get("Price (USD)", float("inf")))
 
     if min_price_comp is None:
         # Handle case where no component is found or all components have NaN or missing price
-        raise NoMatchingComponent("No valid component found with a price", addr=component_addr)
+        raise NoMatchingComponent(
+            "No valid component found with a price", addr=component_addr
+        )
     update_cache(component_addr, min_price_comp, specd_data)
     return min_price_comp
+
 
 class MissingData(errors.AtoError):
     """
@@ -236,7 +253,9 @@ def get_specd_value(addr: AddrStr) -> str:
     try:
         return comp_data["value"]
     except KeyError as ex:
-        raise MissingData("$addr has no value spec'd", title="No value", addr=addr) from ex
+        raise MissingData(
+            "$addr has no value spec'd", title="No value", addr=addr
+        ) from ex
 
 
 # Values come from the finally selected
