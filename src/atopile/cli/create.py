@@ -1,197 +1,211 @@
+import itertools
 import logging
+import re
+import sys
 import textwrap
+import webbrowser
 from pathlib import Path
+from typing import Iterator, Optional
 
+import caseconverter
 import click
-import yaml
-from caseconverter import kebabcase, pascalcase
-from git import InvalidGitRepositoryError, Repo
-
-from .install import install_dependencies_from_yaml, set_dependency_to_ato_yaml
+import git
+import jinja2
+import rich
+import rich.prompt
 
 # Set up logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-# Constants
-PROJECT_BASE_URL = "https://gitlab.atopile.io/community-projects"
-MODULES_BASE_URL = "https://gitlab.atopile.io/packages"
-PROJECT_TEMPLATE_URL = "https://gitlab.atopile.io/atopile/atopile-project-template.git"
-MODULES_TEMPLATE_URL = "https://gitlab.atopile.io/packages/module-template.git"
-MODULES_DIR = ".ato/modules"
 
-
-@click.command()
-@click.argument("name")
-def create(name: str):
+def check_name(name: str) -> bool:
     """
-    Create a new project or module. If within a repo, creates a module.
-    Otherwise, creates a new project.
+    Check if a name is valid.
     """
-    processed_proj_name = kebabcase(name)
-    project_type, project_path, top_level_dir = determine_project_type_and_path(processed_proj_name)
-
-    # Confirm that the user wants to create a module
-    if project_type == "module":
-        proceed = click.prompt(
-            f'A module named {processed_proj_name} will be added to your .ato/ directory and pushed remotely. Proceed? (y/n)', type=str)
-        if proceed != 'y':
-            log.info('Aborting.')
-            return
-        else:
-            log.info('Proceeding.')
-
-    # Clone the project template
-    clone_project_template(project_type, project_path)
-
-    if project_type == "module":
-        project_path, new_repo_url = init_module(project_path, top_level_dir, processed_proj_name)
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", name):
+        return True
     else:
-        project_path, new_repo_url = init_project(project_path, top_level_dir, processed_proj_name)
-
-    commit_message = f"Initial commit for {processed_proj_name}"
-    commit_changes(project_path, commit_message)
-
-    push_to_new_repo(project_path, new_repo_url)
-
-    log.info(f"New project created at {PROJECT_BASE_URL}/{processed_proj_name}")
-
-    if project_type == "module":
-        log.info(f"New module created at {MODULES_BASE_URL}/{processed_proj_name}")
-    else:
-        cwd = Path.cwd()
-        prj_path = Path(processed_proj_name+"/")
-        log.info(f"Installing dependencies for {cwd/prj_path}")
-        install_dependencies_from_yaml(cwd/prj_path)
-        log.info(f"New project created at {PROJECT_BASE_URL}/{processed_proj_name}")
+        return False
 
 
-def determine_project_type_and_path(name):
-    try:
-        repo = Repo(".", search_parent_directories=True)
-        top_level_dir = Path(repo.git.rev_parse("--show-toplevel"))
-        project_type = "module"
-        project_path = top_level_dir / ".ato" / "modules" / name
-        log.info("You are within an ato project. Creating a module.")
-    except InvalidGitRepositoryError:
-        project_type = "project"
-        project_path = Path(name).resolve()
-        top_level_dir = project_path.parent
-        log.info("No ato project detected. Creating a new project.")
-    return project_type, project_path, top_level_dir
+def help(text: str) -> None:  # pylint: disable=redefined-builtin
+    """Print help text."""
+    rich.print("\n" + textwrap.dedent(text).strip() + "\n")
 
 
-def commit_changes(repo_path, commit_message):
-    repo = Repo(repo_path)
-    repo.git.add(A=True)  # Adds all changes to the staging area
-    repo.index.commit(commit_message)  # Commits the changes
+def _stuck_user_helper() -> Iterator[bool]:
+    """Figure out if a user is stuck and help them exit."""
+    threshold = 5
+    for i in itertools.count():
+        if i >= threshold:
+            if rich.prompt.Confirm.ask("Are you trying to exit?"):
+                rich.print("No worries! Try Ctrl+C next time!")
+                exit(0)
+            threshold += 5
+        yield True
 
 
-def clone_project_template(project_type, project_path):
-    template_url = (
-        MODULES_TEMPLATE_URL if project_type == "module" else PROJECT_TEMPLATE_URL
-    )
-    # if project_path.exists():
-    #     log.error(f"Directory {project_path} already exists. Aborting.")
-    #     sys.exit(1)
-    log.info(f"Cloning from {template_url}")
-    repo = Repo.clone_from(url=template_url, to_path=project_path)
-    repo.git.remote("remove", "origin")
+stuck_user_helper_generator = _stuck_user_helper()
 
 
-def init_module(module_path, top_level_dir, name):
-    # Module-specific initialization logic
-    new_repo_url = f"{MODULES_BASE_URL}/{name}.git"
-
-    # Add dependency to ato.yaml
-    set_dependency_to_ato_yaml(top_level_dir, name)
-
-    # Add to projects gitignore
-    with open(top_level_dir / ".gitignore", "a") as gitignore:
-        gitignore.write(f"\n{name}/\n")
-
-    return module_path, new_repo_url
+@click.group()
+def dev():
+    pass
 
 
-def init_project(project_path: Path, top_level_dir, name):
+@dev.command()
+@click.argument("name", required=False)
+@click.option("-r", "--repo", default=None)
+def create(
+    name: Optional[str],
+    repo: Optional[str],
+):  # pylint: disable=redefined-builtin
     """
-    Initialize a new project.
+    Create a new ato project.
     """
-    project_name = kebabcase(name)
-    module_name = pascalcase(name)
+    # Get a project name
+    kebab_name = None
+    for _ in stuck_user_helper_generator:
+        if not name:
+            name = rich.prompt.Prompt.ask(
+                ":rocket: What's your project [cyan]name?[/]", default=kebab_name
+            )
 
-    # Create project directory and any necessary files
-    project_path.mkdir(parents=True, exist_ok=True)
+        if name is None:
+            continue
 
-    # We're using the following files as templates. If we
-    # encounter the string "template123", we should
-    # replace it with the project name
-    rename_lines_in = [
-        "elec/layout/default/template123.kicad_pro",
-        "README.md",
-        "elec/src/template123.ato",
-    ]
-
-    for file in rename_lines_in:
-        file_path = project_path / file
-        with open(file_path, "r") as f:
-            lines = f.readlines()
-
-        with open(file_path, "w") as f:
-            for line in lines:
-                if "template123" in line:
-                    line = line.replace("template123", project_name)
-                if "<template-module-name>" in line:
-                    line = line.replace("<template-module-name>", module_name)
-                f.write(line)
-
-    # Rename layout files
-    # Move all the files prefixed with template123 to the new project name
-    renamed_files: list[Path] = []
-    for file in project_path.rglob("**/template123.*"):
-        new_name = file.name.replace("template123", project_name)
-        new_path = file.parent / new_name
-        file.rename(new_path)
-        renamed_files.append(new_path)
-
-    # Update the entrypoint's name
-    entry_file = project_path / f"elec/src/{project_name}.ato"
-    with open(entry_file, "w") as f:
-        f.write(
-            textwrap.dedent(
+        kebab_name = caseconverter.kebabcase(name)
+        if name != kebab_name:
+            help(
                 f"""
-                module {module_name}:
-                    # start here!
+                We recommend using kebab-case ([cyan]{kebab_name}[/]) for your project name.
+                It makes it easier to use your project with other tools (like git) and it embeds nicely into URLs.
                 """
-            ).strip()
+            )
+
+            if rich.prompt.Confirm.ask(
+                f"Do you want to use [cyan]{kebab_name}[/] instead?", default=True
+            ):
+                name = kebab_name
+
+        if check_name(name):
+            break
+        else:
+            help(
+                "[red]Project names must start with a letter and"
+                " contain only letters, numbers, dashes and underscores.[/]"
+            )
+            name = None
+
+    # Get a repo
+    for _ in stuck_user_helper_generator:
+        if not repo:
+            make_repo_url = f"https://github.com/new?name={name}&template_owner=atopile&template_name=project-template"
+
+            help(
+                f"""
+                We recommend you create a Github repo for your project.
+
+                If you already have a repo, you can respond [yellow]n[/]
+                to the next question and provide the URL to your repo.
+
+                If you don't have one, you can respond yes to the next question
+                or (Cmd/Ctrl +) click the link below to create one.
+
+                Just select the template you want to use.
+
+                {make_repo_url}
+                """
+            )
+            if rich.prompt.Confirm.ask(
+                ":rocket: Open browser to create Github repo?", default=True
+            ):
+                webbrowser.open(make_repo_url)
+
+            repo = rich.prompt.Prompt.ask(":rocket: What's the [cyan]repo's URL?[/]")
+
+        # Try download the repo from the user-provided URL
+        if Path(name).exists():
+            raise click.ClickException(
+                f"Directory {name} already exists. Please put the repo elsewhere or choose a different name."
+            )
+
+        try:
+            repo_obj = git.Repo.clone_from(repo, name)
+            break
+        except git.GitCommandError as ex:
+            help(
+                f"""
+                [red]Failed to clone repo from {repo}[/]
+
+                {ex.stdout}
+                {ex.stderr}
+                """
+            )
+            repo = None
+
+    # Configure the project
+    do_configure(name, repo_obj.working_tree_dir, debug=False)
+
+    # Commit the configured project
+    # force the add, because we're potentially
+    # modifying things in gitignored locations
+    if repo_obj.is_dirty():
+        repo_obj.git.add(A=True, f=True)
+        repo_obj.git.commit(m="Configure project")
+    else:
+        rich.print(
+            "[yellow]No changes to commit! Seems like the"
+            " template you used mightn't be configurable?[/]"
         )
 
-    # Update the ato.yaml file with the new project name
-    file_path = project_path / "ato.yaml"
-    with open(file_path, "r") as file:
-        data = yaml.safe_load(file)
-
-    data["builds"]["default"]["entry"] = f"elec/src/{project_name}.ato:{module_name}"
-
-    with open(file_path, "w") as file:
-        yaml.safe_dump(data, file)
-
-    # Return the local path and the URL for the new project repository
-    new_repo_url = f"git@gitlab.atopile.io:community-projects/{project_name}.git"
-
-    return project_path, new_repo_url
+    # Wew! New repo created!
+    rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
 
 
-def push_to_new_repo(local_repo_path, new_repo_url):
-    """
-    Push the local project to the new repository using SSH keys.
-    """
-    try:
-        repo = Repo(local_repo_path)
-        repo.git.remote("add", "origin", new_repo_url)
-        current_branch = repo.active_branch.name
-        repo.git.push("origin", current_branch, "-u")
-        log.info(f"Pushed to new repository: {new_repo_url}")
-        return True
-    except Exception as e:
-        log.error(f"Failed to push to new repository: {e}")
+@dev.command()
+@click.argument("name")
+@click.argument("repo_path")
+def configure(name: str, repo_path: str):
+    """Command useful in developing templates."""
+    do_configure(name, repo_path, debug=True)
+
+
+def do_configure(name: str, _repo_path: str, debug: bool):
+    """Configure the project."""
+    repo_path = Path(_repo_path)
+    template_globals = {
+        "name": name,
+        "caseconverter": caseconverter,
+        "repo_root": repo_path,
+        "python_path": sys.executable,
+    }
+
+    # Load templates
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(repo_path)))
+
+    for template_path in repo_path.glob("**/*.j2"):
+        # Figure out the target path and variables and what not
+        target_path = template_path.parent / template_path.name.replace(
+            ".j2", ""
+        ).replace("__name__", caseconverter.kebabcase(name))
+
+        template_globals["rel_path"] = target_path
+
+        template = env.get_template(
+            str(template_path.relative_to(repo_path)), globals=template_globals
+        )
+
+        # Make the noise!
+        with target_path.open("w") as f:
+            for chunk in template.generate():
+                f.write(chunk)
+
+        # Remove the template
+        if not debug:
+            template_path.unlink()
+
+
+if __name__ == "__main__":
+    dev()  # pylint: disable=no-value-for-parameter
