@@ -31,7 +31,7 @@ _get_mpn = errors.downgrade(
     components.get_mpn, (components.MissingData, components.NoMatchingComponent)
 )
 _get_value = errors.downgrade(
-    components.get_value,
+    components.get_user_facing_value,
     (components.MissingData, components.NoMatchingComponent),
     default="?",
 )

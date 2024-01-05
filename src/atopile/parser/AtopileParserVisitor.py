@@ -1,4 +1,4 @@
-# Generated from AtopileParser.g4 by ANTLR 4.13.0
+# Generated from AtopileParser.g4 by ANTLR 4.13.1
 from antlr4 import *
 if "." in __name__:
     from .AtopileParser import AtopileParser
@@ -64,6 +64,41 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#quantity_end.
+    def visitQuantity_end(self, ctx:AtopileParser.Quantity_endContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#bound_quantity.
+    def visitBound_quantity(self, ctx:AtopileParser.Bound_quantityContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#bilateral_nominal.
+    def visitBilateral_nominal(self, ctx:AtopileParser.Bilateral_nominalContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#bilateral_tolerance.
+    def visitBilateral_tolerance(self, ctx:AtopileParser.Bilateral_toleranceContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#bilateral_quantity.
+    def visitBilateral_quantity(self, ctx:AtopileParser.Bilateral_quantityContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#implicit_quantity.
+    def visitImplicit_quantity(self, ctx:AtopileParser.Implicit_quantityContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#physical.
+    def visitPhysical(self, ctx:AtopileParser.PhysicalContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#retype_stmt.
     def visitRetype_stmt(self, ctx:AtopileParser.Retype_stmtContext):
         return self.visitChildren(ctx)
@@ -89,13 +124,18 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#with_stmt.
-    def visitWith_stmt(self, ctx:AtopileParser.With_stmtContext):
+    # Visit a parse tree produced by AtopileParser#new_stmt.
+    def visitNew_stmt(self, ctx:AtopileParser.New_stmtContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#new_stmt.
-    def visitNew_stmt(self, ctx:AtopileParser.New_stmtContext):
+    # Visit a parse tree produced by AtopileParser#string_stmt.
+    def visitString_stmt(self, ctx:AtopileParser.String_stmtContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#eqn_stmt.
+    def visitEqn_stmt(self, ctx:AtopileParser.Eqn_stmtContext):
         return self.visitChildren(ctx)
 
 
