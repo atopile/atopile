@@ -1,4 +1,7 @@
+import json
 import logging
+import time
+from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
 
@@ -7,17 +10,15 @@ from firebase_admin import credentials, firestore
 
 from atopile import address, errors, instance_methods, units
 from atopile.address import AddrStr
+from git import Repo, InvalidGitRepositoryError, NoSuchPathError
+import warnings
+
+# Filter out specific warnings
+warnings.filterwarnings("ignore", message="Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.")
+
 
 log = logging.getLogger(__name__)
 
-
-# @cache
-# def _get_pandas_data() -> pd.DataFrame:
-#     current_file = Path(__file__)
-#     current_dir = current_file.parent
-#     data_file = current_dir / "jlc_parts.csv"
-#     return pd.read_csv(data_file)
-# Initialize Firestore
 
 service_account_path = Path(__file__).parent / 'atopile-dacc978ae7cd.json'
 
@@ -27,7 +28,6 @@ if not firebase_admin._apps:  # Check if already initialized to prevent reinitia
 
 db = firestore.client()
 _components_db = db.collection('components')  # Replace 'modules' with your actual collection name
-
 
 # TODO: currently a hack until we develop the required infrastructure
 _generics_to_db_fp_map = {
@@ -61,7 +61,6 @@ _generic_to_tolerance_map = {
     _GENERIC_CAPACITOR: 0.25,
 }
 
-
 def _get_specd_mpn(addr: AddrStr) -> str:
     """
     Return the MPN for a component given its address
@@ -89,13 +88,75 @@ class NoMatchingComponent(errors.AtoError):
 
     title = "No component matches parameters"
 
-@cache
+# Define the cache file path
+repo = Repo(".", search_parent_directories=True)
+top_level_path = Path(repo.working_tree_dir)
+cache_file_path = top_level_path / ".ato/component_cache.json"
+
+# Try to load the cache, if it exists
+if cache_file_path.exists():
+    with open(cache_file_path, "r") as cache_file:
+        component_cache = json.load(cache_file)
+else:
+    component_cache = {}
+
+def save_cache():
+    """Saves the current state of the cache to a file."""
+    with open(cache_file_path, "w") as cache_file:
+        # Convert the ChainMap to a regular dictionary
+        serializable_cache = dict(component_cache)
+        json.dump(serializable_cache, cache_file)
+
+def has_component_changed(cached_entry, current_data):
+    """Check if the component data has changed based on the address."""
+    # Implement logic to compare relevant parts of current_data with cached_entry['address_data']
+    # Return True if data has changed, False otherwise
+    if current_data != cached_entry['address_data']:
+        log.info(f"Component data has changed for updating cache")
+        return True
+    return False
+
+def get_component_from_cache(component_addr, current_data):
+    """Retrieve a component from the cache, if available, not stale, and unchanged."""
+    cached_entry = component_cache.get(component_addr)
+    if cached_entry:
+        cached_timestamp = datetime.fromtimestamp(cached_entry['timestamp'])
+        if (datetime.now() - cached_timestamp < timedelta(days=1)
+                and not has_component_changed(cached_entry, current_data)):
+            return cached_entry['data']
+    return None
+
+def update_cache(component_addr, component_data, address_data):
+    """Update the cache with new component data and save it."""
+    component_cache[component_addr] = {
+        'data': component_data,
+        'timestamp': time.time(),  # Current time as a timestamp
+        'address_data': dict(address_data)  # Data used to detect changes
+    }
+    save_cache()
+
+def clean_cache():
+    """Clean out entries older than 1 day."""
+    for addr, entry in list(component_cache.items()):
+        cached_timestamp = datetime.fromtimestamp(entry['timestamp'])
+        if datetime.now() - cached_timestamp >= timedelta(days=1):
+            del component_cache[addr]
+    save_cache()
+
 def _get_generic_from_db(component_addr: str) -> dict:
     """
     Return the MPN for a component given its address
     """
-    # split component_addr into its parts at the : and take the second part
     name = component_addr.split("::")[1]
+    # First, try to get the component from the cache
+    specd_data = instance_methods.get_data_dict(component_addr)
+
+    # First, try to get the component from the cache
+    cached_component = get_component_from_cache(component_addr, specd_data)
+    if cached_component:
+        log.info(f"Fetching component from cache for {name}")
+        return cached_component
+    # split component_addr into its parts at the : and take the second part
     log.info(f"Fetching component from db for {name}")
     specd_mpn = _get_specd_mpn(component_addr)
     specd_data = instance_methods.get_data_dict(component_addr)
@@ -124,7 +185,6 @@ def _get_generic_from_db(component_addr: str) -> dict:
     max_value = float_value * (1 + tolerance)
     filtered_components = [comp for comp in components if comp["max_value"] < max_value]
 
-
     # Ensure the component's footprint is correct
     footprint = _generics_to_db_fp_map[specd_data['footprint']]
     query = query.where("Package", "==", footprint)
@@ -136,78 +196,13 @@ def _get_generic_from_db(component_addr: str) -> dict:
     except Exception as e:
         raise e
 
-    # Filter in application code if necessary
-    # For example, if you need to further filter based on a complex condition not supported directly by Firestore
-    # filtered_components = [comp for comp in components if some_complex_condition(comp)]
-    # if not filtered_components:
-    #     msg = "No component matching spec for $addr \n"
-    #     msg += "\n & ".join(filters)  # Adjust this line as Firestore won't give you a neat filter string
-    #     raise NoMatchingComponent(msg, addr=component_addr)
-
-    # Select the component with minimum price
-    # Assuming 'Price (USD)' is a field in your Firestore documents
     min_price_comp = min(components, key=lambda x: x.get('Price (USD)', float('inf')))
 
     if min_price_comp is None:
         # Handle case where no component is found or all components have NaN or missing price
         raise NoMatchingComponent("No valid component found with a price", addr=component_addr)
-
+    update_cache(component_addr, min_price_comp, specd_data)
     return min_price_comp
-# @cache
-# def _get_generic_from_db(component_addr: str) -> dict:
-#     """
-#     Return the MPN for a component given its address
-#     """
-#     specd_mpn = _get_specd_mpn(component_addr)
-#     specd_data = instance_methods.get_data_dict(component_addr)
-
-#     # df = _get_pandas_data()
-#     filters = []
-
-#     specd_type = _generic_to_type_map[specd_mpn]
-#     filters.append(f"type == '{specd_type}'")
-
-#     # Apply filters we know how to process
-#     # FIXME: currently this is hard-coded, but once we have the infra for it
-#     # these params should be toleranced and come straight from the generic
-#     # component definitions
-
-#     # Ensure the component's value is completely contained within the specd value
-#     try:
-#         float_value = units.parse_number(specd_data["value"])
-#     except units.InvalidPhysicalValue as ex:
-#         ex.addr = component_addr + ".value"
-#         raise ex
-
-#     tolerance = _generic_to_tolerance_map[specd_mpn]
-
-#     filters.append(f"min_value > {float_value * (1 - tolerance)}")
-#     filters.append(f"max_value < {float_value * (1 + tolerance)}")
-
-#     # Ensure the component's footprint is correct
-#     filters.append(f"Package == '{_generics_to_db_fp_map[specd_data['footprint']]}'")
-
-#     # Combine filters using reduce
-#     combined_filter = " & ".join(filters)
-#     filtered_df = df.query(combined_filter)
-#     if filtered_df.empty:
-#         msg = "No component matching spec for $addr \n"
-#         msg += "\n & ".join(filters)
-#         raise NoMatchingComponent(msg, addr=component_addr)
-
-#     # FIXME: Currently our cost function is dumb - it only knows dollars
-#     # In the future this cost function should incorporate other things the user is
-#     # likely to care about
-#     idx_min = filtered_df["Price (USD)"].idxmin(skipna=True)
-
-#     # In this case we seem to hit NaN, which implies we don't have
-#     # cost info - which is really a bug in the db, but for the users' sake
-#     # we'll just return the first component
-#     if pd.isna(idx_min):
-#         return filtered_df.iloc[0].to_dict()
-
-#     return filtered_df.loc[idx_min].to_dict()
-
 
 class MissingData(errors.AtoError):
     """
