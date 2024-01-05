@@ -57,7 +57,7 @@ test = [
     "pytest",
     "pytest-html",
     "pytest-datafiles",
-    "pytest-asyncio",
+    "pytest-asyncio!=0.23.3",
     "requests",
 ]
 
