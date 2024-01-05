@@ -10,7 +10,7 @@ from typing import Iterable
 
 import click
 from omegaconf import OmegaConf
-from omegaconf.errors import InterpolationToMissingValueError
+from omegaconf.errors import InterpolationToMissingValueError, ConfigKeyError
 
 from atopile import address, errors, version
 from atopile.address import AddrStr
@@ -90,7 +90,10 @@ def project_options(f):
 
         # finally smoosh them all back together like a delicious cake
         # FIXME: why are we smooshing this -> does this need to be mutable?
-        config = OmegaConf.merge(project_config, cli_conf)
+        try:
+            config = OmegaConf.merge(project_config, cli_conf)
+        except ConfigKeyError as ex:
+            raise click.BadParameter(f"Invalid config key {ex.key}") from ex
 
         # layer on the selected addrs config
         if entry:
