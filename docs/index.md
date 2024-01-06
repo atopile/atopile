@@ -370,6 +370,21 @@ There's quite a few legal ways to combine them!
 - even `25lb +/- 200g` 🤣
 
 
+## Doc-strings
+
+Doc-strings should be used to add in-code documentation of modules.
+
+eg.
+```
+module MyModule:
+    """
+    This is a hiiiiigh quality module!
+    """
+```
+
+This documentation not only helps you remember what you did, but also means your package is searchable and useable by others.
+
+
 ## Versioning
 
 Versions within atopile follow the semantic versioning 2.x schema. See https://semver.org for details
