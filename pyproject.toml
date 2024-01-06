@@ -51,7 +51,7 @@ dependencies = [
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "http://gitlab.atopile.io/atopile/atopile"
+Homepage = "https://github.com/atopile/atopile"
 
 [project.optional-dependencies]
 test = [
