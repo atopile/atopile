@@ -7,8 +7,8 @@ ARG SETUPTOOLS_SCM_PRETEND_VERSION
 
 RUN mkdir -p /atopile/src/atopile
 
-COPY README.md pyproject.toml /atopile/
-COPY src/atopile /atopile/src/atopile
+COPY . /atopile/
+WORKDIR /atopile
 
 RUN ls -la /atopile  # List contents of /atopile directory
 RUN if [ -d "/atopile/.git" ]; then echo ".git directory exists"; else echo ".git directory does not exist"; fi
