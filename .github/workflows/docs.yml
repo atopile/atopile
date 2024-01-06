@@ -1,0 +1,28 @@
+name: Build and publish the atopile docs
+
+on: [push, pull_request]
+
+jobs:
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install -e .[docs]
+        pip install mkdocs
+
+    - name: Build Documentation
+      run: mkdocs build --site-dir build/docs/public
+
+    - name: Upload Documentation Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: documentation
+        path: build/docs/public
