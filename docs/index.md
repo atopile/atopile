@@ -310,3 +310,112 @@ To download the artifacts, go to the pipeline page and click on the download but
 
 download the "store-build:archive" artifact and extract, you should see soemthing like this:
 ![Gitlab artifacts](images/download-artifacts.png)
+
+===
+
+# Reference
+
+## Language and Style-Guide
+
+The atopile language is largely (at least syntactically) based on python.
+
+If you're wondering how to write good `ato` code, considering what something might
+look like in python is a good start. We also recommend checking out their
+[style guide (pep8)](https://peps.python.org/pep-0008) for a reference on styling.
+
+There are pretty obviously vast differences in how ato and python work though, so while it may make a good start, we do not
+ plan to re-implement all of python's features...
+
+... we've got our own!
+
+## Units
+
+Remember how NASA slung a rocket straight into Mars because of a metric/imperial boo boo?
+
+How about we don't do that again.
+
+Resistors's resistances must be a resistance; whether `1.23Ω` (option+Z on OSx), `1.23ohm`, `4.56Kohm`, `7.89Mohm` or similar.
+
+Any attribute of any block may have a unit attached written (without a space) after any number.
+
+Unsurprisingly, caps capacitances need to be a capacitance; eg. `23.4uF`, various limits in volts, amperes, degrees and so on.
+
+Add units.
+
+## Tolerances
+
+Another unfamiliar first-class language feature when dealing with the physical world is the ability (and generally requirement)
+to spec tolerances for attributes.
+
+You could try find a `10kΩ` resistor, but my money says you won't - it'll likely be at least `10kΩ +/- 0.1%` (which you can
+write!)
+
+Tolerances can be written in the forms of:
+- `1V to 2V`
+- `3uF +/- 1uF`
+- `4Kohm +/- 1%`
+
+These are hopefully sufficiently intuitive as to not warrant further explanation 🤞
+
+
+## Units and Tolerances
+
+With Units and Tolerances together, we can define Physical attributes.
+
+There's quite a few legal ways to combine them!
+
+- `3V to 3.6V` perhaps for a supply rail
+- `3V +/- 10mV` maybe for a reference
+- `4.7uF +/- 20%` for a generic cap
+- even `25lb +/- 200g` 🤣
+
+
+## Versioning
+
+Versions within atopile follow the semantic versioning 2.x schema. See https://semver.org for details
+Semantic versions may be prefixed with a "v", so `v1.0.0 == 1.0.0`
+
+## `ato.yaml` project config
+
+The `ato.yaml` is significant indicator for a project:
+1. It marks the root of a project. The `ato` commands in the CLI is largely dependant upon the `ato.yaml` to know what project you're referring to.
+2. It contains project-level configuration information like where to build from, which layouts have what **entry-points**
+3. Lists project dependencies and the required versions of those dependencies
+4. Specifies what compiler version the project is intended to build with
+
+### Dependencies
+
+Each package listed under the `dependencies:` key is automatically downloaded and installed for users when they run the `ato install`
+command from within a project. These dependencies are anticipated to make the project run.
+
+Each dependency may have constraints on its version using the following operators:
+
+Assuming dependency says `my-package <operator>1.2.3` the following table describes whether each of the operators would match.
+
+They're in approximate order of usefulness/recommendation
+
+| Op  | `0.1.1` | `1.1.0` | `1.2.3` | `1.2.4` | `1.3.0` | `1.4.0` | `2.0.0` | Description |
+|-----|---------|---------|---------|---------|---------|---------|---------|-------------|
+|`^`  |         |         | ✔       | ✔       | ✔       | ✔       |         | >=, up to the next **major** |
+|`~`  |         |         | ✔       | ✔       |         |         |         | >=, up to the next **minor** |
+|`==` |         |         | ✔       |         |         |         |         | Exactly |
+|`*`  | ✔       | ✔       | ✔       | ✔       | ✔       | ✔       | ✔       | Any |
+|`!`  | ✔       | ✔       |         | ✔       | ✔       | ✔       | ✔       | Not (usually used in combination with others)|
+
+
+`>=`, `<=`, `>`, `<` all work, but have niche value. If you need to use them, something's probably broken.
+
+
+### Compiler version
+
+eg. `ato-version: v0.1.8`
+
+The installed compiler is matched against this value to see if the project is buildable in the current environment.
+
+It's matched using either:
+- `~` if the installed compiler version `<1.0.0`
+- else `^` (up to the next major)
+
+Practically, this means breaking compiler changes are indicated using the minor (eg. `0.1.0`, `0.2.0`, `0.3.0`, `0.4.0`) until version `1.0.0`.
+
+When you upgrade your compiler with breaking changes, you need to update your project to match the language changes, bumping this version in your project's `ato.yaml` file
