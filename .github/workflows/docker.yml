@@ -13,6 +13,7 @@ on: [push, pull_request, release]
 # name for the Docker image that this workflow builds.
 env:
   REGISTRY: ghcr.io
+  IMAGE_NAME: atopile/atopile-ci
 
 # There is a single job in this workflow. It's configured
 #to run on the latest available version of Ubuntu.
