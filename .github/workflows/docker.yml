@@ -23,7 +23,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - dockerfile: "ci"
+          - context: "dockerfiles"
+            dockerfile: "dockerfile.ci"
             image: "atopile-ci"
           # FIXME: hush... soon my child
           # - dockerfile: "kicad"
