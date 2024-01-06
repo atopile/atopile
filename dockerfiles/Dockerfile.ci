@@ -14,4 +14,4 @@ RUN ls -la /atopile  # List contents of /atopile directory
 RUN if [ -d "/atopile/.git" ]; then echo ".git directory exists"; else echo ".git directory does not exist"; fi
 
 
-RUN pip install -e /atopile"[dev,test,docs]"
+RUN pip install /atopile"[dev,test,docs]"
