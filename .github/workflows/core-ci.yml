@@ -1,0 +1,51 @@
+name: Do CI for atopile core
+
+on: [push, pull_request]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pip install -e ."[dev,test]"
+
+  lint:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+    - run: ruff src/atopile
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - run: pytest
+
+  # build:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: stwets
+  #       run: |
+  #         pip install build
+  #         asdfds
+
+
+  # qa:
+  #   runs-on: ubuntu-latest
+
+  #   steps:
+
+  #   - name: Upload Test Artifacts
+  #     uses: actions/upload-artifact@v2
+  #     if: failure()
+  #     with:
+  #       name: test-artifacts
+  #       path: artifacts
