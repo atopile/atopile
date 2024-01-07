@@ -24,7 +24,6 @@ jobs:
 
     - name: Upload Test Artifacts
       uses: actions/upload-artifact@v2
-      if: failure()
       with:
         name: test-artifacts
         path: artifacts
