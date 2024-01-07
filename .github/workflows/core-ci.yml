@@ -3,7 +3,7 @@ name: Do CI for atopile core
 on: [push, pull_request]
 
 jobs:
-  setup:
+  qa:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -16,17 +16,11 @@ jobs:
     - name: Install dependencies
       run: pip install -e ."[dev,test]"
 
-  lint:
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-    - run: ruff src/atopile
+    - name: lint
+      run: ruff src/atopile
 
-  test:
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-      - run: pytest
+    - name: test
+      run: pytest
 
   # build:
   #   needs: build
