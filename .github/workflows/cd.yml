@@ -15,8 +15,9 @@ jobs:
     runs-on: ubuntu-latest
 
     environment:
-      name: testpypi
+      name: pypi
       url: https://pypi.org/p/atopile/
+
     permissions:
       contents: read  # Otherwise we override the default value of `read` and get no access at all
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
@@ -45,10 +46,8 @@ jobs:
 
       -
         name: Publish package distributions to PyPI
-        # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
         uses: pypa/gh-action-pypi-publish@2f6f737ca5f74c637829c0f5c3acd0e29ea5e8bf
-        with:
-          repository-url: https://test.pypi.org/legacy/
 
   docker:
     runs-on: ubuntu-latest
