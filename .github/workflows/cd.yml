@@ -56,7 +56,7 @@ jobs:
   docker:
     runs-on: ubuntu-latest
 
-    needs: python-build
+    needs: python
 
     strategy:
       matrix:
