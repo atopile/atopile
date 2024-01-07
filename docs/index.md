@@ -76,7 +76,7 @@ The compiler version follows [sementic versioning](https://semver.org). The requ
 
 Components and footprints can be added manually to your project. For convenience, you can also use the `ato install` command. Here is an example installing the (RP2040 chip)[https://www.lcsc.com/product-detail/Microcontroller-Units-MCUs-MPUs-SOCs_Raspberry-Pi-RP2040_C2040.html]:
 
-`ato install --jlcpcb 'C2040'` 
+`ato install --jlcpcb C2040` 
 
 The command will add your footprint and 3D representation to the KiCAD library (named lib in your folder structure) and create an ato file of the component.
 
