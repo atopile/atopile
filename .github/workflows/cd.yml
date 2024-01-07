@@ -10,10 +10,6 @@ on:
     branches:
       - 'main'
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
   python:
     runs-on: ubuntu-latest
@@ -22,6 +18,7 @@ jobs:
       name: testpypi
       url: https://pypi.org/p/atopile/
     permissions:
+      contents: read  # Otherwise we override the default value of `read` and get no access at all
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
 
     steps:
@@ -66,6 +63,12 @@ jobs:
           # FIXME: hush... soon my child
           # - dockerfile: "kicad"
           #   image: "atopile-kicad"
+
+    # Sets the permissions granted to the `GITHUB_TOKEN`
+    # for the actions in this job.
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v2
