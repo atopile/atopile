@@ -1,4 +1,4 @@
-name: Do CI for atopile core
+name: Continuous Integration
 
 on: push
 
@@ -28,12 +28,3 @@ jobs:
       with:
         name: test-artifacts
         path: artifacts
-
-  # build:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: stwets
-  #       run: |
-  #         pip install build
-  #         asdfds
