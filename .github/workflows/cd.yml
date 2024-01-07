@@ -107,6 +107,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: dockerfiles/${{ matrix.dockerfile }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
