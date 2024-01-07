@@ -84,12 +84,11 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     )
     sorted_comp_name_dict = OrderedDict(sorted(sorted_comp_name_dict.items()))
 
-    for row_index, ((s_des, n_comp), (s_comp, n_des)) in enumerate(
-        zip(sorted_designator_dict.items(), sorted_comp_name_dict.items())
-    ):
+    for row_index, (s_des, n_comp) in enumerate(sorted_designator_dict.items()):
         sorted_des_table.add_row(
             s_des, n_comp, style=dark_row if row_index % 2 else light_row
         )
+    for row_index, (s_comp, n_des) in enumerate(sorted_comp_name_dict.items()):
         sorted_name_table.add_row(
             s_comp, n_des, style=dark_row if row_index % 2 else light_row
         )
