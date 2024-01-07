@@ -10,6 +10,10 @@ on:
     branches:
       - 'main'
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   python:
     runs-on: ubuntu-latest
@@ -62,12 +66,6 @@ jobs:
           # FIXME: hush... soon my child
           # - dockerfile: "kicad"
           #   image: "atopile-kicad"
-
-    # Sets the permissions granted to the `GITHUB_TOKEN`
-    # for the actions in this job.
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - uses: actions/checkout@v2
