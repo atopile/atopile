@@ -23,7 +23,7 @@ jobs:
     - run: ruff src/atopile
 
   test:
-    needs: build
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - run: pytest
