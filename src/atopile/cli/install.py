@@ -33,7 +33,10 @@ def install(to_install: str, jlcpcb: bool, upgrade: bool):
     repo = Repo(".", search_parent_directories=True)
     top_level_path = Path(repo.working_tree_dir)
 
-    if to_install:
+    if jlcpcb:
+        # eg. "ato install --jlcpcb=C123"
+        install_jlcpcb(to_install)
+    elif to_install:
         # eg. "ato install some-atopile-module"
         installed_semver = install_dependency(
             to_install,
@@ -47,9 +50,6 @@ def install(to_install: str, jlcpcb: bool, upgrade: bool):
             to_install = f"{module_name}^{installed_semver}"
         set_dependency_to_ato_yaml(top_level_path, to_install)
 
-    elif jlcpcb:
-        # eg. "ato install --jlcpcb=C123"
-        install_jlcpcb(to_install)
     else:
         # eg. "ato install"
         install_dependencies_from_yaml(top_level_path, upgrade)
