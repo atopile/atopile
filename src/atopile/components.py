@@ -115,8 +115,8 @@ def _get_generic_from_db(component_addr: str) -> dict:
             title="Invalid unit",
         ) from ex
 
-    filters.append(f"min_value > {min_float_val}")
-    filters.append(f"max_value < {max_float_val}")
+    filters.append(f"min_value >= {min_float_val}")
+    filters.append(f"max_value <= {max_float_val}")
 
     # Ensure the component's footprint is correct
     filters.append(f"Package == '{_generics_to_db_fp_map[specd_data['footprint']]}'")
