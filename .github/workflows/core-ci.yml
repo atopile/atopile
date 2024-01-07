@@ -1,9 +1,9 @@
 name: Do CI for atopile core
 
-on: [push, pull_request]
+on: push
 
 jobs:
-  qa:
+  quality:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -16,11 +16,18 @@ jobs:
     - name: Install dependencies
       run: pip install -e ."[dev,test]"
 
-    - name: lint
+    - name: Lint
       run: ruff src/atopile
 
-    - name: test
+    - name: Test
       run: pytest
+
+    - name: Upload Test Artifacts
+      uses: actions/upload-artifact@v2
+      if: failure()
+      with:
+        name: test-artifacts
+        path: artifacts
 
   # build:
   #   needs: build
@@ -30,16 +37,3 @@ jobs:
   #       run: |
   #         pip install build
   #         asdfds
-
-
-  # qa:
-  #   runs-on: ubuntu-latest
-
-  #   steps:
-
-  #   - name: Upload Test Artifacts
-  #     uses: actions/upload-artifact@v2
-  #     if: failure()
-  #     with:
-  #       name: test-artifacts
-  #       path: artifacts
