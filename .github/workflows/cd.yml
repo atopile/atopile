@@ -111,3 +111,20 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  # vscode: TODO:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+
+  #     - uses: actions/setup-node@v1
+  #       with:
+  #         node-version: 20
+
+  #     - run: npm ci
+
+  #     - name: Publish to Visual Studio Marketplace
+  #       uses: HaaLeo/publish-vscode-extension@v1
+  #       with:
+  #         pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+  #         registryUrl: https://marketplace.visualstudio.com
