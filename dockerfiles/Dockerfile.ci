@@ -2,12 +2,6 @@
 
 FROM python:latest
 
-# so we can spec the version number from the command line
-ARG SETUPTOOLS_SCM_PRETEND_VERSION
+COPY dist/atopile-*.tar.gz /tmp/atopile.tar.gz
 
-RUN mkdir -p /atopile/src/atopile
-
-COPY README.md pyproject.toml /atopile/
-COPY src/atopile /atopile/src/atopile
-
-RUN pip install -e /atopile"[dev,test,docs]"
+RUN pip install /tmp/atopile.tar.gz"[dev,test,docs]"
