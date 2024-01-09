@@ -111,7 +111,7 @@ def _get_generic_from_db(component_addr: str) -> dict:
         max_float_val = (value_range.max_val * value_range.unit).to(generic_unit).magnitude
     except pint.DimensionalityError as ex:
         raise errors.AtoTypeError(
-            f"{value_range.unit} cannot be converted to {generic_unit}",
+            f"{value_range.unit} cannot be converted to {generic_unit} for $addr", addr = component_addr,
             title="Invalid unit",
         ) from ex
 
