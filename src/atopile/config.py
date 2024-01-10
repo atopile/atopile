@@ -9,8 +9,8 @@ from typing import Any, Optional
 import yaml
 from attrs import Factory, define
 from omegaconf import MISSING, OmegaConf
-from atopile import address
 
+from atopile import address
 
 USER_CONFIG_PATH = Path("~/.atopile/config.yaml").expanduser().resolve().absolute()
 CONFIG_FILENAME = "ato.yaml"
@@ -59,7 +59,7 @@ class Config:
     Project settings take precedent over user settings.
     """
 
-    ato_version: str = "^0.0.0"
+    ato_version: str = "0.1.0"
 
     paths: Paths = Factory(Paths)
 
@@ -134,12 +134,19 @@ def get_project_dir_from_path(path: Path) -> Path:
 _loaded_configs: dict[Path, str] = {}
 
 
-def get_project_config_from_addr(addr: str) -> Config:
+def get_project_config_from_path(path: Path) -> Config:
     """
     Get the project config from an address.
     """
-    project_dir = get_project_dir_from_path(Path(address.get_file((addr))))
+    project_dir = get_project_dir_from_path(path)
     project_config_file = project_dir / CONFIG_FILENAME
     if project_config_file not in _loaded_configs:
         _loaded_configs[project_config_file] = make_config(project_config_file)
     return _loaded_configs[project_config_file]
+
+
+def get_project_config_from_addr(addr: str) -> Config:
+    """
+    Get the project config from an address.
+    """
+    return get_project_config_from_path(Path(address.get_file(addr)))

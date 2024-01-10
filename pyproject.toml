@@ -39,6 +39,7 @@ dependencies = [
     "natsort",
     "omegaconf==2.4.0.dev1",
     "pandas",
+    "pint",
     "rich",
     "ruamel.yaml",
     "schema",
@@ -50,14 +51,14 @@ dependencies = [
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "http://gitlab.atopile.io/atopile/atopile"
+Homepage = "https://github.com/atopile/atopile"
 
 [project.optional-dependencies]
 test = [
     "pytest",
     "pytest-html",
     "pytest-datafiles",
-    "pytest-asyncio",
+    "pytest-asyncio!=0.23.3",
     "requests",
 ]
 

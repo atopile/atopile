@@ -10,6 +10,7 @@ from itertools import chain
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
 
+import pint
 from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
@@ -17,8 +18,9 @@ from atopile import address, errors
 from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref
 from atopile.generic_methods import recurse
-from atopile.parse_utils import get_src_info_from_ctx
 from atopile.parse import parser
+from atopile.parse_utils import get_src_info_from_ctx
+from atopile.parser.AtopileParser import AtopileParser
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
@@ -71,6 +73,32 @@ class ObjectDef(Base):
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.address}>"
+
+
+@define
+class Physical(Base):
+    """Let's get physical!"""
+    unit: pint.Unit
+    min_val: float
+    max_val: float
+
+    def __str__(self) -> str:
+        return f"{self.nominal} +/- {self.tolerance} {self.unit}"
+
+    @property
+    def nominal(self) -> float:
+        return (self.min_val + self.max_val) / 2
+
+    @property
+    def tolerance(self) -> float:
+        return (self.max_val - self.min_val) / 2
+
+    @property
+    def tolerance_pct(self) -> float:
+        return self.tolerance / self.nominal * 100
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
 
 
 @define(repr=False)
@@ -214,6 +242,17 @@ BUILTINS_BY_ADDR = {
 }
 
 
+def _get_unit_from_ctx(ctx: ParserRuleContext) -> pint.Unit:
+    """Return a pint unit from a context."""
+    unit_str = ctx.getText()
+    try:
+        return pint.Unit(unit_str)
+    except pint.UndefinedUnitError as ex:
+        raise errors.AtoUnknownUnitError.from_ctx(
+            ctx, f"Unknown unit '{unit_str}'"
+        ) from ex
+
+
 class BaseTranslator(AtopileParserVisitor):
     """
     Dizzy is responsible for mixing cement, sand, aggregate, and water to create concrete.
@@ -343,22 +382,135 @@ class BaseTranslator(AtopileParserVisitor):
             return self.visitSimple_stmts(ctx.simple_stmts())
         raise ValueError  # this should be protected because it shouldn't be parseable
 
-    def visitAssignable(self, ctx: ap.AssignableContext) -> int | float | str | bool:
-        """Yield something we can place in a set of locals."""
-        if ctx.name_or_attr():
-            raise errors.AtoError(
-                "Cannot directly reference another object like this. Use 'new' instead."
+    def visitImplicit_quantity(self, ctx: AtopileParser.Implicit_quantityContext) -> Physical:
+        """Yield a physical value from an implicit quantity context."""
+        value = float(ctx.NUMBER().getText())
+
+        if ctx.name():
+            unit = _get_unit_from_ctx(ctx.name())
+        else:
+            unit = pint.Unit("")
+
+        return Physical(
+            src_ctx=ctx,
+            min_val=value,
+            max_val=value,
+            unit=unit,
+        )
+
+    def visitBilateral_quantity(self, ctx: AtopileParser.Bilateral_quantityContext) -> Physical:
+        """Yield a physical value from a bilateral quantity context."""
+        nominal = float(ctx.bilateral_nominal().NUMBER().getText())
+
+        if ctx.bilateral_nominal().name():
+            unit = _get_unit_from_ctx(ctx.bilateral_nominal().name())
+        else:
+            unit = pint.Unit("")
+
+        tol_ctx: AtopileParser.Bilateral_toleranceContext = ctx.bilateral_tolerance()
+        tol_num = float(tol_ctx.NUMBER().getText())
+
+        if tol_ctx.PERCENT():
+            tol_divider = 100
+        # FIXME: hardcoding this seems wrong, but the parser/lexer wasn't picking up on it
+        elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
+            tol_divider = 1E6
+        else:
+            tol_divider = None
+
+        if tol_divider:
+            # In this case, life's a little easier, and we can simply multiply the nominal
+            return Physical(
+                src_ctx=ctx,
+                min_val=nominal * (1 - tol_num / tol_divider),
+                max_val=nominal * (1 + tol_num / tol_divider),
+                unit=unit,
             )
 
-        if ctx.NUMBER():
+        if tol_ctx.name():
+            # In this case there's a named unit on the tolerance itself
+            # We need to make sure it's dimensionally compatible with the nominal
+            tolerance_unit = _get_unit_from_ctx(tol_ctx.name())
+            try:
+                tolerance = (tol_num * tolerance_unit).to(unit).magnitude
+            except pint.DimensionalityError as ex:
+                raise errors.AtoTypeError.from_ctx(
+                    tol_ctx.name(),
+                    f"Tolerance unit '{tolerance_unit}' is not dimensionally"
+                    f" compatible with nominal unit '{unit}'",
+                ) from ex
+
+            return Physical(
+                src_ctx=ctx,
+                min_val=nominal - tolerance,
+                max_val=nominal + tolerance,
+                unit=unit,
+            )
+
+        # If there's no unit or percent, then we have a simple tolerance in the same units
+        # as the nominal
+        return Physical(
+            src_ctx=ctx,
+            min_val=nominal - tol_num,
+            max_val=nominal + tol_num,
+            unit=unit,
+        )
+
+    def visitBound_quantity(self, ctx: AtopileParser.Bound_quantityContext) -> Physical:
+        """Yield a physical value from a bound quantity context."""
+        def _parse_end(ctx: AtopileParser.Quantity_endContext) -> tuple[float, Optional[pint.Unit]]:
             value = float(ctx.NUMBER().getText())
-            return int(value) if value.is_integer() else value
+            if ctx.name():
+                unit = _get_unit_from_ctx(ctx.name())
+            else:
+                unit = None
+            return value, unit
+
+        start_val, start_unit = _parse_end(ctx.quantity_end(0))
+        end_val, end_unit = _parse_end(ctx.quantity_end(1))
+
+        if start_unit is None and end_unit is None:
+            unit = pint.Unit("")
+        elif start_unit and end_unit:
+            unit = start_unit
+            try:
+                end_val = (end_val * end_unit).to(start_unit).magnitude
+            except pint.DimensionalityError as ex:
+                raise errors.AtoTypeError.from_ctx(
+                    ctx,
+                    f"Tolerance unit '{end_unit}' is not dimensionally"
+                    f" compatible with nominal unit '{start_unit}'",
+                ) from ex
+        elif start_unit:
+            unit = start_unit
+        else:
+            unit = end_unit
+
+        return Physical(
+            src_ctx=ctx,
+            min_val=start_val,
+            max_val=end_val,
+            unit=unit,
+        )
+
+    def visitPhysical(self, ctx: AtopileParser.PhysicalContext) -> Physical:
+        """Yield a physical value from a physical context."""
+        if ctx.implicit_quantity():
+            return self.visitImplicit_quantity(ctx.implicit_quantity())
+        if ctx.bilateral_quantity():
+            return self.visitBilateral_quantity(ctx.bilateral_quantity())
+        if ctx.bound_quantity():
+            return self.visitBound_quantity(ctx.bound_quantity())
+
+        raise ValueError  # this should be protected because it shouldn't be parseable
+
+    def visitAssignable(self, ctx: ap.AssignableContext) -> Physical | str | bool:
+        """Yield something we can place in a set of locals."""
+        if ctx.physical():
+            return self.visitPhysical(ctx.physical())
 
         if ctx.string():
             return self.visitString(ctx)
-
-        if ctx.boolean_():
-            return self.visitBoolean_(ctx.boolean_())
 
         assert (
             not ctx.new_stmt()

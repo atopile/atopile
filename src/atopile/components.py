@@ -5,9 +5,15 @@ from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
 
+<<<<<<< HEAD
+=======
+import pandas as pd
+import pint
+>>>>>>> origin/main
 
-from atopile import address, errors, instance_methods, units
+from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
+<<<<<<< HEAD
 from git import Repo
 import warnings
 
@@ -16,6 +22,9 @@ warnings.filterwarnings(
     "ignore",
     message="Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.",
 )
+=======
+from atopile.front_end import Physical
+>>>>>>> origin/main
 
 log = logging.getLogger(__name__)
 
@@ -47,10 +56,10 @@ _generic_to_type_map = {
     _GENERIC_MOSFET: "mosfet",
 }
 
-# FIXME:
-_generic_to_tolerance_map = {
-    _GENERIC_RESISTOR: 0.105,
-    _GENERIC_CAPACITOR: 0.25,
+
+_generic_to_unit_map = {
+    _GENERIC_RESISTOR: pint.Unit("ohm"),
+    _GENERIC_CAPACITOR: pint.Unit("farad"),
 }
 
 
@@ -246,10 +255,10 @@ def get_specd_value(addr: AddrStr) -> str:
     comp_data = instance_methods.get_data_dict(addr)
     if not _is_generic(addr):
         # it's cool if there's no value for non-generics
-        return comp_data.get("value", "")
+        return str(comp_data.get("value", ""))
 
     try:
-        return comp_data["value"]
+        return str(comp_data["value"])
     except KeyError as ex:
         raise MissingData(
             "$addr has no value spec'd", title="No value", addr=addr
@@ -259,9 +268,11 @@ def get_specd_value(addr: AddrStr) -> str:
 # Values come from the finally selected
 # component, so we need to arbitrate via that data
 @cache
-def get_value(addr: AddrStr) -> str:
+def get_user_facing_value(addr: AddrStr) -> str:
     """
-    Return the value for a component
+    Return a "value" of a component we can slap in things like
+    the BoM and netlist. Doesn't need to be perfect, just
+    something to look at.
     """
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
@@ -272,8 +283,9 @@ def get_value(addr: AddrStr) -> str:
             return "?"
 
     comp_data = instance_methods.get_data_dict(addr)
-    # The default is okay here, because we're only generics must have a value
-    return comp_data.get("value", "")
+    # The default is okay here, because we're only generics
+    # must have a value
+    return str(comp_data.get("value", ""))
 
 def clone_footprint(addr: AddrStr):
     """

@@ -5,13 +5,22 @@ Tools to compare semantic versions using npm style version specifiers.
 import importlib.metadata
 import logging
 
-import semver
+from semver import Version
+
+from atopile import errors
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-def parse(version_str: str) -> semver.Version:
+class VersionMismatchError(errors.AtoError):
+    """
+    Raise when the compiler version isn't
+    compatible with the project version.
+    """
+
+
+def parse(version_str: str) -> Version:
     """
     Robustly parse versions, even if a little wonky
 
@@ -24,40 +33,72 @@ def parse(version_str: str) -> semver.Version:
     reconstituting the string
     hatch example: "0.0.17.dev0+g0151069.d20230928"
     """
+    if version_str.startswith("v"):
+        version_str = version_str[1:]
 
     try:
-        version = semver.Version.parse(version_str)
+        version = Version.parse(version_str)
     except ValueError:
         dot_split = version_str.split(".")
         version_str = "-".join(
             ".".join(fragments) for fragments in (dot_split[:3], dot_split[3:])
         )
-        version = semver.Version.parse(version_str)
+        version = Version.parse(version_str)
 
     return version
 
 
-def clean_version(verion: semver.Version) -> semver.Version:
+def clean_version(verion: Version) -> Version:
     """
     Clean a version by dropping any prerelease or build information
     """
-    return semver.Version(
+    return Version(
         verion.major,
         verion.minor,
         verion.patch,
     )
 
 
-def get_version() -> semver.Version:
+def get_installed_atopile_version() -> Version:
     """
     Get the installed atopile version
     """
-
     ap_version_str = importlib.metadata.version("atopile")
-    return parse(ap_version_str)
+    semver = parse(ap_version_str)
+    return semver
 
 
-def match(spec: str, version: semver.Version):
+def match_compiler_compatability(built_with_version: Version) -> bool:
+    """
+    Check whether the currently installed compiler is compatible with
+    presumably a project.
+    We assume that if we're pre-release, we're compatible with
+    the next major (or minor if major is 0) release to come.
+    """
+    # Figure out what we are
+    compiler_semver = get_installed_atopile_version()
+    if compiler_semver.prerelease:
+        compiler_semver = clean_version(compiler_semver)
+        if compiler_semver.major == 0:
+            compiler_semver = compiler_semver.bump_patch()
+        else:
+            compiler_semver = compiler_semver.bump_minor()
+
+    # Until the first major release, we're assuming
+    # that minor releases are breaking changes
+    if compiler_semver.major == 0:
+        match_operator = "~"
+    else:
+        match_operator = "^"
+
+    # Check if we match
+    return match(f"{match_operator}{built_with_version}", compiler_semver)
+
+
+OPERATORS = ("*", "||", "^", "~", "!", "==", ">=", "<=", ">", "<")
+
+
+def match(spec: str, version: Version):
     """
     Check if a version matches a given specifier
 
@@ -100,7 +141,7 @@ def match(spec: str, version: semver.Version):
             operator = "^"
         except ValueError as ex:
             # finally, if we could do any of that, we assume there's something wrong with the spec
-            raise SyntaxError(f"Invalid version spec: {spec}") from ex
+            raise errors.AtoError(f"Invalid version spec: {spec}") from ex
 
     if operator == "^":
         # semver doesn't support ^, so we have to do it ourselves

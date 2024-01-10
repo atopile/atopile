@@ -12,9 +12,13 @@ from attrs import frozen
 from atopile import address
 from atopile.bom import generate_bom as _generate_bom
 from atopile.bom import generate_designator_map as _generate_designator_map
-from atopile.cli.common import project_options
+from atopile.cli.common import project_options, check_compiler_versions
 from atopile.config import Config
-from atopile.errors import handle_ato_errors, iter_through_errors, muffle_fatalities
+from atopile.errors import (
+    handle_ato_errors,
+    iter_through_errors,
+    muffle_fatalities,
+)
 from atopile.front_end import set_search_paths
 from atopile.netlist import get_netlist_as_str
 
@@ -35,6 +39,9 @@ def build(config: Config, debug: bool):
     if debug:
         logging.root.setLevel(logging.DEBUG)
 
+    # Make sure I an all my sub-configs have appropriate versions
+    check_compiler_versions(config)
+
     # Set the search paths for the front end
     set_search_paths([config.paths.abs_src, config.paths.abs_module_path])
 
@@ -45,7 +52,11 @@ def build(config: Config, debug: bool):
     log.info("Writing outputs to %s", build_args.build_path)
     build_args.build_path.mkdir(parents=True, exist_ok=True)
 
-    targets = muster.targets.keys() if config.selected_build.targets == ["*"] else config.selected_build.targets
+    targets = (
+        muster.targets.keys()
+        if config.selected_build.targets == ["*"]
+        else config.selected_build.targets
+    )
     for err_cltr, target_name in iter_through_errors(targets):
         log.info("Building %s", target_name)
         with err_cltr():

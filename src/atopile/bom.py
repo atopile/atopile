@@ -25,16 +25,29 @@ log = logging.getLogger(__name__)
 _get_mpn = errors.downgrade(
     components.get_mpn, (components.MissingData, components.NoMatchingComponent)
 )
-_get_value = errors.downgrade(
-    components.get_value,
-    (components.MissingData, components.NoMatchingComponent),
-    default=errors.downgrade(
-        components.get_specd_value, components.MissingData, default="?"
-    ),
-)
+
 _get_footprint = errors.downgrade(
     components.get_footprint, components.MissingData, default="?"
 )
+
+
+def _get_value(addr: address.AddrStr) -> str:
+    value = errors.downgrade(
+        components.get_user_facing_value,
+        (components.MissingData, components.NoMatchingComponent)
+    )(addr)
+
+    if value is not None:
+        return value
+
+    value = str(errors.downgrade(
+        components.get_specd_value, components.MissingData
+    )(addr))
+
+    if value is not None:
+        return value
+
+    return "?"
 
 
 light_row = Style(color="bright_black")
@@ -50,11 +63,12 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     all_components = list(filter(match_components, all_descendants(entry_addr)))
 
     # Create tables to print to the terminal and to the disc
-    console_table = Table(show_header=True, header_style="bold green")
-    console_table.add_column("Des", justify="right")
-    console_table.add_column("Name", justify="left")
-    console_table.add_column("Name", justify="left")
-    console_table.add_column("Des", justify="left")
+    sorted_des_table = Table(show_header=True, header_style="bold green")
+    sorted_name_table = Table(show_header=True, header_style="bold green")
+    sorted_des_table.add_column("Designator ↓", justify="right")
+    sorted_des_table.add_column("Name", justify="left")
+    sorted_name_table.add_column("Name ↓", justify="left")
+    sorted_name_table.add_column("Designator", justify="left")
 
     # Populate the tables
     sorted_designator_dict = {}
@@ -70,15 +84,18 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     )
     sorted_comp_name_dict = OrderedDict(sorted(sorted_comp_name_dict.items()))
 
-    for row_index, ((s_des, n_comp), (s_comp, n_des)) in enumerate(
-        zip(sorted_designator_dict.items(), sorted_comp_name_dict.items())
-    ):
-        console_table.add_row(
-            s_des, n_comp, s_comp, n_des, style=dark_row if row_index % 2 else light_row
+    for row_index, (s_des, n_comp) in enumerate(sorted_designator_dict.items()):
+        sorted_des_table.add_row(
+            s_des, n_comp, style=dark_row if row_index % 2 else light_row
+        )
+    for row_index, (s_comp, n_des) in enumerate(sorted_comp_name_dict.items()):
+        sorted_name_table.add_row(
+            s_comp, n_des, style=dark_row if row_index % 2 else light_row
         )
 
     # Print the table
-    rich.print(console_table)
+    rich.print(sorted_des_table)
+    rich.print(sorted_name_table)
 
 
 def generate_bom(entry_addr: address.AddrStr) -> str:

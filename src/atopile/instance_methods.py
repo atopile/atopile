@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Callable
+from typing import Any, Iterable, Optional, Callable
 
 from atopile.front_end import lofty, ObjectLayer
 from atopile import address
@@ -19,7 +19,7 @@ def get_children(addr: str) -> Iterable[AddrStr]:
         yield child.addr
 
 
-def get_data_dict(addr: str) -> dict[str, str | int | bool | float]:
+def get_data_dict(addr: str) -> dict[str, Any]:
     """
     Return the data at the given address
     """
@@ -29,7 +29,7 @@ def get_data_dict(addr: str) -> dict[str, str | int | bool | float]:
     return lofty._output_cache[addr].data
 
 
-def get_lock_data_dict(addr: str) -> dict[str, str | int | bool | float]:
+def get_lock_data_dict(addr: str) -> dict[str, Any]:
     """
     Return the data at the given address
     """
