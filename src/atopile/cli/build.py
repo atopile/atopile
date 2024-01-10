@@ -154,4 +154,5 @@ def generate_bom(build_args: BuildArgs) -> None:
 @muster.register("designator-map")
 def generate_designator_map(build_args: BuildArgs) -> None:
     """Generate a designator map for the project."""
-    _generate_designator_map(build_args.entry)
+    with open(build_args.output_base.with_suffix(".csv"), "w", encoding="utf-8") as f:
+        f.write(_generate_designator_map(build_args.entry))

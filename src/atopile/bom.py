@@ -70,6 +70,10 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     sorted_name_table.add_column("Name ↓", justify="left")
     sorted_name_table.add_column("Designator", justify="left")
 
+    csv_table = StringIO()
+    writer = csv.DictWriter(csv_table, fieldnames=['Name','Designator'])
+    writer.writeheader()
+
     # Populate the tables
     sorted_designator_dict = {}
     sorted_comp_name_dict = {}
@@ -92,10 +96,19 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
         sorted_name_table.add_row(
             s_comp, n_des, style=dark_row if row_index % 2 else light_row
         )
+    for row_index, (s_comp, n_des) in enumerate(sorted_comp_name_dict.items()):
+        writer.writerow(
+            {
+                "Name": s_comp,
+                "Designator": n_des,
+            }
+        )
 
     # Print the table
     rich.print(sorted_des_table)
     rich.print(sorted_name_table)
+
+    return csv_table.getvalue()
 
 
 def generate_bom(entry_addr: address.AddrStr) -> str:
