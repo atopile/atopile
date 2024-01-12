@@ -3,17 +3,16 @@
 import logging
 import shutil
 from functools import wraps
-from pathlib import Path
 from typing import Callable, Optional
 
 import click
-from attrs import frozen
 
-from atopile import address
-from atopile.bom import generate_bom as _generate_bom
-from atopile.bom import generate_designator_map as _generate_designator_map
-from atopile.cli.common import project_options, check_compiler_versions
-from atopile.config import Config
+import atopile.bom
+import atopile.front_end
+import atopile.netlist
+import atopile.manufacturing_data
+from atopile.cli.common import project_options
+from atopile.config import BuildContext
 from atopile.errors import (
     handle_ato_errors,
     iter_through_errors,
@@ -27,71 +26,40 @@ log = logging.getLogger(__name__)
 
 @click.command()
 @project_options
-@click.option("--debug/--no-debug", default=None)
 @muffle_fatalities
-def build(config: Config, debug: bool):
+def build(build_ctxs: list[BuildContext]):
     """
     Build the specified --target(s) or the targets specified by the build config.
     Specify the root source file with the argument SOURCE.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
-    # Set the log level
-    if debug:
-        logging.root.setLevel(logging.DEBUG)
+    for err_cltr, build_ctx in iter_through_errors(build_ctxs):
+        log.info("Building %s", build_ctx.name)
+        with err_cltr():
+            _do_build(build_ctx)
 
-    # Make sure I an all my sub-configs have appropriate versions
-    check_compiler_versions(config)
 
+def _do_build(build_ctx: BuildContext) -> None:
+    """Execute a specific build."""
     # Set the search paths for the front end
-    set_search_paths([config.paths.abs_src, config.paths.abs_module_path])
-
-    # Create a BuildArgs object to pass to all the targets
-    build_args = BuildArgs.from_config(config)
+    set_search_paths([build_ctx.src_path, build_ctx.module_path])
 
     # Ensure the build directory exists
-    log.info("Writing outputs to %s", build_args.build_path)
-    build_args.build_path.mkdir(parents=True, exist_ok=True)
+    log.info("Writing outputs to %s", build_ctx.build_path)
+    build_ctx.build_path.mkdir(parents=True, exist_ok=True)
 
     targets = (
         muster.targets.keys()
-        if config.selected_build.targets == ["*"]
-        else config.selected_build.targets
+        if build_ctx.targets == ["*"]
+        else build_ctx.targets
     )
     for err_cltr, target_name in iter_through_errors(targets):
         log.info("Building %s", target_name)
         with err_cltr():
-            muster.targets[target_name](build_args)
+            muster.targets[target_name](build_ctx)
 
 
-@frozen
-class BuildArgs:
-    """A class to hold the arguments to a build."""
-
-    # FIXME: this object exists only because the Config is a bit of a mess
-
-    entry: address.AddrStr  # eg. "path/to/project/src/entry-name.ato:module.path"
-    build_path: Path  # eg. path/to/project/build/<build-name>
-    output_name: str  # eg. "entry-name.ato" -> "entry-name"
-    output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
-
-    config: Config
-
-    @classmethod
-    def from_config(cls, config: Config) -> "BuildArgs":
-        """Create a BuildArgs object from a Config object."""
-        build_path = Path(config.paths.abs_selected_build_path)
-        output_name = address.get_entry_section(config.selected_build.abs_entry)
-        output_base = build_path / output_name
-        return cls(
-            address.AddrStr(config.selected_build.abs_entry),
-            build_path,
-            output_name,
-            output_base,
-            config,
-        )
-
-
-TargetType = Callable[[BuildArgs], None]
+TargetType = Callable[[BuildContext], None]
 
 
 class Muster:
@@ -111,7 +79,7 @@ class Muster:
 
         def decorator(func: TargetType):
             @wraps(func)
-            def wrapper(build_args: BuildArgs):
+            def wrapper(build_args: BuildContext):
                 with handle_ato_errors():
                     return func(build_args)
 
@@ -125,12 +93,12 @@ muster = Muster()
 
 
 @muster.register("copy-footprints")
-def consolidate_footprints(build_args: BuildArgs) -> None:
+def consolidate_footprints(build_args: BuildContext) -> None:
     """Consolidate all the project's footprints into a single directory."""
-    fp_target = build_args.config.paths.abs_build / "footprints" / "footprints.pretty"
+    fp_target = build_args.build_path / "footprints" / "footprints.pretty"
     fp_target.mkdir(exist_ok=True, parents=True)
 
-    for fp in build_args.config.paths.project.glob("**/*.kicad_mod"):
+    for fp in build_args.project_path.glob("**/*.kicad_mod"):
         try:
             shutil.copy(fp, fp_target)
         except shutil.SameFileError:
@@ -138,20 +106,26 @@ def consolidate_footprints(build_args: BuildArgs) -> None:
 
 
 @muster.register("netlist")
-def generate_netlist(build_args: BuildArgs) -> None:
+def generate_netlist(build_args: BuildContext) -> None:
     """Generate a netlist for the project."""
     with open(build_args.output_base.with_suffix(".net"), "w", encoding="utf-8") as f:
         f.write(get_netlist_as_str(build_args.entry))
 
 
 @muster.register("bom")
-def generate_bom(build_args: BuildArgs) -> None:
+def generate_bom(build_args: BuildContext) -> None:
     """Generate a BOM for the project."""
     with open(build_args.output_base.with_suffix(".csv"), "w", encoding="utf-8") as f:
-        f.write(_generate_bom(build_args.entry))
+        f.write(atopile.bom.generate_bom(build_args.entry))
 
 
 @muster.register("designator-map")
-def generate_designator_map(build_args: BuildArgs) -> None:
+def generate_designator_map(build_args: BuildContext) -> None:
     """Generate a designator map for the project."""
-    _generate_designator_map(build_args.entry)
+    atopile.bom.generate_designator_map(build_args.entry)
+
+
+@muster.register("mfg-data")
+def generate_manufacturing_data(build_ctx: BuildContext) -> None:
+    """Generate a designator map for the project."""
+    atopile.manufacturing_data.generate_manufacturing_data(build_ctx)

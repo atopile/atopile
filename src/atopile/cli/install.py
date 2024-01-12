@@ -33,16 +33,15 @@ def install(to_install: str, jlcpcb: bool, upgrade: bool):
     repo = Repo(".", search_parent_directories=True)
     top_level_path = Path(repo.working_tree_dir)
 
+    cfg = config.get_project_config_from_path(top_level_path)
+    ctx = config.ProjectContext.from_config(cfg)
+
     if jlcpcb:
         # eg. "ato install --jlcpcb=C123"
         install_jlcpcb(to_install)
     elif to_install:
         # eg. "ato install some-atopile-module"
-        installed_semver = install_dependency(
-            to_install,
-            top_level_path,
-            upgrade
-        )
+        installed_semver = install_dependency(to_install, ctx.module_path, upgrade)
         module_name, module_spec = split_module_spec(to_install)
         if module_spec is None and installed_semver:
             # If the user didn't specify a version, we'll
@@ -52,7 +51,8 @@ def install(to_install: str, jlcpcb: bool, upgrade: bool):
 
     else:
         # eg. "ato install"
-        install_dependencies_from_yaml(top_level_path, upgrade)
+        for module_name in cfg.dependencies:
+            install_dependency(module_name, ctx.module_path, upgrade)
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
@@ -102,7 +102,7 @@ def set_dependency_to_ato_yaml(top_level_path: Path, module_spec: str):
 
 
 def install_dependency(
-    module: str, top_level_path: Path, upgrade: bool = False
+    module: str, module_dir: Path, upgrade: bool = False
 ) -> Optional[version.Version]:
     """
     Install a dependency of the name "module_name"
@@ -114,19 +114,16 @@ def install_dependency(
         module_spec = "*"
 
     # Ensure the modules path exists
-    modules_path = config.get_project_config_from_path(
-        top_level_path
-    ).paths.abs_module_path
-    modules_path.mkdir(parents=True, exist_ok=True)
+    module_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         # This will raise an exception if the directory does not exist
-        repo = Repo(modules_path / module_name)
+        repo = Repo(module_dir / module_name)
     except (InvalidGitRepositoryError, NoSuchPathError):
         # Directory does not contain a valid repo, clone into it
         log.info(f"Installing dependency {module_name}")
         clone_url = f"https://gitlab.atopile.io/packages/{module_name}"
-        repo = Repo.clone_from(clone_url, modules_path / module_name)
+        repo = Repo.clone_from(clone_url, module_dir / module_name)
     else:
         # In this case the directory exists and contains a valid repo
         if upgrade:
@@ -184,13 +181,6 @@ def install_dependency(
 
     if installed_semver:
         return best_checkout
-
-
-def install_dependencies_from_yaml(top_level_path: Path, upgrade: bool = False):
-    """Install all dependencies from the ato.yaml file"""
-    cfg = config.get_project_config_from_path(top_level_path)
-    for module_name in cfg.dependencies:
-        install_dependency(module_name, top_level_path, upgrade)
 
 
 def install_jlcpcb(component_id: str):
