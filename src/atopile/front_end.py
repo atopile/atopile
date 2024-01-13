@@ -9,6 +9,7 @@ from contextlib import ExitStack, contextmanager
 from itertools import chain
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
+import json
 
 import pint
 from antlr4 import ParserRuleContext
@@ -75,10 +76,12 @@ class ObjectDef(Base):
         return f"<{self.__class__.__name__} {self.address}>"
 
 
+from attrs import define, field
+
 @define
 class Physical(Base):
     """Let's get physical!"""
-    unit: pint.Unit
+    unit: pint.Unit = field(converter=lambda u: str(u) if isinstance(u, pint.Unit) else u)
     min_val: float
     max_val: float
 
@@ -99,6 +102,18 @@ class Physical(Base):
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
+
+    def to_json(self) -> dict:
+        """Convert the Physical instance to a dictionary."""
+        data = {
+            "unit": str(self.unit),
+            "min_val": self.min_val,
+            "max_val": self.max_val,
+            "nominal": self.nominal,
+            "tolerance": self.tolerance,
+            "tolerance_pct": self.tolerance_pct
+        }
+        return data
 
 
 @define(repr=False)

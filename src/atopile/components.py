@@ -1,30 +1,20 @@
 import json
 import logging
 import time
+import warnings
 from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
+from typing import Any, Dict
 
-<<<<<<< HEAD
-=======
 import pandas as pd
 import pint
->>>>>>> origin/main
+import requests
+from git import Repo
 
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
-<<<<<<< HEAD
-from git import Repo
-import warnings
-
-# Filter out specific warnings
-warnings.filterwarnings(
-    "ignore",
-    message="Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.",
-)
-=======
 from atopile.front_end import Physical
->>>>>>> origin/main
 
 log = logging.getLogger(__name__)
 
@@ -43,25 +33,15 @@ _generics_to_db_fp_map = {
     "C1206": "1206",
 }
 
-
 _GENERIC_RESISTOR = "generic_resistor"
 _GENERIC_CAPACITOR = "generic_capacitor"
 _GENERIC_MOSFET = "generic_mosfet"
 _GENERICS_MPNS = [_GENERIC_RESISTOR, _GENERIC_CAPACITOR, _GENERIC_MOSFET]
 
-
-_generic_to_type_map = {
-    _GENERIC_RESISTOR: "Resistor",
-    _GENERIC_CAPACITOR: "Capacitor",
-    _GENERIC_MOSFET: "mosfet",
-}
-
-
 _generic_to_unit_map = {
     _GENERIC_RESISTOR: pint.Unit("ohm"),
     _GENERIC_CAPACITOR: pint.Unit("farad"),
 }
-
 
 def _get_specd_mpn(addr: AddrStr) -> str:
     """
@@ -152,10 +132,9 @@ def clean_cache():
             del component_cache[addr]
     save_cache()
 
-
-import requests
 import logging
-from typing import Any, Dict
+import requests
+from typing import Dict, Any
 
 def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     """
@@ -165,67 +144,39 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     log = logging.getLogger(__name__)
     log.info(f"Fetching component for {name}")
 
-    # First, try to get the component from the cache
     specd_data = instance_methods.get_data_dict(component_addr)
     cached_component = get_component_from_cache(component_addr, specd_data)
     if cached_component:
         log.info(f"Fetching component from cache for {name}")
         return cached_component
 
-    # Prepare the payload for the API request
-    specd_mpn = _get_specd_mpn(component_addr)
-    specd_type = _generic_to_type_map.get(specd_mpn)
+    specd_data_json = {k: v.to_json() if isinstance(v, Physical) else v for k, v in specd_data.items()}
 
-    # Validate and set default values based on component type
-    if specd_type in ["Resistor", "Capacitor"]:
-        try:
-            float_value = units.parse_number(specd_data.get("value", 0))
-            tolerance = specd_data.get("tolerance", 0.05)  # Default tolerance 5%
-        except units.InvalidPhysicalValue as ex:
-            ex.addr = component_addr + ".value"
-            raise ex
-        payload = {
-            "type": specd_type,
-            "min_value": float_value * (1 - tolerance),
-            "max_value": float_value * (1 + tolerance),
-            **specd_data  # Append all other component data
-        }
-    elif specd_type == "mosfet":
-        current_A = specd_data.get("current")
-        ds_voltage_V = specd_data.get("drain_source_voltage")
-        if current_A is None or ds_voltage_V is None:
-            raise ValueError("Required mosfet parameters missing (current, drain_source_voltage)")
-        payload = {
-            "type": "mosfet",
-            "current": current_A,
-            "drain_source_voltage": ds_voltage_V,
-            **specd_data  # Append all other component data
-        }
-    else:
-        raise ValueError("Invalid component type or missing data")
+    payload = {
+        **specd_data_json,
+    }
 
-    # API endpoint URL
+    return _make_api_request(name, component_addr, payload, log)
+
+
+def _make_api_request(name, component_addr, payload, log):
     url = "https://get-component-atsuhzfd5a-uc.a.run.app"
-
-    # Make the POST request to the API
     try:
         log.info(payload)
         response = requests.post(url, json=payload)
-        response.raise_for_status()  # Raise an exception for HTTP errors
+        response.raise_for_status()
         best_component = response.json().get('Best Component')
 
         if not best_component:
             raise NoMatchingComponent("No valid component found", addr=component_addr)
 
-        update_cache(component_addr, best_component, specd_data)
-        lcsc = best_component["LCSC Part #"]
+        lcsc = best_component["lcsc_id"]
         log.info(f"Successfully fetched component {lcsc} for {name}")
         return best_component
 
     except requests.RequestException as e:
         log.warning(f"API request failed: {e}")
-        # raise e  # Or handle it as per your error handling policy
-        return  {"LCSC Part #": "Part not found", "value": "N/A", "unit": "N/A"}
+        return {"LCSC Part #": "Part not found", "value": "N/A", "unit": "N/A"}
 
 
 class MissingData(errors.AtoError):
@@ -241,11 +192,11 @@ def get_mpn(addr: AddrStr) -> str:
     """
     Return the MPN for a component
     """
-    specd_mpn = _get_specd_mpn(addr)
-    if specd_mpn in _GENERICS_MPNS:
-        return _get_generic_from_db(addr)["LCSC Part #"]
-
-    return specd_mpn
+    if _is_generic(addr):
+        db_data = _get_generic_from_db(addr)
+        return db_data.get("lcsc_id", "")
+    else:
+        return _get_specd_mpn(addr)
 
 
 def get_specd_value(addr: AddrStr) -> str:
@@ -276,9 +227,8 @@ def get_user_facing_value(addr: AddrStr) -> str:
     """
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
-        description = db_data.get("Description")
-        if description:
-            return description
+        if db_data:
+            return db_data.get("Description", "")
         else:
             return "?"
 
@@ -297,7 +247,10 @@ def clone_footprint(addr: AddrStr):
     db_data = _get_generic_from_db(addr)
 
     # convert the footprint to a .kicad_mod file
-    footprint = db_data.get('footprint_data', {}).get('kicad', 'No KiCad footprint available')
+    try:
+        footprint = db_data.get('footprint_data', {}).get('kicad', 'No KiCad footprint available')
+    except:
+        footprint = None
 
     if not footprint:
         return
@@ -322,7 +275,12 @@ def get_footprint(addr: AddrStr) -> str:
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
         clone_footprint(addr)
-        return db_data.get('footprint', {}).get('kicad', 'No KiCad footprint available')
+
+        try:
+            footprint = db_data.get('footprint', {}).get('kicad', 'No KiCad footprint available')
+        except:
+            footprint = None
+        return footprint
 
     comp_data = instance_methods.get_data_dict(addr)
     try:
