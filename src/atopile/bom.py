@@ -7,6 +7,8 @@ import itertools
 import logging
 from collections import OrderedDict
 from io import StringIO
+from git import Repo
+import os
 
 import natsort
 import rich
@@ -52,7 +54,43 @@ def _get_value(addr: address.AddrStr) -> str:
 
 light_row = Style(color="bright_black")
 dark_row = Style(color="white")
+import glob
+import yaml
+import os
 
+def get_entries_from_yaml(directory):
+    entries = []
+    pattern = f"{directory}/.ato/modules/**/ato.yaml"
+
+    # Use glob to find all 'ato.yaml' files in the directory and its subdirectories
+    for filepath in glob.glob(pattern, recursive=True):
+        # Open and parse the YAML file
+        with open(filepath, 'r') as file:
+            try:
+                data = yaml.safe_load(file)
+                # Check if 'entry' is in the 'builds' -> 'default' section
+                entry = data.get('builds', {}).get('default', {}).get('entry')
+                if entry:
+                    entries.append(entry)
+            except yaml.YAMLError as exc:
+                print(f"Error parsing YAML file {filepath}: {exc}")
+
+    return entries
+
+def get_project_dir():
+    path = os.getcwd()
+    try:
+        # Initialize a Repo object, which represents the Git repository
+        repo = Repo(path, search_parent_directories=True)
+        # Get the top-level directory of the repository
+        git_root = repo.git.rev_parse("--show-toplevel")
+        return git_root
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+# Example usage
+current_path = os.getcwd() 
 
 def generate_designator_map(entry_addr: address.AddrStr) -> str:
     """Generate a map between the designator and the component name"""
