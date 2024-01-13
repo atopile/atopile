@@ -15,7 +15,7 @@ from rich.table import Table
 from toolz import groupby
 
 from atopile import address, errors, components
-from atopile.instance_methods import all_descendants, match_components
+from atopile.instance_methods import all_descendants, match_components, match_modules, get_supers_list, get_parent, get_next_super, iter_parents, is_top_level_module
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +61,18 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
         raise ValueError("Cannot generate a BoM for an instance address.")
 
     all_components = list(filter(match_components, all_descendants(entry_addr)))
+    all_modules = list(filter(match_modules, all_descendants(entry_addr)))
+
+    packages = ['rp2040']
+
+    # if any(p in duper.address for p in packages):
+    #         print(f'**********************************************************************')
+
+    for module in all_modules:
+        if is_top_level_module(module):
+            print('***************************')
+            print(module)
+
 
     # Create tables to print to the terminal and to the disc
     sorted_des_table = Table(show_header=True, header_style="bold green")
@@ -80,6 +92,12 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     for component in all_components:
         c_des = components.get_designator(component)
         c_name = address.get_instance_section(component)
+        c_module = ''
+        # supers = get_supers_list(component)
+        # print(f'**********************************************************************')
+        # print(component)
+        # for super in supers:
+        #     print(super)
         sorted_designator_dict[c_des] = c_name
         sorted_comp_name_dict[c_name] = c_des
 

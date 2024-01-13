@@ -34,6 +34,18 @@ def get_relative_addr_str(address: AddrStr) -> AddrStr:
     """
     return address.split("/")[-1]
 
+def get_relative_entry_file(address: AddrStr) -> AddrStr:
+    """
+    Extract the relative address of the .ato file
+    """
+    return address.split("/")[-1].split(":")[0]
+
+def get_relative_entry_module(address: AddrStr) -> AddrStr:
+    """
+    Extract the name of the entry module
+    """
+    return address.split("/")[-1].split(":")[1]
+
 
 def get_entry(address: AddrStr) -> AddrStr:
     """
