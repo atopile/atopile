@@ -95,15 +95,13 @@ match_sentinels = _make_dumb_matcher(
     ]
 )
 
-
 def get_supers_list(addr: AddrStr) -> ObjectLayer:
     return lofty._output_cache[addr].supers
-
 
 def get_next_super(addr: AddrStr) -> ObjectLayer:
     return get_supers_list(addr)[0]
 
-def matches_type(module_addr: AddrStr, parent_type: list[str]) -> bool:
+def is_module_type(module_addr: AddrStr, parent_types: list[str]) -> bool:
     '''
     Returns if the module type matches the parent module type
     '''
@@ -112,7 +110,7 @@ def matches_type(module_addr: AddrStr, parent_type: list[str]) -> bool:
     for duper in supers:
         fn = address.get_relative_entry_file(duper.address)
         module_type = address.get_relative_entry_module(duper.address)
-        if module_type == fn.split('.')[0]:
+        if any(module_type == pt for pt in parent_types):
             return True
     return False
 

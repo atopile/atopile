@@ -15,7 +15,7 @@ from rich.table import Table
 from toolz import groupby
 
 from atopile import address, errors, components
-from atopile.instance_methods import all_descendants, match_components, match_modules, get_supers_list, get_parent, get_next_super, iter_parents, is_top_level_module
+from atopile.instance_methods import all_descendants, match_components, match_modules, get_supers_list, get_parent, get_next_super, iter_parents, is_module_type
 
 log = logging.getLogger(__name__)
 
@@ -63,13 +63,13 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     all_components = list(filter(match_components, all_descendants(entry_addr)))
     all_modules = list(filter(match_modules, all_descendants(entry_addr)))
 
-    packages = ['rp2040']
+    package_names = ['RP2040Kit','LED_GRID']
 
     # if any(p in duper.address for p in packages):
     #         print(f'**********************************************************************')
 
     for module in all_modules:
-        if is_top_level_module(module):
+        if is_module_type(module,package_names):
             print('***************************')
             print(module)
 
@@ -123,8 +123,8 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
         )
 
     # Print the table
-    rich.print(sorted_des_table)
-    rich.print(sorted_name_table)
+    # rich.print(sorted_des_table)
+    # rich.print(sorted_name_table)
 
     return csv_table.getvalue()
 
