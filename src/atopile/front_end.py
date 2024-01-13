@@ -9,7 +9,6 @@ from contextlib import ExitStack, contextmanager
 from itertools import chain
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
-import json
 
 import pint
 from antlr4 import ParserRuleContext
@@ -76,12 +75,13 @@ class ObjectDef(Base):
         return f"<{self.__class__.__name__} {self.address}>"
 
 
-from attrs import define, field
-
 @define
 class Physical(Base):
     """Let's get physical!"""
-    unit: pint.Unit = field(converter=lambda u: str(u) if isinstance(u, pint.Unit) else u)
+
+    unit: pint.Unit = field(
+        converter=lambda u: str(u) if isinstance(u, pint.Unit) else u
+    )
     min_val: float
     max_val: float
 
@@ -101,7 +101,9 @@ class Physical(Base):
         return self.tolerance / self.nominal * 100
 
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
+        return (
+            f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
+        )
 
     def to_json(self) -> dict:
         """Convert the Physical instance to a dictionary."""
@@ -111,7 +113,7 @@ class Physical(Base):
             "max_val": self.max_val,
             "nominal": self.nominal,
             "tolerance": self.tolerance,
-            "tolerance_pct": self.tolerance_pct
+            "tolerance_pct": self.tolerance_pct,
         }
         return data
 
@@ -397,7 +399,9 @@ class BaseTranslator(AtopileParserVisitor):
             return self.visitSimple_stmts(ctx.simple_stmts())
         raise ValueError  # this should be protected because it shouldn't be parseable
 
-    def visitImplicit_quantity(self, ctx: AtopileParser.Implicit_quantityContext) -> Physical:
+    def visitImplicit_quantity(
+        self, ctx: AtopileParser.Implicit_quantityContext
+    ) -> Physical:
         """Yield a physical value from an implicit quantity context."""
         value = float(ctx.NUMBER().getText())
 
@@ -413,7 +417,9 @@ class BaseTranslator(AtopileParserVisitor):
             unit=unit,
         )
 
-    def visitBilateral_quantity(self, ctx: AtopileParser.Bilateral_quantityContext) -> Physical:
+    def visitBilateral_quantity(
+        self, ctx: AtopileParser.Bilateral_quantityContext
+    ) -> Physical:
         """Yield a physical value from a bilateral quantity context."""
         nominal = float(ctx.bilateral_nominal().NUMBER().getText())
 
@@ -429,7 +435,7 @@ class BaseTranslator(AtopileParserVisitor):
             tol_divider = 100
         # FIXME: hardcoding this seems wrong, but the parser/lexer wasn't picking up on it
         elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
-            tol_divider = 1E6
+            tol_divider = 1e6
         else:
             tol_divider = None
 
@@ -473,7 +479,10 @@ class BaseTranslator(AtopileParserVisitor):
 
     def visitBound_quantity(self, ctx: AtopileParser.Bound_quantityContext) -> Physical:
         """Yield a physical value from a bound quantity context."""
-        def _parse_end(ctx: AtopileParser.Quantity_endContext) -> tuple[float, Optional[pint.Unit]]:
+
+        def _parse_end(
+            ctx: AtopileParser.Quantity_endContext,
+        ) -> tuple[float, Optional[pint.Unit]]:
             value = float(ctx.NUMBER().getText())
             if ctx.name():
                 unit = _get_unit_from_ctx(ctx.name())
@@ -567,7 +576,9 @@ class Scoop(BaseTranslator):
         try:
             return self._output_cache[addr]
         except KeyError as ex:
-            raise BlockNotFoundError(f"No block named $addr in {address.get_file(addr)}", addr=addr) from ex
+            raise BlockNotFoundError(
+                f"No block named $addr in {address.get_file(addr)}", addr=addr
+            ) from ex
 
     def _register_obj_tree(
         self, obj: ObjectDef, addr: AddrStr, closure: tuple[ObjectDef]
@@ -790,7 +801,9 @@ class Dizzy(BaseTranslator):
         try:
             return self._output_cache[addr]
         except KeyError as ex:
-            raise BlockNotFoundError(f"No block named $addr in {address.get_file(addr)}", addr=addr) from ex
+            raise BlockNotFoundError(
+                f"No block named $addr in {address.get_file(addr)}", addr=addr
+            ) from ex
 
     def make_object(self, obj_def: ObjectDef) -> ObjectLayer:
         """Create an object layer from an object definition."""
@@ -862,9 +875,7 @@ def _translate_addr_key_errors(ctx: ParserRuleContext):
     except KeyError as ex:
         addr = ex.args[0]
         terse_addr = address.get_instance_section(addr)
-        raise errors.AtoKeyError.from_ctx(
-            ctx, f"Couldn't find {terse_addr}"
-        ) from ex
+        raise errors.AtoKeyError.from_ctx(ctx, f"Couldn't find {terse_addr}") from ex
 
 
 class Lofty(BaseTranslator):
@@ -926,7 +937,9 @@ class Lofty(BaseTranslator):
 
         for obj in objs:
             for ref, replacement in obj.obj_def.replacements.items():
-                to_be_replaced_addr = address.add_instances(self._instance_context_stack[-1], ref)
+                to_be_replaced_addr = address.add_instances(
+                    self._instance_context_stack[-1], ref
+                )
                 if to_be_replaced_addr not in self._known_replacements:
                     replace_with_addr = lookup_obj_in_closure(
                         obj.obj_def,

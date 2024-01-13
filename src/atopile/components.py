@@ -1,13 +1,11 @@
 import json
 import logging
 import time
-import warnings
 from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
 from typing import Any, Dict
 
-import pandas as pd
 import pint
 import requests
 from git import Repo
@@ -18,21 +16,6 @@ from atopile.front_end import Physical
 
 log = logging.getLogger(__name__)
 
-# TODO: currently a hack until we develop the required infrastructure
-_generics_to_db_fp_map = {
-    "R01005": "01005",
-    "R0201": "0201",
-    "R0402": "0402",
-    "R0603": "0603",
-    "R0805": "0805",
-    "C01005": "01005",
-    "C0201": "0201",
-    "C0402": "0402",
-    "C0603": "0603",
-    "C0805": "0805",
-    "C1206": "1206",
-}
-
 _GENERIC_RESISTOR = "generic_resistor"
 _GENERIC_CAPACITOR = "generic_capacitor"
 _GENERIC_MOSFET = "generic_mosfet"
@@ -42,6 +25,7 @@ _generic_to_unit_map = {
     _GENERIC_RESISTOR: pint.Unit("ohm"),
     _GENERIC_CAPACITOR: pint.Unit("farad"),
 }
+
 
 def _get_specd_mpn(addr: AddrStr) -> str:
     """
@@ -97,7 +81,7 @@ def has_component_changed(cached_entry, current_data):
     # Implement logic to compare relevant parts of current_data with cached_entry['address_data']
     # Return True if data has changed, False otherwise
     if current_data != cached_entry["address_data"]:
-        log.info("Component data has changed for updating cache")
+        log.debug("Component data has changed for updating cache")
         return True
     return False
 
@@ -132,9 +116,6 @@ def clean_cache():
             del component_cache[addr]
     save_cache()
 
-import logging
-import requests
-from typing import Dict, Any
 
 def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     """
@@ -142,15 +123,17 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     """
     name = component_addr.split("::")[1]
     log = logging.getLogger(__name__)
-    log.info(f"Fetching component for {name}")
+    log.debug(f"Fetching component for {name}")
 
     specd_data = instance_methods.get_data_dict(component_addr)
     cached_component = get_component_from_cache(component_addr, specd_data)
     if cached_component:
-        log.info(f"Fetching component from cache for {name}")
+        log.debug(f"Fetching component from cache for {name}")
         return cached_component
 
-    specd_data_json = {k: v.to_json() if isinstance(v, Physical) else v for k, v in specd_data.items()}
+    specd_data_json = {
+        k: v.to_json() if isinstance(v, Physical) else v for k, v in specd_data.items()
+    }
 
     payload = {
         **specd_data_json,
@@ -162,16 +145,16 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
 def _make_api_request(name, component_addr, payload, log):
     url = "https://get-component-atsuhzfd5a-uc.a.run.app"
     try:
-        log.info(payload)
+        log.debug(payload)
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        best_component = response.json().get('Best Component')
+        best_component = response.json().get("Best Component")
 
         if not best_component:
             raise NoMatchingComponent("No valid component found", addr=component_addr)
 
         lcsc = best_component["lcsc_id"]
-        log.info(f"Successfully fetched component {lcsc} for {name}")
+        log.debug(f"Successfully fetched component {lcsc} for {name}")
         return best_component
 
     except requests.RequestException as e:
@@ -192,6 +175,7 @@ def get_mpn(addr: AddrStr) -> str:
     """
     Return the MPN for a component
     """
+    log.debug(f"Getting MPN for {addr}")
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
         return db_data.get("lcsc_id", "")
@@ -237,6 +221,7 @@ def get_user_facing_value(addr: AddrStr) -> str:
     # must have a value
     return str(comp_data.get("value", ""))
 
+
 def clone_footprint(addr: AddrStr):
     """
     Take the footprint from the database and make a .kicad_mod file for it
@@ -248,17 +233,21 @@ def clone_footprint(addr: AddrStr):
 
     # convert the footprint to a .kicad_mod file
     try:
-        footprint = db_data.get('footprint_data', {}).get('kicad', 'No KiCad footprint available')
+        footprint = db_data.get("footprint_data", {}).get(
+            "kicad", "No KiCad footprint available"
+        )
     except:
         footprint = None
 
     if not footprint:
         return
     try:
-        #Make a new .kicad_mod file and write the footprint to it
+        # Make a new .kicad_mod file and write the footprint to it
         repo = Repo(".", search_parent_directories=True)
-        footprints_dir = Path(repo.working_tree_dir) /  "build/footprints/footprints.pretty"
-        file_name = db_data.get('footprint').get('kicad')
+        footprints_dir = (
+            Path(repo.working_tree_dir) / "build/footprints/footprints.pretty"
+        )
+        file_name = db_data.get("footprint").get("kicad")
         file_path = footprints_dir / f"{file_name}"
         footprint_file = open(f"{file_path}.kicad_mod", "w")
         footprint_file.write(footprint)
@@ -277,7 +266,9 @@ def get_footprint(addr: AddrStr) -> str:
         clone_footprint(addr)
 
         try:
-            footprint = db_data.get('footprint', {}).get('kicad', 'No KiCad footprint available')
+            footprint = db_data.get("footprint", {}).get(
+                "kicad", "No KiCad footprint available"
+            )
         except:
             footprint = None
         return footprint
@@ -289,6 +280,7 @@ def get_footprint(addr: AddrStr) -> str:
         raise MissingData(
             "$addr has no footprint", title="No Footprint", addr=addr
         ) from ex
+
 
 @cache
 def get_package(addr: AddrStr) -> str:
@@ -302,9 +294,8 @@ def get_package(addr: AddrStr) -> str:
     try:
         return comp_data["package"]
     except KeyError as ex:
-        raise MissingData(
-            "$addr has no package", title="No Package", addr=addr
-        ) from ex
+        raise MissingData("$addr has no package", title="No Package", addr=addr) from ex
+
 
 class DesignatorManager:
     """TODO:"""

@@ -3,7 +3,6 @@ import logging
 import re
 import sys
 import textwrap
-import webbrowser
 from pathlib import Path
 import webbrowser
 from typing import Iterator, Optional
