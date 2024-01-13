@@ -30,6 +30,7 @@ def project_options(f):
     @click.option("-t", "--target", multiple=True)
     @click.option("-o", "--option", multiple=True)
     @functools.wraps(f)
+    @errors.muffle_fatalities
     def wrapper(
         *args,
         entry: str,
@@ -117,7 +118,8 @@ def project_options(f):
         builds_to_build = build or config.builds.keys()
         build_ctxs: list[atopile.config.BuildContext] = []
         for _build in builds_to_build:
-            build_ctx = atopile.config.BuildContext.from_config(config, _build)
+            with errors.handle_ato_errors():
+                build_ctx = atopile.config.BuildContext.from_config(config, _build)
             if entry_addr_override is not None:
                 build_ctx.entry = entry_addr_override
             if target:

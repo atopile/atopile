@@ -170,7 +170,13 @@ class BuildContext:
     @classmethod
     def from_config(cls, config: UserConfig, build_name: str) -> "BuildContext":
         """Create a BuildArgs object from a Config object."""
-        build_config = config.builds[build_name]
+        try:
+            build_config = config.builds[build_name]
+        except KeyError as ex:
+            raise atopile.errors.AtoError(
+                f"Build {build_name} not found for project {config.location}\n"
+                f"Available builds: {list(config.builds.keys())}"
+            ) from ex
 
         abs_entry = address.AddrStr(config.location / build_config.entry)
 
