@@ -27,6 +27,9 @@ def get_file(address: AddrStr) -> str:
     """
     return address.split(":")[0]
 
+def get_module_file(address: AddrStr) -> str:
+    return address.split(":")[0].split('/')[-2]
+
 
 def get_relative_addr_str(address: AddrStr) -> AddrStr:
     """
@@ -45,7 +48,6 @@ def get_relative_entry_module(address: AddrStr) -> AddrStr:
     Extract the name of the entry module
     """
     return address.split("/")[-1].split(":")[1]
-
 
 def get_entry(address: AddrStr) -> AddrStr:
     """

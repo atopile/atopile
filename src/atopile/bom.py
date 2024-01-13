@@ -17,7 +17,7 @@ from rich.table import Table
 from toolz import groupby
 
 from atopile import address, errors, components
-from atopile.instance_methods import all_descendants, match_components, match_modules, get_supers_list, get_parent, get_next_super, iter_parents, is_module_type
+from atopile.instance_methods import all_descendants, match_components, match_modules, get_supers_list, get_parent, get_next_super, iter_parents, match_module_type
 
 log = logging.getLogger(__name__)
 
@@ -58,8 +58,9 @@ import glob
 import yaml
 import os
 
-def get_entries_from_yaml(directory):
+def get_entries_from_yaml():
     entries = []
+    directory = get_project_dir()
     pattern = f"{directory}/.ato/modules/**/ato.yaml"
 
     # Use glob to find all 'ato.yaml' files in the directory and its subdirectories
@@ -99,17 +100,30 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
         raise ValueError("Cannot generate a BoM for an instance address.")
 
     all_components = list(filter(match_components, all_descendants(entry_addr)))
+    
+    ## Layout Reuse
     all_modules = list(filter(match_modules, all_descendants(entry_addr)))
+    
+    csv_table = StringIO()
+    writer = csv.DictWriter(csv_table, fieldnames=['Package','PackageInstance','Name','Designator'])
+    writer.writeheader()
 
-    package_names = ['RP2040Kit','LED_GRID']
-
-    # if any(p in duper.address for p in packages):
-    #         print(f'**********************************************************************')
+    package_names = get_entries_from_yaml()
+    package_names = list(address.get_relative_entry_module(p) for p in package_names)
 
     for module in all_modules:
-        if is_module_type(module,package_names):
-            print('***************************')
-            print(module)
+        package_type = match_module_type(module,package_names)
+        if package_type:
+            package_components = list(filter(match_components, all_descendants(module)))
+            for comp_addr in package_components:
+                writer.writerow(
+                    {
+                        "Package": package_type,
+                        "PackageInstance": address.get_instance_section(module),
+                        "Name": address.get_instance_section(comp_addr),
+                        "Designator": components.get_designator(comp_addr),
+                    }
+                )
 
 
     # Create tables to print to the terminal and to the disc
@@ -120,9 +134,6 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     sorted_name_table.add_column("Name ↓", justify="left")
     sorted_name_table.add_column("Designator", justify="left")
 
-    csv_table = StringIO()
-    writer = csv.DictWriter(csv_table, fieldnames=['Name','Designator'])
-    writer.writeheader()
 
     # Populate the tables
     sorted_designator_dict = {}
@@ -130,12 +141,6 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     for component in all_components:
         c_des = components.get_designator(component)
         c_name = address.get_instance_section(component)
-        c_module = ''
-        # supers = get_supers_list(component)
-        # print(f'**********************************************************************')
-        # print(component)
-        # for super in supers:
-        #     print(super)
         sorted_designator_dict[c_des] = c_name
         sorted_comp_name_dict[c_name] = c_des
 
@@ -151,13 +156,6 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
     for row_index, (s_comp, n_des) in enumerate(sorted_comp_name_dict.items()):
         sorted_name_table.add_row(
             s_comp, n_des, style=dark_row if row_index % 2 else light_row
-        )
-    for row_index, (s_comp, n_des) in enumerate(sorted_comp_name_dict.items()):
-        writer.writerow(
-            {
-                "Name": s_comp,
-                "Designator": n_des,
-            }
         )
 
     # Print the table

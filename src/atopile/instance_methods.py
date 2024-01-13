@@ -101,18 +101,17 @@ def get_supers_list(addr: AddrStr) -> ObjectLayer:
 def get_next_super(addr: AddrStr) -> ObjectLayer:
     return get_supers_list(addr)[0]
 
-def is_module_type(module_addr: AddrStr, parent_types: list[str]) -> bool:
+def match_module_type(module_addr: AddrStr, parent_types: list[str]) -> bool:
     '''
     Returns if the module type matches the parent module type
     '''
-
     supers = get_supers_list(module_addr)
     for duper in supers:
         fn = address.get_relative_entry_file(duper.address)
         module_type = address.get_relative_entry_module(duper.address)
         if any(module_type == pt for pt in parent_types):
-            return True
-    return False
+            return address.get_module_file(duper.address)
+    return None
 
 
 def get_parent(addr: str) -> Optional[str]:
