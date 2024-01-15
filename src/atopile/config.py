@@ -49,9 +49,14 @@ class UserConfig:
     dependencies: list[str] = []
 
 
-def _sanitise_key(s: str) -> str:
-    """Sanitise a string to be a valid python identifier."""
-    return s.replace("-", "_")
+KEY_CONVERSIONS = {
+    "ato-version": "ato_version",
+}
+
+
+def _sanitise_key(key: str) -> str:
+    """Sanitize a key."""
+    return KEY_CONVERSIONS.get(key, key)
 
 
 def _sanitise_item(item: tuple[Any, Any]) -> tuple[Any, Any]:
@@ -170,7 +175,13 @@ class BuildContext:
     @classmethod
     def from_config(cls, config: UserConfig, build_name: str) -> "BuildContext":
         """Create a BuildArgs object from a Config object."""
-        build_config = config.builds[build_name]
+        try:
+            build_config = config.builds[build_name]
+        except KeyError as ex:
+            raise atopile.errors.AtoError(
+                f"Build {build_name} not found for project {config.location}\n"
+                f"Available builds: {list(config.builds.keys())}"
+            ) from ex
 
         abs_entry = address.AddrStr(config.location / build_config.entry)
 
