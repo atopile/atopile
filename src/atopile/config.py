@@ -49,9 +49,14 @@ class UserConfig:
     dependencies: list[str] = []
 
 
-def _sanitise_key(s: str) -> str:
-    """Sanitise a string to be a valid python identifier."""
-    return s.replace("-", "_")
+KEY_CONVERSIONS = {
+    "ato-version": "ato_version",
+}
+
+
+def _sanitise_key(key: str) -> str:
+    """Sanitize a key."""
+    return KEY_CONVERSIONS.get(key, key)
 
 
 def _sanitise_item(item: tuple[Any, Any]) -> tuple[Any, Any]:
