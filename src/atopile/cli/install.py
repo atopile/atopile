@@ -158,6 +158,7 @@ def install_dependency(
             "No semver tags found for this module. Using latest default branch :hot_pepper:.",
             extra={"markup": True},
         )
+        return None
 
     # If the repo is dirty, throw an error
     if repo.is_dirty():
