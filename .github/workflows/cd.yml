@@ -23,7 +23,11 @@ jobs:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+
+      # Required due to a bug in the checkout action
+      # https://github.com/actions/checkout/issues/1471
+      - run: git fetch --prune --unshallow --tags
 
       -
         name: Set up Python
@@ -61,9 +65,8 @@ jobs:
         include:
           - dockerfile: "Dockerfile.ci"
             image: "atopile-ci"
-          # FIXME: hush... soon my child
-          # - dockerfile: "kicad"
-          #   image: "atopile-kicad"
+          - dockerfile: "Dockerfile.kicad"
+            image: "atopile-kicad"
 
     # Sets the permissions granted to the `GITHUB_TOKEN`
     # for the actions in this job.
@@ -72,7 +75,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       -
         name: Download python-package
@@ -108,14 +111,14 @@ jobs:
         with:
           context: .
           file: dockerfiles/${{ matrix.dockerfile }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
   # vscode: TODO:
   #   runs-on: ubuntu-latest
   #   steps:
-  #     - uses: actions/checkout@v2
+  #     - uses: actions/checkout@v4
 
   #     - uses: actions/setup-node@v1
   #       with:
