@@ -197,7 +197,7 @@ class BuildContext:
             else:
                 raise atopile.errors.AtoError(
                     "Layout directories must contain exactly 1 layout,"
-                    f" but {len(layout_path)} found in {layout_base}"
+                    f" but {len(layout_candidates)} found in {layout_base}"
                 )
         else:
             raise atopile.errors.AtoError("Layout file not found")
