@@ -3,6 +3,7 @@
 """Schema and utils for atopile config files."""
 
 import collections.abc
+import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -154,6 +155,21 @@ class ProjectContext:
         return cls.from_config(get_project_config_from_path(path))
 
 
+def match_user_layout(path: Path) -> bool:
+    """Check whether a given filename is a KiCAD autosaved layout."""
+    autosave_patterns = [
+        "_autosave-*",
+        "*-save.kicad_pcb",
+    ]
+
+    name = path.name
+
+    for pattern in autosave_patterns:
+        if fnmatch.fnmatch(name, pattern):
+            return False
+    return True
+
+
 @define
 class BuildContext:
     """A class to hold the arguments to a build."""
@@ -191,9 +207,16 @@ class BuildContext:
         if layout_base.with_suffix(".kicad_pcb").exists():
             layout_path = layout_base.with_suffix(".kicad_pcb")
         elif layout_base.is_dir():
-            layout_candidates = list(layout_base.glob("*.kicad_pcb"))
+            layout_candidates = list(
+                filter(
+                    match_user_layout,
+                    layout_base.glob("*.kicad_pcb")
+                )
+            )
+
             if len(layout_candidates) == 1:
                 layout_path = layout_candidates[0]
+
             else:
                 raise atopile.errors.AtoError(
                     "Layout directories must contain exactly 1 layout,"
