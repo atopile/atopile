@@ -33,7 +33,7 @@ class UserBuildConfig:
     """Config for a build."""
 
     entry: str = MISSING
-    targets: list[str] = ["*"]
+    targets: list[str] = ["__default__"]
 
 
 @define

@@ -17,7 +17,7 @@ logging.basicConfig(
             console=console,
             tracebacks_suppress=[click],
         )
-    ]
+    ],
 )
 
 
@@ -31,6 +31,7 @@ def cli(debug: bool, verbose: int):
     # we process debugpy first, so we can attach the debugger ASAP into the process
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
+
         debug_port = 5678
         debugpy.listen(("localhost", debug_port))
         logging.info("Starting debugpy on port %s", debug_port)

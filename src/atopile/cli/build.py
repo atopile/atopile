@@ -48,11 +48,13 @@ def _do_build(build_ctx: BuildContext) -> None:
     log.info("Writing outputs to %s", build_ctx.build_path)
     build_ctx.build_path.mkdir(parents=True, exist_ok=True)
 
-    targets = (
-        muster.targets.keys()
-        if build_ctx.targets == ["*"]
-        else build_ctx.targets
-    )
+    if build_ctx.targets == ["__default__"]:
+        targets = muster.do_by_default
+    elif build_ctx.targets == ["*"] or build_ctx.targets == ["all"]:
+        targets = list(muster.targets.keys())
+    else:
+        targets = build_ctx.targets
+
     for err_cltr, target_name in iter_through_errors(targets):
         log.info("Building %s", target_name)
         with err_cltr():
@@ -67,14 +69,18 @@ class Muster:
 
     def __init__(self, logger: Optional[logging.Logger] = None) -> None:
         self.targets = {}
+        self.do_by_default = []
         self.log = logger or logging.getLogger(__name__)
 
-    def add_target(self, func: TargetType, name: Optional[str] = None):
+    def add_target(self, func: TargetType, name: Optional[str] = None, default: bool = True):
         """Register a function as a target."""
-        self.targets[name or func.__name__] = func
+        name = name or func.__name__
+        self.targets[name] = func
+        if default:
+            self.do_by_default.append(name)
         return func
 
-    def register(self, name: Optional[str] = None):
+    def register(self, name: Optional[str] = None, default: bool = True):
         """Register a target under a given name."""
 
         def decorator(func: TargetType):
@@ -83,7 +89,7 @@ class Muster:
                 with handle_ato_errors():
                     return func(build_args)
 
-            self.add_target(wrapper, name)
+            self.add_target(wrapper, name, default)
             return wrapper
 
         return decorator
@@ -125,7 +131,7 @@ def generate_designator_map(build_args: BuildContext) -> None:
     atopile.bom.generate_designator_map(build_args.entry)
 
 
-@muster.register("mfg-data")
+@muster.register("mfg-data", default=False)
 def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     """Generate a designator map for the project."""
     atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
