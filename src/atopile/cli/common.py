@@ -26,9 +26,9 @@ def project_options(f):
     """
 
     @click.argument("entry", required=False, default=None)
-    @click.option("-b", "--build", multiple=True)
-    @click.option("-t", "--target", multiple=True)
-    @click.option("-o", "--option", multiple=True)
+    @click.option("-b", "--build", multiple=True, envvar="ATO_BUILD")
+    @click.option("-t", "--target", multiple=True, envvar="ATO_TARGET")
+    @click.option("-o", "--option", multiple=True, envvar="ATO_OPTION")
     @functools.wraps(f)
     @errors.muffle_fatalities
     def wrapper(
