@@ -149,7 +149,7 @@ def _make_api_request(name, component_addr, payload, log):
         log.debug(payload)
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        best_component = response.json().get("Best Component")
+        best_component = response.json().get("bestComponent")
 
         if not best_component:
             raise NoMatchingComponent("No valid component found", addr=component_addr)
