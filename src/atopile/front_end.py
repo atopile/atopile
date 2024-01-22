@@ -79,9 +79,7 @@ class ObjectDef(Base):
 class Physical(Base):
     """Let's get physical!"""
 
-    unit: pint.Unit = field(
-        converter=lambda u: str(u) if isinstance(u, pint.Unit) else u
-    )
+    unit: pint.Unit
     min_val: float
     max_val: float
 
@@ -105,7 +103,7 @@ class Physical(Base):
             f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
         )
 
-    def to_json(self) -> dict:
+    def to_dict(self) -> dict:
         """Convert the Physical instance to a dictionary."""
         data = {
             "unit": str(self.unit),

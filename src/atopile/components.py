@@ -132,7 +132,7 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
         return cached_component
 
     specd_data_json = {
-        k: v.to_json() if isinstance(v, Physical) else v for k, v in specd_data.items()
+        k: v.to_dict() if isinstance(v, Physical) else v for k, v in specd_data.items()
     }
 
     payload = {
@@ -259,19 +259,6 @@ def clone_footprint(addr: AddrStr):
         footprint_file.write(footprint)
     except Exception as e:
         log.warning(f"Failed to write footprint file: {e}")
-
-def get_package(addr: AddrStr) -> str:
-    """
-    Return the package for a component
-    """
-    if _is_generic(addr):
-        db_data = _get_generic_from_db(addr)
-        return db_data.get("package", "")
-    comp_data = instance_methods.get_data_dict(addr)
-    try:
-        return comp_data["package"]
-    except KeyError as ex:
-        raise MissingData("$addr has no package", title="No Package", addr=addr) from ex
 
 # Footprints come from the users' code, so we reference that directly
 @cache
