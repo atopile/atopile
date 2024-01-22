@@ -138,6 +138,7 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     payload = {
         **specd_data_json,
     }
+    log.info(payload)
 
     return _make_api_request(name, component_addr, payload, log)
 
@@ -212,7 +213,8 @@ def get_user_facing_value(addr: AddrStr) -> str:
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
         if db_data:
-            return db_data.get("Description", "")
+            # return db_data.get("type", "")
+            return db_data.get("description", "")
         else:
             return "?"
 
@@ -231,15 +233,19 @@ def clone_footprint(addr: AddrStr):
         return
     db_data = _get_generic_from_db(addr)
 
+
     # convert the footprint to a .kicad_mod file
     try:
         footprint = db_data.get("footprint_data", {}).get(
             "kicad", "No KiCad footprint available"
         )
-    except:
+    except KeyError:
         footprint = None
 
     if not footprint:
+        return
+    if footprint == "standard_library":
+        log.debug("Footprint is standard library, skipping")
         return
     try:
         # Make a new .kicad_mod file and write the footprint to it
@@ -254,6 +260,18 @@ def clone_footprint(addr: AddrStr):
     except Exception as e:
         log.warning(f"Failed to write footprint file: {e}")
 
+def get_package(addr: AddrStr) -> str:
+    """
+    Return the package for a component
+    """
+    if _is_generic(addr):
+        db_data = _get_generic_from_db(addr)
+        return db_data.get("package", "")
+    comp_data = instance_methods.get_data_dict(addr)
+    try:
+        return comp_data["package"]
+    except KeyError as ex:
+        raise MissingData("$addr has no package", title="No Package", addr=addr) from ex
 
 # Footprints come from the users' code, so we reference that directly
 @cache
@@ -269,7 +287,7 @@ def get_footprint(addr: AddrStr) -> str:
             footprint = db_data.get("footprint", {}).get(
                 "kicad", "No KiCad footprint available"
             )
-        except:
+        except KeyError:
             footprint = None
         return footprint
 
@@ -289,7 +307,7 @@ def get_package(addr: AddrStr) -> str:
     """
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
-        return db_data.get("Package", "")
+        return db_data.get("package", "")
     comp_data = instance_methods.get_data_dict(addr)
     try:
         return comp_data["package"]
