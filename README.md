@@ -12,7 +12,7 @@ There's not a lot here, because it's over at http://docs.atopile.io/
 
 ### Prerequisites / Installation
 
-You'll need >= `python3.10` and `pip` (Use `brew`).
+You'll need >= `python3.11` and `pip` (Use `brew`).
 
 I'd strongly recommend developing within a `venv`
 

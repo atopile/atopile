@@ -17,23 +17,31 @@ logging.basicConfig(
             console=console,
             tracebacks_suppress=[click],
         )
-    ]
+    ],
 )
 
 
 # cli root
 @click.version_option()
 @click.group()
-@click.option("--debugpy", is_flag=True)
-def cli(debugpy: bool):
+@click.option("--debug", is_flag=True)
+@click.option("-v", "--verbose", count=True)
+def cli(debug: bool, verbose: int):
     """Base CLI group."""
     # we process debugpy first, so we can attach the debugger ASAP into the process
-    if debugpy:
-        import debugpy as debugpy_mod  # pylint: disable=import-outside-toplevel
+    if debug:
+        import debugpy  # pylint: disable=import-outside-toplevel
+
         debug_port = 5678
-        debugpy_mod.listen(("localhost", debug_port))
+        debugpy.listen(("localhost", debug_port))
         logging.info("Starting debugpy on port %s", debug_port)
-        debugpy_mod.wait_for_client()
+        debugpy.wait_for_client()
+
+    # set the log level
+    if verbose == 1:
+        logging.root.setLevel(logging.DEBUG)
+    elif verbose > 1:
+        logging.root.setLevel(logging.NOTSET)
 
 
 cli.add_command(build.build)

@@ -10,15 +10,12 @@ from typing import Iterable
 
 import click
 from omegaconf import OmegaConf
-from omegaconf.errors import InterpolationToMissingValueError, ConfigKeyError
+from omegaconf.errors import ConfigKeyError
 
+import atopile.config
 from atopile import address, errors, version
 from atopile.address import AddrStr
-from atopile.config import (
-    Config,
-    get_project_config_from_addr,
-    get_project_config_from_path,
-)
+from atopile.config import get_project_config_from_path
 
 log = logging.getLogger(__name__)
 
@@ -29,19 +26,21 @@ def project_options(f):
     """
 
     @click.argument("entry", required=False, default=None)
-    @click.option("-b", "--build", default=None)
-    @click.option("-c", "--config", multiple=True)
-    @click.option("-t", "--target", multiple=True)
+    @click.option("-b", "--build", multiple=True, envvar="ATO_BUILD")
+    @click.option("-t", "--target", multiple=True, envvar="ATO_TARGET")
+    @click.option("-o", "--option", multiple=True, envvar="ATO_OPTION")
     @functools.wraps(f)
+    @errors.muffle_fatalities
     def wrapper(
         *args,
         entry: str,
-        build: str,
-        config: Iterable[str],
+        build: Iterable[str],
         target: Iterable[str],
+        option: Iterable[str],
         **kwargs,
     ):
         """Wrap a CLI command to ingest common config options to build a project."""
+
         # basic the entry address if provided, otherwise leave it as None
         if entry is not None:
             entry = AddrStr(entry)
@@ -61,45 +60,37 @@ def project_options(f):
             )
 
         try:
-            project_config = get_project_config_from_addr(str(entry_arg_file_path))
+            project_config = atopile.config.get_project_config_from_addr(str(entry_arg_file_path))
         except FileNotFoundError as ex:
             # FIXME: this raises an exception when the entry is not in a project
             raise click.BadParameter(
                 f"Could not find project from path {str(entry_arg_file_path)}. Is this file path within a project?"
             ) from ex
 
-        log.info("Using project %s", project_config.paths.project)
-        # layer on selected targets
-        if target:
-            project_config.selected_build.targets = list(target)
+        # Make sure I an all my sub-configs have appropriate versions
+        check_compiler_versions(project_config)
 
-        # set the build config
-        if build is not None:
-            if build not in project_config.builds:
-                raise click.BadParameter(
-                    f'Could not find build-config "{build}". Available build configs are: {", ".join(project_config.builds.keys())}.'
-                )
-            selected_build_name = build
-            log.info("Selected build: %s", selected_build_name)
+        log.info("Using project %s", project_config.location)
 
         # add custom config overrides
-        if config:
-            cli_conf = OmegaConf.from_dotlist(config)
+        if option:
+            try:
+                config: atopile.config.UserConfig = OmegaConf.merge(
+                    project_config,
+                    OmegaConf.from_dotlist(option)
+                )
+            except ConfigKeyError as ex:
+                raise click.BadParameter(f"Invalid config key {ex.key}") from ex
+
         else:
-            cli_conf = OmegaConf.create()
+            config: atopile.config.UserConfig = project_config
 
-        # finally smoosh them all back together like a delicious cake
-        # FIXME: why are we smooshing this -> does this need to be mutable?
-        try:
-            config = OmegaConf.merge(project_config, cli_conf)
-        except ConfigKeyError as ex:
-            raise click.BadParameter(f"Invalid config key {ex.key}") from ex
-
-        # layer on the selected addrs config
+        # if we set an entry-point, we now need to deal with that
+        entry_addr_override = None
         if entry:
             if entry_arg_file_path.is_file():
                 if entry_section := address.get_entry_section(entry):
-                    config.selected_build.abs_entry = address.from_parts(
+                    entry_addr_override = address.from_parts(
                         str(entry_arg_file_path.absolute()),
                         entry_section,
                     )
@@ -109,8 +100,10 @@ def project_options(f):
                         " the node within it you want to build.",
                         param_hint="entry",
                     )
+
             elif entry_arg_file_path.is_dir():
-                pass  # ignore this case, we'll use the entry point in the ato.yaml
+                pass
+
             elif not entry_arg_file_path.exists():
                 raise click.BadParameter(
                     "The entry you have specified does not exist.",
@@ -121,24 +114,30 @@ def project_options(f):
                     f"Unexpected entry path type {entry_arg_file_path} - this should never happen!"
                 )
 
-        # ensure we have an entry-point
-        try:
-            config.selected_build.abs_entry
-        except InterpolationToMissingValueError as ex:
-            raise click.BadParameter("No entry point to build from!") from ex
+        # Make build contexts
+        builds_to_build = build or config.builds.keys()
+        build_ctxs: list[atopile.config.BuildContext] = []
+        for _build in builds_to_build:
+            with errors.handle_ato_errors():
+                build_ctx = atopile.config.BuildContext.from_config(config, _build)
+            if entry_addr_override is not None:
+                build_ctx.entry = entry_addr_override
+            if target:
+                build_ctx.targets = list(target)
+            build_ctxs.append(build_ctx)
 
-        # do the thing
-        return f(*args, **kwargs, config=config)
+        # Do the thing
+        return f(*args, **kwargs, build_ctxs=build_ctxs)
 
     return wrapper
 
 
-def check_compiler_versions(config: Config):
+def check_compiler_versions(config: atopile.config.UserConfig):
     """Check that the compiler version is compatible with the version used to build the project."""
     with errors.handle_ato_errors():
         dependency_cfgs = (
             errors.downgrade(get_project_config_from_path, FileNotFoundError)(p)
-            for p in Path(config.paths.abs_module_path).glob("*")
+            for p in Path(config.location).glob("*")
         )
 
         for cltr, cfg in errors.iter_through_errors(
@@ -158,5 +157,5 @@ def check_compiler_versions(config: Config):
 
                 if not version.match_compiler_compatability(built_with_version):
                     raise version.VersionMismatchError(
-                        f"{cfg.paths.project} can't be built with this version of atopile."
+                        "Can't be built with this version of atopile."
                     )
