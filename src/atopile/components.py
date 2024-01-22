@@ -138,7 +138,7 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     payload = {
         **specd_data_json,
     }
-    log.info(payload)
+    log.debug(payload)
 
     return _make_api_request(name, component_addr, payload, log)
 
