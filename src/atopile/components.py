@@ -6,6 +6,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any, Dict
 
+import attr
 import pint
 import requests
 from git import Repo
@@ -167,8 +168,13 @@ def _make_api_request(name, component_addr, payload, log):
 
     except requests.RequestException as e:
         log.warning(f"API request failed: {e}")
-        return {"LCSC Part #": "Part not found", "value": "N/A", "unit": "N/A"}
+        return Component()
 
+@attr.s(auto_attribs=True)
+class Component:
+    lcsc_id: str = attr.ib(default="Part not found")
+    value: str = attr.ib(default="N/A")
+    unit: str = attr.ib(default="N/A")
 
 class MissingData(errors.AtoError):
     """
