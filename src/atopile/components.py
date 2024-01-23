@@ -90,11 +90,13 @@ def get_component_from_cache(component_addr, current_data):
     """Retrieve a component from the cache, if available, not stale, and unchanged."""
     cached_entry = component_cache.get(component_addr)
     if cached_entry:
+        log.debug(f"Fetching component from cache for {component_addr}")
         cached_timestamp = datetime.fromtimestamp(cached_entry["timestamp"])
         if datetime.now() - cached_timestamp < timedelta(
             days=1
         ) and not has_component_changed(cached_entry, current_data):
             return cached_entry["data"]
+        log.debug("Component data is stale, fetching from database")
     return None
 
 
@@ -126,21 +128,26 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     log.debug(f"Fetching component for {name}")
 
     specd_data = instance_methods.get_data_dict(component_addr)
-    cached_component = get_component_from_cache(component_addr, specd_data)
-    if cached_component:
-        log.debug(f"Fetching component from cache for {name}")
-        return cached_component
 
-    specd_data_json = {
+    specd_data_dict = {
         k: v.to_dict() if isinstance(v, Physical) else v for k, v in specd_data.items()
     }
 
     payload = {
-        **specd_data_json,
+        **specd_data_dict,
     }
     log.debug(payload)
 
-    return _make_api_request(name, component_addr, payload, log)
+    cached_component = get_component_from_cache(component_addr, specd_data_dict)
+    if cached_component:
+        log.debug(f"Fetching component from cache for {name}")
+        return cached_component
+
+    component = _make_api_request(name, component_addr, payload, log)
+
+    update_cache(component_addr, component, specd_data_dict)
+
+    return component
 
 
 def _make_api_request(name, component_addr, payload, log):
@@ -223,7 +230,7 @@ def get_user_facing_value(addr: AddrStr) -> str:
     # must have a value
     return str(comp_data.get("value", ""))
 
-
+#FIXME: this might create a circular dependency
 def clone_footprint(addr: AddrStr):
     """
     Take the footprint from the database and make a .kicad_mod file for it

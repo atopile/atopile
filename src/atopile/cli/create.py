@@ -3,8 +3,8 @@ import logging
 import re
 import sys
 import textwrap
-from pathlib import Path
 import webbrowser
+from pathlib import Path
 from typing import Iterator, Optional
 
 import caseconverter
@@ -122,12 +122,6 @@ def create(
                 ":rocket: Open browser to create Github repo?", default=True
             ):
                 webbrowser.open(make_repo_url)
-
-            if rich.prompt.Confirm.ask(":rocket: Open browser to create repo?", default=True):
-                webbrowser.open(f"https://github.com/new?name={name}")
-
-            if rich.prompt.Confirm.ask(":rocket: Open browser to create repo?", default=True):
-                webbrowser.open(f"https://github.com/new?name={name}")
 
             repo = rich.prompt.Prompt.ask(":rocket: What's the [cyan]repo's URL?[/]")
 
