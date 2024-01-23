@@ -14,18 +14,9 @@ from git import Repo
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import Physical
+from atopile.errors import AtoKeyError
 
 log = logging.getLogger(__name__)
-
-_GENERIC_RESISTOR = "generic_resistor"
-_GENERIC_CAPACITOR = "generic_capacitor"
-_GENERIC_MOSFET = "generic_mosfet"
-_GENERICS_MPNS = [_GENERIC_RESISTOR, _GENERIC_CAPACITOR, _GENERIC_MOSFET]
-
-_generic_to_unit_map = {
-    _GENERIC_RESISTOR: pint.Unit("ohm"),
-    _GENERIC_CAPACITOR: pint.Unit("farad"),
-}
 
 
 def _get_specd_mpn(addr: AddrStr) -> str:
@@ -45,7 +36,7 @@ def _is_generic(addr: AddrStr) -> bool:
     Return whether a component is generic
     """
     specd_mpn = _get_specd_mpn(addr)
-    return specd_mpn in _GENERICS_MPNS
+    return specd_mpn.startswith("generic_")
 
 
 class NoMatchingComponent(errors.AtoError):
@@ -55,6 +46,9 @@ class NoMatchingComponent(errors.AtoError):
 
     title = "No component matches parameters"
 
+
+component_cache: dict[str, Any]
+cache_file_path: Path
 
 def configure_cache(top_level_path: Path):
     """Configure the cache to be used by the component module."""
@@ -113,7 +107,7 @@ def update_cache(component_addr, component_data, address_data):
 
 def clean_cache():
     """Clean out entries older than 1 day."""
-    for addr, entry in list(component_cache.items()):
+    for addr, entry in component_cache.items():
         cached_timestamp = datetime.fromtimestamp(entry["timestamp"])
         if datetime.now() - cached_timestamp >= timedelta(days=1):
             del component_cache[addr]
@@ -124,8 +118,7 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     """
     Return the MPN for a component given its address, using an API endpoint.
     """
-    name = component_addr.split("::")[1]
-    log = logging.getLogger(__name__)
+    name = address.get_name(component_addr)
     log.debug(f"Fetching component for {name}")
 
     specd_data = instance_methods.get_data_dict(component_addr)
@@ -144,14 +137,14 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
         log.debug(f"Fetching component from cache for {name}")
         return cached_component
 
-    component = _make_api_request(name, component_addr, payload, log)
+    component = _make_api_request(name, component_addr, payload)
 
     update_cache(component_addr, component, specd_data_dict)
 
     return component
 
 
-def _make_api_request(name, component_addr, payload, log):
+def _make_api_request(name, component_addr, payload):
     url = "https://get-component-atsuhzfd5a-uc.a.run.app"
     try:
         log.debug(payload)
@@ -168,15 +161,7 @@ def _make_api_request(name, component_addr, payload, log):
 
     except requests.RequestException as e:
         log.warning(f"API request failed: {e}")
-        return Component()
-
-
-@attr.s(auto_attribs=True)
-class Component:
-    lcsc_id: str = attr.ib(default="Part not found")
-    value: str = attr.ib(default="N/A")
-    unit: str = attr.ib(default="N/A")
-
+        return 
 
 class MissingData(errors.AtoError):
     """
@@ -240,7 +225,7 @@ def get_user_facing_value(addr: AddrStr) -> str:
 
 
 # FIXME: this might create a circular dependency
-def clone_footprint(addr: AddrStr, dir: Path):
+def download_footprint(addr: AddrStr, dir: Path):
     """
     Take the footprint from the database and make a .kicad_mod file for it
     TODO: clean this mess up
@@ -251,17 +236,16 @@ def clone_footprint(addr: AddrStr, dir: Path):
 
     # convert the footprint to a .kicad_mod file
     try:
-        footprint = db_data.get("footprint_data", {}).get(
-            "kicad", "No KiCad footprint available"
-        )
-    except KeyError:
-        footprint = None
+        footprint = db_data.get("footprint_data", {})["kicad"]
+    except KeyError as ex:
+        raise MissingData(
+            "db component for $addr has no footprint", title="No Footprint", addr=addr
+        ) from ex
 
-    if not footprint:
-        return
     if footprint == "standard_library":
         log.debug("Footprint is standard library, skipping")
         return
+
     try:
         file_name = db_data.get("footprint").get("kicad")
         file_path = Path(dir) / f"{file_name}"
@@ -283,7 +267,6 @@ def get_footprint(addr: AddrStr) -> str:
     """
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
-        # clone_footprint(addr)
 
         try:
             footprint = db_data.get("footprint", {}).get(
