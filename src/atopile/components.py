@@ -237,7 +237,7 @@ def get_user_facing_value(addr: AddrStr) -> str:
     return str(comp_data.get("value", ""))
 
 #FIXME: this might create a circular dependency
-def clone_footprint(addr: AddrStr):
+def clone_footprint(addr: AddrStr, dir: Path):
     """
     Take the footprint from the database and make a .kicad_mod file for it
     TODO: clean this mess up
@@ -261,15 +261,14 @@ def clone_footprint(addr: AddrStr):
         log.debug("Footprint is standard library, skipping")
         return
     try:
-        # Make a new .kicad_mod file and write the footprint to it
-        repo = Repo(".", search_parent_directories=True)
-        footprints_dir = (
-            Path(repo.working_tree_dir) / "build/footprints/footprints.pretty"
-        )
         file_name = db_data.get("footprint").get("kicad")
-        file_path = footprints_dir / f"{file_name}"
-        footprint_file = open(f"{file_path}.kicad_mod", "w")
-        footprint_file.write(footprint)
+        file_path = Path(dir) / f"{file_name}"
+
+        # Create the directory if it doesn't exist
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(file_path, "w") as footprint_file:
+            footprint_file.write(footprint)
     except Exception as e:
         log.warning(f"Failed to write footprint file: {e}")
 
@@ -281,7 +280,7 @@ def get_footprint(addr: AddrStr) -> str:
     """
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
-        clone_footprint(addr)
+        # clone_footprint(addr)
 
         try:
             footprint = db_data.get("footprint", {}).get(

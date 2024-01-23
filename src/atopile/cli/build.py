@@ -20,9 +20,10 @@ from atopile.errors import (
 )
 from atopile.front_end import set_search_paths
 from atopile.netlist import get_netlist_as_str
+from atopile.instance_methods import all_descendants, match_components
+from atopile.components import clone_footprint
 
 log = logging.getLogger(__name__)
-
 
 @click.command()
 @project_options
@@ -136,4 +137,12 @@ def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     """Generate a designator map for the project."""
     atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
 
+@muster.register("clone-footprints", default=True)
+def clone_footprints(build_args: BuildContext) -> None:
+    """Clone the footprints for the project."""
+    log.info("Cloning footprints")
+    all_components = list(filter(match_components, all_descendants(build_args.entry)))
 
+    for component in all_components:
+        log.debug("Cloning footprint for %s", component)
+        clone_footprint(component, dir=build_args.output_base / "build/footprints/footprints.pretty")
