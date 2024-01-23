@@ -23,6 +23,6 @@ theme:
   name: material
   custom_dir: docs/overrides
   logo: assets/ato_logo_256x256.png
-  favicon: images/ato_logo_256x256.png
+  favicon: images/ato_logo_32x32.png
   palette:
     primary: blue grey
