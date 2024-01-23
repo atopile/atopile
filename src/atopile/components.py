@@ -6,15 +6,11 @@ from functools import cache
 from pathlib import Path
 from typing import Any, Dict
 
-import attr
-import pint
 import requests
-from git import Repo
 
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import Physical
-from atopile.errors import AtoKeyError
 
 log = logging.getLogger(__name__)
 
