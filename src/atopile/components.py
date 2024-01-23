@@ -56,18 +56,18 @@ class NoMatchingComponent(errors.AtoError):
     title = "No component matches parameters"
 
 
-# Define the cache file path
-repo = Repo(".", search_parent_directories=True)
-top_level_path = Path(repo.working_tree_dir)
-cache_file_path = top_level_path / ".ato/component_cache.json"
-
-# Try to load the cache, if it exists
-if cache_file_path.exists():
-    with open(cache_file_path, "r") as cache_file:
-        component_cache = json.load(cache_file)
-else:
-    component_cache = {}
-
+def configure_cache(top_level_path: Path):
+    """Configure the cache to be used by the component module."""
+    global component_cache
+    global cache_file_path
+    cache_file_path = top_level_path / ".ato/component_cache.json"
+    if cache_file_path.exists():
+        with open(cache_file_path, "r") as cache_file:
+                component_cache = json.load(cache_file)
+        # Clean out stale entries
+        clean_cache()
+    else:
+        component_cache = {}
 
 def save_cache():
     """Saves the current state of the cache to a file."""
@@ -170,11 +170,13 @@ def _make_api_request(name, component_addr, payload, log):
         log.warning(f"API request failed: {e}")
         return Component()
 
+
 @attr.s(auto_attribs=True)
 class Component:
     lcsc_id: str = attr.ib(default="Part not found")
     value: str = attr.ib(default="N/A")
     unit: str = attr.ib(default="N/A")
+
 
 class MissingData(errors.AtoError):
     """
@@ -236,7 +238,8 @@ def get_user_facing_value(addr: AddrStr) -> str:
     # must have a value
     return str(comp_data.get("value", ""))
 
-#FIXME: this might create a circular dependency
+
+# FIXME: this might create a circular dependency
 def clone_footprint(addr: AddrStr, dir: Path):
     """
     Take the footprint from the database and make a .kicad_mod file for it
@@ -245,7 +248,6 @@ def clone_footprint(addr: AddrStr, dir: Path):
     if not _is_generic(addr):
         return
     db_data = _get_generic_from_db(addr)
-
 
     # convert the footprint to a .kicad_mod file
     try:
@@ -271,6 +273,7 @@ def clone_footprint(addr: AddrStr, dir: Path):
             footprint_file.write(footprint)
     except Exception as e:
         log.warning(f"Failed to write footprint file: {e}")
+
 
 # Footprints come from the users' code, so we reference that directly
 @cache

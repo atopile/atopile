@@ -21,7 +21,7 @@ from atopile.errors import (
 from atopile.front_end import set_search_paths
 from atopile.netlist import get_netlist_as_str
 from atopile.instance_methods import all_descendants, match_components
-from atopile.components import clone_footprint
+from atopile.components import clone_footprint, configure_cache
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +44,9 @@ def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
     # Set the search paths for the front end
     set_search_paths([build_ctx.src_path, build_ctx.module_path])
+
+    # Configure the cache for component data
+    configure_cache(build_ctx.project_path)
 
     # Ensure the build directory exists
     log.info("Writing outputs to %s", build_ctx.build_path)
