@@ -140,7 +140,6 @@ def generate_manufacturing_data(build_ctx: BuildContext) -> None:
 @muster.register("clone-footprints", default=True)
 def clone_footprints(build_args: BuildContext) -> None:
     """Clone the footprints for the project."""
-    log.info("Cloning footprints")
     all_components = list(filter(match_components, all_descendants(build_args.entry)))
 
     for component in all_components:
