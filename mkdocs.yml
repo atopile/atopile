@@ -1,5 +1,7 @@
 nav:
 - Home: index.md
+- Getting started:
+  - getting-started.md
 - Packages:
   - blank: readme_blank.md
 - Blog:
@@ -8,13 +10,18 @@ plugins:
 - drawio_file
 - blog
 repo_name: atopile/atopile
-repo_url: https://gitlab.atopile.io/atopile/atopile
+repo_url: https://github.com/atopile/atopile
 site_name: atopile
 theme:
   features:
   - navigation.tabs
   - navigation.sections
   - toc.follow
+  #- header.autohide
   icon:
     repo: fontawesome/brands/git-alt
   name: material
+  custom_dir: docs/overrides
+  logo: assets/ato_logo_256x256.png
+  palette:
+    primary: blue grey
