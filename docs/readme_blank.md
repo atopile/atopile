@@ -1,3 +1,3 @@
 # module-template
 
-Modules will show up here.
+The package registry is getting rebuilt. We will share it here.
