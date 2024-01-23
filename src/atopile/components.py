@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import requests
 
@@ -67,28 +67,24 @@ def save_cache():
         json.dump(serializable_cache, cache_file)
 
 
-def has_component_changed(cached_entry, current_data):
-    """Check if the component data has changed based on the address."""
-    # Implement logic to compare relevant parts of current_data with cached_entry['address_data']
-    # Return True if data has changed, False otherwise
-    if current_data != cached_entry["address_data"]:
-        log.debug("Component data has changed for updating cache")
-        return True
-    return False
-
-
-def get_component_from_cache(component_addr, current_data):
+def get_component_from_cache(component_addr: AddrStr, current_data: dict) -> Optional[dict]:
     """Retrieve a component from the cache, if available, not stale, and unchanged."""
-    cached_entry = component_cache.get(component_addr)
-    if cached_entry:
-        log.debug(f"Fetching component from cache for {component_addr}")
-        cached_timestamp = datetime.fromtimestamp(cached_entry["timestamp"])
-        if datetime.now() - cached_timestamp < timedelta(
-            days=1
-        ) and not has_component_changed(cached_entry, current_data):
-            return cached_entry["data"]
-        log.debug("Component data is stale, fetching from database")
-    return None
+    if component_addr not in component_cache:
+        return None
+
+    # Check the cache age
+    cached_entry = component_cache[component_addr]
+    cached_timestamp = datetime.fromtimestamp(cached_entry["timestamp"])
+    cache_age = datetime.now() - cached_timestamp
+    if cache_age > timedelta(days=14):
+        return None
+
+    # Check the component attrs
+    if current_data != cached_entry["address_data"]:
+        return None
+
+    log.debug("Using cached component for %s", component_addr)
+    return cached_entry["data"]
 
 
 def update_cache(component_addr, component_data, address_data):
@@ -96,7 +92,7 @@ def update_cache(component_addr, component_data, address_data):
     component_cache[component_addr] = {
         "data": component_data,
         "timestamp": time.time(),  # Current time as a timestamp
-        "address_data": dict(address_data),  # Data used to detect changes
+        "address_data": dict(address_data),  # Source attributes used to detect changes
     }
     save_cache()
 
@@ -114,50 +110,56 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     """
     Return the MPN for a component given its address, using an API endpoint.
     """
-    name = address.get_name(component_addr)
-    log.debug(f"Fetching component for {name}")
+    log.debug("Fetching component for %s", component_addr)
 
     specd_data = instance_methods.get_data_dict(component_addr)
-
     specd_data_dict = {
         k: v.to_dict() if isinstance(v, Physical) else v for k, v in specd_data.items()
     }
 
-    payload = {
-        **specd_data_dict,
-    }
-    log.debug(payload)
-
     cached_component = get_component_from_cache(component_addr, specd_data_dict)
     if cached_component:
-        log.debug(f"Fetching component from cache for {name}")
+        log.debug("Using cache for %s", component_addr)
         return cached_component
 
-    component = _make_api_request(name, component_addr, payload)
-
-    update_cache(component_addr, component, specd_data_dict)
-
-    return component
-
-
-def _make_api_request(name, component_addr, payload):
     url = "https://get-component-atsuhzfd5a-uc.a.run.app"
     try:
-        log.debug(payload)
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=specd_data_dict, timeout=5)
         response.raise_for_status()
-        best_component = response.json().get("bestComponent")
+    except requests.HTTPError as ex:
+        if ex.response.status_code == 404:
+            raise NoMatchingComponent(
+                "No valid component found",
+                addr=component_addr
+            ) from ex
 
-        if not best_component:
-            raise NoMatchingComponent("No valid component found", addr=component_addr)
+        raise errors.AtoInfraError(
+            f"""
+            Failed to fetch component data from database.
+            Error: {str(ex)}
+            Response status code: {ex.response.status_code}
+            Response text: {ex.response.text}
+            """,
+            addr=component_addr
+        ) from ex
 
-        lcsc = best_component["lcsc_id"]
-        log.debug(f"Successfully fetched component {lcsc} for {name}")
-        return best_component
+    response_data = response.json() or {}
 
-    except requests.RequestException as e:
-        log.warning(f"API request failed: {e}")
-        return 
+    best_component = response_data.get("bestComponent")
+    # FIXME: Not returning something isn't a great mechanism to express
+    # that we didn't find a component. It's not easy to distinguish between
+    # a component not existing and other failure modes.
+    if not best_component:
+        raise NoMatchingComponent("No valid component found", addr=component_addr)
+
+    lcsc = best_component["lcsc_id"]
+    log.debug("Fetched component %s for %s", lcsc, component_addr)
+
+    # Now that we have a working component, update the cache with it for later
+    update_cache(component_addr, best_component, specd_data_dict)
+
+    return best_component
+
 
 class MissingData(errors.AtoError):
     """
@@ -220,8 +222,8 @@ def get_user_facing_value(addr: AddrStr) -> str:
     return str(comp_data.get("value", ""))
 
 
-# FIXME: this might create a circular dependency
-def download_footprint(addr: AddrStr, dir: Path):
+# FIXME: this function's requirements might cause a circular dependency
+def download_footprint(addr: AddrStr, footprint_dir: Path):
     """
     Take the footprint from the database and make a .kicad_mod file for it
     TODO: clean this mess up
@@ -243,16 +245,16 @@ def download_footprint(addr: AddrStr, dir: Path):
         return
 
     try:
-        file_name = db_data.get("footprint").get("kicad")
-        file_path = Path(dir) / f"{file_name}"
+        file_name = db_data.get("footprint", {}).get("kicad")
+        file_path = Path(footprint_dir) / str(file_name)
 
         # Create the directory if it doesn't exist
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(file_path, "w") as footprint_file:
             footprint_file.write(footprint)
-    except Exception as e:
-        log.warning(f"Failed to write footprint file: {e}")
+    except Exception as ex:
+        raise errors.AtoInfraError("Failed to write footprint file", addr=addr) from ex
 
 
 # Footprints come from the users' code, so we reference that directly
@@ -265,11 +267,12 @@ def get_footprint(addr: AddrStr) -> str:
         db_data = _get_generic_from_db(addr)
 
         try:
-            footprint = db_data.get("footprint", {}).get(
-                "kicad", "No KiCad footprint available"
-            )
-        except KeyError:
-            footprint = None
+            footprint = db_data.get("footprint", {})["kicad"]
+        except KeyError as ex:
+            raise errors.AtoInfraError(
+                "db component for $addr has no footprint",
+                addr=addr
+            ) from ex
         return footprint
 
     comp_data = instance_methods.get_data_dict(addr)
