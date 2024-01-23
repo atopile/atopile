@@ -24,5 +24,7 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
-      - run: pip install mkdocs-material 
+      - run: |
+        pip install mkdocs-material
+        pip install mkdocs-drawio-file
       - run: mkdocs gh-deploy --force
