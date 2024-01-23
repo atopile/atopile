@@ -2,8 +2,11 @@ nav:
 - Home: index.md
 - Packages:
   - blank: readme_blank.md
+- Blog:
+  - blog/index.md
 plugins:
 - drawio_file
+- blog
 repo_name: atopile/atopile
 repo_url: https://gitlab.atopile.io/atopile/atopile
 site_name: atopile
