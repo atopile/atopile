@@ -26,6 +26,7 @@ log.setLevel(logging.INFO)
 @click.argument("to_install", required=False)
 @click.option("--jlcpcb", is_flag=True, help="JLCPCB component ID")
 @click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
+@errors.muffle_fatalities
 def install(to_install: str, jlcpcb: bool, upgrade: bool):
     """
     Install a dependency of for the project.
@@ -36,23 +37,24 @@ def install(to_install: str, jlcpcb: bool, upgrade: bool):
     cfg = config.get_project_config_from_path(top_level_path)
     ctx = config.ProjectContext.from_config(cfg)
 
-    if jlcpcb:
-        # eg. "ato install --jlcpcb=C123"
-        install_jlcpcb(to_install)
-    elif to_install:
-        # eg. "ato install some-atopile-module"
-        installed_semver = install_dependency(to_install, ctx.module_path, upgrade)
-        module_name, module_spec = split_module_spec(to_install)
-        if module_spec is None and installed_semver:
-            # If the user didn't specify a version, we'll
-            # use the one we just installed as a basis
-            to_install = f"{module_name}^{installed_semver}"
-        set_dependency_to_ato_yaml(top_level_path, to_install)
+    with errors.handle_ato_errors():
+        if jlcpcb:
+            # eg. "ato install --jlcpcb=C123"
+            install_jlcpcb(to_install)
+        elif to_install:
+            # eg. "ato install some-atopile-module"
+            installed_semver = install_dependency(to_install, ctx.module_path, upgrade)
+            module_name, module_spec = split_module_spec(to_install)
+            if module_spec is None and installed_semver:
+                # If the user didn't specify a version, we'll
+                # use the one we just installed as a basis
+                to_install = f"{module_name}^{installed_semver}"
+            set_dependency_to_ato_yaml(top_level_path, to_install)
 
-    else:
-        # eg. "ato install"
-        for module_name in cfg.dependencies:
-            install_dependency(module_name, ctx.module_path, upgrade)
+        else:
+            # eg. "ato install"
+            for module_name in cfg.dependencies:
+                install_dependency(module_name, ctx.module_path, upgrade)
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 

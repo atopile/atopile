@@ -147,4 +147,4 @@ def clone_footprints(build_args: BuildContext) -> None:
 
     for component in all_components:
         log.debug("Cloning footprint for %s", component)
-        download_footprint(component, footprint_dir=build_args.build_path / "build/footprints/footprints.pretty")
+        download_footprint(component, footprint_dir=build_args.build_path / "footprints/footprints.pretty")

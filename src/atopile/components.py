@@ -99,10 +99,15 @@ def update_cache(component_addr, component_data, address_data):
 
 def clean_cache():
     """Clean out entries older than 1 day."""
+    addrs_to_delete = set()
     for addr, entry in component_cache.items():
         cached_timestamp = datetime.fromtimestamp(entry["timestamp"])
         if datetime.now() - cached_timestamp >= timedelta(days=1):
-            del component_cache[addr]
+            addrs_to_delete.add(addr)
+
+    for addr in addrs_to_delete:
+        del component_cache[addr]
+
     save_cache()
 
 
@@ -292,6 +297,7 @@ def get_package(addr: AddrStr) -> str:
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
         return db_data.get("package", "")
+
     comp_data = instance_methods.get_data_dict(addr)
     try:
         return comp_data["package"]
