@@ -64,7 +64,8 @@ def project_options(f):
         except FileNotFoundError as ex:
             # FIXME: this raises an exception when the entry is not in a project
             raise click.BadParameter(
-                f"Could not find project from path {str(entry_arg_file_path)}. Is this file path within a project?"
+                f"Could not find project from path {str(entry_arg_file_path)}. "
+                "Is this file path within a project?"
             ) from ex
 
         # Make sure I an all my sub-configs have appropriate versions
@@ -133,7 +134,10 @@ def project_options(f):
 
 
 def check_compiler_versions(config: atopile.config.UserConfig):
-    """Check that the compiler version is compatible with the version used to build the project."""
+    """
+    Check that the compiler version is compatible with the version
+    used to build the project.
+    """
     with errors.handle_ato_errors():
         dependency_cfgs = (
             errors.downgrade(get_project_config_from_path, FileNotFoundError)(p)
@@ -157,5 +161,7 @@ def check_compiler_versions(config: atopile.config.UserConfig):
 
                 if not version.match_compiler_compatability(built_with_version):
                     raise version.VersionMismatchError(
-                        "Can't be built with this version of atopile."
+                        f"{cfg.location} ({cfg.ato_version}) can't be"
+                        " built with this version of atopile "
+                        f"({version.get_installed_atopile_version()})."
                     )

@@ -16,9 +16,6 @@ from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
 log = logging.getLogger(__name__)
 
 
-T = TypeVar("T")
-
-
 class _BaseAtoError(Exception):
     """
     This exception is thrown when there's an error in the syntax of the language
@@ -281,6 +278,13 @@ def _error_accumulator(
 
     @contextmanager
     def _collect_ato_errors():
+        # If in a debugging session - don't collect errors
+        # because we want to see the unadulterated exception
+        # to stop the debugger
+        if in_debug_session():
+            yield
+            return
+
         try:
             yield
         except accumulate_types as ex:
@@ -292,13 +296,23 @@ def _error_accumulator(
             if naughty:
                 raise naughty from ex
 
-    # FIXME: do we wanna slap this in a try-finally
-    #  block so we also get to raise the exceptions
-    #  we collected if a naughty error throws us out?
     yield _collect_ato_errors
 
     if errors:
-        raise ExceptionGroup(group_message, errors)
+        # Display unique errors in order
+        # FIXME: this is both hard to understand and wildly inefficient
+        displayed_errors = []
+        for error in errors:
+            if not any(
+                existing_error.__dict__ == error.__dict__
+                for existing_error in displayed_errors
+            ):
+                displayed_errors.append(error)
+
+        raise ExceptionGroup(group_message, displayed_errors)
+
+
+T = TypeVar("T")
 
 
 def iter_through_errors(
