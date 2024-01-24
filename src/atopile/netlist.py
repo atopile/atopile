@@ -6,7 +6,7 @@ from typing import Optional
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from toolz import groupby
 
-from atopile import components, errors, nets
+from atopile import address, components, errors, nets
 from atopile.address import AddrStr, get_name, get_relative_addr_str
 from atopile.instance_methods import (
     all_descendants,
@@ -25,7 +25,6 @@ from atopile.kicad6_datamodel import (
     KicadPin,
     KicadSheetpath,
 )
-
 
 _get_mpn = errors.downgrade(
     components.get_mpn, (components.MissingData, components.NoMatchingComponent)
@@ -102,13 +101,12 @@ class NetlistBuilder:
         self, comp_addr: AddrStr, libsource: KicadLibpart
     ) -> KicadComponent:
         """Make a KiCAD component object from a representative instance object."""
+        tstamp = generate_uid_from_path(str(address.get_instance_section(comp_addr)))
 
         # TODO: improve this
-        sheetpath = (
-            KicadSheetpath(  # That's not actually what we want. Will have to fix
-                names=comp_addr,  # TODO: going to have to strip the comp name from this
-                tstamps=generate_uid_from_path(str(comp_addr)),
-            )
+        sheetpath = KicadSheetpath(  # That's not actually what we want. Will have to fix
+            names=comp_addr,  # TODO: going to have to strip the comp name from this
+            tstamps=tstamp,
         )
 
         designator = components.get_designator(comp_addr)
@@ -117,7 +115,7 @@ class NetlistBuilder:
             value=_get_value(comp_addr),
             footprint=components.get_footprint(comp_addr),
             libsource=libsource,
-            tstamp=generate_uid_from_path(str(comp_addr)),
+            tstamp=tstamp,
             fields=[],
             sheetpath=sheetpath,
             src_path=comp_addr,
