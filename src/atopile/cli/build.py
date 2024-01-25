@@ -20,10 +20,9 @@ from atopile.errors import (
 )
 from atopile.front_end import set_search_paths
 from atopile.netlist import get_netlist_as_str
-from atopile.instance_methods import all_descendants, match_components
-from atopile.components import download_footprint, configure_cache
 
 log = logging.getLogger(__name__)
+
 
 @click.command()
 @project_options
@@ -44,9 +43,6 @@ def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
     # Set the search paths for the front end
     set_search_paths([build_ctx.src_path, build_ctx.module_path])
-
-    # Configure the cache for component data
-    configure_cache(build_ctx.project_path)
 
     # Ensure the build directory exists
     log.info("Writing outputs to %s", build_ctx.build_path)
@@ -139,12 +135,3 @@ def generate_designator_map(build_args: BuildContext) -> None:
 def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     """Generate a designator map for the project."""
     atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
-
-@muster.register("clone-footprints")
-def clone_footprints(build_args: BuildContext) -> None:
-    """Clone the footprints for the project."""
-    all_components = filter(match_components, all_descendants(build_args.entry))
-
-    for component in all_components:
-        log.debug("Cloning footprint for %s", component)
-        download_footprint(component, dir=build_args.build_path / "build/footprints/footprints.pretty")
