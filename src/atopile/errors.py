@@ -155,7 +155,7 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
         if debug:
             addr = ex.addr
         else:
-            addr = address.get_instance_section(ex.addr)
+            addr = address.get_instance_section(ex.addr) or address.get_entry_section(ex.addr)
         # FIXME: we ignore the escaping of the address here
         fmt_addr = f"[bold cyan]{addr}[/]"
 
@@ -205,6 +205,7 @@ def in_debug_session() -> bool:
     """
     Return whether we're in a debug session.
     """
+    return False
     if "debugpy" in sys.modules:
         from debugpy import is_client_connected  # pylint: disable=import-outside-toplevel
         return is_client_connected()
