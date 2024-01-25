@@ -98,7 +98,7 @@ class FileParser:
         if src_path not in self.cache:
             src_path = Path(src_path)
             if not src_path.exists():
-                raise AtoFileNotFoundError(src_path)
+                raise AtoFileNotFoundError(str(src_path))
             self.cache[src_path] = parse_file(src_path)
 
         return self.cache[src_path]
