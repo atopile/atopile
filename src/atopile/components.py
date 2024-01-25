@@ -102,7 +102,7 @@ def _get_generic_from_db(component_addr: str) -> dict:
         raise KeyError("Generics are missing data - internal error") from ex
 
     if not isinstance(value_range, Physical):
-        raise ValueError(f"Value must be a Physical, not {type(value_range)}")
+        raise errors.AtoTypeError(f"Value must be a Physical, not {type(value_range)} for $addr", addr=component_addr)
 
     # Ensure the component's value is completely contained within the specd value
     try:
