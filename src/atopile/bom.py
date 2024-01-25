@@ -27,7 +27,7 @@ _get_mpn = errors.downgrade(
 )
 
 _get_footprint = errors.downgrade(
-    components.get_package, components.MissingData, default="?"
+    components.get_footprint, components.MissingData, default="?"
 )
 
 
