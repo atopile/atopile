@@ -155,7 +155,7 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
         if debug:
             addr = ex.addr
         else:
-            addr = address.get_instance_section(ex.addr) or address.get_entry_section(ex.addr)
+            addr = address.get_relative_addr_str(ex.addr)
         # FIXME: we ignore the escaping of the address here
         fmt_addr = f"[bold cyan]{addr}[/]"
 
