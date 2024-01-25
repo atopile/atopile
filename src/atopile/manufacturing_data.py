@@ -75,8 +75,12 @@ def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     build_ctx.build_path.mkdir(parents=True, exist_ok=True)
 
     # Replace constants in the board file
-    current_githash = git.Repo(build_ctx.project_path).head.commit.hexsha
-    short_githash = current_githash[:7]
+    repo = git.Repo(build_ctx.project_path)
+    short_githash_length = 7
+    if repo.is_dirty():
+        short_githash = "dirty"
+    else:
+        short_githash = repo.head.commit.hexsha[:short_githash_length]
 
     modded_kicad_pcb = build_ctx.output_base.with_suffix(
         ".kicad_pcb"
