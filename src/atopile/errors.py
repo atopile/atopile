@@ -205,7 +205,6 @@ def in_debug_session() -> bool:
     """
     Return whether we're in a debug session.
     """
-    return False
     if "debugpy" in sys.modules:
         from debugpy import is_client_connected  # pylint: disable=import-outside-toplevel
         return is_client_connected()
