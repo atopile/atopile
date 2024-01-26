@@ -1,0 +1,92 @@
+.md-typeset__table {
+    min-width: 100%;
+}
+
+@media only screen and (min-width: 768px)
+{
+	td:nth-child(1){
+		white-space: nowrap;
+	}
+}
+
+* {
+    --md-primary-fg-color: #60ffc9;
+    --md-primary-fg-color--light: #029c8e;
+    --md-primary-fg-color--dark:  #303C55;
+    --md-typeset-color:   var(--md-default-fg-color);
+    --md-typeset-a-color: var(--md-primary-fg-color--light);
+    --md-text-font: "Telegraf-Regular"
+}
+
+:root {
+    --md-primary-fg-color: #181917;
+    --md-primary-fg-color--light: #029c8e;
+    --md-primary-fg-color--dark:  #303C55;
+}
+
+:root>* {
+    --md-primary-bg-color:   #000;
+    --md-typeset-color:   var(--md-default-fg-color);
+    --md-typeset-a-color: var(--md-primary-fg-color--light);
+}
+
+/*
+markdown and image alignment
+ALT tag and a CSS selector on the alt tag
+*/
+img[src*='#left'] {
+    float: left;
+}
+img[src*='#right'] {
+    float: right;
+}
+img[src*='#center'] {
+    display: block;
+    margin: auto;
+}
+
+/*
+Tables set to 100% width
+*/
+.md-typeset__table {
+    min-width: 100%;
+}
+
+.md-typeset table:not([class]) {
+    display: table;
+}
+
+/*
+Colors for First Steps
+custom code blocks coloring
+*/
+.fsg-timestamp {
+    color: grey;
+}
+.fsg-userinput {
+    color: cornflowerblue;
+}
+.fsg-path, .fsg-prompt {
+    color: mediumseagreen;
+}
+
+/*
+Footer social media icons:
+set the size of the svg icons and the espace between them.
+*/
+.md-social__link {
+    width: 2rem;
+}
+.md-social__link svg {
+    max-height: 1.6rem;
+}
+
+/*
+hide content only for mobile devices
+*/
+@media only screen and (min-device-width: 280px) and (max-device-width: 480px)
+{
+	.hide-on-mobile {
+    display: none;
+	}
+}
