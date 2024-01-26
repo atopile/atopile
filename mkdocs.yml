@@ -9,6 +9,8 @@ nav:
 plugins:
 - drawio_file
 - blog
+- search
+
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
 site_name: atopile
@@ -16,13 +18,26 @@ theme:
   features:
   - navigation.tabs
   - navigation.sections
-  - toc.follow
-  #- header.autohide
+  - navigation.instant
+  - navigation.tracking
+  - navigation.indexes
+  - navigation.top
+  - navigation.footer
+  - header.autohide
+  - content.action.edit
+  - content.code.annotate
   icon:
     repo: fontawesome/brands/git-alt
   name: material
-  custom_dir: docs/overrides
-  logo: assets/ato_logo_256x256.png
-  favicon: images/ato_logo_32x32.png
-  palette:
-    primary: blue grey
+  custom_dir: docs/theme_override_home
+  logo: assets/images/logos/Asset 5-8.png
+  favicon: assets/images/logos/ato_logo_32x32.png
+  font:
+    text: Roboto
+    code: Roboto Mono
+  palette: # https://www.materialpalette.com/colors
+    - scheme: default
+      # primary: "brown" # comment to replace by /docs/assets/stylesheets
+
+extra_css:
+  - assets/stylesheets/extra.css
