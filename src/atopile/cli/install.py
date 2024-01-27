@@ -67,7 +67,7 @@ def get_package_repo_from_registry(module_name: str) -> str:
     response = requests.post(
         "https://get-package-atsuhzfd5a-uc.a.run.app",
         json={"name": module_name},
-        timeout=5,
+        timeout=10,
     )
     if response.status_code == 500:
         raise errors.AtoError(f"Could not find package '{module_name}' in registry.")
