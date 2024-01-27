@@ -11,6 +11,7 @@ import atopile.bom
 import atopile.front_end
 import atopile.netlist
 import atopile.manufacturing_data
+import atopile.layout
 from atopile.cli.common import project_options
 from atopile.config import BuildContext
 from atopile.errors import (
@@ -135,3 +136,10 @@ def generate_designator_map(build_args: BuildContext) -> None:
 def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     """Generate a designator map for the project."""
     atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
+
+
+@muster.register("layout-module-map")
+def generate_module_map(build_args: BuildContext) -> None:
+    """Generate a designator map for the project."""
+    with open(build_args.output_base.with_suffix(".group_map.csv"), "w", encoding="utf-8") as f:
+        f.write(atopile.layout.generate_module_map(build_args.entry))
