@@ -2,6 +2,7 @@ nav:
 - Home: index.md
 - Getting started:
   - new-getting-started.md
+  - first_project.md
   - getting-started.md
 - Packages:
   - blank: readme_blank.md

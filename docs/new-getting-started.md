@@ -2,11 +2,9 @@
 
 ## Installation
 
-To run atopile, you will need the atopile compiler and the VSCode extension for synthax highlighting.
+To run atopile, you will need the atopile compiler, the VSCode extension for synthax highlighting and git credential manager.
 
-### atopile compiler
-
-#### with pip <small>recommended</small>
+### atopile compiler - with pip <small>recommended</small>
 
 atopile is published as a [python package](https://pypi.org/project/atopile/) on pypi. You can install it using `pip` from your command line. We recommend setting up a virtual environment for atopile so that atopile's dependencies don't calsh with the rest of your system.
 
@@ -41,7 +39,7 @@ __[How to set up atopile]__ – :octicons-clock-24:
 ---
 ## TODO: fix the link
 
-#### With git
+### atopile compiler - with git
 
 atopile can be directly installed from [GitHub](https://github.com/atopile/atopile) by cloning the repository into a subfolder of your project root. This could be useful if you want to use the latest version of atopile:
 
@@ -54,8 +52,10 @@ This will create a repository with the latest version of atopile. You can instal
 pip install -e atopile
 ```
 
-### VSCode extension
+### VSCode extension - extension store
 
 We recomend using [VSCode](https://code.visualstudio.com) to run atopile as it will provide synthax highlighting.
 
-From VSCode, navigate to the 
+From VSCode, navigate to the VSCode extensions and install atopile.
+
+![](images/ato_extension.png)
