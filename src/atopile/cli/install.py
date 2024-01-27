@@ -14,8 +14,8 @@ from typing import Optional
 
 import click
 import yaml
+import requests
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
-from requests import post
 
 from atopile import config, errors, version
 
@@ -64,7 +64,7 @@ def get_package_repo_from_registry(module_name: str) -> str:
     """
     Get the git repo for a package from the ato registry.
     """
-    response = post(
+    response = requests.post(
         "https://get-package-atsuhzfd5a-uc.a.run.app",
         json={"name": module_name},
         timeout=5,
