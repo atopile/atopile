@@ -16,7 +16,6 @@ import click
 import yaml
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from requests import post
-from firebase_admin import exceptions
 
 from atopile import config, errors, version
 
