@@ -52,6 +52,10 @@ def get_file(address: AddrStr) -> str:
 def get_relative_addr_str(address: AddrStr) -> AddrStr:
     """
     Extract the relative address starting with the .ato file
+    /abs/path/to/file.ato:Entry.Path::instance.path -> file.ato:Entry.Path::instance.path
+
+    FIXME: relative is a little misleading, as it's not relative to anything in particular,
+    it's merely the address without the absolute path.
     """
     return address.split("/")[-1]
 

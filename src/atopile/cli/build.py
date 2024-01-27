@@ -1,5 +1,5 @@
 """CLI command definition for `ato build`."""
-
+import json
 import logging
 import shutil
 from functools import wraps
@@ -9,6 +9,7 @@ import click
 
 import atopile.bom
 import atopile.front_end
+import atopile.layout
 import atopile.manufacturing_data
 import atopile.netlist
 from atopile.cli.common import project_options
@@ -36,13 +37,25 @@ def build(build_ctxs: list[BuildContext]):
         with err_cltr():
             _do_build(build_ctx)
 
+    # FIXME: this should be done elsewhere, but there's no other "overview"
+    # that can see all the builds simultaneously
+    manifest = {}
+    manifest["version"] = "1.0"
+    for ctx in build_ctxs:
+        by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
+        by_layout_manifest["groups"] = str(ctx.output_base.with_suffix(".group_map.csv"))
+
+    manifest_path = build_ctxs[0].project_path / "build" / "manifest.json"
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f)
+
 
 def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
     # Set the search paths for the front end
     set_search_paths([build_ctx.src_path, build_ctx.module_path])
 
-    # Configure the cache for component data	
+    # Configure the cache for component data
     configure_cache(build_ctx.project_path)
 
     # Ensure the build directory exists
@@ -146,3 +159,10 @@ def clone_footprints(build_args: BuildContext) -> None:
     for component in all_components:
         log.debug("Cloning footprint for %s", component)
         download_footprint(component, footprint_dir=build_args.build_path / "footprints/footprints.pretty")
+
+
+@muster.register("layout-module-map")
+def generate_module_map(build_args: BuildContext) -> None:
+    """Generate a designator map for the project."""
+    with open(build_args.output_base.with_suffix(".group_map.csv"), "w", encoding="utf-8") as f:
+        f.write(atopile.layout.generate_module_map(build_args.entry))
