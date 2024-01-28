@@ -1,10 +1,11 @@
 import csv
 import os
 from io import StringIO
+from pathlib import Path
 
 from pcbnew import *
 
-from atopile_kicad_plugin import log
+from .common import log
 
 
 def parse_hierarchy(csv_file) -> dict:
@@ -45,7 +46,7 @@ class PullGroup(ActionPlugin):
         heir = parse_hierarchy(csv_file_path)
 
         sel_gs = [g for g in board.Groups() if g.IsSelected()] #selected groups
-        
+
         for sg in sel_gs:
             csv_table = StringIO()
             writer = csv.DictWriter(csv_table, fieldnames=['Name','x','y','theta'])
@@ -68,7 +69,7 @@ class PullGroup(ActionPlugin):
                 )
             with open('/'.join([prjpath,'.ato','modules',heir[g_name]['_package'],'elec','layout','layout.csv']), mode='w', newline='') as f:
                 f.write(csv_table.getvalue())
-        
+
 
         # for k in heir.keys():
         #     index = -1
@@ -80,12 +81,12 @@ class PullGroup(ActionPlugin):
         #         g = PCB_GROUP(board)
         #         g.SetName(k)
         #         board.Add(g)
-            
+
         #     # Populate group with footprints
         #     for comp in heir.get(k,{}):
         #         ref = comp.get('designator',None)
-        #         if ref: 
+        #         if ref:
         #             fp = board.FindFootprintByReference(ref)
-        #             g.AddItem(fp)    
+        #             g.AddItem(fp)
 
 PullGroup().register()

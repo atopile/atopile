@@ -1,9 +1,10 @@
 import csv
 import os
+from pathlib import Path
 
 from pcbnew import *
 
-from atopile_kicad_plugin import log
+from .common import log
 
 
 def parse_hierarchy(csv_file) -> dict:
@@ -11,7 +12,7 @@ def parse_hierarchy(csv_file) -> dict:
 
     with open(csv_file, mode='r', newline='') as file:
         reader = csv.reader(file)
-        next(reader)  # Skip header row if present
+        next(reader)  # Skip header row
 
         for row in reader:
             # Extract name and designator
@@ -40,7 +41,7 @@ class PullGroup(ActionPlugin):
         self.category = "Pull Group Layout Atopile"
         self.description = "Layout components on PCB in same spatial relationships as components on schematic"
         self.show_toolbar_button = True
-        self.icon_file_name = os.path.join(os.path.dirname(__file__), 'download.png') # Optional, defaults to ""
+        self.icon_file_name = Path(__file__) / "download.png"
 
     def Run(self):
         board: BOARD = GetBoard()
@@ -64,7 +65,7 @@ class PullGroup(ActionPlugin):
                 g = PCB_GROUP(board)
                 g.SetName(k)
                 board.Add(g)
-            
+
             # Populate group with footprints
             for ref in heir.get(k,{}).keys():
                 if ref:
@@ -74,7 +75,7 @@ class PullGroup(ActionPlugin):
 
         # Pull Selected Groups
         sel_gs = [g for g in board.Groups() if g.IsSelected()] #selected groups
-        
+
         for sg in sel_gs:
             g_name = sg.GetName()
             try:
