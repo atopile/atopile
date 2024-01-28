@@ -69,7 +69,10 @@ class _Net:
         for signal in filter(match_signals, self.nodes_on_net):
             max_depth = max(max_depth, len(list(iter_parents(signal))))
         for signal in filter(match_signals, self.nodes_on_net):
+            # lower case so we are not case sensitive
             name = get_name(signal).lower()
+            # simple nonlinear weight, lower down in hierarchy is weighted less. 
+            # multiple signal names on a net get their weight summed
             name_candidates[name] += (max_depth-len(list(iter_parents(signal))))**2
 
         if name_candidates:
