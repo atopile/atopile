@@ -65,15 +65,17 @@ class _Net:
         """TODO:"""
 
         name_candidates = defaultdict(int)
-
+        max_depth = 1
         for signal in filter(match_signals, self.nodes_on_net):
-            name = get_name(signal)
-            name_candidates[name] += len(list(iter_parents(signal)))
+            max_depth = max(max_depth, len(list(iter_parents(signal))))
+        for signal in filter(match_signals, self.nodes_on_net):
+            name = get_name(signal).lower()
+            name_candidates[name] += (max_depth-len(list(iter_parents(signal))))**2
 
         if name_candidates:
-            highest_rated_name = min(name_candidates, key=name_candidates.get)
+            highest_rated_name = max(name_candidates, key=name_candidates.get)
             self.base_name = highest_rated_name
-            print(name_candidates)
+            #print(name_candidates)
 
 
 def _find_net_names(nets: Iterable[Iterable[str]]) -> dict[str, list[str]]:
