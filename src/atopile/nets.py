@@ -63,24 +63,17 @@ class _Net:
 
     def generate_base_net_name(self) -> Optional[str]:
         """TODO:"""
-        WEIGHT_NO_GRANDPARENTS = 10
-        WEIGHT_INTERFACE_GRANDPARENT = 5
-        WEIGHT_SIGNAL = 2
 
         name_candidates = defaultdict(int)
 
         for signal in filter(match_signals, self.nodes_on_net):
             name = get_name(signal)
-            if get_parent(signal) is None:
-                name_candidates[name] += WEIGHT_NO_GRANDPARENTS
-            elif any(map(match_interfaces, iter_parents(signal))):
-                name_candidates[name] += WEIGHT_INTERFACE_GRANDPARENT
-            else:
-                name_candidates[name] += WEIGHT_SIGNAL
+            name_candidates[name] += len(list(iter_parents(signal)))
 
         if name_candidates:
-            highest_rated_name = max(name_candidates, key=name_candidates.get)
+            highest_rated_name = min(name_candidates, key=name_candidates.get)
             self.base_name = highest_rated_name
+            print(name_candidates)
 
 
 def _find_net_names(nets: Iterable[Iterable[str]]) -> dict[str, list[str]]:
