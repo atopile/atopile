@@ -10,7 +10,6 @@ from atopile.instance_methods import (
     all_descendants,
     get_children,
     get_links,
-    get_parent,
     iter_parents,
     match_interfaces,
     match_pins_and_signals,
@@ -63,24 +62,22 @@ class _Net:
 
     def generate_base_net_name(self) -> Optional[str]:
         """TODO:"""
-        WEIGHT_NO_GRANDPARENTS = 10
-        WEIGHT_INTERFACE_GRANDPARENT = 5
-        WEIGHT_SIGNAL = 2
 
         name_candidates = defaultdict(int)
-
+        min_depth = 100
         for signal in filter(match_signals, self.nodes_on_net):
-            name = get_name(signal)
-            if get_parent(signal) is None:
-                name_candidates[name] += WEIGHT_NO_GRANDPARENTS
-            elif any(map(match_interfaces, iter_parents(signal))):
-                name_candidates[name] += WEIGHT_INTERFACE_GRANDPARENT
-            else:
-                name_candidates[name] += WEIGHT_SIGNAL
+            min_depth = min(min_depth, len(list(iter_parents(signal))))
+        for signal in filter(match_signals, self.nodes_on_net):
+            # lower case so we are not case sensitive
+            name = get_name(signal).lower()
+            # only look at highest level
+            if min_depth == len(list(iter_parents(signal))):
+                name_candidates[name] += 1
 
         if name_candidates:
             highest_rated_name = max(name_candidates, key=name_candidates.get)
             self.base_name = highest_rated_name
+            #print(name_candidates)
 
 
 def _find_net_names(nets: Iterable[Iterable[str]]) -> dict[str, list[str]]:
