@@ -74,3 +74,35 @@ We recomend using [VSCode](https://code.visualstudio.com) to run atopile as it w
 From VSCode, navigate to the VSCode extensions and install atopile.
 
 ![](images/ato_extension.png)
+
+## Making a simple circuit
+
+To get you started quickly, here is an example of a simple atopile circuit. See the rest of the documentation on how to fully use the atopile language features.
+
+Let's build a voltage divider. Start by invoking `ato create` to create a new project.
+
+Once created, open elec/src/your-project.ato and modify it in the following way:
+
+=== "your-project.ato"
+    ```
+    import Resistor from "generics/resitors.ato"
+
+    module YourProject:
+        signal top
+        signal out
+        signal bottom
+
+        r_top = new Resistor
+        r_top.footprint = "R0402"
+        r_bottom = new Resistor
+        r_bottom.footprint = "R0402"
+
+        top ~ r_top.p1; r_top.p2 ~ out
+        out ~ r_bottom.p1; r_bottom.p2 ~ bottom
+    ```
+
+Now you can built this project and get a voltage divider!
+
+!!! tip
+
+    The generics library should be installed by default in `your-project/.ato/modules/generics` directory. If not, run `ato install generics`

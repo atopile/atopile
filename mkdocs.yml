@@ -3,6 +3,8 @@ nav:
 - Getting started:
   - new-getting-started.md
   - first_project.md
+  - building.md
+  - install.md
   - getting-started.md
 - Packages:
   - blank: readme_blank.md
