@@ -31,7 +31,9 @@ See an example of a package with the [generics library](https://gitlab.atopile.i
 
 To install a package, run the following command:
 
-`ato install <your-package>`
+`ato install <your-package-name>`
+
+The package will be added in the .ato/modules/your-package-name directory. It's installed just like existing git repositories that means you can make changes to it and push those changes back to the remote, if you have permissions to do so.
 
 ### Upgrading packages & version management
 
@@ -39,12 +41,14 @@ You can pull the latest packages by running:
 
 `ato install --upgrade`
 
-This will pull the latest tag version for the packages. If you wish to further specify which version of the package you'd like to install, you can use sementic versioning in the `ato.yaml` file. For example, you can request the highest available version of the generics package 1.x.x by having the following description in your `ato.yaml`:
+This will pull the latest tag version for the packages. If you wish to further specify which version of the package you'd like to install, you can use sementic versioning in the `ato.yaml` file. For example, you can request the highest available version of the generics package 1.x.x:
 
-```yaml
-dependencies:
-- generics^v1.0.0
-```
+!!! file "ato.yml"
+    ```yaml
+    ...
+    dependencies:
+    - generics^v1.0.0
+    ```
 
 !!! tip
     The compiler version follows [sementic versioning](https://semver.org). The required version of your dependencies can be specified using [npm's standard](https://docs.npmjs.com/about-semantic-versioning).
