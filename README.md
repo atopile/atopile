@@ -69,7 +69,8 @@ module Blinky:
 
 ## 🔨 Getting started
 
-Find our [documentation](https://atopile.io/getting-started/) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA). 
+Find our [documentation](https://atopile.io/getting-started/) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
+
 `atopile` is on pypi.org: https://pypi.org/project/atopile/
 
 ## ❓ Why atopile?
