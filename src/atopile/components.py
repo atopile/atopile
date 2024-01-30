@@ -119,7 +119,11 @@ def _get_generic_from_db(component_addr: str) -> dict:
     filters.append(f"max_value <= {max_float_val}")
 
     # Ensure the component's footprint is correct
-    filters.append(f"Package == '{_generics_to_db_fp_map[specd_data['footprint']]}'")
+    try:
+        database_footprint = _generics_to_db_fp_map[specd_data['footprint']]
+        filters.append(f"Package == '{database_footprint}'")
+    except KeyError as ex:
+        raise errors.AtoKeyError(f"Can't find generic part that matches'{specd_data['footprint']}' for $addr. Change the part's mpn or footprint.", addr=component_addr) from ex
 
     # Combine filters using reduce
     combined_filter = " & ".join(filters)
