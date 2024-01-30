@@ -1,3 +1,10 @@
+site_name: atopile
+site_url: https://atopile.io
+site_description: >-
+  Describe your circuit with code. Configure your design to any application.
+  Reuse your past work. Share with the power of git. This is the promise of code to electronics.
+  Join the revolution and build with atopile!
+
 nav:
 - Home: index.md
 - Getting started:
