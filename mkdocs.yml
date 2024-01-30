@@ -21,6 +21,7 @@ nav:
 plugins:
 - drawio_file
 - blog
+- search
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
 site_name: atopile
