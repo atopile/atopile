@@ -3,8 +3,17 @@ nav:
 - Getting started:
   - new-getting-started.md
   - first_project.md
+  - config.md
   - building.md
   - install.md
+  - import.md
+  - types.md
+  - class.md
+  - units.md
+  - doc-strings.md
+  - kicad.md
+  - git.md
+  - ci.md
   - getting-started.md
 - Packages:
   - blank: readme_blank.md

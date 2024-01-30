@@ -2,20 +2,20 @@
 
 ## Components
 
-### Adding components manually
-
-To manually add components, follow the instrcution for creating a component in the type section.
-<!--
-TODO: link to the types
--->
-
 ### Installing components from JLCPCB
 
-For convenience, you can use the `ato install` command. Here is an example installing the [RP2040 chip](https://www.lcsc.com/product-detail/Microcontroller-Units-MCUs-MPUs-SOCs_Raspberry-Pi-RP2040_C2040.html):
+Here is an example on how to install the [RP2040 chip](https://www.lcsc.com/product-detail/Microcontroller-Units-MCUs-MPUs-SOCs_Raspberry-Pi-RP2040_C2040.html) from [JLCPCB](https://jlcpcb.com/parts):
 
 `ato install --jlcpcb C2040`
 
 The command will add your footprint and 3D representation to the KiCAD library (named lib in your folder structure) and create an ato file of the component in the elec/src directory.
+
+### Adding components manually
+
+To manually add components, follow the instructions for creating a component in the type section.
+<!--
+TODO: link to the types
+-->
 
 ## Packages
 

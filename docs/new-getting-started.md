@@ -85,9 +85,9 @@ Once created, open elec/src/your-project.ato and modify it in the following way:
 
 === "your-project.ato"
     ```
-    import Resistor from "generics/resitors.ato"
+    import Resistor from "generics/resistors.ato"
 
-    module YourProject:
+    module YourModule:
         signal top
         signal out
         signal bottom
