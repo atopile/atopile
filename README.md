@@ -69,7 +69,8 @@ module Blinky:
 
 ## 🔨 Getting started
 
-Find our [documentation](https://atopile.io/getting-started/) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
+Find our [documentation](https://atopile.io/getting-started/) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA). 
+`atopile` is on pypi.org: https://pypi.org/project/atopile/
 
 ## ❓ Why atopile?
 
@@ -81,48 +82,11 @@ Version controlling your designs using **git** means you can deeply **validate**
 
 Implementing CI to **test** our work ensures both **high-quality** and **compliance**, all summarised in a green check mark, emboldening teams to target excellence.
 
+## Discover what people build
+
+Browse and submit your modules at [packages.atopile.io](https://packages.atopile.io)
+
 ## Join us on Discord
+What's your story in electronics? What would you like us to build? Come talk on discord.
 
-![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner3)
-
-![](https://img.shields.io/discord/:1022538124619956266)
-
-<iframe src="https://discord.com/widget?id=1022538123915300865&theme=dark" width="350" height="100" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
-
-## Development
-### Prerequisites / Installation
-
-You'll need >= `python3.11` and `pip` (Use `brew`).
-
-I'd strongly recommend developing within a `venv`
-
-Since we'll be using this `venv` for both work within this tool directory and whatever projects you're using it on, I'd recommend creating something along the lines of an `atopile-workspace` or `ato-ws` directory somewhere, and then creating a `venv` in there. This means if you do something like a `git clean -xdf` to remove crud, you won't blow away your `venv` with it.
-
-If you decide to follow this, you'll end up with something like this:
-
-```
-atopile-workspace
-├── .venv --> your virtual environment
-├── atopile --> this repo
-├── atopile.code-workspace --> vscode workspace file
-└── bike-light --> project using atopile
-```
-
-Clone this repo.
-
-Wherever you stick the `venv`, you can create the venv with  `python3.11 -m venv .venv` and then `source .venv/bin/activate`
-
-For cli development (so practically all the time) : `pip install -e ."[dev,test,docs]"`
-
-You'll need `npm` for front-end development (`brew install node`).
-
-For any front-end development, you'll also need to install the front-end dependencies: `npm install`
-
-
-## Syntax highlighting is pretty nice...
-
-You can download the extension from CI here:
-
-![download-artifacts](docs/images/download-artifacts.png)
-
-Then, from your PC `code --install-extension path/to/atopile-*.vsix`
+![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)
