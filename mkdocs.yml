@@ -22,7 +22,7 @@ nav:
   - git.md
   - ci.md
 - Packages:
-  - blank: readme_blank.md
+  - packages.md
 - Blog:
   - blog/index.md
 plugins:
@@ -101,7 +101,7 @@ theme:
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
+      primary: blue grey
       accent: indigo
       toggle:
         icon: material/toggle-switch

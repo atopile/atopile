@@ -50,7 +50,7 @@ ato --version
 __[Getting started with atopile - get setup and build your first project from scratch]__ – :octicons-clock-24:
 32m – We have a video of how to install atopile and setup your project here.
 
-  [How to set up atopile]: https://www.youtube.com/watch?v=7aeZLlA_VYA
+  [Getting started with atopile - get setup and build your first project from scratch]: https://www.youtube.com/watch?v=7aeZLlA_VYA
 
 ---
 
