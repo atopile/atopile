@@ -1,7 +1,9 @@
 <h1 align="center">
-    <br>
-        <img src="docs/assets/logo-with-text.png" alt="Logo atopile" title="Logo atopile" />
-    <br>
+    <picture>
+    <source media="(prefers-color-scheme: dark)" src="docs/assets/logo-with-text-dark.png">
+    <source media="(prefers-color-scheme: light)" src="docs/assets/logo-with-text.png">
+    <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="docs/assets/logo-with-text.png">
+    </picture>
 </h1>
 
 <div align="center">
