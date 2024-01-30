@@ -1,7 +1,7 @@
 nav:
 - Home: index.md
 - Getting started:
-  - new-getting-started.md
+  - getting-started.md
   - first_project.md
   - config.md
   - building.md
@@ -14,7 +14,6 @@ nav:
   - kicad.md
   - git.md
   - ci.md
-  - getting-started.md
 - Packages:
   - blank: readme_blank.md
 - Blog:
