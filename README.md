@@ -15,14 +15,13 @@
         <img src="https://github.com/atopile/atopile/actions/workflows/ci.yml/badge.svg" alt="Build status" style="vertical-align:top; margin:6px 4px">
     </a>
 </div>
-
-Build elecronic circuit boards from code.
-
 <h1 align="center">
     <br>
         <img src="docs/assets/images/code-layout-pcb.png" alt="Logo atopile" title="Logo atopile" />
     <br>
 </h1>
+
+`atopile` is a toolchain to build elecronic circuit boards from code.
 
 ## 💡Examples
 
@@ -82,6 +81,13 @@ Version controlling your designs using **git** means you can deeply **validate**
 
 Implementing CI to **test** our work ensures both **high-quality** and **compliance**, all summarised in a green check mark, emboldening teams to target excellence.
 
+## Join us on Discord
+
+![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner3)
+
+![](https://img.shields.io/discord/:1022538124619956266)
+
+<iframe src="https://discord.com/widget?id=1022538123915300865&theme=dark" width="350" height="100" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
 
 ## Development
 ### Prerequisites / Installation
