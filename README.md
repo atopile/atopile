@@ -1,8 +1,8 @@
 <h1 align="center">
     <picture>
-    <source media="(prefers-color-scheme: dark)" src="docs/assets/logo-with-text-dark.png">
-    <source media="(prefers-color-scheme: light)" src="docs/assets/logo-with-text.png">
-    <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="docs/assets/logo-with-text.png">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/atopile/atopile/assets/9785003/00f19584-18a2-4b5f-9ce4-1248798974dd">
+    <source media="(prefers-color-scheme: light)" src="https://github.com/atopile/atopile/assets/9785003/8278fec2-8033-4af5-8030-3bd00159383b">
+    <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="https://github.com/atopile/atopile/assets/9785003/8278fec2-8033-4af5-8030-3bd00159383b">
     </picture>
 </h1>
 
