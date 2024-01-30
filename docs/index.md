@@ -1,9 +1,9 @@
 ---
 template: home.html
-title: atopile
+title: Material for MkDocs
 social:
   cards_layout_options:
-    title: compiler for electronics
+    title: Documentation that simply works
 ---
 
-Welcome to atopile
+Welcome to Material for MkDocs.
