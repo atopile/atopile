@@ -21,7 +21,13 @@
     <br>
 </h1>
 
-`atopile` is a toolchain to build elecronic circuit boards from code.
+## 📖 What is `atopile`?
+`atopile` is a tool to build electronic circuit boards with code.
+
+## 🗣️ Join us on Discord
+What's your story in electronics? What would you like us to build? Come talk on discord.
+
+![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)
 
 ## 💡Examples
 
@@ -83,11 +89,6 @@ Version controlling your designs using **git** means you can deeply **validate**
 
 Implementing CI to **test** our work ensures both **high-quality** and **compliance**, all summarised in a green check mark, emboldening teams to target excellence.
 
-## Discover what people build
+## 🔍 Discover what people build
 
 Browse and submit your modules at [packages.atopile.io](https://packages.atopile.io)
-
-## Join us on Discord
-What's your story in electronics? What would you like us to build? Come talk on discord.
-
-![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)
