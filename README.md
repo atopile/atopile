@@ -1,7 +1,9 @@
 <h1 align="center">
-    <br>
-        <img src="docs/assets/logo-with-text.png" alt="Logo atopile" title="Logo atopile" />
-    <br>
+    <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/atopile/atopile/assets/9785003/00f19584-18a2-4b5f-9ce4-1248798974dd">
+    <source media="(prefers-color-scheme: light)" src="https://github.com/atopile/atopile/assets/9785003/d38941c1-d7c1-42e6-9b94-a62a0996bc19">
+    <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="https://github.com/atopile/atopile/assets/9785003/d38941c1-d7c1-42e6-9b94-a62a0996bc19">
+    </picture>
 </h1>
 
 <div align="center">
@@ -29,7 +31,7 @@ What's your story in electronics? What would you like us to build? Come talk on 
 
 ![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)
 
-## 💡Examples
+## ⚡️`ato` code examples
 
 ### Votlage divider
 ```ato
