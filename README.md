@@ -31,7 +31,7 @@ What's your story in electronics? What would you like us to build? Come talk on 
 
 ![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)
 
-## 💡Examples
+## ⚡️`ato` code examples
 
 ### Votlage divider
 ```ato
