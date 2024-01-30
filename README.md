@@ -18,6 +18,12 @@
 
 Build elecronic circuit boards from code.
 
+<h1 align="center">
+    <br>
+        <img src="docs/assets/images/code-layout-pcb.png" alt="Logo atopile" title="Logo atopile" />
+    <br>
+</h1>
+
 ## 💡Examples
 
 ### Votlage divider
