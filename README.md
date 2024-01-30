@@ -1,48 +1,94 @@
-# atopile
+<h1 align="center">
+    <br>
+        <img src="docs/assets/logo-with-text.png" alt="Logo atopile" title="Logo atopile" />
+    <br>
+</h1>
 
-Compiler for hardware - starting with PCBs
+<div align="center">
+    <a href="#">
+        <img src="https://img.shields.io/pypi/v/atopile.svg" alt="Version" style="vertical-align:top; margin:6px 4px">
+    </a>
+    <a href="#">
+        <img src="https://img.shields.io/github/license/atopile/atopile.svg" alt="License" style="vertical-align:top; margin:6px 4px">
+    </a>
+    <a href="#">
+        <img src="https://github.com/atopile/atopile/actions/workflows/ci.yml/badge.svg" alt="Build status" style="vertical-align:top; margin:6px 4px">
+    </a>
+</div>
+<h1 align="center">
+    <br>
+        <img src="docs/assets/images/code-layout-pcb.png" alt="Logo atopile" title="Logo atopile" />
+    <br>
+</h1>
 
+## 📖 What is `atopile`?
+`atopile` is a tool to build electronic circuit boards with code.
 
-## Usage
+## 🗣️ Join us on Discord
+What's your story in electronics? What would you like us to build? Come talk on discord.
 
-There's not a lot here, because it's over at http://docs.atopile.io/
+![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)
 
+## 💡Examples
 
-## Development
+### Votlage divider
+```ato
+import Resistor from "generics/resistors.ato"
 
-### Prerequisites / Installation
+module VoltageDivider:
+    signal top
+    signal out
+    signal bottom
 
-You'll need >= `python3.11` and `pip` (Use `brew`).
+    r_top = new Resistor
+    r_top.footprint = "R0402"
+    r_top.value = 100kohm +/- 10%
 
-I'd strongly recommend developing within a `venv`
+    r_bottom = new Resistor
+    r_bottom.footprint = "R0402"
+    r_top.value = 200kohm +/- 10%
 
-Since we'll be using this `venv` for both work within this tool directory and whatever projects you're using it on, I'd recommend creating something along the lines of an `atopile-workspace` or `ato-ws` directory somewhere, and then creating a `venv` in there. This means if you do something like a `git clean -xdf` to remove crud, you won't blow away your `venv` with it.
-
-If you decide to follow this, you'll end up with something like this:
-
+    top ~ r_top.p1; r_top.p2 ~ out
+    out ~ r_bottom.p1; r_bottom.p2 ~ bottom
 ```
-atopile-workspace
-├── .venv --> your virtual environment
-├── atopile --> this repo
-├── atopile.code-workspace --> vscode workspace file
-└── bike-light --> project using atopile
+
+### RP2040 Blinky Circuit
+```ato
+import RP2040Kit from "rp2040/rp2040_kit.ato"
+import LEDIndicator from "generics/leds.ato"
+import LDOReg3V3 from "regulators/regulators.ato"
+import USBCConn from "usb-connectors/usb-connectors.ato"
+
+module Blinky:
+    micro_controller = new RP2040Kit
+    led_indicator = new LEDIndicator
+    voltage_regulator = new LDOReg3V3
+    usb_c_connector = new USBCConn
+
+    usb_c_connector.power ~ voltage_regulator.power_in
+    voltage_regulator.power_out ~ micro_controller.power
+    micro_controller.gpio13 ~ led_indicator.input
+    micro_controller.power.gnd ~ led_indicator.gnd
+
+    led_indicator.resistor.value = 100ohm +/- 10%
 ```
 
-Clone this repo.
+## 🔨 Getting started
 
-Wherever you stick the `venv`, you can create the venv with  `python3.11 -m venv .venv` and then `source .venv/bin/activate`
+Find our [documentation](https://atopile.io/getting-started/) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
 
-For cli development (so practically all the time) : `pip install -e ."[dev,test,docs]"`
+`atopile` is on pypi.org: https://pypi.org/project/atopile/
 
-You'll need `npm` for front-end development (`brew install node`).
+## ❓ Why atopile?
 
-For any front-end development, you'll also need to install the front-end dependencies: `npm install`
+Describing hardware with code might seem odd at first glance. But once you realize it introduces software development paradigms and toolchains to hardware design, you'll be hooked, just like we've become.
 
+Code can **capture the intelligence** you put into your work. Imagine configuring not the resistance values of a voltage divider, but its ratio and total resistance, all using **physcial units** and **tolerances**. You can do this because someone before you described precisely what this module is and described the relationships between the values of the components and the function you care about. Now instead imagine what you can gain from **reusing** a buck design you can merely **configure** the target voltage and ripple of. Now imagine **installing** a [servo drive](https://github.com/atopile/spin-servo-drive) the same way you might numpy.
 
-## Syntax highlighting is pretty nice...
+Version controlling your designs using **git** means you can deeply **validate** and **review** changes a feature at a time, **isolated** from impacting others' work. It means you can detangle your organisation and **collaborate** on an unprecedented scale. We can forgo half-baked "releases" in favor of stamping a simple git-hash on our prototypes, providing an anchor off which to **associate test data** and expectations.
 
-You can download the extension from CI here:
+Implementing CI to **test** our work ensures both **high-quality** and **compliance**, all summarised in a green check mark, emboldening teams to target excellence.
 
-![download-artifacts](docs/images/download-artifacts.png)
+## 🔍 Discover what people build
 
-Then, from your PC `code --install-extension path/to/atopile-*.vsix`
+Browse and submit your modules at [packages.atopile.io](https://packages.atopile.io)
