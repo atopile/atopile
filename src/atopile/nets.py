@@ -61,38 +61,32 @@ class _Net:
             f"{'-' + str(self.suffix) if self.suffix else ''}"
         )
 
-    def generate_base_net_name(self) -> Optional[str]:
-        """TODO:"""
-
-        name_candidates = defaultdict(int)
+    def generate_base_net_name(self) -> None:
+        """Generate the base_name attribute."""
         min_depth = 100
         for signal in filter(match_signals, self.nodes_on_net):
             min_depth = min(min_depth, len(list(iter_parents(signal))))
+
+        name_candidates = defaultdict(int)
         for signal in filter(match_signals, self.nodes_on_net):
             # lower case so we are not case sensitive
             name = get_name(signal).lower()
-            if 'vcc' == name:
-                print(signal)
-                print(get_parent(signal))
-                print(match_interfaces(get_parent(signal)))
             # only rank signals at highest level
             if min_depth == len(list(iter_parents(signal))):
-                if name in ['p1','p2']:
+                if name in ['p1', 'p2']:
                     # Ignore 2 pin component signals
                     name_candidates[name] = 0
                 else:
                     name_candidates[name] += 1
+
             elif match_interfaces(get_parent(signal)):
                 if min_depth + 1 == len(list(iter_parents(signal))):
                     # Give interfaces on the same level a chance!
                     name_candidates[name] += 1
 
-
         if name_candidates:
             highest_rated_name = max(name_candidates, key=name_candidates.get)
             self.base_name = highest_rated_name
-            if "p1" in name_candidates.keys():
-                print(name_candidates)
 
 
 def _find_net_names(nets: Iterable[Iterable[str]]) -> dict[str, list[str]]:
