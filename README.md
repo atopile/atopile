@@ -29,7 +29,7 @@
 ## 🗣️ Join us on Discord
 What's your story in electronics? What would you like us to build? Come talk on discord.
 
-![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)
+[![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)](https://discord.gg/nr5V3QRUd3)
 
 ## ⚡️`ato` code examples
 
