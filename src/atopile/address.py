@@ -25,7 +25,9 @@ def get_file(address: AddrStr) -> str:
     This is because an "empty" file path is a valid address,
     to the current working directory, which is confusing.
     """
-    return address.split(":")[0]
+    #This is to ensure everything before the last colon
+    #Since Windows uses : in paths
+    return ":".join(address.split(":")[:-1])
 
 
 def get_relative_addr_str(address: AddrStr) -> AddrStr:
