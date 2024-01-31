@@ -46,9 +46,6 @@ def get_file(address: AddrStr) -> str:
     This is because an "empty" file path is a valid address,
     to the current working directory, which is confusing.
     """
-    if len(address) >= 2 and address[1] == ":" and address[0].isalpha():
-        return ":".join(address.split(":")[:2])
-
     return address.split(":")[0]
 
 
