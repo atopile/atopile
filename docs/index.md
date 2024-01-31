@@ -1,6 +1,6 @@
 ---
 template: home.html
-title: code to electronics
+title: Code to Electronics
 social:
   cards_layout_options:
     title: Documentation that simply works
