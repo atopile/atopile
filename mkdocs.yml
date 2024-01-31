@@ -93,8 +93,8 @@ theme:
     repo: fontawesome/brands/git-alt
   name: material
   custom_dir: docs/overrides
-  logo: assets/ato_logo_256x256.png
-  favicon: images/ato_logo_32x32.png
+  logo: assets/logo/ato_logo_256x256.png
+  favicon: assets/logo/ato_logo_32x32.png
   palette:
     - media: "(prefers-color-scheme)"
       toggle:

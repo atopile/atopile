@@ -73,7 +73,7 @@ We recomend using [VSCode](https://code.visualstudio.com) to run atopile as it w
 
 From VSCode, navigate to the VSCode extensions and install atopile.
 
-![](images/ato_extension.png)
+![](assets/images/ato_extension.png)
 
 ## Making a simple circuit
 
