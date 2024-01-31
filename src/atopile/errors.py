@@ -150,7 +150,7 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
         message += f"{source_info}\n"
 
     # Replace the address in the string, if we have it attached
-    fmt_message = textwrap.indent(ex.message, "--> ")
+    fmt_message = textwrap.indent(str(ex.message), "--> ")
     if ex.addr:
         if debug:
             addr = ex.addr
