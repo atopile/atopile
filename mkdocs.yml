@@ -7,7 +7,7 @@ site_description: >-
 
 nav:
 - Home: index.md
-- Getting started:
+- Docs:
   - getting-started.md
   - first_project.md
   - config.md
@@ -21,6 +21,7 @@ nav:
   - kicad.md
   - git.md
   - ci.md
+  - development.md
 - Packages:
   - packages.md
 - Blog:
