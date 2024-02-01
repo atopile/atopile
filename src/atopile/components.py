@@ -142,11 +142,13 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
 
     # if there is a footprint, strip the leading letter and add the rest as 'package', remove the footprint
     if "footprint" in specd_data_dict:
-        # check if it is a resistor or capacitor
+        # if there is a package, use the package and remove the footprint
         type = _get_specd_type(component_addr)
-        if type == "resistor" or type == "capacitor":
-            specd_data_dict["package"] = specd_data_dict["footprint"]
-        else:
+        if "package" in specd_data_dict:
+            del specd_data_dict["footprint"]
+        # check if it is a resistor or capacitor
+        elif type == "resistor" or type == "capacitor":
+            specd_data_dict["package"] = specd_data_dict["footprint"][1:]
             del specd_data_dict["footprint"]
 
     cached_component = get_component_from_cache(component_addr, specd_data_dict)
@@ -162,7 +164,7 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
         if ex.response.status_code == 404:
             friendly_dict = " && ".join(f"{k} == {v}" for k, v in specd_data_dict.items())
             raise NoMatchingComponent(
-                f"No valid component found for spec{friendly_dict}:",
+                f"No valid component found for spec {friendly_dict}:",
                 addr=component_addr
             ) from ex
 
