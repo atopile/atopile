@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import requests
 
@@ -31,8 +31,6 @@ def _get_specd_type(addr: AddrStr) -> str:
     """
     Return the type for a component given its address
     """
-    comp_data = instance_methods.get_data_dict(addr)
-
     try:
         mpn = _get_specd_mpn(addr)
         # split off "generic_" from the mpn
