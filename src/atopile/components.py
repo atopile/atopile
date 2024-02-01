@@ -1,56 +1,18 @@
+import json
 import logging
+import time
+from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
+from typing import Any, Optional
 
-import pandas as pd
-import pint
+import requests
 
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import Physical
 
 log = logging.getLogger(__name__)
-
-
-@cache
-def _get_pandas_data() -> pd.DataFrame:
-    current_file = Path(__file__)
-    current_dir = current_file.parent
-    data_file = current_dir / "jlc_parts.csv"
-    return pd.read_csv(data_file)
-
-
-# TODO: currently a hack until we develop the required infrastructure
-_generics_to_db_fp_map = {
-    "R01005": "01005",
-    "R0201": "0201",
-    "R0402": "0402",
-    "R0603": "0603",
-    "R0805": "0805",
-    "C01005": "01005",
-    "C0201": "0201",
-    "C0402": "0402",
-    "C0603": "0603",
-    "C0805": "0805",
-    "C1206": "1206",
-}
-
-
-_GENERIC_RESISTOR = "generic_resistor"
-_GENERIC_CAPACITOR = "generic_capacitor"
-_GENERICS_MPNS = [_GENERIC_RESISTOR, _GENERIC_CAPACITOR]
-
-
-_generic_to_type_map = {
-    _GENERIC_RESISTOR: "Resistor",
-    _GENERIC_CAPACITOR: "Capacitor",
-}
-
-
-_generic_to_unit_map = {
-    _GENERIC_RESISTOR: pint.Unit("ohm"),
-    _GENERIC_CAPACITOR: pint.Unit("farad"),
-}
 
 
 def _get_specd_mpn(addr: AddrStr) -> str:
@@ -65,12 +27,24 @@ def _get_specd_mpn(addr: AddrStr) -> str:
         raise MissingData("$addr has no MPN", title="No MPN", addr=addr) from ex
 
 
+def _get_specd_type(addr: AddrStr) -> str:
+    """
+    Return the type for a component given its address
+    """
+    try:
+        mpn = _get_specd_mpn(addr)
+        # split off "generic_" from the mpn
+        return mpn.split("_", 1)[1]
+    except KeyError as ex:
+        raise MissingData("$addr has no type", title="No Type", addr=addr) from ex
+
+
 def _is_generic(addr: AddrStr) -> bool:
     """
     Return whether a component is generic
     """
-    specd_mpn = _get_specd_mpn(addr)
-    return specd_mpn in _GENERICS_MPNS
+    # check if "generic_" is in the mpn
+    return _get_specd_mpn(addr).startswith("generic_")
 
 
 class NoMatchingComponent(errors.AtoError):
@@ -81,71 +55,155 @@ class NoMatchingComponent(errors.AtoError):
     title = "No component matches parameters"
 
 
+component_cache: dict[str, Any]
+cache_file_path: Path
+
+def configure_cache(top_level_path: Path):
+    """Configure the cache to be used by the component module."""
+    global component_cache
+    global cache_file_path
+    cache_file_path = top_level_path / ".ato/component_cache.json"
+    if cache_file_path.exists():
+        with open(cache_file_path, "r") as cache_file:
+                component_cache = json.load(cache_file)
+        # Clean out stale entries
+        clean_cache()
+    else:
+        component_cache = {}
+
+def save_cache():
+    """Saves the current state of the cache to a file."""
+    with open(cache_file_path, "w") as cache_file:
+        # Convert the ChainMap to a regular dictionary
+        serializable_cache = dict(component_cache)
+        json.dump(serializable_cache, cache_file)
+
+
+def get_component_from_cache(component_addr: AddrStr, current_data: dict) -> Optional[dict]:
+    """Retrieve a component from the cache, if available, not stale, and unchanged."""
+    if component_addr not in component_cache:
+        return None
+
+    # Check the cache age
+    cached_entry = component_cache[component_addr]
+    cached_timestamp = datetime.fromtimestamp(cached_entry["timestamp"])
+    cache_age = datetime.now() - cached_timestamp
+    if cache_age > timedelta(days=14):
+        return None
+
+    # Check the component attrs
+    if current_data != cached_entry["address_data"]:
+        return None
+
+    log.debug("Using cached component for %s", component_addr)
+    return cached_entry["data"]
+
+
+def update_cache(component_addr, component_data, address_data):
+    """Update the cache with new component data and save it."""
+    component_cache[component_addr] = {
+        "data": component_data,
+        "timestamp": time.time(),  # Current time as a timestamp
+        "address_data": dict(address_data),  # Source attributes used to detect changes
+    }
+    save_cache()
+
+
+def clean_cache():
+    """Clean out entries older than 1 day."""
+    addrs_to_delete = set()
+    for addr, entry in component_cache.items():
+        cached_timestamp = datetime.fromtimestamp(entry["timestamp"])
+        if datetime.now() - cached_timestamp >= timedelta(days=1):
+            addrs_to_delete.add(addr)
+
+    for addr in addrs_to_delete:
+        del component_cache[addr]
+
+    save_cache()
+
+
 @cache
-def _get_generic_from_db(component_addr: str) -> dict:
+def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     """
     Return the MPN for a component given its address
     """
-    specd_mpn = _get_specd_mpn(component_addr)
+    log.debug("Fetching component for %s", component_addr)
+
     specd_data = instance_methods.get_data_dict(component_addr)
 
-    df = _get_pandas_data()
-    filters = []
+    specd_data_dict = {
+        k: v.to_dict() if isinstance(v, Physical) else v for k, v in specd_data.items()
+    }
 
-    specd_type = _generic_to_type_map[specd_mpn]
-    filters.append(f"type == '{specd_type}'")
+    # check if there are any Physical objects in the specd_data, if not, throw a warning
+    if specd_data:  # Check that specd_data is not empty
+        if not any(isinstance(v, Physical) for v in specd_data.values()):
+            log.warning(
+                "Component %s is under-constrained, does not have any Physical types (e.g., value = 10kohm +/- 10%%).",
+                component_addr)
+    else:
+        log.warning("No specification data provided for %s.", component_addr)
 
-    # Apply filters we know how to process
+    # if there is no type, use the get_specd_type function to get it
+    if "type" not in specd_data_dict:
+        specd_data_dict["type"] = _get_specd_type(component_addr)
+
+    # if there is a footprint, strip the leading letter and add the rest as 'package', remove the footprint
+    if "footprint" in specd_data_dict:
+        # if there is a package, use the package and remove the footprint
+        type = _get_specd_type(component_addr)
+        if "package" in specd_data_dict:
+            del specd_data_dict["footprint"]
+        # check if it is a resistor or capacitor
+        elif type == "resistor" or type == "capacitor":
+            specd_data_dict["package"] = specd_data_dict["footprint"][1:]
+            del specd_data_dict["footprint"]
+
+
+    cached_component = get_component_from_cache(component_addr, specd_data_dict)
+    if cached_component:
+        log.debug("Using cache for %s", component_addr)
+        return cached_component
+
+    url = "https://get-component-atsuhzfd5a-uc.a.run.app"
     try:
-        value_range = specd_data["value"]
-    except KeyError as ex:
-        raise KeyError("Generics are missing data - internal error") from ex
+        response = requests.post(url, json=specd_data_dict, timeout=5)
+        response.raise_for_status()
+    except requests.HTTPError as ex:
+        if ex.response.status_code == 404:
+            friendly_dict = " && ".join(f"{k} == {v}" for k, v in specd_data_dict.items())
+            raise NoMatchingComponent(
+                f"No valid component found for spec {friendly_dict}:",
+                addr=component_addr
+            ) from ex
 
-    if not isinstance(value_range, Physical):
-        raise errors.AtoTypeError(f"Value must be a Physical, not {type(value_range)} for $addr", addr=component_addr)
-
-    # Ensure the component's value is completely contained within the specd value
-    try:
-        generic_unit = _generic_to_unit_map[specd_mpn]
-        min_float_val = (value_range.min_val * value_range.unit).to(generic_unit).magnitude
-        max_float_val = (value_range.max_val * value_range.unit).to(generic_unit).magnitude
-    except pint.DimensionalityError as ex:
-        raise errors.AtoTypeError(
-            f"{value_range.unit} cannot be converted to {generic_unit} for $addr", addr = component_addr,
-            title="Invalid unit",
+        raise errors.AtoInfraError(
+            f"""
+            Failed to fetch component data from database.
+            Error: {str(ex)}
+            Response status code: {ex.response.status_code}
+            Response text: {ex.response.text}
+            """,
+            addr=component_addr
         ) from ex
 
-    filters.append(f"min_value >= {min_float_val}")
-    filters.append(f"max_value <= {max_float_val}")
+    response_data = response.json() or {}
 
-    # Ensure the component's footprint is correct
-    try:
-        database_footprint = _generics_to_db_fp_map[specd_data['footprint']]
-    except KeyError as ex:
-        raise errors.AtoKeyError(f"Can't find generic part that matches'{specd_data['footprint']}' for $addr. Change the part's mpn or footprint.", addr=component_addr) from ex
+    best_component = response_data.get("bestComponent")
+    # FIXME: Not returning something isn't a great mechanism to express
+    # that we didn't find a component. It's not easy to distinguish between
+    # a component not existing and other failure modes.
+    if not best_component:
+        raise NoMatchingComponent("No valid component found", addr=component_addr)
 
-    filters.append(f"Package == '{database_footprint}'")
+    lcsc = best_component["lcsc_id"]
+    log.debug("Fetched component %s for %s", lcsc, component_addr)
 
-    # Combine filters using reduce
-    combined_filter = " & ".join(filters)
-    filtered_df = df.query(combined_filter)
-    if filtered_df.empty:
-        msg = "No component matching spec for $addr \n"
-        msg += "\n & ".join(filters)
-        raise NoMatchingComponent(msg, addr=component_addr)
+    # Now that we have a working component, update the cache with it for later
+    update_cache(component_addr, best_component, specd_data_dict)
 
-    # FIXME: Currently our cost function is dumb - it only knows dollars
-    # In the future this cost function should incorporate other things the user is
-    # likely to care about
-    idx_min = filtered_df["Price (USD)"].idxmin(skipna=True)
-
-    # In this case we seem to hit NaN, which implies we don't have
-    # cost info - which is really a bug in the db, but for the users' sake
-    # we'll just return the first component
-    if pd.isna(idx_min):
-        return filtered_df.iloc[0].to_dict()
-
-    return filtered_df.loc[idx_min].to_dict()
+    return best_component
 
 
 class MissingData(errors.AtoError):
@@ -162,8 +220,8 @@ def get_mpn(addr: AddrStr) -> str:
     Return the MPN for a component
     """
     specd_mpn = _get_specd_mpn(addr)
-    if specd_mpn in _GENERICS_MPNS:
-        return _get_generic_from_db(addr)["LCSC Part #"]
+    if _is_generic(addr):
+        return _get_generic_from_db(addr)["lcsc_id"]
 
     return specd_mpn
 
@@ -198,12 +256,50 @@ def get_user_facing_value(addr: AddrStr) -> str:
     """
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
-        return f"{db_data['value']} {db_data['unit']}"
+        if db_data:
+            return db_data.get("description", "")
+        else:
+            return "?"
 
     comp_data = instance_methods.get_data_dict(addr)
     # The default is okay here, because we're only generics
     # must have a value
     return str(comp_data.get("value", ""))
+
+
+# FIXME: this function's requirements might cause a circular dependency
+def download_footprint(addr: AddrStr, footprint_dir: Path):
+    """
+    Take the footprint from the database and make a .kicad_mod file for it
+    TODO: clean this mess up
+    """
+    if not _is_generic(addr):
+        return
+    db_data = _get_generic_from_db(addr)
+
+    # convert the footprint to a .kicad_mod file
+    try:
+        footprint = db_data.get("footprint_data", {})["kicad"]
+    except KeyError as ex:
+        raise MissingData(
+            "db component for $addr has no footprint", title="No Footprint", addr=addr
+        ) from ex
+
+    if footprint == "standard_library":
+        log.debug("Footprint is standard library, skipping")
+        return
+
+    try:
+        file_name = db_data.get("footprint", {}).get("kicad")
+        file_path = Path(footprint_dir) / str(file_name)
+
+        # Create the directory if it doesn't exist
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(file_path, "w") as footprint_file:
+            footprint_file.write(footprint)
+    except Exception as ex:
+        raise errors.AtoInfraError("Failed to write footprint file", addr=addr) from ex
 
 
 # Footprints come from the users' code, so we reference that directly
@@ -212,6 +308,18 @@ def get_footprint(addr: AddrStr) -> str:
     """
     Return the footprint for a component
     """
+    if _is_generic(addr):
+        db_data = _get_generic_from_db(addr)
+
+        try:
+            footprint = db_data.get("footprint", {})["kicad"]
+        except KeyError as ex:
+            raise errors.AtoInfraError(
+                "db component for $addr has no footprint",
+                addr=addr
+            ) from ex
+        return footprint
+
     comp_data = instance_methods.get_data_dict(addr)
     try:
         return comp_data["footprint"]
@@ -219,6 +327,22 @@ def get_footprint(addr: AddrStr) -> str:
         raise MissingData(
             "$addr has no footprint", title="No Footprint", addr=addr
         ) from ex
+
+
+@cache
+def get_package(addr: AddrStr) -> str:
+    """
+    Return the package for a component
+    """
+    if _is_generic(addr):
+        db_data = _get_generic_from_db(addr)
+        return db_data.get("package", "")
+
+    comp_data = instance_methods.get_data_dict(addr)
+    try:
+        return comp_data["footprint"]
+    except KeyError as ex:
+        raise MissingData("$addr has no package", title="No Package", addr=addr) from ex
 
 
 class DesignatorManager:

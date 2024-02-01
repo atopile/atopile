@@ -118,7 +118,7 @@ def _badge(icon: str, text: str = "", type: str = ""):
         f"<span class=\"{classes}\">",
         *([f"<span class=\"mdx-badge__icon\">{icon}</span>"] if icon else []),
         *([f"<span class=\"mdx-badge__text\">{text}</span>"] if text else []),
-        f"</span>",
+        "</span>",
     ])
 
 # Create sponsors badge

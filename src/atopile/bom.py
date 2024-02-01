@@ -26,9 +26,28 @@ _get_mpn = errors.downgrade(
     components.get_mpn, (components.MissingData, components.NoMatchingComponent)
 )
 
-_get_footprint = errors.downgrade(
-    components.get_footprint, components.MissingData, default="?"
-)
+
+def _get_footprint(addr: address.AddrStr) -> str:
+    """
+    Footprint is a misnomer - it's really a hint to the user
+
+    Firstly, it tried to use the footprint
+    Then it attempts to use the package
+    Finally, it'll fallback to a question mark "?"
+    """
+    if value := errors.downgrade(
+        components.get_package,
+        components.MissingData
+    )(addr):
+        return value
+
+    if value := errors.downgrade(
+        components.get_footprint,
+        components.MissingData
+    )(addr):
+        return value
+
+    return "?"
 
 
 def _get_value(addr: address.AddrStr) -> str:
