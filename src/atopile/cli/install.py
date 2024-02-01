@@ -37,6 +37,7 @@ def install_core(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Pa
     Install a dependency of for the project.
     """
     top_level_path = None
+    repo = None
     if not path:
         top_level_path = Path(repo.working_tree_dir)
         repo = Repo(".", search_parent_directories=True)
