@@ -6,6 +6,7 @@ Addresses go by other names in various files for historical reasons - but should
 This file provides utilities for working with addresses.
 """
 from typing import Optional, Iterable
+from functools import wraps
 
 
 class AddrStr(str):
@@ -14,6 +15,26 @@ class AddrStr(str):
     """
 
 
+def _handle_windows(func):
+    """
+    A decorator to handle windows paths
+
+    FIXME: this is a hack to make this work under Windows
+    until we come up with something better
+    """
+
+    @wraps(func)
+    def wrapper(address: AddrStr, *args, **kwargs):
+        if len(address) >= 2 and address[1] == ":" and address[0].isalpha():
+            drive_letter = address[0]
+            remainder = address[2:]
+            return ":".join([drive_letter, func(remainder, *args, **kwargs)])
+        return func(address, *args, **kwargs)
+
+    return wrapper
+
+
+@_handle_windows
 def get_file(address: AddrStr) -> str:
     """
     Extract the file path from an address.
@@ -42,6 +63,7 @@ def get_entry(address: AddrStr) -> AddrStr:
     return address.split("::")[0]
 
 
+@_handle_windows
 def get_entry_section(address: AddrStr) -> Optional[str]:
     """
     Extract the root path from an address.
@@ -52,6 +74,7 @@ def get_entry_section(address: AddrStr) -> Optional[str]:
         return None
 
 
+@_handle_windows
 def get_instance_section(address: AddrStr) -> Optional[str]:
     """
     Extract the node path from an address.
