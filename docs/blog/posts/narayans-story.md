@@ -2,9 +2,9 @@
 date: 2024-01-31
 authors: [narayan]
 description: >
-  How we got here
+  How I got here
 categories:
-  - Release
+  - About us
 links:
 ---
 
