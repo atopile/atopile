@@ -8,7 +8,7 @@ categories:
 links:
 ---
 
-# Our Journey: From Weekend Projects to Redefining Hardware Design
+# From Weekend Projects to Reinventing Hardware Design
 
 ## Early Days: Can we build a predator drone?
 
