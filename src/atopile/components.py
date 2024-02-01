@@ -122,7 +122,6 @@ def clean_cache():
 
     save_cache()
 
-
 @cache
 def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     """
@@ -198,7 +197,7 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
         raise NoMatchingComponent("No valid component found", addr=component_addr)
 
     lcsc = best_component["lcsc_id"]
-    log.debug("Fetched component %s for %s", lcsc, component_addr)
+    log.info("Fetched component %s for %s", lcsc, component_addr)
 
     # Now that we have a working component, update the cache with it for later
     update_cache(component_addr, best_component, specd_data_dict)
