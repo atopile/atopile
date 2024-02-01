@@ -27,6 +27,20 @@ def _get_specd_mpn(addr: AddrStr) -> str:
         raise MissingData("$addr has no MPN", title="No MPN", addr=addr) from ex
 
 
+def _get_specd_type(addr: AddrStr) -> str:
+    """
+    Return the type for a component given its address
+    """
+    comp_data = instance_methods.get_data_dict(addr)
+
+    try:
+        mpn = _get_specd_mpn(addr)
+        # split off "generic_" from the mpn
+        return mpn.split("_", 1)[1]
+    except KeyError as ex:
+        raise MissingData("$addr has no type", title="No Type", addr=addr) from ex
+
+
 def _is_generic(addr: AddrStr) -> bool:
     """
     Return whether a component is generic
@@ -111,7 +125,7 @@ def clean_cache():
     save_cache()
 
 
-def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
+def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     """
     Return the MPN for a component given its address, using an API endpoint.
     """
@@ -121,6 +135,19 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
     specd_data_dict = {
         k: v.to_dict() if isinstance(v, Physical) else v for k, v in specd_data.items()
     }
+
+    # if there is no type, use the get_specd_type function to get it
+    if "type" not in specd_data_dict:
+        specd_data_dict["type"] = _get_specd_type(component_addr)
+
+    # if there is a footprint, strip the leading letter and add the rest as 'package', remove the footprint
+    if "footprint" in specd_data_dict:
+        # check if it is a resistor or capacitor
+        type = _get_specd_type(component_addr)
+        if type == "resistor" or type == "capacitor":
+            specd_data_dict["package"] = specd_data_dict["footprint"]
+        else:
+            del specd_data_dict["footprint"]
 
     cached_component = get_component_from_cache(component_addr, specd_data_dict)
     if cached_component:
@@ -133,8 +160,9 @@ def _get_generic_from_db(component_addr: str) -> Dict[str, Any]:
         response.raise_for_status()
     except requests.HTTPError as ex:
         if ex.response.status_code == 404:
+            friendly_dict = " && ".join(f"{k} == {v}" for k, v in specd_data_dict.items())
             raise NoMatchingComponent(
-                "No valid component found",
+                f"No valid component found for spec{friendly_dict}:",
                 addr=component_addr
             ) from ex
 
@@ -216,7 +244,6 @@ def get_user_facing_value(addr: AddrStr) -> str:
     if _is_generic(addr):
         db_data = _get_generic_from_db(addr)
         if db_data:
-            # return db_data.get("type", "")
             return db_data.get("description", "")
         else:
             return "?"
@@ -300,7 +327,7 @@ def get_package(addr: AddrStr) -> str:
 
     comp_data = instance_methods.get_data_dict(addr)
     try:
-        return comp_data["package"]
+        return comp_data["footprint"]
     except KeyError as ex:
         raise MissingData("$addr has no package", title="No Package", addr=addr) from ex
 
