@@ -5,7 +5,6 @@ from pathlib import Path
 import pandas as pd
 import pint
 
-import atopile.errors as errors
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import Physical
