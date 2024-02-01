@@ -1,18 +1,57 @@
-import json
 import logging
-import time
-from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
 from typing import Any, Optional
 
-import requests
+import pandas as pd
+import pint
 
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import Physical
 
 log = logging.getLogger(__name__)
+
+
+@cache
+def _get_pandas_data() -> pd.DataFrame:
+    current_file = Path(__file__)
+    current_dir = current_file.parent
+    data_file = current_dir / "jlc_parts.csv"
+    return pd.read_csv(data_file)
+
+
+# TODO: currently a hack until we develop the required infrastructure
+_generics_to_db_fp_map = {
+    "R01005": "01005",
+    "R0201": "0201",
+    "R0402": "0402",
+    "R0603": "0603",
+    "R0805": "0805",
+    "C01005": "01005",
+    "C0201": "0201",
+    "C0402": "0402",
+    "C0603": "0603",
+    "C0805": "0805",
+    "C1206": "1206",
+}
+
+
+_GENERIC_RESISTOR = "generic_resistor"
+_GENERIC_CAPACITOR = "generic_capacitor"
+_GENERICS_MPNS = [_GENERIC_RESISTOR, _GENERIC_CAPACITOR]
+
+
+_generic_to_type_map = {
+    _GENERIC_RESISTOR: "Resistor",
+    _GENERIC_CAPACITOR: "Capacitor",
+}
+
+
+_generic_to_unit_map = {
+    _GENERIC_RESISTOR: pint.Unit("ohm"),
+    _GENERIC_CAPACITOR: pint.Unit("farad"),
+}
 
 
 def _get_specd_mpn(addr: AddrStr) -> str:
@@ -44,7 +83,7 @@ def _is_generic(addr: AddrStr) -> bool:
     Return whether a component is generic
     """
     specd_mpn = _get_specd_mpn(addr)
-    return specd_mpn.startswith("generic_")
+    return specd_mpn in _GENERICS_MPNS
 
 
 class NoMatchingComponent(errors.AtoError):
@@ -123,9 +162,10 @@ def clean_cache():
     save_cache()
 
 
+@cache
 def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     """
-    Return the MPN for a component given its address, using an API endpoint.
+    Return the MPN for a component given its address
     """
     log.debug("Fetching component for %s", component_addr)
 
@@ -207,12 +247,11 @@ def get_mpn(addr: AddrStr) -> str:
     """
     Return the MPN for a component
     """
-    log.debug(f"Getting MPN for {addr}")
-    if _is_generic(addr):
-        db_data = _get_generic_from_db(addr)
-        return db_data.get("lcsc_id", "")
-    else:
-        return _get_specd_mpn(addr)
+    specd_mpn = _get_specd_mpn(addr)
+    if specd_mpn in _GENERICS_MPNS:
+        return _get_generic_from_db(addr)["LCSC Part #"]
+
+    return specd_mpn
 
 
 def get_specd_value(addr: AddrStr) -> str:
@@ -228,7 +267,9 @@ def get_specd_value(addr: AddrStr) -> str:
         return str(comp_data["value"])
     except KeyError as ex:
         raise MissingData(
-            "$addr has no value spec'd", title="No value", addr=addr
+            "$addr has no value spec'd",
+            title="No value",
+            addr=addr
         ) from ex
 
 

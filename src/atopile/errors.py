@@ -158,12 +158,12 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
         message += f"{source_info}\n"
 
     # Replace the address in the string, if we have it attached
-    fmt_message = textwrap.indent(ex.message, "--> ")
+    fmt_message = textwrap.indent(str(ex.message), "--> ")
     if ex.addr:
         if debug:
             addr = ex.addr
         else:
-            addr = address.get_instance_section(ex.addr)
+            addr = address.get_relative_addr_str(ex.addr)
         # FIXME: we ignore the escaping of the address here
         fmt_addr = f"[bold cyan]{addr}[/]"
 

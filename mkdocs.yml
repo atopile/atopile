@@ -1,17 +1,90 @@
+site_name: atopile
+site_url: https://atopile.io
+site_description: >-
+  Describe your circuit with code. Configure your design for your application.
+  Reuse your past work. Share with your fellows using git. This is the promise of code to electronics.
+  That is what we are here for. Introducing atopile!
+
 nav:
 - Home: index.md
-- Getting started:
+- Usage:
   - getting-started.md
+  - first_project.md
+  - config.md
+  - building.md
+  - install.md
+  - import.md
+  - types.md
+  - class.md
+  - units.md
+  - doc-strings.md
+  - kicad.md
+  - git.md
+  - ci.md
+- Development:
+  - development.md
+  - roadmap.md
 - Packages:
-  - blank: readme_blank.md
+  - packages.md
 - Blog:
   - blog/index.md
 plugins:
 - drawio_file
 - blog
+- search
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
 site_name: atopile
+# Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: squidfunk
+      repo: mkdocs-material
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/mkdocs.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
 theme:
   features:
   - navigation.tabs
@@ -22,7 +95,25 @@ theme:
     repo: fontawesome/brands/git-alt
   name: material
   custom_dir: docs/overrides
-  logo: assets/ato_logo_256x256.png
-  favicon: images/ato_logo_32x32.png
+  logo: assets/logo/ato_logo_256x256.png
+  favicon: assets/logo/ato_logo_32x32.png
   palette:
-    primary: blue grey
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/link
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off
+        name: Switch to system preference
+

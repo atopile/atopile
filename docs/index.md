@@ -1,9 +1,9 @@
 ---
 template: home.html
-title: atopile
+title: Code to Electronics
 social:
   cards_layout_options:
-    title: compiler for electronics
+    title: Documentation that simply works
 ---
 
-Welcome to atopile
+Welcome to atopile - code to electronics

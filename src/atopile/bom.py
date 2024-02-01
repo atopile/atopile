@@ -26,6 +26,7 @@ _get_mpn = errors.downgrade(
     components.get_mpn, (components.MissingData, components.NoMatchingComponent)
 )
 
+
 def _get_footprint(addr: address.AddrStr) -> str:
     """
     Footprint is a misnomer - it's really a hint to the user
