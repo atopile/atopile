@@ -28,12 +28,24 @@ log.setLevel(logging.INFO)
 @click.option("--jlcpcb", is_flag=True, help="JLCPCB component ID")
 @click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
 @errors.muffle_fatalities
-def install(to_install: str, jlcpcb: bool, upgrade: bool):
+def install(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Path] = None):
+    install_core(to_install, jlcpcb, upgrade, path)
+
+
+def install_core(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Path] = None):
     """
     Install a dependency of for the project.
     """
-    repo = Repo(".", search_parent_directories=True)
-    top_level_path = Path(repo.working_tree_dir)
+    top_level_path = None
+    if not path:
+        top_level_path = Path(repo.working_tree_dir)
+        repo = Repo(".", search_parent_directories=True)
+
+    else:
+        top_level_path = Path(path)
+        repo = Repo(top_level_path, search_parent_directories=True)
+
+    log.info(f"Installing {to_install} in {top_level_path}")
 
     cfg = config.get_project_config_from_path(top_level_path)
     ctx = config.ProjectContext.from_config(cfg)
