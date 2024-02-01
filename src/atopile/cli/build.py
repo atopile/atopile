@@ -9,16 +9,14 @@ import click
 
 import atopile.bom
 import atopile.front_end
-import atopile.netlist
 import atopile.manufacturing_data
+import atopile.netlist
 from atopile.cli.common import project_options
+from atopile.components import configure_cache, download_footprint
 from atopile.config import BuildContext
-from atopile.errors import (
-    handle_ato_errors,
-    iter_through_errors,
-    muffle_fatalities,
-)
+from atopile.errors import handle_ato_errors, iter_through_errors, muffle_fatalities
 from atopile.front_end import set_search_paths
+from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
 
 log = logging.getLogger(__name__)
@@ -43,6 +41,9 @@ def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
     # Set the search paths for the front end
     set_search_paths([build_ctx.src_path, build_ctx.module_path])
+
+    # Configure the cache for component data	
+    configure_cache(build_ctx.project_path)
 
     # Ensure the build directory exists
     log.info("Writing outputs to %s", build_ctx.build_path)

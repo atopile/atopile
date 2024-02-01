@@ -1,57 +1,18 @@
+import json
 import logging
+import time
+from datetime import datetime, timedelta
 from functools import cache
 from pathlib import Path
 from typing import Any, Optional
 
-import pandas as pd
-import pint
+import requests
 
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import Physical
 
 log = logging.getLogger(__name__)
-
-
-@cache
-def _get_pandas_data() -> pd.DataFrame:
-    current_file = Path(__file__)
-    current_dir = current_file.parent
-    data_file = current_dir / "jlc_parts.csv"
-    return pd.read_csv(data_file)
-
-
-# TODO: currently a hack until we develop the required infrastructure
-_generics_to_db_fp_map = {
-    "R01005": "01005",
-    "R0201": "0201",
-    "R0402": "0402",
-    "R0603": "0603",
-    "R0805": "0805",
-    "C01005": "01005",
-    "C0201": "0201",
-    "C0402": "0402",
-    "C0603": "0603",
-    "C0805": "0805",
-    "C1206": "1206",
-}
-
-
-_GENERIC_RESISTOR = "generic_resistor"
-_GENERIC_CAPACITOR = "generic_capacitor"
-_GENERICS_MPNS = [_GENERIC_RESISTOR, _GENERIC_CAPACITOR]
-
-
-_generic_to_type_map = {
-    _GENERIC_RESISTOR: "Resistor",
-    _GENERIC_CAPACITOR: "Capacitor",
-}
-
-
-_generic_to_unit_map = {
-    _GENERIC_RESISTOR: pint.Unit("ohm"),
-    _GENERIC_CAPACITOR: pint.Unit("farad"),
-}
 
 
 def _get_specd_mpn(addr: AddrStr) -> str:
@@ -82,8 +43,8 @@ def _is_generic(addr: AddrStr) -> bool:
     """
     Return whether a component is generic
     """
-    specd_mpn = _get_specd_mpn(addr)
-    return specd_mpn in _GENERICS_MPNS
+    # check if "generic_" is in the mpn
+    return _get_specd_mpn(addr).startswith("generic_")
 
 
 class NoMatchingComponent(errors.AtoError):
@@ -170,9 +131,19 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     log.debug("Fetching component for %s", component_addr)
 
     specd_data = instance_methods.get_data_dict(component_addr)
+
     specd_data_dict = {
         k: v.to_dict() if isinstance(v, Physical) else v for k, v in specd_data.items()
     }
+
+    # check if there are any Physical objects in the specd_data, if not, throw a warning
+    if specd_data:  # Check that specd_data is not empty
+        if not any(isinstance(v, Physical) for v in specd_data.values()):
+            log.warning(
+                "Component %s is under-constrained, does not have any Physical types (e.g., value = 10kohm +/- 10%%).",
+                component_addr)
+    else:
+        log.warning("No specification data provided for %s.", component_addr)
 
     # if there is no type, use the get_specd_type function to get it
     if "type" not in specd_data_dict:
@@ -188,6 +159,7 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
         elif type == "resistor" or type == "capacitor":
             specd_data_dict["package"] = specd_data_dict["footprint"][1:]
             del specd_data_dict["footprint"]
+
 
     cached_component = get_component_from_cache(component_addr, specd_data_dict)
     if cached_component:
@@ -248,8 +220,8 @@ def get_mpn(addr: AddrStr) -> str:
     Return the MPN for a component
     """
     specd_mpn = _get_specd_mpn(addr)
-    if specd_mpn in _GENERICS_MPNS:
-        return _get_generic_from_db(addr)["LCSC Part #"]
+    if _is_generic(addr):
+        return _get_generic_from_db(addr)["lcsc_id"]
 
     return specd_mpn
 

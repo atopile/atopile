@@ -100,6 +100,18 @@ class Physical(Base):
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
 
+    def to_dict(self) -> dict:
+        """Convert the Physical instance to a dictionary."""
+        data = {
+            "unit": str(self.unit),
+            "min_val": self.min_val,
+            "max_val": self.max_val,
+            "nominal": self.nominal,
+            "tolerance": self.tolerance,
+            "tolerance_pct": self.tolerance_pct,
+        }
+        return data
+
 
 @define(repr=False)
 class ObjectLayer(Base):
