@@ -8,7 +8,7 @@ categories:
 links:
 ---
 
-# Cloud Components: A New Way to Design Hardware
+# Cloud Components
 
 I am pretty excited about this one. In our latest release 0.2.5, we are introducing 'Cloud Components' - a way to parametrically define and select components from a server.
 
@@ -48,6 +48,7 @@ At build time, we take the requirements and send them to our component server, w
 This was a bit of a pain. This is pretty simple for things like resistors and caps, but becomes a little more complex for devices like mosfets that might have three pins on some parts and eight on others. Our current solution, which admittedly is a bit of a hack, stores a muated footprint in the server for each part, downloads it and adds it to your library.
 
 For example, here is a multi-pin mosfet, you can see that the pin names have been mutated to their corresponding signals:
+
 <img src="../../assets/images/mosfet.png" alt="Example Image" width="200">
 
 ## Why this is a big deal
