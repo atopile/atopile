@@ -5,9 +5,11 @@ from pathlib import Path
 import pandas as pd
 import pint
 
+import atopile.errors as errors
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import Physical
+
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +101,8 @@ def _get_generic_from_db(component_addr: str) -> dict:
     try:
         value_range = specd_data["value"]
     except KeyError as ex:
-        raise KeyError("Generics are missing data - internal error") from ex
+        componet_addr_section = address.get_instance_section(component_addr)
+        raise errors.AtoKeyError(f"No value set for {componet_addr_section} eg. 10kohm +/- 10%") from ex
 
     if not isinstance(value_range, Physical):
         raise errors.AtoTypeError(f"Value must be a Physical, not {type(value_range)} for $addr", addr=component_addr)
