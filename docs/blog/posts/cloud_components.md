@@ -24,18 +24,14 @@ cap.value = 1uF +/- 10%
 cap.package = "0603"
 
 fet = new NFET
-fet.mpn = "generic_mosfet"
-fet.polarity = "N Channel"
 fet.current_a = 30A to 100A
 fet.drain_source_voltage_v = 30V to 100V
 
 inductor = new Inductor
-inductor.mpn = "generic_inductor"
 inductor.inductance = 1uH to 10uH
 inductor.current = 3A to 5A
 
 diode = new Diode
-diode.mpn = "generic_diode"
 diode.forward_voltage = 7V to 9V
 diode.impedance = 1ohm to 10ohm
 diode.power_dissipation = 5W to 60W
