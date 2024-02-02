@@ -15,7 +15,6 @@ from omegaconf.errors import ConfigKeyError
 import atopile.config
 from atopile import address, errors, version
 from atopile.address import AddrStr
-from atopile.config import get_project_config_from_path
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +114,10 @@ def project_options(f):
                     f"Unexpected entry path type {entry_arg_file_path} - this should never happen!"
                 )
 
+        # Configure project context
+        project_ctx = atopile.config.ProjectContext.from_config(config)
+        atopile.config.set_project_context(project_ctx)
+
         # Make build contexts
         builds_to_build = build or config.builds.keys()
         build_ctxs: list[atopile.config.BuildContext] = []
@@ -140,7 +143,7 @@ def check_compiler_versions(config: atopile.config.UserConfig):
     """
     with errors.handle_ato_errors():
         dependency_cfgs = (
-            errors.downgrade(get_project_config_from_path, FileNotFoundError)(p)
+            errors.downgrade(atopile.config.get_project_config_from_path, FileNotFoundError)(p)
             for p in Path(config.location).glob("*")
         )
 

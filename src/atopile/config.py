@@ -5,14 +5,14 @@
 import collections.abc
 import fnmatch
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 from attrs import Factory, define
 from omegaconf import MISSING, OmegaConf
 
-from atopile import address
 import atopile.errors
+from atopile import address
 
 CONFIG_FILENAME = "ato.yaml"
 ATO_DIR_NAME = ".ato"
@@ -239,3 +239,23 @@ class BuildContext:
             build_path=build_path,
             output_base=build_path / build_name,
         )
+
+
+_project_context: Optional[ProjectContext] = None
+
+
+def set_project_context(project_context: ProjectContext) -> None:
+    """
+    Set the project context for the current process.
+    """
+    global _project_context
+    _project_context = project_context
+
+
+def get_project_context() -> ProjectContext:
+    """
+    Get the project context for the current process.
+    """
+    if _project_context is None:
+        raise ValueError("Project context not set")
+    return _project_context

@@ -62,24 +62,6 @@ def _make_dumb_matcher(pass_list: Iterable[str]) -> Callable[[str], bool]:
     return _filter
 
 
-def _any_super_match(super: str) -> Callable[[str], bool]:
-    """
-    Return a filter that checks if the super is in the instance
-    """
-
-    # TODO: write me irl
-    def _filter(addr: AddrStr) -> bool:
-        instance = lofty._output_cache[addr]
-        for super_ in reversed(instance.supers):
-            if super_.super is not None:
-                print(super_.super)
-                if super in super_.super:
-                    return True
-        return False
-
-    return _filter
-
-
 match_components = _make_dumb_matcher(["<Built-in>:Component"])
 match_modules = _make_dumb_matcher(["<Built-in>:Module"])
 match_signals = _make_dumb_matcher(["<Built-in>:Signal"])
@@ -96,11 +78,27 @@ match_sentinels = _make_dumb_matcher(
 )
 
 
-def get_supers_list(addr: AddrStr) -> ObjectLayer:
+def find_matching_super(
+    addr: AddrStr, candidate_supers: list[AddrStr]
+) -> Optional[AddrStr]:
+    """
+    Return the first super of addr, is in the list of
+    candidate_supers, or None if none are.
+    """
+    supers = get_supers_list(addr)
+    for duper in supers:
+        if any(address.get_entry_section(duper.address) == pt for pt in candidate_supers):
+            return duper.address
+    return None
+
+
+def get_supers_list(addr: AddrStr) -> list[ObjectLayer]:
+    """Return the supers of an object as a list of ObjectLayers."""
     return lofty._output_cache[addr].supers
 
 
 def get_next_super(addr: AddrStr) -> ObjectLayer:
+    """Return the immediate super-class of the given address."""
     return get_supers_list(addr)[0]
 
 
