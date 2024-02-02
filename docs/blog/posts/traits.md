@@ -4,7 +4,7 @@ authors: [narayan]
 description: >
   Building the right lego blocks: Composable electronics
 categories:
-  - Release
+  - Future
 links:
 ---
 
@@ -105,5 +105,7 @@ buck.power_out.voltage = 5V +/- 5%
 That might all feel like alot of work, until you realize that the topologies and components are reusable and only need to be defined once. You can design a buck converter using just that last block of code and a few imports.
 
 If you are interested in checking out the full example, you can find it [here](https://github.com/napowderly/traits-playground)
+
+We have a few language features in the pipeline that will enable this type of workflow in the near future.
 
 Narayan
