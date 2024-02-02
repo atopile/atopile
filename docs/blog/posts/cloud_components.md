@@ -61,6 +61,7 @@ More immediately, as a designer making a quick turn board, I don't want to spend
 ## What is next?
 I believe that a fundamental transformation of how we capture circuit information is needed to enable the next generation of tools. In order to make our tools truly smart, we need to come up with ways to communicate design intent, not just one explicit implementation.
 Concretely, we are working on:
+
 - Adding more component types to the server
 - Adding support for project level requirements and constraints: AECQ100, Environmental conditions, etc
 - Component traits - how to generically describe complex components (blog post coming soon)
