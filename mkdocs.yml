@@ -90,7 +90,7 @@ theme:
   - navigation.tabs
   - navigation.sections
   - toc.follow
-  #- header.autohide
+  - navigation.footer
   icon:
     repo: fontawesome/brands/git-alt
   name: material
@@ -117,3 +117,10 @@ theme:
         icon: material/toggle-switch-off
         name: Switch to system preference
 
+extra:
+  social:
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/XQ34te6NZN
+    - icon: fontawesome/brands/github
+      link: https://github.com/atopile/atopile
+  generator: false
