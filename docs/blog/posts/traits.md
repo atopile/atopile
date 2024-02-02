@@ -21,7 +21,7 @@ We need a way to embed key information into the source files.
 Here is a simple example of a buck converter IC.
 <img src="../../assets/images/buck_ic.png" alt="Example Image" width="400">
 Lets try simplify this into a few functional blocks. Lets say the 'controller' is a block that takes in a voltage outputs a switching node, with a feedback pin. We can just use a NFET component for the fet. So in ato code we could define this as:
-```ato
+```python
 component LM2841:
     controller = new BuckController
     nfet = new NFET
@@ -29,7 +29,7 @@ component LM2841:
 
 ### Connecting and configuring the blocks
 To more completely describe the internals of the IC, we need to define how the blocks are connected and what their properties are. Below we are connecting the NFET to the controller, connecting the blocks to the outputs and configuring the voltage and current limits.
-```ato
+```python
 # connect blocks to pins
 controller.feedback ~ fb
 controller.power_in.vcc ~ vin
@@ -44,7 +44,7 @@ Following through with our buck converter example, lets build a description of h
 <img src="../../assets/images/buck_topology.png" alt="Example Image" width="400">
 
 To start, lets make a new 'topology' and instantiate the required blocks.
-```
+```python
 topology Buck:
     # Define external interfaces
     power_in = new Power
@@ -62,7 +62,7 @@ topology Buck:
 ```
 
 Next, lets connect the blocks together.
-```
+```python
     # Connect internal components
     controller.drive ~ nfet.gate
     # Method to chain dipole components (feedback welcome)
@@ -85,7 +85,7 @@ Next, lets connect the blocks together.
 ```
 
 Finally, we need a way to relate the two. Let now create a specific instance of the topology and define the parameters.
-```
+```python
 buck = new Buck
 ic = new LM2841
 
