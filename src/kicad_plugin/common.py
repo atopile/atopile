@@ -23,22 +23,26 @@ def get_prj_dir(path: Path) -> Path:
     raise FileNotFoundError("ato.yaml not found in any parent directory")
 
 
-def get_artifact_manifest(board_path: Path) -> dict:
-    """Return a dict of the artifact manifest."""
+def get_board_artifact_manifest(board_path: Path) -> dict:
+    """Return a dict of the artifact manifest related to this board."""
     manifest_path = get_prj_dir(board_path) / "build" / "manifest.json"
-    return json.loads(manifest_path.read_text()).get(board_path, {})
+    with manifest_path.open("r") as f:
+        manifest = json.load(f)
+    return manifest.get("by-layout", {}).get(str(board_path), {})
 
 
 def get_csv_path(board_path: Path) -> Path:
     """Return the path to the group_map.csv file."""
-    return Path(get_artifact_manifest(board_path)["layout_group_map"])
+    manifest = get_board_artifact_manifest(str(board_path))
+    layout_group_path = manifest["groups"]
+    return Path(layout_group_path)
 
 
 def parse_hierarchy(board_path: Path) -> dict[str, Any]:
     csv_file = get_csv_path(board_path)
 
     hierarchy_dict = {}
-    with open(csv_file, mode='r', newline='') as file:
+    with csv_file.open("r", encoding="utf-8") as file:
         reader = csv.reader(file)
         next(reader)  # Skip header row if present
 
@@ -59,7 +63,7 @@ def parse_hierarchy(board_path: Path) -> dict[str, Any]:
 
 def get_layout_path(prj_path: Path, heir: str) -> Path:
     """Return the path to the layout.csv file."""
-    return prj_path / ".ato" / "modules" / heir / "elec" / "layout" / "layout.csv"
+    return prj_path / ".ato" / "modules" / heir / "elec" / "layout.csv"
 
 
 def name2des(name: str, input_dict: dict):

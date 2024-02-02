@@ -38,6 +38,18 @@ def build(build_ctxs: list[BuildContext]):
         with err_cltr():
             _do_build(build_ctx)
 
+    # FIXME: this should be done elsewhere, but there's no other "overview"
+    # that can see all the builds simultaneously
+    manifest = {}
+    manifest["version"] = "1.0"
+    for ctx in build_ctxs:
+        by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
+        by_layout_manifest["groups"] = str(ctx.output_base.with_suffix(".group_map.csv"))
+
+    manifest_path = build_ctxs[0].project_path / "build" / "manifest.json"
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f)
+
 
 def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
