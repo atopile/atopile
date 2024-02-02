@@ -2,6 +2,7 @@ import csv
 import logging
 from io import StringIO
 from pathlib import Path
+from typing import Optional
 
 import pcbnew
 
@@ -34,19 +35,28 @@ class PushGroup(pcbnew.ActionPlugin):
             writer.writeheader()
 
             g_name = sg.GetName()
+            offset_x: Optional[int] = None
+            offset_y: Optional[int] = None
             for item in sg.GetItems():
                 if "Footprint" not in item.GetFriendlyName():
                     continue
 
-                item_ref = item.GetReference()
                 x, y = item.GetPosition()
-                theta = item.GetOrientationDegrees()
+                if offset_x is None:
+                    offset_x = x
+                    offset_y = y
+
+                item_ref = item.GetReference()
+                name = heir[g_name].get(item_ref)
+                if not name:
+                    continue
+
                 writer.writerow(
                     {
-                        "Name": heir[g_name].get(item_ref, ""),
-                        "x": x,
-                        "y": y,
-                        "theta": theta,
+                        "Name": name,
+                        "x": x - offset_x,
+                        "y": y - offset_y,
+                        "theta": item.GetOrientationDegrees(),
                     }
                 )
 

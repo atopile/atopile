@@ -1,6 +1,7 @@
 import csv
 import logging
 from pathlib import Path
+from typing import Optional
 
 import pcbnew
 
@@ -35,16 +36,19 @@ class PullGroup(pcbnew.ActionPlugin):
             if g_name not in heir:
                 continue
 
-            layout_path = get_layout_path(prjpath, heir[g_name]['_package'])
+            layout_path = get_layout_path(prjpath, heir[g_name]["_package"])
             # Check what layouts exist
             if not layout_path.exists():
-                raise FileNotFoundError(f"Cannot load group. Layout file {layout_path} does not exist")
+                raise FileNotFoundError(
+                    f"Cannot load group. Layout file {layout_path} does not exist"
+                )
 
             with layout_path.open("r") as file:
                 reader = csv.reader(file)
                 next(reader)  # Skip header row
 
-                offset_x: Optional[int, None] = None
+                offset_x: Optional[int] = None
+                offset_y: Optional[int] = None
                 for name, x, y, theta in reader:
                     # Extract name and designator
                     des = name2des(name, heir[g_name])
@@ -55,8 +59,15 @@ class PullGroup(pcbnew.ActionPlugin):
                     if not fp:
                         continue
 
-                    fp.SetPosition(pcbnew.VECTOR2I(int(x), int(y)))
+                    if offset_x is None:
+                        offset_x, offset_y = fp.GetPosition()
+
+                    fp.SetPosition(pcbnew.VECTOR2I(
+                        int(int(x) + offset_x),
+                        int(int(y) + offset_y)
+                    ))
                     fp.SetOrientationDegrees(float(theta))
                     fp.SetDescription(name)
+
 
 PullGroup().register()
