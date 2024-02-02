@@ -14,6 +14,7 @@ from typing import Optional
 
 import click
 import yaml
+import requests
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from atopile import config, errors, version
@@ -26,36 +27,63 @@ log.setLevel(logging.INFO)
 @click.argument("to_install", required=False)
 @click.option("--jlcpcb", is_flag=True, help="JLCPCB component ID")
 @click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
-def install(to_install: str, jlcpcb: bool, upgrade: bool):
+@errors.muffle_fatalities
+def install(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Path] = None):
+    install_core(to_install, jlcpcb, upgrade, path)
+
+
+def install_core(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Path] = None):
     """
     Install a dependency of for the project.
     """
-    repo = Repo(".", search_parent_directories=True)
+    repo = Repo(path or ".", search_parent_directories=True)
     top_level_path = Path(repo.working_tree_dir)
+
+    log.info(f"Installing {to_install} in {top_level_path}")
 
     cfg = config.get_project_config_from_path(top_level_path)
     ctx = config.ProjectContext.from_config(cfg)
 
-    if jlcpcb:
-        # eg. "ato install --jlcpcb=C123"
-        install_jlcpcb(to_install)
-    elif to_install:
-        # eg. "ato install some-atopile-module"
-        installed_semver = install_dependency(to_install, ctx.module_path, upgrade)
-        module_name, module_spec = split_module_spec(to_install)
-        if module_spec is None and installed_semver:
-            # If the user didn't specify a version, we'll
-            # use the one we just installed as a basis
-            to_install = f"{module_name}^{installed_semver}"
-        set_dependency_to_ato_yaml(top_level_path, to_install)
+    with errors.handle_ato_errors():
+        if jlcpcb:
+            # eg. "ato install --jlcpcb=C123"
+            install_jlcpcb(to_install)
+        elif to_install:
+            # eg. "ato install some-atopile-module"
+            installed_semver = install_dependency(to_install, ctx.module_path, upgrade)
+            module_name, module_spec = split_module_spec(to_install)
+            if module_spec is None and installed_semver:
+                # If the user didn't specify a version, we'll
+                # use the one we just installed as a basis
+                to_install = f"{module_name}^{installed_semver}"
+            set_dependency_to_ato_yaml(top_level_path, to_install)
 
-    else:
-        # eg. "ato install"
-        for module_name in cfg.dependencies:
-            install_dependency(module_name, ctx.module_path, upgrade)
+        else:
+            # eg. "ato install"
+            for module_name in cfg.dependencies:
+                install_dependency(module_name, ctx.module_path, upgrade)
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
+
+def get_package_repo_from_registry(module_name: str) -> str:
+    """
+    Get the git repo for a package from the ato registry.
+    """
+    response = requests.post(
+        "https://get-package-atsuhzfd5a-uc.a.run.app",
+        json={"name": module_name},
+        timeout=10,
+    )
+    if response.status_code == 500:
+        raise errors.AtoError(f"Could not find package '{module_name}' in registry.")
+    response.raise_for_status()
+    return_data = response.json()
+    try:
+        return_url = return_data['data']['repo_url']
+    except KeyError:
+        raise errors.AtoError(f"No repo_url found for package '{module_name}'")
+    return return_url
 
 def split_module_spec(spec: str) -> tuple[str, Optional[str]]:
     """Splits a module spec string into the module name and the version spec."""
@@ -122,7 +150,7 @@ def install_dependency(
     except (InvalidGitRepositoryError, NoSuchPathError):
         # Directory does not contain a valid repo, clone into it
         log.info(f"Installing dependency {module_name}")
-        clone_url = f"https://gitlab.atopile.io/packages/{module_name}"
+        clone_url = get_package_repo_from_registry(module_name)
         repo = Repo.clone_from(clone_url, module_dir / module_name)
     else:
         # In this case the directory exists and contains a valid repo

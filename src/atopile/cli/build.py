@@ -1,5 +1,6 @@
 """CLI command definition for `ato build`."""
 
+import json
 import logging
 import shutil
 from functools import wraps
@@ -9,17 +10,15 @@ import click
 
 import atopile.bom
 import atopile.front_end
-import atopile.netlist
-import atopile.manufacturing_data
 import atopile.layout
+import atopile.manufacturing_data
+import atopile.netlist
 from atopile.cli.common import project_options
+from atopile.components import configure_cache, download_footprint
 from atopile.config import BuildContext
-from atopile.errors import (
-    handle_ato_errors,
-    iter_through_errors,
-    muffle_fatalities,
-)
+from atopile.errors import handle_ato_errors, iter_through_errors, muffle_fatalities
 from atopile.front_end import set_search_paths
+from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
 
 log = logging.getLogger(__name__)
@@ -44,6 +43,9 @@ def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
     # Set the search paths for the front end
     set_search_paths([build_ctx.src_path, build_ctx.module_path])
+
+    # Configure the cache for component data
+    configure_cache(build_ctx.project_path)
 
     # Ensure the build directory exists
     log.info("Writing outputs to %s", build_ctx.build_path)
@@ -136,6 +138,16 @@ def generate_designator_map(build_args: BuildContext) -> None:
 def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     """Generate a designator map for the project."""
     atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
+
+
+@muster.register("clone-footprints")
+def clone_footprints(build_args: BuildContext) -> None:
+    """Clone the footprints for the project."""
+    all_components = filter(match_components, all_descendants(build_args.entry))
+
+    for component in all_components:
+        log.debug("Cloning footprint for %s", component)
+        download_footprint(component, footprint_dir=build_args.build_path / "footprints/footprints.pretty")
 
 
 @muster.register("layout-module-map")

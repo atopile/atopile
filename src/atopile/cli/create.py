@@ -6,6 +6,7 @@ import textwrap
 import webbrowser
 from pathlib import Path
 from typing import Iterator, Optional
+from atopile.cli.install import install_core
 
 import caseconverter
 import click
@@ -159,6 +160,8 @@ def create(
             "[yellow]No changes to commit! Seems like the"
             " template you used mightn't be configurable?[/]"
         )
+    # install dependencies listed in the ato.yaml, typically just generics
+    install_core(to_install="", jlcpcb=False, upgrade=True, path=repo_obj.working_tree_dir)
 
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
@@ -194,7 +197,7 @@ def do_configure(name: str, _repo_path: str, debug: bool):
         template_globals["rel_path"] = target_path
 
         template = env.get_template(
-            str(template_path.relative_to(repo_path)), globals=template_globals
+            str(template_path.relative_to(repo_path).as_posix()), globals=template_globals
         )
 
         # Make the noise!

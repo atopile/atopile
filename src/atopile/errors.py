@@ -125,6 +125,14 @@ class AtoUnknownUnitError(AtoError):
     """
 
 
+class AtoInfraError(AtoError):
+    """
+    Raised when there's an issue contacting atopile
+    infrastructure needed for an operation.
+    """
+    title = "Infrastructure Error"
+
+
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
@@ -150,7 +158,7 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
         message += f"{source_info}\n"
 
     # Replace the address in the string, if we have it attached
-    fmt_message = textwrap.indent(ex.message, "--> ")
+    fmt_message = textwrap.indent(str(ex.message), "--> ")
     if ex.addr:
         if debug:
             addr = ex.addr
@@ -195,7 +203,7 @@ def _log_ato_errors(
             ex,
             logger.isEnabledFor(logging.DEBUG)
         ),
-        extra={"markup": True}
+        extra={"markup": True},
     )
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("Error info:\n", exc_info=ex)

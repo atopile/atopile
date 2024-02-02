@@ -133,20 +133,20 @@ def get_project_config_from_addr(addr: str) -> UserConfig:
 class ProjectContext:
     """A class to hold the arguments to a project."""
 
-    layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
     project_path: Path  # abs path to the project directory
     src_path: Path  # abs path to the source directory
     module_path: Path  # abs path to the module directory
+    layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
 
     @classmethod
     def from_config(cls, config: UserConfig) -> "ProjectContext":
         """Create a BuildArgs object from a Config object."""
 
         return ProjectContext(
-            layout_path=Path(config.location) / config.paths.layout,
             project_path=Path(config.location),
             src_path=Path(config.location) / config.paths.src,
             module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,
+            layout_path=Path(config.location) / config.paths.layout,
         )
 
     @classmethod
@@ -173,12 +173,12 @@ def match_user_layout(path: Path) -> bool:
 @define
 class BuildContext:
     """A class to hold the arguments to a build."""
+    project_context: ProjectContext
 
     name: str
 
     entry: address.AddrStr  # eg. "path/to/project/src/entry-name.ato:module.path"
     targets: list[str]
-    layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
 
     layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
     project_path: Path  # abs path to the project directory
@@ -191,6 +191,8 @@ class BuildContext:
     @classmethod
     def from_config(cls, config: UserConfig, build_name: str) -> "BuildContext":
         """Create a BuildArgs object from a Config object."""
+        project_context=ProjectContext.from_config(config)
+
         try:
             build_config = config.builds[build_name]
         except KeyError as ex:
@@ -226,6 +228,7 @@ class BuildContext:
             raise atopile.errors.AtoError("Layout file not found")
 
         return BuildContext(
+            project_context=project_context,
             name=build_name,
             entry=abs_entry,
             targets=build_config.targets,

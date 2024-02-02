@@ -1,112 +1,29 @@
 {#-
-    This file was automatically generated - do not edit
-  -#}
-  {% extends "main.html" %}
-  {% block tabs %}
-    {{ super() }}
-    <style>.md-header{position:initial}.md-main__inner{margin:0}.md-content{display:none}@media screen and (min-width:60em){.md-sidebar--secondary{display:none}}@media screen and (min-width:76.25em){.md-sidebar--primary{display:none}}</style>
-    <section class="mdx-container">
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>atopile</title>
-            <style type="text/css">
-                @font-face {
-                    font-family: Inconsolata;
-                    src: url(Inconsolata-Regular.ttf);
-                }
-
-                @font-face {
-                    font-family: Inconsolata;
-                    src: url(Inconsolata-Bold.ttf);
-                    font-weight: bold;
-                }
-
-                .text-block {
-                    margin: 40px auto;
-                    max-width: 650px;
-                    line-height: 1.6;
-                    font-size: 18px;
-                    color: #444;
-                    padding: 0 10px;
-                    font-family: Inconsolata;
-                }
-
-                .code-block {
-                    width: 600px;
-                    font-size: 20px;
-                    margin: 0 auto;
-                    display: block;
-                    font-family: Inconsolata;
-                }
-
-                h1,
-                h2,
-                h3 {
-                    line-height: 1.2;
-                }
-            </style>
-        </head>
-<body>
-    <header>
-    </header>
-    <b>
-    <br>
-    <pre class="code-block">
-    <span style="color: #618B50;"># atopile</span>
-
-    <span style="color: #618B50;"># compile code to hardware</span>
-
-    <span style="color: #A673A2;">import</span> <span style="color: #48B19B;">RP2040</span> <span style="color: #A673A2;">from</span> <span style="color: #AA7A66;">"rp2040.ato"</span>
-    <span style="color: #A673A2;">import</span> <span style="color: #48B19B;">USBC</span> <span style="color: #A673A2;">from</span> <span style="color: #AA7A66;">"usb.ato"</span>
-    <span style="color: #A673A2;">import</span> <span style="color: #48B19B;">LEDIndicator</span> <span style="color: #A673A2;">from</span> <span style="color: #AA7A66;">"led_indicator.ato"</span>
-
-    <span style="color: #497FAB;">module</span> <span style="color: #48B19B;">Blinky</span>:
-        <span style="color: #96D2F1;">micro</span> = <span style="color: #497FAB;">new</span> <span style="color: #48B19B;">RP2040</span>
-        <span style="color: #96D2F1;">usb</span> = <span style="color: #497FAB;">new</span> <span style="color: #48B19B;">USBC</span>
-        <span style="color: #96D2F1;">micro.usb_data</span> ~ <span style="color: #96D2F1;">usb.data</span>
-
-        <span style="color: #96D2F1;">psu</span> = <span style="color: #497FAB;">new</span> <span style="color: #48B19B;">Buck</span>
-        <span style="color: #96D2F1;">psu.input</span> ~ <span style="color: #96D2F1;">usb.power</span>
-        <span style="color: #96D2F1;">psu.output</span> ~ <span style="color: #96D2F1;">micro.power_in</span>
-
-        <span style="color: #96D2F1;">led</span> = <span style="color: #497FAB;">new</span> <span style="color: #48B19B;">LEDIndicator</span>
-        <span style="color: #96D2F1;">led.input</span> ~ <span style="color: #96D2F1;">micro.gpio_13</span>
-        <span style="color: #96D2F1;">led.gnd</span> ~ <span style="color: #96D2F1;">psu.output.gnd</span></b>
-    </pre>
-    <div class="text-block">
-    <p>
-        Describing hardware with code might seem odd at first glance. But once you realize it introduces software
-        development paradigms and toolchains to hardware design, you'll be hooked, just like we've become.<br><br>
-
-        Code can <b>capture the intelligence</b> you put into your work. Imagine configuring not the resistance values
-        of a voltage divider, but its ratio and total resistance, all using <b>physcial units</b> and
-        <b>tolerances</b>. You can do this because someone before you described precisely what this module is and
-        described the relationships between the values of the components and the function you care about. Now instead
-        imagine what you can gain from <b>reusing</b> a buck design you can merely <b>configure</b> the target voltage
-        and ripple of. Now imagine <b>installing</b> a <a href="https://gitlab.atopile.io/atopile/servo-drive">servo
-            drive</a> the same way you might numpy.<br><br>
-
-        Version controlling your designs using <b>git</b> means you can deeply <b>validate</b> and <b>review</b> changes
-        a feature at a time, <b>isolated</b> from impacting others' work. It means you can detangle your organisation
-        and <b>collaborate</b> on an unprecedented scale. We can forgo half-baked "releases" in favor of stamping a
-        simple git-hash on our prototypes, providing an anchor off which to <b>associate test data</b> and expectations.
-        <br><br>
-
-        Implementing CI to <b>test</b> our work ensures both <b>high-quality</b> and <b>compliance</b>, all
-        summarised in a green check mark, emboldening teams to target excellence. <br><br>
-    </p>
-
-    <h2>Intrigued?</h2>
-    <p>
-        Get in touch with Matt, Tim and Narayan:
-        <ul>
-            <a href="mailto:matt@atopile.io,tim@atopile.io,narayan@atopile.io?subject=atopile">email</a><br>
-        </ul>
-    </p>
-</div>
-</body>
-    </section>
-  {% endblock %}
-  {% block content %}{% endblock %}
-  {% block footer %}{% endblock %}
+  This file was automatically generated - do not edit
+-#}
+{% extends "main.html" %}
+{% block tabs %}
+  {{ super() }}
+  <style>.md-header{position:initial}.md-main__inner{margin:0}.md-content{display:none}@media screen and (min-width:60em){.md-sidebar--secondary{display:none}}@media screen and (min-width:76.25em){.md-sidebar--primary{display:none}}</style>
+  <section class="mdx-container">
+    <div class="md-grid md-typeset">
+      <div class="mdx-hero">
+        <div class="mdx-hero__image">
+          <img src="assets/images/slice.png" alt="" width="1659" height="1200" draggable="false">
+        </div>
+        <div class="mdx-hero__content">
+          <h1>Build electronic circuit boards from code</h1>
+          <p>{{ config.site_description }}</p>
+          <a href="{{ page.next_page.url | url }}" title="{{ page.next_page.title | e }}" class="md-button md-button--primary">
+            Quick start
+          </a>
+          <a href="mailto:tim@atopile.io,matt@atopile.io,narayan@atopile.io" title="Email us" class="md-button">
+            Contact us
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+{% block content %}{% endblock %}
+{% block footer %}{% endblock %}
