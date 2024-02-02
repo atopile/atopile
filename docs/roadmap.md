@@ -27,7 +27,7 @@ The top-level features themselves are too, but we'll tackle the basics of some d
 #### Component Selection
 
 - [x] MVP select jelly-beans from JLCPCB
-- [ ] Move component database to cloud in order to support more components and component types
+- [x] Move component database to cloud in order to support more components and component types
 
 #### Quality control
 
