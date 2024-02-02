@@ -32,7 +32,7 @@ def descend_entry_points():
         # Open and parse the YAML file
         with open(filepath, 'r') as file:
             try:
-                data = yaml.safe_load(file)
+                data = yaml.safe_load(file) or {}
                 # Check if 'entry' is in the 'builds' -> 'default' section
                 entry = data.get('builds', {}).get('default', {}).get('entry')
                 if entry:
