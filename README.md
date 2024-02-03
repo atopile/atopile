@@ -81,6 +81,12 @@ Find our [documentation](https://atopile.io/getting-started/) and getting starte
 
 `atopile` is on pypi.org: https://pypi.org/project/atopile/
 
+### Most Basic Installation
+
+`atopile` requires python3.11 or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
+
+Then just `pip install atopile` and you're good to go!
+
 ## ❓ Why atopile?
 
 Describing hardware with code might seem odd at first glance. But once you realize it introduces software development paradigms and toolchains to hardware design, you'll be hooked, just like we've become.
