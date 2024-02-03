@@ -14,7 +14,10 @@ Huge shout out to @nickkrstevski for this awesome new feature!
 
 You can now reuse parts placement across designs. This is a huge time saver for designs - particularly those with a lot of common modules.
 
-![There's supposed to be a video here showing how it works](/assets/images/placement-reuse.avif)
+<picture>
+    <source type="image/avif" srcset="/assets/images/placement-reuse.avif" />
+    <img src="/assets/images/placement-reuse.gif" />
+</picture>
 
 ## OMG, How?
 
