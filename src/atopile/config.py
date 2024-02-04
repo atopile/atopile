@@ -232,7 +232,7 @@ class BuildContext:
             name=build_name,
             entry=abs_entry,
             targets=build_config.targets,
-            layout_path=layout_path,
+            layout_path=layout_path.resolve().absolute(),
             project_path=Path(config.location),
             src_path=Path(config.location) / config.paths.src,
             module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,

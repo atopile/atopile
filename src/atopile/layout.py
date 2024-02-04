@@ -10,10 +10,12 @@ the heavy lifting on this one!
 import csv
 import glob
 from io import StringIO
+from pathlib import Path
+from collections import defaultdict
 
 import yaml
 
-from atopile import address, config, components
+from atopile import address, components, config
 from atopile.instance_methods import (
     all_descendants,
     find_matching_super,
@@ -22,23 +24,24 @@ from atopile.instance_methods import (
 )
 
 
-def descend_entry_points():
-    entries = []
+def find_packages_with_layouts() -> dict[str, dict[str, Path]]:
+    """
+    Return a dict of all the known entry points of dependencies in the project.
+    The dict maps the entry point's address to another map of the entry point's
+    build name and the layout file path.
+    """
     directory = config.get_project_context().project_path
-    pattern = f"{directory}/.ato/modules/**/ato.yaml"
+    pattern = f"{directory}/.ato/modules/*/ato.yaml"
 
-    # Use glob to find all 'ato.yaml' files in the directory and its subdirectories
-    for filepath in glob.glob(pattern, recursive=True):
-        # Open and parse the YAML file
-        with open(filepath, 'r') as file:
-            try:
-                data = yaml.safe_load(file) or {}
-                # Check if 'entry' is in the 'builds' -> 'default' section
-                entry = data.get('builds', {}).get('default', {}).get('entry')
-                if entry:
-                    entries.append(entry)
-            except yaml.YAMLError as exc:
-                print(f"Error parsing YAML file {filepath}: {exc}")
+    entries = defaultdict(dict)
+    for filepath in glob.glob(pattern):
+        cfg = config.get_project_config_from_path(filepath)
+
+        for build_name in cfg.builds:
+            ctx = config.BuildContext.from_config(cfg, build_name)
+            entries[ctx.entry][build_name] = {
+                "layout": Path(ctx.layout_path),
+            }
 
     return entries
 
@@ -49,11 +52,11 @@ def generate_module_map(entry_addr: address.AddrStr) -> StringIO:
     writer = csv.DictWriter(csv_table, fieldnames=["Package", "PackageInstance", "Name", "Designator"])
     writer.writeheader()
 
-    package_names = list(address.get_entry_section(p) for p in descend_entry_points())
+    packages_with_layouts = find_packages_with_layouts()
     modules = list(filter(match_modules, all_descendants(entry_addr)))
 
     for module in modules:
-        package_type = find_matching_super(module, package_names)
+        package_type = find_matching_super(module, packages_with_layouts)
         if package_type:
             package_type = package_type.split(":")[0].split('/')[-2]
             for comp_addr in filter(match_components, all_descendants(module)):
