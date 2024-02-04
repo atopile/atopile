@@ -6,16 +6,17 @@ Thanks @nickkrstevski (https://github.com/nickkrstevski) for
 the heavy lifting on this one!
 """
 
-
 import csv
 import glob
+import hashlib
+import json
+import logging
+import uuid
+from collections import defaultdict
 from io import StringIO
 from pathlib import Path
-from collections import defaultdict
 
-import yaml
-
-from atopile import address, components, config
+from atopile import address, components, config, errors
 from atopile.instance_methods import (
     all_descendants,
     find_matching_super,
@@ -24,7 +25,25 @@ from atopile.instance_methods import (
 )
 
 
-def find_packages_with_layouts() -> dict[str, dict[str, Path]]:
+log = logging.getLogger(__name__)
+
+
+def generate_uuid_from_string(path: str) -> str:
+    """Spits out a uuid in hex from a string"""
+    path_as_bytes = path.encode("utf-8")
+    hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
+    return str(uuid.UUID(bytes=hashed_path))
+
+
+def generate_comp_uid(comp_addr: str) -> str:
+    """Get a unique identifier for a component."""
+    instance_section = address.get_instance_section(comp_addr)
+    if not instance_section:
+        raise ValueError(f"Component address {comp_addr} has no instance section")
+    return generate_uuid_from_string(instance_section)
+
+
+def _find_module_layouts() -> dict[str, list[config.BuildContext]]:
     """
     Return a dict of all the known entry points of dependencies in the project.
     The dict maps the entry point's address to another map of the entry point's
@@ -33,40 +52,59 @@ def find_packages_with_layouts() -> dict[str, dict[str, Path]]:
     directory = config.get_project_context().project_path
     pattern = f"{directory}/.ato/modules/*/ato.yaml"
 
-    entries = defaultdict(dict)
+    entries = defaultdict(list)
     for filepath in glob.glob(pattern):
         cfg = config.get_project_config_from_path(filepath)
 
         for build_name in cfg.builds:
             ctx = config.BuildContext.from_config(cfg, build_name)
-            entries[ctx.entry][build_name] = {
-                "layout": Path(ctx.layout_path),
-            }
+            entries[ctx.entry].append(ctx)
 
     return entries
 
 
-def generate_module_map(entry_addr: address.AddrStr) -> StringIO:
-    """Generate a CSV file containing a list of all the modules and their components in the project."""
-    csv_table = StringIO()
-    writer = csv.DictWriter(csv_table, fieldnames=["Package", "PackageInstance", "Name", "Designator"])
-    writer.writeheader()
+def generate_module_map(build_ctx: config.BuildContext) -> None:
+    """Generate a file containing a list of all the modules and their components in the build."""
+    module_map = {}
 
-    packages_with_layouts = find_packages_with_layouts()
-    modules = list(filter(match_modules, all_descendants(entry_addr)))
+    laid_out_modules = _find_module_layouts()
+    for module_instance in filter(match_modules, all_descendants(build_ctx.entry)):
+        module_super = find_matching_super(module_instance, list(laid_out_modules.keys()))
+        if not module_super:
+            continue
 
-    for module in modules:
-        package_type = find_matching_super(module, packages_with_layouts)
-        if package_type:
-            package_type = package_type.split(":")[0].split('/')[-2]
-            for comp_addr in filter(match_components, all_descendants(module)):
-                writer.writerow(
-                    {
-                        "Package": package_type,  # The path to the module/entry point - it's hard to tell
-                        "PackageInstance": address.get_instance_section(module),  # The instance path of the module in the project
-                        "Name": address.get_instance_section(comp_addr),  # The instance path of the component in the project
-                        "Designator": components.get_designator(comp_addr),  # The designator of the component
-                    }
-                )
+        # Get the build context for the laid out module
+        module_super_ctxs = laid_out_modules[module_super]
+        if len(module_super_ctxs) > 1:
+            raise errors.AtoNotImplementedError()
+        module_super_ctx = module_super_ctxs[0]
 
-    return csv_table.getvalue()
+        # Build up a map of UUIDs of the children of the module
+        # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout
+        # FIXME: this currently relies on the `all_descendants` iterator returning the
+        # children in the same order. This is pretty fragile and should be fixed.
+        uuid_map = {}
+        for inst_addr, layout_addr in zip(
+            all_descendants(module_instance), all_descendants(module_super_ctx.entry)
+        ):
+            if not match_components(inst_addr):
+                # Skip non-components
+                continue
+
+            if address.get_name(inst_addr) != address.get_name(layout_addr):
+                errors.AtoError(
+                    "Mismatched names in layout and instance addresses,"
+                    " skipping component in auto-layout generation"
+                ).log(log, logging.WARNING)
+                continue
+
+            uuid_map[generate_comp_uid(inst_addr)] = generate_comp_uid(layout_addr)
+
+        module_map[module_instance] = {
+            "instance_path": address.get_instance_section(module_instance),
+            "layout_path": module_super_ctx.layout_path,
+            "uuid_map": uuid_map,
+        }
+
+    with open(build_ctx.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8") as f:
+        json.dump(module_map, f)

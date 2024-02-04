@@ -87,7 +87,7 @@ def find_matching_super(
     """
     supers = get_supers_list(addr)
     for duper in supers:
-        if any(address.get_entry_section(duper.address == pt for pt in candidate_supers):
+        if any(duper.address == pt for pt in candidate_supers):
             return duper.address
     return None
 

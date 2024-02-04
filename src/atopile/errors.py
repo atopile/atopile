@@ -69,6 +69,21 @@ class _BaseAtoError(Exception):
             return error_name[3:]
         return error_name
 
+    def log(self, logger: logging.Logger = log, to_level: int = logging.ERROR):
+        """
+        Log the error to the given logger.
+        """
+        logger.log(
+            to_level,
+            format_error(
+                self,
+                logger.isEnabledFor(logging.DEBUG)
+            ),
+            extra={"markup": True},
+        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Error info:\n", exc_info=self)
+
 
 class AtoFatalError(_BaseAtoError):
     """
@@ -131,6 +146,12 @@ class AtoInfraError(AtoError):
     infrastructure needed for an operation.
     """
     title = "Infrastructure Error"
+
+
+class AtoNotImplementedError(AtoError):
+    """
+    Raised when a feature is not yet implemented.
+    """
 
 
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
@@ -198,15 +219,7 @@ def _log_ato_errors(
         return
 
     # Format and printout the error
-    logger.error(
-        format_error(
-            ex,
-            logger.isEnabledFor(logging.DEBUG)
-        ),
-        extra={"markup": True},
-    )
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Error info:\n", exc_info=ex)
+    ex.log(logger)
 
 
 def in_debug_session() -> bool:
@@ -360,14 +373,10 @@ def downgrade(
         try:
             return func(*args, **kwargs)
         except exs as ex:
-            logger.log(
-                to_level,
-                format_error(
-                    ex,
-                    logger.isEnabledFor(logging.DEBUG)
-                ),
-                extra={"markup": True}
-            )
+            try:
+                ex.log(logger, to_level)
+            except AttributeError:
+                logger.log(to_level, ex)
             if isinstance(default, collections.abc.Callable):
                 return default(*args, *kwargs)
             return default
