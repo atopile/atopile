@@ -33,7 +33,9 @@ What's your story in electronics? What would you like us to build? Come talk on 
 
 ## ⚡️`ato` code examples
 
-### Votlage divider
+### Simple examples:
+
+#### Votlage divider
 ```ato
 import Resistor from "generics/resistors.ato"
 
@@ -54,7 +56,7 @@ module VoltageDivider:
     out ~ r_bottom.p1; r_bottom.p2 ~ bottom
 ```
 
-### RP2040 Blinky Circuit
+#### RP2040 Blinky Circuit
 ```ato
 import RP2040Kit from "rp2040/rp2040_kit.ato"
 import LEDIndicator from "generics/leds.ato"
@@ -74,6 +76,10 @@ module Blinky:
 
     led_indicator.resistor.value = 100ohm +/- 10%
 ```
+
+### Full projects
+
+Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) of the [logic card project](https://github.com/timot05/logic-card).
 
 ## 🔨 Getting started
 
