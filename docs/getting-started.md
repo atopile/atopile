@@ -8,11 +8,11 @@ The `.ato` files are human readable and can be version controlled, so you can co
 
 ## Installation
 
-To run atopile, you will need the atopile compiler, the VSCode extension for synthax highlighting and git credential manager.
+To run atopile, you will need the atopile compiler, the VSCode extension for syntax highlighting and git credential manager.
 
 ### atopile compiler - with pip <small>recommended</small>
 
-atopile is published as a [python package](https://pypi.org/project/atopile/) on pypi. You can install it using `pip` from your command line. We recommend setting up a virtual environment for atopile so that atopile's dependencies don't calsh with the rest of your system.
+atopile is published as a [python package](https://pypi.org/project/atopile/) on pypi. You can install it using `pip` from your command line. We recommend setting up a virtual environment for atopile so that atopile's dependencies don't clash with the rest of your system.
 
 Start by making sure you have `python@3.11` or later installed on your machine.
 
@@ -69,7 +69,7 @@ pip install -e atopile
 
 ### VSCode extension - extension store
 
-We recomend using [VSCode](https://code.visualstudio.com) to run atopile as it will provide synthax highlighting.
+We recommend using [VSCode](https://code.visualstudio.com) to run atopile as it will provide syntax highlighting.
 
 From VSCode, navigate to the VSCode extensions and install atopile.
 
