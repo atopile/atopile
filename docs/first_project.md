@@ -10,9 +10,9 @@ To create a project, you can run the command
 ato create
 ```
 
-This command will start by asking for a name to your project. It will then clone the [project template](https://github.com/atopile/project-template) on github. Once created on github, paste the url of your repository into the command line. Your project should be up and running!
+This command will start by asking for a name to your project. It will then clone the [project template](https://github.com/atopile/project-template) on github. Once created on GitHub, paste your repository URL into the command line. Your project should be up and running!
 
-We also add a firmware and mech folder so you can store and 3D designs or firmware that is associated to your project. Verison controlling everyhting under the same project can be quite handy.
+We also added a firmware and mech folder to store 3D designs or firmware associated with your project. Version controlling everything under the same project can be quite handy.
 
 ### Manually
 
@@ -20,7 +20,7 @@ You can create your own project instead of using ato create. Perhaps you will wa
 
 ```{ .no-copy }
 .
-├── venv -> (active) virtual environmenent with python^3.11 and atopile installed
+├── venv -> (active) virtual environment with python^3.11 and atopile installed
 └── your-project
     ├── ato.yaml --> definition file for your atopile project
     ├── elec --> your virtual environment
@@ -55,9 +55,9 @@ ato-version: ^0.0.18
 builds:
   default:
     entry: elec/src/your-project.ato:YourProject
-# The compiler version follows sementic versioning. The required version to compile your project can be specified using npm's standard.
+# The compiler version follows semantic versioning. The required version to compile your project can be specified using npm's standard.
 
-# Those lines define the package dependencies that your project might have. You can specify the exact version of the package you want using semantic versioning.
+# Those lines define the package dependencies that your project might have. You can specify the exact package version you want using semantic versioning.
 dependencies:
 - generics^v1.0.0
 ```
@@ -65,7 +65,7 @@ dependencies:
 !!! tip
     The compiler version follows [sementic versioning](https://semver.org). The required version to compile your project can be specified using [npm's standard](https://docs.npmjs.com/about-semantic-versioning). The same applies to your dependencies.
 
-## Bulding the project
+## Building the project
 
 To test that your project is building, run:
 
