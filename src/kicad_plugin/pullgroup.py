@@ -51,9 +51,12 @@ class PullGroup(pcbnew.ActionPlugin):
             sync_footprints(
                 source_board, target_board, flip_dict(known_layouts[g_name]["uuid_map"])
             )
+
             for track in source_board.GetTracks():
-                sync_track(track, target_board)
+                item = sync_track(track, target_board)
                 g.AddItem(item)
+
+        pcbnew.Refresh()
 
 
 PullGroup().register()

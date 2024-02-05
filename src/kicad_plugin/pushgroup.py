@@ -59,5 +59,4 @@ class PushGroup(pcbnew.ActionPlugin):
         # Save the target board
         target_board.Save(target_board.GetFileName())
 
-
 PushGroup().register()
