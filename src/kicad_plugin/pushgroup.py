@@ -1,12 +1,9 @@
-import csv
 import logging
-from io import StringIO
 from pathlib import Path
-from typing import Optional
 
 import pcbnew
 
-from .common import get_layout_path, get_prj_dir, parse_hierarchy
+from .common import get_layout_map, sync_footprints, sync_track
 
 log = logging.getLogger(__name__)
 
@@ -21,48 +18,46 @@ class PushGroup(pcbnew.ActionPlugin):
         self.dark_icon_file_name = self.icon_file_name
 
     def Run(self):
-        board: pcbnew.BOARD = pcbnew.GetBoard()
-        board_path = board.GetFileName()
-        prjpath = get_prj_dir(board_path)
+        source_board: pcbnew.BOARD = pcbnew.GetBoard()
+        board_path = source_board.GetFileName()
+        known_layouts = get_layout_map(board_path)
 
-        heir = parse_hierarchy(board_path)
+        # Push Selected Groups
+        for g in source_board.Groups():
+            assert isinstance(g, pcbnew.PCB_GROUP)
 
-        sel_gs = [g for g in board.Groups() if g.IsSelected()]  # Selected groups
+            # Skip over unselected groups
+            if not g.IsSelected():
+                continue
 
-        for sg in sel_gs:
-            csv_table = StringIO()
-            writer = csv.DictWriter(csv_table, fieldnames=["Name", "x", "y", "theta"])
-            writer.writeheader()
+            g_name = g.GetName()
+            if g_name not in known_layouts:
+                continue
 
-            g_name = sg.GetName()
-            offset_x: Optional[int] = None
-            offset_y: Optional[int] = None
-            for item in sg.GetItems():
-                if "Footprint" not in item.GetFriendlyName():
-                    continue
+            layout_path = Path(known_layouts[g_name]["layout_path"])
 
-                x, y = item.GetPosition()
-                if offset_x is None:
-                    offset_x = x
-                    offset_y = y
-
-                item_ref = item.GetReference()
-                name = heir[g_name].get(item_ref)
-                if not name:
-                    continue
-
-                writer.writerow(
-                    {
-                        "Name": name,
-                        "x": x - offset_x,
-                        "y": y - offset_y,
-                        "theta": item.GetOrientationDegrees(),
-                    }
+            # Check what layouts exist
+            if not layout_path.exists():
+                raise FileNotFoundError(
+                    f"Cannot load group. Layout file {layout_path} does not exist"
                 )
 
-            layout_path = get_layout_path(prjpath, heir[g_name]["_package"])
-            with layout_path.open("w") as f:
-                f.write(csv_table.getvalue())
+            target_board: pcbnew.BOARD = pcbnew.LoadBoard(str(layout_path))
+
+            # Remove everything but the footprints from the target board
+            for item in target_board.GetTracks():
+                target_board.Remove(item)
+
+            # Push the layout
+            sync_footprints(
+                source_board, target_board, known_layouts[g_name]["uuid_map"]
+            )
+            for track in g.GetItems():
+                if isinstance(track, pcbnew.PCB_TRACK):
+                    sync_track(track, target_board)
+
+        # Save the target board
+        target_board.Save(target_board.GetFileName())
 
 
 PushGroup().register()

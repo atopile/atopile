@@ -100,9 +100,9 @@ def generate_module_map(build_ctx: config.BuildContext) -> None:
 
             uuid_map[generate_comp_uid(inst_addr)] = generate_comp_uid(layout_addr)
 
-        module_map[module_instance] = {
-            "instance_path": address.get_instance_section(module_instance),
-            "layout_path": module_super_ctx.layout_path,
+        module_map[address.get_instance_section(module_instance)] = {
+            "instance_path": module_instance,
+            "layout_path": str(module_super_ctx.layout_path),
             "uuid_map": uuid_map,
         }
 

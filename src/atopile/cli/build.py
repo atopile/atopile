@@ -40,11 +40,11 @@ def build(build_ctxs: list[BuildContext]):
     # FIXME: this should be done elsewhere, but there's no other "overview"
     # that can see all the builds simultaneously
     manifest = {}
-    manifest["version"] = "1.0"
+    manifest["version"] = "2.0"
     for ctx in build_ctxs:
         if ctx.layout_path:
             by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
-            by_layout_manifest["groups"] = str(ctx.output_base.with_suffix(".group_map.csv"))
+            by_layout_manifest["layouts"] = str(ctx.output_base.with_suffix(".layouts.json"))
 
     manifest_path = build_ctxs[0].project_path / "build" / "manifest.json"
     with open(manifest_path, "w", encoding="utf-8") as f:

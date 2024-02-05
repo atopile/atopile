@@ -191,6 +191,28 @@ def match_user_layout(path: Path) -> bool:
     return True
 
 
+def find_layout(layout_base: Path) -> Optional[Path]:
+    """Return the layout associated with a build."""
+    if layout_base.with_suffix(".kicad_pcb").exists():
+        return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
+    elif layout_base.is_dir():
+        layout_candidates = list(
+            filter(
+                match_user_layout,
+                layout_base.glob("*.kicad_pcb")
+            )
+        )
+
+        if len(layout_candidates) == 1:
+            return layout_candidates[0].resolve().absolute()
+
+        else:
+            raise atopile.errors.AtoError(
+                "Layout directories must contain only 1 layout,"
+                f" but {len(layout_candidates)} found in {layout_base}"
+            )
+
+
 @define
 class BuildContext:
     """A class to hold the arguments to a build."""
@@ -226,34 +248,12 @@ class BuildContext:
 
         build_path = Path(config.location) / BUILD_DIR_NAME
 
-        layout_base = config.location / config.paths.layout / build_name
-        if layout_base.with_suffix(".kicad_pcb").exists():
-            layout_path = layout_base.with_suffix(".kicad_pcb").resolve().absolute()
-        elif layout_base.is_dir():
-            layout_candidates = list(
-                filter(
-                    match_user_layout,
-                    layout_base.glob("*.kicad_pcb")
-                )
-            )
-
-            if len(layout_candidates) == 1:
-                layout_path = layout_candidates[0].resolve().absolute()
-
-            else:
-                raise atopile.errors.AtoError(
-                    "Layout directories must contain only 1 layout,"
-                    f" but {len(layout_candidates)} found in {layout_base}"
-                )
-        else:
-            layout_path = None
-
         return BuildContext(
             project_context=project_context,
             name=build_name,
             entry=abs_entry,
             targets=build_config.targets,
-            layout_path=layout_path,
+            layout_path=find_layout(config.location / config.paths.layout / build_name),
             project_path=Path(config.location),
             src_path=Path(config.location) / config.paths.src,
             module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,
