@@ -1,11 +1,9 @@
-import csv
 import logging
 from pathlib import Path
-from typing import Optional
 
 import pcbnew
 
-from .common import get_layout_path, get_prj_dir, name2des, parse_hierarchy
+from .common import get_layout_map, sync_footprints, flip_dict, sync_track
 
 log = logging.getLogger(__name__)
 
@@ -20,54 +18,45 @@ class PullGroup(pcbnew.ActionPlugin):
         self.dark_icon_file_name = self.icon_file_name
 
     def Run(self):
-        board: pcbnew.BOARD = pcbnew.GetBoard()
-        board_path = board.GetFileName()
-        prjpath = get_prj_dir(board_path)
-
-        heir = parse_hierarchy(board_path)
+        target_board: pcbnew.BOARD = pcbnew.GetBoard()
+        board_path = target_board.GetFileName()
+        known_layouts = get_layout_map(board_path)
 
         # Pull Selected Groups
-        for g in board.Groups():
+        for g in target_board.Groups():
+            assert isinstance(g, pcbnew.PCB_GROUP)
+
             # Skip over unselected groups
             if not g.IsSelected():
                 continue
 
             g_name = g.GetName()
-            if g_name not in heir:
+            if g_name not in known_layouts:
                 continue
 
-            layout_path = get_layout_path(prjpath, heir[g_name]["_package"])
+            layout_path = Path(known_layouts[g_name]["layout_path"])
             # Check what layouts exist
             if not layout_path.exists():
                 raise FileNotFoundError(
                     f"Cannot load group. Layout file {layout_path} does not exist"
                 )
 
-            with layout_path.open("r") as file:
-                reader = csv.reader(file)
-                next(reader)  # Skip header row
+            # Remove everything but the footprints from the target group
+            for item in g.GetItems():
+                if not isinstance(item, pcbnew.FOOTPRINT):
+                    target_board.Remove(item)
 
-                offset_x: Optional[int] = None
-                offset_y: Optional[int] = None
-                for name, x, y, theta in reader:
-                    # Extract name and designator
-                    des = name2des(name, heir[g_name])
-                    if not des:
-                        continue
+            # Load the layout and sync
+            source_board: pcbnew.BOARD = pcbnew.LoadBoard(str(layout_path))
+            sync_footprints(
+                source_board, target_board, flip_dict(known_layouts[g_name]["uuid_map"])
+            )
 
-                    fp: pcbnew.FOOTPRINT = board.FindFootprintByReference(des)
-                    if not fp:
-                        continue
+            for track in source_board.GetTracks():
+                item = sync_track(track, target_board)
+                g.AddItem(item)
 
-                    if offset_x is None:
-                        offset_x, offset_y = fp.GetPosition()
-
-                    fp.SetPosition(pcbnew.VECTOR2I(
-                        int(int(x) + offset_x),
-                        int(int(y) + offset_y)
-                    ))
-                    fp.SetOrientationDegrees(float(theta))
-                    fp.SetDescription(name)
+        pcbnew.Refresh()
 
 
 PullGroup().register()

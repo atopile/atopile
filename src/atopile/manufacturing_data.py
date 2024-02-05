@@ -70,6 +70,12 @@ def run(*args, timeout_time: Optional[float] = 10, **kwargs) -> None:
 
 def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     """Generate manufacturing data for the project."""
+    # If there's no layout, we can't generate manufacturing data
+    if not build_ctx.layout_path:
+        atopile.errors.AtoError(
+            "Layout must be available to generate manufacturing data"
+        ).log(log, logging.WARNING)
+        return
 
     # Ensure the build directory exists
     build_ctx.build_path.mkdir(parents=True, exist_ok=True)

@@ -4,15 +4,20 @@
 
 import collections.abc
 import fnmatch
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 from attrs import Factory, define
 from omegaconf import MISSING, OmegaConf
+from omegaconf.errors import ConfigKeyError
 
 import atopile.errors
 from atopile import address
+
+log = logging.getLogger(__name__)
+
 
 CONFIG_FILENAME = "ato.yaml"
 ATO_DIR_NAME = ".ato"
@@ -81,23 +86,39 @@ def make_config(project_config: Path) -> UserConfig:
 
     The typing on this is a little white lie... because they're really OmegaConf objects.
     """
-    structure = UserConfig()
+    structure: UserConfig = OmegaConf.structured(UserConfig())
 
     with project_config.open() as f:
         config_data = yaml.safe_load(f)
+    project_config_data = OmegaConf.create(_sanitise_dict_keys(config_data))
 
     structure.location = project_config.parent.expanduser().resolve().absolute()
 
-    return OmegaConf.merge(
-        OmegaConf.structured(structure),  # structure
-        OmegaConf.create(_sanitise_dict_keys(config_data)),  # project config
-    )
+    for _ in range(1000):
+        try:
+            return OmegaConf.merge(
+                structure,
+                project_config_data,
+            )
+        except ConfigKeyError as ex:
+            dot_path = ex.full_key.split(".")
+            container = project_config_data
+            for key in dot_path[:-1]:
+                container = container[key]
+            del container[dot_path[-1]]
+
+            atopile.errors.AtoError(
+                f"Unknown config option in {structure.location}. Ignoring \"{ex.full_key}\".",
+                title="Unknown config option",
+            ).log(log, logging.WARNING)
+    raise atopile.errors.AtoError("Too many config errors")
 
 
 def get_project_dir_from_path(path: Path) -> Path:
     """
     Resolve the project directory from the specified path.
     """
+    path = Path(path)
     for p in [path] + list(path.parents):
         clean_path = p.resolve().absolute()
         if (clean_path / CONFIG_FILENAME).exists():
@@ -170,6 +191,28 @@ def match_user_layout(path: Path) -> bool:
     return True
 
 
+def find_layout(layout_base: Path) -> Optional[Path]:
+    """Return the layout associated with a build."""
+    if layout_base.with_suffix(".kicad_pcb").exists():
+        return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
+    elif layout_base.is_dir():
+        layout_candidates = list(
+            filter(
+                match_user_layout,
+                layout_base.glob("*.kicad_pcb")
+            )
+        )
+
+        if len(layout_candidates) == 1:
+            return layout_candidates[0].resolve().absolute()
+
+        else:
+            raise atopile.errors.AtoError(
+                "Layout directories must contain only 1 layout,"
+                f" but {len(layout_candidates)} found in {layout_base}"
+            )
+
+
 @define
 class BuildContext:
     """A class to hold the arguments to a build."""
@@ -180,7 +223,7 @@ class BuildContext:
     entry: address.AddrStr  # eg. "path/to/project/src/entry-name.ato:module.path"
     targets: list[str]
 
-    layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
+    layout_path: Optional[Path]  # eg. path/to/project/layouts/default/default.kicad_pcb
     project_path: Path  # abs path to the project directory
     src_path: Path  # abs path to the source directory
     module_path: Path  # abs path to the module directory
@@ -205,34 +248,12 @@ class BuildContext:
 
         build_path = Path(config.location) / BUILD_DIR_NAME
 
-        layout_base = config.location / config.paths.layout / build_name
-        if layout_base.with_suffix(".kicad_pcb").exists():
-            layout_path = layout_base.with_suffix(".kicad_pcb")
-        elif layout_base.is_dir():
-            layout_candidates = list(
-                filter(
-                    match_user_layout,
-                    layout_base.glob("*.kicad_pcb")
-                )
-            )
-
-            if len(layout_candidates) == 1:
-                layout_path = layout_candidates[0]
-
-            else:
-                raise atopile.errors.AtoError(
-                    "Layout directories must contain exactly 1 layout,"
-                    f" but {len(layout_candidates)} found in {layout_base}"
-                )
-        else:
-            raise atopile.errors.AtoError("Layout file not found")
-
         return BuildContext(
             project_context=project_context,
             name=build_name,
             entry=abs_entry,
             targets=build_config.targets,
-            layout_path=layout_path,
+            layout_path=find_layout(config.location / config.paths.layout / build_name),
             project_path=Path(config.location),
             src_path=Path(config.location) / config.paths.src,
             module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,

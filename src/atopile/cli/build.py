@@ -40,10 +40,11 @@ def build(build_ctxs: list[BuildContext]):
     # FIXME: this should be done elsewhere, but there's no other "overview"
     # that can see all the builds simultaneously
     manifest = {}
-    manifest["version"] = "1.0"
+    manifest["version"] = "2.0"
     for ctx in build_ctxs:
-        by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
-        by_layout_manifest["groups"] = str(ctx.output_base.with_suffix(".group_map.csv"))
+        if ctx.layout_path:
+            by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
+            by_layout_manifest["layouts"] = str(ctx.output_base.with_suffix(".layouts.json"))
 
     manifest_path = build_ctxs[0].project_path / "build" / "manifest.json"
     with open(manifest_path, "w", encoding="utf-8") as f:
@@ -164,5 +165,4 @@ def clone_footprints(build_args: BuildContext) -> None:
 @muster.register("layout-module-map")
 def generate_module_map(build_args: BuildContext) -> None:
     """Generate a designator map for the project."""
-    with open(build_args.output_base.with_suffix(".group_map.csv"), "w", encoding="utf-8") as f:
-        f.write(atopile.layout.generate_module_map(build_args.entry))
+    atopile.layout.generate_module_map(build_args)

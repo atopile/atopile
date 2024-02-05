@@ -1,12 +1,10 @@
-import hashlib
-import uuid
 from pathlib import Path
 from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from toolz import groupby
 
-from atopile import address, components, errors, nets
+from atopile import components, errors, nets, layout
 from atopile.address import AddrStr, get_name, get_relative_addr_str
 from atopile.instance_methods import (
     all_descendants,
@@ -34,13 +32,6 @@ _get_value = errors.downgrade(
     (components.MissingData, components.NoMatchingComponent),
     default="?",
 )
-
-
-def generate_uid_from_path(path: str) -> str:
-    """Spits out a uuid in hex from a string"""
-    path_as_bytes = path.encode("utf-8")
-    hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
-    return str(uuid.UUID(bytes=hashed_path))
 
 
 class NetlistBuilder:
@@ -101,7 +92,7 @@ class NetlistBuilder:
         self, comp_addr: AddrStr, libsource: KicadLibpart
     ) -> KicadComponent:
         """Make a KiCAD component object from a representative instance object."""
-        tstamp = generate_uid_from_path(str(address.get_instance_section(comp_addr)))
+        tstamp = layout.generate_comp_uid(comp_addr)
 
         # TODO: improve this
         sheetpath = KicadSheetpath(  # That's not actually what we want. Will have to fix
