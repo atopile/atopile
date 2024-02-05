@@ -37,15 +37,15 @@ def groups_by_name(board: pcbnew.BOARD) -> dict[str, pcbnew.PCB_GROUP]:
     return {g.GetName(): g for g in board.Groups()}
 
 
+def get_footprint_uuid(fp: pcbnew.FOOTPRINT) -> str:
+    """Return the UUID of a footprint."""
+    path = fp.GetPath().AsString()
+    return path.split("/")[-1]
+
+
 def footprints_by_uuid(board: pcbnew.BOARD) -> dict[str, pcbnew.FOOTPRINT]:
     """Return a dict of footprints by UUID."""
-
-    def _get_uuid(fp: pcbnew.FOOTPRINT) -> str:
-        # FIXME: hack - can't find the UUID in one piece...
-        path = fp.GetPath().AsString()
-        return path.split("/")[-1]
-
-    return {_get_uuid(fp): fp for fp in board.GetFootprints()}
+    return {get_footprint_uuid(fp): fp for fp in board.GetFootprints()}
 
 
 def get_layout_map(board_path: Path) -> dict[str, Any]:
