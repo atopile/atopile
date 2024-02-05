@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from attrs import Factory, asdict, define
+from attrs import Factory, define
 from omegaconf import MISSING, OmegaConf
 from omegaconf.errors import ConfigKeyError
 

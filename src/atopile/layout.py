@@ -6,17 +6,14 @@ Thanks @nickkrstevski (https://github.com/nickkrstevski) for
 the heavy lifting on this one!
 """
 
-import csv
 import glob
 import hashlib
 import json
 import logging
 import uuid
 from collections import defaultdict
-from io import StringIO
-from pathlib import Path
 
-from atopile import address, components, config, errors
+from atopile import address, config, errors
 from atopile.instance_methods import (
     all_descendants,
     find_matching_super,
