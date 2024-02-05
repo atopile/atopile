@@ -21,7 +21,7 @@ TODO: link to the types
 
 ### Browsing packages
 
-The [atopile package registry](https://packages.atopile.io) contains a list of existing ato packages. Packages usually contain components, modules footprints and layout that can be reused in other projects.
+The [atopile package registry](https://packages.atopile.io) contains a list of existing ato packages. Packages usually contain components, module footprints, and layouts that can be reused in other projects.
 
 A package usually points to a git repository that contains the design files, in a similar fashion to a standard atopile project.
 
@@ -41,7 +41,7 @@ You can pull the latest packages by running:
 
 `ato install --upgrade`
 
-This will pull the latest tag version for the packages. If you wish to further specify which version of the package you'd like to install, you can use sementic versioning in the `ato.yaml` file. For example, you can request the highest available version of the generics package 1.x.x:
+This will pull the latest tag version for the packages. If you wish to further specify which version of the package you'd like to install, you can use semantic versioning in the `ato.yaml` file. For example, you can request the highest available version of the generics package 1.x.x:
 
 !!! file "ato.yml"
     ```yaml
