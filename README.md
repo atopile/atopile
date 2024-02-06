@@ -50,7 +50,7 @@ module VoltageDivider:
 
     r_bottom = new Resistor
     r_bottom.footprint = "R0402"
-    r_top.value = 200kohm +/- 10%
+    r_bottom.value = 200kohm +/- 10%
 
     top ~ r_top.p1; r_top.p2 ~ out
     out ~ r_bottom.p1; r_bottom.p2 ~ bottom
