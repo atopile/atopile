@@ -1,15 +1,15 @@
 # Basic types & Connections
 
-There's a handful of major types that you'll use in your `.ato` files, falling into two categories; blocks and nodes.
+There's a handful of major types that you'll use in your `.ato` files, falling into two categories: blocks and nodes.
 
-Blocks represent something that can contain other things. They provide an abstration over their contents. For example, a block could be power supply chip and all the passive components around it.
+Blocks represent something that can contain other things. They provide an abstraction over their contents. For example, a block could be a power supply chip and all the passive components around it.
 
 Nodes are elements you can connect to.
 
 Block types are:
 - `component` - represents exactly one component
 - `module` - a collection of components and other modules
-- `interface` - walks the line between a block and a node. It's a connectable block that let's you connect multiple nodes at a time
+- `interface` - walks the line between a block and a node. It's a connectable block that lets you connect multiple nodes at a time
 
 Node types are:
 - `pin` - represents a physical pin/pad on a package
@@ -20,7 +20,7 @@ Node types are:
 
 ### Components
 
-Here is an example of a block (in this case a `component`) created within a file named `resistor.ato`:
+Here is an example of a block (in this case, a `component`) created within a file named `resistor.ato`:
 
 ```ato
 component Resistor:
@@ -32,7 +32,7 @@ component Resistor:
 
 #### Footprints for resistors and capacitors
 
-For convenience, the fooprints for resistors and caps can be deinfed like so
+For convenience, the footprints for resistors and caps can be defined like so
 
 | Package | Resistor footprint | Capacitor footprint |
 | :------- | :------: | -------: |
@@ -64,11 +64,11 @@ module YourModule:
     out ~ r_bottom.p1; r_bottom.p2 ~ bottom
 ```
 
-A module can contain an arbitrary amount of components, modules, signal and interfaces instances.
+A module can contain an arbitrary amount of components, modules, signals, and interface instances.
 
 ### Interfaces
 
-Here is an example of a `interface` definition, in this case a CAN interface
+Here is an example of an `interface` definition; in this case, a CAN interface
 
 ```
 interface YourInterface:
@@ -87,7 +87,7 @@ interface_2 = new YourInterface
 interface_1 ~ interface_2
 ```
 
-Two interfaces can be connected together as long as they contain the same signals within themselves.
+Two interfaces can be connected as long as they contain the same signals.
 
 ## Node definition
 
@@ -111,7 +111,7 @@ enable_pin ~ vcc
 
 Pins can be defined in a similar way to signals. Pins are used specifically within components to tie your signals back to your footprints. The pin should have the same name as the copper pads in your footprint.
 
-Within your component, we usually recommend creating a signal and tieing it to your pin. That way you have a meaningfull signal to connect to instead of an ephemeral pin. For example:
+We usually recommend creating a signal within your component and tying it to your pin. That gives you a meaningful signal to connect to instead of an ephemeral pin. For example:
 
 ```
 signal vcc ~ pin 1
