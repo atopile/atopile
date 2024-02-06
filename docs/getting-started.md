@@ -104,7 +104,7 @@ Once created, open elec/src/your-project.ato and modify it in the following way:
         out ~ r_bottom.p1; r_bottom.p2 ~ bottom
     ```
 
-Now you can built this project and get a voltage divider!
+Now you can build this project and get a voltage divider!
 
 !!! tip
 
