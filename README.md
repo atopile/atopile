@@ -36,7 +36,7 @@ What's your story in electronics? What would you like us to build? Come talk on 
 ### Simple examples:
 
 #### Votlage divider
-```ato
+```VHDL
 import Resistor from "generics/resistors.ato"
 
 module VoltageDivider:
@@ -57,7 +57,7 @@ module VoltageDivider:
 ```
 
 #### RP2040 Blinky Circuit
-```ato
+```VHDL
 import RP2040Kit from "rp2040/rp2040_kit.ato"
 import LEDIndicator from "generics/leds.ato"
 import LDOReg3V3 from "regulators/regulators.ato"
