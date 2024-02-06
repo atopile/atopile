@@ -142,7 +142,7 @@ def create(
             )
 
         try:
-            repo_obj = git.Repo.clone_from(repo, name)
+            repo_obj = git.Repo.clone_from(repo, name, depth=1)
             break
         except git.GitCommandError as ex:
             help(
@@ -169,6 +169,11 @@ def create(
             "[yellow]No changes to commit! Seems like the"
             " template you used mightn't be configurable?[/]"
         )
+
+    # If this repo's remote it PROJECT_TEMPLATE, delete all the git history
+    if repo_obj.remotes.origin.url == PROJECT_TEMPLATE:
+        repo_obj.delete_remote("origin")
+
     # install dependencies listed in the ato.yaml, typically just generics
     install_core(
         to_install="", jlcpcb=False, upgrade=True, path=repo_obj.working_tree_dir
