@@ -23,20 +23,20 @@
     <br>
 </h1>
 
-## 📖 What is `atopile`?
+## 📖 What Is `atopile`?
 `atopile` is a tool to build electronic circuit boards with code.
 
-## 🗣️ Join us on Discord
+## 🗣️ Join Us On Discord
 What's your story in electronics? What would you like us to build? Come talk on discord.
 
 [![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)](https://discord.gg/nr5V3QRUd3)
 
-## ⚡️`ato` code examples
+## ⚡️`ato` Code Examples
 
-### Simple examples:
+### Simple Examples:
 
-#### Votlage divider
-```ato
+#### Voltage Divider
+```python
 import Resistor from "generics/resistors.ato"
 
 module VoltageDivider:
@@ -57,7 +57,7 @@ module VoltageDivider:
 ```
 
 #### RP2040 Blinky Circuit
-```ato
+```python
 import RP2040Kit from "rp2040/rp2040_kit.ato"
 import LEDIndicator from "generics/leds.ato"
 import LDOReg3V3 from "regulators/regulators.ato"
@@ -77,11 +77,11 @@ module Blinky:
     led_indicator.resistor.value = 100ohm +/- 10%
 ```
 
-### Full projects
+### Full Projects
 
 Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) of the [logic card project](https://github.com/timot05/logic-card).
 
-## 🔨 Getting started
+## 🔨 Getting Started
 
 Find our [documentation](https://atopile.io/getting-started/) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
 
@@ -89,15 +89,21 @@ Find our [documentation](https://atopile.io/getting-started/) and getting starte
 
 ### Most Basic Installation
 
-`atopile` requires python3.11 or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
+`atopile` requires *python3.11* or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
 
 Then just `pip install atopile` and you're good to go!
 
-## ❓ Why atopile?
+## ❓ Why Atopile?
+
+The objective of atopile is to help push forward these pardiagrams from the software world to hardware, mainly these points:
+
+* **Intelligent Design Capture**: Define hardware specifications like ratios and tolerances in code, enabling precise control and easy reuse of designs.
+* **Version Control Integration**: Use git to manage design changes, facilitating collaboration and ensuring each iteration is thoroughly reviewed and validated.
+* **Continuous Integration (CI)**: Implement CI to guarantee high-quality, compliant designs with every commit, represented by a green checkmark for assurance.
 
 Describing hardware with code might seem odd at first glance. But once you realize it introduces software development paradigms and toolchains to hardware design, you'll be hooked, just like we've become.
 
-Code can **capture the intelligence** you put into your work. Imagine configuring not the resistance values of a voltage divider, but its ratio and total resistance, all using **physcial units** and **tolerances**. You can do this because someone before you described precisely what this module is and described the relationships between the values of the components and the function you care about. Now instead imagine what you can gain from **reusing** a buck design you can merely **configure** the target voltage and ripple of. Now imagine **installing** a [servo drive](https://github.com/atopile/spin-servo-drive) the same way you might numpy.
+Code can **capture the intelligence** you put into your work. Imagine configuring not the resistance values of a voltage divider, but its ratio and total resistance, all using **physical units** and **tolerances**. You can do this because someone before you described precisely what this module is and described the relationships between the values of the components and the function you care about. Now instead imagine what you can gain from **reusing** a buck design you can merely **configure** the target voltage and ripple of. Now imagine **installing** a [servo drive](https://github.com/atopile/spin-servo-drive) the same way you might numpy.
 
 Version controlling your designs using **git** means you can deeply **validate** and **review** changes a feature at a time, **isolated** from impacting others' work. It means you can detangle your organisation and **collaborate** on an unprecedented scale. We can forgo half-baked "releases" in favor of stamping a simple git-hash on our prototypes, providing an anchor off which to **associate test data** and expectations.
 
