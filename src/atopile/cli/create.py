@@ -6,7 +6,6 @@ import textwrap
 import webbrowser
 from pathlib import Path
 from typing import Iterator, Optional
-from atopile.cli.install import install_core
 
 import caseconverter
 import click
@@ -15,9 +14,14 @@ import jinja2
 import rich
 import rich.prompt
 
+from atopile.cli.install import install_core
+
 # Set up logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
+
+
+PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 
 
 def check_name(name: str) -> bool:
@@ -99,6 +103,11 @@ def create(
             )
             name = None
 
+    if not rich.prompt.Confirm.ask(
+        "Would you like to create a new repo for this project?"
+    ):
+        repo = PROJECT_TEMPLATE
+
     # Get a repo
     for _ in stuck_user_helper_generator:
         if not repo:
@@ -161,7 +170,9 @@ def create(
             " template you used mightn't be configurable?[/]"
         )
     # install dependencies listed in the ato.yaml, typically just generics
-    install_core(to_install="", jlcpcb=False, upgrade=True, path=repo_obj.working_tree_dir)
+    install_core(
+        to_install="", jlcpcb=False, upgrade=True, path=repo_obj.working_tree_dir
+    )
 
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
@@ -197,7 +208,8 @@ def do_configure(name: str, _repo_path: str, debug: bool):
         template_globals["rel_path"] = target_path
 
         template = env.get_template(
-            str(template_path.relative_to(repo_path).as_posix()), globals=template_globals
+            str(template_path.relative_to(repo_path).as_posix()),
+            globals=template_globals,
         )
 
         # Make the noise!
