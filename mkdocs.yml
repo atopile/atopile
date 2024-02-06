@@ -94,7 +94,7 @@ theme:
   name: material
   custom_dir: docs/overrides
   logo: assets/logo/ato_logo_256x256.png
-  favicon: assets/logo/ato_logo_32x32.png
+  favicon: assets/logo/emblem.svg
   palette:
     - media: "(prefers-color-scheme)"
       toggle:
