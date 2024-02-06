@@ -19,7 +19,7 @@ We need a way to embed key information into the source files.
 
 ### What are the functional blocks inside the chip?
 Here is a simple example of a buck converter IC.
-<img src="../../assets/images/buck_ic.png" alt="Example Image" width="400">
+<img src="/assets/images/buck_ic.png" alt="Example Image" width="400">
 Lets try simplify this into a few functional blocks. Lets say the 'controller' is a block that takes in a voltage outputs a switching node, with a feedback pin. We can just use a NFET component for the fet. So in ato code we could define this as:
 ```python
 component LM2841:
@@ -41,7 +41,7 @@ We will also need to add in any specifics required by this particular IC, like a
 ## The Instruction Manual
 
 Following through with our buck converter example, lets build a description of how to connect the blocks together to make a buck converter.
-<img src="../../assets/images/buck_topology.png" alt="Example Image" width="400">
+<img src="/assets/images/buck_topology.png" alt="Example Image" width="400">
 
 To start, lets make a new 'topology' and instantiate the required blocks.
 ```python
