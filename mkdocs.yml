@@ -123,4 +123,8 @@ extra:
       link: https://discord.gg/XQ34te6NZN
     - icon: fontawesome/brands/github
       link: https://github.com/atopile/atopile
+    - icon: fontawesome/solid/paper-plane
+      link: "mailto:tim@atopile.io,matt@atopile.io,narayan@atopile.io"
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/atopile_io
   generator: false
