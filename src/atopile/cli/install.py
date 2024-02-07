@@ -59,8 +59,9 @@ def install_core(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Pa
 
         else:
             # eg. "ato install"
-            for module_name in cfg.dependencies:
-                install_dependency(module_name, ctx.module_path, upgrade)
+            for _ctx, module_name in errors.iter_through_errors(cfg.dependencies):
+                with _ctx():
+                    install_dependency(module_name, ctx.module_path, upgrade)
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
@@ -178,6 +179,11 @@ def install_dependency(
     elif semver_to_tag:
         # Otherwise we're gonna find the best tag meeting the semver spec
         valid_versions = [v for v in semver_to_tag if version.match(module_spec, v)]
+        if not valid_versions:
+            raise errors.AtoError(
+                f"No versions of {module_name} match spec {module_spec}.\n"
+                f"Available versions: {', '.join(map(str, semver_to_tag))}"
+            )
         installed_semver = max(valid_versions)
         best_checkout = semver_to_tag[installed_semver]
     else:
