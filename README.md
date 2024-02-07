@@ -79,7 +79,7 @@ module Blinky:
 
 ### Full Projects
 
-Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) of the [logic card project](https://github.com/timot05/logic-card).
+Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) or the [logic card project](https://github.com/timot05/logic-card).
 
 ## 🔨 Getting Started
 
