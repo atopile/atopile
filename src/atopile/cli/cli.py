@@ -5,7 +5,7 @@ from rich.logging import RichHandler
 
 from atopile.cli.rich_console import console
 
-from . import build, create, install, do_configure
+from . import build, configure, create, install
 
 FORMAT = "%(message)s"
 logging.basicConfig(
@@ -43,13 +43,13 @@ def cli(debug: bool, verbose: int):
     elif verbose > 1:
         logging.root.setLevel(logging.NOTSET)
 
-    # FIXME: HACK - should be asking permissions as well
-    do_configure.do_configure()
+    configure.do_configure_if_needed()
 
 
 cli.add_command(build.build)
 cli.add_command(create.create)
 cli.add_command(install.install)
+cli.add_command(configure.configure)
 
 
 if __name__ == "__main__":
