@@ -89,6 +89,8 @@ theme:
   - navigation.sections
   - toc.follow
   - navigation.footer
+  - header.autohide
+  - announce.dismiss
   icon:
     repo: fontawesome/brands/git-alt
   name: material
