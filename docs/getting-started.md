@@ -98,7 +98,7 @@ Once created, open elec/src/your-project.ato and modify it in the following way:
 
         r_bottom = new Resistor
         r_bottom.footprint = "R0402"
-        r_top.value = 200kohm +/- 10%
+        r_bottom.value = 200kohm +/- 10%
 
         top ~ r_top.p1; r_top.p2 ~ out
         out ~ r_bottom.p1; r_bottom.p2 ~ bottom
