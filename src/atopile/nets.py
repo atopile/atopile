@@ -10,8 +10,8 @@ from atopile.instance_methods import (
     all_descendants,
     get_children,
     get_links,
-    get_parent,
     iter_parents,
+    get_parent,
     match_interfaces,
     match_pins_and_signals,
     match_signals,
@@ -61,22 +61,28 @@ class _Net:
             f"{'-' + str(self.suffix) if self.suffix else ''}"
         )
 
-    def generate_base_net_name(self) -> Optional[str]:
-        """TODO:"""
-        WEIGHT_NO_GRANDPARENTS = 10
-        WEIGHT_INTERFACE_GRANDPARENT = 5
-        WEIGHT_SIGNAL = 2
+    def generate_base_net_name(self) -> None:
+        """Generate the base_name attribute."""
+        min_depth = 100
+        for signal in filter(match_signals, self.nodes_on_net):
+            min_depth = min(min_depth, len(list(iter_parents(signal))))
 
         name_candidates = defaultdict(int)
-
         for signal in filter(match_signals, self.nodes_on_net):
-            name = get_name(signal)
-            if get_parent(signal) is None:
-                name_candidates[name] += WEIGHT_NO_GRANDPARENTS
-            elif any(map(match_interfaces, iter_parents(signal))):
-                name_candidates[name] += WEIGHT_INTERFACE_GRANDPARENT
-            else:
-                name_candidates[name] += WEIGHT_SIGNAL
+            # lower case so we are not case sensitive
+            name = get_name(signal).lower()
+            # only rank signals at highest level
+            if min_depth == len(list(iter_parents(signal))):
+                if name in ['p1', 'p2']:
+                    # Ignore 2 pin component signals
+                    name_candidates[name] = 0
+                else:
+                    name_candidates[name] += 1
+
+            elif match_interfaces(get_parent(signal)):
+                if min_depth + 1 == len(list(iter_parents(signal))):
+                    # Give interfaces on the same level a chance!
+                    name_candidates[name] += 1
 
         if name_candidates:
             highest_rated_name = max(name_candidates, key=name_candidates.get)
