@@ -81,7 +81,12 @@ def do_configure() -> None:
         )
 
     # Otherwise, figure it out
-    install_kicad_plugin()
+
+    # FIXME: no idea what's up with this - but seem to help on Windows
+    try:
+        install_kicad_plugin()
+    except FileNotFoundError:
+        install_kicad_plugin()
 
 
 PLUGIN_LOADER = f"""
