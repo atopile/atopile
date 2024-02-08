@@ -76,7 +76,7 @@ class KicadComponent:
     """
 
     ref: str  # eg. "R1" -- should be unique, we should assign these here I think
-    value: str  # eg. "10k" -- seems to be an arbitary string
+    value: str  # eg. "10k" -- seems to be an arbitrary string
     libsource: KicadLibpart
     tstamp: str  # component UID, eg. b1d41e3b-ef4b-4472-9aa4-7860376ef0ce
     src_path: str
