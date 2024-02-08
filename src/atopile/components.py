@@ -167,7 +167,7 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
 
     url = "https://get-component-atsuhzfd5a-uc.a.run.app"
     try:
-        response = requests.post(url, json=specd_data_dict, timeout=5)
+        response = requests.post(url, json=specd_data_dict, timeout=20)
         response.raise_for_status()
     except requests.HTTPError as ex:
         if ex.response.status_code == 404:
@@ -184,6 +184,11 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
             Response status code: {ex.response.status_code}
             Response text: {ex.response.text}
             """,
+            addr=component_addr
+        ) from ex
+    except requests.RequestException as ex:
+        raise errors.AtoInfraError(
+            f"Error connecting to database: {str(ex)}",
             addr=component_addr
         ) from ex
 
