@@ -20,5 +20,5 @@ In case you want to setup your own project, we have prepared a template with sam
 
 !!! tip
 
-    KiCAD needs to know where to look for the project's footprint. The `fp-lib-table` file points it to `build/footprints/footprints.pretty` which contains all the footprints. Make sure that is the case under preferences>manage footprint libraries. It should look like this: 
+    KiCAD needs to know where to look for the project's footprint. The `fp-lib-table` file points it to `build/footprints/footprints.pretty` which contains all the footprints. Make sure that is the case under preferences>manage footprint libraries. It should look like this:
     ![footprints](assets/images/footprints.png)
