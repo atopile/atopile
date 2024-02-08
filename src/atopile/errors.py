@@ -8,6 +8,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Callable, ContextManager, Iterable, Iterator, Optional, Type, TypeVar
 
+import rich
 from antlr4 import ParserRuleContext, Token
 
 from atopile import address
@@ -227,7 +228,9 @@ def in_debug_session() -> bool:
     Return whether we're in a debug session.
     """
     if "debugpy" in sys.modules:
-        from debugpy import is_client_connected  # pylint: disable=import-outside-toplevel
+        from debugpy import (
+            is_client_connected,  # pylint: disable=import-outside-toplevel
+        )
         return is_client_connected()
     return False
 
@@ -264,6 +267,10 @@ def muffle_fatalities(func):
         try:
             return func(*args, **kwargs)
         except AtoFatalError:
+            rich.print(
+                "\n\nUnfortunately errors ^^^ stopped the build. "
+                "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
+            )
             sys.exit(1)
         except ExceptionGroup as ex:
             _, not_fatal_errors = ex.split(AtoFatalError)
