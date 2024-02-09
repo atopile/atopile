@@ -14,7 +14,7 @@ import click
 import git
 import jinja2
 import rich
-from rich import prompt
+from rich
 import yaml
 
 from atopile import config, errors
@@ -208,7 +208,6 @@ def create_build():
 
         target_layout_path = top_level_path / "elec" / "layout" / build_name
         with tempfile.TemporaryDirectory() as tmpdirname:
-            layout_repo = git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname, depth=1)
             source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
             if not source_layout_path.exists():
                 rich.print(f"[red]The specified layout path {source_layout_path} does not exist.[/]")
