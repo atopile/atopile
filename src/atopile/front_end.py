@@ -431,6 +431,12 @@ class BaseTranslator(AtopileParserVisitor):
             tol_divider = None
 
         if tol_divider:
+            if nominal == 0:
+                raise errors.AtoError.from_ctx(
+                    tol_ctx,
+                    "Can't calculate tolerance percentage of a nominal value of zero",
+                )
+
             # In this case, life's a little easier, and we can simply multiply the nominal
             return Physical(
                 src_ctx=ctx,
