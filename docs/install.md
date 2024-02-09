@@ -87,3 +87,7 @@ The procedure would be the same as the one outlined above except that you don't 
 
     You can also inspect the file itself and find the pads. Here is what they look like:
     `(pad "1" smd roundrect (at -0.48 0) (size 0.56 0.62) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25) (tstamp f0d6bdbe-8dea-4984-9c52-f76168ceed26))`
+
+??? question "How to draw new footprints that aren't in existing libraries?"
+
+    KiCAD provides documentation on how to draw custom footprints [here](https://docs.kicad.org/7.0/en/getting_started_in_kicad/getting_started_in_kicad.html#creating_new_footprints).
