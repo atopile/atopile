@@ -22,8 +22,7 @@ nav:
 - Development:
   - development.md
   - roadmap.md
-- Packages:
-  - packages.md
+- Packages: https://packages.atopile.io
 - Blog:
   - blog/index.md
 plugins:
