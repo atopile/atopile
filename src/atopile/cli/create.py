@@ -71,7 +71,7 @@ def create(
     repo: Optional[str],
 ):  # pylint: disable=redefined-builtin
     """
-    Create a new ato project.
+    Create a new ato project or build configuration.
     """
     type = rich.prompt.Prompt.ask("What do you want to create", choices=["project", "build"])
 
