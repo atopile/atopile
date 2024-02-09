@@ -200,63 +200,57 @@ def create_build():
     - adds entry to ato.yaml
     - creates a new directory in layout
     """
+    build_name = caseconverter.kebabcase(rich.prompt.Prompt.ask("Enter the build name"))
     try:
-        build_name = rich.prompt.Prompt.ask("Enter the build name")
         top_level_path = config.get_project_dir_from_path(Path("."))
-        entry = rich.prompt.Prompt.ask("Enter the entry file (e.g., spin_servo_nema17)")
+    except FileNotFoundError:
+        raise errors.AtoError("Could not find the project directory, are you within an ato project?")
 
-        target_layout_path = top_level_path / "elec" / "layout" / build_name
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
-            if not source_layout_path.exists():
-                rich.print(f"[red]The specified layout path {source_layout_path} does not exist.[/]")
-            else:
-                target_layout_path.mkdir(parents=True, exist_ok=True)
-                for item in source_layout_path.iterdir():
-                    if item.is_dir():
-                        shutil.copytree(item, target_layout_path / item.name, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(item, target_layout_path)
+    # Get user input for the entry file and module name
+    entry = rich.prompt.Prompt.ask("We will create a new ato file and add the entry to the ato.yaml,\n what would you like to call the entry file? (e.g., psuDebug)")
 
-                # Configure the files in the directory using the do_configure function
-                do_configure(build_name, str(target_layout_path), debug=False)
-
-        # Add the build to the ato.yaml file
-        ato_yaml_path = top_level_path / "ato.yaml"
-        if not ato_yaml_path.exists():
-            raise errors.AtoError(f"ato.yaml not found in {top_level_path}")
+    target_layout_path = top_level_path / "elec" / "layout" / build_name
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        try:
+            git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname)
+        except git.GitCommandError as ex:
+            raise errors.AtoError(f"Failed to clone layout template from {PROJECT_TEMPLATE}: {repr(ex)}")
+        source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
+        if not source_layout_path.exists():
+            rich.print(f"[red]The specified layout path {source_layout_path} does not exist.[/]")
         else:
-            with ato_yaml_path.open("r") as file:
-                ato_config = yaml.safe_load(file)
+            target_layout_path.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source_layout_path, target_layout_path, dirs_exist_ok=True)
+            # Configure the files in the directory using the do_configure function
+            do_configure(build_name, str(target_layout_path), debug=False)
 
-            entry_file = caseconverter.kebabcase(entry)
-            entry_module = caseconverter.pascalcase(entry)
+    # Add the build to the ato.yaml file
+    ato_yaml_path = top_level_path / "ato.yaml"
+    if not ato_yaml_path.exists():
+        raise errors.AtoError(f"ato.yaml not found in {top_level_path}")
+    else:
+        with ato_yaml_path.open("r") as file:
+            ato_config = yaml.safe_load(file)
 
-            if "builds" not in ato_config:
-                ato_config["builds"] = {}
-            ato_config["builds"][build_name] = {
-                "entry": f"elec/src/{entry_file}.ato:{entry_module}"
-            }
+        entry_file = Path(caseconverter.kebabcase(entry)).with_suffix(".ato")
+        entry_module = caseconverter.pascalcase(entry)
 
-            with ato_yaml_path.open("w") as file:
-                yaml.safe_dump(ato_config, file)
+        if "builds" not in ato_config:
+            ato_config["builds"] = {}
+        ato_config["builds"][build_name] = {
+            "entry": f"elec/src/{entry_file}:{entry_module}"
+        }
 
-            # create a new ato file with the entry file and module
-            ato_file = top_level_path / "elec" / "src" / f"{entry_file}.ato"
+        with ato_yaml_path.open("w") as file:
+            yaml.safe_dump(ato_config, file)
 
-            ato_file.write_text(f"module {entry_module}:\nsignal gnd\n")
+        # create a new ato file with the entry file and module
+        ato_file = top_level_path / "elec" / "src" / entry_file
 
-            rich.print(f"⭐⭐⭐ Successfully created a new build configuration for {build_name}! ⭐⭐⭐")
+        ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
 
-    except git.GitCommandError as ex:
-        rich.print(
-            f"""
-            [red]Failed to clone layout template from {PROJECT_TEMPLATE} or copy files to {target_layout_path}[/]
+        rich.print(f":star: Successfully created a new build configuration for {build_name}! :star:")
 
-            {ex.stdout}
-            {ex.stderr}
-            """
-        )
 
 @dev.command()
 @click.argument("name")
