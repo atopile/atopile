@@ -1,4 +1,4 @@
-# Packages and component installation
+# Packages, components and footprints
 
 ## Components
 
@@ -56,3 +56,34 @@ This will pull the latest tag version for the packages. If you wish to further s
 ### Adding packages
 
 The top of the [atopile package registry](https://packages.atopile.io) contains a form to add packages. Add the name and the link to the git repository (GitLab or GitHub for example) and click submit. Your package should now be available to the community!
+
+
+## Adding custom footprints
+
+In cases where you can't find the footprint that you'd want to use on [JLCPCB](https://jlcpcb.com/parts) or in the [atopile package registry](https://packages.atopile.io), you can also add it manually. KiCAD has a library of footprints you can use [on GitLab](https://gitlab.com/kicad/libraries/kicad-footprints) (those should be installed locally already if you opt-in to install the default library when installing KiCAD, which we recommend you do). From there, you have two options:
+
+**Add the footprint to your ato project**
+
+If you have a footprint selected, you can move it to your `atopile` project in the `elec/footprints/footprint.pretty` directory.
+From your component, you can point to that footprint. You also need to connect the footprint pads to signals that you will use throughout your project. For example, if the footprint is called `my_footprint.kicad_mod` and the pads `PAD1` and `PAD2`:
+
+```python
+component MyComponent:
+    footprint = "my_footprint"
+    signal in ~ pin PAD1
+    signal out ~ pin PAD2
+```
+
+**Use footprints from the kicad default library**
+
+The procedure would be the same as the one outlined above except that you don't have to add the footprint to the atopile `elec/footprints/footprint.pretty` directory. KiCAD will find it in it's own default library. This will only work if the KiCAD has the default library installed.
+
+
+??? question "How to inspect your footprints?"
+
+    To inspect a footprint, you can use KiCAD's footprint editor
+
+    ![KiCAD footprint editor](https://github.com/atopile/atopile/assets/9785003/1f9176c9-76a6-4fdb-8e18-8f6b0c212a0d)
+
+    You can also inspect the file itself and find the pads. Here is what they look like:
+    `(pad "1" smd roundrect (at -0.48 0) (size 0.56 0.62) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25) (tstamp f0d6bdbe-8dea-4984-9c52-f76168ceed26))`
