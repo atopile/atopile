@@ -14,7 +14,6 @@ import click
 import git
 import jinja2
 import rich
-from rich
 import yaml
 
 from atopile import config, errors
