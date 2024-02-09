@@ -133,7 +133,7 @@ _loaded_configs: dict[Path, str] = {}
 
 def get_project_config_from_path(path: Path) -> UserConfig:
     """
-    Get the project config from an address.
+    Get the project config from a path.
     """
     project_dir = get_project_dir_from_path(path)
     project_config_file = project_dir / CONFIG_FILENAME

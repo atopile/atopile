@@ -1,7 +1,9 @@
 import itertools
 import logging
 import re
+import shutil
 import sys
+import tempfile
 import textwrap
 import webbrowser
 from pathlib import Path
@@ -12,7 +14,9 @@ import click
 import git
 import jinja2
 import rich
-import rich.prompt
+import ruamel.yaml
+
+from atopile import config, errors
 
 from atopile.cli.install import install_core
 
@@ -67,8 +71,14 @@ def create(
     repo: Optional[str],
 ):  # pylint: disable=redefined-builtin
     """
-    Create a new ato project.
+    Create a new ato project or build configuration.
     """
+    type = rich.prompt.Prompt.ask("What do you want to create", choices=["project", "build"])
+
+    if type == "build":
+        create_build()
+        return
+
     # Get a project name
     kebab_name = None
     for _ in stuck_user_helper_generator:
@@ -181,6 +191,76 @@ def create(
 
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
+
+
+
+def create_build():
+    """
+    Create a new build configuration.
+    - adds entry to ato.yaml
+    - creates a new directory in layout
+    """
+    build_name = caseconverter.kebabcase(rich.prompt.Prompt.ask("Enter the build name"))
+    try:
+        project_config = config.get_project_config_from_path(Path("."))
+        project_context = config.ProjectContext.from_config(project_config)
+        top_level_path = project_context.project_path
+        layout_path = project_context.layout_path
+        src_path = project_context.src_path
+    except FileNotFoundError:
+        raise errors.AtoError("Could not find the project directory, are you within an ato project?")
+
+    # Get user input for the entry file and module name
+    rich.print("We will create a new ato file and add the entry to the ato.yaml")
+    entry = rich.prompt.Prompt.ask("What would you like to call the entry file? (e.g., psuDebug)")
+
+    target_layout_path = layout_path / build_name
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        try:
+            git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname)
+        except git.GitCommandError as ex:
+            raise errors.AtoError(f"Failed to clone layout template from {PROJECT_TEMPLATE}: {repr(ex)}")
+        source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
+        if not source_layout_path.exists():
+            raise errors.AtoError(f"The specified layout path {source_layout_path} does not exist.")
+        else:
+            target_layout_path.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source_layout_path, target_layout_path, dirs_exist_ok=True)
+            # Configure the files in the directory using the do_configure function
+            do_configure(build_name, str(target_layout_path), debug=False)
+
+        # Add the build to the ato.yaml file
+        ato_yaml_path = top_level_path / config.CONFIG_FILENAME
+        # Check if ato.yaml exists
+        if not ato_yaml_path.exists():
+            print(f"ato.yaml not found in {top_level_path}. Please ensure the file exists before proceeding.")
+        else:
+            # Load the existing YAML configuration
+            yaml = ruamel.yaml.YAML()
+            with ato_yaml_path.open("r") as file:
+                ato_config = yaml.load(file)
+
+            entry_file = Path(caseconverter.kebabcase(entry)).with_suffix(".ato")
+            entry_module = caseconverter.pascalcase(entry)
+
+            # Update the ato_config with the new build information
+            if "builds" not in ato_config:
+                ato_config["builds"] = {}
+            ato_config["builds"][build_name] = {
+                "entry": f"elec/src/{entry_file}:{entry_module}"
+            }
+
+            # Write the updated configuration back to ato.yaml
+            with ato_yaml_path.open("w") as file:
+                yaml.dump(ato_config, file)
+
+
+        # create a new ato file with the entry file and module
+        ato_file = src_path / entry_file
+
+        ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
+
+        rich.print(f":star: Successfully created a new build configuration for {build_name}! :star:")
 
 
 @dev.command()
