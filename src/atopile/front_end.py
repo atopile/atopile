@@ -755,7 +755,9 @@ def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
     if ref in BUILTINS_BY_REF:
         return BUILTINS_BY_REF[ref].address
 
-    raise KeyError(ref)
+    raise errors.AtoKeyError.from_ctx(
+        context.src_ctx, f"Couldn't find {ref} in the scope of {context}"
+    )
 
 
 class BlockNotFoundError(errors.AtoKeyError):
