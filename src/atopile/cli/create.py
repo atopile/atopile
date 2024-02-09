@@ -1,7 +1,9 @@
 import itertools
 import logging
 import re
+import shutil
 import sys
+import tempfile
 import textwrap
 import webbrowser
 from pathlib import Path
@@ -12,7 +14,10 @@ import click
 import git
 import jinja2
 import rich
-import rich.prompt
+from rich import prompt
+import yaml
+
+from atopile import config, errors
 
 from atopile.cli.install import install_core
 
@@ -69,6 +74,12 @@ def create(
     """
     Create a new ato project.
     """
+    type = rich.prompt.Prompt.ask("What do you want to create", choices=["project", "build"])
+
+    if type == "build":
+        create_build()
+        return
+
     # Get a project name
     kebab_name = None
     for _ in stuck_user_helper_generator:
@@ -182,6 +193,72 @@ def create(
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
 
+
+
+def create_build():
+    """
+    Create a new build configuration.
+    - adds entry to ato.yaml
+    - creates a new directory in layout
+    """
+    try:
+        build_name = rich.prompt.Prompt.ask("Enter the build name")
+        top_level_path = config.get_project_dir_from_path(Path("."))
+        entry = rich.prompt.Prompt.ask("Enter the entry file (e.g., spin_servo_nema17)")
+
+        target_layout_path = top_level_path / "elec" / "layout" / build_name
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            layout_repo = git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname, depth=1)
+            source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
+            if not source_layout_path.exists():
+                rich.print(f"[red]The specified layout path {source_layout_path} does not exist.[/]")
+            else:
+                target_layout_path.mkdir(parents=True, exist_ok=True)
+                for item in source_layout_path.iterdir():
+                    if item.is_dir():
+                        shutil.copytree(item, target_layout_path / item.name, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(item, target_layout_path)
+
+                # Configure the files in the directory using the do_configure function
+                do_configure(build_name, str(target_layout_path), debug=False)
+
+        # Add the build to the ato.yaml file
+        ato_yaml_path = top_level_path / "ato.yaml"
+        if not ato_yaml_path.exists():
+            raise errors.AtoError(f"ato.yaml not found in {top_level_path}")
+        else:
+            with ato_yaml_path.open("r") as file:
+                ato_config = yaml.safe_load(file)
+
+            entry_file = caseconverter.kebabcase(entry)
+            entry_module = caseconverter.pascalcase(entry)
+
+            if "builds" not in ato_config:
+                ato_config["builds"] = {}
+            ato_config["builds"][build_name] = {
+                "entry": f"elec/src/{entry_file}.ato:{entry_module}"
+            }
+
+            with ato_yaml_path.open("w") as file:
+                yaml.safe_dump(ato_config, file)
+
+            # create a new ato file with the entry file and module
+            ato_file = top_level_path / "elec" / "src" / f"{entry_file}.ato"
+
+            ato_file.write_text(f"module {entry_module}:\nsignal gnd\n")
+
+            rich.print(f"⭐⭐⭐ Successfully created a new build configuration for {build_name}! ⭐⭐⭐")
+
+    except git.GitCommandError as ex:
+        rich.print(
+            f"""
+            [red]Failed to clone layout template from {PROJECT_TEMPLATE} or copy files to {target_layout_path}[/]
+
+            {ex.stdout}
+            {ex.stderr}
+            """
+        )
 
 @dev.command()
 @click.argument("name")
