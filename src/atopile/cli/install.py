@@ -46,7 +46,7 @@ def install_core(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Pa
     with errors.handle_ato_errors():
         if jlcpcb:
             # eg. "ato install --jlcpcb=C123"
-            install_jlcpcb(to_install)
+            install_jlcpcb(to_install, top_level_path)
         elif to_install:
             # eg. "ato install some-atopile-module"
             installed_semver = install_dependency(to_install, ctx.module_path, upgrade)
@@ -217,24 +217,13 @@ def install_dependency(
         return best_checkout
 
 
-def install_jlcpcb(component_id: str):
+def install_jlcpcb(component_id: str, top_level_path: Path):
     """Install a component from JLCPCB"""
     component_id = component_id.upper()
     if not component_id.startswith("C") or not component_id[1:].isdigit():
         raise errors.AtoError(f"Component id {component_id} is invalid. Aborting.")
 
-    # Get the top level of the git module the user is currently within
-    repo = Repo(".", search_parent_directories=True)
-    top_level_path = Path(repo.working_tree_dir)
-
-    # Get the remote URL
-    remote_url = repo.remote().url
-
-    # Set the footprints_dir based on the remote URL
-    if remote_url == "git@gitlab.atopile.io:atopile/modules.git":
-        footprints_dir = top_level_path / "footprints"
-    else:
-        footprints_dir = top_level_path / "elec/footprints/footprints"
+    footprints_dir = top_level_path / "elec/footprints/footprints"
 
     log.info(f"Footprints directory: {footprints_dir}")
 
