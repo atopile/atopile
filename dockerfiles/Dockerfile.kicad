@@ -13,7 +13,6 @@ RUN sudo apt-get update \
     && sudo apt-get install -y \
         python3-pip \
         python3-venv \
-
     # Create a user-owned venv for atopile
     # Ubuntu doesn't seem to support pip-installing modules globally
     && sudo mkdir -p /opt/atopile \
@@ -28,6 +27,7 @@ RUN sudo apt-get update \
 
 # Set envionment variables to build all targets
 ENV ATO_TARGET="all"
+ENV ATO_NON_INTERACTIVE=1
 
 # We need to set the github workspace as a safe directory according
 # to git so we can get version information like the githash from it

@@ -24,9 +24,10 @@ logging.basicConfig(
 # cli root
 @click.version_option()
 @click.group()
+@click.option("--non-interactive", is_flag=True, envvar="ATO_NON_INTERACTIVE")
 @click.option("--debug", is_flag=True)
 @click.option("-v", "--verbose", count=True)
-def cli(debug: bool, verbose: int):
+def cli(non_interactive: bool, debug: bool, verbose: int):
     """Base CLI group."""
     # we process debugpy first, so we can attach the debugger ASAP into the process
     if debug:
@@ -43,7 +44,8 @@ def cli(debug: bool, verbose: int):
     elif verbose > 1:
         logging.root.setLevel(logging.NOTSET)
 
-    configure.do_configure_if_needed()
+    if not non_interactive:
+        configure.do_configure_if_needed()
 
 
 cli.add_command(build.build)
