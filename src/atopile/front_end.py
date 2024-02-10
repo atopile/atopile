@@ -94,7 +94,9 @@ class Physical(Base):
         return (self.max_val - self.min_val) / 2
 
     @property
-    def tolerance_pct(self) -> float:
+    def tolerance_pct(self) -> Optional[float]:
+        if self.nominal == 0:
+            return None
         return self.tolerance / self.nominal * 100
 
     def __repr__(self) -> str:
