@@ -13,7 +13,6 @@ RUN sudo apt-get update \
     && sudo apt-get install -y \
         python3-pip \
         python3-venv \
-
     # Create a user-owned venv for atopile
     # Ubuntu doesn't seem to support pip-installing modules globally
     && sudo mkdir -p /opt/atopile \
@@ -25,6 +24,8 @@ RUN sudo apt-get update \
     && pip3 install "/tmp/atopile.tar.gz[dev,test,docs]" \
     # Add the ato CLI to something on PATH
     && sudo cp /opt/atopile/bin/ato /usr/local/bin/ato
+
+RUN mkdir ~/.atopile/
 
 # Set envionment variables to build all targets
 ENV ATO_TARGET="all"
