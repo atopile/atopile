@@ -25,10 +25,9 @@ RUN sudo apt-get update \
     # Add the ato CLI to something on PATH
     && sudo cp /opt/atopile/bin/ato /usr/local/bin/ato
 
-RUN mkdir ~/.atopile/
-
 # Set envionment variables to build all targets
 ENV ATO_TARGET="all"
+ENV ATO_NON_INTERACTIVE=1
 
 # We need to set the github workspace as a safe directory according
 # to git so we can get version information like the githash from it

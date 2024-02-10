@@ -35,9 +35,8 @@ def configure() -> None:
 def do_configure_if_needed() -> None:
     """Configure the user's system for atopile development if it's not already configured."""
     if not CONFIGURED_FOR_PATH.parent.exists():
-        rich.print(
-            dedent(
-                """
+        rich.print(dedent(
+            """
             Welcome! :partying_face:
 
             Looks like you're new to atopile, there's some initial setup we need to do.
@@ -45,8 +44,7 @@ def do_configure_if_needed() -> None:
             The following changes will be made:
             - Install the atopile KiCAD plugin for you
             """
-            )
-        )
+        ))
         if rich.prompt.Confirm.ask(
             ":wrench: That cool :sunglasses:?", default="y"
         ):

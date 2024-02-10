@@ -63,8 +63,6 @@ jobs:
     strategy:
       matrix:
         include:
-          # - dockerfile: "Dockerfile.ci"
-          #   image: "atopile-ci"
           - dockerfile: "Dockerfile.kicad"
             image: "atopile-kicad"
 

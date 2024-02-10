@@ -1,7 +1,0 @@
-# a minimal Dockerfile for CI
-
-FROM python:latest
-
-COPY dist/atopile-*.tar.gz /tmp/atopile.tar.gz
-
-RUN pip install "/tmp/atopile.tar.gz[dev,test,docs]"
