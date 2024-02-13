@@ -11,13 +11,16 @@ import subprocess
 from itertools import chain
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import click
-import yaml
 import requests
+import ruamel.yaml
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from atopile import config, errors, version
+
+yaml = ruamel.yaml.YAML()
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -54,7 +57,7 @@ def install_core(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Pa
             if module_spec is None and installed_semver:
                 # If the user didn't specify a version, we'll
                 # use the one we just installed as a basis
-                to_install = f"{module_name}^{installed_semver}"
+                to_install = f"{module_name} ^{installed_semver}"
             set_dependency_to_ato_yaml(top_level_path, to_install)
 
         else:
@@ -85,6 +88,7 @@ def get_package_repo_from_registry(module_name: str) -> str:
         raise errors.AtoError(f"No repo_url found for package '{module_name}'")
     return return_url
 
+
 def split_module_spec(spec: str) -> tuple[str, Optional[str]]:
     """Splits a module spec string into the module name and the version spec."""
     for splitter in chain(version.OPERATORS, (" ", "@")):
@@ -108,7 +112,7 @@ def set_dependency_to_ato_yaml(top_level_path: Path, module_spec: str):
         raise errors.AtoError(f"ato.yaml not found in {top_level_path}")
 
     with ato_yaml_path.open("r") as file:
-        data = yaml.safe_load(file) or {}
+        data = yaml.load(file) or {}
 
     # Add module to dependencies, avoiding duplicates
     dependencies: list[str] = data.setdefault("dependencies", [])
@@ -126,7 +130,7 @@ def set_dependency_to_ato_yaml(top_level_path: Path, module_spec: str):
         dependencies.append(module_spec)
 
         with ato_yaml_path.open("w") as file:
-            yaml.safe_dump(data, file, default_flow_style=False)
+            yaml.dump(data, file)
 
 
 def install_dependency(
@@ -137,12 +141,20 @@ def install_dependency(
     into the project to "top_level_path"
     """
     # Figure out what we're trying to install here
-    module_name, module_spec = split_module_spec(module)
+    module_uri, module_spec = split_module_spec(module)
     if not module_spec:
         module_spec = "*"
 
     # Ensure the modules path exists
     module_dir.mkdir(parents=True, exist_ok=True)
+
+    parsed_url = urlparse(module_uri)
+    if not parsed_url.scheme:
+        module_name = module_uri
+        clone_url = get_package_repo_from_registry(module_uri)
+    else:
+        module_name = parsed_url.path.split("/")[-1]
+        clone_url = module_uri
 
     try:
         # This will raise an exception if the directory does not exist
@@ -150,8 +162,8 @@ def install_dependency(
     except (InvalidGitRepositoryError, NoSuchPathError):
         # Directory does not contain a valid repo, clone into it
         log.info(f"Installing dependency {module_name}")
-        clone_url = get_package_repo_from_registry(module_name)
         repo = Repo.clone_from(clone_url, module_dir / module_name)
+
     else:
         # In this case the directory exists and contains a valid repo
         if upgrade:
