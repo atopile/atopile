@@ -187,7 +187,7 @@ def install_dependency(
 
     if "@" in module_spec:
         # If there's an @ in the version, we're gonna check that thing out
-        best_checkout = module_spec.strip().strip("@")
+        best_checkout = module_spec.strip(" @")
     elif semver_to_tag:
         # Otherwise we're gonna find the best tag meeting the semver spec
         valid_versions = [v for v in semver_to_tag if version.match(module_spec, v)]
