@@ -5,7 +5,7 @@ site_description: >-
 
 nav:
 - Home: index.md
-- Usage:
+- atopile usage:
   - getting-started.md
   - first_project.md
   - config.md
@@ -16,9 +16,11 @@ nav:
   - class.md
   - units.md
   - doc-strings.md
-  - kicad.md
-  - git.md
-  - ci.md
+  - Layout on kicad:
+    - kicad.md
+  - Version control / Manufacturing:
+    - git.md
+    - ci.md
 - Development:
   - development.md
   - roadmap.md
