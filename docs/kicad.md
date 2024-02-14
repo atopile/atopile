@@ -28,6 +28,15 @@ atopile allows you to reuse the layouts that are defined in your dependencies. Y
 
 ![KiCAD Buttons](assets/images/kicad_buttons.png)
 
+---
+:fontawesome-brands-youtube:{ style="color: #EE0F0F" }
+__[atopile Layout Reuse]__ – :octicons-clock-24:
+3m – atopile Layout Reuse.
+
+  [atopile Layout Reuse]: https://www.youtube.com/watch?v=qh8yZC_pkG8
+
+---
+
 ### Steps
 
 1) Start by adding a module to your project using [`ato install`](install.md/#installing-packages).
