@@ -88,7 +88,7 @@ def do_configure() -> None:
 
 
 PLUGIN_LOADER = f"""
-plugin_path = "{Path(__file__).parent.parent.parent}"
+plugin_path = "{Path(__file__).parent.parent}"
 import sys
 import importlib
 
