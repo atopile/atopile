@@ -1,4 +1,4 @@
-# Packages, components and footprints
+# Install dependencies
 
 ## Components
 
@@ -12,7 +12,7 @@ The command will add your footprint and 3D representation to the KiCAD library (
 
 ### Adding components manually
 
-To manually add components, follow the instructions for creating a component in the type section.
+To manually add components, follow the instructions for creating a component or footprint in the section below.
 <!--
 TODO: link to the types
 -->
@@ -29,11 +29,21 @@ See an example of a package with the [generics library](https://gitlab.atopile.i
 
 ### Installing packages
 
+### Install - from the package manager <small>recommended</small>
+
 To install a package, run the following command:
 
 `ato install <your-package-name>`
 
 The package will be added in the .ato/modules/your-package-name directory. It's installed just like existing git repositories that means you can make changes to it and push those changes back to the remote, if you have permissions to do so.
+
+### Install - from a git repo
+
+To install a package from a git repository, run the following command:
+
+`ato install <your-repository-url>`
+
+The package will be added will be added to your dependencies in a similar fashion than the procedure above. See below for the procedure to specify a specific package.
 
 ### Upgrading packages & version management
 
