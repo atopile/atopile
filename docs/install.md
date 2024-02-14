@@ -29,7 +29,7 @@ See an example of a package with the [generics library](https://gitlab.atopile.i
 
 ### Installing packages
 
-To install a package, run the following command:
+To install a [package](https://packages.atopile.io), run the following command:
 
 `ato install <your-package-name>`
 
