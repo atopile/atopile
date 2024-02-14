@@ -187,7 +187,7 @@ def install_dependency(
 
     if "@" in module_spec:
         # If there's an @ in the version, we're gonna check that thing out
-        best_checkout = module_spec.strip().strip("@")
+        best_checkout = module_spec.strip(" @")
     elif semver_to_tag:
         # Otherwise we're gonna find the best tag meeting the semver spec
         valid_versions = [v for v in semver_to_tag if version.match(module_spec, v)]
@@ -212,9 +212,15 @@ def install_dependency(
         )
 
     # Checkout the best thing we've found
-    commit_before_checkout = repo.head.commit
+    ref_before_checkout = repo.head.commit
+
+    # If the repo best_checkout is a branch, we need to checkout the origin/branch
+    if best_checkout in repo.heads:
+        best_checkout = f"origin/{best_checkout}"
+
     repo.git.checkout(best_checkout)
-    if repo.head.commit == commit_before_checkout:
+
+    if repo.head.commit == ref_before_checkout:
         log.info(
             f"Already on the best option ([cyan bold]{best_checkout}[/]) for {module_name}",
             extra={"markup": True},
