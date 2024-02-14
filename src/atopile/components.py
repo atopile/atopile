@@ -173,8 +173,7 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
         if ex.response.status_code == 404:
             friendly_dict = " && ".join(f"{k} == {v}" for k, v in specd_data_dict.items())
             raise NoMatchingComponent(
-                f"No valid component found for spec {friendly_dict}:
-                please check the part specs above, if they look right, we probably dont have it yet, we are working on it!",
+                f"No valid component found for spec {friendly_dict}: please check the part specs above, if they look right, we probably dont have it yet, we are working on it!",
                 addr=component_addr
             ) from ex
 
