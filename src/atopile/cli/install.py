@@ -212,9 +212,15 @@ def install_dependency(
         )
 
     # Checkout the best thing we've found
-    commit_before_checkout = repo.head.commit
+    ref_before_checkout = repo.head.commit
+
+    # If the repo best_checkout is a branch, we need to checkout the origin/branch
+    if best_checkout in repo.heads:
+        best_checkout = f"origin/{best_checkout}"
+
     repo.git.checkout(best_checkout)
-    if repo.head.commit == commit_before_checkout:
+
+    if repo.head.commit == ref_before_checkout:
         log.info(
             f"Already on the best option ([cyan bold]{best_checkout}[/]) for {module_name}",
             extra={"markup": True},
