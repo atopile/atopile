@@ -113,7 +113,7 @@ def create(
             )
             name = None
 
-    if not rich.prompt.Confirm.ask(
+    if not repo and not rich.prompt.Confirm.ask(
         "Would you like to create a new repo for this project?"
     ):
         repo = PROJECT_TEMPLATE
@@ -180,9 +180,21 @@ def create(
             " template you used mightn't be configurable?[/]"
         )
 
-    # If this repo's remote it PROJECT_TEMPLATE, delete all the git history
+    # If this repo's remote it PROJECT_TEMPLATE, cleanup the git history
     if repo_obj.remotes.origin.url == PROJECT_TEMPLATE:
-        repo_obj.delete_remote("origin")
+        try:
+            git.Repo(Path(repo_obj.working_dir).parent)
+        except git.InvalidGitRepositoryError:
+            # If we've created this project OUTSIDE an existing git repo
+            # then re-init the repo so it has a clean history
+            shutil.rmtree(repo_obj.git_dir)
+            clean_repo = git.Repo.init(repo_obj.working_tree_dir)
+            clean_repo.git.add(A=True)
+            clean_repo.git.commit(m="Initial commit")
+        else:
+            # If we've created this project WITHIN an existing git repo
+            # then remove the .git directory and let the parent repo handle it
+            shutil.rmtree(repo_obj.git_dir)
 
     # install dependencies listed in the ato.yaml, typically just generics
     install_core(
@@ -191,7 +203,6 @@ def create(
 
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
-
 
 
 def create_build():
@@ -260,7 +271,7 @@ def create_build():
 
         ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
 
-        rich.print(f":star: Successfully created a new build configuration for {build_name}! :star:")
+        rich.print(f":sparkles: Successfully created a new build configuration for {build_name}! :sparkles:")
 
 
 @dev.command()
@@ -274,11 +285,16 @@ def configure(name: str, repo_path: str):
 def do_configure(name: str, _repo_path: str, debug: bool):
     """Configure the project."""
     repo_path = Path(_repo_path)
+    try:
+        author = git.Repo(repo_path).git.config("user.name")
+    except git.GitCommandError:
+        author = "Original Author"
     template_globals = {
         "name": name,
         "caseconverter": caseconverter,
         "repo_root": repo_path,
         "python_path": sys.executable,
+        "author": author,
     }
 
     # Load templates
