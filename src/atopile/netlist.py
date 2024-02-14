@@ -100,11 +100,17 @@ class NetlistBuilder:
             tstamps=tstamp,
         )
 
+        # add the lib: prefix if it's not there or there is a different prefix
+        # This is used by kicad to reference which library the footprint is from
+        footprint_with_prefix = components.get_footprint(comp_addr)
+        if ":" not in footprint_with_prefix:
+            footprint_with_prefix = "lib:" + footprint_with_prefix
+
         designator = components.get_designator(comp_addr)
         constructed_component = KicadComponent(
             ref=designator,
             value=_get_value(comp_addr),
-            footprint=components.get_footprint(comp_addr),
+            footprint= footprint_with_prefix,
             libsource=libsource,
             tstamp=tstamp,
             fields=[],
