@@ -274,11 +274,16 @@ def configure(name: str, repo_path: str):
 def do_configure(name: str, _repo_path: str, debug: bool):
     """Configure the project."""
     repo_path = Path(_repo_path)
+    try:
+        author = git.Repo().git.config("user.name")
+    except git.GitCommandError:
+        author = "Original Author"
     template_globals = {
         "name": name,
         "caseconverter": caseconverter,
         "repo_root": repo_path,
         "python_path": sys.executable,
+        "author": author,
     }
 
     # Load templates
