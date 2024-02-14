@@ -100,6 +100,7 @@ exclude = [
     "src/atopile/parser/AtopileParserBase.py",
     "src/atopile/parser/AtopileParserListener.py",
     "src/atopile/parser/AtopileParserVisitor.py",
+    "src/atopile/kicad_plugin",
 ]
 
 ignore = [
