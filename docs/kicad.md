@@ -58,3 +58,7 @@ Try it out with the [RP2040 module](https://packages.atopile.io/package/rp2040)!
 
 ![Reload Group](assets/images/reload.png) <br/>
 *Reload button:* This button will create groups of components following the dependencies that you added for your project.
+
+### How it actually works
+
+As you build your project, a `manifest.json` is created in the build directory. The manifest links your KiCAD pcb payout file to a `<your-project>.layouts.json`. This file lists out all the modules that are in your layout and the map of the unique IDs in the current project to the ones in the dependency that you are trying to pull the layout from. It also provides the address of where the layout reuse is located.
