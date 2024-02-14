@@ -1,11 +1,14 @@
 site_name: atopile
 site_url: https://atopile.io
 site_description: >-
-  atopile is a language and toolchain to describe electronic circuit boards with code. By replacing the point and click schematic interface with code, we introduce software development workflows like reuse, validation and automation to the world of electronics. Join us in this adventure!
+  atopile is a language and toolchain to describe electronic circuit boards with code.
+  By replacing the point and click schematic interface with code, we introduce software
+  development workflows like reuse, validation and automation to the world of electronics.
+  Join us in this adventure!
 
 nav:
 - Home: index.md
-- atopile usage:
+- Docs:
   - getting-started.md
   - first_project.md
   - config.md
@@ -33,8 +36,7 @@ plugins:
 - search
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
-site_name: atopile
-# Extensions
+
 markdown_extensions:
   - abbr
   - admonition
