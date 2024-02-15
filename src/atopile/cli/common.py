@@ -75,7 +75,7 @@ def project_options(f):
         # add custom config overrides
         if option:
             try:
-                config: atopile.config.UserConfig = OmegaConf.merge(
+                config: atopile.config.ProjectConfig = OmegaConf.merge(
                     project_config,
                     OmegaConf.from_dotlist(option)
                 )
@@ -83,7 +83,7 @@ def project_options(f):
                 raise click.BadParameter(f"Invalid config key {ex.key}") from ex
 
         else:
-            config: atopile.config.UserConfig = project_config
+            config: atopile.config.ProjectConfig = project_config
 
         # if we set an entry-point, we now need to deal with that
         entry_addr_override = None
@@ -136,7 +136,7 @@ def project_options(f):
     return wrapper
 
 
-def check_compiler_versions(config: atopile.config.UserConfig):
+def check_compiler_versions(config: atopile.config.ProjectConfig):
     """
     Check that the compiler version is compatible with the version
     used to build the project.

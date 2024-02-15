@@ -8,7 +8,8 @@ from typing import Any, Optional
 
 import requests
 
-from atopile import address, errors, instance_methods
+from atopile import address, errors, instance_methods, config
+
 from atopile.address import AddrStr
 from atopile.front_end import Physical
 
@@ -165,9 +166,10 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
         log.debug("Using cache for %s", component_addr)
         return cached_component
 
-    url = "https://get-component-atsuhzfd5a-uc.a.run.app"
+    url = config.get_project_context().config.services.components
+    headers = {"accept": "application/json", "Content-Type": "application/json"}
     try:
-        response = requests.post(url, json=specd_data_dict, timeout=20)
+        response = requests.post(url, json=specd_data_dict, timeout=20, headers=headers)
         response.raise_for_status()
     except requests.HTTPError as ex:
         if ex.response.status_code == 404:
