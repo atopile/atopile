@@ -28,9 +28,11 @@ def _handle_windows(func):
         if len(address) >= 2 and address[1] == ":" and address[0].isalpha():
             drive_letter = address[0]
             remainder = address[2:]
-            result = func(remainder, *args, **kwargs)
+            result: Optional[str] = func(remainder, *args, **kwargs)
             if result is None:
                 return None
+            if not result.startswith("/"):
+                return result
             return ":".join([drive_letter, result])
         return func(address, *args, **kwargs)
 

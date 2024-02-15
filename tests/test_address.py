@@ -1,4 +1,4 @@
-from atopile.address import get_file
+from atopile.address import get_file, get_instance_section
 
 
 def test_get_file():
@@ -27,3 +27,20 @@ def test_get_file():
 
     # Test with a file address containing a Windows drive letter
     assert get_file("C:/path/to/file.txt:a:b.c") == "C:/path/to/file.txt"
+
+
+def test_get_instance_section():
+    # Test with an address containing an instance section
+    assert get_instance_section("path/to/file.txt:a:b.c") == None
+
+    # Test with an address not containing an instance section
+    assert get_instance_section("path/to/file.txt") == None
+
+    # Test with an empty address
+    assert get_instance_section("") == None
+
+    # Test with an address containing a Windows drive letter
+    assert get_instance_section("C:/path/to/file.txt:a::b.c") == "b.c"
+
+    # Test with an address containing a Windows drive letter
+    assert get_instance_section("C:/path/to/file-with-special-chars.txt:a::b.c") == "b.c"
