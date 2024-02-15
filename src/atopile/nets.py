@@ -3,7 +3,7 @@ from typing import Iterable, Optional
 from toolz import groupby
 from attr import define
 
-from atopile import address
+from atopile import address, errors
 from atopile.address import AddrStr
 from atopile.datatypes import Ref
 from atopile.instance_methods import (
@@ -27,15 +27,22 @@ def get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
     for addr in all_descendants(root):
         if match_pins_and_signals(addr):
             net_soup.add(addr)
-        for source, target in get_links(addr):
+        for link in get_links(addr):
+            source = link.source.addr
+            target = link.target.addr
+
             if match_interfaces(source) and match_interfaces(target):
                 for int_pin in get_children(source):
                     if match_pins_and_signals(int_pin):
                         net_soup.join(int_pin, add_instance(target, get_name(int_pin)))
                     else:
-                        raise NotImplementedError
-            elif match_interfaces(source) or match_interfaces(source):
-                raise NotImplementedError
+                        raise errors.AtoNotImplementedError("Cannot nest interfaces yet.")
+            elif match_interfaces(source) or match_interfaces(target):
+                # If only one of the nodes is an interface, then we need to throw an error
+                raise errors.AtoTypeError.from_ctx(
+                    link.src_ctx,
+                    f"Cannot connect an interface to a non-interface: {source} ~ {target}"
+                )
             else:
                 net_soup.join(source, target)
     return net_soup.groups()

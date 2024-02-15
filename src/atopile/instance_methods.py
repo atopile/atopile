@@ -1,6 +1,6 @@
 from typing import Any, Iterable, Optional, Callable
 
-from atopile.front_end import lofty, ObjectLayer
+from atopile.front_end import lofty, ObjectLayer, Link
 from atopile import address
 from atopile.address import AddrStr
 
@@ -122,8 +122,6 @@ def iter_parents(addr: str) -> Iterable[str]:
         yield addr
 
 
-def get_links(addr: AddrStr) -> Iterable[tuple[AddrStr, AddrStr]]:
+def get_links(addr: AddrStr) -> Iterable[Link]:
     """Return the links associated with an instance"""
-    links = lofty._output_cache[addr].links
-    for link in links:
-        yield (link.source.addr, link.target.addr)
+    yield from lofty._output_cache[addr].links
