@@ -26,7 +26,7 @@ BUILD_DIR_NAME = "build"
 
 
 @define
-class UserPaths:
+class ProjectPaths:
     """Config grouping for all the paths in a project."""
 
     src: Path = "./"
@@ -34,7 +34,7 @@ class UserPaths:
 
 
 @define
-class UserBuildConfig:
+class ProjectBuildConfig:
     """Config for a build."""
 
     entry: str = MISSING
@@ -42,7 +42,13 @@ class UserBuildConfig:
 
 
 @define
-class UserConfig:
+class ProjectServicesConfig:
+    """A config for services used by the project."""
+    components: str = "https://get-component-atsuhzfd5a-uc.a.run.app"
+
+
+@define
+class ProjectConfig:
     """
     The config object for atopile.
     """
@@ -50,9 +56,10 @@ class UserConfig:
     location: Path = MISSING
 
     ato_version: str = "0.1.0"
-    paths: UserPaths = Factory(UserPaths)
-    builds: dict[str, UserBuildConfig] = Factory(dict)
+    paths: ProjectPaths = Factory(ProjectPaths)
+    builds: dict[str, ProjectBuildConfig] = Factory(dict)
     dependencies: list[str] = []
+    services: ProjectServicesConfig = Factory(ProjectServicesConfig)
 
 
 KEY_CONVERSIONS = {
@@ -80,13 +87,13 @@ def _sanitise_dict_keys(d: collections.abc.Mapping) -> collections.abc.Mapping:
     return dict(_sanitise_item(item) for item in d.items())
 
 
-def make_config(project_config: Path) -> UserConfig:
+def make_config(project_config: Path) -> ProjectConfig:
     """
     Make a config object for a project.
 
     The typing on this is a little white lie... because they're really OmegaConf objects.
     """
-    structure: UserConfig = OmegaConf.structured(UserConfig())
+    structure: ProjectConfig = OmegaConf.structured(ProjectConfig())
 
     with project_config.open() as f:
         config_data = yaml.safe_load(f)
@@ -131,7 +138,7 @@ def get_project_dir_from_path(path: Path) -> Path:
 _loaded_configs: dict[Path, str] = {}
 
 
-def get_project_config_from_path(path: Path) -> UserConfig:
+def get_project_config_from_path(path: Path) -> ProjectConfig:
     """
     Get the project config from a path.
     """
@@ -142,7 +149,7 @@ def get_project_config_from_path(path: Path) -> UserConfig:
     return _loaded_configs[project_config_file]
 
 
-def get_project_config_from_addr(addr: str) -> UserConfig:
+def get_project_config_from_addr(addr: str) -> ProjectConfig:
     """
     Get the project config from an address.
     """
@@ -158,9 +165,10 @@ class ProjectContext:
     src_path: Path  # abs path to the source directory
     module_path: Path  # abs path to the module directory
     layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
+    config: ProjectConfig
 
     @classmethod
-    def from_config(cls, config: UserConfig) -> "ProjectContext":
+    def from_config(cls, config: ProjectConfig) -> "ProjectContext":
         """Create a BuildArgs object from a Config object."""
 
         return ProjectContext(
@@ -168,6 +176,7 @@ class ProjectContext:
             src_path=Path(config.location) / config.paths.src,
             module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,
             layout_path=Path(config.location) / config.paths.layout,
+            config=config,
         )
 
     @classmethod
@@ -232,7 +241,7 @@ class BuildContext:
     output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
 
     @classmethod
-    def from_config(cls, config: UserConfig, build_name: str) -> "BuildContext":
+    def from_config(cls, config: ProjectConfig, build_name: str) -> "BuildContext":
         """Create a BuildArgs object from a Config object."""
         project_context=ProjectContext.from_config(config)
 
