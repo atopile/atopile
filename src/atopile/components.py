@@ -165,9 +165,12 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
         log.debug("Using cache for %s", component_addr)
         return cached_component
 
-    url = "https://get-component-atsuhzfd5a-uc.a.run.app"
+    # url = "https://jlcparts.vfive.dev/jlc"
+    url = "https://atopile-component-server-atsuhzfd5a-uc.a.run.app/jlc"
+    # url = "https://get-component-atsuhzfd5a-uc.a.run.app"
+    headers = {"accept": "application/json", "Content-Type": "application/json"}
     try:
-        response = requests.post(url, json=specd_data_dict, timeout=20)
+        response = requests.post(url, json=specd_data_dict, timeout=20, headers=headers)
         response.raise_for_status()
     except requests.HTTPError as ex:
         if ex.response.status_code == 404:
