@@ -1,7 +1,9 @@
 import itertools
 import logging
+import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
 import textwrap
@@ -17,7 +19,6 @@ import rich
 import ruamel.yaml
 
 from atopile import config, errors
-
 from atopile.cli.install import install_core
 
 # Set up logging
@@ -61,6 +62,25 @@ stuck_user_helper_generator = _stuck_user_helper()
 @click.group()
 def dev():
     pass
+
+
+
+def _robustly_rm_dir(path: Path) -> None:
+    """Remove a directory and all its contents."""
+    def remove_readonly(func, path, excinfo):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+    shutil.rmtree(path, onerror=remove_readonly)
+
+
+def _in_git_repo(path: Path) -> bool:
+    """Check if the current directory is in a git repo."""
+    try:
+        git.Repo(path)
+    except git.InvalidGitRepositoryError:
+        return False
+    return True
 
 
 @dev.command()
@@ -183,20 +203,19 @@ def create(
     # If this repo's remote it PROJECT_TEMPLATE, cleanup the git history
     if repo_obj.remotes.origin.url == PROJECT_TEMPLATE:
         try:
-            git.Repo(Path(repo_obj.working_dir).parent)
-        except git.InvalidGitRepositoryError:
+            _robustly_rm_dir(repo_obj.git_dir)
+        except (PermissionError, OSError) as ex:
+            errors.AtoError(
+                f"Failed to remove .git directory: {repr(ex)}"
+            ).log(log, logging.WARNING)
+        if not _in_git_repo(Path(repo_obj.working_dir).parent):
             # If we've created this project OUTSIDE an existing git repo
             # then re-init the repo so it has a clean history
-            shutil.rmtree(repo_obj.git_dir)
             clean_repo = git.Repo.init(repo_obj.working_tree_dir)
             clean_repo.git.add(A=True)
             clean_repo.git.commit(m="Initial commit")
-        else:
-            # If we've created this project WITHIN an existing git repo
-            # then remove the .git directory and let the parent repo handle it
-            shutil.rmtree(repo_obj.git_dir)
 
-    # install dependencies listed in the ato.yaml, typically just generics
+    # Install dependencies listed in the ato.yaml, typically just generics
     install_core(
         to_install="", jlcpcb=False, upgrade=True, path=repo_obj.working_tree_dir
     )
