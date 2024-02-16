@@ -3,7 +3,14 @@
 -#}
 {% extends "base.html" %}
 {% block announce %}
-  For updates follow <strong>@atopile_io</strong> on
+  For updates, star us on
+  <a href="https://github.com/atopile/atopile">
+    <span class="twemoji github">
+      {% include ".icons/fontawesome/brands/github.svg" %}
+    </span>
+    <strong>GitHub</strong>
+  </a>
+  , and follow <strong>@atopile_io</strong> on
   <a href="https://twitter.com/atopile_io">
     <span class="twemoji x-twitter">
       {% include ".icons/fontawesome/brands/x-twitter.svg" %}
@@ -22,7 +29,7 @@
       {% include ".icons/fontawesome/brands/discord.svg" %}
     </span>
     <strong>Discord</strong>
-  </a>.
+  </a>
 {% endblock %}
 {% block extrahead %}
   <link rel="stylesheet" href="{{ 'assets/stylesheets/custom.css' | url }}">
