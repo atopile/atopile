@@ -31,8 +31,11 @@ def _handle_windows(func):
             result: Optional[str] = func(remainder, *args, **kwargs)
             if result is None:
                 return None
-            if not result.startswith("/"):
+
+            char_1 = result[0]
+            if not (char_1 == "/" or char_1 == "\\"):
                 return result
+
             return ":".join([drive_letter, result])
         return func(address, *args, **kwargs)
 
