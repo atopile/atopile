@@ -12,25 +12,33 @@ stmt: simple_stmts | compound_stmt;
 simple_stmts: simple_stmt (';' simple_stmt)* ';'? NEWLINE;
 simple_stmt
     : import_stmt
+    | dep_import_stmt
     | assign_stmt
     | connect_stmt
     | retype_stmt
     | pindef_stmt
     | signaldef_stmt
     | string_stmt
-    | eqn_stmt;
+    | assert_stmt
+    | declaration_stmt;
+
 compound_stmt: blockdef;
-block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 
 blockdef: blocktype name ('from' name_or_attr)? ':' block;
 blocktype: ('component' | 'module' | 'interface');
+block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 
-import_stmt: 'import' name_or_attr 'from' string;
-assign_stmt: name_or_attr '=' assignable;
+dep_import_stmt: 'import' name_or_attr 'from' string;
+import_stmt: 'from' string 'import' name_or_attr (',' name_or_attr)*;
+
+assign_stmt: name_or_attr type_info? '=' assignable;
 assignable
     : string
     | new_stmt
-    | physical;
+    | literal_physical
+    | name_or_attr;
+
+declaration_stmt: name_or_attr type_info;
 
 quantity_end: NUMBER name?;
 bound_quantity: quantity_end 'to' quantity_end;
@@ -38,7 +46,7 @@ bilateral_nominal: NUMBER name?;
 bilateral_tolerance: NUMBER ('%' | name)?;
 bilateral_quantity: bilateral_nominal PLUS_OR_MINUS bilateral_tolerance;
 implicit_quantity: NUMBER name?;
-physical : bound_quantity | bilateral_quantity | implicit_quantity;
+literal_physical : bound_quantity | bilateral_quantity | implicit_quantity;
 
 retype_stmt: name_or_attr '->' name_or_attr;
 
@@ -53,9 +61,10 @@ new_stmt: 'new' name_or_attr;
 // the unbound string is a statement used to add doc-strings
 string_stmt: string;
 
-eqn_stmt: EQUATION_STRING;
+assert_stmt: ASSERTION_STRING;
 
 name_or_attr: attr | name;
+type_info: ':' name_or_attr;
 numerical_pin_ref: name_or_attr '.' totally_an_integer;
 attr: name ('.' name)+;
 totally_an_integer : NUMBER;

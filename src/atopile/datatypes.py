@@ -1,8 +1,19 @@
 """
 Datatypes used in the model.
 """
+
 import logging
-from typing import Generic, Iterable, Iterator, Mapping, Optional, Type, TypeVar
+from contextlib import contextmanager
+from typing import (
+    Callable,
+    Generic,
+    Iterable,
+    Iterator,
+    Mapping,
+    Optional,
+    Type,
+    TypeVar,
+)
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -80,6 +91,10 @@ class KeyOptMap(tuple[KeyOptItem[T]]):
         """Return an iterable of all the values in this set."""
         return map(lambda x: x.value, self)
 
+    def strain(self) -> "Strainer[KeyOptItem[T]]":
+        """Return a Strainer for this KeyOptMap."""
+        return Strainer(self)
+
     @classmethod
     def from_item(cls, item: KeyOptItem[T]) -> "KeyOptMap[T]":
         """Return a KeyOptMap with a single item."""
@@ -94,3 +109,44 @@ class KeyOptMap(tuple[KeyOptItem[T]]):
     def empty(cls) -> "KeyOptMap[T]":
         """Return an empty KeyOptMap."""
         return cls(())
+
+
+class Strainer(list[T]):
+    """A class to pop filtered things from a list."""
+
+    def __init__(self, items: Iterable[T]) -> None:
+        super().__init__(items)
+
+    def iter_strain(self, filter_: Callable[[T], bool]) -> Iterator[T]:
+        """Yield items that pass the filter, removing them from the list."""
+        idx = 0
+        while idx < len(self):
+            item = self[idx]
+            if filter_(item):
+                yield self.pop(idx)
+            else:
+                idx += 1
+
+    def strain(self, filter_: Callable[[T], bool]) -> list[T]:
+        """Return a list of items that pass the filter, removing them from the list."""
+        return list(self.iter_strain(filter_))
+
+
+class StackList(list[T]):
+    """Manages context while compiling ato code."""
+    def __init__(self) -> None:
+        super().__init__([])
+
+    @contextmanager
+    def enter(self, context: T) -> None:
+        """Enter a context."""
+        self.append(context)
+        try:
+            yield
+        finally:
+            self.pop()
+
+    @property
+    def top(self) -> T:
+        """Return the current context."""
+        return self[-1]

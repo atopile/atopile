@@ -10,6 +10,7 @@ I thiiiiink that should work, but it was a bit of a PITA and there's a chance I 
 
 ## Building this
 
-`cd` here
+cd to the `src/atopile/parser` directory and run the following command:
 
 `antlr4 -visitor -no-listener -Dlanguage=Python3 AtopileLexer.g4 AtopileParser.g4`
+

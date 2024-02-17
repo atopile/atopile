@@ -1,4 +1,4 @@
-from atopile.datatypes import Ref, KeyOptMap, KeyOptItem
+from atopile.datatypes import Ref, KeyOptMap, KeyOptItem, Strainer, StackList
 
 
 def test_ref_from_one():
@@ -123,3 +123,35 @@ def test_keyoptmap_values():
             )
         ).values()
     ) == ("foo", "baz", 42)
+
+
+def test_strainer():
+    s = Strainer([1, 2, 3, 4, 5])
+    assert list(s) == [1, 2, 3, 4, 5]
+    assert s.strain(lambda x: x % 2 == 0) == [2, 4]
+    assert s == [1, 3, 5]
+
+    for i in s.iter_strain(lambda x: x in (1, 3)):
+        assert i in (1, 3)
+
+    assert s == [5]
+
+    if not s:
+        raise Exception
+
+    s.pop(0)
+
+    if s:
+        raise Exception
+
+
+def test_stack_list():
+    stack = StackList()
+    with stack.enter(1):
+        assert stack == [1]
+        assert stack.top == 1
+        with stack.enter(2):
+            assert stack == [1, 2]
+            assert stack.top == 2
+        assert stack == [1]
+        assert stack.top == 1

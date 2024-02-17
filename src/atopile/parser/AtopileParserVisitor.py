@@ -34,11 +34,6 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#block.
-    def visitBlock(self, ctx:AtopileParser.BlockContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtopileParser#blockdef.
     def visitBlockdef(self, ctx:AtopileParser.BlockdefContext):
         return self.visitChildren(ctx)
@@ -46,6 +41,16 @@ class AtopileParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtopileParser#blocktype.
     def visitBlocktype(self, ctx:AtopileParser.BlocktypeContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#block.
+    def visitBlock(self, ctx:AtopileParser.BlockContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#dep_import_stmt.
+    def visitDep_import_stmt(self, ctx:AtopileParser.Dep_import_stmtContext):
         return self.visitChildren(ctx)
 
 
@@ -61,6 +66,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtopileParser#assignable.
     def visitAssignable(self, ctx:AtopileParser.AssignableContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#declaration_stmt.
+    def visitDeclaration_stmt(self, ctx:AtopileParser.Declaration_stmtContext):
         return self.visitChildren(ctx)
 
 
@@ -94,8 +104,8 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#physical.
-    def visitPhysical(self, ctx:AtopileParser.PhysicalContext):
+    # Visit a parse tree produced by AtopileParser#literal_physical.
+    def visitLiteral_physical(self, ctx:AtopileParser.Literal_physicalContext):
         return self.visitChildren(ctx)
 
 
@@ -134,13 +144,18 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#eqn_stmt.
-    def visitEqn_stmt(self, ctx:AtopileParser.Eqn_stmtContext):
+    # Visit a parse tree produced by AtopileParser#assert_stmt.
+    def visitAssert_stmt(self, ctx:AtopileParser.Assert_stmtContext):
         return self.visitChildren(ctx)
 
 
     # Visit a parse tree produced by AtopileParser#name_or_attr.
     def visitName_or_attr(self, ctx:AtopileParser.Name_or_attrContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#type_info.
+    def visitType_info(self, ctx:AtopileParser.Type_infoContext):
         return self.visitChildren(ctx)
 
 
