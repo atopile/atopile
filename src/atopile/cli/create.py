@@ -306,10 +306,8 @@ def do_configure(name: str, _repo_path: str, debug: bool):
     repo_path = Path(_repo_path)
     try:
         author = git.Repo(repo_path).git.config("user.name")
-    except git.GitCommandError:
+    except (git.GitCommandError, git.InvalidGitRepositoryError):
         author = "Original Author"
-    except git.exc.InvalidGitRepositoryError:  # Catch the specific exception for invalid Git repo
-        author = "Original Author"  # Use a default author name or handle as needed
 
     template_globals = {
         "name": name,
