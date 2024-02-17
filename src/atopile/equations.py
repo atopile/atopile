@@ -5,7 +5,7 @@ import sympy
 
 from atopile import address
 from atopile.address import AddrStr
-from atopile.instance_methods import get_children, get_data_dict, get_name
+from atopile.instance_methods import get_children, get_data_dict
 
 
 class DotDict:
@@ -73,35 +73,3 @@ class EquationBuilder:
             self._entry = address.get_entry(root)
         elif address.get_entry(root) != self._entry:
             raise ValueError("EquationBuilder only supports one entry point")
-
-    def solve(
-        self, known_values: dict[str, Number], solve_for: Iterable[AddrStr]
-    ) -> dict[AddrStr, Number]:
-        """Solve the equation set for everything we can, given a set of known values."""
-        known_symbol_values = {
-            self._symbols[addr]: value for addr, value in known_values.items()
-        }
-
-        substituted_eqs = [eq.subs(known_symbol_values) for eq in self._equations]
-
-        # Determine which variables are still unknown
-        solve_for_symbols = [self._symbols[addr] for addr in solve_for]
-
-        # Solve the equations for the unknowns
-        solutions = sympy.solve(substituted_eqs, solve_for_symbols)
-
-        # Check the type of the solution and convert to dictionary if necessary
-        if isinstance(solutions, list):
-            # Assuming only one solution set in the list
-            solution_dict = {
-                unknown: sol for unknown, sol in zip(solve_for_symbols, solutions[0])
-            }
-        else:
-            # Solution is already a dictionary
-            solution_dict = solutions
-
-        return {
-            addr: float(solution_dict[sym])
-            for addr, sym in solution_dict.items()
-            if isinstance(solution_dict[sym], Number)
-        }

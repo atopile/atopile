@@ -10,7 +10,7 @@ import requests
 
 from atopile import address, errors, instance_methods
 from atopile.address import AddrStr
-from atopile.front_end import Physical
+from atopile.front_end import RangedValue
 
 log = logging.getLogger(__name__)
 
@@ -132,12 +132,12 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     specd_data = instance_methods.get_data_dict(component_addr)
 
     specd_data_dict = {
-        k: v.to_dict() if isinstance(v, Physical) else v for k, v in specd_data.items()
+        k: v.to_dict() if isinstance(v, RangedValue) else v for k, v in specd_data.items()
     }
 
     # check if there are any Physical objects in the specd_data, if not, throw a warning
     if specd_data:  # Check that specd_data is not empty
-        if not any(isinstance(v, Physical) for v in specd_data.values()):
+        if not any(isinstance(v, RangedValue) for v in specd_data.values()):
             log.warning(
                 "Component %s is under-constrained, does not have any Physical types (e.g., value = 10kohm +/- 10%%).",
                 component_addr)
@@ -363,13 +363,15 @@ class DesignatorManager:
         unnamed_components = []
         used_designators = set()
 
+        # FIXME: add lock-file data
         # first pass: grab all the designators from the lock data
         for component in filter(
             instance_methods.match_components, instance_methods.all_descendants(root)
         ):
-            designator = instance_methods.get_lock_data_dict(component).get(
-                "designator"
-            )
+            # designator = instance_methods.get_lock_data_dict(component).get(
+            #     "designator"
+            # )
+            designator = None
             if designator:
                 used_designators.add(designator)
                 designators[component] = designator
@@ -388,9 +390,9 @@ class DesignatorManager:
 
             designators[component] = f"{prefix}{i}"
             used_designators.add(designators[component])
-            instance_methods.get_lock_data_dict(component)["designator"] = designators[
-                component
-            ]
+            # instance_methods.get_lock_data_dict(component)["designator"] = designators[
+            #     component
+            # ]
 
         return designators
 

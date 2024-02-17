@@ -3,10 +3,12 @@ This datamodel represents the code in a clean, simple and traversable way,
 but doesn't resolve names of things.
 In building this datamodel, we check for name collisions, but we don't resolve them yet.
 """
+
 import enum
-from collections import ChainMap
+from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
 from itertools import chain
+from numbers import Number
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
 
@@ -16,11 +18,10 @@ from attrs import define, field, resolve_types
 
 from atopile import address, errors
 from atopile.address import AddrStr
-from atopile.datatypes import KeyOptItem, KeyOptMap, Ref
+from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.generic_methods import recurse
 from atopile.parse import parser
 from atopile.parse_utils import get_src_info_from_ctx
-from atopile.parser.AtopileParser import AtopileParser
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 
@@ -50,7 +51,7 @@ class Replacement(Base):
 
 
 @define(repr=False)
-class ObjectDef(Base):
+class ClassDef(Base):
     """
     Represent the definition or skeleton of an object
     so we know where we can go to find the object later
@@ -64,11 +65,11 @@ class ObjectDef(Base):
     super_ref: Optional[Ref]
     imports: Mapping[Ref, Import]
 
-    local_defs: Mapping[Ref, "ObjectDef"]
+    local_defs: Mapping[Ref, "ClassDef"]
     replacements: Mapping[Ref, Replacement]
 
     # attached immediately to the object post construction
-    closure: Optional[tuple["ObjectDef"]] = None  # in order of lookup
+    closure: Optional[tuple["ClassDef"]] = None  # in order of lookup
     address: Optional[AddrStr] = None
 
     def __repr__(self) -> str:
@@ -76,47 +77,25 @@ class ObjectDef(Base):
 
 
 @define
-class Physical(Base):
-    """Let's get physical!"""
-    unit: pint.Unit
-    min_val: float
-    max_val: float
+class Assertion(Base):
+    """Represent an assertion statement."""
+    assertion_str: str
 
-    def __str__(self) -> str:
-        return f"{self.nominal} +/- {self.tolerance} {self.unit}"
 
-    @property
-    def nominal(self) -> float:
-        return (self.min_val + self.max_val) / 2
+@define
+class Assignment(Base):
+    """Represent an assignment statement."""
 
-    @property
-    def tolerance(self) -> float:
-        return (self.max_val - self.min_val) / 2
-
-    @property
-    def tolerance_pct(self) -> Optional[float]:
-        if self.nominal == 0:
-            return None
-        return self.tolerance / self.nominal * 100
+    name: str
+    value: Optional[Any]
+    given_type: Optional[AddrStr]
 
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
-
-    def to_dict(self) -> dict:
-        """Convert the Physical instance to a dictionary."""
-        data = {
-            "unit": str(self.unit),
-            "min_val": self.min_val,
-            "max_val": self.max_val,
-            "nominal": self.nominal,
-            "tolerance": self.tolerance,
-            "tolerance_pct": self.tolerance_pct,
-        }
-        return data
+        return f"<Assignment {self.name} = {self.value}>"
 
 
 @define(repr=False)
-class ObjectLayer(Base):
+class ClassLayer(Base):
     """
     Represent a layer in the object hierarchy.
     This holds all the values assigned to the object.
@@ -125,17 +104,14 @@ class ObjectLayer(Base):
     # information about where this object is found in multiple forms
     # this is redundant with one another (eg. you can compute one from the other)
     # but it's useful to have all of them for different purposes
-    obj_def: ObjectDef
+    obj_def: ClassDef
 
     # None indicates that this is a root object
-    super: Optional["ObjectLayer"]
+    super: Optional["ClassLayer"]
 
     # the local objects and vars are things we navigate to a lot
-    # objs: Optional[Mapping[str, "Object"]] = None
-    data: Optional[Mapping[str, Any]] = None
-
-    # data from the lock-file entry associated with this object
-    # lock_data: Mapping[str, Any] = {}  # TODO: this should point to a lockfile entry
+    assignments: Mapping[str, Assignment]
+    assertions: Iterable[Assertion]
 
     @property
     def address(self) -> AddrStr:
@@ -145,7 +121,7 @@ class ObjectLayer(Base):
         return f"<{self.__class__.__name__} {self.obj_def.address}>"
 
 
-resolve_types(ObjectLayer)
+resolve_types(ClassLayer)
 
 
 ## The below datastructures are created from the above datamodel as a second stage
@@ -170,6 +146,142 @@ class Link(Base):
         return f"<Link {repr(self.source)} -> {repr(self.target)}>"
 
 
+class RangedValue(Base):
+    """Let's get physical!"""
+
+    def __init__(
+        self,
+        val_a: Number | pint.Quantity,
+        val_b: Number | pint.Quantity,
+        unit: Optional[pint.Unit] = None,
+        src_ctx: Optional[ParserRuleContext] = None,
+    ):
+        self.src_ctx = src_ctx
+
+        if unit:
+            self.unit = unit
+        elif isinstance(val_a, pint.Quantity):
+            self.unit = val_a.units
+        elif isinstance(val_a, pint.Quantity):
+            self.unit = val_b.units
+        else:
+            raise ValueError(
+                "Unit must be provided if neither val_a or val_b are Quantities"
+            )
+
+        if isinstance(val_a, pint.Quantity):
+            val_a_mag = val_a.to(self.unit).magnitude
+        else:
+            val_a_mag = val_a
+
+        if isinstance(val_b, pint.Quantity):
+            val_b_mag = val_b.to(self.unit).magnitude
+        else:
+            val_b_mag = val_b
+
+        self.min_val = min(val_a_mag, val_b_mag)
+        self.max_val = max(val_a_mag, val_b_mag)
+
+    def __str__(self) -> str:
+        return f"{self.nominal} +/- {self.tolerance} {self.unit}"
+
+    @property
+    def nominal(self) -> float:
+        return (self.min_val + self.max_val) / 2
+
+    @property
+    def tolerance(self) -> float:
+        return (self.max_val - self.min_val) / 2
+
+    @property
+    def tolerance_pct(self) -> Optional[float]:
+        if self.nominal == 0:
+            return None
+        return self.tolerance / self.nominal * 100
+
+    def __repr__(self) -> str:
+        return (
+            f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
+        )
+
+    def to_dict(self) -> dict:
+        """Convert the Physical instance to a dictionary."""
+        data = {
+            "unit": str(self.unit),
+            "min_val": self.min_val,
+            "max_val": self.max_val,
+            # TODO: remove these - we shouldn't be duplicating this kind of information
+            "nominal": self.nominal,
+            "tolerance": self.tolerance,
+            "tolerance_pct": self.tolerance_pct,
+        }
+        return data
+
+    @property
+    def min_qty(self) -> pint.Quantity:
+        return self.unit * self.min_val
+
+    @property
+    def max_qty(self) -> pint.Quantity:
+        return self.unit * self.max_val
+
+    def __mul__(self, other: "RangedValue") -> "RangedValue":
+        new_values = [
+            self.min_qty * other.min_qty,
+            self.min_qty * other.max_qty,
+            self.max_qty * other.min_qty,
+            self.max_qty * other.max_qty,
+        ]
+
+        return RangedValue(
+            min(new_values),
+            max(new_values),
+        )
+
+    def __pow__(self, other: Number) -> "RangedValue":
+        return RangedValue(self.min_qty**other, self.max_val**other)
+
+    def __truediv__(self, other: "RangedValue") -> "RangedValue":
+        new_values = [
+            self.min_qty / other.min_qty,
+            self.min_qty / other.max_qty,
+            self.max_qty / other.min_qty,
+            self.max_qty / other.max_qty,
+        ]
+
+        return RangedValue(
+            min(new_values),
+            max(new_values),
+        )
+
+    def __add__(self, other: "RangedValue") -> "RangedValue":
+        return RangedValue(
+            self.min_qty + other.min_qty,
+            self.max_qty + other.max_qty,
+        )
+
+    def __sub__(self, other: "RangedValue") -> "RangedValue":
+        return RangedValue(
+            self.min_qty - other.max_qty,
+            self.max_qty - other.min_qty,
+        )
+
+    def within(self, other: "RangedValue") -> bool:
+        return self.min_qty <= other.min_qty and other.max_qty >= self.max_qty
+
+    def __lt__(self, other: "RangedValue") -> bool:
+        return self.max_qty < other.min_qty
+
+    def __le__(self, other: "RangedValue") -> bool:
+        return self.max_qty <= other.min_qty
+
+    def __gt__(self, other: "RangedValue") -> bool:
+        return self.min_qty > other.max_qty
+
+    def __ge__(self, other: "RangedValue") -> bool:
+        return self.max_qty >= other.min_qty
+
+
 @define
 class Instance(Base):
     """
@@ -181,25 +293,46 @@ class Instance(Base):
     # much of this information is redundant, however it's all highly referenced
     # so it's useful to have it all at hand
     addr: AddrStr
-    supers: list["ObjectLayer"] = field(factory=list)
+    supers: list["ClassLayer"]
+    assignments: Mapping[str, deque[Assignment]]
+    assertions: Iterable[Assertion]
+    parent: Optional["Instance"]
+
+    # created as supers' ASTs are walked
     children: dict[str, "Instance"] = field(factory=dict)
     links: list[Link] = field(factory=list)
 
-    data: Optional[
-        Mapping[str, Any]
-    ] = None  # this is a chainmap inheriting from the supers as well
-
-    override_data: dict[str, Any] = field(factory=dict)
-    _override_location: dict[str, ObjectLayer] = field(factory=dict)
-
-    # TODO: for later
-    # lock_data: Optional[Mapping[str, Any]] = None
-
-    # attached immediately after construction
-    parents: Optional[tuple["Instance"]] = None
-
     def __repr__(self) -> str:
         return f"<Instance {self.addr}>"
+
+    @classmethod
+    def from_super(
+        cls,
+        addr: AddrStr,
+        super_: ClassLayer,
+        parent: Optional["Instance"],
+        src_ctx: Optional[ParserRuleContext] = None,
+    ) -> "Instance":
+        """Create an instance from a list of supers."""
+        supers = list(recurse(lambda x: x.super, super_))
+
+        assignments = defaultdict(deque)
+        assertions = []
+
+        for super_ in supers:
+            for k, v in super_.assignments.items():
+                assignments[k].append(v)
+
+            assertions.extend(super_.assertions)
+
+        return cls(
+            src_ctx=src_ctx,
+            addr=addr,
+            supers=supers,
+            assignments=assignments,
+            assertions=assertions,
+            parent=parent,
+        )
 
 
 resolve_types(Instance)
@@ -213,29 +346,28 @@ class _Sentinel(enum.Enum):
 NOTHING = _Sentinel.NOTHING
 
 
-def make_obj_layer(
-    address: AddrStr, super: Optional[ObjectLayer] = None
-) -> ObjectLayer:
+def _make_obj_layer(address: AddrStr, super: Optional[ClassLayer] = None) -> ClassLayer:
     """Create a new object layer from an address and a set of supers."""
-    obj_def = ObjectDef(
+    obj_def = ClassDef(
         address=address,
         super_ref=Ref.empty(),
         imports={},
         local_defs={},
         replacements={},
     )
-    return ObjectLayer(
+    return ClassLayer(
         obj_def=obj_def,
         super=super,
-        data={},
+        assignments={},
+        assertions=[],
     )
 
 
-MODULE: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Module"))
-COMPONENT: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Component"), super=MODULE)
-PIN: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Pin"))
-SIGNAL: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Signal"))
-INTERFACE: ObjectLayer = make_obj_layer(AddrStr("<Built-in>:Interface"))
+MODULE: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Module"))
+COMPONENT: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Component"), super=MODULE)
+PIN: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Pin"))
+SIGNAL: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Signal"))
+INTERFACE: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Interface"))
 
 
 BUILTINS_BY_REF = {
@@ -307,10 +439,12 @@ class BaseTranslator(AtopileParserVisitor):
 
     def visit_ref_helper(
         self,
-        ctx: ap.NameContext
-        | ap.AttrContext
-        | ap.Name_or_attrContext
-        | ap.Totally_an_integerContext,
+        ctx: (
+            ap.NameContext
+            | ap.AttrContext
+            | ap.Name_or_attrContext
+            | ap.Totally_an_integerContext
+        ),
     ) -> Ref:
         """
         Visit any referencey thing and ensure it's returned as a reference
@@ -396,7 +530,7 @@ class BaseTranslator(AtopileParserVisitor):
             return self.visitSimple_stmts(ctx.simple_stmts())
         raise ValueError  # this should be protected because it shouldn't be parseable
 
-    def visitImplicit_quantity(self, ctx: AtopileParser.Implicit_quantityContext) -> Physical:
+    def visitImplicit_quantity(self, ctx: ap.Implicit_quantityContext) -> RangedValue:
         """Yield a physical value from an implicit quantity context."""
         value = float(ctx.NUMBER().getText())
 
@@ -405,14 +539,14 @@ class BaseTranslator(AtopileParserVisitor):
         else:
             unit = pint.Unit("")
 
-        return Physical(
+        return RangedValue(
             src_ctx=ctx,
-            min_val=value,
-            max_val=value,
+            val_a=value,
+            val_b=value,
             unit=unit,
         )
 
-    def visitBilateral_quantity(self, ctx: AtopileParser.Bilateral_quantityContext) -> Physical:
+    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> RangedValue:
         """Yield a physical value from a bilateral quantity context."""
         nominal = float(ctx.bilateral_nominal().NUMBER().getText())
 
@@ -421,14 +555,14 @@ class BaseTranslator(AtopileParserVisitor):
         else:
             unit = pint.Unit("")
 
-        tol_ctx: AtopileParser.Bilateral_toleranceContext = ctx.bilateral_tolerance()
+        tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
         tol_num = float(tol_ctx.NUMBER().getText())
 
         if tol_ctx.PERCENT():
             tol_divider = 100
         # FIXME: hardcoding this seems wrong, but the parser/lexer wasn't picking up on it
         elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
-            tol_divider = 1E6
+            tol_divider = 1e6
         else:
             tol_divider = None
 
@@ -440,10 +574,10 @@ class BaseTranslator(AtopileParserVisitor):
                 )
 
             # In this case, life's a little easier, and we can simply multiply the nominal
-            return Physical(
+            return RangedValue(
                 src_ctx=ctx,
-                min_val=nominal * (1 - tol_num / tol_divider),
-                max_val=nominal * (1 + tol_num / tol_divider),
+                val_a=nominal * (1 - tol_num / tol_divider),
+                val_b=nominal * (1 + tol_num / tol_divider),
                 unit=unit,
             )
 
@@ -460,25 +594,28 @@ class BaseTranslator(AtopileParserVisitor):
                     f" compatible with nominal unit '{unit}'",
                 ) from ex
 
-            return Physical(
+            return RangedValue(
                 src_ctx=ctx,
-                min_val=nominal - tolerance,
-                max_val=nominal + tolerance,
+                val_a=nominal - tolerance,
+                val_b=nominal + tolerance,
                 unit=unit,
             )
 
         # If there's no unit or percent, then we have a simple tolerance in the same units
         # as the nominal
-        return Physical(
+        return RangedValue(
             src_ctx=ctx,
-            min_val=nominal - tol_num,
-            max_val=nominal + tol_num,
+            val_a=nominal - tol_num,
+            val_b=nominal + tol_num,
             unit=unit,
         )
 
-    def visitBound_quantity(self, ctx: AtopileParser.Bound_quantityContext) -> Physical:
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> RangedValue:
         """Yield a physical value from a bound quantity context."""
-        def _parse_end(ctx: AtopileParser.Quantity_endContext) -> tuple[float, Optional[pint.Unit]]:
+
+        def _parse_end(
+            ctx: ap.Quantity_endContext,
+        ) -> tuple[float, Optional[pint.Unit]]:
             value = float(ctx.NUMBER().getText())
             if ctx.name():
                 unit = _get_unit_from_ctx(ctx.name())
@@ -506,14 +643,14 @@ class BaseTranslator(AtopileParserVisitor):
         else:
             unit = end_unit
 
-        return Physical(
+        return RangedValue(
             src_ctx=ctx,
-            min_val=start_val,
-            max_val=end_val,
+            val_a=start_val,
+            val_b=end_val,
             unit=unit,
         )
 
-    def visitPhysical(self, ctx: AtopileParser.PhysicalContext) -> Physical:
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
         """Yield a physical value from a physical context."""
         if ctx.implicit_quantity():
             return self.visitImplicit_quantity(ctx.implicit_quantity())
@@ -524,13 +661,17 @@ class BaseTranslator(AtopileParserVisitor):
 
         raise ValueError  # this should be protected because it shouldn't be parseable
 
-    def visitAssignable(self, ctx: ap.AssignableContext) -> Physical | str | bool:
+    def visitAssignable(self, ctx: ap.AssignableContext) -> RangedValue | str | bool:
         """Yield something we can place in a set of locals."""
-        if ctx.physical():
-            return self.visitPhysical(ctx.physical())
+        if ctx.literal_physical():
+            return self.visitLiteral_physical(ctx.literal_physical())
 
         if ctx.string():
             return self.visitString(ctx)
+
+        if ctx.name_or_attr():
+            # TODO: hook to implement traits/composition based layouts off
+            raise errors.AtoNotImplementedError("Coming soon!")
 
         assert (
             not ctx.new_stmt()
@@ -557,25 +698,27 @@ class Scoop(BaseTranslator):
     ) -> None:
         self.ast_getter = ast_getter
         self.search_paths = search_paths
-        self._output_cache: dict[AddrStr, ObjectDef] = {}
+        self._output_cache: dict[AddrStr, ClassDef] = {}
         super().__init__()
 
-    def get_obj_def(self, addr: AddrStr) -> ObjectDef:
+    def get_obj_def(self, addr: AddrStr) -> ClassDef:
         """Returns the ObjectDef for a given address."""
         if addr not in self._output_cache:
             file = address.get_file(addr)
             file_ast = self.ast_getter(file)
             obj = self.visitFile_input(file_ast)
-            assert isinstance(obj, ObjectDef)
+            assert isinstance(obj, ClassDef)
             # this operation puts it and it's children in the cache
             self._register_obj_tree(obj, AddrStr(file), ())
         try:
             return self._output_cache[addr]
         except KeyError as ex:
-            raise BlockNotFoundError(f"No block named $addr in {address.get_file(addr)}", addr=addr) from ex
+            raise BlockNotFoundError(
+                f"No block named $addr in {address.get_file(addr)}", addr=addr
+            ) from ex
 
     def _register_obj_tree(
-        self, obj: ObjectDef, addr: AddrStr, closure: tuple[ObjectDef]
+        self, obj: ClassDef, addr: AddrStr, closure: tuple[ClassDef]
     ) -> None:
         """Register address info to the object, and add it to the cache."""
         obj.address = addr
@@ -588,7 +731,7 @@ class Scoop(BaseTranslator):
             child_addr = address.add_entry(addr, ref[0])
             self._register_obj_tree(child, child_addr, child_closure)
 
-    def visitFile_input(self, ctx: ap.File_inputContext) -> ObjectDef:
+    def visitFile_input(self, ctx: ap.File_inputContext) -> ClassDef:
         """Visit a file input and return it's object."""
         locals_ = self.visit_iterable_helper(ctx.stmt())
 
@@ -596,7 +739,7 @@ class Scoop(BaseTranslator):
         local_defs = {}
         imports = {}
         for ref, local in locals_:
-            if isinstance(local, ObjectDef):
+            if isinstance(local, ClassDef):
                 local_defs[ref] = local
             elif isinstance(local, Import):
                 assert ref is not None
@@ -604,7 +747,7 @@ class Scoop(BaseTranslator):
             else:
                 raise errors.AtoError(f"Unexpected local type: {type(local)}")
 
-        file_obj = ObjectDef(
+        file_obj = ClassDef(
             src_ctx=ctx,
             super_ref=Ref.from_one("MODULE"),
             imports=imports,
@@ -614,7 +757,7 @@ class Scoop(BaseTranslator):
 
         return file_obj
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptItem[ObjectDef]:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptItem[ClassDef]:
         """Visit a blockdef and return it's object."""
         if ctx.FROM():
             if not ctx.name_or_attr():
@@ -630,7 +773,7 @@ class Scoop(BaseTranslator):
         imports = {}
         replacements = {}
         for ref, local in locals_:
-            if isinstance(local, ObjectDef):
+            if isinstance(local, ClassDef):
                 local_defs[ref] = local
             elif isinstance(local, Import):
                 imports[ref] = local
@@ -639,7 +782,7 @@ class Scoop(BaseTranslator):
             else:
                 raise errors.AtoError(f"Unexpected local type: {type(local)}")
 
-        block_obj = ObjectDef(
+        block_obj = ClassDef(
             src_ctx=ctx,
             super_ref=block_super_ref,
             imports=imports,
@@ -651,9 +794,10 @@ class Scoop(BaseTranslator):
 
         return KeyOptItem.from_kv(block_name, block_obj)
 
-    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> KeyOptMap:
-        from_file: str = self.visitString(ctx.string())
-        import_what_ref = self.visit_ref_helper(ctx.name_or_attr())
+    def _do_import(
+        self, ctx: ParserRuleContext, from_file: str, what_refs: list[str]
+    ) -> KeyOptMap:
+        """Return the import objects created by import statements."""
 
         _errors = []
 
@@ -661,14 +805,6 @@ class Scoop(BaseTranslator):
             _errors.append(
                 errors.AtoError("Expected a 'from <file-path>' after 'import'")
             )
-        if not import_what_ref:
-            _errors.append(
-                errors.AtoError("Expected a name or attribute to import after 'import'")
-            )
-
-        if import_what_ref == "*":
-            # import everything
-            raise NotImplementedError("import *")
 
         # get the current working directory
         current_file, _, _ = get_src_info_from_ctx(ctx)
@@ -687,14 +823,45 @@ class Scoop(BaseTranslator):
                 ctx, f"File '{from_file}' not found."
             )
 
-        import_addr = address.add_entries(str(candidate_path), import_what_ref)
+        imports = {}
+        for _what_ref in what_refs:
+            if not _what_ref:
+                _errors.append(
+                    errors.AtoError(
+                        "Expected a name or attribute to import after 'import'"
+                    )
+                )
 
-        import_ = Import(
-            src_ctx=ctx,
-            obj_addr=import_addr,
-        )
+            if _what_ref == "*":
+                # import everything
+                raise NotImplementedError("import *")
 
-        return KeyOptMap.from_kv(import_what_ref, import_)
+            import_addr = address.add_entries(str(candidate_path), _what_ref)
+
+            imports[_what_ref] = Import(
+                src_ctx=ctx,
+                obj_addr=import_addr,
+            )
+
+        return KeyOptMap(KeyOptItem.from_kv(k, v) for k, v in imports.items())
+
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> KeyOptMap:
+        """
+        Updated import statement: from "abcd.ato" import xyz
+        """
+        from_file: str = self.visitString(ctx.string())
+        what_refs = [
+            self.visit_ref_helper(name_of_attr) for name_of_attr in ctx.name_or_attr()
+        ]
+        return self._do_import(ctx, from_file, what_refs)
+
+    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext) -> KeyOptMap:
+        """
+        DEPRECATED: import xyz from "abcd.ato"
+        """
+        from_file: str = self.visitString(ctx.string())
+        import_what_ref = self.visit_ref_helper(ctx.name_or_attr())
+        return self._do_import(ctx, from_file, [import_what_ref])
 
     def visitBlocktype(self, ctx: ap.BlocktypeContext) -> Ref:
         """Return the address of a block type."""
@@ -727,13 +894,13 @@ class Scoop(BaseTranslator):
         self, ctx: ap.Simple_stmtContext
     ) -> Iterable[_Sentinel | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.retype_stmt() or ctx.import_stmt():
+        if ctx.retype_stmt() or ctx.import_stmt() or ctx.dep_import_stmt():
             return super().visitSimple_stmt(ctx)
 
         return KeyOptMap.empty()
 
 
-def lookup_obj_in_closure(context: ObjectDef, ref: Ref) -> AddrStr:
+def lookup_class_in_closure(context: ClassDef, ref: Ref) -> AddrStr:
     """
     This method finds an object in the closure of another object, traversing import statements.
     """
@@ -779,53 +946,65 @@ class Dizzy(BaseTranslator):
 
     def __init__(
         self,
-        obj_def_getter: Callable[[AddrStr], ObjectDef],
+        obj_def_getter: Callable[[AddrStr], ClassDef],
     ) -> None:
         self.obj_def_getter = obj_def_getter
-        self._output_cache: dict[AddrStr, ObjectLayer] = {
+        self._output_cache: dict[AddrStr, ClassLayer] = {
             k: v for k, v in BUILTINS_BY_ADDR.items()
         }
+        self.class_def_scope: StackList[ClassDef] = StackList()
         super().__init__()
 
-    def get_obj_layer(self, addr: AddrStr) -> ObjectLayer:
+    def get_layer(self, addr: AddrStr) -> ClassLayer:
         """Returns the ObjectLayer for a given address."""
         if addr not in self._output_cache:
             obj_def = self.obj_def_getter(addr)
-            obj = self.make_object(obj_def)
-            assert isinstance(obj, ObjectLayer)
+            obj = self.build_layer(obj_def)
+            assert isinstance(obj, ClassLayer)
             self._output_cache[addr] = obj
         try:
             return self._output_cache[addr]
         except KeyError as ex:
-            raise BlockNotFoundError(f"No block named $addr in {address.get_file(addr)}", addr=addr) from ex
+            raise BlockNotFoundError(
+                f"No block named $addr in {address.get_file(addr)}", addr=addr
+            ) from ex
 
-    def make_object(self, obj_def: ObjectDef) -> ObjectLayer:
+    def _get_supers_layer(self, cls_def: ClassDef) -> Optional[ClassLayer]:
+        """Return the super object of a given object."""
+        if cls_def.super_ref is not None:
+            super_addr = lookup_class_in_closure(cls_def, cls_def.super_ref)
+            return self.get_layer(super_addr)
+        return None
+
+    def build_layer(self, cls_def: ClassDef) -> ClassLayer:
         """Create an object layer from an object definition."""
-        ctx = obj_def.src_ctx
+        ctx = cls_def.src_ctx
         assert isinstance(ctx, (ap.File_inputContext, ap.BlockdefContext))
-        if obj_def.super_ref is not None:
-            super_addr = lookup_obj_in_closure(obj_def, obj_def.super_ref)
-            super = self.get_obj_layer(super_addr)
-        else:
-            super = None
 
-        # FIXME: visiting the block here relies upon the fact that both
+        # NOTE: visiting the block here relies upon the fact that both
         # file inputs and blocks have stmt children to be handled the same way.
         if isinstance(ctx, ap.BlockdefContext):
             ctx_with_stmts = ctx.block()
         else:
             ctx_with_stmts = ctx
-        locals_ = self.visitBlock(ctx_with_stmts)
 
-        # TODO: check for name collisions
-        data = {ref[0]: v for ref, v in locals_}
+        with self.class_def_scope.enter(cls_def):
+            locals_ = self.visitBlock(ctx_with_stmts)
 
-        obj = ObjectLayer(
+        strainer = locals_.strain()
+
+        obj = ClassLayer(
             src_ctx=ctx_with_stmts,  # here we save something that's "block-like"
-            obj_def=obj_def,
-            super=super,
-            data=data,
+            obj_def=cls_def,
+            super=self._get_supers_layer(cls_def),
+            assignments={
+                ref[0]: v for ref, v in strainer.strain(lambda x: isinstance(x.value, Assignment))
+            },
+            assertions=strainer.strain(lambda x: isinstance(x.value, Assertion)),
         )
+
+        if strainer:
+            raise RuntimeError(f"Unexpected items in ClassLayer locals: {', '.join(strainer)}")
 
         return obj
 
@@ -849,14 +1028,51 @@ class Dizzy(BaseTranslator):
             # we'll deal with overrides later too!
             return KeyOptMap.empty()
 
-        assigned_value = self.visitAssignable(ctx.assignable())
-        return KeyOptMap.from_kv(assigned_value_ref, assigned_value)
+        if type_info := ctx.type_info():
+            given_type = lookup_class_in_closure(
+                self.class_def_scope.top,
+                type_info.name_or_attr()
+            )
+        else:
+            given_type = None
+
+        assignment = Assignment(
+            src_ctx=ctx,
+            name=assigned_value_ref,
+            value=self.visitAssignable(assignable_ctx),
+            given_type=given_type,
+        )
+        return KeyOptMap.from_kv(assigned_value_ref, assignment)
+
+    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
+        """Handle declaration statements."""
+        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
+        if len(assigned_value_ref) > 1:
+            raise errors.AtoSyntaxError(
+                f"Can't declare fields in a nested object {assigned_value_ref}"
+            )
+
+        if type_info := ctx.type_info():
+            given_type = lookup_class_in_closure(
+                self.class_def_scope.top,
+                type_info.name_or_attr()
+            )
+        else:
+            given_type = None
+
+        assignment = Assignment(
+            src_ctx=ctx,
+            name=assigned_value_ref,
+            value=None,
+            given_type=given_type,
+        )
+        return KeyOptMap.from_kv(assigned_value_ref, assignment)
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
     ) -> Iterable[_Sentinel | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.assign_stmt():
+        if ctx.assign_stmt() or ctx.declaration_stmt():
             return super().visitSimple_stmt(ctx)
 
         return (NOTHING,)
@@ -869,9 +1085,7 @@ def _translate_addr_key_errors(ctx: ParserRuleContext):
     except KeyError as ex:
         addr = ex.args[0]
         terse_addr = address.get_instance_section(addr)
-        raise errors.AtoKeyError.from_ctx(
-            ctx, f"Couldn't find {terse_addr}"
-        ) from ex
+        raise errors.AtoKeyError.from_ctx(ctx, f"Couldn't find {terse_addr}") from ex
 
 
 class Lofty(BaseTranslator):
@@ -879,7 +1093,7 @@ class Lofty(BaseTranslator):
 
     def __init__(
         self,
-        obj_layer_getter: Callable[[AddrStr], ObjectLayer],
+        obj_layer_getter: Callable[[AddrStr], ClassLayer],
     ) -> None:
         self._output_cache: dict[AddrStr, Instance] = {}
         # known replacements are represented as the reference of the instance
@@ -888,42 +1102,28 @@ class Lofty(BaseTranslator):
         self._known_replacements: dict[AddrStr, AddrStr] = {}
         self.obj_layer_getter = obj_layer_getter
 
-        self._instance_context_stack: list[AddrStr] = []
-        self._obj_context_stack: list[AddrStr] = []
+        self._instance_addr_stack: StackList[AddrStr] = StackList()
+        self._class_addr_stack: StackList[AddrStr] = StackList()
         super().__init__()
 
-    def get_instance_tree(self, addr: AddrStr) -> Instance:
+    def get_instance(self, addr: AddrStr) -> Instance:
         """Return an instance object represented by the given address."""
-        if address.get_instance_section(addr):
-            raise NotImplementedError
+        if addr in self._output_cache:
+            return self._output_cache[addr]
 
-        if addr not in self._output_cache:
-            obj_layer = self.obj_layer_getter(addr)
-            self.make_instance(addr, obj_layer)
-            assert isinstance(self._output_cache[addr], Instance)
+        if address.get_instance_section(addr):
+            # Trigger build of the tree above the instance
+            self.get_instance(address.get_entry(addr))
+
+        obj_layer = self.obj_layer_getter(addr)
+        self.build_instance(addr, obj_layer)
+        assert isinstance(self._output_cache[addr], Instance)
+
         return self._output_cache[addr]
 
     @contextmanager
-    def enter_instance(self, instance: AddrStr):
-        """TODO:"""
-        self._instance_context_stack.append(instance)
-        try:
-            yield
-        finally:
-            self._instance_context_stack.pop()
-
-    @contextmanager
-    def enter_obj(self, instance: AddrStr):
-        """TODO:"""
-        self._obj_context_stack.append(instance)
-        try:
-            yield
-        finally:
-            self._obj_context_stack.pop()
-
-    @contextmanager
     def apply_replacements_from_objs(
-        self, objs: Iterable[ObjectLayer]
+        self, objs: Iterable[ClassLayer]
     ) -> Iterable[AddrStr]:
         """
         Apply the replacements defined in the given objects,
@@ -933,9 +1133,11 @@ class Lofty(BaseTranslator):
 
         for obj in objs:
             for ref, replacement in obj.obj_def.replacements.items():
-                to_be_replaced_addr = address.add_instances(self._instance_context_stack[-1], ref)
+                to_be_replaced_addr = address.add_instances(
+                    self._instance_addr_stack.top, ref
+                )
                 if to_be_replaced_addr not in self._known_replacements:
-                    replace_with_addr = lookup_obj_in_closure(
+                    replace_with_addr = lookup_class_in_closure(
                         obj.obj_def,
                         replacement.new_super_ref,
                     )
@@ -948,33 +1150,35 @@ class Lofty(BaseTranslator):
             for ref in commanded_replacements:
                 self._known_replacements.pop(ref)
 
-    def make_instance(self, new_addr: AddrStr, super_obj: ObjectLayer) -> None:
+    def build_instance(self, new_addr: AddrStr, super_obj: ClassLayer, src_ctx: Optional[ParserRuleContext] = None) -> None:
         """Create an instance from a reference and a super object layer."""
-        # FIXME: this should deal with name collisions and type collisions
 
-        supers = list(recurse(lambda x: x.super, super_obj))
-        override_data: dict[str, Any] = {}
-        data = ChainMap(override_data, *[s.data for s in supers])
-        new_instance = self._output_cache[new_addr] = Instance(
-            addr=new_addr,
-            override_data=override_data,
-            data=data,
-            supers=supers,
-        )
-
-        if self._instance_context_stack:
+        if self._instance_addr_stack:
             # eg. we're not to the root
-            parent_addr = self._instance_context_stack[-1]
-            parent_instance = self._output_cache[parent_addr]
+            parent_instance = self._output_cache[self._instance_addr_stack.top]
+        else:
+            # eg. we're at the root
+            parent_instance = None
+
+
+        new_instance = Instance.from_super(
+            new_addr,
+            super_obj,
+            parent=parent_instance,
+            src_ctx=src_ctx
+        )
+        self._output_cache[new_addr] = new_instance
+
+        if self._instance_addr_stack:
             child_addr = address.get_name(new_addr)
             parent_instance.children[child_addr] = new_instance
 
         try:
             with ExitStack() as stack:
-                stack.enter_context(self.enter_instance(new_addr))
-                stack.enter_context(self.apply_replacements_from_objs(supers))
-                for super_obj_ in reversed(supers):
-                    stack.enter_context(self.enter_obj(super_obj_.address))
+                stack.enter_context(self._instance_addr_stack.enter(new_addr))
+                stack.enter_context(self.apply_replacements_from_objs(new_instance.supers))
+                for super_obj_ in reversed(new_instance.supers):
+                    stack.enter_context(self._class_addr_stack.enter(super_obj_.address))
                     if super_obj_.src_ctx is None:
                         # FIXME: this is currently the case for the builtins
                         continue
@@ -983,12 +1187,61 @@ class Lofty(BaseTranslator):
                     # of the things we're inheriting from
                     self.visitBlock(super_obj_.src_ctx)
         except Exception:
-            self._output_cache.pop(new_addr)
+            if new_addr in self._output_cache:
+                del self._output_cache[new_addr]
             raise
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
         """Don't go down blockdefs, they're just for defining objects."""
         return NOTHING
+
+    def handle_new_assignment(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
+        """Specifically handle "something = new XYZ" assignments."""
+        assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
+
+        assigned_name: str = assigned_ref[-1]
+        assignable_ctx = ctx.assignable()
+        assert isinstance(assignable_ctx, ap.AssignableContext)
+
+        # FIXME: this is a giant fucking mess
+        new_stmt = assignable_ctx.new_stmt()
+        assert isinstance(new_stmt, ap.New_stmtContext)
+        if len(assigned_ref) != 1:
+            raise errors.AtoError(
+                "Cannot assign a new object to a multi-part reference"
+            )
+
+        new_class_ref = self.visitName_or_attr(new_stmt.name_or_attr())
+
+        new_addr = address.add_instance(
+            self._instance_addr_stack.top, assigned_name
+        )
+
+        # Figure out what class to create the new instance from
+        if new_addr in self._known_replacements:
+            actual_super = self.obj_layer_getter(self._known_replacements[new_addr])
+        else:
+            try:
+                current_obj_def = self.obj_layer_getter(
+                    self._class_addr_stack.top
+                ).obj_def
+                new_class_addr = lookup_class_in_closure(
+                    current_obj_def, new_class_ref
+                )
+            except KeyError as ex:
+                raise errors.AtoKeyError.from_ctx(
+                    current_obj_def.src_ctx, f"Couldn't find ref {new_class_ref}"
+                ) from ex
+
+            try:
+                actual_super = self.obj_layer_getter(new_class_addr)
+            except (BlockNotFoundError, errors.AtoFileNotFoundError) as ex:
+                ex.set_src_from_ctx(ctx)
+                raise ex
+
+        # Create and register the new instance to the output cache
+        self.build_instance(new_addr, actual_super, ctx)
+        return KeyOptMap.empty()
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Assignments override values and create new instance of things."""
@@ -998,60 +1251,39 @@ class Lofty(BaseTranslator):
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
 
-        # Handle New Statements
-        # FIXME: this is a giant fucking mess
+        ########## Handle New Statements ##########
         if assignable_ctx.new_stmt():
-            new_stmt = assignable_ctx.new_stmt()
-            assert isinstance(new_stmt, ap.New_stmtContext)
-            if len(assigned_ref) != 1:
-                raise errors.AtoError(
-                    "Cannot assign a new object to a multi-part reference"
-                )
+            return self.handle_new_assignment(ctx)
 
-            new_class_ref = self.visitName_or_attr(new_stmt.name_or_attr())
-
-            new_addr = address.add_instance(
-                self._instance_context_stack[-1], assigned_name
-            )
-
-            if new_addr in self._known_replacements:
-                actual_super = self.obj_layer_getter(self._known_replacements[new_addr])
-            else:
-                try:
-                    current_obj_def = self.obj_layer_getter(
-                        self._obj_context_stack[-1]
-                    ).obj_def
-                    new_class_addr = lookup_obj_in_closure(
-                        current_obj_def, new_class_ref
-                    )
-                except KeyError as ex:
-                    raise errors.AtoKeyError.from_ctx(
-                        current_obj_def.src_ctx, f"Couldn't find ref {new_class_ref}"
-                    ) from ex
-                try:
-                    actual_super = self.obj_layer_getter(new_class_addr)
-                except (BlockNotFoundError, errors.AtoFileNotFoundError) as ex:
-                    ex.set_src_from_ctx(ctx)
-                    raise ex
-
-            # Create and register the new instance to the output cache
-            self.make_instance(new_addr, actual_super)
-            return KeyOptMap.empty()
-
-        # Handle Overrides
+        ########## Handle Overrides ##########
 
         # We've already dealt with direct assignments in the previous layer
         if len(assigned_ref) == 1:
             return KeyOptMap.empty()
 
-        assigned_value = self.visitAssignable(ctx.assignable())
         instance_addr_assigned_to = address.add_instances(
-            self._instance_context_stack[-1], assigned_ref[:-1]
+            self._instance_addr_stack.top, assigned_ref[:-1]
         )
         with _translate_addr_key_errors(ctx):
             instance_assigned_to = self._output_cache[instance_addr_assigned_to]
 
-        instance_assigned_to.override_data[assigned_name] = assigned_value
+        # TODO: de-triplicate this
+        if type_info := ctx.type_info():
+            given_type = lookup_class_in_closure(
+                self.obj_layer_getter(self._class_addr_stack.top).obj_def,
+                type_info.name_or_attr()
+            )
+        else:
+            given_type = None
+
+        assignment = Assignment(
+            src_ctx=ctx,
+            name=assigned_name,
+            value=self.visitAssignable(assignable_ctx),
+            given_type=given_type,
+        )
+
+        instance_assigned_to.assignments[assigned_name].appendleft(assignment)
 
         return KeyOptMap.empty()
 
@@ -1066,19 +1298,17 @@ class Lofty(BaseTranslator):
         if not ref:
             raise errors.AtoError("Pins must have a name")
 
-        current_instance_addr = self._instance_context_stack[-1]
+        current_instance_addr = self._instance_addr_stack.top
         current_instance = self._output_cache[current_instance_addr]
         new_addr = address.add_instances(current_instance_addr, ref)
 
         super_ = PIN if isinstance(ctx, ap.Pindef_stmtContext) else SIGNAL
 
-        override_data: dict[str, Any] = {}
-        pin_or_signal = Instance(
+        pin_or_signal = Instance.from_super(
             src_ctx=ctx,
             addr=new_addr,
-            supers=[super_],
-            override_data=override_data,
-            data=ChainMap(override_data, super_.data),
+            super_=super_,
+            parent=current_instance,
         )
 
         self._output_cache[new_addr] = current_instance.children[ref[0]] = pin_or_signal
@@ -1100,8 +1330,7 @@ class Lofty(BaseTranslator):
         source_addr = self.visitConnectable(ctx.connectable(0))
         target_addr = self.visitConnectable(ctx.connectable(1))
 
-        current_instance_addr = self._instance_context_stack[-1]
-        current_instance = self._output_cache[current_instance_addr]
+        current_instance = self._output_cache[self._instance_addr_stack.top]
 
         with _translate_addr_key_errors(ctx):
             source_instance = self._output_cache[source_addr]
@@ -1122,7 +1351,7 @@ class Lofty(BaseTranslator):
         """TODO:"""
         if ctx.name_or_attr() or ctx.numerical_pin_ref():
             ref = self.visit_ref_helper(ctx.name_or_attr() or ctx.numerical_pin_ref())
-            return address.add_instances(self._instance_context_stack[-1], ref)
+            return address.add_instances(self._instance_addr_stack.top, ref)
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():
             return self.visitChildren(ctx)
         else:
@@ -1141,7 +1370,7 @@ class Lofty(BaseTranslator):
 
 scoop = Scoop(parser.get_ast_from_file, [])
 dizzy = Dizzy(scoop.get_obj_def)
-lofty = Lofty(dizzy.get_obj_layer)
+lofty = Lofty(dizzy.get_layer)
 
 
 def set_search_paths(paths: Iterable[Path | str]) -> None:
