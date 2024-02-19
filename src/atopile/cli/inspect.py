@@ -142,7 +142,7 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
         for connectable in list(filter(match_interfaces, all_descendants(from_perspective_of_module))):
             inspected_connectables[connectable] = InspectConnectable(connectable, "interface")
 
-        # If a signal has a parent interface, add it to the object
+        # If a signal has a parent interface, add it to the inspected object
         for conn in inspected_connectables:
             if inspected_connectables[conn].type == 'interface':
                 signals_to_update = list(filter(match_signals, all_descendants(conn)))
@@ -150,17 +150,23 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
                     inspected_connectables[signal].parent_interface = conn
 
         # Save the links that are in the current module
-        child_link_pairs = defaultdict(list)
-        links = get_links(from_perspective_of_module)
-        for link in links:
+        context_to_inspect_nets = []
+        context_child_link_pairs = defaultdict(list)
+        context_child_modules = filter(match_pins, all_descendants(from_perspective_of_module))
+        context_child_links: list[AddrStr] = []
+        for module in context_child_modules:
+            context_child_links.extend(get_links(from_perspective_of_module))
+        for link in context_child_links:
             source = link.source.addr
             target = link.target.addr
-            child_link_pairs[source].append(target)
-            child_link_pairs[target].append(source)
+            context_child_link_pairs[source].append(target)
+            context_child_link_pairs[target].append(source)
+
+        context_to_inspect_nets = find_connected_components(context_child_link_pairs)
 
         # For each connectable in the context, find connectables connected to it
         for connectable in inspected_connectables:
-            inspected_connectables[connectable].associated_connectable = find_associated_conn(connectable, child_link_pairs)
+            inspected_connectables[connectable].associated_connectable = find_associated_conn(connectable, context_child_link_pairs)
 
         # Save the links that are above the current module
         parents = iter_parents(from_perspective_of_module)
@@ -177,7 +183,11 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
             # Remove self from the consumer list
             if connectable in consumer_and_self:
                 consumer_and_self.remove(connectable)
-            inspected_connectables[connectable].consumer = consumer_and_self
+            for link in parent_links:
+                if link.source.addr == connectable:
+                    inspected_connectables[connectable].consumer.append(link.target.addr)
+                if link.target.addr == connectable:
+                    inspected_connectables[connectable].consumer.append(link.source.addr)
 
         # Create nets for the elements in the component to inspect
         module_to_inspect_nets = []
@@ -188,31 +198,43 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
             module_to_inspect_link_pairs[module_link.target.addr].append(module_link.source.addr)
 
         module_to_inspect_nets = find_connected_components(module_to_inspect_link_pairs)
+        
+        for net in context_to_inspect_nets:
+            print(f"{', '.join([address.get_instance_section(x) for x in net])}")
+
+        # Make a map between the connectables in the inspected module and the nets in the context
+        module_conn_to_context_net_map: dict[AddrStr, list[AddrStr]] = {}
+        for module_net in module_to_inspect_nets:
+            for conn in module_net:
+                print(address.get_instance_section(conn))
+                for context_net in context_to_inspect_nets:
+                    if conn in context_net:
+                        module_conn_to_context_net_map[conn] = context_net
+                        break
+                    else:
+                        module_conn_to_context_net_map[conn] = []
 
         # Create the display entries
         displayed_entries: list[DisplayEntry] = []
-
+        #print(module_conn_to_context_net_map)
         # There is one entry per net
         for net in module_to_inspect_nets:
             disp_entry = DisplayEntry(net)
             # Add the intermediate interfaces
             # Add the consumers information
             for conn in net:
-                if inspected_connectables[conn].consumer != []:
-                    disp_entry.consumers.extend(inspected_connectables[conn].consumer)
-                parent_interface = inspected_connectables[conn].parent_interface
-                if parent_interface != None:
-                    if inspected_connectables[parent_interface].consumer != []:
-                        disp_entry.consumers.extend(inspected_connectables[parent_interface].consumer)
-
-                disp_entry.intermediate_connectable.extend(child_link_pairs[conn])
-                for inter in disp_entry.intermediate_connectable:
-                    if inspected_connectables[inter].consumer != []:
-                        disp_entry.consumers.extend(inspected_connectables[inter].consumer)
-                    parent_interface = inspected_connectables[inter].parent_interface
+                for tested_conn in module_conn_to_context_net_map[conn]:
+                    print(address.get_instance_section(tested_conn))
+                    if inspected_connectables[tested_conn].consumer != []:
+                        disp_entry.consumers.extend(inspected_connectables[tested_conn].consumer)
+                    parent_interface = inspected_connectables[tested_conn].parent_interface
                     if parent_interface != None:
                         if inspected_connectables[parent_interface].consumer != []:
-                            disp_entry.consumers.extend(inspected_connectables[parent_interface].consumer)
+                            for consumer in inspected_connectables[parent_interface].consumer:
+                                disp_entry.consumers.append(str(consumer + "." + address.get_name(tested_conn)))cd ..
+
+
+                disp_entry.intermediate_connectable.extend(context_child_link_pairs[conn])
 
             displayed_entries.append(disp_entry)
             disp_entry.connectables.sort()
@@ -237,7 +259,7 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
                     f"{', '.join([address.get_instance_section(x) for x in consumers])}",
                     style=even_greyed_row if row_nb % 2 else odd_greyed_row,
                 )
-        
+
         sorted_entries = natsort.natsorted(displayed_entries, key=lambda obj: obj.connectables[0])
         for entry in sorted_entries:
             pins = sorted(list(filter(match_pins, entry.connectables)))
