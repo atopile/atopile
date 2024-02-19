@@ -1,8 +1,7 @@
-from typing import Any, Iterable, Optional, Callable
+from typing import Any, Callable, Iterable, Optional
 
-from atopile.front_end import lofty, ClassLayer, Link
-from atopile import address
 from atopile.address import AddrStr
+from atopile.front_end import ClassLayer, Link, lofty
 
 
 def get_children(addr: str) -> Iterable[AddrStr]:

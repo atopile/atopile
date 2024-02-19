@@ -8,6 +8,7 @@ from typing import Callable, Optional
 import click
 
 import atopile.bom
+import atopile.config
 import atopile.front_end
 import atopile.layout
 import atopile.manufacturing_data
@@ -16,7 +17,6 @@ from atopile.cli.common import project_options
 from atopile.components import configure_cache, download_footprint
 from atopile.config import BuildContext
 from atopile.errors import handle_ato_errors, iter_through_errors, muffle_fatalities
-from atopile.front_end import set_search_paths
 from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
 
@@ -37,6 +37,8 @@ def build(build_ctxs: list[BuildContext]):
         with err_cltr():
             _do_build(build_ctx)
 
+    project_context = atopile.config.get_project_context()
+
     # FIXME: this should be done elsewhere, but there's no other "overview"
     # that can see all the builds simultaneously
     manifest = {}
@@ -46,18 +48,17 @@ def build(build_ctxs: list[BuildContext]):
             by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
             by_layout_manifest["layouts"] = str(ctx.output_base.with_suffix(".layouts.json"))
 
-    manifest_path = build_ctxs[0].project_path / "build" / "manifest.json"
+    manifest_path = project_context.project_path / "build" / "manifest.json"
+    manifest_path.parent.mkdir(exist_ok=True, parents=True)
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f)
 
 
 def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
-    # Set the search paths for the front end
-    set_search_paths([build_ctx.src_path, build_ctx.module_path])
 
     # Configure the cache for component data
-    configure_cache(build_ctx.project_path)
+    configure_cache(atopile.config.get_project_context().project_path)
 
     # Ensure the build directory exists
     log.info("Writing outputs to %s", build_ctx.build_path)
@@ -119,7 +120,7 @@ def consolidate_footprints(build_args: BuildContext) -> None:
     fp_target = build_args.build_path / "footprints" / "footprints.pretty"
     fp_target.mkdir(exist_ok=True, parents=True)
 
-    for fp in build_args.project_path.glob("**/*.kicad_mod"):
+    for fp in atopile.config.get_project_context().project_path.glob("**/*.kicad_mod"):
         try:
             shutil.copy(fp, fp_target)
         except shutil.SameFileError:
