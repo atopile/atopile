@@ -42,14 +42,14 @@ NEW : 'new';
 FROM : 'from';
 IMPORT : 'import';
 
+ASSERT : 'assert';
 TO : 'to';
-EQN : 'eqn';
 
 TRUE : 'True';
 FALSE : 'False';
 
 // TODO: this is a complete hack and could be an entrypoint for injection attacks
-EQUATION_STRING : 'eqn:' ~[\r\n\f]*;
+ASSERTION_STRING : 'assert' ~[\r\n\f]*;
 
 //
 // Stuff from the Python3 grammer we based this on

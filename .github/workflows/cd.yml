@@ -113,19 +113,26 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  # vscode: TODO:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
+  vscode:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/vscode-atopile
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - uses: actions/setup-node@v1
-  #       with:
-  #         node-version: 20
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 20
 
-  #     - run: npm ci
+      - run: npm ci
 
-  #     - name: Publish to Visual Studio Marketplace
-  #       uses: HaaLeo/publish-vscode-extension@v1
-  #       with:
-  #         pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
-  #         registryUrl: https://marketplace.visualstudio.com
+      - name: Publish to VS Code Marketplace
+        if: success() && startsWith(github.ref, 'refs/tags/')
+        run: npm run deploy
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        if: success() && startsWith(github.ref, 'refs/tags/')
+        run: npx ovsx publish -p ${{ secrets.OVSX_PAT }}

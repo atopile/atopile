@@ -1,40 +1,20 @@
-from typing import Any, Iterable, Optional, Callable
+from typing import Any, Callable, Iterable, Optional
 
-from atopile.front_end import lofty, ObjectLayer, Link
-from atopile import address
 from atopile.address import AddrStr
+from atopile.front_end import ClassLayer, Link, lofty
 
 
 def get_children(addr: str) -> Iterable[AddrStr]:
-    root_addr = address.get_entry(addr)
-    root_instance = lofty.get_instance_tree(root_addr)
-    ref_str = address.get_instance_section(addr)
-
-    nested_instance = root_instance
-    if ref_str:
-        for child_ref in ref_str.split("."):
-            nested_instance = nested_instance.children[child_ref]
-
-    for child in nested_instance.children.values():
+    """Return the children of a given address."""
+    instance = lofty.get_instance(addr)
+    for child in instance.children.values():
         yield child.addr
 
 
 def get_data_dict(addr: str) -> dict[str, Any]:
-    """
-    Return the data at the given address
-    """
-    # FIXME: this is a hack around the fact that the getter won't currently return a subtree
-    root_addr = address.get_entry(addr)
-    lofty.get_instance_tree(root_addr)
-    return lofty._output_cache[addr].data
-
-
-def get_lock_data_dict(addr: str) -> dict[str, Any]:
-    """
-    Return the data at the given address
-    """
-    # TODO: write me irl
-    return {}
+    """Return the data at the given address"""
+    instance = lofty.get_instance(addr)
+    return {k: v[0].value for k, v in instance.assignments.items()}
 
 
 def all_descendants(addr: str) -> Iterable[str]:
@@ -51,9 +31,8 @@ def _make_dumb_matcher(pass_list: Iterable[str]) -> Callable[[str], bool]:
     Return a filter that checks if the addr is in the pass_list
     """
 
-    # TODO: write me irl
     def _filter(addr: AddrStr) -> bool:
-        instance = lofty._output_cache[addr]
+        instance = lofty.get_instance(addr)
         for super_ in reversed(instance.supers):
             if super_.address in pass_list:
                 return True
@@ -92,12 +71,12 @@ def find_matching_super(
     return None
 
 
-def get_supers_list(addr: AddrStr) -> list[ObjectLayer]:
+def get_supers_list(addr: AddrStr) -> list[ClassLayer]:
     """Return the supers of an object as a list of ObjectLayers."""
-    return lofty._output_cache[addr].supers
+    return lofty.get_instance(addr).supers
 
 
-def get_next_super(addr: AddrStr) -> ObjectLayer:
+def get_next_super(addr: AddrStr) -> ClassLayer:
     """Return the immediate super-class of the given address."""
     return get_supers_list(addr)[0]
 
@@ -106,14 +85,10 @@ def get_parent(addr: str) -> Optional[str]:
     """
     Return the parent of the given address
     """
-    # TODO: write me irl
-    if "::" not in addr:
-        return None
-    root_path, instance_path = addr.rsplit("::", 1)
-    if "." in instance_path:
-        return addr.rsplit(".", 1)[0]
-    elif instance_path:
-        return root_path
+    instance = lofty.get_instance(addr).parent
+    if instance:
+        return instance.addr
+    return None
 
 
 def iter_parents(addr: str) -> Iterable[str]:
@@ -124,4 +99,4 @@ def iter_parents(addr: str) -> Iterable[str]:
 
 def get_links(addr: AddrStr) -> Iterable[Link]:
     """Return the links associated with an instance"""
-    yield from lofty._output_cache[addr].links
+    yield from lofty.get_instance(addr).links

@@ -119,16 +119,24 @@ def project_options(f):
         atopile.config.set_project_context(project_ctx)
 
         # Make build contexts
-        builds_to_build = build or config.builds.keys()
-        build_ctxs: list[atopile.config.BuildContext] = []
-        for _build in builds_to_build:
-            with errors.handle_ato_errors():
-                build_ctx = atopile.config.BuildContext.from_config(config, _build)
+        with errors.handle_ato_errors():
+            if build_names := build or config.builds.keys():
+                build_ctxs: list[atopile.config.BuildContext] = [
+                    atopile.config.BuildContext.from_config_name(config, build_name)
+                    for build_name in build_names
+                ]
+            else:
+                build_ctxs = [atopile.config.BuildContext.from_config(
+                    "default",
+                    atopile.config.UserBuildConfig(),
+                    project_ctx
+                )]
+
+        for build_ctx in build_ctxs:
             if entry_addr_override is not None:
                 build_ctx.entry = entry_addr_override
             if target:
                 build_ctx.targets = list(target)
-            build_ctxs.append(build_ctx)
 
         # Do the thing
         return f(*args, **kwargs, build_ctxs=build_ctxs)
