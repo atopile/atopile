@@ -9,13 +9,9 @@ import rich
 import itertools
 import natsort
 from rich.table import Table
-from rich.style import Style
-
-from collections import defaultdict
 
 import click
 
-from atopile import errors
 from atopile import address, errors
 from atopile.address import AddrStr
 
@@ -30,6 +26,7 @@ from atopile.instance_methods import (
     match_interfaces,
     match_signals,
     match_pins,
+    match_pins_and_signals,
 )
 
 from atopile.cli.common import project_options
@@ -60,22 +57,40 @@ class InspectConnectable:
 def find_associated_conn(root_addr, link_pairs: list):
     return collect_connected_dfs(link_pairs, root_addr)
 
-def collect_connected_dfs(source_target_pairs, current_source, visited=None) -> list[AddrStr]:
+
+def collect_connected_dfs(connections: list, root_addr, visited=None) -> list[AddrStr]:
+    """
+    from a list of links and a root node, this function returns all the nodes connected to the root node
+    """
     if visited is None:
         visited = []
 
-    # Check if the current source is in the dictionary
-    if current_source in source_target_pairs:
-        # Iterate through each target of the current source
-        for target in source_target_pairs[current_source]:
-            # If the target hasn't been visited yet, visit it
-            if target not in visited:
-                visited.append(target)  # Mark this target as visited
-                # Recursively visit the targets of the current target
-                collect_connected_dfs(source_target_pairs, target, visited)
+    for connection in connections:
+        if connection.source.addr == root_addr:
+            if connection.target.addr not in visited:
+                visited.append(connection.target.addr)  # Mark this target as visited
+                # Recursively visit the targets connected to this target
+                collect_connected_dfs(connections, connection.target.addr, visited)
+        elif connection.target.addr == root_addr:
+            if connection.source.addr not in visited:
+                visited.append(connection.source.addr)  # Mark this target as visited
+                # Recursively visit the targets connected to this target
+                collect_connected_dfs(connections, connection.source.addr, visited)
     return visited
 
-def find_connected_components(graph):
+def find_nets(graph) -> list[list[AddrStr]]:
+    """
+    For a dict of connections:
+    {
+    A: [B, C],
+    B: [A, C],
+    C: [A, B],
+    D: [E],
+    E: [D]
+    }
+    This function returns the nets:
+    [[A, B, C], [D, E]]
+    """
     visited = set()  # Keep track of visited nodes to avoid revisiting them.
     connected_components = []  # Store the connected components.
     def dfs(node, component):
@@ -109,17 +124,17 @@ even_greyed_row = "on grey15 grey0"
 
 @click.command("")
 @project_options
-@click.option("--inspect", required=True, multiple=False)
-@click.option("--context", multiple=False)
+@click.option("--inspect", required=True)
+@click.option("--context")
 @errors.muffle_fatalities
 def inspect(build_ctxs: list[BuildContext], inspect: str, context: str = None):
-    # TODO: find a way to specifiy which build to inspect
+    if len(build_ctxs) > 1:
+        raise errors.AtoNotImplementedError("Select one specific build on which to run the inspect command.")
+
     for build_ctx in build_ctxs:
         set_search_paths([build_ctx.src_path, build_ctx.module_path])
 
-        #TODO: make sure that the context is always above
-        #TODO: default to inspecting a single module
-        #TODO: make sure we can't inspect the root
+        #TODO: make sure that the context is always above the module to inspect
         module_to_inspect = build_ctx.entry + "::" + inspect
         if context is None:
             from_perspective_of_module = module_to_inspect
@@ -152,24 +167,21 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: str = None):
                     inspected_connectables[signal].parent_interface = conn
 
         # Save the links that are in the current module
-        context_to_inspect_nets = []
-        context_child_link_pairs = defaultdict(list)
-        #TODO: do I still need this?
-        context_child_modules = filter(match_pins, all_descendants(from_perspective_of_module))
+        context_modules = [from_perspective_of_module]
+        context_modules.extend(list(filter(match_modules, all_descendants(from_perspective_of_module))))
         context_child_links: list[AddrStr] = []
-        for module in context_child_modules:
-            context_child_links.extend(get_links(from_perspective_of_module))
-        for link in context_child_links:
-            source = link.source.addr
-            target = link.target.addr
-            context_child_link_pairs[source].append(target)
-            context_child_link_pairs[target].append(source)
+        for module in context_modules:
+            context_child_links.extend(list(get_links(module)))
 
-        context_to_inspect_nets = find_connected_components(context_child_link_pairs)
-        #TODO: create nets from links directly
+        context_connection_graph = {}
         # For each connectable in the context, find connectables connected to it
         for connectable in inspected_connectables:
-            inspected_connectables[connectable].associated_connectable = find_associated_conn(connectable, context_child_link_pairs)
+            context_connected_conns = collect_connected_dfs(context_child_links, connectable)
+            context_connection_graph[connectable] = context_connected_conns
+            inspected_connectables[connectable].associated_connectable = context_connected_conns
+
+        context_to_inspect_nets: list[list[AddrStr]] = []
+        context_to_inspect_nets = find_nets(context_connection_graph)
 
         # Save the links that are above the current module
         parents = list(iter_parents(from_perspective_of_module))
@@ -186,15 +198,21 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: str = None):
                 if link.target.addr == connectable:
                     inspected_connectables[connectable].consumer.append(link.source.addr)
 
+        ####
+        # Inspected module nets
+        ####
+        inspect_connectables = list(filter(match_pins_and_signals, all_descendants(module_to_inspect)))
+        inspect_connectables.extend(list(filter(match_interfaces, all_descendants(module_to_inspect))))
+
         # Create nets for the elements in the component to inspect
-        module_to_inspect_nets = []
-        module_to_inspect_link_pairs = defaultdict(list)
-        module_to_inspect_links = list(get_links(module_to_inspect))
-        for module_link in module_to_inspect_links:
-            module_to_inspect_link_pairs[module_link.source.addr].append(module_link.target.addr)
-            module_to_inspect_link_pairs[module_link.target.addr].append(module_link.source.addr)
-        #TODO: create nets from links directly
-        module_to_inspect_nets = find_connected_components(module_to_inspect_link_pairs)
+        module_connection_graph = {}
+        module_to_inspect_child_links = list(get_links(module_to_inspect))
+        for connectable in inspect_connectables:
+            inspect_module_connected_conns = collect_connected_dfs(module_to_inspect_child_links, connectable)
+            module_connection_graph[connectable] = inspect_module_connected_conns
+
+        module_to_inspect_nets: list[list[AddrStr]] = []
+        module_to_inspect_nets = find_nets(module_connection_graph)
 
         # Make a map between the connectables in the inspected module and the nets in the context
         module_conn_to_context_net_map: dict[AddrStr, list[AddrStr]] = {}
@@ -209,7 +227,6 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: str = None):
 
         # Create the display entries
         displayed_entries: list[DisplayEntry] = []
-        #print(module_to_inspect_nets)
         # There is one entry per net
         for net in module_to_inspect_nets:
             disp_entry = DisplayEntry(net)
@@ -220,7 +237,7 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: str = None):
                     if inspected_connectables[tested_conn].consumer != []:
                         disp_entry.consumers.extend(inspected_connectables[tested_conn].consumer)
                     parent_interface = inspected_connectables[tested_conn].parent_interface
-                    if parent_interface != None:
+                    if parent_interface is not None:
                         if inspected_connectables[parent_interface].consumer != []:
                             for consumer in inspected_connectables[parent_interface].consumer:
                                 disp_entry.consumers.append(str(consumer + "." + address.get_name(tested_conn)))
