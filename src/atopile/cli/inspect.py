@@ -25,6 +25,8 @@ from atopile.instance_methods import (
     all_descendants,
     get_links,
     iter_parents,
+    get_parent,
+    match_modules,
     match_interfaces,
     match_signals,
     match_pins,
@@ -107,30 +109,31 @@ even_greyed_row = "on grey15 grey0"
 
 @click.command("")
 @project_options
-@click.option("--to_inspect", multiple=False)
+@click.option("--inspect", required=True, multiple=False)
 @click.option("--context", multiple=False)
 @errors.muffle_fatalities
-def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
+def inspect(build_ctxs: list[BuildContext], inspect: str, context: str = None):
     # TODO: find a way to specifiy which build to inspect
     for build_ctx in build_ctxs:
         set_search_paths([build_ctx.src_path, build_ctx.module_path])
 
-        #to_inspect = rich.prompt.Prompt.ask("Which component would you like to inspect?")
-        module_to_inspect = build_ctx.entry + "::" + to_inspect
-        from_perspective_of_module = build_ctx.entry + "::" + context
+        #TODO: make sure that the context is always above
+        #TODO: default to inspecting a single module
+        #TODO: make sure we can't inspect the root
+        module_to_inspect = build_ctx.entry + "::" + inspect
+        if context is None:
+            from_perspective_of_module = module_to_inspect
+        else:
+            from_perspective_of_module = build_ctx.entry + "::" + context
         log.info(f"Inspecting {address.get_instance_section(module_to_inspect)} from the perspective of {address.get_instance_section(from_perspective_of_module)}")
-        #log.info(f"Inspecting {addr_to_inspect}")
-        thing_to_fill_the_cache_with = AddrStr(build_ctx.entry)
 
         # TODO: Currently doing this just to fill the cache
-        lofty.get_instance_tree(thing_to_fill_the_cache_with)
+        lofty.get_instance_tree(AddrStr(build_ctx.entry))
 
-        # Create a table
-        inspection_table = Table(show_header=True, header_style="bold cornflower_blue")
-        inspection_table.add_column("Pin #", justify="right")
-        inspection_table.add_column("Signal name", justify="left")
-        inspection_table.add_column("Interface", justify="left")
-        inspection_table.add_column("Consumed by", justify="left")
+        # Find the interface modules
+        inspect_parent_modules = list(iter_parents(module_to_inspect))
+        context_child_modules = list(filter(match_modules, all_descendants(from_perspective_of_module)))
+        interface_modules = list(set(inspect_parent_modules).intersection(set(context_child_modules)))
 
         # Create an array of all the connectables we could inspect
         inspected_connectables: dict[AddrStr, InspectConnectable] = {}
@@ -151,6 +154,7 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
         # Save the links that are in the current module
         context_to_inspect_nets = []
         context_child_link_pairs = defaultdict(list)
+        #TODO: do I still need this?
         context_child_modules = filter(match_pins, all_descendants(from_perspective_of_module))
         context_child_links: list[AddrStr] = []
         for module in context_child_modules:
@@ -162,26 +166,20 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
             context_child_link_pairs[target].append(source)
 
         context_to_inspect_nets = find_connected_components(context_child_link_pairs)
-
+        #TODO: create nets from links directly
         # For each connectable in the context, find connectables connected to it
         for connectable in inspected_connectables:
             inspected_connectables[connectable].associated_connectable = find_associated_conn(connectable, context_child_link_pairs)
 
         # Save the links that are above the current module
-        parents = iter_parents(from_perspective_of_module)
-        parent_link_pairs = defaultdict(list)
+        parents = list(iter_parents(from_perspective_of_module))
+        parent_links = []
         for parent in parents:
-            parent_links = list(get_links(parent))
-            for parent_link in parent_links:
-                parent_link_pairs[parent_link.source.addr].append(parent_link.target.addr)
-                parent_link_pairs[parent_link.target.addr].append(parent_link.source.addr)
+            parent_links.extend(list(get_links(parent)))
 
         # For each connectable in the context, find what consumes it
         for connectable in inspected_connectables:
-            consumer_and_self = collect_connected_dfs(parent_link_pairs, connectable)
-            # Remove self from the consumer list
-            if connectable in consumer_and_self:
-                consumer_and_self.remove(connectable)
+            #print(connectable)
             for link in parent_links:
                 if link.source.addr == connectable:
                     inspected_connectables[connectable].consumer.append(link.target.addr)
@@ -195,7 +193,7 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
         for module_link in module_to_inspect_links:
             module_to_inspect_link_pairs[module_link.source.addr].append(module_link.target.addr)
             module_to_inspect_link_pairs[module_link.target.addr].append(module_link.source.addr)
-
+        #TODO: create nets from links directly
         module_to_inspect_nets = find_connected_components(module_to_inspect_link_pairs)
 
         # Make a map between the connectables in the inspected module and the nets in the context
@@ -211,7 +209,7 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
 
         # Create the display entries
         displayed_entries: list[DisplayEntry] = []
-
+        #print(module_to_inspect_nets)
         # There is one entry per net
         for net in module_to_inspect_nets:
             disp_entry = DisplayEntry(net)
@@ -226,12 +224,20 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
                         if inspected_connectables[parent_interface].consumer != []:
                             for consumer in inspected_connectables[parent_interface].consumer:
                                 disp_entry.consumers.append(str(consumer + "." + address.get_name(tested_conn)))
-
-
-                disp_entry.intermediate_connectable.extend(context_child_link_pairs[conn])
+                        if get_parent(parent_interface) in interface_modules:
+                            disp_entry.intermediate_connectable.append(tested_conn)
+                    if get_parent(tested_conn) in interface_modules:
+                        disp_entry.intermediate_connectable.append(tested_conn)
 
             displayed_entries.append(disp_entry)
             disp_entry.connectables.sort()
+
+        # Create a table
+        inspection_table = Table(show_header=True, header_style="bold cornflower_blue")
+        inspection_table.add_column("Pin #", justify="right")
+        inspection_table.add_column("Signal name", justify="left")
+        inspection_table.add_column("Interface", justify="left")
+        inspection_table.add_column("Consumed by", justify="left")
 
         # Help to fill the table
         bom_row_nb_counter = itertools.count()
