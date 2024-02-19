@@ -231,7 +231,7 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
                     if parent_interface != None:
                         if inspected_connectables[parent_interface].consumer != []:
                             for consumer in inspected_connectables[parent_interface].consumer:
-                                disp_entry.consumers.append(str(consumer + "." + address.get_name(tested_conn)))cd ..
+                                disp_entry.consumers.append(str(consumer + "." + address.get_name(tested_conn)))
 
 
                 disp_entry.intermediate_connectable.extend(context_child_link_pairs[conn])
