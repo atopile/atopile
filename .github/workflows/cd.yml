@@ -115,6 +115,9 @@ jobs:
 
   vscode:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/vscode-atopile
     steps:
       - uses: actions/checkout@v4
 
