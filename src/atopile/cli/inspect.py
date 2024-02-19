@@ -17,7 +17,7 @@ from atopile import address, errors
 from atopile.address import AddrStr
 from atopile.cli.common import project_options
 from atopile.config import BuildContext
-from atopile.front_end import Link, lofty, set_search_paths
+from atopile.front_end import Link, lofty
 from atopile.instance_methods import (
     all_descendants,
     get_links,
@@ -129,8 +129,6 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]
             f"Using top build config {build_ctx.name} for now. Multiple build configs not yet supported."
         ).log(log, logging.WARNING)
 
-    set_search_paths([build_ctx.src_path, build_ctx.module_path])
-
     #TODO: make sure that the context is always above the module to inspect
     module_to_inspect = address.add_instance(build_ctx.entry, inspect)
     if context is None:
@@ -141,7 +139,7 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]
     log.info(f"Inspecting {address.get_instance_section(module_to_inspect)} from the perspective of {address.get_instance_section(from_perspective_of_module)}")
 
     # TODO: Currently doing this just to fill the cache
-    lofty.get_instance_tree(build_ctx.entry)
+    lofty.get_instance(build_ctx.entry)
 
     # Find the interface modules
     inspect_parent_modules = list(iter_parents(module_to_inspect))
