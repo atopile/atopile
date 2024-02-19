@@ -7,6 +7,7 @@
 import logging
 import rich
 import itertools
+import natsort
 from rich.table import Table
 from rich.style import Style
 
@@ -214,6 +215,7 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
                             disp_entry.consumers.extend(inspected_connectables[parent_interface].consumer)
 
             displayed_entries.append(disp_entry)
+            disp_entry.connectables.sort()
 
         # Help to fill the table
         bom_row_nb_counter = itertools.count()
@@ -235,9 +237,10 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
                     f"{', '.join([address.get_instance_section(x) for x in consumers])}",
                     style=even_greyed_row if row_nb % 2 else odd_greyed_row,
                 )
-
-        for entry in displayed_entries:
-            pins = list(filter(match_pins, entry.connectables))
+        
+        sorted_entries = natsort.natsorted(displayed_entries, key=lambda obj: obj.connectables[0])
+        for entry in sorted_entries:
+            pins = sorted(list(filter(match_pins, entry.connectables)))
             signals = list(filter(match_signals, entry.connectables))
             _add_row(pins, signals, list(set(entry.intermediate_connectable)), list(set(entry.consumers)))
 
