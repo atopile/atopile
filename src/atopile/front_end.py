@@ -16,7 +16,7 @@ import pint
 from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
-from atopile import address, errors
+from atopile import address, errors, config
 from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.generic_methods import recurse
@@ -694,12 +694,15 @@ class Scoop(BaseTranslator):
     def __init__(
         self,
         ast_getter: Callable[[str | Path], ParserRuleContext],
-        search_paths: Iterable[Path | str],
     ) -> None:
         self.ast_getter = ast_getter
-        self.search_paths = search_paths
         self._output_cache: dict[AddrStr, ClassDef] = {}
         super().__init__()
+
+    def get_search_paths(self) -> Iterable[Path]:
+        """Return the search paths."""
+        project_context = config.get_project_context()
+        return [project_context.src_path, project_context.module_path]
 
     def get_obj_def(self, addr: AddrStr) -> ClassDef:
         """Returns the ObjectDef for a given address."""
@@ -810,9 +813,9 @@ class Scoop(BaseTranslator):
         current_file, _, _ = get_src_info_from_ctx(ctx)
         current_file = Path(current_file)
         if current_file.is_file():
-            search_paths = chain((current_file.parent,), self.search_paths)
+            search_paths = chain((current_file.parent,), self.get_search_paths())
         else:
-            search_paths = self.search_paths
+            search_paths = self.get_search_paths()
 
         for search_path in search_paths:
             candidate_path: Path = (search_path / from_file).resolve().absolute()
@@ -1016,6 +1019,27 @@ class Dizzy(BaseTranslator):
         """Don't go down blockdefs, they're just for defining objects."""
         return NOTHING
 
+    def _get_type_info(self, ctx) -> Optional[ClassLayer | pint.Unit]:
+        """Return the type information from a type_info context."""
+        # TODO: parse types properly
+        return None
+        if type_info := ctx.type_info():
+            assert isinstance(type_info, ap.Type_infoContext)
+            type_info_str: str = type_info.name_or_attr().getText()
+
+            try:
+                return lookup_class_in_closure(
+                    self.class_def_scope.top,
+                    type_info_str,
+                )
+            except KeyError:
+                pass
+
+            # TODO: implement types for ints, floats, strings, etc.
+            # voltages, currents, lengths etc...
+
+        return None
+
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
@@ -1028,19 +1052,11 @@ class Dizzy(BaseTranslator):
             # we'll deal with overrides later too!
             return KeyOptMap.empty()
 
-        if type_info := ctx.type_info():
-            given_type = lookup_class_in_closure(
-                self.class_def_scope.top,
-                type_info.name_or_attr()
-            )
-        else:
-            given_type = None
-
         assignment = Assignment(
             src_ctx=ctx,
-            name=assigned_value_ref,
+            name=assigned_value_ref[0],
             value=self.visitAssignable(assignable_ctx),
-            given_type=given_type,
+            given_type=self._get_type_info(ctx),
         )
         return KeyOptMap.from_kv(assigned_value_ref, assignment)
 
@@ -1052,19 +1068,11 @@ class Dizzy(BaseTranslator):
                 f"Can't declare fields in a nested object {assigned_value_ref}"
             )
 
-        if type_info := ctx.type_info():
-            given_type = lookup_class_in_closure(
-                self.class_def_scope.top,
-                type_info.name_or_attr()
-            )
-        else:
-            given_type = None
-
         assignment = Assignment(
             src_ctx=ctx,
-            name=assigned_value_ref,
+            name=assigned_value_ref[0],
             value=None,
-            given_type=given_type,
+            given_type=self._get_type_info(ctx),
         )
         return KeyOptMap.from_kv(assigned_value_ref, assignment)
 
@@ -1368,11 +1376,6 @@ class Lofty(BaseTranslator):
         return KeyOptMap.empty()
 
 
-scoop = Scoop(parser.get_ast_from_file, [])
+scoop = Scoop(parser.get_ast_from_file)
 dizzy = Dizzy(scoop.get_obj_def)
 lofty = Lofty(dizzy.get_layer)
-
-
-def set_search_paths(paths: Iterable[Path | str]) -> None:
-    """Set the search paths for the scoop."""
-    scoop.search_paths = paths

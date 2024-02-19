@@ -73,6 +73,7 @@ def configure_cache(top_level_path: Path):
 
 def save_cache():
     """Saves the current state of the cache to a file."""
+    cache_file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(cache_file_path, "w") as cache_file:
         # Convert the ChainMap to a regular dictionary
         serializable_cache = dict(component_cache)

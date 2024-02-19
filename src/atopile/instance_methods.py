@@ -1,7 +1,6 @@
 from typing import Any, Iterable, Optional, Callable
 
 from atopile.front_end import lofty, ClassLayer
-from atopile import address
 from atopile.address import AddrStr
 
 

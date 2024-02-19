@@ -224,17 +224,36 @@ class BuildContext:
     targets: list[str]
 
     layout_path: Optional[Path]  # eg. path/to/project/layouts/default/default.kicad_pcb
-    project_path: Path  # abs path to the project directory
-    src_path: Path  # abs path to the source directory
-    module_path: Path  # abs path to the module directory
     build_path: Path  # eg. path/to/project/build/<build-name>
 
     output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
 
     @classmethod
-    def from_config(cls, config: UserConfig, build_name: str) -> "BuildContext":
+    def from_config(
+        cls,
+        config_name: str,
+        build_config: UserBuildConfig,
+        project_context: ProjectContext
+    ) -> "BuildContext":
         """Create a BuildArgs object from a Config object."""
-        project_context=ProjectContext.from_config(config)
+        abs_entry = address.AddrStr(project_context.project_path / build_config.entry)
+
+        build_path = Path(project_context.project_path) / BUILD_DIR_NAME
+
+        return BuildContext(
+            project_context=project_context,
+            name=config_name,
+            entry=abs_entry,
+            targets=build_config.targets,
+            layout_path=find_layout(project_context.project_path / project_context.layout_path / config_name),
+            build_path=build_path,
+            output_base=build_path / config_name,
+        )
+
+    @classmethod
+    def from_config_name(cls, config: UserConfig, build_name: str) -> "BuildContext":
+        """Create a BuildArgs object from a Config object."""
+        project_context = ProjectContext.from_config(config)
 
         try:
             build_config = config.builds[build_name]
@@ -244,22 +263,7 @@ class BuildContext:
                 f"Available builds: {list(config.builds.keys())}"
             ) from ex
 
-        abs_entry = address.AddrStr(config.location / build_config.entry)
-
-        build_path = Path(config.location) / BUILD_DIR_NAME
-
-        return BuildContext(
-            project_context=project_context,
-            name=build_name,
-            entry=abs_entry,
-            targets=build_config.targets,
-            layout_path=find_layout(config.location / config.paths.layout / build_name),
-            project_path=Path(config.location),
-            src_path=Path(config.location) / config.paths.src,
-            module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,
-            build_path=build_path,
-            output_base=build_path / build_name,
-        )
+        return cls.from_config(build_name, build_config, project_context)
 
 
 _project_context: Optional[ProjectContext] = None

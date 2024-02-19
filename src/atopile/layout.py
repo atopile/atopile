@@ -54,7 +54,7 @@ def _find_module_layouts() -> dict[str, list[config.BuildContext]]:
         cfg = config.get_project_config_from_path(filepath)
 
         for build_name in cfg.builds:
-            ctx = config.BuildContext.from_config(cfg, build_name)
+            ctx = config.BuildContext.from_config_name(cfg, build_name)
             entries[ctx.entry].append(ctx)
 
     return entries

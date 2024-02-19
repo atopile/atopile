@@ -16,7 +16,7 @@ from typing import Optional
 import git
 
 import atopile.errors
-from atopile.config import BuildContext
+from atopile import config
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def run(*args, timeout_time: Optional[float] = 10, **kwargs) -> None:
         )
 
 
-def generate_manufacturing_data(build_ctx: BuildContext) -> None:
+def generate_manufacturing_data(build_ctx: config.BuildContext) -> None:
     """Generate manufacturing data for the project."""
     # If there's no layout, we can't generate manufacturing data
     if not build_ctx.layout_path:
@@ -81,7 +81,7 @@ def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     build_ctx.build_path.mkdir(parents=True, exist_ok=True)
 
     # Replace constants in the board file
-    repo = git.Repo(build_ctx.project_path)
+    repo = git.Repo(config.get_project_context().project_path)
     short_githash_length = 7
     if repo.is_dirty():
         short_githash = "dirty"
