@@ -114,7 +114,11 @@ even_greyed_row = "on grey15 grey0"
 @click.option("--context", default=None, help="The context from which to inspect the module")
 @errors.muffle_fatalities
 def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]):
-    """TODO:"""
+    """
+    Utility to inspect what is connected to a component.
+    The context set the boundary where something is considered connecting to it.
+    For example: --inspect rp2040_micro --context rp2040_micro_kit
+    """
     if len(build_ctxs) == 0:
         errors.AtoNotImplementedError("No build contexts found.")
     elif len(build_ctxs) == 1:
