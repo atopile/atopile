@@ -237,7 +237,7 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: str = None):
         inspection_table.add_column("Pin #", justify="right")
         inspection_table.add_column("Signal name", justify="left")
         inspection_table.add_column("Interface", justify="left")
-        inspection_table.add_column("Consumed by", justify="left")
+        inspection_table.add_column("Connected to", justify="left")
 
         # Help to fill the table
         bom_row_nb_counter = itertools.count()
