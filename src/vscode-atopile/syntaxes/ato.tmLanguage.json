@@ -62,7 +62,7 @@
 			"name": "entity.other"
 		},
 		{
-			"match": "eqn(?=:)",
+			"match": "\\b(assert)\\b",
 			"name": "keyword.control.ato"
 		},
 		{
