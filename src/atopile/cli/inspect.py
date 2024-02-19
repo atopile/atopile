@@ -111,15 +111,14 @@ even_greyed_row = "on grey15 grey0"
 @click.option("--context", multiple=False)
 @errors.muffle_fatalities
 def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
-    log.info(f"Inspecting a part")
     # TODO: find a way to specifiy which build to inspect
     for build_ctx in build_ctxs:
         set_search_paths([build_ctx.src_path, build_ctx.module_path])
-        log.info(f"Inspecting {build_ctx.entry}")
 
         #to_inspect = rich.prompt.Prompt.ask("Which component would you like to inspect?")
         module_to_inspect = build_ctx.entry + "::" + to_inspect
         from_perspective_of_module = build_ctx.entry + "::" + context
+        log.info(f"Inspecting {address.get_instance_section(module_to_inspect)} from the perspective of {address.get_instance_section(from_perspective_of_module)}")
         #log.info(f"Inspecting {addr_to_inspect}")
         thing_to_fill_the_cache_with = AddrStr(build_ctx.entry)
 
@@ -198,15 +197,11 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
             module_to_inspect_link_pairs[module_link.target.addr].append(module_link.source.addr)
 
         module_to_inspect_nets = find_connected_components(module_to_inspect_link_pairs)
-        
-        for net in context_to_inspect_nets:
-            print(f"{', '.join([address.get_instance_section(x) for x in net])}")
 
         # Make a map between the connectables in the inspected module and the nets in the context
         module_conn_to_context_net_map: dict[AddrStr, list[AddrStr]] = {}
         for module_net in module_to_inspect_nets:
             for conn in module_net:
-                print(address.get_instance_section(conn))
                 for context_net in context_to_inspect_nets:
                     if conn in context_net:
                         module_conn_to_context_net_map[conn] = context_net
@@ -216,7 +211,7 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
 
         # Create the display entries
         displayed_entries: list[DisplayEntry] = []
-        #print(module_conn_to_context_net_map)
+
         # There is one entry per net
         for net in module_to_inspect_nets:
             disp_entry = DisplayEntry(net)
@@ -224,7 +219,6 @@ def inspect(build_ctxs: list[BuildContext], to_inspect: str, context: str):
             # Add the consumers information
             for conn in net:
                 for tested_conn in module_conn_to_context_net_map[conn]:
-                    print(address.get_instance_section(tested_conn))
                     if inspected_connectables[tested_conn].consumer != []:
                         disp_entry.consumers.extend(inspected_connectables[tested_conn].consumer)
                     parent_interface = inspected_connectables[tested_conn].parent_interface
