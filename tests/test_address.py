@@ -31,13 +31,13 @@ def test_get_file():
 
 def test_get_instance_section():
     # Test with an address containing an instance section
-    assert get_instance_section("path/to/file.txt:a:b.c") == None
+    assert get_instance_section("path/to/file.txt:a:b.c") is None
 
     # Test with an address not containing an instance section
-    assert get_instance_section("path/to/file.txt") == None
+    assert get_instance_section("path/to/file.txt") is None
 
     # Test with an empty address
-    assert get_instance_section("") == None
+    assert get_instance_section("") is None
 
     # Test with an address containing a Windows drive letter
     assert get_instance_section("C:/path/to/file.txt:a::b.c") == "b.c"

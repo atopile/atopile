@@ -83,9 +83,10 @@ def generate_designator_map(entry_addr: address.AddrStr) -> str:
 
     # Create tables to print to the terminal and to the disc
     sorted_des_table = Table(show_header=True, header_style="bold green")
-    sorted_name_table = Table(show_header=True, header_style="bold green")
     sorted_des_table.add_column("Designator ↓", justify="right")
     sorted_des_table.add_column("Name", justify="left")
+
+    sorted_name_table = Table(show_header=True, header_style="bold green")
     sorted_name_table.add_column("Name ↓", justify="left")
     sorted_name_table.add_column("Designator", justify="left")
 

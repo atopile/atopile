@@ -91,7 +91,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
             # Hacking some mildly better exceptions since the
             # parser currently doesn't actually, well, parse
             # the expressions in assertions.
-            dotted_path = ex.name.split(".")
+            # dotted_path = ex.name.split(".")
 
             # TODO:
             # 1. Check if something's declared, but not defined

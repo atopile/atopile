@@ -5,7 +5,7 @@ from rich.logging import RichHandler
 
 from atopile.cli.rich_console import console
 
-from . import build, configure, create, install
+from . import build, configure, create, install, inspect
 
 FORMAT = "%(message)s"
 logging.basicConfig(
@@ -52,6 +52,7 @@ cli.add_command(build.build)
 cli.add_command(create.create)
 cli.add_command(install.install)
 cli.add_command(configure.configure)
+cli.add_command(inspect.inspect)
 
 
 if __name__ == "__main__":
