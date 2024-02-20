@@ -183,7 +183,12 @@ class RangedValue(Base):
         self.max_val = max(val_a_mag, val_b_mag)
 
     def __str__(self) -> str:
-        return f"{self.nominal} +/- {self.tolerance} {self.unit}"
+        return f"{self.nominal:.2f} +/- {self.tolerance:.2f} {self.unit}"
+
+    def __repr__(self) -> str:
+        return (
+            f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
+        )
 
     @property
     def nominal(self) -> float:
@@ -198,11 +203,6 @@ class RangedValue(Base):
         if self.nominal == 0:
             return None
         return self.tolerance / self.nominal * 100
-
-    def __repr__(self) -> str:
-        return (
-            f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
-        )
 
     def to_dict(self) -> dict:
         """Convert the Physical instance to a dictionary."""
@@ -267,7 +267,7 @@ class RangedValue(Base):
         )
 
     def within(self, other: "RangedValue") -> bool:
-        return self.min_qty <= other.min_qty and other.max_qty >= self.max_qty
+        return self.min_qty >= other.min_qty and other.max_qty >= self.max_qty
 
     def __lt__(self, other: "RangedValue") -> bool:
         return self.max_qty < other.min_qty
@@ -1003,7 +1003,7 @@ class Dizzy(BaseTranslator):
             assignments={
                 ref[0]: v for ref, v in strainer.strain(lambda x: isinstance(x.value, Assignment))
             },
-            assertions=strainer.strain(lambda x: isinstance(x.value, Assertion)),
+            assertions=[v for _, v in strainer.strain(lambda x: isinstance(x.value, Assertion))]
         )
 
         if strainer:
@@ -1080,10 +1080,20 @@ class Dizzy(BaseTranslator):
         self, ctx: ap.Simple_stmtContext
     ) -> Iterable[_Sentinel | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.assign_stmt() or ctx.declaration_stmt():
+        if ctx.assign_stmt() or ctx.declaration_stmt() or ctx.assert_stmt():
             return super().visitSimple_stmt(ctx)
 
         return (NOTHING,)
+
+    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
+        """Handle assertion statements."""
+        assertion_str: str = ctx.ASSERTION_STRING().getText()
+        assertion_str = assertion_str[7:]
+        assertion = Assertion(
+            src_ctx=ctx,
+            assertion_str=assertion_str,
+        )
+        return KeyOptMap.from_kv(None, assertion)
 
 
 @contextmanager
