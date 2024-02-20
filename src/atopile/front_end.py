@@ -399,44 +399,10 @@ def _get_unit_from_ctx(ctx: ParserRuleContext) -> pint.Unit:
         ) from ex
 
 
-class BaseTranslator(AtopileParserVisitor):
+class HandlesPrimaries(AtopileParserVisitor):
     """
-    Dizzy is responsible for mixing cement, sand, aggregate, and water to create concrete.
-    Ref.: https://www.youtube.com/watch?v=drBge9JyloA
+    This class is a mixin to be used with the translator classes.
     """
-
-    def __init__(
-        self,
-    ) -> None:
-        super().__init__()
-
-    def defaultResult(self):
-        """
-        Override the default "None" return type
-        (for things that return nothing) with the Sentinel NOTHING
-        """
-        return NOTHING
-
-    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
-        """
-        Visit multiple children and return a tuple of their results,
-        discard any results that are NOTHING and flattening the children's results.
-        It is assumed the children are returning their own OptionallyNamedItems.
-        """
-
-        def __visit() -> KeyOptMap:
-            for err_cltr, child in errors.iter_through_errors(children):
-                with err_cltr():
-                    child_result = self.visit(child)
-                    if child_result is not NOTHING:
-                        yield child_result
-
-        child_results = chain.from_iterable(__visit())
-        child_results = list(item for item in child_results if item is not NOTHING)
-        child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
-
-        return KeyOptMap(child_results)
-
     def visit_ref_helper(
         self,
         ctx: (
@@ -466,15 +432,6 @@ class BaseTranslator(AtopileParserVisitor):
             )
         raise errors.AtoError(f"Unknown reference type: {type(ctx)}")
 
-    def visitName(self, ctx: ap.NameContext) -> str:
-        """
-        If this is an int, convert it to one (for pins), else return the name as a string.
-        """
-        return ctx.getText()
-
-    def visitAttr(self, ctx: ap.AttrContext) -> Ref:
-        return Ref(self.visitName(name) for name in ctx.name())
-
     def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> Ref:
         if ctx.name():
             name = self.visitName(ctx.name())
@@ -484,50 +441,30 @@ class BaseTranslator(AtopileParserVisitor):
 
         raise errors.AtoError("Expected a name or attribute")
 
+    def visitName(self, ctx: ap.NameContext) -> str:
+        """
+        If this is an int, convert it to one (for pins), else return the name as a string.
+        """
+        return ctx.getText()
+
+    def visitAttr(self, ctx: ap.AttrContext) -> Ref:
+        return Ref(self.visitName(name) for name in ctx.name())
+
     def visitString(self, ctx: ap.StringContext) -> str:
         return ctx.getText().strip("\"'")
 
     def visitBoolean_(self, ctx: ap.Boolean_Context) -> bool:
         return ctx.getText().lower() == "true"
 
-    def visitSimple_stmt(
-        self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
-        """
-        This is practically here as a development shim to assert the result is as intended
-        """
-        result = self.visitChildren(ctx)
-        for item in result:
-            if item is not NOTHING:
-                assert isinstance(item, KeyOptItem)
-        return result
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
+        """Yield a physical value from a physical context."""
+        if ctx.implicit_quantity():
+            return self.visitImplicit_quantity(ctx.implicit_quantity())
+        if ctx.bilateral_quantity():
+            return self.visitBilateral_quantity(ctx.bilateral_quantity())
+        if ctx.bound_quantity():
+            return self.visitBound_quantity(ctx.bound_quantity())
 
-    def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
-        """
-        Ensure consistency of return type.
-        We choose to raise any below exceptions here, because stmts can be nested,
-        and raising exceptions serves as our collection mechanism.
-        """
-        if ctx.simple_stmts():
-            stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
-            return stmt_returns
-        elif ctx.compound_stmt():
-            item = self.visit(ctx.compound_stmt())
-            if item is NOTHING:
-                return KeyOptMap.empty()
-            assert isinstance(item, KeyOptItem)
-            return KeyOptMap.from_item(item)
-
-        raise TypeError("Unexpected statement type")
-
-    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
-        return self.visit_iterable_helper(ctx.simple_stmt())
-
-    def visitBlock(self, ctx) -> KeyOptMap:
-        if ctx.stmt():
-            return self.visit_iterable_helper(ctx.stmt())
-        if ctx.simple_stmts():
-            return self.visitSimple_stmts(ctx.simple_stmts())
         raise ValueError  # this should be protected because it shouldn't be parseable
 
     def visitImplicit_quantity(self, ctx: ap.Implicit_quantityContext) -> RangedValue:
@@ -650,45 +587,83 @@ class BaseTranslator(AtopileParserVisitor):
             unit=unit,
         )
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
-        """Yield a physical value from a physical context."""
-        if ctx.implicit_quantity():
-            return self.visitImplicit_quantity(ctx.implicit_quantity())
-        if ctx.bilateral_quantity():
-            return self.visitBilateral_quantity(ctx.bilateral_quantity())
-        if ctx.bound_quantity():
-            return self.visitBound_quantity(ctx.bound_quantity())
 
+class HandleStmtsFunctional(AtopileParserVisitor):
+    """
+    The base translator is responsible for methods common to
+    navigating from the top of the AST including how to process
+    errors, and commonising return types.
+    """
+
+    def defaultResult(self):
+        """
+        Override the default "None" return type
+        (for things that return nothing) with the Sentinel NOTHING
+        """
+        return NOTHING
+
+    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
+        """
+        Visit multiple children and return a tuple of their results,
+        discard any results that are NOTHING and flattening the children's results.
+        It is assumed the children are returning their own OptionallyNamedItems.
+        """
+
+        def __visit():
+            for err_cltr, child in errors.iter_through_errors(children):
+                with err_cltr():
+                    child_result = self.visit(child)
+                    if child_result is not NOTHING:
+                        yield child_result
+
+        child_results = chain.from_iterable(__visit())
+        child_results = list(item for item in child_results if item is not NOTHING)
+        child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
+
+        return KeyOptMap(child_results)
+
+    def visitSimple_stmt(
+        self, ctx: ap.Simple_stmtContext
+    ) -> Iterable[_Sentinel | KeyOptItem]:
+        """
+        This is practically here as a development shim to assert the result is as intended
+        """
+        result = self.visitChildren(ctx)
+        for item in result:
+            if item is not NOTHING:
+                assert isinstance(item, KeyOptItem)
+        return result
+
+    def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
+        """
+        Ensure consistency of return type.
+        We choose to raise any below exceptions here, because stmts can be nested,
+        and raising exceptions serves as our collection mechanism.
+        """
+        if ctx.simple_stmts():
+            stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
+            return stmt_returns
+        elif ctx.compound_stmt():
+            item = self.visit(ctx.compound_stmt())
+            if item is NOTHING:
+                return KeyOptMap.empty()
+            assert isinstance(item, KeyOptItem)
+            return KeyOptMap.from_item(item)
+
+        raise TypeError("Unexpected statement type")
+
+    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
+        return self.visit_iterable_helper(ctx.simple_stmt())
+
+    def visitBlock(self, ctx) -> KeyOptMap:
+        if ctx.stmt():
+            return self.visit_iterable_helper(ctx.stmt())
+        if ctx.simple_stmts():
+            return self.visitSimple_stmts(ctx.simple_stmts())
         raise ValueError  # this should be protected because it shouldn't be parseable
 
-    def visitAssignable(self, ctx: ap.AssignableContext) -> RangedValue | str | bool:
-        """Yield something we can place in a set of locals."""
-        if ctx.literal_physical():
-            return self.visitLiteral_physical(ctx.literal_physical())
 
-        if ctx.string():
-            return self.visitString(ctx)
-
-        if ctx.name_or_attr():
-            # TODO: hook to implement traits/composition based layouts off
-            raise errors.AtoNotImplementedError("Coming soon!")
-
-        assert (
-            not ctx.new_stmt()
-        ), "New statements should have already been filtered out."
-        raise TypeError(f"Unexpected assignable type {type(ctx)}")
-
-    def visitTotally_an_integer(self, ctx: ap.Totally_an_integerContext) -> int:
-        text = ctx.getText()
-        try:
-            return int(text)
-        except ValueError:
-            raise errors.AtoTypeError.from_ctx(  # pylint: disable=raise-missing-from
-                ctx, f"Expected an integer, but got {text}"
-            )
-
-
-class Scoop(BaseTranslator):
+class Scoop(HandleStmtsFunctional, HandlesPrimaries):
     """Scoop's job is to map out all the object definitions in the code."""
 
     def __init__(
@@ -944,8 +919,12 @@ class BlockNotFoundError(errors.AtoKeyError):
     """
 
 
-class Dizzy(BaseTranslator):
-    """Dizzy's job is to create object layers."""
+class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
+    """
+    Dizzy is responsible for creating object layers, mixing cement,
+    sand, aggregate, and water to create concrete.
+    Ref.: https://www.youtube.com/watch?v=drBge9JyloA
+    """
 
     def __init__(
         self,
@@ -1106,7 +1085,7 @@ def _translate_addr_key_errors(ctx: ParserRuleContext):
         raise errors.AtoKeyError.from_ctx(ctx, f"Couldn't find {terse_addr}") from ex
 
 
-class Lofty(BaseTranslator):
+class Lofty(HandleStmtsFunctional, HandlesPrimaries):
     """Lofty's job is to walk orthogonally down (or really up) the instance tree."""
 
     def __init__(

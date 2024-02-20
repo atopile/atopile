@@ -72,6 +72,8 @@ def _do_build(build_ctx: BuildContext) -> None:
     else:
         targets = build_ctx.targets
 
+    build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
+
     for err_cltr, target_name in iter_through_errors(targets):
         log.info("Building %s", target_name)
         with err_cltr():
