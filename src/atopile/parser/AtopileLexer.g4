@@ -162,6 +162,7 @@ LEFT_SHIFT_ASSIGN : '<<=';
 RIGHT_SHIFT_ASSIGN : '>>=';
 POWER_ASSIGN : '**=';
 IDIV_ASSIGN : '//=';
+WITHIN : 'within';
 
 SKIP_
  : ( SPACES | COMMENT | LINE_JOINING ) -> skip
