@@ -128,7 +128,7 @@ def project_options(f):
             else:
                 build_ctxs = [atopile.config.BuildContext.from_config(
                     "default",
-                    atopile.config.UserBuildConfig(),
+                    atopile.config.ProjectBuildConfig(),
                     project_ctx
                 )]
 
