@@ -4,18 +4,15 @@ Generate a report based on assertions made in the source code.
 
 import logging
 from enum import Enum
+from numbers import Number
 
 import rich
 from rich.style import Style
 from rich.table import Table
 
 from atopile import address, config, errors
-from atopile.front_end import Instance, RangedValue, Assertion, lofty
+from atopile.front_end import Assertion, Instance, RangedValue, lofty
 from atopile.instance_methods import all_descendants
-from numbers import Number
-
-# import natsort
-# from toolz import groupby
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +48,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
         assertion_str: str,
         numeric: str,
         addr: address.AddrStr,
-        notes: str
+        notes: str,
     ):
         nonlocal rows
         table.add_row(
@@ -59,11 +56,10 @@ def generate_assertion_report(build_ctx: config.BuildContext):
             assertion_str,
             numeric,
             address.get_instance_section(addr),
-            # notes,
+            # notes,  # TODO: re-add notes
             style=dark_row if rows % 2 else light_row,
         )
         rows += 1
-
 
     def _check_assertion(instance: Instance, assertion: Assertion) -> AssertionStatus:
         """
@@ -112,7 +108,6 @@ def generate_assertion_report(build_ctx: config.BuildContext):
         numeric = str(expr) + " " + op + " " + str(bounds)
 
         _add_row(status, assertion.assertion_str, numeric, instance_addr, "")
-
 
     for instance_addr in all_descendants(build_ctx.entry):
         instance = lofty.get_instance(instance_addr)
@@ -179,10 +174,3 @@ def _get_context(instance: Instance) -> dict:
         context[k] = DotDict(_get_context(v))
 
     return context
-
-
-def _follow_the_dots(start, dots: list[str]):
-    current = start
-    for dot in dots:
-        current = current[dot]
-    return current
