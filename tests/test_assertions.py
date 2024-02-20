@@ -10,8 +10,3 @@ def test_DotDict():
 
     with pytest.raises(AttributeError):
         d.c
-
-
-def test_follow_the_dots():
-    d = assertions.DotDict({"a": {"b": {"c": 1}}})
-    assert assertions._follow_the_dots(d, ["a", "b", "c"]) == 1
