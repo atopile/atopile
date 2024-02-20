@@ -1,7 +1,7 @@
 from typing import Any, Callable, Iterable, Optional
 
 from atopile.address import AddrStr
-from atopile.front_end import ClassLayer, Link, lofty
+from atopile.front_end import ClassLayer, Link, lofty, Instance
 
 
 def get_children(addr: str) -> Iterable[AddrStr]:
@@ -100,3 +100,8 @@ def iter_parents(addr: str) -> Iterable[str]:
 def get_links(addr: AddrStr) -> Iterable[Link]:
     """Return the links associated with an instance"""
     yield from lofty.get_instance(addr).links
+
+
+def get_instance(addr: AddrStr) -> Instance:
+    """Return the instance at the given address"""
+    return lofty.get_instance(addr)

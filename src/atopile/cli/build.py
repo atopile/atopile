@@ -13,6 +13,7 @@ import atopile.front_end
 import atopile.layout
 import atopile.manufacturing_data
 import atopile.netlist
+import atopile.assertions
 from atopile.cli.common import project_options
 from atopile.components import configure_cache, download_footprint
 from atopile.config import BuildContext
@@ -167,3 +168,9 @@ def clone_footprints(build_args: BuildContext) -> None:
 def generate_module_map(build_args: BuildContext) -> None:
     """Generate a designator map for the project."""
     atopile.layout.generate_module_map(build_args)
+
+
+@muster.register("assertions-report")
+def generate_assertion_report(build_ctx: BuildContext) -> None:
+    """Generate a report based on assertions made in the source code."""
+    atopile.assertions.generate_assertion_report(build_ctx)
