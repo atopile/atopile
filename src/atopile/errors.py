@@ -265,7 +265,8 @@ def muffle_fatalities(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
-            return func(*args, **kwargs)
+            with handle_ato_errors():
+                return func(*args, **kwargs)
         except AtoFatalError:
             rich.print(
                 "\n\nUnfortunately errors ^^^ stopped the build. "
