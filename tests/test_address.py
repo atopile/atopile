@@ -1,4 +1,6 @@
-from atopile.address import get_file, get_instance_section
+import pytest
+
+from atopile.address import add_instance, add_instances, get_file, get_instance_section
 
 
 def test_get_file():
@@ -44,3 +46,14 @@ def test_get_instance_section():
 
     # Test with an address containing a Windows drive letter
     assert get_instance_section("C:/path/to/file-with-special-chars.txt:a::b.c") == "b.c"
+
+
+def test_add_instance():
+    assert add_instance("//a:b", "c") == "//a:b::c"
+
+    with pytest.raises(Exception):
+        add_instance("//a", "c")
+
+
+def test_add_instances():
+    assert add_instances("//a:b::", ["c", "d", "e"]) == "//a:b::c.d.e"

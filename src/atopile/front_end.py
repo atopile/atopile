@@ -563,8 +563,8 @@ class Roley(HandlesPrimaries):
     """
     Roley's job is to build expressions.
     """
-    def __init__(self) -> None:
-        self.address = StackList()
+    def __init__(self, context: AddrStr) -> None:
+        self.context = context
         super().__init__()
 
     def visitArithmetic_expression(
@@ -607,7 +607,7 @@ class Roley(HandlesPrimaries):
         # Ignore the unary plus operator
 
         if ctx.MINUS():
-            raise NotImplementedError("Unary minus")
+            return operator.neg(self.visit(ctx.power()))
 
         return self.visit(ctx.power())
 
@@ -629,7 +629,15 @@ class Roley(HandlesPrimaries):
             return self.visit(ctx.literal_physical())
 
         if ctx.name_or_attr():
-            raise NotImplementedError("Name or attribute")
+            # FIXME: this is a hack based on our current addressing scheme
+            # Low prio - it'll hold for a while, but assumes that Roley is
+            # created and used only within a single context
+            return expressions.Symbol(
+                address.add_instances(
+                    self.context,
+                    self.visit_ref_helper(ctx.name_or_attr())
+                )
+            )
 
         raise ValueError
 

@@ -15,6 +15,12 @@ class AddrStr(str):
     """
 
 
+class AddressError(ValueError):
+    """
+    Base class for address errors
+    """
+
+
 def _handle_windows(func):
     """
     A decorator to handle windows paths
@@ -109,11 +115,18 @@ def add_instance(address: AddrStr, instance: str) -> AddrStr:
     Add an instance to an address.
     """
     assert isinstance(instance, str)
+    if not instance:
+        return address
 
-    if not get_instance_section(address):
+    current_instance_addr = get_instance_section(address)
+    if current_instance_addr is not None:
+        if current_instance_addr == "":
+            return address + instance
+        return address + "." + instance
+    elif get_entry_section(address):
         return address + "::" + instance
     else:
-        return address + "." + instance
+        raise AddressError("Cannot add instance to something without an entry section.")
 
 
 def add_instances(address: AddrStr, instances: Iterable[str]) -> AddrStr:
@@ -133,7 +146,7 @@ def add_entry(address: AddrStr, entry: str) -> AddrStr:
     assert isinstance(entry, str)
 
     if get_instance_section(address):
-        raise ValueError("Cannot add entry to an instance address.")
+        raise AddressError("Cannot add entry to an instance address.")
 
     if not get_entry_section(address):
         return address + ":" + entry

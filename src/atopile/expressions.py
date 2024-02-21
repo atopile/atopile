@@ -3,11 +3,13 @@ Work with expressions and ranged values.
 """
 
 import collections.abc
-from numbers import Number
-from typing import Any, Callable, Mapping, Optional, Type, Union
+from typing import Callable, Mapping, Optional, Type, Union
 
 import pint
-from attrs import define
+from attrs import define, frozen
+from pint.facets.plain import PlainUnit
+
+_UNITLESS = pint.Unit("")
 
 
 def _custom_float_format(value, max_decimals: int):
@@ -20,6 +22,13 @@ def _custom_float_format(value, max_decimals: int):
     return formatted.rstrip("0").rstrip(".")
 
 
+def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
+    """Return the best unit for the two quantities."""
+    if str(qty_a.to(qty_b.units).magnitude) < str(qty_b.to(qty_a.units).magnitude):
+        return qty_a.units
+    return qty_b.units
+
+
 class RangedValue:
     """
     Let's get physical!
@@ -30,23 +39,21 @@ class RangedValue:
 
     def __init__(
         self,
-        val_a: Union[Number, pint.Quantity],
-        val_b: Union[Number, pint.Quantity],
-        unit: Optional[str | pint.Unit] = None,
+        val_a: Union[float, int, pint.Quantity],
+        val_b: Union[float, int, pint.Quantity],
+        unit: Optional[str | PlainUnit | pint.Unit] = None,
         pretty_unit: Optional[str] = None,
     ):
         if unit:
-            if isinstance(unit, pint.Unit):
-                self.unit = unit
-            else:
-                self.unit = pint.Unit(unit)
+            self.unit = pint.Unit(unit)
+        elif isinstance(val_a, pint.Quantity) and isinstance(val_b, pint.Quantity):
+            self.unit = _best_units(val_a, val_b)
         elif isinstance(val_a, pint.Quantity):
-            # TODO: look into warnings here
             self.unit = val_a.units
         elif isinstance(val_a, pint.Quantity):
             self.unit = val_b.units
         else:
-            self.unit = pint.Unit("")
+            self.unit = _UNITLESS
 
         if isinstance(val_a, pint.Quantity):
             val_a_mag = val_a.to(self.unit).magnitude
@@ -57,6 +64,9 @@ class RangedValue:
             val_b_mag = val_b.to(self.unit).magnitude
         else:
             val_b_mag = val_b
+
+        assert isinstance(val_a_mag, (float, int))
+        assert isinstance(val_b_mag, (float, int))
 
         self._pretty_unit = pretty_unit
         self.min_val = min(val_a_mag, val_b_mag)
@@ -69,14 +79,21 @@ class RangedValue:
             return self._pretty_unit
         return str(self.unit)
 
+    def pretty_str(self, max_decimals: Optional[int] = 2) -> str:
+        """Return a pretty string representation of the RangedValue."""
+        if max_decimals is None:
+            nom = str(self.nominal)
+            tol = str(self.tolerance)
+        else:
+            nom = _custom_float_format(self.nominal, max_decimals)
+            tol = _custom_float_format(self.tolerance, max_decimals)
+        return f"{nom} +/- {tol} {self.pretty_unit}"
+
     def __str__(self) -> str:
         return self.pretty_str()
 
-    def pretty_str(self, max_decimals: int = 2) -> str:
-        """Return a pretty string representation of the RangedValue."""
-        nom = _custom_float_format(self.nominal, max_decimals)
-        tol = _custom_float_format(self.tolerance, max_decimals)
-        return f"{nom} +/- {tol} {self.pretty_unit}"
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.min_val}, {self.max_val}, '{self.unit}')"
 
     @property
     def nominal(self) -> float:
@@ -117,9 +134,14 @@ class RangedValue:
         """Return the maximum of self as a pint Quantity."""
         return self.unit * self.max_val
 
-    def __mul__(self, other: Union["RangedValue", Number]) -> "RangedValue":
-        if not isinstance(other, RangedValue):
-            other = RangedValue(other, other, self.unit)
+    @classmethod
+    def _ensure(cls, thing) -> "RangedValue":
+        if isinstance(thing, cls):
+            return thing
+        return cls(thing, thing, _UNITLESS)
+
+    def __mul__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
+        other = self._ensure(other)
 
         new_values = [
             self.min_qty * other.min_qty,
@@ -128,34 +150,30 @@ class RangedValue:
             self.max_qty * other.max_qty,
         ]
 
-        return RangedValue(
+        return self.__class__(
             min(new_values),
             max(new_values),
         )
 
-    def __rmul__(self, other: Union["RangedValue", Number]) -> "RangedValue":
+    def __rmul__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
         return self.__mul__(other)
 
-    def __pow__(self, other: Union["RangedValue", Number]) -> "RangedValue":
+    def __pow__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
         if isinstance(other, RangedValue):
-            if not (other.min_qty == other.max_qty and other.unit.dimensionless):
+            if not (other.unit.dimensionless and other.min_val == other.max_val):
                 raise ValueError("Exponent must be a constant valueless quantity")
-            other = other.min_qty
-        return RangedValue(self.min_qty**other, self.max_val**other)
+            other = other.min_val
+
+        return self.__class__(self.min_qty**other, self.max_qty**other)
 
     @classmethod
     def _do_truediv(
-        cls, numerator: Union["RangedValue", Number], denominator: Union["RangedValue", Number]
+        cls,
+        numerator: Union["RangedValue", float, int],
+        denominator: Union["RangedValue", float, int]
     ) -> "RangedValue":
-        if not isinstance(numerator, RangedValue) and not isinstance(
-            denominator, RangedValue
-        ):
-            raise TypeError("a or b must be RangedValue")
-
-        if not isinstance(numerator, RangedValue):
-            numerator = RangedValue(numerator, numerator, denominator.unit)
-        elif not isinstance(denominator, RangedValue):
-            denominator = RangedValue(denominator, denominator, numerator.unit)
+        numerator = cls._ensure(numerator)
+        denominator = cls._ensure(denominator)
 
         new_values = [
             numerator.min_qty / denominator.min_qty,
@@ -164,76 +182,85 @@ class RangedValue:
             numerator.max_qty / denominator.max_qty,
         ]
 
-        return RangedValue(
+        return cls(
             min(new_values),
             max(new_values),
         )
 
-    def __truediv__(self, other: Union["RangedValue", Number]) -> "RangedValue":
+    def __truediv__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
         return self._do_truediv(self, other)
 
-    def __rtruediv__(self, other: Union["RangedValue", Number]) -> "RangedValue":
+    def __rtruediv__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
         return self._do_truediv(other, self)
 
-    def __add__(self, other: Union["RangedValue", Number]) -> "RangedValue":
-        if not isinstance(other, RangedValue):
-            other = RangedValue(other, other, self.unit)
+    def __add__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
+        other = self._ensure(other)
 
-        return RangedValue(
+        return self.__class__(
             self.min_qty + other.min_qty,
             self.max_qty + other.max_qty,
         )
 
-    def __radd__(self, other: Union["RangedValue", Number]) -> "RangedValue":
+    def __radd__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
         return self.__add__(other)
 
-    def __sub__(self, other: Union["RangedValue", Number]) -> "RangedValue":
-        if not isinstance(other, RangedValue):
-            other = RangedValue(other, other, self.unit)
+    def __sub__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
+        other = self._ensure(other)
 
-        return RangedValue(
+        return self.__class__(
             self.min_qty - other.max_qty,
             self.max_qty - other.min_qty,
         )
 
-    def __rsub__(self, other: Union["RangedValue", Number]) -> "RangedValue":
+    def __rsub__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
         return self.__sub__(other)
 
     def __neg__(self) -> "RangedValue":
-        return RangedValue(-self.max_qty, -self.min_qty)
+        return self.__class__(-self.max_qty, -self.min_qty, self.unit, self._pretty_unit)
 
-    def within(self, other: "RangedValue") -> bool:
+    def within(self, other: Union["RangedValue", float, int]) -> bool:
         """Check that this RangedValue completely falls within another."""
+        if not isinstance(other, RangedValue):
+            if not self.unit.dimensionless:
+                raise ValueError("Can only compare RangedValue to a dimensionless quantity")
+            return self.min_val == self.max_val == other
         return self.min_qty >= other.min_qty and other.max_qty >= self.max_qty
 
     # NOTE: we use the < and > operators interchangeably with the <= and >= operators
-    def __lt__(self, other: "RangedValue") -> bool:
+    def __lt__(self, other: Union["RangedValue", float, int]) -> bool:
+        other = self._ensure(other)
         return self.max_qty <= other.min_qty
 
-    def __gt__(self, other: "RangedValue") -> bool:
+    def __gt__(self, other: Union["RangedValue", float, int]) -> bool:
+        other = self._ensure(other)
         return self.min_qty >= other.max_qty
 
-    def __eq__(self, other: Union["RangedValue", Number]) -> bool:
+    def __eq__(self, other: object) -> bool:
         # NOTE: realistically this is only useful for testing
-        if not isinstance(other, RangedValue):
-            other = RangedValue(other, other, self.unit)
-        return self.min_qty == other.min_qty and self.max_qty == other.max_qty
+        if isinstance(other, RangedValue):
+            return self.min_qty == other.min_qty and self.max_qty == other.max_qty
+        if self.min_val == self.max_val == other and self.unit.dimensionless:
+            return True
+        return False
 
-    def __req__(self, other: Union["RangedValue", Number]) -> bool:
+    def __req__(self, other: Union["RangedValue", float, int]) -> bool:
         return self.__eq__(other)
 
 
-NumericishTypes = Union["Expression", RangedValue, Number, "Symbol"]
+NumericishTypes = Union["Expression", RangedValue, float, int, "Symbol"]
 
 
-@define
+@frozen
 class Symbol:
     """Represent a symbol."""
     addr: collections.abc.Hashable
 
-    def __call__(self, context: Mapping) -> Any:
+    def __call__(self, context: Mapping) -> RangedValue:
         """Return the value of the symbol."""
-        return context[self.addr]
+        thing = context[self.addr]
+        if callable(thing):
+            return thing(context)
+        return thing
 
 
 @define
@@ -241,9 +268,9 @@ class Expression:
     """Represent an expression."""
 
     symbols: set[Symbol]
-    lambda_: Callable[[Mapping[str, NumericishTypes]], Any]
+    lambda_: Callable[[Mapping[str, NumericishTypes]], RangedValue]
 
-    def __call__(self, context: Mapping[str, NumericishTypes]) -> Any:
+    def __call__(self, context: Mapping[str, NumericishTypes]) -> RangedValue:
         return self.lambda_(context)
 
 
@@ -263,21 +290,17 @@ def defer_operation_factory(
     deffering_type: Type = Expression,
 ) -> NumericishTypes:
     """Create a deferred operation, using deffering_type as the base for teh callable."""
-    if not isinstance(lhs, collections.abc.Callable) and not isinstance(
-        rhs, collections.abc.Callable
-    ):
+    if not callable(lhs) and not callable(rhs):
         # in this case we can just do the operation now, skip ahead and merry christmas
         return operator(lhs, rhs)
 
     # if we're here, we need to create an expression
     symbols = _get_symbols(lhs) | _get_symbols(rhs)
-    if isinstance(lhs, collections.abc.Callable) and isinstance(
-        rhs, collections.abc.Callable
-    ):
+    if callable(lhs) and callable(rhs):
         def lambda_(context):
             return operator(lhs(context), rhs(context))
 
-    elif isinstance(lhs, collections.abc.Callable):
+    elif callable(lhs):
         def lambda_(context):
             return operator(lhs(context), rhs)
 
