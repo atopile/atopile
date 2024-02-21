@@ -217,10 +217,16 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]
     bom_row_nb_counter = itertools.count()
     def _add_row(pins, signals, intermediate, consumers):
         row_nb = next(bom_row_nb_counter)
+        processed_signal = []
+        for signal in signals:
+            if match_interfaces(get_parent(signal)):
+                processed_signal.append(address.get_name(get_parent(signal)) + "." + address.get_name(signal))
+            else:
+                processed_signal.append(address.get_name(signal))
         if consumers == []:
             inspection_table.add_row(
                 f"{', '.join([address.get_name(x) for x in pins])}",
-                f"{', '.join([address.get_name(x) for x in signals])}",
+                f"{', '.join([x for x in processed_signal])}",
                 f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
                 f"{', '.join([address.get_instance_section(x) for x in consumers])}",
                 style=even_row if row_nb % 2 else odd_row,
@@ -228,7 +234,7 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]
         else:
             inspection_table.add_row(
                 f"{', '.join([address.get_name(x) for x in pins])}",
-                f"{', '.join([address.get_name(x) for x in signals])}",
+                f"{', '.join([x for x in processed_signal])}",
                 f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
                 f"{', '.join([address.get_instance_section(x) for x in consumers])}",
                 style=even_greyed_row if row_nb % 2 else odd_greyed_row,
