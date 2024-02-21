@@ -46,7 +46,7 @@ def get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
             elif match_pins_and_signals(source) and match_pins_and_signals(target):
                 net_soup.join(source, target)
             else:
-                # If only one of the nodes is an interface, then we need to throw an error
+                # If only one of the nodes is an pin or signal, then we need to throw an error
                 raise errors.AtoTypeError.from_ctx(
                     link.src_ctx,
                     f"Cannot connect a signal or pin to a non-connectable: {source} ~ {target}"
