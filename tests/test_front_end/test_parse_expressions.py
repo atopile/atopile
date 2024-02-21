@@ -49,9 +49,18 @@ def test_parens():
     assert _run("1 * (2 + 3) * (4 + 5) + 6") == 51
 
 
-def test_pseudo_symbols():
+def test_simple_pseudo_symbols():
     a = _run("1 + 2 + c.d.e")
     assert callable(a)
     assert isinstance(a, Expression)
     assert a({"//a:b::c.d.e": 5}) == 8
     assert a.symbols == {Symbol("//a:b::c.d.e")}
+
+
+def test_pseudo_symbols():
+    context = {
+        "//a:b::a.a.a": 4,
+        "//a:b::b": 3,
+        "//a:b::c": 9,
+    }
+    assert _run("(a.a.a**b + 17) / c + 53")(context) == 62
