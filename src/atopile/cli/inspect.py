@@ -14,7 +14,7 @@ import rich
 from rich.table import Table
 
 from atopile import address, errors
-from atopile.address import AddrStr
+from atopile.address import AddrStr, add_instance, get_name
 from atopile.cli.common import project_options
 from atopile.config import BuildContext
 from atopile.front_end import Link, lofty
@@ -22,6 +22,7 @@ from atopile.instance_methods import (
     all_descendants,
     get_links,
     get_parent,
+    get_children,
     iter_parents,
     match_interfaces,
     match_modules,
@@ -32,93 +33,44 @@ from atopile.instance_methods import (
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
-
 class DisplayEntry:
-    def __init__(self, connectables: list[AddrStr]):
-        self.connectables: list[AddrStr] = connectables
-        self.intermediate_connectable: list[AddrStr] = []
-        self.consumers: list[AddrStr] = []
-
-
-class InspectConnectable:
-    def __init__(self, addr: AddrStr, type: str):
-        self.addr = addr
-        self.type = type
-        self.associated_connectable = []
-        self.parent_interface = None
-        self.consumer = []
-
-
-def collect_connected_dfs(connections: list[Link], root_addr, visited=None) -> list[AddrStr]:
-    """
-    from a list of links and a root node, this function returns all the nodes connected to the root node
-    """
-    if visited is None:
-        visited = []
-
-    for connection in connections:
-        if connection.source.addr == root_addr:
-            if connection.target.addr not in visited:
-                visited.append(connection.target.addr)  # Mark this target as visited
-                # Recursively visit the targets connected to this target
-                collect_connected_dfs(connections, connection.target.addr, visited)
-        elif connection.target.addr == root_addr:
-            if connection.source.addr not in visited:
-                visited.append(connection.source.addr)  # Mark this target as visited
-                # Recursively visit the targets connected to this target
-                collect_connected_dfs(connections, connection.source.addr, visited)
-    return visited
-
-def find_nets(graph) -> list[list[AddrStr]]:
-    """
-    For a dict of connections:
-    {
-    A: [B, C],
-    B: [A, C],
-    C: [A, B],
-    D: [E],
-    E: [D]
-    }
-    This function returns the nets:
-    [[A, B, C], [D, E]]
-    """
-    visited = set()  # Keep track of visited nodes to avoid revisiting them.
-    connected_components = []  # Store the connected components.
-    def dfs(node, component):
-        """
-        Perform depth-first search recursively to find all nodes connected to the current node.
-        """
-        visited.add(node)
-        component.append(node)
-        for neighbor in graph.get(node, []):
-            if neighbor not in visited:
-                dfs(neighbor, component)
-
-    for node in graph:
-        if node not in visited:
-            component = []
-            dfs(node, component)
-            connected_components.append(component)
-
-    return connected_components
-
-class DisplayEntry:
-    def __init__(self, pins: list[AddrStr], signals: list[AddrStr], interface: list[AddrStr]):
-        self.pins: list[AddrStr] = pins
-        self.signals: list[AddrStr] = signals
-        self.interface: list[AddrStr] = interface
+    def __init__(self, net: list[list[AddrStr]]):
+        self.inspect_net: list[AddrStr] = net
+        self.inspect_consumer: list[AddrStr] = []
+        self.context_net: list[AddrStr] = []
+        self.context_consumer: list[AddrStr] = []
 
 def find_nets_new(links: list[Link]) -> list[list[AddrStr]]:
     # Convert links to an adjacency list
     graph = {}
     for link in links:
-        source, target = link.source.addr, link.target.addr
-        if source not in graph:
-            graph[source] = []
-        if target not in graph:
-            graph[target] = []
-        graph[source].append(target)
-        graph[target].append(source)
+        source = []
+        target = []
+        if match_interfaces(link.source.addr) and match_interfaces(link.target.addr):
+            for int_pin in get_children(link.source.addr):
+                if match_pins_and_signals(int_pin):
+                    source.append(int_pin)
+                    target.append(add_instance(link.target.addr, get_name(int_pin)))
+                else:
+                    raise errors.AtoNotImplementedError("Cannot nest interfaces yet.")
+        elif match_interfaces(link.source.addr) or match_interfaces(link.target.addr):
+            # If only one of the nodes is an interface, then we need to throw an error
+            raise errors.AtoTypeError.from_ctx(
+                link.src_ctx,
+                f"Cannot connect an interface to a non-interface: {link.source.addr} ~ {link.target.addr}"
+            )
+        # just a single link
+        else:
+            source.append(link.source.addr)
+            target.append(link.target.addr)
+
+        for source, target in zip(source, target):
+            if source not in graph:
+                graph[source] = []
+            if target not in graph:
+                graph[target] = []
+            graph[source].append(target)
+            graph[target].append(source)
 
     def dfs(node, component):
         visited.add(node)
@@ -136,6 +88,36 @@ def find_nets_new(links: list[Link]) -> list[list[AddrStr]]:
             connected_components.append(component)
 
     return connected_components
+
+def find_net_hits(net: list[AddrStr], links: list[Link]) -> list[AddrStr]:
+    hits = []
+    for link in links:
+        source = []
+        target = []
+        if match_interfaces(link.source.addr) and match_interfaces(link.target.addr):
+            for int_pin in get_children(link.source.addr):
+                if match_pins_and_signals(int_pin):
+                    source.append(int_pin)
+                    target.append(add_instance(link.target.addr, get_name(int_pin)))
+                else:
+                    raise errors.AtoNotImplementedError("Cannot nest interfaces yet.")
+        elif match_interfaces(link.source.addr) or match_interfaces(link.target.addr):
+            # If only one of the nodes is an interface, then we need to throw an error
+            raise errors.AtoTypeError.from_ctx(
+                link.src_ctx,
+                f"Cannot connect an interface to a non-interface: {link.source.addr} ~ {link.target.addr}"
+            )
+        # just a single link
+        else:
+            source.append(link.source.addr)
+            target.append(link.target.addr)
+
+        for source, target in zip(source, target):
+            if source in net:
+                hits.append(target)
+            if target in net:
+                hits.append(source)
+    return hits
 
 odd_row = "on grey11 cornflower_blue"
 even_row = "on grey15 cornflower_blue"
@@ -165,153 +147,99 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]
         ).log(log, logging.WARNING)
 
     #TODO: make sure that the context is always above the module to inspect
-    module_to_inspect = address.add_instance(build_ctx.entry, inspect)
+    inspect_module = address.add_instance(build_ctx.entry, inspect)
     if context is None:
-        from_perspective_of_module = module_to_inspect
+        context_module = inspect_module
     else:
-        from_perspective_of_module = address.add_instance(build_ctx.entry, context)
+        context_module = address.add_instance(build_ctx.entry, context)
 
-    log.info(f"Inspecting {address.get_instance_section(module_to_inspect)} from the perspective of {address.get_instance_section(from_perspective_of_module)}")
+    log.info(f"Inspecting {address.get_instance_section(inspect_module)} from the perspective of {address.get_instance_section(context_module)}")
 
     # TODO: Currently doing this just to fill the cache
     lofty.get_instance(build_ctx.entry)
 
-    # # Find the interface modules
-    # modules_above_inspect = list(iter_parents(module_to_inspect))
-    # modules_below_context = list(filter(match_modules, all_descendants(from_perspective_of_module)))
-    # modules_between_context_and_inspect = list(set(inspect_parent_modules).intersection(set(context_child_modules)))
+    modules_at_and_below_inspect = list(filter(match_modules, all_descendants(inspect_module)))
+    links_at_and_below_inspect: list[Link] = []
+    for module in modules_at_and_below_inspect:
+        links_at_and_below_inspect.extend(list(get_links(module)))
+    inspect_nets = find_nets_new(links_at_and_below_inspect)
 
-    # # Create an array of all the connectables we could inspect
-    # inspected_connectables: dict[AddrStr, InspectConnectable] = {}
-    # for connectable in list(filter(match_pins, all_descendants(from_perspective_of_module))):
-    #     inspected_connectables[connectable] = InspectConnectable(connectable, "pin")
-    # for connectable in list(filter(match_signals, all_descendants(from_perspective_of_module))):
-    #     inspected_connectables[connectable] = InspectConnectable(connectable, "signal")
-    # for connectable in list(filter(match_interfaces, all_descendants(from_perspective_of_module))):
-    #     inspected_connectables[connectable] = InspectConnectable(connectable, "interface")
+    inspect_entries: list[DisplayEntry] = []
+    for net in inspect_nets:
+        entry = DisplayEntry(net)
+        inspect_entries.append(entry)
 
-    # # If a signal has a parent interface, add it to the inspected object
-    # for conn in inspected_connectables:
-    #     if inspected_connectables[conn].type == 'interface':
-    #         signals_to_update = list(filter(match_signals, all_descendants(conn)))
-    #         for signal in signals_to_update:
-    #             inspected_connectables[signal].parent_interface = conn
+    # Find the interface modules
+    modules_above_inspect = list(iter_parents(inspect_module))
+    modules_below_context = list(filter(match_modules, all_descendants(context_module)))
+    modules_between_context_and_inspect = list(set(modules_above_inspect).intersection(set(modules_below_context)))
+    modules_above_context = list(iter_parents(context_module))
 
-    # # Save the links that are in the current module
-    # context_modules = [from_perspective_of_module]
-    # context_modules.extend(list(filter(match_modules, all_descendants(from_perspective_of_module))))
-    # context_child_links: list[AddrStr] = []
-    # for module in context_modules:
-    #     context_child_links.extend(list(get_links(module)))
+    links_between_context_and_inspect: list[Link] = []
+    for module in modules_between_context_and_inspect:
+        links_between_context_and_inspect.extend(list(get_links(module)))
 
-    # context_connection_graph = {}
-    # # For each connectable in the context, find connectables connected to it
-    # for connectable in inspected_connectables:
-    #     context_connected_conns = collect_connected_dfs(context_child_links, connectable)
-    #     context_connection_graph[connectable] = context_connected_conns
-    #     inspected_connectables[connectable].associated_connectable = context_connected_conns
+    for entry in inspect_entries:
+        entry.inspect_consumer = find_net_hits(entry.inspect_net, links_between_context_and_inspect)
 
-    # context_to_inspect_nets: list[list[AddrStr]] = []
-    # context_to_inspect_nets = find_nets(context_connection_graph)
+    links_at_and_below_context: list[Link] = []
+    for module in modules_below_context:
+        links_at_and_below_context.extend(list(get_links(module)))
+    context_nets = find_nets_new(links_at_and_below_context)
 
-    # # Save the links that are above the current module
-    # parents = list(iter_parents(from_perspective_of_module))
-    # parent_links = []
-    # for parent in parents:
-    #     parent_links.extend(list(get_links(parent)))
+    # map the inspect nets to the context nets
+    for entry in inspect_entries:
+        for context_net in context_nets:
+            if set(entry.inspect_net).issubset(set(context_net)):
+                entry.context_net = context_net
+                break
+            # This should never happen
+            else:
+                entry.context_net = []
+                #TODO: raise error
+                #raise errors.AtoFatalError("Somehow the inspect net is not a subset of any context net.")
 
-    # # For each connectable in the context, find what consumes it
-    # for connectable in inspected_connectables:
-    #     for link in parent_links:
-    #         if link.source.addr == connectable:
-    #             inspected_connectables[connectable].consumer.append(link.target.addr)
-    #         if link.target.addr == connectable:
-    #             inspected_connectables[connectable].consumer.append(link.source.addr)
+    links_above_context: list[Link] = []
+    for module in modules_above_context:
+        links_above_context.extend(list(get_links(module)))
 
-    # ####
-    # # Inspected module nets
-    # ####
-    # inspect_connectables = list(filter(match_pins_and_signals, all_descendants(module_to_inspect)))
-    # inspect_connectables.extend(list(filter(match_interfaces, all_descendants(module_to_inspect))))
+    for entry in inspect_entries:
+        entry.context_consumer = find_net_hits(entry.context_net, links_above_context)
 
-    # # Create nets for the elements in the component to inspect
-    # module_connection_graph = {}
-    # module_to_inspect_child_links = list(get_links(module_to_inspect))
-    # for connectable in inspect_connectables:
-    #     inspect_module_connected_conns = collect_connected_dfs(module_to_inspect_child_links, connectable)
-    #     module_connection_graph[connectable] = inspect_module_connected_conns
+    # Create a table
+    inspection_table = Table(show_header=True, header_style="bold cornflower_blue")
+    inspection_table.add_column("Pin #", justify="right")
+    inspection_table.add_column("Signal name", justify="left")
+    inspection_table.add_column("Interface", justify="left")
+    inspection_table.add_column("Connected to", justify="left")
 
-    # module_to_inspect_nets: list[list[AddrStr]] = []
-    # module_to_inspect_nets = find_nets(module_connection_graph)
+    # Help to fill the table
+    bom_row_nb_counter = itertools.count()
+    def _add_row(pins, signals, intermediate, consumers):
+        row_nb = next(bom_row_nb_counter)
+        if consumers == []:
+            inspection_table.add_row(
+                f"{', '.join([address.get_name(x) for x in pins])}",
+                f"{', '.join([address.get_name(x) for x in signals])}",
+                f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
+                f"{', '.join([address.get_instance_section(x) for x in consumers])}",
+                style=even_row if row_nb % 2 else odd_row,
+            )
+        else:
+            inspection_table.add_row(
+                f"{', '.join([address.get_name(x) for x in pins])}",
+                f"{', '.join([address.get_name(x) for x in signals])}",
+                f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
+                f"{', '.join([address.get_instance_section(x) for x in consumers])}",
+                style=even_greyed_row if row_nb % 2 else odd_greyed_row,
+            )
 
-    # # Make a map between the connectables in the inspected module and the nets in the context
-    # module_conn_to_context_net_map: dict[AddrStr, list[AddrStr]] = {}
-    # for module_net in module_to_inspect_nets:
-    #     for conn in module_net:
-    #         for context_net in context_to_inspect_nets:
-    #             if conn in context_net:
-    #                 module_conn_to_context_net_map[conn] = context_net
-    #                 break
-    #             else:
-    #                 module_conn_to_context_net_map[conn] = []
-
-    # # Create the display entries
-    # displayed_entries: list[DisplayEntry] = []
-    # # There is one entry per net
-    # for net in module_to_inspect_nets:
-    #     disp_entry = DisplayEntry(net)
-    #     # Add the intermediate interfaces
-    #     # Add the consumers information
-    #     for conn in net:
-    #         for tested_conn in module_conn_to_context_net_map[conn]:
-    #             if inspected_connectables[tested_conn].consumer != []:
-    #                 disp_entry.consumers.extend(inspected_connectables[tested_conn].consumer)
-    #             parent_interface = inspected_connectables[tested_conn].parent_interface
-    #             if parent_interface is not None:
-    #                 if inspected_connectables[parent_interface].consumer != []:
-    #                     for consumer in inspected_connectables[parent_interface].consumer:
-    #                         disp_entry.consumers.append(str(consumer + "." + address.get_name(tested_conn)))
-    #                 if get_parent(parent_interface) in interface_modules:
-    #                     disp_entry.intermediate_connectable.append(tested_conn)
-    #             if get_parent(tested_conn) in interface_modules:
-    #                 disp_entry.intermediate_connectable.append(tested_conn)
-
-    #     displayed_entries.append(disp_entry)
-    #     disp_entry.connectables.sort()
-
-    # # Create a table
-    # inspection_table = Table(show_header=True, header_style="bold cornflower_blue")
-    # inspection_table.add_column("Pin #", justify="right")
-    # inspection_table.add_column("Signal name", justify="left")
-    # inspection_table.add_column("Interface", justify="left")
-    # inspection_table.add_column("Connected to", justify="left")
-
-    # # Help to fill the table
-    # bom_row_nb_counter = itertools.count()
-    # def _add_row(pins, signals, intermediate, consumers):
-    #     row_nb = next(bom_row_nb_counter)
-    #     if consumers == []:
-    #         inspection_table.add_row(
-    #             f"{', '.join([address.get_name(x) for x in pins])}",
-    #             f"{', '.join([address.get_name(x) for x in signals])}",
-    #             f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
-    #             f"{', '.join([address.get_instance_section(x) for x in consumers])}",
-    #             style=even_row if row_nb % 2 else odd_row,
-    #         )
-    #     else:
-    #         inspection_table.add_row(
-    #             f"{', '.join([address.get_name(x) for x in pins])}",
-    #             f"{', '.join([address.get_name(x) for x in signals])}",
-    #             f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
-    #             f"{', '.join([address.get_instance_section(x) for x in consumers])}",
-    #             style=even_greyed_row if row_nb % 2 else odd_greyed_row,
-    #         )
-
-    # sorted_entries = natsort.natsorted(displayed_entries, key=lambda obj: obj.connectables[0])
-    # for entry in sorted_entries:
-    #     pins = sorted(list(filter(match_pins, entry.connectables)))
-    #     signals = list(filter(match_signals, entry.connectables))
-    #     _add_row(pins, signals, list(set(entry.intermediate_connectable)), list(set(entry.consumers)))
+    #sorted_entries = natsort.natsorted(displayed_entries, key=lambda obj: obj.connectables[0])
+    for entry in inspect_entries:
+        pins = sorted(list(filter(match_pins, entry.inspect_net)))
+        signals = list(filter(match_signals, entry.inspect_net))
+        #interface = list(filter(match_interfaces, entry.inspect_net))
+        _add_row(pins, signals, list(set(entry.inspect_consumer)), list(set(entry.context_consumer)))
 
 
-    # rich.print(inspection_table)
+    rich.print(inspection_table)
