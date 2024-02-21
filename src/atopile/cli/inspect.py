@@ -129,12 +129,12 @@ def find_net_hits(net: list[AddrStr], links: list[Link]) -> list[AddrStr]:
 def visit_branch(tree, addr):
     children = filter(match_modules, get_children(addr))
     for child in children:
-        branch = tree.add(f"{address.get_name(child)}")
+        branch = tree.add(f"{address.get_instance_section(child)}")
         visit_branch(branch, child)
     return tree
 
 def build_tree(root_addr):
-    tree = Tree(f"{address.get_name(root_addr)}")
+    tree = Tree(f"{address.get_instance_section(root_addr)}")
     rich.print(visit_branch(tree, root_addr))
 
 odd_row = "on grey11 cornflower_blue"
