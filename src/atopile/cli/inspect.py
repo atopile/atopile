@@ -127,10 +127,10 @@ even_greyed_row = "on grey15 grey0"
 
 @click.command()
 @project_options
-@click.option("--inspect", required=True)
+@click.option("--inspect", default=None)
 @click.option("--context", default=None, help="The context from which to inspect the module")
 @errors.muffle_fatalities
-def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]):
+def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Optional[str]):
     """
     Utility to inspect what is connected to a component.
     The context set the boundary where something is considered connecting to it.
@@ -146,9 +146,15 @@ def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]
             f"Using top build config {build_ctx.name} for now. Multiple build configs not yet supported."
         ).log(log, logging.WARNING)
 
+    if inspect is None:
+        inspect = rich.prompt.Prompt.ask("Which instance do you want to inspect?")
+
+    if context is None:
+        context = rich.prompt.Prompt.ask("In which context would you like to inspect it?")
+
     #TODO: make sure that the context is always above the module to inspect
     inspect_module = address.add_instance(build_ctx.entry, inspect)
-    if context is None:
+    if context is None or context == "":
         context_module = inspect_module
     else:
         context_module = address.add_instance(build_ctx.entry, context)
