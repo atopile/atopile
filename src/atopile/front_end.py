@@ -5,18 +5,19 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 """
 
 import enum
+import operator
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
 from itertools import chain
 from numbers import Number
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional, Union
 
 import pint
 from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
-from atopile import address, errors, config
+from atopile import address, config, errors, expressions
 from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.generic_methods import recurse
@@ -76,10 +77,41 @@ class ClassDef(Base):
         return f"<{self.__class__.__name__} {self.address}>"
 
 
+class RangedValue(expressions.RangedValue):
+    def __init__(
+        self,
+        val_a: Number | pint.Quantity,
+        val_b: Number | pint.Quantity,
+        unit: Optional[pint.Unit] = None,
+        src_ctx: Optional[ParserRuleContext] = None,
+    ):
+        self.src_ctx = src_ctx
+        super().__init__(val_a, val_b, unit)
+
+
+class Expression(expressions.Expression):
+    def __init__(
+        self,
+        lambda_: Callable,
+        symbols: set[str],
+        src_ctx: Optional[ParserRuleContext] = None
+    ):
+        self.src_ctx = src_ctx
+        super().__init__(lambda_, symbols)
+
+    def __repr__(self) -> str:
+        if not self.src_ctx:
+            return f"<{self.__class__.__name__}>"
+
+        return f"<{self.__class__.__name__} {self.src_ctx.getText()}>"
+
+
 @define
 class Assertion(Base):
     """Represent an assertion statement."""
-    assertion_str: str
+    lhs: Expression
+    rhs: Expression
+    comparator: str
 
 
 @define
@@ -124,7 +156,7 @@ class ClassLayer(Base):
 resolve_types(ClassLayer)
 
 
-## The below datastructures are created from the above datamodel as a second stage
+## The below datastructures are created from the above data-model as a second stage
 
 
 @define
@@ -144,142 +176,6 @@ class Link(Base):
 
     def __repr__(self) -> str:
         return f"<Link {repr(self.source)} -> {repr(self.target)}>"
-
-
-class RangedValue(Base):
-    """Let's get physical!"""
-
-    def __init__(
-        self,
-        val_a: Number | pint.Quantity,
-        val_b: Number | pint.Quantity,
-        unit: Optional[pint.Unit] = None,
-        src_ctx: Optional[ParserRuleContext] = None,
-    ):
-        self.src_ctx = src_ctx
-
-        if unit:
-            self.unit = unit
-        elif isinstance(val_a, pint.Quantity):
-            self.unit = val_a.units
-        elif isinstance(val_a, pint.Quantity):
-            self.unit = val_b.units
-        else:
-            raise ValueError(
-                "Unit must be provided if neither val_a or val_b are Quantities"
-            )
-
-        if isinstance(val_a, pint.Quantity):
-            val_a_mag = val_a.to(self.unit).magnitude
-        else:
-            val_a_mag = val_a
-
-        if isinstance(val_b, pint.Quantity):
-            val_b_mag = val_b.to(self.unit).magnitude
-        else:
-            val_b_mag = val_b
-
-        self.min_val = min(val_a_mag, val_b_mag)
-        self.max_val = max(val_a_mag, val_b_mag)
-
-    def __str__(self) -> str:
-        return f"{self.nominal:.2f} +/- {self.tolerance:.2f} {self.unit}"
-
-    def __repr__(self) -> str:
-        return (
-            f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
-        )
-
-    @property
-    def nominal(self) -> float:
-        return (self.min_val + self.max_val) / 2
-
-    @property
-    def tolerance(self) -> float:
-        return (self.max_val - self.min_val) / 2
-
-    @property
-    def tolerance_pct(self) -> Optional[float]:
-        if self.nominal == 0:
-            return None
-        return self.tolerance / self.nominal * 100
-
-    def to_dict(self) -> dict:
-        """Convert the Physical instance to a dictionary."""
-        data = {
-            "unit": str(self.unit),
-            "min_val": self.min_val,
-            "max_val": self.max_val,
-            # TODO: remove these - we shouldn't be duplicating this kind of information
-            "nominal": self.nominal,
-            "tolerance": self.tolerance,
-            "tolerance_pct": self.tolerance_pct,
-        }
-        return data
-
-    @property
-    def min_qty(self) -> pint.Quantity:
-        return self.unit * self.min_val
-
-    @property
-    def max_qty(self) -> pint.Quantity:
-        return self.unit * self.max_val
-
-    def __mul__(self, other: "RangedValue") -> "RangedValue":
-        new_values = [
-            self.min_qty * other.min_qty,
-            self.min_qty * other.max_qty,
-            self.max_qty * other.min_qty,
-            self.max_qty * other.max_qty,
-        ]
-
-        return RangedValue(
-            min(new_values),
-            max(new_values),
-        )
-
-    def __pow__(self, other: Number) -> "RangedValue":
-        return RangedValue(self.min_qty**other, self.max_val**other)
-
-    def __truediv__(self, other: "RangedValue") -> "RangedValue":
-        new_values = [
-            self.min_qty / other.min_qty,
-            self.min_qty / other.max_qty,
-            self.max_qty / other.min_qty,
-            self.max_qty / other.max_qty,
-        ]
-
-        return RangedValue(
-            min(new_values),
-            max(new_values),
-        )
-
-    def __add__(self, other: "RangedValue") -> "RangedValue":
-        return RangedValue(
-            self.min_qty + other.min_qty,
-            self.max_qty + other.max_qty,
-        )
-
-    def __sub__(self, other: "RangedValue") -> "RangedValue":
-        return RangedValue(
-            self.min_qty - other.max_qty,
-            self.max_qty - other.min_qty,
-        )
-
-    def within(self, other: "RangedValue") -> bool:
-        return self.min_qty >= other.min_qty and other.max_qty >= self.max_qty
-
-    def __lt__(self, other: "RangedValue") -> bool:
-        return self.max_qty < other.min_qty
-
-    def __le__(self, other: "RangedValue") -> bool:
-        return self.max_qty <= other.min_qty
-
-    def __gt__(self, other: "RangedValue") -> bool:
-        return self.min_qty > other.max_qty
-
-    def __ge__(self, other: "RangedValue") -> bool:
-        return self.max_qty >= other.min_qty
 
 
 @define
@@ -661,6 +557,81 @@ class HandleStmtsFunctional(AtopileParserVisitor):
         if ctx.simple_stmts():
             return self.visitSimple_stmts(ctx.simple_stmts())
         raise ValueError  # this should be protected because it shouldn't be parseable
+
+
+class Roley(HandlesPrimaries):
+    """
+    Roley's job is to build expressions.
+    """
+    def __init__(self) -> None:
+        self.address = StackList()
+        super().__init__()
+
+    def visitArithmetic_expression(
+        self, ctx: ap.Arithmetic_expressionContext
+    ) -> expressions.NumericishTypes:
+        if ctx.ADD():
+            return expressions.defer_operation_factory(
+                self.visit(ctx.arithmetic_expression()),
+                operator.add,
+                self.visit(ctx.term()),
+            )
+
+        if ctx.MINUS():
+            return expressions.defer_operation_factory(
+                self.visit(ctx.arithmetic_expression()),
+                operator.sub,
+                self.visit(ctx.term()),
+            )
+
+        return self.visit(ctx.term())
+
+    def visitTerm(self, ctx: ap.TermContext) -> expressions.NumericishTypes:
+        if ctx.STAR():  # multiply
+            return expressions.defer_operation_factory(
+                self.visit(ctx.term()),
+                operator.mul,
+                self.visit(ctx.factor()),
+            )
+
+        if ctx.DIV():
+            return expressions.defer_operation_factory(
+                self.visit(ctx.term()),
+                operator.truediv,
+                self.visit(ctx.factor()),
+            )
+
+        return self.visit(ctx.factor())
+
+    def visitFactor(self, ctx: ap.FactorContext) -> expressions.NumericishTypes:
+        # Ignore the unary plus operator
+
+        if ctx.MINUS():
+            raise NotImplementedError("Unary minus")
+
+        return self.visit(ctx.power())
+
+    def visitPower(self, ctx: ap.PowerContext) -> expressions.NumericishTypes:
+        if ctx.factor():
+            return expressions.defer_operation_factory(
+                self.visit(ctx.atom()),
+                operator.pow,
+                self.visit(ctx.factor()),
+            )
+
+        return self.visit(ctx.atom())
+
+    def visitAtom(self, ctx: ap.AtomContext) -> expressions.NumericishTypes:
+        if ctx.arithmetic_group():
+            return self.visit(ctx.arithmetic_group().arithmetic_expression())
+
+        if ctx.literal_physical():
+            return self.visit(ctx.literal_physical())
+
+        if ctx.name_or_attr():
+            raise NotImplementedError("Name or attribute")
+
+        raise ValueError
 
 
 class Scoop(HandleStmtsFunctional, HandlesPrimaries):

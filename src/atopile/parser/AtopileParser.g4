@@ -83,14 +83,13 @@ arithmetic_expression
     ;
 
 term
-    : term ('*' | '/' | '//' | '%' | '@') factor
+    : term ('*' | '/') factor
     | factor
     ;
 
 factor
     : '+' factor
     | '-' factor
-    | '~' factor
     | power;
 
 power

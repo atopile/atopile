@@ -133,10 +133,14 @@ class RangedValue:
             max(new_values),
         )
 
-    def __rmul__(self, other: "RangedValue") -> "RangedValue":
+    def __rmul__(self, other: Union["RangedValue", Number]) -> "RangedValue":
         return self.__mul__(other)
 
-    def __pow__(self, other: Number) -> "RangedValue":
+    def __pow__(self, other: Union["RangedValue", Number]) -> "RangedValue":
+        if isinstance(other, RangedValue):
+            if not (other.min_qty == other.max_qty and other.unit.dimensionless):
+                raise ValueError("Exponent must be a constant valueless quantity")
+            other = other.min_qty
         return RangedValue(self.min_qty**other, self.max_val**other)
 
     @classmethod
@@ -166,10 +170,10 @@ class RangedValue:
         )
 
     def __truediv__(self, other: Union["RangedValue", Number]) -> "RangedValue":
-        self._do_truediv(self, other)
+        return self._do_truediv(self, other)
 
     def __rtruediv__(self, other: Union["RangedValue", Number]) -> "RangedValue":
-        self._do_truediv(other, self)
+        return self._do_truediv(other, self)
 
     def __add__(self, other: Union["RangedValue", Number]) -> "RangedValue":
         if not isinstance(other, RangedValue):
@@ -195,6 +199,9 @@ class RangedValue:
     def __rsub__(self, other: Union["RangedValue", Number]) -> "RangedValue":
         return self.__sub__(other)
 
+    def __neg__(self) -> "RangedValue":
+        return RangedValue(-self.max_qty, -self.min_qty)
+
     def within(self, other: "RangedValue") -> bool:
         """Check that this RangedValue completely falls within another."""
         return self.min_qty >= other.min_qty and other.max_qty >= self.max_qty
@@ -206,17 +213,27 @@ class RangedValue:
     def __gt__(self, other: "RangedValue") -> bool:
         return self.min_qty >= other.max_qty
 
-    def __eq__(self, other: "RangedValue") -> bool:
+    def __eq__(self, other: Union["RangedValue", Number]) -> bool:
         # NOTE: realistically this is only useful for testing
+        if not isinstance(other, RangedValue):
+            other = RangedValue(other, other, self.unit)
         return self.min_qty == other.min_qty and self.max_qty == other.max_qty
+
+    def __req__(self, other: Union["RangedValue", Number]) -> bool:
+        return self.__eq__(other)
+
+
+NumericishTypes = Union["Expression", RangedValue, Number, "Symbol"]
 
 
 @define
 class Symbol:
     """Represent a symbol."""
+    addr: collections.abc.Hashable
 
-
-NumericishTypes = Union["Expression", RangedValue, Number, Symbol]
+    def __call__(self, context: Mapping) -> Any:
+        """Return the value of the symbol."""
+        return context[self.addr]
 
 
 @define

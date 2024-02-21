@@ -12,6 +12,7 @@ def test_comparitors():
     assert b > a
     assert not a.within(b)
     assert a.within(c)
+    assert a == RangedValue(1, 2)
 
 
 def test_units():
@@ -27,3 +28,15 @@ def test_arithmetic():
     assert RangedValue(1, 2) + RangedValue(2, 3) == RangedValue(3, 5)
     assert RangedValue(1, 2) - RangedValue(2, 3) == RangedValue(-2, 0)
     assert RangedValue(1, 2) * RangedValue(2, 3) == RangedValue(2, 6)
+    assert RangedValue(1, 2) / RangedValue(2, 3) == RangedValue(1 / 3, 1)
+    assert RangedValue(1, 2) ** 2 == RangedValue(1, 4)
+
+    assert RangedValue(1, 2) + 2 == RangedValue(3, 4)
+    assert RangedValue(1, 2) - 3 == RangedValue(-2, -1)
+    assert RangedValue(1, 2) * 4 == RangedValue(4, 8)
+    assert RangedValue(1, 2) / 5 == RangedValue(1 / 5, 2 / 5)
+
+    assert 2 + RangedValue(1, 2) == RangedValue(3, 4)
+    assert 3 - RangedValue(1, 2) == RangedValue(-2, -1)
+    assert 4 * RangedValue(1, 2) == RangedValue(4, 8)
+    assert 5 / RangedValue(1, 2) == RangedValue(5 / 2, 5)

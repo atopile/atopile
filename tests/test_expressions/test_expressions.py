@@ -1,4 +1,5 @@
 import operator
+from collections.abc import Callable
 
 from atopile.expressions import Expression, defer_operation_factory
 
@@ -9,6 +10,7 @@ def test_two_callables():
 
     c = defer_operation_factory(a, operator.add, b)
 
+    assert isinstance(c, Callable)
     assert c({"d": 157}) == 178
 
 
@@ -18,6 +20,7 @@ def test_one_callable():
 
     c = defer_operation_factory(a, operator.add, b)
 
+    assert isinstance(c, Callable)
     assert c({"d": 58}) == 70
 
 
@@ -27,4 +30,5 @@ def test_no_callables():
 
     c = defer_operation_factory(a, operator.add, b)
 
+    assert not isinstance(c, Callable)
     assert c == 33
