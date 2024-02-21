@@ -9,9 +9,9 @@ import logging
 from typing import Optional
 
 import click
-import natsort
 import rich
 from rich.table import Table
+from rich.tree import Tree
 
 from atopile import address, errors
 from atopile.address import AddrStr, add_instance, get_name
@@ -34,6 +34,11 @@ from atopile.instance_methods import (
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 class DisplayEntry:
+    """
+    This class represents the nets that are below the inspected module,
+    the equivalent net that is below the context module and
+    the individual connections that are made to the inspect net and the context net.
+    """
     def __init__(self, net: list[list[AddrStr]]):
         self.inspect_net: list[AddrStr] = net
         self.inspect_consumer: list[AddrStr] = []
@@ -89,6 +94,8 @@ def find_nets_new(links: list[Link]) -> list[list[AddrStr]]:
 
     return connected_components
 
+#TODO: this only works for direct connections but won't work for
+# nested interfaces or signals within the interface modules
 def find_net_hits(net: list[AddrStr], links: list[Link]) -> list[AddrStr]:
     hits = []
     for link in links:
@@ -119,6 +126,17 @@ def find_net_hits(net: list[AddrStr], links: list[Link]) -> list[AddrStr]:
                 hits.append(source)
     return hits
 
+def visit_branch(tree, addr):
+    children = filter(match_modules, get_children(addr))
+    for child in children:
+        branch = tree.add(f"{address.get_name(child)}")
+        visit_branch(branch, child)
+    return tree
+
+def build_tree(root_addr):
+    tree = Tree(f"{address.get_name(root_addr)}")
+    rich.print(visit_branch(tree, root_addr))
+
 odd_row = "on grey11 cornflower_blue"
 even_row = "on grey15 cornflower_blue"
 odd_greyed_row = "on grey11 grey0"
@@ -134,7 +152,7 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
     """
     Utility to inspect what is connected to a component.
     The context set the boundary where something is considered connecting to it.
-    For example: --inspect rp2040_micro --context rp2040_micro_kit
+    For example: --inspect rp2040_micro --context rp2040_micro_ki
     """
     if len(build_ctxs) == 0:
         errors.AtoNotImplementedError("No build contexts found.")
@@ -146,7 +164,11 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
             f"Using top build config {build_ctx.name} for now. Multiple build configs not yet supported."
         ).log(log, logging.WARNING)
 
+    # TODO: Currently doing this just to fill the cache
+    lofty.get_instance(build_ctx.entry)
+
     if inspect is None:
+        build_tree(build_ctx.entry)
         inspect = rich.prompt.Prompt.ask("Which instance do you want to inspect?")
 
     if context is None:
@@ -160,9 +182,6 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
         context_module = address.add_instance(build_ctx.entry, context)
 
     log.info(f"Inspecting {address.get_instance_section(inspect_module)} from the perspective of {address.get_instance_section(context_module)}")
-
-    # TODO: Currently doing this just to fill the cache
-    lofty.get_instance(build_ctx.entry)
 
     modules_at_and_below_inspect = list(filter(match_modules, all_descendants(inspect_module)))
     links_at_and_below_inspect: list[Link] = []
