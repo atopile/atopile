@@ -24,8 +24,9 @@ import requests
 
 def log_telemetry(result, **kwargs):
     project_info = get_project_info()
-    errors_list = get_logged_errors()
-    error_log = "\n".join(errors_list)
+    # errors_list = get_logged_errors()
+    # error_log = "\n".join(errors_list)
+
 
     telemetry_data = {
         "project_id": project_info['project_id'],
@@ -34,8 +35,9 @@ def log_telemetry(result, **kwargs):
         "execution_details": {
             "time": kwargs['execution_time'],
             "subcommand": kwargs['subcommand_name'],
-            "errors": len(errors_list),
-            "error_log": error_log
+            "errors": len(kwargs['error_log']),
+            "error_log": kwargs['error_log'],
+            "result": result
         }
     }
 
