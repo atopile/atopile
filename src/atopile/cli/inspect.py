@@ -45,7 +45,7 @@ class DisplayEntry:
         self.context_net: list[AddrStr] = []
         self.context_consumer: list[AddrStr] = []
 
-def find_nets_new(links: list[Link]) -> list[list[AddrStr]]:
+def find_nets(links: list[Link]) -> list[list[AddrStr]]:
     # Convert links to an adjacency list
     graph = {}
     for link in links:
@@ -187,7 +187,7 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
     links_at_and_below_inspect: list[Link] = []
     for module in modules_at_and_below_inspect:
         links_at_and_below_inspect.extend(list(get_links(module)))
-    inspect_nets = find_nets_new(links_at_and_below_inspect)
+    inspect_nets = find_nets(links_at_and_below_inspect)
 
     inspect_entries: list[DisplayEntry] = []
     for net in inspect_nets:
@@ -210,7 +210,7 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
     links_at_and_below_context: list[Link] = []
     for module in modules_below_context:
         links_at_and_below_context.extend(list(get_links(module)))
-    context_nets = find_nets_new(links_at_and_below_context)
+    context_nets = find_nets(links_at_and_below_context)
 
     # map the inspect nets to the context nets
     for entry in inspect_entries:
