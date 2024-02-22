@@ -19,8 +19,6 @@ from atopile.address import AddrStr
 log = logging.getLogger(__name__)
 
 
-
-
 def project_options(f):
     """
     Utility decorator to ingest common config options to build a project.

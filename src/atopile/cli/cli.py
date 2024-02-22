@@ -3,9 +3,8 @@ import logging
 import click
 from rich.logging import RichHandler
 
-from atopile.cli.rich_console import console
 from atopile import telemetry
-
+from atopile.cli.rich_console import console
 
 from . import build, configure, create, inspect, install
 
@@ -52,6 +51,7 @@ def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
 
     if not non_interactive:
         configure.do_configure_if_needed()
+
 
 cli.add_command(build.build)
 cli.add_command(create.create)

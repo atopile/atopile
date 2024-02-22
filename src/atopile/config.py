@@ -60,8 +60,6 @@ class ProjectConfig:
     builds: dict[str, ProjectBuildConfig] = Factory(dict)
     dependencies: list[str] = []
     services: ProjectServicesConfig = Factory(ProjectServicesConfig)
-    project_id: str = MISSING
-    user_id: str = MISSING
 
 
 KEY_CONVERSIONS = {

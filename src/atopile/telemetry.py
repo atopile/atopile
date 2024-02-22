@@ -12,28 +12,32 @@ What we collect:
 """
 
 import hashlib
-import subprocess
-from ruamel.yaml import YAML
-from pathlib import Path
 import logging
+import subprocess
 import time
+from pathlib import Path
+from typing import Optional
+
 import requests
-from attrs import define, asdict
+from attrs import asdict, define
+from ruamel.yaml import YAML
 
 log = logging.getLogger(__name__)
 
+
 @define
 class TelemetryData:
-    project_id: str
-    user_id: str
-    git_hash: str
-    subcommand: str
-    time: float = 0
+    project_id: Optional[str]
+    user_id: Optional[str]
+    git_hash: Optional[str]
+    subcommand: Optional[str]
+    time: Optional[float] = None
     ato_error: int = 0
     crash: int = 0
 
 
 telemetry_data: TelemetryData
+start_time: Optional[float] = None
 
 
 def setup_telemetry_data(command: str):
@@ -48,36 +52,45 @@ def setup_telemetry_data(command: str):
 
 
 def log_telemetry():
-    # Check if telemetry is enabled
-    if not load_telemetry_setting():
-        log.debug("Telemetry is disabled. Skipping telemetry logging.")
-        return
-
     try:
-        log.debug("Logging telemetry data.")
+        # Check if telemetry is enabled
+        if not load_telemetry_setting():
+            log.debug("Telemetry is disabled. Skipping telemetry logging.")
+            return
         telemetry_data.time = _end_timer()
-        response = requests.post(
-            "https://log-telemetry-atsuhzfd5a-uc.a.run.app", json=asdict(telemetry_data)
-        )
-        response.raise_for_status()
+        telemetry_dict = asdict(telemetry_data)
+        log.debug("Logging telemetry data %s", telemetry_dict)
+        requests.post(
+            "https://log-telemetry-atsuhzfd5a-uc.a.run.app",
+            json=telemetry_dict,
+            timeout=0.1,
+        ).raise_for_status()
+    except requests.exceptions.Timeout:
+        # We specifically ignore timeouts here because we expect
+        # them to happen most of the time.
+        # It's not actually a problem because we don't need to know
+        # if the telemetry was logged and we don't want to slow atopile
+        # down for it
+        pass
     except Exception as e:
         log.debug("Failed to log telemetry data: %s", e)
 
 
-def load_telemetry_setting():
+def load_telemetry_setting() -> dict:
     atopile_home = Path.home() / ".atopile"
     atopile_yaml = atopile_home / "telemetry.yaml"
+
     if not atopile_yaml.exists():
         atopile_home.mkdir(parents=True, exist_ok=True)
         with atopile_yaml.open("w") as f:
             yaml = YAML()
             yaml.dump({"telemetry": True}, f)
         return True
-    else:
-        with atopile_yaml.open() as f:
-            yaml = YAML()
-            config = yaml.load(f)
-            return config.get("telemetry", True)
+
+    with atopile_yaml.open() as f:
+        yaml = YAML()
+        config = yaml.load(f)
+        return config.get("telemetry", True)
 
 
 def _start_timer():
@@ -86,17 +99,16 @@ def _start_timer():
 
 
 def _end_timer():
-    global start_time  # Declare start_time as global
     try:
         if start_time is None:
             log.debug("Timer was not started.")
-            return 0
+            return -1
         end_time = time.time()
         execution_time = end_time - start_time
-        log.debug(f"Execution time: {execution_time}")
-    except Exception as e:
-        log.debug(f"Failed to get execution time: {e}")
-        return 0
+        log.debug("Execution time: %s", execution_time)
+    except Exception as ex:
+        log.debug("Failed to get execution time: %s", ex)
+        return None
     return execution_time
 
 
@@ -114,20 +126,40 @@ def get_user_id() -> str:
     return hashed_id
 
 
-def get_current_git_hash() -> str:
+def get_current_git_hash() -> Optional[str]:
     """Get the current git commit hash."""
     try:
-        git_hash = (
+        return (
             subprocess.check_output(["git", "rev-parse", "HEAD"])
             .decode("ascii")
             .strip()
         )
-        return git_hash
+
     except subprocess.CalledProcessError:
-        return "none"
+        return None
 
 
-def get_project_id() -> str:
+def commonise_project_url(git_url: str) -> str:
+    """
+    Commonize the remote which could be in either of these forms:
+        - https://github.com/atopile/atopile.git
+        - git@github.com:atopile/atopile.git
+    ... to "github.com/atopile/atopile"
+    """
+
+    if git_url.startswith("https://"):
+        git_url = git_url[8:]
+    elif git_url.startswith("git@"):
+        git_url = git_url[4:]
+        git_url = "/".join(git_url.split(":", 1))
+
+    if git_url.endswith(".git"):
+        git_url = git_url[:-4]
+
+    return git_url
+
+
+def get_project_id() -> Optional[str]:
     """Get the hashed project ID from the git URL of the project, if not available, return 'none'."""
     try:
         git_url = (
@@ -135,15 +167,15 @@ def get_project_id() -> str:
             .decode("ascii")
             .strip()
         )
-        if git_url:
-            # Extract project ID from git URL
-            # Keep the full URL minus any suffix after a '.'
-            project_id = git_url.rsplit(".", 1)[0]
-            log.debug(f"Project ID: {project_id}")
-            # Hash the project ID
-            hashed_project_id = hashlib.sha256(project_id.encode()).hexdigest()
-            return hashed_project_id
-        else:
-            return "none"
+        if not git_url:
+            return None
+
+        project_url = commonise_project_url(git_url)
+
+        log.debug("Project URL: %s", project_url)
+
+        # Hash the project ID to de-identify it
+        return hashlib.sha256(project_url.encode()).hexdigest()
+
     except subprocess.CalledProcessError:
-        return "none"
+        return None

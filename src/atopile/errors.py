@@ -279,9 +279,13 @@ def muffle_fatalities(func):
         except ExceptionGroup as ex:
             _, not_fatal_errors = ex.split(AtoFatalError)
             if not_fatal_errors:
-                telemetry.telemetry_data.crash = 1
+                telemetry.telemetry_data.crash += len(not_fatal_errors.exceptions)
                 raise not_fatal_errors from ex
             sys.exit(1)
+
+        except Exception:
+            telemetry.telemetry_data.crash += 1
+            raise
 
         finally:
             telemetry.log_telemetry()
