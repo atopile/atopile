@@ -1,5 +1,6 @@
 from typing import Any, Callable, Iterable, Optional
 
+from atopile import address, errors
 from atopile.address import AddrStr
 from atopile.front_end import ClassLayer, Link, lofty, Instance
 
@@ -104,4 +105,13 @@ def get_links(addr: AddrStr) -> Iterable[Link]:
 
 def get_instance(addr: AddrStr) -> Instance:
     """Return the instance at the given address"""
-    return lofty.get_instance(addr)
+    inst = lofty.get_instance(address.get_entry(addr))
+    inst_names = address.get_instance_names(addr)
+    for inst_name in inst_names:
+        try:
+            inst = inst.children[inst_name]
+        except KeyError as ex:
+            raise errors.AtoKeyError(
+                f"Instance {address.add_instance(inst.addr, inst_name)} not found"
+            ) from ex
+    return inst

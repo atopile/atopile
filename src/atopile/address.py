@@ -15,6 +15,12 @@ class AddrStr(str):
     """
 
 
+class AddressError(ValueError):
+    """
+    Base class for address errors
+    """
+
+
 def _handle_windows(func):
     """
     A decorator to handle windows paths
@@ -109,11 +115,18 @@ def add_instance(address: AddrStr, instance: str) -> AddrStr:
     Add an instance to an address.
     """
     assert isinstance(instance, str)
+    if not instance:
+        return address
 
-    if not get_instance_section(address):
+    current_instance_addr = get_instance_section(address)
+    if current_instance_addr is not None:
+        if current_instance_addr == "":
+            return address + instance
+        return address + "." + instance
+    elif get_entry_section(address):
         return address + "::" + instance
     else:
-        return address + "." + instance
+        raise AddressError("Cannot add instance to something without an entry section.")
 
 
 def add_instances(address: AddrStr, instances: Iterable[str]) -> AddrStr:
@@ -133,7 +146,7 @@ def add_entry(address: AddrStr, entry: str) -> AddrStr:
     assert isinstance(entry, str)
 
     if get_instance_section(address):
-        raise ValueError("Cannot add entry to an instance address.")
+        raise AddressError("Cannot add entry to an instance address.")
 
     if not get_entry_section(address):
         return address + ":" + entry
@@ -163,3 +176,26 @@ def from_parts(
     if instance:
         address = add_instance(address, instance)
     return address
+
+
+def get_parent_instance_addr(address: AddrStr) -> Optional[AddrStr]:
+    """
+    Get the parent instance of an address, returning None if it doesn't exist.
+    """
+    instance_section = get_instance_section(address)
+    if instance_section is None:
+        return None
+
+    if "." in instance_section:
+        return address.rsplit(".", 1)[0]
+
+    return address.rsplit("::", 1)[0]
+
+
+def get_instance_names(address: AddrStr) -> list[str]:
+    """
+    Get the instances of an address.
+    """
+    if instance_section := get_instance_section(address):
+        return instance_section.split(".")
+    return []

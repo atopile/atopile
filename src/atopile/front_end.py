@@ -5,6 +5,7 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 """
 
 import enum
+import operator
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
 from itertools import chain
@@ -16,7 +17,7 @@ import pint
 from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
-from atopile import address, errors, config
+from atopile import address, config, errors, expressions
 from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.generic_methods import recurse
@@ -76,10 +77,54 @@ class ClassDef(Base):
         return f"<{self.__class__.__name__} {self.address}>"
 
 
-@define
-class Assertion(Base):
-    """Represent an assertion statement."""
-    assertion_str: str
+class RangedValue(expressions.RangedValue):
+    def __init__(
+        self,
+        val_a: Number | pint.Quantity,
+        val_b: Number | pint.Quantity,
+        unit: Optional[pint.Unit] = None,
+        src_ctx: Optional[ParserRuleContext] = None,
+    ):
+        self.src_ctx = src_ctx
+        super().__init__(val_a, val_b, unit)
+
+
+class Expression(expressions.Expression):
+    def __init__(
+        self,
+        symbols: set[str],
+        lambda_: Callable,
+        src_ctx: Optional[ParserRuleContext] = None
+    ):
+        super().__init__(symbols=symbols, lambda_=lambda_)
+        self.src_ctx = src_ctx
+
+    def __repr__(self) -> str:
+        if not self.src_ctx:
+            return f"<{self.__class__.__name__}>"
+
+        return f"<{self.__class__.__name__} {str(self)}>"
+
+    def __str__(self) -> str:
+        return self.src_ctx.getText()
+
+
+class Assertion:
+
+    def __init__(
+        self,
+        lhs: expressions.Expression,
+        operator: str,
+        rhs: expressions.Expression,
+        src_ctx: Optional[ParserRuleContext] = None,
+    ):
+        self.lhs = lhs
+        self.operator = operator
+        self.rhs = rhs
+        self.src_ctx = src_ctx
+
+    def __str__(self) -> str:
+        return f"{self.lhs} {self.operator} {self.rhs}"
 
 
 @define
@@ -124,7 +169,7 @@ class ClassLayer(Base):
 resolve_types(ClassLayer)
 
 
-## The below datastructures are created from the above datamodel as a second stage
+## The below datastructures are created from the above data-model as a second stage
 
 
 @define
@@ -144,142 +189,6 @@ class Link(Base):
 
     def __repr__(self) -> str:
         return f"<Link {repr(self.source)} -> {repr(self.target)}>"
-
-
-class RangedValue(Base):
-    """Let's get physical!"""
-
-    def __init__(
-        self,
-        val_a: Number | pint.Quantity,
-        val_b: Number | pint.Quantity,
-        unit: Optional[pint.Unit] = None,
-        src_ctx: Optional[ParserRuleContext] = None,
-    ):
-        self.src_ctx = src_ctx
-
-        if unit:
-            self.unit = unit
-        elif isinstance(val_a, pint.Quantity):
-            self.unit = val_a.units
-        elif isinstance(val_a, pint.Quantity):
-            self.unit = val_b.units
-        else:
-            raise ValueError(
-                "Unit must be provided if neither val_a or val_b are Quantities"
-            )
-
-        if isinstance(val_a, pint.Quantity):
-            val_a_mag = val_a.to(self.unit).magnitude
-        else:
-            val_a_mag = val_a
-
-        if isinstance(val_b, pint.Quantity):
-            val_b_mag = val_b.to(self.unit).magnitude
-        else:
-            val_b_mag = val_b
-
-        self.min_val = min(val_a_mag, val_b_mag)
-        self.max_val = max(val_a_mag, val_b_mag)
-
-    def __str__(self) -> str:
-        return f"{self.nominal:.2f} +/- {self.tolerance:.2f} {self.unit}"
-
-    def __repr__(self) -> str:
-        return (
-            f"<{self.__class__.__name__} {self.min_val} to {self.max_val} {self.unit}>"
-        )
-
-    @property
-    def nominal(self) -> float:
-        return (self.min_val + self.max_val) / 2
-
-    @property
-    def tolerance(self) -> float:
-        return (self.max_val - self.min_val) / 2
-
-    @property
-    def tolerance_pct(self) -> Optional[float]:
-        if self.nominal == 0:
-            return None
-        return self.tolerance / self.nominal * 100
-
-    def to_dict(self) -> dict:
-        """Convert the Physical instance to a dictionary."""
-        data = {
-            "unit": str(self.unit),
-            "min_val": self.min_val,
-            "max_val": self.max_val,
-            # TODO: remove these - we shouldn't be duplicating this kind of information
-            "nominal": self.nominal,
-            "tolerance": self.tolerance,
-            "tolerance_pct": self.tolerance_pct,
-        }
-        return data
-
-    @property
-    def min_qty(self) -> pint.Quantity:
-        return self.unit * self.min_val
-
-    @property
-    def max_qty(self) -> pint.Quantity:
-        return self.unit * self.max_val
-
-    def __mul__(self, other: "RangedValue") -> "RangedValue":
-        new_values = [
-            self.min_qty * other.min_qty,
-            self.min_qty * other.max_qty,
-            self.max_qty * other.min_qty,
-            self.max_qty * other.max_qty,
-        ]
-
-        return RangedValue(
-            min(new_values),
-            max(new_values),
-        )
-
-    def __pow__(self, other: Number) -> "RangedValue":
-        return RangedValue(self.min_qty**other, self.max_val**other)
-
-    def __truediv__(self, other: "RangedValue") -> "RangedValue":
-        new_values = [
-            self.min_qty / other.min_qty,
-            self.min_qty / other.max_qty,
-            self.max_qty / other.min_qty,
-            self.max_qty / other.max_qty,
-        ]
-
-        return RangedValue(
-            min(new_values),
-            max(new_values),
-        )
-
-    def __add__(self, other: "RangedValue") -> "RangedValue":
-        return RangedValue(
-            self.min_qty + other.min_qty,
-            self.max_qty + other.max_qty,
-        )
-
-    def __sub__(self, other: "RangedValue") -> "RangedValue":
-        return RangedValue(
-            self.min_qty - other.max_qty,
-            self.max_qty - other.min_qty,
-        )
-
-    def within(self, other: "RangedValue") -> bool:
-        return self.min_qty >= other.min_qty and other.max_qty >= self.max_qty
-
-    def __lt__(self, other: "RangedValue") -> bool:
-        return self.max_qty < other.min_qty
-
-    def __le__(self, other: "RangedValue") -> bool:
-        return self.max_qty <= other.min_qty
-
-    def __gt__(self, other: "RangedValue") -> bool:
-        return self.min_qty > other.max_qty
-
-    def __ge__(self, other: "RangedValue") -> bool:
-        return self.max_qty >= other.min_qty
 
 
 @define
@@ -399,44 +308,10 @@ def _get_unit_from_ctx(ctx: ParserRuleContext) -> pint.Unit:
         ) from ex
 
 
-class BaseTranslator(AtopileParserVisitor):
+class HandlesPrimaries(AtopileParserVisitor):
     """
-    Dizzy is responsible for mixing cement, sand, aggregate, and water to create concrete.
-    Ref.: https://www.youtube.com/watch?v=drBge9JyloA
+    This class is a mixin to be used with the translator classes.
     """
-
-    def __init__(
-        self,
-    ) -> None:
-        super().__init__()
-
-    def defaultResult(self):
-        """
-        Override the default "None" return type
-        (for things that return nothing) with the Sentinel NOTHING
-        """
-        return NOTHING
-
-    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
-        """
-        Visit multiple children and return a tuple of their results,
-        discard any results that are NOTHING and flattening the children's results.
-        It is assumed the children are returning their own OptionallyNamedItems.
-        """
-
-        def __visit() -> KeyOptMap:
-            for err_cltr, child in errors.iter_through_errors(children):
-                with err_cltr():
-                    child_result = self.visit(child)
-                    if child_result is not NOTHING:
-                        yield child_result
-
-        child_results = chain.from_iterable(__visit())
-        child_results = list(item for item in child_results if item is not NOTHING)
-        child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
-
-        return KeyOptMap(child_results)
-
     def visit_ref_helper(
         self,
         ctx: (
@@ -449,31 +324,7 @@ class BaseTranslator(AtopileParserVisitor):
         """
         Visit any referencey thing and ensure it's returned as a reference
         """
-        if isinstance(
-            ctx,
-            (
-                ap.NameContext,
-                ap.Totally_an_integerContext,
-            ),
-        ):
-            return Ref.from_one(str(self.visit(ctx)))
-        if isinstance(ctx, ap.Numerical_pin_refContext):
-            name_part = self.visit_ref_helper(ctx.name_or_attr())
-            return name_part.add_name(str(self.visit(ctx)))
-        if isinstance(ctx, (ap.AttrContext, ap.Name_or_attrContext)):
-            return Ref(
-                map(str, self.visit(ctx)),
-            )
-        raise errors.AtoError(f"Unknown reference type: {type(ctx)}")
-
-    def visitName(self, ctx: ap.NameContext) -> str:
-        """
-        If this is an int, convert it to one (for pins), else return the name as a string.
-        """
-        return ctx.getText()
-
-    def visitAttr(self, ctx: ap.AttrContext) -> Ref:
-        return Ref(self.visitName(name) for name in ctx.name())
+        return Ref(ctx.getText().split("."))
 
     def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> Ref:
         if ctx.name():
@@ -484,50 +335,30 @@ class BaseTranslator(AtopileParserVisitor):
 
         raise errors.AtoError("Expected a name or attribute")
 
+    def visitName(self, ctx: ap.NameContext) -> str:
+        """
+        If this is an int, convert it to one (for pins), else return the name as a string.
+        """
+        return ctx.getText()
+
+    def visitAttr(self, ctx: ap.AttrContext) -> Ref:
+        return Ref(self.visitName(name) for name in ctx.name())
+
     def visitString(self, ctx: ap.StringContext) -> str:
         return ctx.getText().strip("\"'")
 
     def visitBoolean_(self, ctx: ap.Boolean_Context) -> bool:
         return ctx.getText().lower() == "true"
 
-    def visitSimple_stmt(
-        self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
-        """
-        This is practically here as a development shim to assert the result is as intended
-        """
-        result = self.visitChildren(ctx)
-        for item in result:
-            if item is not NOTHING:
-                assert isinstance(item, KeyOptItem)
-        return result
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
+        """Yield a physical value from a physical context."""
+        if ctx.implicit_quantity():
+            return self.visitImplicit_quantity(ctx.implicit_quantity())
+        if ctx.bilateral_quantity():
+            return self.visitBilateral_quantity(ctx.bilateral_quantity())
+        if ctx.bound_quantity():
+            return self.visitBound_quantity(ctx.bound_quantity())
 
-    def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
-        """
-        Ensure consistency of return type.
-        We choose to raise any below exceptions here, because stmts can be nested,
-        and raising exceptions serves as our collection mechanism.
-        """
-        if ctx.simple_stmts():
-            stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
-            return stmt_returns
-        elif ctx.compound_stmt():
-            item = self.visit(ctx.compound_stmt())
-            if item is NOTHING:
-                return KeyOptMap.empty()
-            assert isinstance(item, KeyOptItem)
-            return KeyOptMap.from_item(item)
-
-        raise TypeError("Unexpected statement type")
-
-    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
-        return self.visit_iterable_helper(ctx.simple_stmt())
-
-    def visitBlock(self, ctx) -> KeyOptMap:
-        if ctx.stmt():
-            return self.visit_iterable_helper(ctx.stmt())
-        if ctx.simple_stmts():
-            return self.visitSimple_stmts(ctx.simple_stmts())
         raise ValueError  # this should be protected because it shouldn't be parseable
 
     def visitImplicit_quantity(self, ctx: ap.Implicit_quantityContext) -> RangedValue:
@@ -650,45 +481,158 @@ class BaseTranslator(AtopileParserVisitor):
             unit=unit,
         )
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
-        """Yield a physical value from a physical context."""
-        if ctx.implicit_quantity():
-            return self.visitImplicit_quantity(ctx.implicit_quantity())
-        if ctx.bilateral_quantity():
-            return self.visitBilateral_quantity(ctx.bilateral_quantity())
-        if ctx.bound_quantity():
-            return self.visitBound_quantity(ctx.bound_quantity())
 
+class HandleStmtsFunctional(AtopileParserVisitor):
+    """
+    The base translator is responsible for methods common to
+    navigating from the top of the AST including how to process
+    errors, and commonising return types.
+    """
+
+    def defaultResult(self):
+        """
+        Override the default "None" return type
+        (for things that return nothing) with the Sentinel NOTHING
+        """
+        return NOTHING
+
+    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
+        """
+        Visit multiple children and return a tuple of their results,
+        discard any results that are NOTHING and flattening the children's results.
+        It is assumed the children are returning their own OptionallyNamedItems.
+        """
+
+        def __visit():
+            for err_cltr, child in errors.iter_through_errors(children):
+                with err_cltr():
+                    child_result = self.visit(child)
+                    if child_result is not NOTHING:
+                        yield child_result
+
+        child_results = chain.from_iterable(__visit())
+        child_results = list(item for item in child_results if item is not NOTHING)
+        child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
+
+        return KeyOptMap(child_results)
+
+    def visitSimple_stmt(
+        self, ctx: ap.Simple_stmtContext
+    ) -> Iterable[_Sentinel | KeyOptItem]:
+        """
+        This is practically here as a development shim to assert the result is as intended
+        """
+        result = self.visitChildren(ctx)
+        for item in result:
+            if item is not NOTHING:
+                assert isinstance(item, KeyOptItem)
+        return result
+
+    def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
+        """
+        Ensure consistency of return type.
+        We choose to raise any below exceptions here, because stmts can be nested,
+        and raising exceptions serves as our collection mechanism.
+        """
+        if ctx.simple_stmts():
+            stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
+            return stmt_returns
+        elif ctx.compound_stmt():
+            item = self.visit(ctx.compound_stmt())
+            if item is NOTHING:
+                return KeyOptMap.empty()
+            assert isinstance(item, KeyOptItem)
+            return KeyOptMap.from_item(item)
+
+        raise TypeError("Unexpected statement type")
+
+    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
+        return self.visit_iterable_helper(ctx.simple_stmt())
+
+    def visitBlock(self, ctx) -> KeyOptMap:
+        if ctx.stmt():
+            return self.visit_iterable_helper(ctx.stmt())
+        if ctx.simple_stmts():
+            return self.visitSimple_stmts(ctx.simple_stmts())
         raise ValueError  # this should be protected because it shouldn't be parseable
 
-    def visitAssignable(self, ctx: ap.AssignableContext) -> RangedValue | str | bool:
-        """Yield something we can place in a set of locals."""
-        if ctx.literal_physical():
-            return self.visitLiteral_physical(ctx.literal_physical())
 
-        if ctx.string():
-            return self.visitString(ctx)
+# TODO: actually capture src_ctx on expressions
+class Roley(HandlesPrimaries):
+    """
+    Roley's job is to build expressions.
+    """
+    def __init__(self) -> None:
+        super().__init__()
 
-        if ctx.name_or_attr():
-            # TODO: hook to implement traits/composition based layouts off
-            raise errors.AtoNotImplementedError("Coming soon!")
-
-        assert (
-            not ctx.new_stmt()
-        ), "New statements should have already been filtered out."
-        raise TypeError(f"Unexpected assignable type {type(ctx)}")
-
-    def visitTotally_an_integer(self, ctx: ap.Totally_an_integerContext) -> int:
-        text = ctx.getText()
-        try:
-            return int(text)
-        except ValueError:
-            raise errors.AtoTypeError.from_ctx(  # pylint: disable=raise-missing-from
-                ctx, f"Expected an integer, but got {text}"
+    def visitArithmetic_expression(
+        self, ctx: ap.Arithmetic_expressionContext
+    ) -> expressions.NumericishTypes:
+        if ctx.ADD():
+            return expressions.defer_operation_factory(
+                self.visit(ctx.arithmetic_expression()),
+                operator.add,
+                self.visit(ctx.term()),
             )
 
+        if ctx.MINUS():
+            return expressions.defer_operation_factory(
+                self.visit(ctx.arithmetic_expression()),
+                operator.sub,
+                self.visit(ctx.term()),
+            )
 
-class Scoop(BaseTranslator):
+        return self.visit(ctx.term())
+
+    def visitTerm(self, ctx: ap.TermContext) -> expressions.NumericishTypes:
+        if ctx.STAR():  # multiply
+            return expressions.defer_operation_factory(
+                self.visit(ctx.term()),
+                operator.mul,
+                self.visit(ctx.factor()),
+            )
+
+        if ctx.DIV():
+            return expressions.defer_operation_factory(
+                self.visit(ctx.term()),
+                operator.truediv,
+                self.visit(ctx.factor()),
+            )
+
+        return self.visit(ctx.factor())
+
+    def visitFactor(self, ctx: ap.FactorContext) -> expressions.NumericishTypes:
+        # Ignore the unary plus operator
+
+        if ctx.MINUS():
+            return operator.neg(self.visit(ctx.power()))
+
+        return self.visit(ctx.power())
+
+    def visitPower(self, ctx: ap.PowerContext) -> expressions.NumericishTypes:
+        if ctx.factor():
+            return expressions.defer_operation_factory(
+                self.visit(ctx.atom()),
+                operator.pow,
+                self.visit(ctx.factor()),
+            )
+
+        return self.visit(ctx.atom())
+
+    def visitAtom(self, ctx: ap.AtomContext) -> expressions.NumericishTypes:
+        if ctx.arithmetic_group():
+            return self.visit(ctx.arithmetic_group().arithmetic_expression())
+
+        if ctx.literal_physical():
+            return self.visit(ctx.literal_physical())
+
+        if ctx.name_or_attr():
+            return expressions.Symbol(self.visit_ref_helper(ctx.name_or_attr()))
+
+        raise ValueError
+
+
+class Scoop(HandleStmtsFunctional, HandlesPrimaries):
     """Scoop's job is to map out all the object definitions in the code."""
 
     def __init__(
@@ -944,8 +888,12 @@ class BlockNotFoundError(errors.AtoKeyError):
     """
 
 
-class Dizzy(BaseTranslator):
-    """Dizzy's job is to create object layers."""
+class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
+    """
+    Dizzy is responsible for creating object layers, mixing cement,
+    sand, aggregate, and water to create concrete.
+    Ref.: https://www.youtube.com/watch?v=drBge9JyloA
+    """
 
     def __init__(
         self,
@@ -1087,13 +1035,45 @@ class Dizzy(BaseTranslator):
 
     def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
         """Handle assertion statements."""
-        assertion_str: str = ctx.ASSERTION_STRING().getText()
-        assertion_str = assertion_str[7:]
-        assertion = Assertion(
+        comparison_ctx: ap.ComparisonContext = ctx.comparison()
+        roley = Roley()
+
+        expressions_ = []
+        operators = []
+
+        def _add_expr_from_context(ctx: ap.Arithmetic_expressionContext):
+            expr = Expression.from_numericish(
+                roley.visit(ctx)
+            )
+            # TODO: this shouldn't be attached to the expression like this
+            # as the only means to pretty-print them
+            expr.src_ctx = ctx
+            expressions_.append(expr)
+
+        _add_expr_from_context(comparison_ctx.arithmetic_expression())
+
+        for comp_ctx in comparison_ctx.compare_op_pair():
+            assert isinstance(comp_ctx, ap.Compare_op_pairContext)
+            if child_ctx := comp_ctx.lt_arithmetic_or():
+                operators.append("<")
+            elif child_ctx := comp_ctx.gt_arithmetic_or():
+                operators.append(">")
+            elif child_ctx := comp_ctx.in_arithmetic_or():
+                operators.append("within")
+            else:
+                raise ValueError
+            _add_expr_from_context(child_ctx.arithmetic_expression())
+
+        assert len(expressions_) == len(operators) + 1
+
+        assertions_ = [Assertion(
             src_ctx=ctx,
-            assertion_str=assertion_str,
-        )
-        return KeyOptMap.from_kv(None, assertion)
+            lhs=expressions_[i],
+            operator=operators[i],
+            rhs=expressions_[i+1],
+        ) for i in range(len(operators))]
+
+        return KeyOptMap(KeyOptItem.from_kv(None, a) for a in assertions_)
 
 
 @contextmanager
@@ -1106,7 +1086,7 @@ def _translate_addr_key_errors(ctx: ParserRuleContext):
         raise errors.AtoKeyError.from_ctx(ctx, f"Couldn't find {terse_addr}") from ex
 
 
-class Lofty(BaseTranslator):
+class Lofty(HandleStmtsFunctional, HandlesPrimaries):
     """Lofty's job is to walk orthogonally down (or really up) the instance tree."""
 
     def __init__(
@@ -1311,14 +1291,11 @@ class Lofty(BaseTranslator):
         """This function makes a pin or signal instance and sticks it in the instance tree."""
         # NOTE: name has to come first because both have names,
         # but only pins have a "totally an integer"
-        ref = self.visit_ref_helper(ctx.name() or ctx.totally_an_integer())
-        assert len(ref) == 1  # TODO: unwrap these refs, now they're always one long
-        if not ref:
-            raise errors.AtoError("Pins must have a name")
+        name = (ctx.name() or ctx.totally_an_integer()).getText()
 
         current_instance_addr = self._instance_addr_stack.top
         current_instance = self._output_cache[current_instance_addr]
-        new_addr = address.add_instances(current_instance_addr, ref)
+        new_addr = address.add_instance(current_instance_addr, name)
 
         super_ = PIN if isinstance(ctx, ap.Pindef_stmtContext) else SIGNAL
 
@@ -1329,7 +1306,7 @@ class Lofty(BaseTranslator):
             parent=current_instance,
         )
 
-        self._output_cache[new_addr] = current_instance.children[ref[0]] = pin_or_signal
+        self._output_cache[new_addr] = current_instance.children[name] = pin_or_signal
 
         return new_addr
 

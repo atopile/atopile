@@ -150,3 +150,13 @@ class StackList(list[T]):
     def top(self) -> T:
         """Return the current context."""
         return self[-1]
+
+
+class DotDict(dict):
+    """A dict you can dot"""
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError as ex:
+            raise AttributeError(f"Attribute {name} not found", name) from ex
