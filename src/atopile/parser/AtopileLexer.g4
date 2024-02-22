@@ -48,8 +48,7 @@ TO : 'to';
 TRUE : 'True';
 FALSE : 'False';
 
-// TODO: this is a complete hack and could be an entrypoint for injection attacks
-ASSERTION_STRING : 'assert' ~[\r\n\f]*;
+WITHIN : 'within';
 
 //
 // Stuff from the Python3 grammer we based this on
@@ -162,7 +161,6 @@ LEFT_SHIFT_ASSIGN : '<<=';
 RIGHT_SHIFT_ASSIGN : '>>=';
 POWER_ASSIGN : '**=';
 IDIV_ASSIGN : '//=';
-WITHIN : 'within';
 
 SKIP_
  : ( SPACES | COMMENT | LINE_JOINING ) -> skip

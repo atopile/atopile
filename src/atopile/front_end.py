@@ -11,7 +11,7 @@ from contextlib import ExitStack, contextmanager
 from itertools import chain
 from numbers import Number
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional, Union
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 import pint
 from antlr4 import ParserRuleContext
@@ -92,26 +92,40 @@ class RangedValue(expressions.RangedValue):
 class Expression(expressions.Expression):
     def __init__(
         self,
-        lambda_: Callable,
         symbols: set[str],
+        lambda_: Callable,
         src_ctx: Optional[ParserRuleContext] = None
     ):
+        super().__init__(symbols=symbols, lambda_=lambda_)
         self.src_ctx = src_ctx
-        super().__init__(lambda_, symbols)
 
     def __repr__(self) -> str:
         if not self.src_ctx:
             return f"<{self.__class__.__name__}>"
 
-        return f"<{self.__class__.__name__} {self.src_ctx.getText()}>"
+        return f"<{self.__class__.__name__} {str(self)}>"
+
+    def __str__(self) -> str:
+        return self.src_ctx.getText()
 
 
-@define
-class Assertion(Base):
-    """Represent an assertion statement."""
-    lhs: Expression
-    rhs: Expression
-    comparator: str
+class Assertion:
+
+    def __init__(
+        self,
+        lhs: expressions.Expression,
+        operator: str,
+        rhs: expressions.Expression,
+        src_ctx: Optional[ParserRuleContext] = None,
+    ):
+        self.lhs = lhs
+        self.operator = operator
+        self.rhs = rhs
+        self.src_ctx = src_ctx
+
+    def __str__(self) -> str:
+        return f"{self.lhs} {self.operator} {self.rhs}"
+
 
 
 @define
@@ -559,12 +573,12 @@ class HandleStmtsFunctional(AtopileParserVisitor):
         raise ValueError  # this should be protected because it shouldn't be parseable
 
 
+# TODO: actually capture src_ctx on expressions
 class Roley(HandlesPrimaries):
     """
     Roley's job is to build expressions.
     """
-    def __init__(self, context: AddrStr) -> None:
-        self.context = context
+    def __init__(self) -> None:
         super().__init__()
 
     def visitArithmetic_expression(
@@ -629,15 +643,7 @@ class Roley(HandlesPrimaries):
             return self.visit(ctx.literal_physical())
 
         if ctx.name_or_attr():
-            # FIXME: this is a hack based on our current addressing scheme
-            # Low prio - it'll hold for a while, but assumes that Roley is
-            # created and used only within a single context
-            return expressions.Symbol(
-                address.add_instances(
-                    self.context,
-                    self.visit_ref_helper(ctx.name_or_attr())
-                )
-            )
+            return expressions.Symbol(self.visit_ref_helper(ctx.name_or_attr()))
 
         raise ValueError
 
@@ -1045,13 +1051,45 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
 
     def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
         """Handle assertion statements."""
-        assertion_str: str = ctx.ASSERTION_STRING().getText()
-        assertion_str = assertion_str[7:]
-        assertion = Assertion(
+        comparison_ctx: ap.ComparisonContext = ctx.comparison()
+        roley = Roley()
+
+        expressions_ = []
+        operators = []
+
+        def _add_expr_from_context(ctx: ap.Arithmetic_expressionContext):
+            expr = Expression.from_numericish(
+                roley.visit(ctx)
+            )
+            # TODO: this shouldn't be attached to the expression like this
+            # as the only means to pretty-print them
+            expr.src_ctx = ctx
+            expressions_.append(expr)
+
+        _add_expr_from_context(comparison_ctx.arithmetic_expression())
+
+        for comp_ctx in comparison_ctx.compare_op_pair():
+            assert isinstance(comp_ctx, ap.Compare_op_pairContext)
+            if child_ctx := comp_ctx.lt_arithmetic_or():
+                operators.append("<")
+            elif child_ctx := comp_ctx.gt_arithmetic_or():
+                operators.append(">")
+            elif child_ctx := comp_ctx.in_arithmetic_or():
+                operators.append("within")
+            else:
+                raise ValueError
+            _add_expr_from_context(child_ctx.arithmetic_expression())
+
+        assert len(expressions_) == len(operators) + 1
+
+        assertions_ = [Assertion(
             src_ctx=ctx,
-            assertion_str=assertion_str,
-        )
-        return KeyOptMap.from_kv(None, assertion)
+            lhs=expressions_[i],
+            operator=operators[i],
+            rhs=expressions_[i+1],
+        ) for i in range(len(operators))]
+
+        return KeyOptMap(KeyOptItem.from_kv(None, a) for a in assertions_)
 
 
 @contextmanager

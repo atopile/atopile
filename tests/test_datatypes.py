@@ -1,4 +1,6 @@
-from atopile.datatypes import Ref, KeyOptMap, KeyOptItem, Strainer, StackList
+import pytest
+
+from atopile.datatypes import DotDict, KeyOptItem, KeyOptMap, Ref, StackList, Strainer
 
 
 def test_ref_from_one():
@@ -155,3 +157,12 @@ def test_stack_list():
             assert stack.top == 2
         assert stack == [1]
         assert stack.top == 1
+
+
+def test_DotDict():
+    d = DotDict({"a": 1, "b": 2})
+    assert d.a == 1
+    assert d.b == 2
+
+    with pytest.raises(AttributeError):
+        d.c

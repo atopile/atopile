@@ -176,3 +176,26 @@ def from_parts(
     if instance:
         address = add_instance(address, instance)
     return address
+
+
+def get_parent_instance_addr(address: AddrStr) -> Optional[AddrStr]:
+    """
+    Get the parent instance of an address, returning None if it doesn't exist.
+    """
+    instance_section = get_instance_section(address)
+    if instance_section is None:
+        return None
+
+    if "." in instance_section:
+        return address.rsplit(".", 1)[0]
+
+    return address.rsplit("::", 1)[0]
+
+
+def get_instance_names(address: AddrStr) -> list[str]:
+    """
+    Get the instances of an address.
+    """
+    if instance_section := get_instance_section(address):
+        return instance_section.split(".")
+    return []

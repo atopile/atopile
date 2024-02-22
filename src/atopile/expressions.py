@@ -40,10 +40,15 @@ class RangedValue:
     def __init__(
         self,
         val_a: Union[float, int, pint.Quantity],
-        val_b: Union[float, int, pint.Quantity],
+        val_b: Optional[Union[float, int, pint.Quantity]] = None,
         unit: Optional[str | PlainUnit | pint.Unit] = None,
         pretty_unit: Optional[str] = None,
     ):
+        # This is a bit of a hack, but simplifies upstream code marginally
+        if val_b is None:
+            val_b = val_a
+
+        # If we're given a unit, use it. Otherwise, try to infer the unit from the inputs.
         if unit:
             self.unit = pint.Unit(unit)
         elif isinstance(val_a, pint.Quantity) and isinstance(val_b, pint.Quantity):
@@ -55,6 +60,7 @@ class RangedValue:
         else:
             self.unit = _UNITLESS
 
+        # If the inputs are pint Quantities, convert them to the same unit
         if isinstance(val_a, pint.Quantity):
             val_a_mag = val_a.to(self.unit).magnitude
         else:
@@ -68,6 +74,7 @@ class RangedValue:
         assert isinstance(val_a_mag, (float, int))
         assert isinstance(val_b_mag, (float, int))
 
+        # Make the noise
         self._pretty_unit = pretty_unit
         self.min_val = min(val_a_mag, val_b_mag)
         self.max_val = max(val_a_mag, val_b_mag)
@@ -253,22 +260,39 @@ NumericishTypes = Union["Expression", RangedValue, float, int, "Symbol"]
 @frozen
 class Symbol:
     """Represent a symbol."""
-    addr: collections.abc.Hashable
+    key: collections.abc.Hashable
 
     def __call__(self, context: Mapping) -> RangedValue:
         """Return the value of the symbol."""
-        thing = context[self.addr]
+        thing = context[self.key]
         if callable(thing):
             return thing(context)
         return thing
 
 
+# TODO: figure out how to pretty print these with the symbols etc...
 @define
 class Expression:
     """Represent an expression."""
 
     symbols: set[Symbol]
     lambda_: Callable[[Mapping[str, NumericishTypes]], RangedValue]
+
+    @classmethod
+    def from_expr(cls, expr: "Expression") -> "Expression":
+        """Create an expression from another expression."""
+        return cls(symbols=expr.symbols, lambda_=expr.lambda_)
+
+    @classmethod
+    def from_numericish(cls, thing: NumericishTypes) -> "Expression":
+        """Create an expression from a numericish thing."""
+        if isinstance(thing, Expression):
+            return cls.from_expr(thing)
+        if isinstance(thing, RangedValue):
+            return cls(symbols=set(), lambda_=lambda context: thing)
+        if isinstance(thing, Symbol):
+            return cls(symbols={thing}, lambda_=thing)
+        return cls(symbols=set(), lambda_=lambda context: RangedValue(thing, thing))
 
     def __call__(self, context: Mapping[str, NumericishTypes]) -> RangedValue:
         return self.lambda_(context)

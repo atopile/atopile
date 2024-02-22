@@ -1,6 +1,13 @@
 import pytest
 
-from atopile.address import add_instance, add_instances, get_file, get_instance_section
+from atopile.address import (
+    add_instance,
+    add_instances,
+    get_file,
+    get_instance_section,
+    get_parent_instance_addr,
+    get_instance_names,
+)
 
 
 def test_get_file():
@@ -57,3 +64,19 @@ def test_add_instance():
 
 def test_add_instances():
     assert add_instances("//a:b::", ["c", "d", "e"]) == "//a:b::c.d.e"
+
+
+def test_get_parent():
+    assert get_parent_instance_addr("//a:b::c") == "//a:b"
+    assert get_parent_instance_addr("//a:b") is None
+    assert get_parent_instance_addr("//a:b::") == "//a:b"
+    assert get_parent_instance_addr("//a:b::c.d") == "//a:b::c"
+    assert get_parent_instance_addr("//a:b::c.d.e") == "//a:b::c.d"
+
+
+def test_get_instances():
+    assert get_instance_names("//a:b::c.d.e") == ["c", "d", "e"]
+    assert get_instance_names("//a:b") == []
+    assert get_instance_names("//a:b::") == []
+    assert get_instance_names("//a:b::c") == ["c"]
+    assert get_instance_names("//a:b::c.d") == ["c", "d"]

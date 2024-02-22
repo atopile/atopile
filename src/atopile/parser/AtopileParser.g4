@@ -18,9 +18,10 @@ simple_stmt
     | retype_stmt
     | pindef_stmt
     | signaldef_stmt
-    | string_stmt
     | assert_stmt
-    | declaration_stmt;
+    | declaration_stmt
+    | string_stmt
+    ;
 
 compound_stmt: blockdef;
 
@@ -54,7 +55,7 @@ new_stmt: 'new' name_or_attr;
 
 string_stmt: string;  // the unbound string is a statement used to add doc-strings
 
-assert_stmt: comparison;
+assert_stmt: 'assert' comparison;
 
 
 // Comparison operators
