@@ -1,0 +1,49 @@
+{
+  "name": "atopile",
+  "displayName": "atopile",
+  "icon": "ato_logo_256x256.png",
+  "publisher": "atopile",
+  "description": "atopile syntax highlighting",
+  "version": "0.2.15",
+  "repository": {
+    "url": "https://gitlab.atopile.io/atopile/atopile",
+    "directory": "src/vscode-atopile",
+    "type": "git"
+  },
+  "engines": {
+    "vscode": "^1.78.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "ato",
+        "aliases": [
+          "atopile",
+          "ato"
+        ],
+        "extensions": [
+          ".ato"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ato",
+        "scopeName": "source.ato",
+        "path": "./syntaxes/ato.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.23.0",
+    "ovsx": "^0.8.3"
+  },
+  "scripts": {
+    "build": "vsce package",
+    "deploy": "vsce publish"
+  }
+}

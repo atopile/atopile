@@ -1,0 +1,95 @@
+stages:
+  - test
+  - build
+  - deploy
+
+docs-build:
+  stage: build
+  image:
+    name: python:latest
+  script:
+    - pip install -e.[docs]
+    - python docs/package_fetcher.py
+    - mkdocs build --site-dir build/docs/public
+  artifacts:
+    paths:
+      - build/docs/public
+
+docs-deploy:
+  stage: deploy
+  image: alpine
+  needs: ["docs-build"]
+  before_script:
+    - apk add openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$WWW_SSH_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  script:
+    - scp -o StrictHostKeyChecking=no -r build/docs/public deploy-www@atopile.io:/var/www/docs
+  rules:
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+docker-build:
+  stage: build
+
+  parallel:
+    matrix:
+      - DOCKERFILE:
+        - ci
+
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/dockerfiles/Dockerfile.${DOCKERFILE}"
+      --destination "${CI_REGISTRY_IMAGE}/${DOCKERFILE}:latest"
+      --destination "${CI_REGISTRY_IMAGE}/${DOCKERFILE}:$CI_COMMIT_TAG"
+      --build-arg SETUPTOOLS_SCM_PRETEND_VERSION="$CI_COMMIT_TAG"
+  rules:
+    - if: $CI_COMMIT_TAG
+
+cli-lint:
+  stage: test
+  image: python:latest
+  script:
+    - pip install -e ."[dev,test,docs]"
+    - ruff src/atopile
+
+cli-test:
+  stage: test
+  image: python:latest
+  script:
+    - pip install -e ."[dev,test,docs]"
+    - pytest
+  artifacts:
+    paths:
+      - artifacts
+
+cli-deploy:
+  stage: deploy
+  image: python:latest
+  script:
+    - pip install build twine
+    - python -m build
+    - python -m twine upload dist/* -u __token__ -p "${PYPI_TOKEN}"
+  rules:
+    - if: $CI_COMMIT_TAG
+
+extension-build:
+  stage: deploy
+  image: node:latest
+  script:
+    - npm install -g @vscode/vsce
+    - cd src/vscode-atopile
+    - vsce package --pre-release
+  artifacts:
+    paths:
+      - src/vscode-atopile/atopile-*.vsix
+  rules:
+    - changes:
+        paths:
+          - src/vscode-atopile/*

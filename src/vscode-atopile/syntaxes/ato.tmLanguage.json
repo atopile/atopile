@@ -1,0 +1,105 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "atopile",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"match": "\\b(True|False)\\b",
+			"name": "constant.language.ato"
+		},
+		{
+			"include": "#strings"
+		},
+        {
+            "include": "#comments"
+        },
+		{
+			"include": "#import"
+		},
+		{
+			"match": "\\b([0-9]+(\\.[0-9]+)?)([a-zA-Z]+|\\%)?\\b",
+			"name": "constant.numeric.ato"
+		},
+		{
+			"name": "keyword.control.statement.ato",
+			"match": "\\b(with)\\b"
+		},
+		{
+			"begin": "^\\s*(module|component|interface)",
+			"end": "\\s+([a-zA-Z_][a-zA-Z_0-9]*)",
+			"beginCaptures": {
+				"1": {
+					"name": "storage.type.class.ato"
+				}
+			},
+			"endCaptures": {
+				"0": {
+					"name": "entity.name.type.class.ato"
+				}
+			},
+			"name": "meta.class.ato"
+		},
+		{
+			"captures": {
+				"1": {
+					"name": "keyword.operator.new.ato"
+				},
+				"2": {
+					"name": "entity.name.type.instance.ato"
+				}
+			},
+			"match": "(new)\\s+(\\w+(?:\\.\\w*)?)",
+			"name": "meta.class.instance.constructor"
+		},
+		{
+			"match": "\\b(pin|signal)\\b",
+			"name": "storage.type.c"
+		},
+		{
+			"match": "\\b(to)\\b",
+			"name": "entity.other"
+		},
+		{
+			"match": "\\b(assert)\\b",
+			"name": "keyword.control.ato"
+		},
+		{
+			"match": "\\b(within)\\b",
+			"name": "keyword.control.ato"
+		},
+		{
+			"match": "\\b[a-zA-Z_][a-zA-Z_0-9]*\\b",
+  		 	"name": "variable.other.ato"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.ato",
+				"match": "\\b(if|while|for|return|optional)\\b"
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.ato",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.ato",
+					"match": "\\\\."
+				}
+			]
+		},
+        "comments": {
+            "name": "comment.line.number-sign.ato",
+            "match": "#.*"
+        },
+		"import": {
+			"name": "keyword.control.import.ato",
+			"match": "\\b(?:(import)|(from))\\b"
+		}
+	},
+	"scopeName": "source.ato"
+}

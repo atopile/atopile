@@ -1,0 +1,121 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atopile"
+description = "A toolchain bringing the best of software development to the real-world!"
+readme = "README.md"
+requires-python = ">=3.11"
+license = ""
+authors = [
+    { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
+    { name = "Timothee Peter", email = "timothee.peter@mac.com" },
+    { name = "Narayan Powderly", email = "napowderly@gmail.com" },
+]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python",
+    "Typing :: Typed",
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11"
+]
+dependencies = [
+    "antlr4-python3-runtime==4.13.0",
+    "attrs>=23.2.0",
+    "case-converter>=1.1.0",
+    "click>=8.1.7",
+    "easyeda2ato>=0.1.5",
+    "fastapi>=0.109.0",
+    "gitpython>=3.1.41",
+    "igraph>=0.11.3",
+    "jinja2>=3.1.3",
+    "natsort>=8.4.0",
+    "omegaconf==2.4.0.dev1",
+    "pandas>=2.1.4",
+    "pint>=0.23",
+    "rich>=13.7.0",
+    "ruamel.yaml>=0.18.5",
+    "schema>=0.7.5",
+    "semver>=3.0.2",
+    "toolz>=0.12.0",
+    "uvicorn[standard]>=0.25.0",
+    "watchfiles>=0.21.0",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/atopile/atopile"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-html",
+    "pytest-datafiles",
+    "pytest-asyncio!=0.23.3",
+    "requests",
+]
+
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocs-drawio-file >= 1.5.2",
+]
+
+dev = [
+    "ruff",
+    "black",
+    "debugpy",
+]
+
+[project.scripts]
+ato = "atopile.cli.cli:cli"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.isort]
+profile = "black"
+known_third_party = []
+
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+    "--html=artifacts/test-report.html",
+    "--self-contained-html",
+]
+
+[tool.ruff]
+exclude = [
+    "src/atopile/parser/AtopileLexer.py",
+    "src/atopile/parser/AtopileLexerBase.py",
+    "src/atopile/parser/AtopileParser.py",
+    "src/atopile/parser/AtopileParserBase.py",
+    "src/atopile/parser/AtopileParserListener.py",
+    "src/atopile/parser/AtopileParserVisitor.py",
+    "src/atopile/kicad_plugin",
+    "docs/",
+]
+
+ignore = [
+    "E501",  # line too long (ignore for the minute)
+    "C901",  # too complex
+]
+
+[tool.pylint.main]
+ignore-paths = [
+    "tests",
+    "src/atopile/parser/",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+extend-exclude = "atopile/parser/"
