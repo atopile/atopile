@@ -27,8 +27,6 @@ def log_telemetry(result, **kwargs):
     errors_list = get_logged_errors()
     error_log = "\n".join(errors_list)
 
-    logging.info("Logging telemetry data.")
-
     telemetry_data = {
         "project_id": project_info['project_id'],
         "user_id": project_info['user_id'],
