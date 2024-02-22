@@ -36,7 +36,7 @@ def log_telemetry(result, **kwargs):
                 "time": kwargs['execution_time'],
                 "subcommand": kwargs['subcommand_name'],
                 "errors": len(kwargs.get('errors', [])),
-                "error_log": kwargs['error_log'],
+                "error_log": kwargs.get('error_log', "")
             }
         }
 
