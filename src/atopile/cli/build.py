@@ -17,7 +17,7 @@ import atopile.assertions
 from atopile.cli.common import project_options
 from atopile.components import configure_cache, download_footprint
 from atopile.config import BuildContext
-from atopile.errors import handle_ato_errors, iter_through_errors, muffle_fatalities
+from atopile.errors import handle_ato_errors, iter_through_errors
 from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
 
@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 
 @click.command()
 @project_options
-@muffle_fatalities
 def build(build_ctxs: list[BuildContext]):
     """
     Build the specified --target(s) or the targets specified by the build config.

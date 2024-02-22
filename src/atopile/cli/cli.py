@@ -3,9 +3,10 @@ import logging
 import click
 from rich.logging import RichHandler
 
+from atopile import telemetry
 from atopile.cli.rich_console import console
 
-from . import build, configure, create, install, inspect
+from . import build, configure, create, inspect, install
 
 FORMAT = "%(message)s"
 logging.basicConfig(
@@ -27,9 +28,13 @@ logging.basicConfig(
 @click.option("--non-interactive", is_flag=True, envvar="ATO_NON_INTERACTIVE")
 @click.option("--debug", is_flag=True)
 @click.option("-v", "--verbose", count=True)
-def cli(non_interactive: bool, debug: bool, verbose: int):
+@click.pass_context  # This decorator makes the context available to the command.
+def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
     """Base CLI group."""
-    # we process debugpy first, so we can attach the debugger ASAP into the process
+
+    # Initialize telemetry
+    telemetry.setup_telemetry_data(ctx.invoked_subcommand)
+
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
 

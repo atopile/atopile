@@ -13,6 +13,7 @@ from antlr4 import ParserRuleContext, Token
 
 from atopile import address
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
+from atopile import telemetry
 
 log = logging.getLogger(__name__)
 
@@ -268,16 +269,26 @@ def muffle_fatalities(func):
             with handle_ato_errors():
                 return func(*args, **kwargs)
         except AtoFatalError:
+            telemetry.telemetry_data.ato_error = 1
             rich.print(
                 "\n\nUnfortunately errors ^^^ stopped the build. "
                 "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
             )
             sys.exit(1)
+
         except ExceptionGroup as ex:
             _, not_fatal_errors = ex.split(AtoFatalError)
             if not_fatal_errors:
+                telemetry.telemetry_data.crash += len(not_fatal_errors.exceptions)
                 raise not_fatal_errors from ex
             sys.exit(1)
+
+        except Exception:
+            telemetry.telemetry_data.crash += 1
+            raise
+
+        finally:
+            telemetry.log_telemetry()
 
     return wrapper
 
