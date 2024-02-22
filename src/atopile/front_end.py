@@ -127,7 +127,6 @@ class Assertion:
         return f"{self.lhs} {self.operator} {self.rhs}"
 
 
-
 @define
 class Assignment(Base):
     """Represent an assignment statement."""
@@ -325,22 +324,7 @@ class HandlesPrimaries(AtopileParserVisitor):
         """
         Visit any referencey thing and ensure it's returned as a reference
         """
-        if isinstance(
-            ctx,
-            (
-                ap.NameContext,
-                ap.Totally_an_integerContext,
-            ),
-        ):
-            return Ref.from_one(str(self.visit(ctx)))
-        if isinstance(ctx, ap.Numerical_pin_refContext):
-            name_part = self.visit_ref_helper(ctx.name_or_attr())
-            return name_part.add_name(str(self.visit(ctx)))
-        if isinstance(ctx, (ap.AttrContext, ap.Name_or_attrContext)):
-            return Ref(
-                map(str, self.visit(ctx)),
-            )
-        raise errors.AtoError(f"Unknown reference type: {type(ctx)}")
+        return Ref(ctx.getText().split("."))
 
     def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> Ref:
         if ctx.name():
@@ -1307,14 +1291,11 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         """This function makes a pin or signal instance and sticks it in the instance tree."""
         # NOTE: name has to come first because both have names,
         # but only pins have a "totally an integer"
-        ref = self.visit_ref_helper(ctx.name() or ctx.totally_an_integer())
-        assert len(ref) == 1  # TODO: unwrap these refs, now they're always one long
-        if not ref:
-            raise errors.AtoError("Pins must have a name")
+        name = (ctx.name() or ctx.totally_an_integer()).getText()
 
         current_instance_addr = self._instance_addr_stack.top
         current_instance = self._output_cache[current_instance_addr]
-        new_addr = address.add_instances(current_instance_addr, ref)
+        new_addr = address.add_instance(current_instance_addr, name)
 
         super_ = PIN if isinstance(ctx, ap.Pindef_stmtContext) else SIGNAL
 
@@ -1325,7 +1306,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
             parent=current_instance,
         )
 
-        self._output_cache[new_addr] = current_instance.children[ref[0]] = pin_or_signal
+        self._output_cache[new_addr] = current_instance.children[name] = pin_or_signal
 
         return new_addr
 
