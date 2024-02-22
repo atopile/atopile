@@ -269,7 +269,7 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
     for entry in inspect_entries:
         pins = sorted(list(filter(match_pins, entry.inspect_net)))
         signals = list(filter(match_signals, entry.inspect_net))
-        #interface = list(filter(match_interfaces, entry.inspect_net))
+
         _add_row(pins, signals, list(set(entry.inspect_consumer)), list(set(entry.context_consumer)))
 
 
