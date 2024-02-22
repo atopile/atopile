@@ -282,9 +282,9 @@ def muffle_fatalities(func):
             sys.exit(1)
 
         finally:
-            
+            errors = "something went wrong, and we couldn't log the error"
 
-            telemetry.log_telemetry(result="fail", subcommand_name= "none", execution_time=0, errors=traceback_list)
+            telemetry.log_telemetry(result="fail", subcommand_name= "none", execution_time=0, errors=errors)
 
     return wrapper
 

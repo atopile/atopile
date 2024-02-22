@@ -6,7 +6,6 @@ from rich.logging import RichHandler
 
 from atopile.cli.rich_console import console
 from atopile import telemetry
-from atopile import errors
 
 
 from . import build, configure, create, inspect, install

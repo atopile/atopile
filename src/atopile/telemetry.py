@@ -16,7 +16,7 @@ import uuid
 import subprocess
 from ruamel.yaml import YAML
 from pathlib import Path
-from atopile import config, errors
+from atopile import config
 import logging
 
 
@@ -46,7 +46,7 @@ def log_telemetry(result, **kwargs):
         response.raise_for_status()
     except requests.RequestException as e:
         # If we can't log the telemetry, we don't want to fail the build
-        pass
+        logging.debug("Failed to log telemetry data: %s", e)
 
 def get_logged_errors() -> list:
     """Retrieve logged errors from the logger."""
