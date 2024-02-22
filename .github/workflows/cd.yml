@@ -6,9 +6,6 @@ on:
       - 'main'
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - 'main'
 
 jobs:
   python:
