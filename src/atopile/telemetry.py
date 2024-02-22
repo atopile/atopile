@@ -95,6 +95,7 @@ def _end_timer():
         execution_time = end_time - start_time
         log.debug(f"Execution time: {execution_time}")
     except Exception as e:
+        log.debug(f"Failed to get execution time: {e}")
         return 0
     return execution_time
 

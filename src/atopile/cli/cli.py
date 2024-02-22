@@ -1,5 +1,4 @@
 import logging
-import time
 
 import click
 from rich.logging import RichHandler
