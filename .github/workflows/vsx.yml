@@ -1,0 +1,29 @@
+name: Release VSCode Extension
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  vsx-extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/vscode-atopile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Publish to VS Code Marketplace
+        run: npm run deploy
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        run: npx ovsx publish -p ${{ secrets.OVSX_PAT }}
