@@ -33,8 +33,10 @@ logging.basicConfig(
 @click.pass_context  # This decorator makes the context available to the command.
 def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
     """Base CLI group."""
-    ctx.ensure_object(dict)
-    ctx.obj['start_time'] = time.time()  # Store the start time in the context.
+
+    # Initialize telemetry
+    telemetry.setup_telemetry_data(ctx.invoked_subcommand)
+
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
 
@@ -51,17 +53,6 @@ def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
 
     if not non_interactive:
         configure.do_configure_if_needed()
-
-@cli.result_callback()
-@click.pass_context  # To access the context in the result callback
-def process_result(ctx, result, **kwargs):
-    """Process the result of each CLI command to log telemetry."""
-    start_time = ctx.obj['start_time']
-    end_time = time.time()
-    execution_time = end_time - start_time
-    subcommand_name = ctx.invoked_subcommand  # Get the name of the invoked subcommand
-
-    telemetry.log_telemetry(result, subcommand_name=subcommand_name, execution_time=execution_time, **kwargs)
 
 cli.add_command(build.build)
 cli.add_command(create.create)

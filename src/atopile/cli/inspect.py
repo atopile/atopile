@@ -112,7 +112,6 @@ even_greyed_row = "on grey15 grey0"
 @project_options
 @click.option("--inspect", required=True)
 @click.option("--context", default=None, help="The context from which to inspect the module")
-@errors.muffle_fatalities
 def inspect(build_ctxs: list[BuildContext], inspect: str, context: Optional[str]):
     """
     Utility to inspect what is connected to a component.

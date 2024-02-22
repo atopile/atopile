@@ -269,6 +269,7 @@ def muffle_fatalities(func):
             with handle_ato_errors():
                 return func(*args, **kwargs)
         except AtoFatalError:
+            telemetry.telemetry_data.ato_error = 1
             rich.print(
                 "\n\nUnfortunately errors ^^^ stopped the build. "
                 "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
@@ -278,13 +279,12 @@ def muffle_fatalities(func):
         except ExceptionGroup as ex:
             _, not_fatal_errors = ex.split(AtoFatalError)
             if not_fatal_errors:
+                telemetry.telemetry_data.crash = 1
                 raise not_fatal_errors from ex
             sys.exit(1)
 
         finally:
-            errors = ["something went wrong, and we couldn't log the error"]
-
-            telemetry.log_telemetry(result="fail", subcommand_name= "none", execution_time=0, error_log=errors)
+            telemetry.log_telemetry()
 
     return wrapper
 

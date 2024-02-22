@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 
 @click.command()
 @project_options
-@muffle_fatalities
 def build(build_ctxs: list[BuildContext]):
     """
     Build the specified --target(s) or the targets specified by the build config.
