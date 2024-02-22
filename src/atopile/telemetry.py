@@ -23,25 +23,23 @@ import logging
 import requests
 
 def log_telemetry(result, **kwargs):
-    project_info = get_project_info()
-    # errors_list = get_logged_errors()
-    # error_log = "\n".join(errors_list)
-
-
-    telemetry_data = {
-        "project_id": project_info['project_id'],
-        "user_id": project_info['user_id'],
-        "git_hash": project_info['git_hash'],
-        "execution_details": {
-            "time": kwargs['execution_time'],
-            "subcommand": kwargs['subcommand_name'],
-            "errors": len(kwargs['error_log']),
-            "error_log": kwargs['error_log'],
-            "result": result
-        }
-    }
-
     try:
+        project_info = get_project_info()
+        # errors_list = get_logged_errors()
+        # error_log = "\n".join(errors_list)
+
+        telemetry_data = {
+            "project_id": project_info['project_id'],
+            "user_id": project_info['user_id'],
+            "git_hash": project_info['git_hash'],
+            "execution_details": {
+                "time": kwargs['execution_time'],
+                "subcommand": kwargs['subcommand_name'],
+                "errors": len(kwargs.get('errors', [])),
+                "error_log": kwargs['error_log'],
+            }
+        }
+
         response = requests.post("https://log-telemetry-atsuhzfd5a-uc.a.run.app", json=telemetry_data)
         response.raise_for_status()
     except requests.RequestException as e:
