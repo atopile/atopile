@@ -14,7 +14,7 @@ def parse(src_code: str) -> AtopileParser.Arithmetic_expressionContext:
     return parser.arithmetic_expression()
 
 
-roley = Roley()
+roley = Roley("//a:b::")
 
 
 def _run(src_code: str):
@@ -53,14 +53,14 @@ def test_simple_pseudo_symbols():
     a = _run("1 + 2 + c.d.e")
     assert callable(a)
     assert isinstance(a, Expression)
-    assert a({("c", "d", "e"): 5}) == 8
-    assert a.symbols == {Symbol(("c", "d", "e"))}
+    assert a({"//a:b::c.d.e": 5}) == 8
+    assert a.symbols == {Symbol("//a:b::c.d.e")}
 
 
 def test_pseudo_symbols():
     context = {
-        ("a", "a", "a"): 4,
-        ("b",): 3,
-        ("c",): 9,
+        "//a:b::a.a.a": 4,
+        "//a:b::b": 3,
+        "//a:b::c": 9,
     }
     assert _run("(a.a.a**b + 17) / c + 53")(context) == 62
