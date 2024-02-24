@@ -25,8 +25,7 @@ You can create your own project instead of using ato create. Perhaps you will wa
     ├── ato.yaml --> definition file for your atopile project
     ├── elec --> your virtual environment
     │    ├── src
-    │    ├── src
-    │    │   ├── file.ato
+    │    │   └── file.ato
     │    └── layout
     │        └── default
     │            ├── kicad-project.kicad_pro
