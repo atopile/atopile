@@ -85,7 +85,7 @@ Once created, open elec/src/your-project.ato and modify it in the following way:
 
 === "your-project.ato"
     ```
-    import Resistor from "generics/resistors.ato"
+    from "generics/resistors.ato" import Resistor
 
     module VoltageDivider:
         signal top

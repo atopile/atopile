@@ -48,7 +48,7 @@ For convenience, the footprints for resistors and caps can be defined like so
 Here is an example of a `module` definition, in this case a resistor divider:
 
 ```
-import Resistor from "generics/resistors.ato"
+from "generics/resistors.ato" import Resistor
 
 module YourModule:
     signal top
