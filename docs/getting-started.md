@@ -84,8 +84,8 @@ Let's build a voltage divider. Start by invoking `ato create` to create a new pr
 Once created, open elec/src/your-project.ato and modify it in the following way:
 
 === "your-project.ato"
-    ```
-    import Resistor from "generics/resistors.ato"
+    ```python
+    from "generics/resistors.ato" import Resistor
 
     module VoltageDivider:
         signal top

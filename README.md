@@ -37,7 +37,7 @@ What's your story in electronics? What would you like us to build? Come talk on 
 
 #### Voltage Divider
 ```python
-import Resistor from "generics/resistors.ato"
+from "generics/resistors.ato" import Resistor
 
 module VoltageDivider:
     signal top
