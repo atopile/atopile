@@ -6,7 +6,6 @@ Thanks @nickkrstevski (https://github.com/nickkrstevski) for
 the heavy lifting on this one!
 """
 
-import glob
 import hashlib
 import json
 import logging
@@ -20,7 +19,6 @@ from atopile.instance_methods import (
     match_components,
     match_modules,
 )
-
 
 log = logging.getLogger(__name__)
 
@@ -47,10 +45,9 @@ def _find_module_layouts() -> dict[str, list[config.BuildContext]]:
     build name and the layout file path.
     """
     directory = config.get_project_context().project_path
-    pattern = f"{directory}/.ato/modules/*/ato.yaml"
 
     entries = defaultdict(list)
-    for filepath in glob.glob(pattern):
+    for filepath in directory.glob("**/ato.yaml"):
         cfg = config.get_project_config_from_path(filepath)
 
         for build_name in cfg.builds:
@@ -68,6 +65,10 @@ def generate_module_map(build_ctx: config.BuildContext) -> None:
     for module_instance in filter(match_modules, all_descendants(build_ctx.entry)):
         module_super = find_matching_super(module_instance, list(laid_out_modules.keys()))
         if not module_super:
+            continue
+
+        # Skip build entry point
+        if module_instance == build_ctx.entry:
             continue
 
         # Get the build context for the laid out module

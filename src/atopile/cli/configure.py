@@ -134,7 +134,7 @@ def install_kicad_plugin() -> None:
 
         # Write the plugin loader
         with (kicad_plugin_dir / "atopile.py").open("w", encoding="utf-8") as f:
-            f.write(plugin_loader)
+            f.write(dedent(plugin_loader))
 
     try:
         _write_plugin()
