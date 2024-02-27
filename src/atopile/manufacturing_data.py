@@ -81,12 +81,20 @@ def generate_manufacturing_data(build_ctx: config.BuildContext) -> None:
     build_ctx.build_path.mkdir(parents=True, exist_ok=True)
 
     # Replace constants in the board file
-    repo = git.Repo(config.get_project_context().project_path, search_parent_directories=True)
-    short_githash_length = 7
-    if repo.is_dirty():
-        short_githash = "dirty"
+    project_path = config.get_project_context().project_path
+    try:
+        repo = git.Repo(project_path, search_parent_directories=True)
+    except git.InvalidGitRepositoryError:
+        atopile.errors.AtoError(
+            "Project is not a git repository"
+        ).log(log, logging.WARNING)
+        short_githash = "nogit"
     else:
-        short_githash = repo.head.commit.hexsha[:short_githash_length]
+        short_githash_length = 7
+        if repo.is_dirty():
+            short_githash = "dirty"
+        else:
+            short_githash = repo.head.commit.hexsha[:short_githash_length]
 
     modded_kicad_pcb = build_ctx.output_base.with_suffix(
         ".kicad_pcb"
