@@ -81,7 +81,7 @@ def generate_manufacturing_data(build_ctx: config.BuildContext) -> None:
     build_ctx.build_path.mkdir(parents=True, exist_ok=True)
 
     # Replace constants in the board file
-    repo = git.Repo(config.get_project_context().project_path)
+    repo = git.Repo(config.get_project_context().project_path, search_parent_directories=True)
     short_githash_length = 7
     if repo.is_dirty():
         short_githash = "dirty"
