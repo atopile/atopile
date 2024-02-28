@@ -39,7 +39,9 @@ def install_core(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Pa
     """
     Install a dependency of for the project.
     """
-    top_level_path = config.get_project_dir_from_path(Path(path or "."))
+
+    current_path = Path.cwd()
+    top_level_path = config.get_project_dir_from_path(Path(path or current_path))
 
     log.info(f"Installing {to_install} in {top_level_path}")
 
