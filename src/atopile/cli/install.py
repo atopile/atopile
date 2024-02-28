@@ -35,7 +35,9 @@ def install(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Path] =
     install_core(to_install, jlcpcb, upgrade, path)
 
 
-def install_core(to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Path] = None):
+def install_core(
+    to_install: str, jlcpcb: bool, upgrade: bool, path: Optional[Path] = None
+):
     """
     Install a dependency of for the project.
     """
@@ -85,7 +87,7 @@ def get_package_repo_from_registry(module_name: str) -> str:
     response.raise_for_status()
     return_data = response.json()
     try:
-        return_url = return_data['data']['repo_url']
+        return_url = return_data["data"]["repo_url"]
     except KeyError:
         raise errors.AtoError(f"No repo_url found for package '{module_name}'")
     return return_url
@@ -266,4 +268,8 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
     if result.returncode == 0:
         print("Command executed successfully")
     else:
-        raise errors.AtoError("Couldn't install component")
+        component_link = f"https://jlcpcb.com/partdetail/{component_id}"
+        raise errors.AtoError(
+            "Oh no! Looks like this component doesnt have a model available. "
+            f"More information about the component can be found here: {component_link}"
+        )
