@@ -125,12 +125,13 @@ def get_project_dir_from_path(path: Path) -> Path:
     """
     Resolve the project directory from the specified path.
     """
+    #TODO: when provided with the "." path, it doesn't find the config in parent directories
     path = Path(path)
     for p in [path] + list(path.parents):
         clean_path = p.resolve().absolute()
         if (clean_path / CONFIG_FILENAME).exists():
             return clean_path
-    raise FileNotFoundError(
+    raise atopile.errors.AtoFileNotFoundError(
         f"Could not find {CONFIG_FILENAME} in {path} or any parents"
     )
 
