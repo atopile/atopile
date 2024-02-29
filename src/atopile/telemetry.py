@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from attrs import asdict, define
+from attrs import asdict, define, field
 from ruamel.yaml import YAML
 
 log = logging.getLogger(__name__)
@@ -32,6 +32,9 @@ class TelemetryData:
     git_hash: Optional[str]
     subcommand: Optional[str]
     time: Optional[float] = None
+    assertions: list = field(factory=list)
+    eqns_vars: int = 0
+    assertions_checked: int = 0
     ato_error: int = 0
     crash: int = 0
 
@@ -49,6 +52,17 @@ def setup_telemetry_data(command: str):
         git_hash=get_current_git_hash(),
         subcommand=command,
     )
+
+
+def log_assertion(assertion: str):
+    assertion_hash = hashlib.sha256(assertion.encode()).hexdigest()
+    if assertion_hash not in telemetry_data.assertions:
+        telemetry_data.assertions.append(assertion_hash)
+    telemetry_data.assertions_checked += 1
+
+
+def log_eqn_vars(num_vars: int):
+    telemetry_data.eqns_vars += num_vars
 
 
 def log_telemetry():
