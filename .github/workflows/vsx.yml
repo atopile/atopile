@@ -21,9 +21,9 @@ jobs:
       - run: npm ci
 
       - name: Publish to VS Code Marketplace
-        run: npm run deploy
+        run: npx vsce publish --no-git-tag-version ${GITHUB_REF#refs/*/v}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish to Open VSX
-        run: npx ovsx publish -p ${{ secrets.OVSX_PAT }}
+        run: npx ovsx publish -p ${{ secrets.OVSX_PAT }} -v ${GITHUB_REF#refs/*/v}
