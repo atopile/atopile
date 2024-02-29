@@ -223,6 +223,7 @@ def solve_assertions(build_ctx: config.BuildContext):
     table = Table(show_header=True, header_style="bold green")
     table.add_column("Address")
     table.add_column("Value")
+    row_count = 0
 
     for error_collector, assertion_group in errors.iter_through_errors(assertion_groups.items()):
         group_vars, assertions = assertion_group
@@ -316,8 +317,9 @@ def solve_assertions(build_ctx: config.BuildContext):
                 table.add_row(
                     address.get_instance_section(addr),
                     str(val),
-                    style=dark_row if i % 2 else light_row,
+                    style=dark_row if row_count % 2 else light_row,
                 )
+                row_count += 1
 
                 # FIXME: Do we want to mutate the model here?
                 # FIXME: Creating Assignment object here is annoying
