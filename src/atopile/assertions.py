@@ -16,7 +16,7 @@ from rich.style import Style
 from rich.table import Table
 from scipy.optimize import minimize
 
-from atopile import address, config, errors, instance_methods, loop_soup
+from atopile import address, config, errors, instance_methods, loop_soup, telemetry
 from atopile.front_end import (
     Assertion,
     Assignment,
@@ -76,6 +76,10 @@ def generate_assertion_report(build_ctx: config.BuildContext):
     for instance_addr in instance_methods.all_descendants(build_ctx.entry):
         instance = lofty.get_instance(instance_addr)
         for assertion in instance.assertions:
+            try:
+                telemetry.log_assertion(str(assertion))
+            except Exception as e:
+                log.debug("Failed to log assertion: %s", e)
             new_symbols = {
                 s.key for s in assertion.lhs.symbols | assertion.rhs.symbols
             } - context.keys()
@@ -207,7 +211,12 @@ def solve_assertions(build_ctx: config.BuildContext):
         log.info("No variables in assertions to solve")
         return
 
-    log.debug("Variables to solve for: %s", list(variable_soup))
+    vars = list(variable_soup)
+    try:
+        telemetry.log_eqn_vars(len(vars))
+    except Exception as e:
+        log.debug("Failed to log eqn_vars: %s", e)
+    log.debug("Variables to solve for: %s", vars)
 
     # 2. Create groups of assertions based on the symbols they contain
     # This way we don't need to solve for every assertion at once
