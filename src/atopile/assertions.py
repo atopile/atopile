@@ -134,9 +134,15 @@ def _check_assertion(assertion: Assertion, context: dict) -> bool:
     """
     Check if an assertion is true in the given context.
     """
-    a = assertion.lhs(context)
-    b = assertion.rhs(context)
-    return _do_op(a, assertion.operator, b)
+    try:
+        a = assertion.lhs(context)
+        b = assertion.rhs(context)
+        return _do_op(a, assertion.operator, b)
+    except pint.errors.DimensionalityError as ex:
+        raise errors.AtoTypeError(
+            f"Dimensionality mismatch in assertion: {assertion}"
+            f" ({ex.units1} incompatible with {ex.units2})"
+        ) from ex
 
 
 def solve_assertions(build_ctx: config.BuildContext):
