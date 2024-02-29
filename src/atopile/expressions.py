@@ -29,6 +29,25 @@ def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
     return qty_b.units
 
 
+_favourable_units = [
+    pint.Unit("V"),
+    pint.Unit("ohm"),
+    pint.Unit("A"),
+    pint.Unit("W"),
+    pint.Unit("Hz"),
+    pint.Unit("F"),
+    pint.Unit("H"),
+]
+
+
+def _favourable_unit(unit: PlainUnit) -> PlainUnit:
+    """Return the most favourable unit for the given unit."""
+    for fav_unit in _favourable_units:
+        if unit.is_compatible_with(fav_unit):
+            return fav_unit
+    return unit
+
+
 class RangedValue:
     """
     Let's get physical!
@@ -75,32 +94,62 @@ class RangedValue:
         assert isinstance(val_b_mag, (float, int))
 
         # Make the noise
-        self._pretty_unit = pretty_unit
+        self.pretty_unit = pretty_unit
         self.min_val = min(val_a_mag, val_b_mag)
         self.max_val = max(val_a_mag, val_b_mag)
 
     @property
-    def pretty_unit(self) -> str:
+    def best_usr_unit(self) -> str:
         """Return a pretty string representation of the unit."""
-        if self._pretty_unit:
-            return self._pretty_unit
+        if self.pretty_unit:
+            return self.pretty_unit
         return str(self.unit)
 
-    def pretty_str(self, max_decimals: Optional[int] = 2) -> str:
+    def to(self, unit: str | PlainUnit | pint.Unit) -> "RangedValue":
+        """Return a new RangedValue in the given unit."""
+        return RangedValue(
+            self.min_qty,
+            self.max_qty,
+            unit
+        )
+
+    def to_compact(self) -> "RangedValue":
+        """Return a new RangedValue in the most compact unit."""
+        return RangedValue(
+            # FIXME: still shit
+            self.min_qty.to_compact(),
+            self.max_qty.to_compact(),
+        )
+
+    def pretty_str(
+        self,
+        max_decimals: Optional[int] = 2,
+        unit: Optional[pint.Unit] = None
+    ) -> str:
         """Return a pretty string representation of the RangedValue."""
-        if max_decimals is None:
-            nom = str(self.nominal)
-            tol = str(self.tolerance)
+        if unit is not None:
+            val = self.to(unit)
         else:
-            nom = _custom_float_format(self.nominal, max_decimals)
-            tol = _custom_float_format(self.tolerance, max_decimals)
-        return f"{nom} +/- {tol} {self.pretty_unit}"
+            val = self.to(_favourable_unit(self.unit)).to_compact()
+
+        if max_decimals is None:
+            nom = str(val.nominal)
+            tol = str(val.tolerance)
+            pct = str(val.tolerance)
+        else:
+            nom = _custom_float_format(val.nominal, max_decimals)
+            tol = _custom_float_format(val.tolerance, max_decimals)
+            pct = _custom_float_format(val.tolerance_pct, max_decimals)
+
+        return f"{nom} +/- {tol} ({pct}%) {val.best_usr_unit}"
 
     def __str__(self) -> str:
         return self.pretty_str()
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.min_val}, {self.max_val}, '{self.unit}')"
+        return (
+            f"{self.__class__.__name__}({self.min_val}, {self.max_val}, '{self.unit}')"
+        )
 
     @property
     def nominal(self) -> float:
@@ -143,7 +192,7 @@ class RangedValue:
 
     @classmethod
     def _ensure(cls, thing) -> "RangedValue":
-        if isinstance(thing, cls):
+        if isinstance(thing, RangedValue):
             return thing
         return cls(thing, thing, _UNITLESS)
 
@@ -177,7 +226,7 @@ class RangedValue:
     def _do_truediv(
         cls,
         numerator: Union["RangedValue", float, int],
-        denominator: Union["RangedValue", float, int]
+        denominator: Union["RangedValue", float, int],
     ) -> "RangedValue":
         numerator = cls._ensure(numerator)
         denominator = cls._ensure(denominator)
@@ -223,13 +272,17 @@ class RangedValue:
         return self.__sub__(other)
 
     def __neg__(self) -> "RangedValue":
-        return self.__class__(-self.max_qty, -self.min_qty, self.unit, self._pretty_unit)
+        return self.__class__(
+            -self.max_qty, -self.min_qty, self.unit, self.pretty_unit
+        )
 
     def within(self, other: Union["RangedValue", float, int]) -> bool:
         """Check that this RangedValue completely falls within another."""
         if not isinstance(other, RangedValue):
             if not self.unit.dimensionless:
-                raise ValueError("Can only compare RangedValue to a dimensionless quantity")
+                raise ValueError(
+                    "Can only compare RangedValue to a dimensionless quantity"
+                )
             return self.min_val == self.max_val == other
         return self.min_qty >= other.min_qty and other.max_qty >= self.max_qty
 
@@ -260,6 +313,7 @@ NumericishTypes = Union["Expression", RangedValue, float, int, "Symbol"]
 @frozen
 class Symbol:
     """Represent a symbol."""
+
     key: collections.abc.Hashable
 
     def __call__(self, context: Mapping) -> RangedValue:
@@ -321,14 +375,17 @@ def defer_operation_factory(
     # if we're here, we need to create an expression
     symbols = _get_symbols(lhs) | _get_symbols(rhs)
     if callable(lhs) and callable(rhs):
+
         def lambda_(context):
             return operator(lhs(context), rhs(context))
 
     elif callable(lhs):
+
         def lambda_(context):
             return operator(lhs(context), rhs)
 
     else:
+
         def lambda_(context):
             return operator(lhs, rhs(context))
 

@@ -4,7 +4,7 @@ while only having access to a series of connections.
 """
 
 import collections.abc
-from typing import Callable, Hashable, Iterator, Optional, TypeVar
+from typing import Callable, Hashable, Iterable, Iterator, Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -46,8 +46,7 @@ class LoopItem(collections.abc.Iterable[T]):
 
     @staticmethod
     def join(a: "LoopItem", b: "LoopItem") -> None:
-        """Join two loops together"""
-
+        """Join loops together"""
         # if they're the same, do nothing
         if a is b:
             return
@@ -61,7 +60,7 @@ class LoopItem(collections.abc.Iterable[T]):
             b.next = a
             b.prev = a
 
-        # if one is lonely, make it friends with the other`
+        # if one is lonely, make it friends with the other
         elif a.next is a:
             assert a.prev is a
             old_next = b.next
@@ -101,7 +100,7 @@ class LoopSoup:
 
     def __init__(self, key_func: Callable[[T], Hashable] = _simple_return):
         self.key_func = key_func
-        self._map: dict[Hashable, T] = {}
+        self._map: dict[Hashable, LoopItem[T]] = {}
 
     def get_loop(self, thing: T) -> LoopItem[T]:
         """Get the loop for a thing"""
@@ -120,6 +119,14 @@ class LoopSoup:
         """Join two things together"""
         LoopItem.join(self.get_loop(a), self.get_loop(b))
 
+    def join_multiple(self, things: Iterable[T]) -> None:
+        """Join multiple things together"""
+        things = list(things)
+        if not things:
+            return
+        for b in things[1:]:
+            self.join(things[0], b)
+
     def groups(self) -> Iterator[tuple[T]]:
         """Return an iterator of groups of things that are connected together"""
         seen = set()
@@ -133,3 +140,15 @@ class LoopSoup:
             values = tuple(v.iter_values())
             seen.update(self.key_func(i) for i in values)
             yield values
+
+    def __len__(self) -> int:
+        return len(self._map)
+
+    def __bool__(self) -> bool:
+        return bool(self._map)
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(li.represents for li in self._map.values())
+
+    def __contains__(self, item: T) -> bool:
+        return self.key_func(item) in self._map

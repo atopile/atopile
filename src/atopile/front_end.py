@@ -110,7 +110,6 @@ class Expression(expressions.Expression):
 
 
 class Assertion:
-
     def __init__(
         self,
         lhs: expressions.Expression,
@@ -127,13 +126,47 @@ class Assertion:
         return f"{self.lhs} {self.operator} {self.rhs}"
 
 
+_dimensionality_to_unit_map = {
+    "None": pint.Unit("dimensionless"),
+    "length": pint.Unit("m"),
+    "time": pint.Unit("s"),
+    "voltage": pint.Unit("V"),
+    "current": pint.Unit("A"),
+    "resistance": pint.Unit("ohm"),
+    "capacitance": pint.Unit("F"),
+    "inductance": pint.Unit("H"),
+    "frequency": pint.Unit("Hz"),
+    "power": pint.Unit("W"),
+    "energy": pint.Unit("J"),
+    "charge": pint.Unit("C"),
+}
+
+
 @define
 class Assignment(Base):
     """Represent an assignment statement."""
 
     name: str
     value: Optional[Any]
-    given_type: Optional[AddrStr]
+    given_type: Optional[str | pint.Unit]
+
+    @property
+    def unit(self) -> pint.Unit:
+        """Return a pint unit from an assignment, or raise an exception if there's no unit."""
+        if self.given_type is None:
+            # Handle an implicit type
+            try:
+                return self.value.unit
+            except AttributeError as ex:
+                raise errors.AtoTypeError(
+                    f"Assignment '{self.name}' has no unit"
+                ) from ex
+        try:
+            return _dimensionality_to_unit_map[self.given_type]
+        except KeyError as ex:
+            raise errors.AtoUnknownUnitError(
+                f"Unknown dimensionality '{self.given_type}'"
+            ) from ex
 
     def __repr__(self) -> str:
         return f"<Assignment {self.name} = {self.value}>"
@@ -156,7 +189,6 @@ class ClassLayer(Base):
 
     # the local objects and vars are things we navigate to a lot
     assignments: Mapping[str, Assignment]
-    assertions: Iterable[Assertion]
 
     @property
     def address(self) -> AddrStr:
@@ -204,10 +236,10 @@ class Instance(Base):
     addr: AddrStr
     supers: list["ClassLayer"]
     assignments: Mapping[str, deque[Assignment]]
-    assertions: Iterable[Assertion]
     parent: Optional["Instance"]
 
     # created as supers' ASTs are walked
+    assertions: list[Assertion] = field(factory=list)
     children: dict[str, "Instance"] = field(factory=dict)
     links: list[Link] = field(factory=list)
 
@@ -226,20 +258,16 @@ class Instance(Base):
         supers = list(recurse(lambda x: x.super, super_))
 
         assignments = defaultdict(deque)
-        assertions = []
 
         for super_ in supers:
             for k, v in super_.assignments.items():
                 assignments[k].append(v)
-
-            assertions.extend(super_.assertions)
 
         return cls(
             src_ctx=src_ctx,
             addr=addr,
             supers=supers,
             assignments=assignments,
-            assertions=assertions,
             parent=parent,
         )
 
@@ -268,7 +296,6 @@ def _make_obj_layer(address: AddrStr, super: Optional[ClassLayer] = None) -> Cla
         obj_def=obj_def,
         super=super,
         assignments={},
-        assertions=[],
     )
 
 
@@ -560,9 +587,18 @@ class HandleStmtsFunctional(AtopileParserVisitor):
 # TODO: actually capture src_ctx on expressions
 class Roley(HandlesPrimaries):
     """
-    Roley's job is to build expressions.
+    Roley is a green road roller who loves to make up songs and often ends his
+    sentences with "Rock and Roll!" He is enthusiastic and works alongside Bob
+    and the rest of the team on various construction projects. Roley's main job
+    is to smooth out roads and pavements, making sure they are flat and safe
+    for everyone. He takes great pride in creating perfect surfaces and is an
+    essential member of Bob's team, helping to complete construction tasks with
+    his unique abilities.
+
+    Roley's also builds expressions.
     """
-    def __init__(self) -> None:
+    def __init__(self, addr: AddrStr) -> None:
+        self.addr = addr
         super().__init__()
 
     def visitArithmetic_expression(
@@ -627,7 +663,12 @@ class Roley(HandlesPrimaries):
             return self.visit(ctx.literal_physical())
 
         if ctx.name_or_attr():
-            return expressions.Symbol(self.visit_ref_helper(ctx.name_or_attr()))
+            return expressions.Symbol(
+                address.add_instances(
+                    self.addr,
+                    self.visit_ref_helper(ctx.name_or_attr()),
+                )
+            )
 
         raise ValueError
 
@@ -950,8 +991,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
             super=self._get_supers_layer(cls_def),
             assignments={
                 ref[0]: v for ref, v in strainer.strain(lambda x: isinstance(x.value, Assignment))
-            },
-            assertions=[v for _, v in strainer.strain(lambda x: isinstance(x.value, Assertion))]
+            }
         )
 
         if strainer:
@@ -967,10 +1007,13 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
         """Don't go down blockdefs, they're just for defining objects."""
         return NOTHING
 
-    def _get_type_info(self, ctx) -> Optional[ClassLayer | pint.Unit]:
+    def _get_type_info(self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext) -> Optional[ClassLayer | pint.Unit]:
         """Return the type information from a type_info context."""
-        # TODO: parse types properly
+        if type_ctx := ctx.type_info():
+            return type_ctx.name_or_attr().getText()
         return None
+
+        # TODO: parse types properly
         if type_info := ctx.type_info():
             assert isinstance(type_info, ap.Type_infoContext)
             type_info_str: str = type_info.name_or_attr().getText()
@@ -1028,52 +1071,10 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
         self, ctx: ap.Simple_stmtContext
     ) -> Iterable[_Sentinel | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.assign_stmt() or ctx.declaration_stmt() or ctx.assert_stmt():
+        if ctx.assign_stmt() or ctx.declaration_stmt():
             return super().visitSimple_stmt(ctx)
 
         return (NOTHING,)
-
-    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
-        """Handle assertion statements."""
-        comparison_ctx: ap.ComparisonContext = ctx.comparison()
-        roley = Roley()
-
-        expressions_ = []
-        operators = []
-
-        def _add_expr_from_context(ctx: ap.Arithmetic_expressionContext):
-            expr = Expression.from_numericish(
-                roley.visit(ctx)
-            )
-            # TODO: this shouldn't be attached to the expression like this
-            # as the only means to pretty-print them
-            expr.src_ctx = ctx
-            expressions_.append(expr)
-
-        _add_expr_from_context(comparison_ctx.arithmetic_expression())
-
-        for comp_ctx in comparison_ctx.compare_op_pair():
-            assert isinstance(comp_ctx, ap.Compare_op_pairContext)
-            if child_ctx := comp_ctx.lt_arithmetic_or():
-                operators.append("<")
-            elif child_ctx := comp_ctx.gt_arithmetic_or():
-                operators.append(">")
-            elif child_ctx := comp_ctx.in_arithmetic_or():
-                operators.append("within")
-            else:
-                raise ValueError
-            _add_expr_from_context(child_ctx.arithmetic_expression())
-
-        assert len(expressions_) == len(operators) + 1
-
-        assertions_ = [Assertion(
-            src_ctx=ctx,
-            lhs=expressions_[i],
-            operator=operators[i],
-            rhs=expressions_[i+1],
-        ) for i in range(len(operators))]
-
-        return KeyOptMap(KeyOptItem.from_kv(None, a) for a in assertions_)
 
 
 @contextmanager
@@ -1103,6 +1104,11 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         self._instance_addr_stack: StackList[AddrStr] = StackList()
         self._class_addr_stack: StackList[AddrStr] = StackList()
         super().__init__()
+
+    @property
+    def _current_instance(self) -> Instance:
+        """Return the current instance."""
+        return self._output_cache[self._instance_addr_stack.top]
 
     def get_instance(self, addr: AddrStr) -> Instance:
         """Return an instance object represented by the given address."""
@@ -1325,20 +1331,18 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         source_addr = self.visitConnectable(ctx.connectable(0))
         target_addr = self.visitConnectable(ctx.connectable(1))
 
-        current_instance = self._output_cache[self._instance_addr_stack.top]
-
         with _translate_addr_key_errors(ctx):
             source_instance = self._output_cache[source_addr]
             target_instance = self._output_cache[target_addr]
 
         link = Link(
             src_ctx=ctx,
-            parent=current_instance,
+            parent=self._current_instance,
             source=source_instance,
             target=target_instance,
         )
 
-        current_instance.links.append(link)
+        self._current_instance.links.append(link)
 
         return KeyOptMap.empty()
 
@@ -1354,11 +1358,55 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> KeyOptMap:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.assign_stmt() or ctx.connect_stmt():
+        if ctx.assign_stmt() or ctx.connect_stmt() or ctx.assert_stmt():
             return super().visitSimple_stmt(ctx)
 
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():
             self.visitChildren(ctx)
+
+        return KeyOptMap.empty()
+
+    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
+        """Handle assertion statements."""
+        comparison_ctx: ap.ComparisonContext = ctx.comparison()
+        roley = Roley(self._instance_addr_stack.top)
+
+        expressions_ = []
+        operators = []
+
+        def _add_expr_from_context(ctx: ap.Arithmetic_expressionContext):
+            expr = Expression.from_numericish(
+                roley.visit(ctx)
+            )
+            # TODO: this shouldn't be attached to the expression like this
+            # as the only means to pretty-print them
+            expr.src_ctx = ctx
+            expressions_.append(expr)
+
+        _add_expr_from_context(comparison_ctx.arithmetic_expression())
+
+        for comp_ctx in comparison_ctx.compare_op_pair():
+            assert isinstance(comp_ctx, ap.Compare_op_pairContext)
+            if child_ctx := comp_ctx.lt_arithmetic_or():
+                operators.append("<")
+            elif child_ctx := comp_ctx.gt_arithmetic_or():
+                operators.append(">")
+            elif child_ctx := comp_ctx.in_arithmetic_or():
+                operators.append("within")
+            else:
+                raise ValueError
+            _add_expr_from_context(child_ctx.arithmetic_expression())
+
+        assert len(expressions_) == len(operators) + 1
+
+        assertions_ = [Assertion(
+            src_ctx=ctx,
+            lhs=expressions_[i],
+            operator=operators[i],
+            rhs=expressions_[i+1],
+        ) for i in range(len(operators))]
+
+        self._current_instance.assertions.extend(assertions_)
 
         return KeyOptMap.empty()
 

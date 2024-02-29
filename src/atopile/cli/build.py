@@ -58,7 +58,12 @@ def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
 
     # Configure the cache for component data
+    # TODO: flip this around so that the cache pulls what it needs from the
+    # project context
     configure_cache(atopile.config.get_project_context().project_path)
+
+    # Solve the unknown variables
+    atopile.assertions.solve_assertions(build_ctx)
 
     # Ensure the build directory exists
     log.info("Writing outputs to %s", build_ctx.build_path)
