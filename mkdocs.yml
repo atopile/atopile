@@ -17,7 +17,7 @@ nav:
   - import.md
   - types.md
   - class.md
-  - units.md
+  - maths.md
   - doc-strings.md
   - Layout on kicad:
     - kicad.md
