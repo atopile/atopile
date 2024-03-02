@@ -66,10 +66,14 @@ class _Net:
     suffix: Optional[int] = None
 
     def get_name(self) -> str:
-        """Get the name of the net."""
-        # suffix is a ref (tuple of strings)
+        """
+        Get the name of the net.
+        Net names should take the form of: <prefix>-<base_name>-<suffix>
+        There must always be some base, and if it's not provided, it's just 'net'
+        Prefixes and suffixes are joined with a "-" if they exist.
+        """
         return (
-            f"{self.prefix + '-' if self.prefix else ''}"
+            f"{str(self.prefix) + '-' if self.prefix else ''}"
             f"{self.base_name or 'net'}"
             f"{'-' + str(self.suffix) if self.suffix else ''}"
         )
