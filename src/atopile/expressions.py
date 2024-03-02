@@ -135,7 +135,7 @@ class RangedValue:
         if max_decimals is None:
             nom = str(val.nominal)
             tol = str(val.tolerance)
-            pct = str(val.tolerance)
+            pct = str(val.tolerance_pct)
         else:
             nom = _custom_float_format(val.nominal, max_decimals)
             tol = _custom_float_format(val.tolerance, max_decimals)
