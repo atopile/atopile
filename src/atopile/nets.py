@@ -66,10 +66,14 @@ class _Net:
     suffix: Optional[int] = None
 
     def get_name(self) -> str:
-        """Get the name of the net."""
-        # suffix is a ref (tuple of strings)
+        """
+        Get the name of the net.
+        Net names should take the form of: <prefix>-<base_name>-<suffix>
+        There must always be some base, and if it's not provided, it's just 'net'
+        Prefixes and suffixes are joined with a "-" if they exist.
+        """
         return (
-            f"{'-'.join(self.prefix) + '-' if self.prefix else ''}"
+            f"{str(self.prefix) + '-' if self.prefix else ''}"
             f"{self.base_name or 'net'}"
             f"{'-' + str(self.suffix) if self.suffix else ''}"
         )
@@ -142,12 +146,13 @@ def _add_prefix(conflicts: Iterable[list[_Net]]):
 
                 # Get the first parent module that matches, or None if there's no match
                 parent_module = next(parent_module_iter, None)
+                print(parent_module)
 
                 # Check if a parent module was found
                 if parent_module:
                     # Get the ref of the parent module
-                    if hasattr(parent_module, "ref"):
-                        net.prefix = address.get_instance_section(parent_module)
+                    net.prefix = address.get_instance_section(parent_module)
+                    print(net.prefix)
 
 
 def _add_suffix(conflicts: Iterable[list[_Net]]):

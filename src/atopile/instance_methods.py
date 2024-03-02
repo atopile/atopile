@@ -82,7 +82,7 @@ def get_next_super(addr: AddrStr) -> ClassLayer:
     return get_supers_list(addr)[0]
 
 
-def get_parent(addr: str) -> Optional[str]:
+def get_parent(addr: AddrStr) -> Optional[AddrStr]:
     """
     Return the parent of the given address
     """
@@ -92,7 +92,7 @@ def get_parent(addr: str) -> Optional[str]:
     return None
 
 
-def iter_parents(addr: str) -> Iterable[str]:
+def iter_parents(addr: AddrStr) -> Iterable[AddrStr]:
     """Iterate over the parents of the given address"""
     while addr := get_parent(addr):
         yield addr
