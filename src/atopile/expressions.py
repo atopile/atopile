@@ -134,14 +134,18 @@ class RangedValue:
 
         if max_decimals is None:
             nom = str(val.nominal)
-            tol = str(val.tolerance)
-            pct = str(val.tolerance_pct)
+            if val.tolerance != 0:
+                nom += f' +/- {str(val.tolerance)}'
+                if val.tolerance_pct is not None:
+                    nom += f' ({str(val.tolerance_pct)}%)'
         else:
             nom = _custom_float_format(val.nominal, max_decimals)
-            tol = _custom_float_format(val.tolerance, max_decimals)
-            pct = _custom_float_format(val.tolerance_pct, max_decimals)
+            if val.tolerance != 0:
+                nom += f' +/- {_custom_float_format(val.tolerance, max_decimals)}'
+                if val.tolerance_pct is not None:
+                    nom += f' ({_custom_float_format(val.tolerance_pct, max_decimals)}%)'
 
-        return f"{nom} +/- {tol} ({pct}%) {val.best_usr_unit}"
+        return f"{nom} {val.best_usr_unit}"
 
     def __str__(self) -> str:
         return self.pretty_str()
