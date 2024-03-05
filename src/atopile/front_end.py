@@ -689,15 +689,21 @@ class Scoop(HandleStmtsFunctional, HandlesPrimaries):
         project_context = config.get_project_context()
         return [project_context.src_path, project_context.module_path]
 
+    def ingest_file(self, file: str | Path) -> set[AddrStr]:
+        """Ingest a file into the cache."""
+        # TODO: should this have some protections on
+        # things that are already indexed?
+        file_ast = self.ast_getter(file)
+        obj = self.visitFile_input(file_ast)
+        assert isinstance(obj, ClassDef)
+        # this operation puts it and it's children in the cache
+        return self._register_obj_tree(obj, AddrStr(file), ())
+
     def get_obj_def(self, addr: AddrStr) -> ClassDef:
         """Returns the ObjectDef for a given address."""
         if addr not in self._output_cache:
             file = address.get_file(addr)
-            file_ast = self.ast_getter(file)
-            obj = self.visitFile_input(file_ast)
-            assert isinstance(obj, ClassDef)
-            # this operation puts it and it's children in the cache
-            self._register_obj_tree(obj, AddrStr(file), ())
+            self.ingest_file(file)
         try:
             return self._output_cache[addr]
         except KeyError as ex:
@@ -707,17 +713,22 @@ class Scoop(HandleStmtsFunctional, HandlesPrimaries):
 
     def _register_obj_tree(
         self, obj: ClassDef, addr: AddrStr, closure: tuple[ClassDef]
-    ) -> None:
+    ) -> set[AddrStr]:
         """Register address info to the object, and add it to the cache."""
         obj.address = addr
         obj.closure = closure
         child_closure = (obj,) + closure
         self._output_cache[addr] = obj
+
+        addrs: set[AddrStr] = {addr}
+
         for ref, child in obj.local_defs.items():
             assert len(ref) == 1
             assert isinstance(ref[0], str)
             child_addr = address.add_entry(addr, ref[0])
-            self._register_obj_tree(child, child_addr, child_closure)
+            addrs |= self._register_obj_tree(child, child_addr, child_closure)
+
+        return addrs
 
     def visitFile_input(self, ctx: ap.File_inputContext) -> ClassDef:
         """Visit a file input and return it's object."""
@@ -795,7 +806,7 @@ class Scoop(HandleStmtsFunctional, HandlesPrimaries):
             )
 
         # get the current working directory
-        current_file, _, _ = get_src_info_from_ctx(ctx)
+        current_file, *_ = get_src_info_from_ctx(ctx)
         current_file = Path(current_file)
         if current_file.is_file():
             search_paths = chain((current_file.parent,), self.get_search_paths())

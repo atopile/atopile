@@ -50,12 +50,12 @@ class _BaseAtoError(Exception):
     @classmethod
     def from_ctx(cls, ctx: ParserRuleContext, message: str, *args, **kwargs) -> "_BaseAtoError":
         """Create an error from a context."""
-        src_path, src_line, src_col = get_src_info_from_ctx(ctx)
+        src_path, src_line, src_col, *_ = get_src_info_from_ctx(ctx)
         return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
 
     def set_src_from_ctx(self, ctx: ParserRuleContext):
         """Add source info from a context."""
-        src_path, src_line, src_col = get_src_info_from_ctx(ctx)
+        src_path, src_line, src_col, *_ = get_src_info_from_ctx(ctx)
         self.src_path = src_path
         self.src_line = src_line
         self.src_col = src_col

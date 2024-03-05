@@ -64,6 +64,8 @@ def test_add_instance():
 
 def test_add_instances():
     assert add_instances("//a:b::", ["c", "d", "e"]) == "//a:b::c.d.e"
+    assert add_instances("//a:b", ["c", "d", "e"]) == "//a:b::c.d.e"
+    assert add_instances("//a:b", []) == "//a:b"
 
 
 def test_get_parent():
