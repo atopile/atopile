@@ -1,0 +1,21 @@
+{
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": false,
+    // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
+    "typescript.tsc.autoDetect": "off",
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "tests",
+        // "src/vscode-atopile/src/test/python_tests" FIXME: https://github.com/atopile/atopile/issues/204
+    ],
+    "python.testing.cwd": "${workspaceFolder}",
+    "python.analysis.extraPaths": ["src/vscode-atopile/bundled/libs"],
+    "[typescript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+    },
+    "cSpell.words": [
+        "UNITLESS"
+    ]
+}
