@@ -2,7 +2,7 @@
 
 This extension provides syntax highlighting, auto-completion and goto definition for atopile
 
-![demo](demo.gif)
+![demo](https://github.com/atopile/atopile/blob/main/src/vscode-atopile/demo.gif)
 
 ## Installation
 
@@ -12,7 +12,7 @@ There's a small amount of one-time configuration required to get type-hints from
 
 1. Open up your settings. User settings are recommended so you only have to do this one, but if you manage multiple python environments, then you can use your workspace settings instead. If you do use workspace settings, you'll need to do this for each workspace you use atopile in.
 
-![](../../docs/assets/images/user-settings.png)
+![](https://github.com/atopile/atopile/blob/main/docs/assets/images/user-settings.png)
 
 
 2. Configure the python interpreter to use:
@@ -21,7 +21,7 @@ Replace `<path-to-.venv/bin/python>` with the actual path to the `python` binary
 
 You can find this by running `which python` while your venv is activated.
 
-![](../../docs/assets/images/which-python.png)
+![](https://github.com/atopile/atopile/blob/main/docs/assets/images/which-python.png)
 
 ```json
 "python.defaultInterpreterPath": "<path-to-.venv/bin/python>",
@@ -29,5 +29,4 @@ You can find this by running `which python` while your venv is activated.
 
 Like this!
 
-![](../../docs/assets/images/python-interpreter-settings.png)
-
+![](https://github.com/atopile/atopile/blob/main/docs/assets/images/python-interpreter-settings.png)
