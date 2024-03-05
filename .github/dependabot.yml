@@ -1,0 +1,36 @@
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    directory: /src/vscode-atopile/
+    schedule:
+      interval: monthly
+    labels:
+      - 'no-changelog'
+
+  - package-ecosystem: 'pip'
+    directory: /src/vscode-atopile/src/test/python_tests
+    schedule:
+      interval: daily
+    labels:
+      - 'no-changelog'
+
+  - package-ecosystem: 'pip'
+    directory: /src/vscode-atopile/
+    schedule:
+      interval: daily
+    labels:
+      - 'debt'
+    commit-message:
+      include: 'scope'
+      prefix: 'pip'
+
+  - package-ecosystem: 'npm'
+    directory: /src/vscode-atopile/
+    schedule:
+      interval: monthly
+    labels:
+      - 'no-changelog'
+    ignore:
+      - dependency-name: '@types/vscode'
+      - dependency-name: '@types/node'
+      - dependency-name: 'vscode-languageclient'

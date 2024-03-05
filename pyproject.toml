@@ -22,9 +22,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11"
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
     "antlr4-python3-runtime==4.13.0",
@@ -39,8 +38,10 @@ dependencies = [
     "jinja2>=3.1.3",
     "natsort>=8.4.0",
     "omegaconf==2.4.0.dev1",
+    "packaging>=23.2",
     "pandas>=2.1.4",
     "pint>=0.23",
+    "pygls>=1.3.0",
     "rich>=13.7.0",
     "ruamel.yaml>=0.18.5",
     "scipy>=1.12.0",
