@@ -3,7 +3,7 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.2.24",
+    "version": "1000.0.0",
     "preview": true,
     "serverInfo": {
         "name": "atopile",
@@ -59,8 +59,7 @@
         "pretest": "npm run compile-tests && npm run compile && npm run lint",
         "lint": "eslint src --ext ts",
         "format-check": "prettier --check 'src/**/*.ts' 'build/**/*.yml' '.github/**/*.yml'",
-        "test": "node ./out/test/runTest.js",
-        "vsce-package": "vsce package -o atopile.vsix"
+        "test": "node ./out/test/runTest.js"
     },
     "contributes": {
         "configuration": {
