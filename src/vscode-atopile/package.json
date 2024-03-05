@@ -11,13 +11,14 @@
     },
     "publisher": "atopile",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/atopile/vscode-extension",
+    "homepage": "https://github.com/atopile/atopile",
     "repository": {
         "type": "git",
-        "url": "https://github.com/atopile/vscode-extension.git"
+        "url": "https://github.com/atopile/atopile.git",
+        "directory": "src/vscode-atopile/"
     },
     "bugs": {
-        "url": "https://github.com/atopile/vscode-extension/issues"
+        "url": "https://github.com/atopile/atopile/issues"
     },
     "galleryBanner": {
         "color": "#1e415e",

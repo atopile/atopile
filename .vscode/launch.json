@@ -13,5 +13,83 @@
                 "port": 5678
             }
         },
+        {
+            "name": "Debug Extension Only",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+            "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+            "preLaunchTask": "npm: watch",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 2
+            }
+        },
+        {
+            "name": "Python Attach",
+            "type": "python",
+            "request": "attach",
+            "processId": "${command:pickProcess}",
+            "justMyCode": false,
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 3
+            }
+        },
+        {
+            "name": "Python Config for test explorer (hidden)",
+            "type": "python",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "purpose": ["debug-test"],
+            "justMyCode": true,
+            "presentation": {
+                "hidden": true,
+                "group": "",
+                "order": 4
+            }
+        },
+        {
+            "name": "Debug Extension (hidden)",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+            "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+            "env": {
+                "USE_DEBUGPY": "True"
+            },
+            "presentation": {
+                "hidden": true,
+                "group": "",
+                "order": 4
+            }
+        },
+        {
+            "name": "Python debug server (hidden)",
+            "type": "python",
+            "request": "attach",
+            "listen": { "host": "localhost", "port": 5678 },
+            "justMyCode": true,
+            "presentation": {
+                "hidden": true,
+                "group": "",
+                "order": 4
+            }
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Debug Extension and Python",
+            "configurations": ["Python debug server (hidden)", "Debug Extension (hidden)"],
+            "stopAll": true,
+            "preLaunchTask": "npm: watch",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1
+            }
+        }
     ]
 }
