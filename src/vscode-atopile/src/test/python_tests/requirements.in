@@ -1,0 +1,14 @@
+# This file is used to generate ./src/test/python_tests/requirements.txt.
+# NOTE:
+# Use Python 3.8 or greater which ever is the minimum version of the python
+# you plan on supporting when creating the environment or using pip-tools.
+# Only run the commands below to manully upgrade packages in requirements.txt:
+# 1) python -m pip install pip-tools
+# 2) pip-compile --generate-hashes --upgrade ./src/test/python_tests/requirements.in
+# If you are using nox commands to setup or build package you don't need to
+# run the above commands manually.
+
+# Packages needed by the testing framework.
+pytest
+PyHamcrest
+python-jsonrpc-server

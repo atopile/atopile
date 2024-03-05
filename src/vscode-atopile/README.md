@@ -1,7 +1,6 @@
-# atopile for Visual Studio Code
+# atopile extension
 
-This extension provides syntax highlighting for Atopile files in Visual Studio Code.
+## This repo is brand new
 
-## Docs
+There's a lotta bugs and it's kinda slow. Please report things if you reckon we might've missed them!
 
-https://atopile.io/getting-started/

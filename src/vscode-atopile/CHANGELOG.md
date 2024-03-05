@@ -1,9 +1,3 @@
 # Change Log
 
-All notable changes to the "atopile" extension will be documented in this file.
-
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [Unreleased]
-
-- Initial release
+-   Release information can be added here or can be tracked via github release.
