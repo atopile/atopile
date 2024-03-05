@@ -286,7 +286,7 @@ def create_build():
 
 
         # create a new ato file with the entry file and module
-        ato_file = src_path / entry_file
+        ato_file = src_path / "elec" / "src" / entry_file
 
         ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
 
