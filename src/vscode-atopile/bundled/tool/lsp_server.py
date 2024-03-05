@@ -105,10 +105,10 @@ update_sys_path(
 # Imports needed for the language server goes below this.
 # **********************************************************
 # pylint: disable=wrong-import-position,import-error
-import lsp_jsonrpc as jsonrpc
-import lsp_utils as utils
-import lsprotocol.types as lsp
-from pygls import server, uris, workspace
+import lsp_jsonrpc as jsonrpc  # noqa: E402
+import lsp_utils as utils  # noqa: E402
+import lsprotocol.types as lsp  # noqa: E402
+from pygls import server, uris, workspace  # noqa: E402
 
 WORKSPACE_SETTINGS = {}
 GLOBAL_SETTINGS = {}

@@ -101,11 +101,11 @@ class JsonRpc:
         """Closes the underlying streams."""
         try:
             self._reader.close()
-        except:  # pylint: disable=bare-except
+        except:  # noqa: E722
             pass
         try:
             self._writer.close()
-        except:  # pylint: disable=bare-except
+        except:  # noqa: E722
             pass
 
     def send_data(self, data):
@@ -137,7 +137,7 @@ class ProcessManager:
         for i in self._rpc.values():
             try:
                 i.send_data({"id": str(uuid.uuid4()), "method": "exit"})
-            except:  # pylint: disable=bare-except
+            except:  # noqa: E722
                 pass
         self._thread_pool.shutdown(wait=False)
 
@@ -160,7 +160,7 @@ class ProcessManager:
                     del self._processes[workspace]
                     rpc = self._rpc.pop(workspace)
                     rpc.close()
-                except:  # pylint: disable=bare-except
+                except:  # noqa: E722
                     pass
 
         self._thread_pool.submit(_monitor_process)
