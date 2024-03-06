@@ -3,8 +3,8 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "1000.0.0",
-    "preview": true,
+    "version": "0.2.29",
+    "preview": false,
     "serverInfo": {
         "name": "atopile",
         "module": "atopile"
