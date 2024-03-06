@@ -3,7 +3,7 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.2.29",
+    "version": "0.2.30",
     "preview": false,
     "serverInfo": {
         "name": "atopile",
@@ -19,10 +19,6 @@
     },
     "bugs": {
         "url": "https://github.com/atopile/atopile/issues"
-    },
-    "galleryBanner": {
-        "color": "#1e415e",
-        "theme": "dark"
     },
     "keywords": [
         "atopile"
