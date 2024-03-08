@@ -29,7 +29,8 @@
     "categories": [
         "Programming Languages",
         "Linters",
-        "Formatters"
+        "Formatters",
+        "Snippets"
     ],
     "extensionDependencies": [
         "ms-python.python"
@@ -126,6 +127,48 @@
                 "title": "Restart Server",
                 "category": "atopile",
                 "command": "atopile.restart"
+            },
+            {
+                "command": "atopile.create",
+                "title": "Ato Create",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.build",
+                "title": "Build",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.install",
+                "title": "Install JLCPCB Component",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.install_package",
+                "title": "Install Package",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.venv",
+                "title": "Set Virtual Environment",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.choose_build",
+                "title": "Choose build target",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.launch_kicad",
+                "title": "Launches KiCAD PCB Editor with the current board",
+                "category": "atopile",
+                "when": "editorLangId == ato"
             }
         ],
         "languages": [
