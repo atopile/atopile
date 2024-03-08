@@ -59,6 +59,12 @@
         "test": "node ./out/test/runTest.js"
     },
     "contributes": {
+        "snippets": [
+            {
+                "language": "ato",
+                "path": "./snippets/snippets.json"
+            }
+        ],
         "configuration": {
             "properties": {
                 "atopile.args": {
