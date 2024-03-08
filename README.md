@@ -45,27 +45,33 @@ module VoltageDivider:
     signal bottom
 
     r_top = new Resistor
-    r_top.footprint = "R0402"
-    r_top.value = 100kohm +/- 10%
+    r_top.package = "R0402"
 
     r_bottom = new Resistor
-    r_bottom.footprint = "R0402"
-    r_bottom.value = 200kohm +/- 10%
+    r_bottom.package = "0402"
 
     top ~ r_top.p1; r_top.p2 ~ out
     out ~ r_bottom.p1; r_bottom.p2 ~ bottom
+
+    r_total: resistance
+    v_in: voltage
+    v_out: voltage
+    i_q: current
+
+    assert v_in * r_bottom.value / (r_top.value + r_bottom.value) within v_out
+    assert v_in / (r_bottom.value + r_top.value) within i_q
 ```
 
 #### RP2040 Blinky Circuit
 ```python
-import RP2040Kit from "rp2040/rp2040_kit.ato"
-import LEDIndicator from "generics/leds.ato"
+import RP2040Kit from "rp2040/RP2040Kit.ato"
+import LEDIndicatorRed from "generics/leds.ato"
 import LDOReg3V3 from "regulators/regulators.ato"
 import USBCConn from "usb-connectors/usb-connectors.ato"
 
 module Blinky:
     micro_controller = new RP2040Kit
-    led_indicator = new LEDIndicator
+    led_indicator = new LEDIndicatorRed
     voltage_regulator = new LDOReg3V3
     usb_c_connector = new USBCConn
 
@@ -74,7 +80,7 @@ module Blinky:
     micro_controller.gpio13 ~ led_indicator.input
     micro_controller.power.gnd ~ led_indicator.gnd
 
-    led_indicator.resistor.value = 100ohm +/- 10%
+    led_indicator.v_in = 3.3volt +/-10%
 ```
 
 ### Full Projects
