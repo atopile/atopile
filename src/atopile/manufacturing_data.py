@@ -93,6 +93,7 @@ def generate_manufacturing_data(build_ctx: config.BuildContext) -> None:
         short_githash_length = 7
         if repo.is_dirty():
             short_githash = "dirty"
+            atopile.errors.AtoError(f"There are non-commited changes in your repo. Git hash is: {short_githash}").log(log, logging.WARNING)
         else:
             short_githash = repo.head.commit.hexsha[:short_githash_length]
 
