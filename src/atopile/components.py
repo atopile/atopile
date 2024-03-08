@@ -20,10 +20,8 @@ def _get_specd_mpn(addr: AddrStr) -> str:
     """
     Return the MPN for a component given its address
     """
-    comp_data = instance_methods.get_data_dict(addr)
-
     try:
-        return comp_data["mpn"]
+        return instance_methods.get_data(addr, "mpn")
     except KeyError as ex:
         raise MissingData("$addr has no MPN", title="No MPN", addr=addr) from ex
 
@@ -237,14 +235,12 @@ def get_specd_value(addr: AddrStr) -> str:
     """
     Return the MPN for a component given its address
     """
-    comp_data = instance_methods.get_data_dict(addr)
-    if not _is_generic(addr):
-        # it's cool if there's no value for non-generics
-        return str(comp_data.get("value", ""))
-
     try:
-        return str(comp_data["value"])
+        return str(instance_methods.get_data(addr, "value"))
     except KeyError as ex:
+        if not _is_generic(addr):
+            # it's cool if there's no value for non-generics
+            return ""
         raise MissingData(
             "$addr has no value spec'd",
             title="No value",
@@ -268,10 +264,7 @@ def get_user_facing_value(addr: AddrStr) -> str:
         else:
             return "?"
 
-    comp_data = instance_methods.get_data_dict(addr)
-    # The default is okay here, because we're only generics
-    # must have a value
-    return str(comp_data.get("value", ""))
+    return get_specd_value(addr)
 
 
 # FIXME: this function's requirements might cause a circular dependency
@@ -330,9 +323,8 @@ def get_footprint(addr: AddrStr) -> str:
             ) from ex
         return footprint
 
-    comp_data = instance_methods.get_data_dict(addr)
     try:
-        return comp_data["footprint"]
+        return instance_methods.get_data(addr, "footprint")
     except KeyError as ex:
         raise MissingData(
             "$addr has no footprint", title="No Footprint", addr=addr
@@ -348,15 +340,16 @@ def get_package(addr: AddrStr) -> str:
         db_data = _get_generic_from_db(addr)
         return db_data.get("package", "")
 
-    comp_data = instance_methods.get_data_dict(addr)
     try:
-        return comp_data["footprint"]
+        return instance_methods.get_data(addr, "footprint")
     except KeyError as ex:
         raise MissingData("$addr has no package", title="No Package", addr=addr) from ex
 
 
 class DesignatorManager:
-    """TODO:"""
+    """
+    Ensure unique designators for all components.
+    """
 
     def __init__(self) -> None:
         self._designators: dict[AddrStr, str] = {}
@@ -371,10 +364,10 @@ class DesignatorManager:
         for component in filter(
             instance_methods.match_components, instance_methods.all_descendants(root)
         ):
-            # designator = instance_methods.get_lock_data_dict(component).get(
-            #     "designator"
-            # )
-            designator = None
+            try:
+                designator = instance_methods.get_data(component, "designator")
+            except KeyError:
+                designator = None
             if designator:
                 used_designators.add(designator)
                 designators[component] = designator
@@ -383,9 +376,10 @@ class DesignatorManager:
 
         # second pass: assign designators to the unnamed components
         for component in unnamed_components:
-            prefix = instance_methods.get_data_dict(component).get(
-                "designator_prefix", "U"
-            )
+            try:
+                prefix = instance_methods.get_data(component, "designator_prefix")
+            except KeyError:
+                prefix = "U"
 
             i = 1
             while f"{prefix}{i}" in used_designators:

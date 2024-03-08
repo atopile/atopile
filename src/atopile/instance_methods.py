@@ -18,6 +18,16 @@ def get_data_dict(addr: str) -> dict[str, Any]:
     return {k: v[0].value for k, v in instance.assignments.items()}
 
 
+def get_data(addr: str, key: str) -> Any:
+    """Return the data at the given address"""
+    instance = lofty.get_instance(addr)
+    if assignments := instance.assignments.get(key):
+        if value := assignments[0].value:
+            return value
+        raise errors.AtoKeyError(f"{addr} has no value for {key}")
+    raise errors.AtoKeyError(f"{addr} has no attribute {key}")
+
+
 def all_descendants(addr: str) -> Iterable[str]:
     """
     Return a list of addresses in depth-first order
