@@ -20,8 +20,8 @@ The top-level features themselves are too, but we'll tackle the basics of some d
 - [x] Retyping / Replacement `->`
 - [x] Physical units `10kOhm` `1uF`
 - [x] Tolerances `10kOhm +/- 1%`
+- [x] Equations / Expressions; relate the parameters of components to specs and solve at compile time
 - [ ] Composition / [Traits](https://doc.rust-lang.org/book/ch10-02-traits.html)
-- [ ] Equations / Expressions; relate the parameters of components to specs and solve at compile time
 - [ ] Typing; what is allowed to or must be connected to what?
 
 #### Component Selection
@@ -29,9 +29,10 @@ The top-level features themselves are too, but we'll tackle the basics of some d
 - [x] MVP select jelly-beans from JLCPCB
 - [x] Move component database to cloud in order to support more components and component types
 
-#### Quality control
+#### Quality Control
 
 - [x] Generate gerbers in CI
+- [ ] Lock files (ensuring consistent builds)
 - [ ] DRC in CI
 - [ ] Check source code and layouts are in sync
 
@@ -46,7 +47,8 @@ The top-level features themselves are too, but we'll tackle the basics of some d
 #### Dev tools
 
 - [x] VSCode extension
-- [ ] VSCode lanaugage server
+- [x] VSCode basic language server (goto definition)
+- [ ] Linting
 - [ ] Schematic viewer; imagine side-by-side with the code
 - [ ] KiCAD extension
 
