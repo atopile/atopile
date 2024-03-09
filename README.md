@@ -101,7 +101,7 @@ Then just `pip install atopile` and you're good to go!
 
 ## ❓ Why Atopile?
 
-The objective of atopile is to help push forward these pardiagrams from the software world to hardware, mainly these points:
+The objective of atopile is to help push forward these paradigms from the software world to hardware, mainly these points:
 
 * **Intelligent Design Capture**: Define hardware specifications like ratios and tolerances in code, enabling precise control and easy reuse of designs.
 * **Version Control Integration**: Use git to manage design changes, facilitating collaboration and ensuring each iteration is thoroughly reviewed and validated.
