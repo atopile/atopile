@@ -74,14 +74,20 @@ def sync_track(track: pcbnew.PCB_TRACK, target: pcbnew.BOARD) -> pcbnew.PCB_TRAC
 
 def sync_footprints(
     source: pcbnew.BOARD, target: pcbnew.BOARD, uuid_map: dict[str, str]
-):
+) -> list[str]:
     """Update the target board with the layout from the source board."""
     # Update the footprint position, orientation, and side to match the source
     source_uuids = footprints_by_uuid(source)
     target_uuids = footprints_by_uuid(target)
+    missing_uuids = []
     for s_uuid, t_uuid in uuid_map.items():
-        target_fp = target_uuids[t_uuid]
-        source_fp = source_uuids[s_uuid]
+        try:
+            target_fp = target_uuids[t_uuid]
+            source_fp = source_uuids[s_uuid]
+        except KeyError:
+            missing_uuids.append(s_uuid)
+            continue
         target_fp.SetPosition(source_fp.GetPosition())
         target_fp.SetOrientation(source_fp.GetOrientation())
         target_fp.SetLayer(source_fp.GetLayer())
+    return missing_uuids

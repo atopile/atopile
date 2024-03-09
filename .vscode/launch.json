@@ -27,7 +27,7 @@
             }
         },
         {
-            "name": "Python Attach",
+            "name": "Python Attach to Process",
             "type": "python",
             "request": "attach",
             "processId": "${command:pickProcess}",
