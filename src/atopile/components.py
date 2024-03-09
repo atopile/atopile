@@ -361,18 +361,24 @@ class DesignatorManager:
 
         # FIXME: add lock-file data
         # first pass: grab all the designators from the lock data
-        for component in filter(
+        for err_handler, component in errors.iter_through_errors(filter(
             instance_methods.match_components, instance_methods.all_descendants(root)
-        ):
-            try:
-                designator = instance_methods.get_data(component, "designator")
-            except KeyError:
-                designator = None
-            if designator:
-                used_designators.add(designator)
-                designators[component] = designator
-            else:
-                unnamed_components.append(component)
+        )):
+            with err_handler():
+                try:
+                    designator = instance_methods.get_data(component, "designator")
+                except KeyError:
+                    designator = None
+
+                if designator:
+                    if designator in used_designators:
+                        raise errors.AtoError(
+                            f"Designator {designator} already in use", addr=component
+                        )
+                    used_designators.add(designator)
+                    designators[component] = designator
+                else:
+                    unnamed_components.append(component)
 
         # second pass: assign designators to the unnamed components
         for component in unnamed_components:
@@ -387,9 +393,6 @@ class DesignatorManager:
 
             designators[component] = f"{prefix}{i}"
             used_designators.add(designators[component])
-            # instance_methods.get_lock_data_dict(component)["designator"] = designators[
-            #     component
-            # ]
 
         return designators
 
