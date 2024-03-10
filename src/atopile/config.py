@@ -6,12 +6,12 @@ import copy
 import fnmatch
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import cattrs
 import deepdiff
-from ruamel.yaml import YAML
 from attrs import Factory, define
+from ruamel.yaml import YAML
 
 import atopile.errors
 import atopile.version
@@ -30,11 +30,15 @@ BUILD_DIR_NAME = "build"
 _converter = cattrs.Converter()
 
 
+class AtoConfigError(atopile.errors.AtoError):
+    """An error in the config file."""
+
+
 @define
 class ProjectPaths:
     """Config grouping for all the paths in a project."""
 
-    src: Path = "./"
+    src: Path = "elec/src"
     layout: Path = "elec/layout"
 
 
@@ -57,7 +61,8 @@ class Dependency:
     """A dependency for a project."""
 
     name: str
-    version_spec: str = "^0.0.0"
+    version_spec: Optional[str] = None
+    link_broken: bool = False
     path: Optional[Path] = None
 
     @classmethod
@@ -67,11 +72,14 @@ class Dependency:
             if splitter in spec_str:
                 try:
                     name, version_spec = spec_str.split(splitter)
+                    name = name.strip()
+                    version_spec = version_spec.strip()
+                    version_spec = splitter + version_spec
                 except TypeError as ex:
                     raise atopile.errors.AtoTypeError(
                         f"Invalid dependency spec: {spec_str}"
                     ) from ex
-                return cls(name.strip(), version_spec.strip())
+                return cls(name, version_spec)
         return cls(name=spec_str)
 
 
@@ -90,30 +98,36 @@ class ProjectConfig:
     services: ProjectServicesConfig = Factory(ProjectServicesConfig)
 
     @staticmethod
-    def sanitise_dict_keys(d: dict) -> dict:
+    def _sanitise_dict_keys(d: dict) -> dict:
         """Sanitise the keys of a dictionary to be valid python identifiers."""
         data = copy.deepcopy(d)
         data["ato_version"] = data.pop("ato-version")
         return data
 
     @staticmethod
-    def unsanitise_dict_keys(d: dict) -> dict:
+    def _unsanitise_dict_keys(d: dict) -> dict:
         """Sanitise the keys of a dictionary to be valid python identifiers."""
         data = copy.deepcopy(d)
         data["ato-version"] = data.pop("ato_version")
+        del data["location"]  # The location is saved by the literal location of the file
         return data
 
     @classmethod
     def structure(cls, data: dict) -> "ProjectConfig":
         """Make a config object from a dictionary."""
-        return _converter.structure(cls.sanitise_dict_keys(data), cls)
+        try:
+            return _converter.structure(cls._sanitise_dict_keys(data), cls)
+        except* KeyError as exs:
+            for ex in exs.exceptions:
+                # FIXME: make this less shit
+                raise AtoConfigError(f"Bad key in config {repr(ex)}") from ex
 
     def patch_config(self, original: dict) -> dict:
         """Apply a delta between the original and the current config."""
         original_cfg = self.structure(original)
         delta = deepdiff.Delta(deepdiff.DeepDiff(
-            self.unsanitise_dict_keys(_converter.unstructure(original_cfg)),
-            self.unsanitise_dict_keys(_converter.unstructure(self)),
+            self._unsanitise_dict_keys(_converter.unstructure(original_cfg)),
+            self._unsanitise_dict_keys(_converter.unstructure(self)),
         ))
         return original + delta
 
@@ -125,7 +139,7 @@ class ProjectConfig:
         Save the changes to the config object
         """
         if location is None:
-            location = self.location
+            location = self.location / CONFIG_FILENAME
 
         with location.open() as f:
             original = yaml.load(f)
@@ -153,7 +167,7 @@ class ProjectConfig:
 
 _converter.register_structure_hook(
     str | Dependency,
-    lambda d, _: Dependency.from_str(d) if isinstance(d, str) else d,
+    lambda d, _: Dependency.from_str(d) if isinstance(d, str) else _converter.structure(d, Dependency),
 )
 
 ##

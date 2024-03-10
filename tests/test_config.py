@@ -16,9 +16,9 @@ def test_roundtrip():
         dependencies:
         - tps63020dsjr # comments
         - usb-connectors ^v2.0.1
-        - esp32-s3:
-            version: ^v0.0.1
-            path: ../esp32-s3
+        - name: esp32-s3
+          version: ^v0.0.1
+          path: ../esp32-s3
         """)
     cfg = config.ProjectConfig.structure(config_dict)
     assert config_dict == cfg.patch_config(config_dict)

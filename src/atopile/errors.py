@@ -244,7 +244,7 @@ def handle_ato_errors(logger: logging.Logger = log) -> None:
     try:
         yield
 
-    except (AtoError, ExceptionGroup) as ex:
+    except* AtoError as ex:
         # If we're in a debug session, we want to see the
         # unadulterated exception. We do this pre-logging because
         # we don't want the logging to potentially obstruct the debugger.
@@ -254,7 +254,6 @@ def handle_ato_errors(logger: logging.Logger = log) -> None:
         # FIXME: we're gonna repeat ourselves a lot if the same
         # error causes an issue multiple times (which they do)
         _log_ato_errors(ex, logger)
-        raise AtoFatalError from ex
 
 
 def muffle_fatalities(func):
