@@ -1,17 +1,17 @@
 import pytest
 
-from atopile.errors import AtoError, _error_accumulator, iter_through_errors
+from atopile.errors import AtoError, iter_through_errors, ExceptionAccumulator
 
 
-def test_error_accumulator():
+def test_ExceptionAccumulator():
     with pytest.raises(ExceptionGroup):
-        with _error_accumulator() as err_cltr:
-            with err_cltr():
+        with ExceptionAccumulator() as error_collector:
+            with error_collector():
                 raise AtoError("test error")
 
             # FIXME: damn... I don't like that the type-checker/linter
             # doesn't realise the error is supressed
-            with err_cltr():
+            with error_collector():
                 raise AtoError("test error 2")
 
 

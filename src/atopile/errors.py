@@ -6,7 +6,7 @@ import traceback
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Callable, ContextManager, Iterable, Iterator, Optional, Type, TypeVar
+from typing import Callable, ContextManager, Iterable, Optional, Type, TypeVar
 
 import rich
 from antlr4 import ParserRuleContext, Token
@@ -181,7 +181,7 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
         message += f"{source_info}\n"
 
     # Replace the address in the string, if we have it attached
-    fmt_message = textwrap.indent(str(ex.message), "--> ")
+    fmt_message = textwrap.indent(str(ex.message), "    ")
     if ex.addr:
         if debug:
             addr = ex.addr
@@ -292,63 +292,63 @@ def muffle_fatalities(func):
     return wrapper
 
 
-@contextmanager
-def _error_accumulator(
-    accumulate_types: Optional[Type | tuple[Type]] = None,
-    group_message: Optional[str] = None,
-) -> Iterator[Callable[[], ContextManager]]:
+class ExceptionAccumulator:
     """
-    Wraps a block of code and collects any ato errors raised while executing it.
-
-    This is private because I'm not sure it's a good idea to use on its own.
-    It's indented for use with the iter_through_errors function below.
+    Collect a group of errors and only raise
+    an exception group at the end of execution.
     """
-    errors: list[Exception] = []
+    def __init__(self, accumulate_types: Optional[Type[Exception]] = None, group_message: Optional[str] = None) -> None:
+        self.errors: list[Exception] = []
 
-    # Set default values for the arguments
-    # NOTE: we don't do this in the function signature because
-    # we want the defaults to be the same here as in the iter_through_errors
-    # function below
-    if accumulate_types is None:
-        accumulate_types = AtoError
+        # Set default values for the arguments
+        # NOTE: we don't do this in the function signature because
+        # we want the defaults to be the same here as in the iter_through_errors
+        # function below
+        self.accumulate_types = accumulate_types or AtoError
+        self.group_message = group_message or ""
 
-    if not group_message:
-        group_message = ""
+    def make_collector(self):
+        """
+        Return a context manager that collects any ato errors raised while executing it.
+        """
+        @contextmanager
+        def _collect_ato_errors():
+            # If in a debugging session - don't collect errors
+            # because we want to see the unadulterated exception
+            # to stop the debugger
+            if in_debug_session():
+                yield
+                return
 
-    @contextmanager
-    def _collect_ato_errors():
-        # If in a debugging session - don't collect errors
-        # because we want to see the unadulterated exception
-        # to stop the debugger
-        if in_debug_session():
-            yield
-            return
+            try:
+                yield
+            except* self.accumulate_types as ex:
+                self.errors.extend(ex.exceptions)
 
-        try:
-            yield
-        except accumulate_types as ex:
-            errors.append(ex)
-        except ExceptionGroup as ex:
-            nice, naughty = ex.split(accumulate_types)
-            if nice:
-                errors.extend(nice.exceptions)
-            if naughty:
-                raise naughty from ex
+        return _collect_ato_errors
 
-    yield _collect_ato_errors
+    def raise_errors(self):
+        """
+        Raise the collected errors as an exception group.
+        """
+        if self.errors:
+            # Display unique errors in order
+            # FIXME: this is both hard to understand and wildly inefficient
+            displayed_errors = []
+            for error in self.errors:
+                if not any(
+                    existing_error.__dict__ == error.__dict__
+                    for existing_error in displayed_errors
+                ):
+                    displayed_errors.append(error)
 
-    if errors:
-        # Display unique errors in order
-        # FIXME: this is both hard to understand and wildly inefficient
-        displayed_errors = []
-        for error in errors:
-            if not any(
-                existing_error.__dict__ == error.__dict__
-                for existing_error in displayed_errors
-            ):
-                displayed_errors.append(error)
+            raise ExceptionGroup(self.group_message, displayed_errors)
 
-        raise ExceptionGroup(group_message, displayed_errors)
+    def __enter__(self) -> Callable[[], ContextManager]:
+        return self.make_collector()
+
+    def __exit__(self, *args):
+        self.raise_errors()
 
 
 T = TypeVar("T")
@@ -365,7 +365,7 @@ def iter_through_errors(
     - the item from the iterable
     """
 
-    with _error_accumulator(accumulate_types, group_message) as err_cltr:
+    with ExceptionAccumulator(accumulate_types, group_message) as err_cltr:
         for item in gen:
             # NOTE: we don't create a single context manager for the whole generator
             # because generator context managers are a bit special
