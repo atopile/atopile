@@ -1,12 +1,17 @@
 import logging
+import sys
 
 import click
 from rich.logging import RichHandler
 
-from atopile import telemetry
+from atopile import telemetry, errors
 from atopile.cli.rich_console import console
 
 from . import build, configure, create, inspect, install
+
+
+log = logging.getLogger(__name__)
+
 
 FORMAT = "%(message)s"
 logging.basicConfig(
@@ -27,9 +32,10 @@ logging.basicConfig(
 @click.group()
 @click.option("--non-interactive", is_flag=True, envvar="ATO_NON_INTERACTIVE")
 @click.option("--debug", is_flag=True)
+@click.option("--debug-ex", is_flag=True)
 @click.option("-v", "--verbose", count=True)
 @click.pass_context  # This decorator makes the context available to the command.
-def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
+def cli(ctx, non_interactive: bool, debug: bool, debug_ex: bool, verbose: int):
     """Base CLI group."""
 
     # Initialize telemetry
@@ -40,8 +46,18 @@ def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
 
         debug_port = 5678
         debugpy.listen(("localhost", debug_port))
-        logging.info("Starting debugpy on port %s", debug_port)
+        log.info("Starting debugpy on port %s", debug_port)
         debugpy.wait_for_client()
+
+    # Set this global variable to control the behavior of the errors module
+    if debug_ex:
+        if debug:
+            log.warning(
+                "Both --debug and --debug-on-failure are set. "
+                "--debug-on-failure will be ignored."
+            )
+        else:
+            errors.debug_ex = True
 
     # set the log level
     if verbose == 1:

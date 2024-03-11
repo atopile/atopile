@@ -32,6 +32,7 @@ def build(build_ctxs: list[BuildContext]):
     Specify the root source file with the argument SOURCE.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
+    raise Exception
     for err_cltr, build_ctx in iter_through_errors(build_ctxs):
         log.info("Building %s", build_ctx.name)
         with err_cltr():

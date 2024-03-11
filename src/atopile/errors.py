@@ -11,11 +11,11 @@ from typing import Callable, ContextManager, Iterable, Iterator, Optional, Type,
 import rich
 from antlr4 import ParserRuleContext, Token
 
-from atopile import address
+from atopile import address, telemetry
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
-from atopile import telemetry
 
 log = logging.getLogger(__name__)
+debug_ex = False
 
 
 class _BaseAtoError(Exception):
@@ -45,13 +45,29 @@ class _BaseAtoError(Exception):
     def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseAtoError":
         """Create an error from a token."""
         src_path, src_line, src_col = get_src_info_from_token(token)
-        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
+        return cls(
+            message,
+            src_path=src_path,
+            src_line=src_line,
+            src_col=src_col,
+            *args,
+            **kwargs,
+        )
 
     @classmethod
-    def from_ctx(cls, ctx: ParserRuleContext, message: str, *args, **kwargs) -> "_BaseAtoError":
+    def from_ctx(
+        cls, ctx: ParserRuleContext, message: str, *args, **kwargs
+    ) -> "_BaseAtoError":
         """Create an error from a context."""
         src_path, src_line, src_col, *_ = get_src_info_from_ctx(ctx)
-        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
+        return cls(
+            message,
+            src_path=src_path,
+            src_line=src_line,
+            src_col=src_col,
+            *args,
+            **kwargs,
+        )
 
     def set_src_from_ctx(self, ctx: ParserRuleContext):
         """Add source info from a context."""
@@ -77,10 +93,7 @@ class _BaseAtoError(Exception):
         """
         logger.log(
             to_level,
-            format_error(
-                self,
-                logger.isEnabledFor(logging.DEBUG)
-            ),
+            format_error(self, logger.isEnabledFor(logging.DEBUG)),
             extra={"markup": True},
         )
         if logger.isEnabledFor(logging.DEBUG):
@@ -147,6 +160,7 @@ class AtoInfraError(AtoError):
     Raised when there's an issue contacting atopile
     infrastructure needed for an operation.
     """
+
     title = "Infrastructure Error"
 
 
@@ -232,6 +246,7 @@ def in_debug_session() -> bool:
         from debugpy import (
             is_client_connected,  # pylint: disable=import-outside-toplevel
         )
+
         return is_client_connected()
     return False
 
@@ -267,7 +282,7 @@ def muffle_fatalities(func):
         try:
             with handle_ato_errors():
                 return func(*args, **kwargs)
-        except AtoFatalError:
+        except* AtoFatalError:
             telemetry.telemetry_data.ato_error = 1
             rich.print(
                 "\n\nUnfortunately errors ^^^ stopped the build. "
@@ -275,15 +290,15 @@ def muffle_fatalities(func):
             )
             sys.exit(1)
 
-        except ExceptionGroup as ex:
-            _, not_fatal_errors = ex.split(AtoFatalError)
-            if not_fatal_errors:
-                telemetry.telemetry_data.crash += len(not_fatal_errors.exceptions)
-                raise not_fatal_errors from ex
-            sys.exit(1)
+        except* Exception as ex:
+            # TODO: count the number of errors better
+            telemetry.telemetry_data.crash += len(ex.exceptions)
 
-        except Exception:
-            telemetry.telemetry_data.crash += 1
+            import debugpy  # noqa: F401
+            debugpy.listen(("localhost", 5678))
+            print("Exception has occurred. Waiting for debugger to attach...")
+            debugpy.wait_for_client()
+
             raise
 
         finally:
@@ -378,7 +393,7 @@ C = TypeVar("C", bound=Callable)
 def downgrade(
     func: C,
     exs: Type | tuple[Type],
-    default = None,
+    default=None,
     to_level: int = logging.WARNING,
     logger: logging.Logger = log,
 ) -> C:
@@ -386,6 +401,7 @@ def downgrade(
     Return a wrapped version of your function that catches the given exceptions
     and logs their contents as warning, instead returning a default value
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
