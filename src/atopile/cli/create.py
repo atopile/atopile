@@ -206,7 +206,19 @@ def create(
 
     # Install dependencies listed in the ato.yaml, typically just generics
     do_install(
-        to_install="", jlcpcb=False, link=True, upgrade=True, path=repo_obj.working_tree_dir
+        to_install="",
+        jlcpcb=False,
+        link=True,
+        upgrade=True,
+        path=repo_obj.working_tree_dir
+    )
+
+    do_install(
+        to_install="generics",
+        jlcpcb=False,
+        link=False,
+        upgrade=True,
+        path=repo_obj.working_tree_dir
     )
 
     # Wew! New repo created!

@@ -125,10 +125,26 @@ class ProjectConfig:
     def patch_config(self, original: dict) -> dict:
         """Apply a delta between the original and the current config."""
         original_cfg = self.structure(original)
-        delta = deepdiff.Delta(deepdiff.DeepDiff(
+
+        # Here we need to work around some structural changes
+        # FIXME: the ideal behaviour here would be to default back to
+        # the new structure whenever there's a conflict, but I can't
+        # find a hook to callback to a "conflict-resolver" or the likes
+        # and the exceptions don't have sufficient information to easily find them
+        original_deps_by_name = {d.name: d for d in original_cfg.dependencies}
+        original_dep_indicies = {d.name: i for i, d in enumerate(original_cfg.dependencies)}
+        for d in self.dependencies:
+            if d.name in original_deps_by_name and d != original_deps_by_name[d.name]:
+                del original["dependencies"][original_dep_indicies[d.name]]
+        original_cfg = self.structure(original)
+        # Kill me... I'm sorry
+
+        diff = deepdiff.DeepDiff(
             self._unsanitise_dict_keys(_converter.unstructure(original_cfg)),
             self._unsanitise_dict_keys(_converter.unstructure(self)),
-        ))
+        )
+
+        delta = deepdiff.Delta(diff)
         return original + delta
 
     def save_changes(
