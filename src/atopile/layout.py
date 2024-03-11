@@ -12,7 +12,7 @@ import logging
 import uuid
 from collections import defaultdict
 
-from atopile import address, config, errors
+from atopile import address, config, errors, instance_methods
 from atopile.instance_methods import (
     all_descendants,
     find_matching_super,
@@ -82,19 +82,15 @@ def generate_module_map(build_ctx: config.BuildContext) -> None:
         # FIXME: this currently relies on the `all_descendants` iterator returning the
         # children in the same order. This is pretty fragile and should be fixed.
         uuid_map = {}
-        for inst_addr, layout_addr in zip(
-            all_descendants(module_instance), all_descendants(module_super_ctx.entry)
+        for inst_addr, layout_addr in instance_methods.common_children(
+            module_instance, module_super_ctx.entry
         ):
             if not match_components(inst_addr):
                 # Skip non-components
                 continue
 
-            if address.get_name(inst_addr) != address.get_name(layout_addr):
-                errors.AtoError(
-                    "Mismatched names in layout and instance addresses,"
-                    " skipping component in auto-layout generation"
-                ).log(log, logging.WARNING)
-                continue
+            # This should be enforced by the `common_children` function
+            assert address.get_name(inst_addr) == address.get_name(layout_addr)
 
             uuid_map[generate_comp_uid(inst_addr)] = generate_comp_uid(layout_addr)
 
