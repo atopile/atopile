@@ -2,21 +2,23 @@
 
 """Schema and utils for atopile config files."""
 
-import collections.abc
+import copy
 import fnmatch
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
-import yaml
+import cattrs
+import deepdiff
 from attrs import Factory, define
-from omegaconf import MISSING, OmegaConf
-from omegaconf.errors import ConfigKeyError
+from ruamel.yaml import YAML
 
 import atopile.errors
+import atopile.version
 from atopile import address
 
 log = logging.getLogger(__name__)
+yaml = YAML()
 
 
 CONFIG_FILENAME = "ato.yaml"
@@ -25,11 +27,18 @@ MODULE_DIR_NAME = "modules"
 BUILD_DIR_NAME = "build"
 
 
+_converter = cattrs.Converter()
+
+
+class AtoConfigError(atopile.errors.AtoError):
+    """An error in the config file."""
+
+
 @define
 class ProjectPaths:
     """Config grouping for all the paths in a project."""
 
-    src: Path = "./"
+    src: Path = "elec/src"
     layout: Path = "elec/layout"
 
 
@@ -37,7 +46,7 @@ class ProjectPaths:
 class ProjectBuildConfig:
     """Config for a build."""
 
-    entry: str = MISSING
+    entry: Optional[str] = None
     targets: list[str] = ["__default__"]
 
 
@@ -48,77 +57,136 @@ class ProjectServicesConfig:
 
 
 @define
+class Dependency:
+    """A dependency for a project."""
+
+    name: str
+    version_spec: Optional[str] = None
+    link_broken: bool = False
+    path: Optional[Path] = None
+
+    @classmethod
+    def from_str(cls, spec_str: str) -> "Dependency":
+        """Create a Dependency object from a string."""
+        for splitter in atopile.version.OPERATORS + ("@",):
+            if splitter in spec_str:
+                try:
+                    name, version_spec = spec_str.split(splitter)
+                    name = name.strip()
+                    version_spec = version_spec.strip()
+                    version_spec = splitter + version_spec
+                except TypeError as ex:
+                    raise atopile.errors.AtoTypeError(
+                        f"Invalid dependency spec: {spec_str}"
+                    ) from ex
+                return cls(name, version_spec)
+        return cls(name=spec_str)
+
+
+@define
 class ProjectConfig:
     """
     The config object for atopile.
     """
 
-    location: Path = MISSING
+    location: Optional[Path] = None
 
     ato_version: str = "0.1.0"
     paths: ProjectPaths = Factory(ProjectPaths)
     builds: dict[str, ProjectBuildConfig] = Factory(dict)
-    dependencies: list[str] = []
+    dependencies: list[str | Dependency] = Factory(list)
     services: ProjectServicesConfig = Factory(ProjectServicesConfig)
 
+    @staticmethod
+    def _sanitise_dict_keys(d: dict) -> dict:
+        """Sanitise the keys of a dictionary to be valid python identifiers."""
+        data = copy.deepcopy(d)
+        data["ato_version"] = data.pop("ato-version")
+        return data
 
-KEY_CONVERSIONS = {
-    "ato-version": "ato_version",
-}
+    @staticmethod
+    def _unsanitise_dict_keys(d: dict) -> dict:
+        """Sanitise the keys of a dictionary to be valid python identifiers."""
+        data = copy.deepcopy(d)
+        data["ato-version"] = data.pop("ato_version")
+        del data["location"]  # The location is saved by the literal location of the file
+        return data
 
-
-def _sanitise_key(key: str) -> str:
-    """Sanitize a key."""
-    return KEY_CONVERSIONS.get(key, key)
-
-
-def _sanitise_item(item: tuple[Any, Any]) -> tuple[Any, Any]:
-    """Sanitise the key of a dictionary item to be a valid python identifier."""
-    k, v = item
-    if isinstance(v, collections.abc.Mapping):
-        return _sanitise_key(k), _sanitise_dict_keys(v)
-    return _sanitise_key(k), v
-
-
-def _sanitise_dict_keys(d: collections.abc.Mapping) -> collections.abc.Mapping:
-    """Sanitise the keys of a dictionary to be valid python identifiers."""
-    if d is None:
-        return {}
-    return dict(_sanitise_item(item) for item in d.items())
-
-
-def make_config(project_config: Path) -> ProjectConfig:
-    """
-    Make a config object for a project.
-
-    The typing on this is a little white lie... because they're really OmegaConf objects.
-    """
-    structure: ProjectConfig = OmegaConf.structured(ProjectConfig())
-
-    with project_config.open() as f:
-        config_data = yaml.safe_load(f)
-    project_config_data = OmegaConf.create(_sanitise_dict_keys(config_data))
-
-    structure.location = project_config.parent.expanduser().resolve().absolute()
-
-    for _ in range(1000):
+    @classmethod
+    def structure(cls, data: dict) -> "ProjectConfig":
+        """Make a config object from a dictionary."""
         try:
-            return OmegaConf.merge(
-                structure,
-                project_config_data,
-            )
-        except ConfigKeyError as ex:
-            dot_path = ex.full_key.split(".")
-            container = project_config_data
-            for key in dot_path[:-1]:
-                container = container[key]
-            del container[dot_path[-1]]
+            return _converter.structure(cls._sanitise_dict_keys(data), cls)
+        except* KeyError as exs:
+            for ex in exs.exceptions:
+                # FIXME: make this less shit
+                raise AtoConfigError(f"Bad key in config {repr(ex)}") from ex
 
-            atopile.errors.AtoError(
-                f"Unknown config option in {structure.location}. Ignoring \"{ex.full_key}\".",
-                title="Unknown config option",
-            ).log(log, logging.WARNING)
-    raise atopile.errors.AtoError("Too many config errors")
+    def patch_config(self, original: dict) -> dict:
+        """Apply a delta between the original and the current config."""
+        original_cfg = self.structure(original)
+
+        # Here we need to work around some structural changes
+        # FIXME: the ideal behaviour here would be to default back to
+        # the new structure whenever there's a conflict, but I can't
+        # find a hook to callback to a "conflict-resolver" or the likes
+        # and the exceptions don't have sufficient information to easily find them
+        original_deps_by_name = {d.name: d for d in original_cfg.dependencies}
+        original_dep_indicies = {d.name: i for i, d in enumerate(original_cfg.dependencies)}
+        for d in self.dependencies:
+            if d.name in original_deps_by_name and d != original_deps_by_name[d.name]:
+                del original["dependencies"][original_dep_indicies[d.name]]
+        original_cfg = self.structure(original)
+        # Kill me... I'm sorry
+
+        diff = deepdiff.DeepDiff(
+            self._unsanitise_dict_keys(_converter.unstructure(original_cfg)),
+            self._unsanitise_dict_keys(_converter.unstructure(self)),
+        )
+
+        delta = deepdiff.Delta(diff)
+        return original + delta
+
+    def save_changes(
+        self,
+        location: Optional[Path] = None
+    ) -> None:
+        """
+        Save the changes to the config object
+        """
+        if location is None:
+            location = self.location / CONFIG_FILENAME
+
+        with location.open() as f:
+            original = yaml.load(f)
+
+        patched = self.patch_config(original)
+
+        with location.open("w") as f:
+            yaml.dump(patched, f)
+
+    @classmethod
+    def load(cls, location: Path) -> "ProjectConfig":
+        """
+        Make a config object for a project.
+        """
+        with location.open() as f:
+            config_data = yaml.load(f)
+
+        config = cls.structure(config_data)
+        config.location = location.parent.expanduser().resolve().absolute()
+
+        return config
+
+
+## Register hooks for cattrs to handle the custom types
+
+_converter.register_structure_hook(
+    str | Dependency,
+    lambda d, _: Dependency.from_str(d) if isinstance(d, str) else _converter.structure(d, Dependency),
+)
+
+##
 
 
 def get_project_dir_from_path(path: Path) -> Path:
@@ -146,7 +214,7 @@ def get_project_config_from_path(path: Path) -> ProjectConfig:
     project_dir = get_project_dir_from_path(path)
     project_config_file = project_dir / CONFIG_FILENAME
     if project_config_file not in _loaded_configs:
-        _loaded_configs[project_config_file] = make_config(project_config_file)
+        _loaded_configs[project_config_file] = ProjectConfig.load(project_config_file)
     return _loaded_configs[project_config_file]
 
 

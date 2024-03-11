@@ -9,8 +9,6 @@ from pathlib import Path
 from typing import Iterable
 
 import click
-from omegaconf import OmegaConf
-from omegaconf.errors import ConfigKeyError
 
 import atopile.config
 from atopile import address, errors, version
@@ -74,14 +72,12 @@ def project_options(f):
 
         # add custom config overrides
         if option:
-            try:
-                config: atopile.config.ProjectConfig = OmegaConf.merge(
-                    project_config,
-                    OmegaConf.from_dotlist(option)
-                )
-            except ConfigKeyError as ex:
-                raise click.BadParameter(f"Invalid config key {ex.key}") from ex
-
+            raise NotImplementedError(
+                "Custom config overrides have been removed in a refactor. "
+                "It's planned to re-add them in a future release. "
+                "If this is a blocker for you, please raise an issue. "
+                "In the meantime, you can use the `ato.yaml` file to set these options."
+            )
         else:
             config: atopile.config.ProjectConfig = project_config
 
