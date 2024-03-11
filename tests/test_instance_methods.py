@@ -1,5 +1,4 @@
 from atopile import instance_methods
-import pytest
 from unittest.mock import MagicMock
 
 
