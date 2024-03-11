@@ -69,11 +69,11 @@ def log_telemetry():
     try:
         # Check if telemetry is enabled
         if not load_telemetry_setting():
-            log.debug("Telemetry is disabled. Skipping telemetry logging.")
+            log.log(0, "Telemetry is disabled. Skipping telemetry logging.")
             return
         telemetry_data.time = _end_timer()
         telemetry_dict = asdict(telemetry_data)
-        log.debug("Logging telemetry data %s", telemetry_dict)
+        log.log(0, "Logging telemetry data %s", telemetry_dict)
         requests.post(
             "https://log-telemetry-atsuhzfd5a-uc.a.run.app",
             json=telemetry_dict,
@@ -87,7 +87,7 @@ def log_telemetry():
         # down for it
         pass
     except Exception as e:
-        log.debug("Failed to log telemetry data: %s", e)
+        log.log(0, "Failed to log telemetry data: %s", e)
 
 
 def load_telemetry_setting() -> dict:
@@ -115,13 +115,13 @@ def _start_timer():
 def _end_timer():
     try:
         if start_time is None:
-            log.debug("Timer was not started.")
+            log.log(0, "Timer was not started.")
             return -1
         end_time = time.time()
         execution_time = end_time - start_time
-        log.debug("Execution time: %s", execution_time)
+        log.log(0, "Execution time: %s", execution_time)
     except Exception as ex:
-        log.debug("Failed to get execution time: %s", ex)
+        log.log(0, "Failed to get execution time: %s", ex)
         return None
     return execution_time
 
@@ -186,7 +186,7 @@ def get_project_id() -> Optional[str]:
 
         project_url = commonise_project_url(git_url)
 
-        log.debug("Project URL: %s", project_url)
+        log.log(0, "Project URL: %s", project_url)
 
         # Hash the project ID to de-identify it
         return hashlib.sha256(project_url.encode()).hexdigest()

@@ -6,7 +6,6 @@ import itertools
 import logging
 import textwrap
 from collections import ChainMap, defaultdict
-from enum import Enum
 from typing import Any, Iterable
 
 import pint
@@ -31,95 +30,89 @@ light_row = Style(color="bright_black")
 dark_row = Style(color="white")
 
 
-class AssertionStatus(Enum):
-    """
-    The status of an assertion.
-    """
+def _try_log_assertion(assertion):
+    try:
+        telemetry.log_assertion(str(assertion))
+    except Exception as e:
+        log.debug("Failed to log assertion: %s", e)
 
-    PASSED = "[green]Passed[/]"
-    FAILED = "[red]Failed[/]"
-    ERROR = "[red]Error[/]"
+
+class AssertionException(errors.AtoError):
+    """An exception raised when an assertion fails."""
+
+
+class AssertionFailed(AssertionException):
+    """An exception raised when an assertion fails."""
+
+
+class ErrorComputingAssertion(AssertionException):
+    """An exception raised when an exception is
+    raised while trying to compute an assertion's
+    values."""
 
 
 def generate_assertion_report(build_ctx: config.BuildContext):
     """
     Generate a report based on assertions made in the source code.
     """
-    table = Table(show_header=True, header_style="bold green")
-    table.add_column("Status")
-    table.add_column("Assertion")
-    table.add_column("Numeric")
-    table.add_column("Address")
-    table.add_column("Notes")
-
-    rows = 0
-
-    def _add_row(
-        status: AssertionStatus,
-        assertion_str: str,
-        numeric: str,
-        addr: address.AddrStr,
-        notes: str,
-    ):
-        nonlocal rows
-        table.add_row(
-            status.value,
-            assertion_str,
-            numeric,
-            address.get_instance_section(addr),
-            notes,
-            style=dark_row if rows % 2 else light_row,
-        )
-        rows += 1
 
     context = {}
-    for instance_addr in instance_methods.all_descendants(build_ctx.entry):
-        instance = lofty.get_instance(instance_addr)
-        for assertion in instance.assertions:
-            try:
-                telemetry.log_assertion(str(assertion))
-            except Exception as e:
-                log.debug("Failed to log assertion: %s", e)
-            new_symbols = {
-                s.key for s in assertion.lhs.symbols | assertion.rhs.symbols
-            } - context.keys()
-            for symbol in new_symbols:
-                parent_inst = instance_methods.get_instance(
-                    address.get_parent_instance_addr(symbol)
-                )
-                assign_name = address.get_name(symbol)
+    with errors.ExceptionAccumulator() as exception_accumulator:
+        for instance_addr in instance_methods.all_descendants(build_ctx.entry):
+            instance = lofty.get_instance(instance_addr)
+            for assertion in instance.assertions:
+                with exception_accumulator():
+                    _try_log_assertion(assertion)
 
-                if assign_name not in parent_inst.assignments:
-                    raise errors.AtoKeyError(
-                        f"No attribute '{assign_name}' bound on '{parent_inst.addr}'"
-                    )
+                    new_symbols = {
+                        s.key for s in assertion.lhs.symbols | assertion.rhs.symbols
+                    } - context.keys()
 
-                assignment = parent_inst.assignments[assign_name][0]
-                if assignment.value is None:
-                    raise errors.AtoTypeError(
-                        f"'{symbol}' is defined, but has no value"
-                    )
-                context[symbol] = assignment.value
+                    for symbol in new_symbols:
+                        parent_inst = instance_methods.get_instance(
+                            address.get_parent_instance_addr(symbol)
+                        )
+                        assign_name = address.get_name(symbol)
 
-            try:
-                a = assertion.lhs(context)
-                b = assertion.rhs(context)
-            except errors.AtoError as e:
-                _add_row(
-                    AssertionStatus.ERROR, str(assertion), "", instance_addr, str(e)
-                )
-                raise
+                        if assign_name not in parent_inst.assignments:
+                            raise errors.AtoKeyError(
+                                f"No attribute '{assign_name}' bound on '{parent_inst.addr}'"
+                            )
 
-            if _do_op(a, assertion.operator, b):
-                status = AssertionStatus.PASSED
-            else:
-                status = AssertionStatus.FAILED
+                        assignment = parent_inst.assignments[assign_name][0]
+                        if assignment.value is None:
+                            raise errors.AtoTypeError(
+                                f"'{symbol}' is defined, but has no value"
+                            )
+                        context[symbol] = assignment.value
 
-            numeric = a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
+                    try:
+                        a = assertion.lhs(context)
+                        b = assertion.rhs(context)
+                    except errors.AtoError as e:
+                        raise ErrorComputingAssertion(f"Exception computing assertion: {str(e)}") from e
 
-            _add_row(status, str(assertion), numeric, instance_addr, "")
-
-    rich.print(table)
+                    numeric = a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
+                    if _do_op(a, assertion.operator, b):
+                        log.debug(
+                            textwrap.dedent(f"""
+                                Assertion [green]passed![/]
+                                address: {instance_addr}
+                                assertion: {assertion}
+                                numeric: {numeric}
+                            """).strip(),
+                            extra={"markup": True}
+                        )
+                    else:
+                        raise AssertionFailed.from_ctx(
+                            assertion.src_ctx,
+                            textwrap.dedent(f"""
+                                address: $addr
+                                assertion: {assertion}
+                                numeric: {numeric}
+                            """).strip(),
+                            addr=instance_addr,
+                        )
 
 
 def _do_op(a: RangedValue, op: str, b: RangedValue) -> bool:
