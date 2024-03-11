@@ -37,6 +37,30 @@ def all_descendants(addr: str) -> Iterable[str]:
     yield addr
 
 
+def _common_children(*instances: Instance) -> Iterable[tuple[Instance]]:
+    """
+    Return the common children of two addresses
+    """
+    if len(instances) == 1:
+        instances = tuple(instances[0])
+    for child in instances[0].children:
+        if all(child in i.children for i in instances[1:]):
+            yield from _common_children(i.children[child] for i in instances)
+            yield tuple(i.children[child] for i in instances)
+
+
+def common_children(*addrs: AddrStr) -> Iterable[AddrStr]:
+    """
+    Return the common children of two addresses
+    """
+    if len(addrs) == 1:
+        addrs = tuple(addrs[0])
+    yield from (
+        (inst.addr for inst in instances)
+        for instances in _common_children(lofty.get_instance(addr) for addr in addrs)
+    )
+
+
 def _make_dumb_matcher(pass_list: Iterable[str]) -> Callable[[str], bool]:
     """
     Return a filter that checks if the addr is in the pass_list
