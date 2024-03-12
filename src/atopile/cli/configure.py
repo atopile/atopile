@@ -108,10 +108,6 @@ def do_configure() -> None:
 def install_kicad_plugin() -> None:
     """Install the kicad plugin."""
     # Find the path to kicad's plugin directory
-    kicad_plugin_dir = (
-        Path("~/Documents/KiCad/7.0/scripting/plugins").expanduser().absolute()
-    )
-
     plugin_loader = f"""
         plugin_path = "{Path(__file__).parent.parent}"
         import sys
@@ -128,15 +124,17 @@ def install_kicad_plugin() -> None:
         import kicad_plugin
         """
 
-    def _write_plugin():
+    def _write_plugin(path: Path):
         # Create the directory if it doesn't exist
-        kicad_plugin_dir.mkdir(parents=True, exist_ok=True)
+        path.mkdir(parents=True, exist_ok=True)
 
         # Write the plugin loader
-        with (kicad_plugin_dir / "atopile.py").open("w", encoding="utf-8") as f:
+        with (path / "atopile.py").open("w", encoding="utf-8") as f:
             f.write(dedent(plugin_loader))
 
-    try:
-        _write_plugin()
-    except FileNotFoundError:
-        _write_plugin()
+
+    for p in Path("~/Documents/KiCad/").expanduser().absolute().glob("*/scripting/plugins"):
+        try:
+            _write_plugin(p)
+        except FileNotFoundError:
+            _write_plugin(p)
