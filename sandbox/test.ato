@@ -1,0 +1,61 @@
+
+module ESP32S3:
+    power = new Power
+
+    power.voltage = 3.3V
+    assert power.voltage within 2.8V to 3.3V
+
+module ESP32S3:
+    power = new PowerIn
+
+    power.voltage = 3.1V to 3.2V
+
+
+module BuckConverter:
+    power = new PowerOut
+
+
+module PowerSupply:
+    power_out = new Power
+    power_out.voltage = 3.1V to 3.2V
+
+    assert power_out.current within 0.5A to 1A
+    assert power_out.voltage within 1.8V to 12V
+
+
+interface Power:
+    signal vcc
+    signal gnd
+
+    maximum_voltage: Voltage
+    voltage: Voltage
+    current: Current # need to go sum up the current draws of connected devices
+
+
+interface PowerIn from Power:
+    # power sink
+    # multiple allowed on each bus
+    # currents should be summed together
+
+
+interface PowerOut from Power:
+    # power source
+    # only one allowed on each bus
+
+
+interface I2C:
+    signal sda
+    signal scl
+    signal gnd
+
+    # address = new Hex
+    address = 0x68
+
+# Defined behind the scenes?
+type Voltage:
+    series: false
+
+type Current:
+    series: true
+
+type MyPowerInterface from PowerSourceInterface:
