@@ -315,11 +315,9 @@ class ExceptionAccumulator:
             # If in a debugging session - don't collect errors
             # because we want to see the unadulterated exception
             # to stop the debugger
-            # if in_debug_session():
-            #     yield
-            #     return
-            #yield
-            #return
+            if in_debug_session():
+                yield
+                return
 
             try:
                 yield
