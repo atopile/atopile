@@ -43,7 +43,10 @@ def _is_generic(addr: AddrStr) -> bool:
     Return whether a component is generic
     """
     # check if "generic_" is in the mpn
-    return _get_specd_mpn(addr).startswith("generic_")
+    try:
+        return _get_specd_mpn(addr).startswith("generic_")
+    except MissingData:
+        return False
 
 
 class NoMatchingComponent(errors.AtoError):
