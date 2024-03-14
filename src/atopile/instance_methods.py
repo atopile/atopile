@@ -22,8 +22,8 @@ def get_data(addr: str, key: str) -> Any:
     """Return the data at the given address"""
     instance = lofty.get_instance(addr)
     if assignments := instance.assignments.get(key):
-        if value := assignments[0].value:
-            return value
+        if assignments[0].value is not None:
+            return assignments[0].value
         raise errors.AtoKeyError(f"{addr} has no value for {key}")
     raise errors.AtoKeyError(f"{addr} has no attribute {key}")
 
