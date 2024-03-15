@@ -1165,6 +1165,15 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
             for ref in commanded_replacements:
                 self._known_replacements.pop(ref)
 
+    def check_name_uniqueness(self, name: str, current_scope: Instance):
+        """Check if the given name is unique within the current scope."""
+        if current_scope is None:
+            # If there's no current scope, we're at a global level where the check might not be applicable
+            return
+        if name in current_scope.children:
+            raise errors.AtoError(f"Name '{name}' is already used in this scope.")
+
+
     def build_instance(self, new_addr: AddrStr, super_obj: ClassLayer, src_ctx: Optional[ParserRuleContext] = None) -> None:
         """Create an instance from a reference and a super object layer."""
 
@@ -1175,6 +1184,8 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
             # eg. we're at the root
             parent_instance = None
 
+        instance_name = address.get_name(new_addr)
+        self.check_name_uniqueness(instance_name, parent_instance)
 
         new_instance = Instance.from_super(
             new_addr,
@@ -1314,11 +1325,6 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         current_instance = self._output_cache[current_instance_addr]
         new_addr = address.add_instance(current_instance_addr, name)
 
-        # Check if the name is already used in the current scope
-        if name in current_instance.children:
-            raise  errors.AtoError(f"Name '{name}' is already used in this scope.")
-
-        new_addr = address.add_instance(current_instance_addr, name)
         super_ = PIN if isinstance(ctx, ap.Pindef_stmtContext) else SIGNAL
 
         pin_or_signal = Instance.from_super(
@@ -1425,6 +1431,8 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         self._current_instance.assertions.extend(assertions_)
 
         return KeyOptMap.empty()
+
+
 
 
 scoop = Scoop(parser.get_ast_from_file)
