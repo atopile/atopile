@@ -254,6 +254,7 @@ def handle_ato_errors(logger: logging.Logger = log) -> None:
         # FIXME: we're gonna repeat ourselves a lot if the same
         # error causes an issue multiple times (which they do)
         _log_ato_errors(ex, logger)
+        raise AtoFatalError from ex
 
 
 def muffle_fatalities(func):
@@ -264,30 +265,29 @@ def muffle_fatalities(func):
 
     @wraps(func)
     def wrapper(*args, **kwargs):
+        do_exit = False
         try:
             with handle_ato_errors():
                 return func(*args, **kwargs)
-        except AtoFatalError:
+
+        except* AtoFatalError:
             telemetry.telemetry_data.ato_error = 1
             rich.print(
                 "\n\nUnfortunately errors ^^^ stopped the build. "
                 "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
             )
-            sys.exit(1)
+            do_exit = True
 
-        except ExceptionGroup as ex:
-            _, not_fatal_errors = ex.split(AtoFatalError)
-            if not_fatal_errors:
-                telemetry.telemetry_data.crash += len(not_fatal_errors.exceptions)
-                raise not_fatal_errors from ex
-            sys.exit(1)
-
-        except Exception:
-            telemetry.telemetry_data.crash += 1
-            raise
+        except* Exception as ex:
+            telemetry.telemetry_data.crash += len(ex.exceptions)
+            raise ex
 
         finally:
             telemetry.log_telemetry()
+
+        # Raisinng sys.exit here so all exceptions can be raised
+        if do_exit:
+            sys.exit(1)
 
     return wrapper
 
