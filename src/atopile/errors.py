@@ -285,6 +285,7 @@ def muffle_fatalities(func):
         finally:
             telemetry.log_telemetry()
 
+        # Raisinng sys.exit here so all exceptions can be raised
         if do_exit:
             sys.exit(1)
 
@@ -322,7 +323,6 @@ class ExceptionAccumulator:
             try:
                 yield
             except* self.accumulate_types as ex:
-                #print(ex.exceptions)
                 self.errors.extend(ex.exceptions)
 
         return _collect_ato_errors

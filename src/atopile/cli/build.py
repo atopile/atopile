@@ -78,10 +78,13 @@ def _do_build(build_ctx: BuildContext) -> None:
 
     build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
 
+    built_targets = []
     for err_cltr, target_name in iter_through_errors(targets):
-        log.info("Building %s", target_name)
         with err_cltr():
             muster.targets[target_name](build_ctx)
+        built_targets.append(target_name)
+
+    log.info(f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
 
 
 TargetType = Callable[[BuildContext], None]
