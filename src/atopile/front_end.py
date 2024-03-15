@@ -1314,6 +1314,11 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         current_instance = self._output_cache[current_instance_addr]
         new_addr = address.add_instance(current_instance_addr, name)
 
+        # Check if the name is already used in the current scope
+        if name in current_instance.children:
+            raise  errors.AtoError(f"Name '{name}' is already used in this scope.")
+
+        new_addr = address.add_instance(current_instance_addr, name)
         super_ = PIN if isinstance(ctx, ap.Pindef_stmtContext) else SIGNAL
 
         pin_or_signal = Instance.from_super(

@@ -35,6 +35,7 @@ def parse(version_str: str) -> Version:
     """
     if version_str.startswith("v"):
         version_str = version_str[1:]
+        
 
     try:
         version = Version.parse(version_str)
