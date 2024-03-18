@@ -2,7 +2,7 @@
 	"generics": {
 		"scope": "ato",
 		"prefix": "from \"generics\"",
-		"body": "from \"generics/${1|buttons.ato,capacitors.ato,connectors.ato,diodes.ato,filters.ato,inductors.ato,leds.ato,mosfets.ato,opamps.ato,oscillators.ato,regulators.ato,resistors.ato,transistors.ato,vdivs.ato|}\" import ${2}"
+		"body": "from \"generics/${1|buttons.ato,capacitors.ato,connectors.ato,diodes.ato,filters.ato,inductors.ato,interfaces.ato,leds.ato,mosfets.ato,opamps.ato,oscillators.ato,regulators.ato,resistors.ato,transistors.ato,vdivs.ato|}\" import ${2}"
 	},
 	"module": {
 		"scope": "ato",
