@@ -26,10 +26,6 @@ async function atoBuild() {
     // save all dirty editors
     vscode.workspace.saveAll();
 
-    // get the command to start the python venv
-    const configuration = vscode.workspace.getConfiguration();
-    let venvCommandLine: any = configuration.get<{}>(atopileInterpreterSetting);
-
     // create a terminal to work with
     let buildTerminal = vscode.window.createTerminal({
         name: 'ato Build',
@@ -40,28 +36,22 @@ async function atoBuild() {
     // parse what build target to use
     let buildArray: string[] = statusbarAtoBuildTarget.text.split('-');
 
-    buildTerminal.sendText(venvCommandLine + ' -m atopile.cli.cli build ' + '--build ' + buildArray[0]);
+    buildTerminal.sendText('ato build --build ' + buildArray[0]);
     buildTerminal.show();
 }
 
 async function atoCreate() {
-    const configuration = vscode.workspace.getConfiguration();
-    let venvCommandLine: any = configuration.get<{}>(atopileInterpreterSetting);
-
     let createTerminal = vscode.window.createTerminal({
         name: 'ato Create',
         cwd: '${workspaceFolder}',
         hideFromUser: false,
     });
 
-    createTerminal.sendText(venvCommandLine + ' -m atopile.cli.cli create');
+    createTerminal.sendText('ato create');
     createTerminal.show();
 }
 
 async function processInstallJlcpcb() {
-    const configuration = vscode.workspace.getConfiguration();
-    let venvCommandLine: any = configuration.get<{}>(atopileInterpreterSetting);
-
     let result = await window.showInputBox({
         placeHolder: 'JLCPCB Component ID',
     });
@@ -76,14 +66,12 @@ async function processInstallJlcpcb() {
             hideFromUser: false,
         });
 
-        installTerminal.sendText(venvCommandLine + ' -m atopile.cli.cli install --jlcpcb ' + result);
+        installTerminal.sendText('ato install --jlcpcb ' + result);
         installTerminal.show();
     }
 }
 
 async function processInstallPackage() {
-    const configuration = vscode.workspace.getConfiguration();
-    const venvCommandLine: any = configuration.get<{}>(atopileInterpreterSetting);
     let result = await window.showInputBox({
         placeHolder: 'Package name',
     });
@@ -97,7 +85,7 @@ async function processInstallPackage() {
             cwd: '${workspaceFolder}',
             hideFromUser: false,
         });
-        installTerminal.sendText(venvCommandLine + ' -m atopile.cli.cli install ' + result);
+        installTerminal.sendText('ato install ' + result);
         installTerminal.show();
     }
 }
