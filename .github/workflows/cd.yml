@@ -6,6 +6,7 @@ on:
       - 'main'
     tags:
       - 'v*'
+  workflow_dispatch: {}
 
 jobs:
   python:
