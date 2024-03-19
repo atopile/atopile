@@ -1171,7 +1171,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
             # If there's no current scope, we're at a global level where the check might not be applicable
             return
         if name in current_scope.children:
-            raise errors.AtoError(f"Name '{name}' is already used in this scope. {current_scope}")
+            raise errors.AtoError(f"Name '{name}' is already used in this scope. Address: {current_scope.addr}")
 
 
     def build_instance(self, new_addr: AddrStr, super_obj: ClassLayer, src_ctx: Optional[ParserRuleContext] = None) -> None:
