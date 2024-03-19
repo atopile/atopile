@@ -1,5 +1,5 @@
 # a minimal Dockerfile for CI
-FROM kicad/kicad:7.0.10
+FROM kicad/kicad:8.0.1
 
 # We use root for this container, despite the permission-turds
 # since it's all Github actions currently supports.
