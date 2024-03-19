@@ -6,6 +6,25 @@ We're starting with an electronics compiler and a new language called `ato`. Fil
 
 The `.ato` files are human readable and can be version controlled, so you can collaborate with your team on the design of your hardware. They're modular, so you can reuse components from other projects, and share them with the community. They provide a way to save the intelligence of your design and the validation required to make sure it works as intended, so you can be confident that your design will work as expected.
 
+## Overview
+
+1. **Install tools**: See the install section below.
+
+2. **Project Setup**: For instructions on creating a new ato project from the command line, refer to [ato create](ato-create.md). Highly recommended to use GitHub to store and version your project.
+
+3. **Install Packages**: For detailed instructions on finding and installing pre-made packages for your project, refer to the [installation guide](install.md). 
+
+4. **Circuit Design with Code**: Hook up your circuit features using the expressive `ato` language, transforming your design ideas into precise, codified representations.
+
+5. **Version Control**: Commit and merge your features using git, iterating through the design process by repeating the steps of adding features and refining your design.
+
+6. **Build and Export**: Use `ato build` to compile your design into a netlist, which can then be imported into KiCAD for layout.
+
+7. **Sync and Layout**: Import netlist into the linked kicad project. Our packages installed from packages.atopile.io have a linked layout that you can reuse verbatim or as a known good starting point for your design.
+  [Layout reuse in atopile](https://www.youtube.com/watch?v=UBwlARJWZ40)
+
+8. **Finalize and Order**: Commit and merge your layout changes, then download the CI build of your design to order your custom PCB from JLCPCB.
+
 ## Installation
 
 To run atopile, you will need the atopile compiler, the VSCode extension for syntax highlighting and git credential manager.
