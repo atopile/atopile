@@ -156,6 +156,12 @@ class AtoNotImplementedError(AtoError):
     """
 
 
+class AtoCollisionError(AtoError):
+    """
+    Raised when a name collides with another in the same context
+    """
+
+
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
