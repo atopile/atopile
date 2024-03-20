@@ -159,12 +159,6 @@
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.venv",
-                "title": "Set Virtual Environment",
-                "category": "atopile",
-                "when": "editorLangId == ato"
-            },
-            {
                 "command": "atopile.choose_build",
                 "title": "Choose build target",
                 "category": "atopile",
@@ -210,9 +204,9 @@
         "@types/node": "16.x",
         "@types/vscode": "1.78.0",
         "@typescript-eslint/eslint-plugin": "^7.0.0",
-        "@typescript-eslint/parser": "^6.17.0",
+        "@typescript-eslint/parser": "^7.2.0",
         "@vscode/test-electron": "^2.3.9",
-        "@vscode/vsce": "^2.22.0",
+        "@vscode/vsce": "^2.24.0",
         "eslint": "^8.57.0",
         "glob": "^10.3.10",
         "prettier": "^3.2.5",
