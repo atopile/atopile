@@ -1,0 +1,42 @@
+"""
+This file containers
+"""
+
+module TopLevel:  # we should consider transitioning from module + component -> class
+    some_var = 3.3V +/- 100mV # maybe this comment should be considered a long-name for some_var
+    top_signal = Signal()  # do we want the new signal
+
+    module_a = new Module:  # this is defining and instantiating an anonymous module
+        a = new Signal
+        b = new Signal
+
+        top_signal ~ .a
+
+
+module TopLevel:
+    signal vcc
+    signal gnd
+
+    v_div = module:
+        signal v_in
+        signal v_out
+
+        vcc ~ (r1 = new Resistor) ~ v_out ~ (r2 = new Resistor) ~ gnd
+
+
+module TopLevel:
+    signal vcc
+    signal gnd
+
+    v_in = 3.3V +/- 100mV
+    v_out = 1.65V +/- 100mV
+
+    v_div = module:
+        signal v_in
+        signal v_out
+
+        vcc ~ (r1: Resistor) ~ v_out ~ (r2: Resistor) ~ gnd
+
+        assert v_in * r2 / (r1 + r2) within v_out
+
+    
