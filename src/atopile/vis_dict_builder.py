@@ -31,7 +31,7 @@ def get_vis_dict(root: AddrStr) -> str:
                     elif match_signals(child):
                         type = "signal"
                     block_list.append({
-                        "name": get_instance_section(child),
+                        "name": get_name(child),
                         "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
                         "type": type})
 
