@@ -41,8 +41,8 @@ def get_vis_dict(root: AddrStr) -> str:
                 source_block, source_port = split_list_at_n(module_depth, split_addr(link.source.addr))
                 target_block, target_port = split_list_at_n(module_depth, split_addr(link.target.addr))
 
-                _source = {"block": combine_addr(source_block), "port": combine_addr(source_port)}
-                _target = {"block": combine_addr(target_block), "port": combine_addr(target_port)}
+                _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
+                _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
                 link_list.append({"source": _source, "target": _target, "type": "interface"})
 
             # populate and add the dict for the given module
