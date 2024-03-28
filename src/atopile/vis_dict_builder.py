@@ -23,7 +23,17 @@ def get_vis_dict(root: AddrStr) -> str:
             # add all the modules and components
             for child in get_children(addr):
                 if match_modules(child) or match_components(child) or match_interfaces(child) or match_signals(child):
-                    block_list.append({"name": get_instance_section(child), "instance_of": get_name(get_supers_list(child)[0].obj_def.address)})
+                    type = "module"
+                    if match_components(child):
+                        type = "component"
+                    elif match_interfaces(child):
+                        type = "interface"
+                    elif match_signals(child):
+                        type = "signal"
+                    block_list.append({
+                        "name": get_instance_section(child),
+                        "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
+                        "type": type})
 
             module_depth = get_current_depth(addr)
             links = get_links(addr)
