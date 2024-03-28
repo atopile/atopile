@@ -38,12 +38,15 @@ def get_vis_dict(root: AddrStr) -> str:
             module_depth = get_current_depth(addr)
             links = get_links(addr)
             for link in links:
+                type = "interface"
+                if match_signals(link.source.addr):
+                    type = "signal"
                 source_block, source_port = split_list_at_n(module_depth, split_addr(link.source.addr))
                 target_block, target_port = split_list_at_n(module_depth, split_addr(link.target.addr))
 
                 _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
                 _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
-                link_list.append({"source": _source, "target": _target, "type": "interface"})
+                link_list.append({"source": _source, "target": _target, "type": type})
 
             # populate and add the dict for the given module
             if addr == root:
