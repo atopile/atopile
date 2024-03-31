@@ -10,57 +10,163 @@ from atopile.instance_methods import (
     match_signals
 )
 import json
+from collections import defaultdict
+import networkx as nx
+
+
+# Needed structures:
+# parent
+# blocks
+# all links
+# block to block links
+
+def get_parent(addr: AddrStr, root) -> AddrStr:
+    """
+    returns the parent of the given address or root if there is none
+    """
+    if addr == root:
+        return "null"
+
+    return get_instance_section(get_parent_instance_addr(addr)) or "root"
+
+def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
+    """
+    returns a dictionary of blocks:
+    {
+        "block_name": {
+            "instance_of": "instance_name",
+            "type": "module/component/interface/signal"
+        }, ...
+    }
+    """
+    block_dict = {}
+    for child in get_children(addr):
+        if match_modules(child) or match_components(child) or match_interfaces(child) or match_signals(child):
+            type = "module"
+            if match_components(child):
+                type = "component"
+            elif match_interfaces(child):
+                type = "interface"
+            elif match_signals(child):
+                type = "signal"
+            block_dict[get_name(child)] = {
+                "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
+                "type": type}
+        else:
+            print(f"Skipping {get_name(child)}")
+
+    return block_dict
+
+def process_links(addr: AddrStr) -> list[dict[str, dict[str, str]]]:
+    """
+    returns a list of links:
+    [
+        {
+            "source": {
+                "block": "block_name",
+                "port": "port_name"
+            },
+            "target": {
+                "block": "block_name",
+                "port": "port_name"
+            },
+            "type": "interface/signal"
+        }, ...
+    ]
+    """
+    link_list = []
+    links = get_links(addr)
+    for link in links:
+        # Type is either interface or signal
+        type = "interface"
+        if match_signals(link.source.addr):
+            type = "signal"
+        source_block, source_port = split_list_at_n(get_current_depth(addr), split_addr(link.source.addr))
+        target_block, target_port = split_list_at_n(get_current_depth(addr), split_addr(link.target.addr))
+
+        _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
+        _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
+        link_list.append({"source": _source, "target": _target, "type": type})
+
+    return link_list
+
+def is_path_without_end_nodes(G, blocks, source, target):
+    print(f"Checking path from {source} to {target}")
+    # Ensure source and target are not the same and both are in the graph
+    if source == target or source not in G or target not in G:
+        print("exit")
+        return False
+    # Remove other end nodes from the graph temporarily
+    G_temp = G.copy()
+    for block in blocks:
+        if block not in (source, target) and (blocks[block]['type'] == "module" or blocks[block]['type'] == "component") and block in G_temp.nodes:
+            G_temp.remove_node(block)
+    print(f"Nodes in G_temp: {G_temp.nodes}")
+    # Check if there's a path in the modified graph
+    has_path = nx.has_path(G_temp, source, target)
+
+    return has_path
+
+def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
+    """
+    returns a list of block to block links:
+    [
+        {'source': 'block_name', 'target': 'block_name'}, ...
+    ]
+    """
+    blocks = get_blocks(addr)
+    links = process_links(addr)
+
+    # Create a graph with the blocks
+    G = nx.Graph()
+    #G.add_nodes_from(blocks)
+
+    # Add the links to the graph
+    for link in links:
+        print(f"Adding edge from {link['source']['block']} to {link['target']['block']}")
+        G.add_edge(link['source']['block'], link['target']['block'])
+
+    # Identify the block-to-block connections
+    block_connections = set()
+    for source in blocks:
+        if blocks[source]['type'] == "module" or blocks[source]['type'] == "component":
+            for target in blocks:
+                if blocks[target]['type'] == "module" or blocks[target]['type'] == "component":
+                    if source != target and is_path_without_end_nodes(G, blocks, source, target):
+                        block_connections.add((source, target))
+
+    unique_tuples_list = {tuple(sorted(t)) for t in block_connections}
+
+    block_to_block_list = []
+    for connection in unique_tuples_list:
+        block_to_block_list.append({'source': connection[0], 'target': connection[1]})
+
+    return block_to_block_list
 
 
 def get_vis_dict(root: AddrStr) -> str:
     return_json = {}
     # for addr in chain(root, all_descendants(root)):
     for addr in all_descendants(root):
-        block_list = []
+        block_dict = {}
         link_list = []
+        connection_list = []
         # we only create an entry for modules, not for components
         if match_modules(addr) and not match_components(addr):
+            instance = get_instance_section(addr) or "root"
+            parent = get_parent(addr, root)
             # add all the modules and components
-            for child in get_children(addr):
-                if match_modules(child) or match_components(child) or match_interfaces(child) or match_signals(child):
-                    type = "module"
-                    if match_components(child):
-                        type = "component"
-                    elif match_interfaces(child):
-                        type = "interface"
-                    elif match_signals(child):
-                        type = "signal"
-                    block_list.append({
-                        "name": get_name(child),
-                        "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
-                        "type": type})
+            block_dict = get_blocks(addr)
 
-            module_depth = get_current_depth(addr)
-            links = get_links(addr)
-            for link in links:
-                type = "interface"
-                if match_signals(link.source.addr):
-                    type = "signal"
-                source_block, source_port = split_list_at_n(module_depth, split_addr(link.source.addr))
-                target_block, target_port = split_list_at_n(module_depth, split_addr(link.target.addr))
+            link_list = process_links(addr)
 
-                _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
-                _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
-                link_list.append({"source": _source, "target": _target, "type": type})
+            connection_list = get_block_to_block_links(addr)
 
-            # populate and add the dict for the given module
-            if addr == root:
-                return_json["root"] = {
-                    "parent": "none",
-                    "blocks": block_list,
-                    "links": link_list,
-                }
-                continue
-
-            return_json[get_instance_section(addr)] = {
-                "parent": get_instance_section(get_parent_instance_addr(addr)) or "root",
-                "blocks": block_list,
+            return_json[instance] = {
+                "parent": parent,
+                "blocks": block_dict,
                 "links": link_list,
+                "connections": connection_list,
             }
 
     return json.dumps(return_json)
