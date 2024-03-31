@@ -57,6 +57,36 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
 
     return block_dict
 
+def get_nodes(addr: AddrStr) -> dict[str, dict[str, str]]:
+    """
+    returns a dictionary of blocks:
+    {
+        "block_name": {
+            "instance_of": "instance_name",
+            "type": "module/component/interface/signal"
+        }, ...
+    }
+    """
+    block_list = []
+    for child in get_children(addr):
+        if match_modules(child) or match_components(child) or match_interfaces(child) or match_signals(child):
+            type = "module"
+            if match_components(child):
+                type = "component"
+            elif match_interfaces(child):
+                type = "interface"
+            elif match_signals(child):
+                type = "signal"
+            block_list.append({
+                "name": get_name(child),
+                "n": 1,
+                "grp": 1,
+                "id": get_name(get_supers_list(child)[0].obj_def.address)})
+        else:
+            print(f"Skipping {get_name(child)}")
+
+    return block_list
+
 def process_links(addr: AddrStr) -> list[dict]:
     """
     returns a list of links:
@@ -90,6 +120,42 @@ def process_links(addr: AddrStr) -> list[dict]:
         _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
         _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
         link_list.append({"source": _source, "target": _target, "type": type, "instance_of": instance_of})
+
+    return link_list
+
+def process_links_simple(addr: AddrStr) -> list[dict]:
+    """
+    returns a list of links:
+    [
+        {
+            "source": {
+                "block": "block_name",
+                "port": "port_name"
+            },
+            "target": {
+                "block": "block_name",
+                "port": "port_name"
+            },
+            "type": "interface/signal"
+        }, ...
+    ]
+    """
+    link_list = []
+    links = get_links(addr)
+    for link in links:
+        # Type is either interface or signal
+        if match_signals(link.source.addr):
+            type = "signal"
+            instance_of = "signal"
+        else:
+            type = "interface"
+            instance_of = get_name(get_supers_list(link.source.addr)[0].obj_def.address)
+        source_block, source_port = split_list_at_n(get_current_depth(addr), split_addr(link.source.addr))
+        target_block, target_port = split_list_at_n(get_current_depth(addr), split_addr(link.target.addr))
+
+        _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
+        _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
+        link_list.append({"source": get_name(combine_addr(source_block)), "target": get_name(combine_addr(target_block)), "value": 1})
 
     return link_list
 
@@ -152,27 +218,36 @@ def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
 def get_vis_dict(root: AddrStr) -> str:
     return_json = {}
     # for addr in chain(root, all_descendants(root)):
-    for addr in all_descendants(root):
-        block_dict = {}
-        link_list = []
-        connection_list = []
-        # we only create an entry for modules, not for components
-        if match_modules(addr) and not match_components(addr):
-            instance = get_instance_section(addr) or "root"
-            parent = get_parent(addr, root)
-            # add all the modules and components
-            block_dict = get_blocks(addr)
+    #for addr in all_descendants(root):
+    block_dict = {}
+    link_list = []
+    connection_list = []
+    # we only create an entry for modules, not for components
+    if match_modules(root) and not match_components(root):
+        instance = get_instance_section(root) or "root"
+        parent = get_parent(root, root)
+        # add all the modules and components
+        block_dict = get_blocks(root)
 
-            link_list = process_links(addr)
+        link_list = process_links(root)
 
-            connection_list = get_block_to_block_links(addr)
+        connection_list = get_block_to_block_links(root)
 
-            return_json[instance] = {
-                "parent": parent,
-                "blocks": block_dict,
-                "links": link_list,
-                "connections": connection_list,
-            }
+        nodes = get_nodes(root)
+        link_list = process_links_simple(root)
+
+        return_json[instance] = {
+            "parent": parent,
+            "blocks": block_dict,
+            "links": link_list,
+            "connections": connection_list,
+        }
+        return_json = {
+            "parent": parent,
+            "nodes": nodes,
+            "links": link_list,
+            "connections": connection_list,
+        }
 
     return json.dumps(return_json)
 
