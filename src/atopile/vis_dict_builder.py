@@ -81,7 +81,7 @@ def get_nodes(addr: AddrStr) -> dict[str, dict[str, str]]:
                 "name": get_name(child),
                 "n": 1,
                 "grp": 1,
-                "id": get_name(get_supers_list(child)[0].obj_def.address)})
+                "id": get_name(child)})
         else:
             print(f"Skipping {get_name(child)}")
 
