@@ -124,7 +124,9 @@ def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
     # Add the links to the graph
     for link in links:
         print(f"Adding edge from {link['source']['block']} to {link['target']['block']}")
-        G.add_edge(link['source']['block'], link['target']['block'])
+        if link['type'] == "interface":
+            G.add_edge(link['source']['block'], link['target']['block'])
+        # G.add_edge(link['source']['block'], link['target']['block'])
 
     # Identify the block-to-block connections
     block_connections = set()
