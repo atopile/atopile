@@ -57,7 +57,7 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
 
     return block_dict
 
-def process_links(addr: AddrStr) -> list[dict[str, dict[str, str]]]:
+def process_links(addr: AddrStr) -> list[dict]:
     """
     returns a list of links:
     [
@@ -78,15 +78,18 @@ def process_links(addr: AddrStr) -> list[dict[str, dict[str, str]]]:
     links = get_links(addr)
     for link in links:
         # Type is either interface or signal
-        type = "interface"
         if match_signals(link.source.addr):
             type = "signal"
+            instance_of = "signal"
+        else:
+            type = "interface"
+            instance_of = get_name(get_supers_list(link.source.addr)[0].obj_def.address)
         source_block, source_port = split_list_at_n(get_current_depth(addr), split_addr(link.source.addr))
         target_block, target_port = split_list_at_n(get_current_depth(addr), split_addr(link.target.addr))
 
         _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
         _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
-        link_list.append({"source": _source, "target": _target, "type": type})
+        link_list.append({"source": _source, "target": _target, "type": type, "instance_of": instance_of})
 
     return link_list
 
