@@ -10,6 +10,8 @@ from .common import (
     get_layout_map,
     sync_footprints,
     sync_track,
+    sync_zone,
+    update_zone_net,
 )
 
 log = logging.getLogger(__name__)
@@ -66,6 +68,11 @@ class PullGroup(pcbnew.ActionPlugin):
             for track in source_board.GetTracks():
                 item = sync_track(source_board, track, target_board)
                 g.AddItem(item)
+
+            for zone in source_board.Zones():
+                new_zone = sync_zone(zone,target_board)
+                update_zone_net(zone,source_board,new_zone,target_board,flip_dict(known_layouts[g_name]["uuid_map"]))
+                g.AddItem(new_zone)
 
             # Shift entire target group by offset as last operation
             g.Move(offset)
