@@ -60,7 +60,6 @@ def flip_dict(d: dict) -> dict:
     """Return a dict with keys and values swapped."""
     return {v: k for k, v in d.items()}
 
-
 def sync_track(track: pcbnew.PCB_TRACK, target: pcbnew.BOARD) -> pcbnew.PCB_TRACK:
     """Sync a track to the target board."""
     new_track: pcbnew.PCB_TRACK = track.Duplicate().Cast()
@@ -70,19 +69,6 @@ def sync_track(track: pcbnew.PCB_TRACK, target: pcbnew.BOARD) -> pcbnew.PCB_TRAC
     new_track.SetLayer(track.GetLayer())
     target.Add(new_track)
     return new_track
-
-#TODO: There must be a better way to update net of fill
-def update_zone_net(source_zone: pcbnew.ZONE, source_board: pcbnew.BOARD, target_board:pcbnew.BOARD):
-    source_netname = source_zone.GetNetname()
-    matched_fp = None
-    matched_pad_index = None
-    for fp in source_board.GetFootprints():
-        for index, pad in enumerate(fp.Pads()):
-            if pad.GetNetname() == source_netname:
-                matched_fp = fp
-                matched_pad_index = index
-
-    if matched_fp and matched_pad_index:
 
 def sync_footprints(
     source: pcbnew.BOARD, target: pcbnew.BOARD, uuid_map: dict[str, str]
