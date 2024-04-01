@@ -100,7 +100,6 @@ def update_zone_net(source_zone: pcbnew.ZONE, source_board: pcbnew.BOARD, target
                 new_netinfo = target_fp.Pads()[matched_pad_index].GetNet()
                 target_zone.SetNet(new_netinfo)
                 return
-                # raise ValueError(f'{new_netinfo.GetNetname()}')
 
     # TODO: Verify that this will always set net to no net
     target_zone.SetNetCode(0)
