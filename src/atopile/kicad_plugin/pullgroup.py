@@ -45,7 +45,7 @@ class PullGroup(pcbnew.ActionPlugin):
             for item in g.GetItems():
                 if not isinstance(item, pcbnew.FOOTPRINT):
                     target_board.Remove(item)
-            
+
             # Load the layout and sync
             source_board: pcbnew.BOARD = pcbnew.LoadBoard(str(layout_path))
             
