@@ -91,3 +91,41 @@ def sync_footprints(
         target_fp.SetOrientation(source_fp.GetOrientation())
         target_fp.SetLayer(source_fp.GetLayer())
     return missing_uuids
+
+
+def find_anchor_footprint_group(group: pcbnew.PCB_GROUP) -> pcbnew.FOOTPRINT:
+    """Return anchor footprint with largest pin count in group: tiebreaker size"""
+    max_padcount = 0
+    max_area = 0
+    anchor_fp = None
+    items = group.GetItems()
+    fps = [item for item in items if isinstance(item, pcbnew.FOOTPRINT)]
+    for fp in fps:
+        if fp.GetPadCount() > max_padcount or (fp.GetPadCount()==max_padcount and fp.GetArea()>max_area):
+            anchor_fp = fp
+            max_padcount = fp.GetPadCount()
+            max_area = fp.GetArea()
+    return anchor_fp
+
+
+def find_anchor_footprint_board(board: pcbnew.BOARD) -> pcbnew.FOOTPRINT:
+    """Return anchor footprint with largest pin count in board: tiebreaker size"""
+    max_padcount = 0
+    max_area = 0
+    anchor_fp = None
+    fps = board.GetFootprints()
+    for fp in fps:
+        if fp.GetPadCount() > max_padcount or (fp.GetPadCount()==max_padcount and fp.GetArea()>max_area):
+            anchor_fp = fp
+            max_padcount = fp.GetPadCount()
+            max_area = fp.GetArea()
+    return anchor_fp
+
+
+def calculate_translation(source: pcbnew.BOARD, target_group: pcbnew.PCB_GROUP) -> pcbnew.VECTOR2I:
+    source_anchor_fp = find_anchor_footprint_board(source)
+    source_offset = source_anchor_fp.GetPosition()
+    target_anchor_fp = find_anchor_footprint_group(target_group)
+    target_offset = target_anchor_fp.GetPosition()
+    total_offset = target_offset-source_offset
+    return total_offset
