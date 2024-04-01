@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pcbnew
 
-from .common import get_layout_map, sync_footprints, flip_dict, sync_track, sync_zone, calculate_translation
+from .common import get_layout_map, sync_footprints, flip_dict, sync_track, calculate_translation
 
 log = logging.getLogger(__name__)
 
@@ -58,10 +58,6 @@ class PullGroup(pcbnew.ActionPlugin):
 
             for track in source_board.GetTracks():
                 item = sync_track(track, target_board)
-                g.AddItem(item)
-
-            for fill in source_board.Zones():
-                item = sync_zone(fill,target_board)
                 g.AddItem(item)
 
             # Shift entire target group by offset as last operation

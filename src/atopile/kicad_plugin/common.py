@@ -83,17 +83,6 @@ def update_zone_net(source_zone: pcbnew.ZONE, source_board: pcbnew.BOARD, target
                 matched_pad_index = index
 
     if matched_fp and matched_pad_index:
-        
-
-def sync_zone(zone: pcbnew.ZONE, target: pcbnew.BOARD) -> pcbnew.ZONE:
-    """Sync a zone to the target board."""
-    new_zone: pcbnew.ZONE = zone.Duplicate().Cast()
-    new_zone.SetParent(target)
-    new_zone.SetLayer(zone.GetLayer())
-    target.Add(new_zone)
-
-    
-    return new_zone
 
 def sync_footprints(
     source: pcbnew.BOARD, target: pcbnew.BOARD, uuid_map: dict[str, str]
