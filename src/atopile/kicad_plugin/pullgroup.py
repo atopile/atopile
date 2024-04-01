@@ -74,8 +74,6 @@ class PullGroup(pcbnew.ActionPlugin):
                 update_zone_net(zone,source_board,new_zone,target_board,flip_dict(known_layouts[g_name]["uuid_map"]))
                 g.AddItem(new_zone)
 
-            # Shift entire target group by offset as last operation
-            g.Move(offset)
 
         pcbnew.Refresh()
 
