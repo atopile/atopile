@@ -60,6 +60,7 @@ def flip_dict(d: dict) -> dict:
     """Return a dict with keys and values swapped."""
     return {v: k for k, v in d.items()}
 
+
 def sync_track(track: pcbnew.PCB_TRACK, target: pcbnew.BOARD) -> pcbnew.PCB_TRACK:
     """Sync a track to the target board."""
     new_track: pcbnew.PCB_TRACK = track.Duplicate().Cast()
@@ -69,6 +70,7 @@ def sync_track(track: pcbnew.PCB_TRACK, target: pcbnew.BOARD) -> pcbnew.PCB_TRAC
     new_track.SetLayer(track.GetLayer())
     target.Add(new_track)
     return new_track
+
 
 def sync_footprints(
     source: pcbnew.BOARD, target: pcbnew.BOARD, uuid_map: dict[str, str]
@@ -90,6 +92,7 @@ def sync_footprints(
         target_fp.SetLayer(source_fp.GetLayer())
     return missing_uuids
 
+
 def find_anchor_footprint_group(group: pcbnew.PCB_GROUP) -> pcbnew.FOOTPRINT:
     """Return anchor footprint with largest pin count in group: tiebreaker size"""
     max_padcount = 0
@@ -104,6 +107,7 @@ def find_anchor_footprint_group(group: pcbnew.PCB_GROUP) -> pcbnew.FOOTPRINT:
             max_area = fp.GetArea()
     return anchor_fp
 
+
 def find_anchor_footprint_board(board: pcbnew.BOARD) -> pcbnew.FOOTPRINT:
     """Return anchor footprint with largest pin count in board: tiebreaker size"""
     max_padcount = 0
@@ -116,6 +120,7 @@ def find_anchor_footprint_board(board: pcbnew.BOARD) -> pcbnew.FOOTPRINT:
             max_padcount = fp.GetPadCount()
             max_area = fp.GetArea()
     return anchor_fp
+
 
 def calculate_translation(source: pcbnew.BOARD, target_group: pcbnew.PCB_GROUP) -> pcbnew.VECTOR2I:
     source_anchor_fp = find_anchor_footprint_board(source)
