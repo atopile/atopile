@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pcbnew
 
-from .common import get_layout_map, sync_footprints, sync_track
+from .common import get_layout_map, sync_footprints, sync_track, calculate_translation
 
 log = logging.getLogger(__name__)
 
@@ -48,13 +48,21 @@ class PushGroup(pcbnew.ActionPlugin):
             for item in target_board.GetTracks():
                 target_board.Remove(item)
 
+            # Calculate offset before moving footprints
+            offset = calculate_translation(source=g, target=target_board)
+
             # Push the layout
             sync_footprints(
                 source_board, target_board, known_layouts[g_name]["uuid_map"]
             )
+
             for track in g.GetItems():
                 if isinstance(track, pcbnew.PCB_TRACK):
-                    sync_track(track, target_board)
+                    sync_track(source_board, track, target_board)
+
+            # Shift all objects of interest by offset
+            [fp.Move(offset) for fp in target_board.GetFootprints()]
+            [track.Move(offset) for track in target_board.GetTracks()]
 
         # Save the target board
         target_board.Save(target_board.GetFileName())

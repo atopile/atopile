@@ -57,7 +57,7 @@ class PullGroup(pcbnew.ActionPlugin):
             )
 
             for track in source_board.GetTracks():
-                item = sync_track(track, target_board)
+                item = sync_track(source_board, track, target_board)
                 g.AddItem(item)
 
             # Shift entire target group by offset as last operation
