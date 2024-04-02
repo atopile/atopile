@@ -50,7 +50,7 @@ class PullGroup(pcbnew.ActionPlugin):
             source_board: pcbnew.BOARD = pcbnew.LoadBoard(str(layout_path))
             
             # Calculate offset before moving footprints
-            offset = calculate_translation(source=source_board, target_group=g)
+            offset = calculate_translation(source=source_board,target=g)
 
             sync_footprints(
                 source_board, target_board, flip_dict(known_layouts[g_name]["uuid_map"])
