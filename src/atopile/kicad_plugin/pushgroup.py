@@ -21,6 +21,7 @@ class PushGroup(pcbnew.ActionPlugin):
         source_board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = source_board.GetFileName()
         known_layouts = get_layout_map(board_path)
+        target_board = None
 
         # Push Selected Groups
         for g in source_board.Groups():
@@ -65,6 +66,7 @@ class PushGroup(pcbnew.ActionPlugin):
             [track.Move(offset) for track in target_board.GetTracks()]
 
         # Save the target board
-        target_board.Save(target_board.GetFileName())
+        if target_board: target_board.Save(target_board.GetFileName())
+        else: raise RuntimeWarning("Cannot push group. No groups selected")
 
 PushGroup().register()
