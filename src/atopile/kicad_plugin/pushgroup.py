@@ -3,7 +3,13 @@ from pathlib import Path
 
 import pcbnew
 
-from .common import get_layout_map, sync_footprints, sync_track, calculate_translation
+from .common import (
+    calculate_translation,
+    get_group_footprints,
+    get_layout_map,
+    sync_footprints,
+    sync_track,
+)
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +56,7 @@ class PushGroup(pcbnew.ActionPlugin):
                 target_board.Remove(item)
 
             # Calculate offset before moving footprints
-            offset = calculate_translation(source=g, target=target_board)
+            offset = calculate_translation(source_fps=get_group_footprints(g), target_fps=source_board.GetFootprints())
 
             # Push the layout
             sync_footprints(
@@ -62,11 +68,16 @@ class PushGroup(pcbnew.ActionPlugin):
                     sync_track(source_board, track, target_board)
 
             # Shift all objects of interest by offset
-            [fp.Move(offset) for fp in target_board.GetFootprints()]
-            [track.Move(offset) for track in target_board.GetTracks()]
+            for fp in target_board.GetFootprints():
+                fp.Move(offset)
 
-        # Save the target board
-        if target_board: target_board.Save(target_board.GetFileName())
-        else: raise RuntimeWarning("Cannot push group. No groups selected")
+            for track in target_board.GetTracks():
+                track.Move(offset)
+
+            # Save the target board
+            if target_board:
+                target_board.Save(target_board.GetFileName())
+            else:
+                raise RuntimeWarning("Cannot push group. No groups selected")
 
 PushGroup().register()
