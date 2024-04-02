@@ -74,17 +74,6 @@ def sync_track(source_board: pcbnew.BOARD, track: pcbnew.PCB_TRACK, target: pcbn
     return new_track
 
 
-def sync_ref_des(source_fp: pcbnew.FOOTPRINT, target_fp: pcbnew.FOOTPRINT):
-    target_fp.Reference().SetPos0(source_fp.Reference().GetPos0())
-    target_fp.Reference().SetAttributes(source_fp.Reference().GetAttributes())
-#     source_ref = source_fp.Reference()
-#     target_ref = target_fp.Reference()
-#     target_ref.SetPos0(source_ref.GetPos0()) #-Pos0 is relative, -Position is absolute
-#     target_ref.SetTextAngleDegrees(source_ref.GetTextAngleDegrees())
-#     target_ref.SetTextWidth(source_ref.GetTextWidth())
-#     target_ref.SetTextHeight(source_ref.GetTextHeight())
-
-
 def sync_footprints(
     source: pcbnew.BOARD, target: pcbnew.BOARD, uuid_map: dict[str, str]
 ) -> list[str]:
@@ -100,10 +89,12 @@ def sync_footprints(
         except KeyError:
             missing_uuids.append(s_uuid)
             continue
-        sync_ref_des(source_fp,target_fp)
         target_fp.SetPosition(source_fp.GetPosition())
         target_fp.SetOrientation(source_fp.GetOrientation())
         target_fp.SetLayer(source_fp.GetLayer())
+        # Ref Designators
+        target_fp.Reference().SetAttributes(source_fp.Reference().GetAttributes())
+        target_fp.Reference().SetPos0(source_fp.Reference().GetPos0())
     return missing_uuids
 
 
