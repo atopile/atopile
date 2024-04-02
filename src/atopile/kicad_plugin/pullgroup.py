@@ -3,7 +3,14 @@ from pathlib import Path
 
 import pcbnew
 
-from .common import get_layout_map, sync_footprints, flip_dict, sync_track, calculate_translation
+from .common import (
+    calculate_translation,
+    flip_dict,
+    get_group_footprints,
+    get_layout_map,
+    sync_footprints,
+    sync_track,
+)
 
 log = logging.getLogger(__name__)
 
@@ -48,16 +55,16 @@ class PullGroup(pcbnew.ActionPlugin):
 
             # Load the layout and sync
             source_board: pcbnew.BOARD = pcbnew.LoadBoard(str(layout_path))
-            
+
             # Calculate offset before moving footprints
-            offset = calculate_translation(source=source_board, target_group=g)
+            offset = calculate_translation(source_fps=source_board.GetFootprints(), target_fps=get_group_footprints(g))
 
             sync_footprints(
                 source_board, target_board, flip_dict(known_layouts[g_name]["uuid_map"])
             )
 
             for track in source_board.GetTracks():
-                item = sync_track(track, target_board)
+                item = sync_track(source_board, track, target_board)
                 g.AddItem(item)
 
             # Shift entire target group by offset as last operation

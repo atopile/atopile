@@ -1,7 +1,8 @@
-import logging
 import json
+import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
+
 import pcbnew
 
 LOG_FILE = Path("~/.atopile/kicad-plugin.log").expanduser().absolute()
@@ -61,14 +62,19 @@ def flip_dict(d: dict) -> dict:
     return {v: k for k, v in d.items()}
 
 
-def sync_track(track: pcbnew.PCB_TRACK, target: pcbnew.BOARD) -> pcbnew.PCB_TRACK:
+def sync_track(
+    source_board: pcbnew.BOARD,
+    track: pcbnew.PCB_TRACK,
+    target_board: pcbnew.BOARD
+) -> pcbnew.PCB_TRACK:
     """Sync a track to the target board."""
     new_track: pcbnew.PCB_TRACK = track.Duplicate().Cast()
-    new_track.SetParent(target)
+    new_track.SetParent(target_board)
     new_track.SetStart(track.GetStart())
     new_track.SetEnd(track.GetEnd())
     new_track.SetLayer(track.GetLayer())
-    target.Add(new_track)
+    target_board.Add(new_track)
+    source_board.Remove(new_track)
     return new_track
 
 
@@ -90,16 +96,19 @@ def sync_footprints(
         target_fp.SetPosition(source_fp.GetPosition())
         target_fp.SetOrientation(source_fp.GetOrientation())
         target_fp.SetLayer(source_fp.GetLayer())
+        # Ref Designators
+        target_fp.Reference().SetAttributes(source_fp.Reference().GetAttributes())
+        target_fp.Reference().SetPos0(source_fp.Reference().GetPos0())
     return missing_uuids
 
 
-def find_anchor_footprint_group(group: pcbnew.PCB_GROUP) -> pcbnew.FOOTPRINT:
-    """Return anchor footprint with largest pin count in group: tiebreaker size"""
+def find_anchor_footprint(fps: Iterable[pcbnew.FOOTPRINT]) -> pcbnew.FOOTPRINT:
+    """Return anchor footprint with largest pin count in board or group: tiebreaker size"""
+    # fps = layout.GetFootprints()
+    # fps = [item for item in layout.GetItems() if isinstance(item, pcbnew.FOOTPRINT)]
     max_padcount = 0
     max_area = 0
     anchor_fp = None
-    items = group.GetItems()
-    fps = [item for item in items if isinstance(item, pcbnew.FOOTPRINT)]
     for fp in fps:
         if fp.GetPadCount() > max_padcount or (fp.GetPadCount()==max_padcount and fp.GetArea()>max_area):
             anchor_fp = fp
@@ -108,24 +117,16 @@ def find_anchor_footprint_group(group: pcbnew.PCB_GROUP) -> pcbnew.FOOTPRINT:
     return anchor_fp
 
 
-def find_anchor_footprint_board(board: pcbnew.BOARD) -> pcbnew.FOOTPRINT:
-    """Return anchor footprint with largest pin count in board: tiebreaker size"""
-    max_padcount = 0
-    max_area = 0
-    anchor_fp = None
-    fps = board.GetFootprints()
-    for fp in fps:
-        if fp.GetPadCount() > max_padcount or (fp.GetPadCount()==max_padcount and fp.GetArea()>max_area):
-            anchor_fp = fp
-            max_padcount = fp.GetPadCount()
-            max_area = fp.GetArea()
-    return anchor_fp
+def get_group_footprints(group: pcbnew.PCB_GROUP) -> list[pcbnew.FOOTPRINT]:
+    """Return a list of footprints in a group."""
+    return [item for item in group.GetItems() if isinstance(item, pcbnew.FOOTPRINT)]
 
 
-def calculate_translation(source: pcbnew.BOARD, target_group: pcbnew.PCB_GROUP) -> pcbnew.VECTOR2I:
-    source_anchor_fp = find_anchor_footprint_board(source)
+def calculate_translation(source_fps: Iterable[pcbnew.FOOTPRINT], target_fps: Iterable[pcbnew.FOOTPRINT]) -> pcbnew.VECTOR2I:
+    """Calculate the translation vector between two groups of footprints."""
+    source_anchor_fp = find_anchor_footprint(source_fps)
     source_offset = source_anchor_fp.GetPosition()
-    target_anchor_fp = find_anchor_footprint_group(target_group)
+    target_anchor_fp = find_anchor_footprint(target_fps)
     target_offset = target_anchor_fp.GetPosition()
-    total_offset = target_offset-source_offset
+    total_offset = target_offset - source_offset
     return total_offset
