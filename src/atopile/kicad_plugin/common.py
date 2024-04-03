@@ -78,6 +78,42 @@ def sync_track(
     return new_track
 
 
+#TODO: There must be a better way to update net of fill
+def update_zone_net(source_zone: pcbnew.ZONE, source_board: pcbnew.BOARD, target_zone: pcbnew.ZONE, target_board:pcbnew.BOARD, uuid_map: dict[str, str]):
+    '''Finds a pin connected to original zone, pulls pin net name from new board net'''
+    source_netname = source_zone.GetNetname()
+    matched_fp = None
+    matched_pad_index = None
+    for fp in source_board.GetFootprints():
+        for index, pad in enumerate(fp.Pads()):
+            if pad.GetNetname() == source_netname:
+                matched_fp = fp
+                matched_pad_index = index
+
+    if matched_fp and matched_pad_index:
+        matched_fp_uuid = get_footprint_uuid(matched_fp)
+        target_fp_uuid = uuid_map.get(matched_fp_uuid,None)
+        if target_fp_uuid:
+            target_uuids = footprints_by_uuid(target_board)
+            target_fp = target_uuids.get(target_fp_uuid,None)
+            if target_fp:
+                new_netinfo = target_fp.Pads()[matched_pad_index].GetNet()
+                target_zone.SetNet(new_netinfo)
+                return
+
+    # TODO: Verify that this will always set net to no net
+    target_zone.SetNetCode(0)
+
+
+def sync_zone(zone: pcbnew.ZONE, target: pcbnew.BOARD) -> pcbnew.ZONE:
+    """Sync a zone to the target board."""
+    new_zone: pcbnew.ZONE = zone.Duplicate().Cast()
+    new_zone.SetParent(target)
+    new_zone.SetLayer(zone.GetLayer())
+    target.Add(new_zone)
+    return new_zone
+
+
 def sync_footprints(
     source: pcbnew.BOARD, target: pcbnew.BOARD, uuid_map: dict[str, str]
 ) -> list[str]:
