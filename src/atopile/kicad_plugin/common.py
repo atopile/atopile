@@ -134,7 +134,10 @@ def sync_footprints(
         target_fp.SetLayer(source_fp.GetLayer())
         # Ref Designators
         target_fp.Reference().SetAttributes(source_fp.Reference().GetAttributes())
-        target_fp.Reference().SetPos0(source_fp.Reference().GetPos0())
+        target_ref: pcbnew.FP_TEXT = target_fp.Reference()
+        source_ref: pcbnew.FP_TEXT = source_fp.Reference()
+        target_ref.SetPosition(source_ref.GetPosition())
+
     return missing_uuids
 
 
