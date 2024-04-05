@@ -160,7 +160,7 @@ def process_links_simple(addr: AddrStr) -> list[dict]:
     return link_list
 
 def is_path_without_end_nodes(G, blocks, source, target):
-    print(f"Checking path from {source} to {target}")
+    #print(f"Checking path from {source} to {target}")
     # Ensure source and target are not the same and both are in the graph
     if source == target or source not in G or target not in G:
         print("exit")
@@ -170,7 +170,7 @@ def is_path_without_end_nodes(G, blocks, source, target):
     for block in blocks:
         if block not in (source, target) and (blocks[block]['type'] == "module" or blocks[block]['type'] == "component") and block in G_temp.nodes:
             G_temp.remove_node(block)
-    print(f"Nodes in G_temp: {G_temp.nodes}")
+    #print(f"Nodes in G_temp: {G_temp.nodes}")
     # Check if there's a path in the modified graph
     has_path = nx.has_path(G_temp, source, target)
 
@@ -192,7 +192,7 @@ def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
 
     # Add the links to the graph
     for link in links:
-        print(f"Adding edge from {link['source']['block']} to {link['target']['block']}")
+        #print(f"Adding edge from {link['source']['block']} to {link['target']['block']}")
         if link['type'] == "interface" and link['instance_of'] != "Power":
             G.add_edge(link['source']['block'], link['target']['block'])
         # G.add_edge(link['source']['block'], link['target']['block'])
@@ -218,36 +218,37 @@ def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
 def get_vis_dict(root: AddrStr) -> str:
     return_json = {}
     # for addr in chain(root, all_descendants(root)):
-    #for addr in all_descendants(root):
-    block_dict = {}
-    link_list = []
-    connection_list = []
-    # we only create an entry for modules, not for components
-    if match_modules(root) and not match_components(root):
-        instance = get_instance_section(root) or "root"
-        parent = get_parent(root, root)
-        # add all the modules and components
-        block_dict = get_blocks(root)
+    for addr in all_descendants(root):
+        block_dict = {}
+        link_list = []
+        connection_list = []
+        # we only create an entry for modules, not for components
+        if match_modules(root) and not match_components(root):
+            instance = get_instance_section(addr) or "root"
+            parent = get_parent(addr, root)
+            # add all the modules and components
+            block_dict = get_blocks(addr)
 
-        link_list = process_links(root)
+            link_list = process_links(addr)
 
-        connection_list = get_block_to_block_links(root)
+            connection_list = get_block_to_block_links(addr)
 
-        nodes = get_nodes(root)
-        link_list = process_links_simple(root)
+            nodes = get_nodes(addr)
+            link_list = process_links_simple(addr)
 
-        return_json[instance] = {
-            "parent": parent,
-            "blocks": block_dict,
-            "links": link_list,
-            "connections": connection_list,
-        }
-        return_json = {
-            "parent": parent,
-            "nodes": nodes,
-            "links": link_list,
-            "connections": connection_list,
-        }
+            return_json[instance] = {
+                "parent": parent,
+                "blocks": block_dict,
+                "links": link_list,
+                "connections": connection_list,
+            }
+            print(instance)
+            # return_json = {
+            #     "parent": parent,
+            #     "nodes": nodes,
+            #     "links": link_list,
+            #     "connections": connection_list,
+            # }
 
     return json.dumps(return_json)
 
