@@ -25,7 +25,7 @@ The [atopile package registry](https://packages.atopile.io) contains a list of e
 
 A package usually points to a git repository that contains the design files, in a similar fashion to a standard atopile project.
 
-See an example of a package with the [generics library](https://gitlab.atopile.io/packages/generics).
+See an example of a package with the [generics library](https://github.com/atopile/generics).
 
 ### Installing packages
 
