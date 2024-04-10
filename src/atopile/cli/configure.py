@@ -109,7 +109,7 @@ def install_kicad_plugin() -> None:
     """Install the kicad plugin."""
     # Find the path to kicad's plugin directory
     plugin_loader = f"""
-        plugin_path = "{Path(__file__).parent.parent}"
+        plugin_path = r"{Path(__file__).parent.parent}"
         import sys
         import importlib
 
