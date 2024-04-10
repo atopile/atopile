@@ -53,7 +53,7 @@ class ProjectBuildConfig:
 @define
 class ProjectServicesConfig:
     """A config for services used by the project."""
-    components: str = "https://atopile-component-server-atsuhzfd5a-uc.a.run.app/jlc"
+    components: str = "https://component-server-3033-5335559d-kjaci698.onporter.run/jlc/v1"
 
 
 @define
