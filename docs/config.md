@@ -14,6 +14,21 @@ The `ato.yaml` is significant indicator for a project:
 3. Lists project dependencies and the required versions of those dependencies
 4. Specifies what compiler version the project is intended to build with
 
+### `build` key
+
+This is for build-configuration information.
+
+Each key under `build:` is a layout name, and the value is a list of entry-points for that layout.
+
+eg.
+```yaml
+build:
+  my-build:
+    entry: "elec/src/demo.ato:Demo"  # This is the root of the build
+```
+
+`fail_on_drcs` is a boolean value, defaulting to `false`. If set to `true`, the build will fail if any DRCs errors are found.
+
 ### Dependencies
 
 Each package listed under the `dependencies:` key is automatically downloaded and installed for users when they run the `ato install`

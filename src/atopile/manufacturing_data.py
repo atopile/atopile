@@ -8,14 +8,14 @@ import re
 import subprocess
 import sys
 import zipfile
+from functools import cache
 from os import PathLike
 from pathlib import Path
 from time import time
 from typing import Optional
-import semver
-from functools import cache
 
 import git
+import semver
 
 import atopile.errors
 from atopile import config
@@ -86,20 +86,9 @@ def run(*args, timeout_time: Optional[float] = 10, **kwargs) -> None:
         )
 
 
-def generate_manufacturing_data(build_ctx: config.BuildContext) -> None:
-    """Generate manufacturing data for the project."""
-    # If there's no layout, we can't generate manufacturing data
-    if not build_ctx.layout_path:
-        atopile.errors.AtoError(
-            "Layout must be available to generate manufacturing data"
-        ).log(log, logging.WARNING)
-        return
-
-    # Ensure the build directory exists
-    build_ctx.build_path.mkdir(parents=True, exist_ok=True)
-
-    # Replace constants in the board file
-    project_path = config.get_project_context().project_path
+@cache
+def _get_short_githash(project_path: Path) -> str:
+    """Get the short git hash for the project."""
     try:
         repo = git.Repo(project_path, search_parent_directories=True)
     except git.InvalidGitRepositoryError:
@@ -117,11 +106,60 @@ def generate_manufacturing_data(build_ctx: config.BuildContext) -> None:
         else:
             short_githash = repo.head.commit.hexsha[:short_githash_length]
 
+    return short_githash
+
+
+# FIXME: can't use a regular cached function here because build_ctx is mutable
+_ensure_modded_kicad_pcb_cache = {}
+def _ensure_modded_kicad_pcb(build_ctx: config.BuildContext) -> Path:
+    """Ensure the KiCAD PCB file has been modified for manufacturing."""
+    # First, check if the build_ctx is in the cache
+    if id(build_ctx) in _ensure_modded_kicad_pcb_cache:
+        return _ensure_modded_kicad_pcb_cache[id(build_ctx)]
+
+    # If there's no layout, we can't generate manufacturing data
+    if not build_ctx.layout_path:
+        atopile.errors.AtoError(
+            "Layout must be available to generate manufacturing data"
+        ).log(log, logging.WARNING)
+        return
+
+    # Ensure the build directory exists
+    build_ctx.build_path.mkdir(parents=True, exist_ok=True)
+
+    # Replace constants in the board file
+    project_path = config.get_project_context().project_path
+    short_githash = _get_short_githash(project_path)
+
     modded_kicad_pcb = build_ctx.output_base.with_suffix(".kicad_pcb")
+
     githash_kw = re.compile(re.escape("{{GITHASH}}"))
     with build_ctx.layout_path.open("r") as f_src, modded_kicad_pcb.open("w") as f_dst:
         for line in f_src:
             f_dst.write(githash_kw.sub(short_githash, line))
+
+    # Finally, cache the result
+    _ensure_modded_kicad_pcb_cache[id(build_ctx)] = modded_kicad_pcb
+
+    return modded_kicad_pcb
+
+
+def generate_manufacturing_data(build_ctx: config.BuildContext) -> None:
+    """Generate manufacturing data for the project."""
+    # If there's no layout, we can't generate manufacturing data
+    if not build_ctx.layout_path:
+        atopile.errors.AtoError(
+            "Layout must be available to generate manufacturing data"
+        ).log(log, logging.WARNING)
+        return
+
+    # Ensure the build directory exists
+    build_ctx.build_path.mkdir(parents=True, exist_ok=True)
+
+    # Replace constants in the board file
+    project_path = config.get_project_context().project_path
+    short_githash = _get_short_githash(project_path)
+    modded_kicad_pcb = _ensure_modded_kicad_pcb(build_ctx)
 
     # Setup for Gerbers
     gerber_dir = build_ctx.output_base.with_name(
@@ -186,3 +224,43 @@ def generate_manufacturing_data(build_ctx: config.BuildContext) -> None:
     pos_contents = pos_path.read_text().splitlines()
     pos_contents[0] = "Designator,Value,Package,Mid X,Mid Y,Rotation,Layer"
     pos_path.write_text("\n".join(pos_contents))
+
+
+def generate_drc_report(build_ctx: config.BuildContext) -> None:
+    """Generate manufacturing data for the project."""
+    if not build_ctx.layout_path:
+        atopile.errors.AtoError(
+            "Layout must be available to generate manufacturing data"
+        ).log(log, logging.WARNING)
+        return
+
+    # Ensure the build directory exists
+    build_ctx.build_path.mkdir(parents=True, exist_ok=True)
+
+    # Replace constants in the board file
+    modded_kicad_pcb = _ensure_modded_kicad_pcb(build_ctx)
+
+    # Setup for Gerbers
+    kicad_cli = find_kicad_cli()
+    version = get_cli_version(kicad_cli)
+
+    # Run DRCs, if possible via CLI
+    # TODO: pull this out into another target
+    if version >= semver.Version(8):
+        try:
+            run(
+                [
+                    kicad_cli,
+                    "pcb",
+                    "drc",
+                    "-o",
+                    str(build_ctx.build_path / "drc-report.rpt"),
+                    "--exit-code-violations",
+                    str(modded_kicad_pcb),
+                ]
+            )
+        except atopile.errors.AtoError as e:
+            if build_ctx.fail_on_drcs:
+                raise
+            else:
+                e.log(log, logging.WARNING)
