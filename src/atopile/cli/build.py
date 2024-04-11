@@ -136,6 +136,18 @@ def consolidate_footprints(build_args: BuildContext) -> None:
         except shutil.SameFileError:
             log.debug("Footprint %s already exists in the target directory", fp)
 
+@muster.register("copy-3dmodels")
+def consolidate_3dmodels(build_args: BuildContext) -> None:
+    """Consolidate all the project's 3d models into a single directory."""
+    fp_target = build_args.build_path / "footprints" / "footprints.3dshapes"
+    fp_target.mkdir(exist_ok=True, parents=True)
+
+    for fp in atopile.config.get_project_context().project_path.glob("**/*.step"):
+        try:
+            shutil.copy(fp, fp_target)
+        except shutil.SameFileError:
+            log.debug("Footprint %s already exists in the target directory", fp)
+
 
 @muster.register("netlist")
 def generate_netlist(build_args: BuildContext) -> None:
