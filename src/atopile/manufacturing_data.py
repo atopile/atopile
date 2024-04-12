@@ -260,7 +260,8 @@ def generate_drc_report(build_ctx: config.BuildContext) -> None:
                 ]
             )
         except atopile.errors.AtoError as e:
+            drc_err = atopile.errors.AtoError("DRCs failed")
             if build_ctx.fail_on_drcs:
-                raise
+                raise drc_err from e
             else:
-                e.log(log, logging.WARNING)
+                drc_err.log(log, logging.WARNING)
