@@ -14,12 +14,6 @@ from collections import defaultdict
 import networkx as nx
 
 
-# Needed structures:
-# parent
-# blocks
-# all links
-# block to block links
-
 def get_parent(addr: AddrStr, root) -> AddrStr:
     """
     returns the parent of the given address or root if there is none
@@ -36,6 +30,7 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
         "block_name": {
             "instance_of": "instance_name",
             "type": "module/component/interface/signal"
+            "address": "a.b.c"
         }, ...
     }
     """
@@ -51,41 +46,10 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
                 type = "signal"
             block_dict[get_name(child)] = {
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
-                "type": type}
-        else:
-            print(f"Skipping {get_name(child)}")
+                "type": type,
+                "address": get_instance_section(child)}
 
     return block_dict
-
-def get_nodes(addr: AddrStr) -> dict[str, dict[str, str]]:
-    """
-    returns a dictionary of blocks:
-    {
-        "block_name": {
-            "instance_of": "instance_name",
-            "type": "module/component/interface/signal"
-        }, ...
-    }
-    """
-    block_list = []
-    for child in get_children(addr):
-        if match_modules(child) or match_components(child) or match_interfaces(child) or match_signals(child):
-            type = "module"
-            if match_components(child):
-                type = "component"
-            elif match_interfaces(child):
-                type = "interface"
-            elif match_signals(child):
-                type = "signal"
-            block_list.append({
-                "name": get_name(child),
-                "n": 1,
-                "grp": 1,
-                "id": get_name(child)})
-        else:
-            print(f"Skipping {get_name(child)}")
-
-    return block_list
 
 def process_links(addr: AddrStr) -> list[dict]:
     """
@@ -150,27 +114,29 @@ def process_links_simple(addr: AddrStr) -> list[dict]:
         else:
             type = "interface"
             instance_of = get_name(get_supers_list(link.source.addr)[0].obj_def.address)
+        #TODO: Very cruddy, will have to move this to addr utils
         source_block, source_port = split_list_at_n(get_current_depth(addr), split_addr(link.source.addr))
         target_block, target_port = split_list_at_n(get_current_depth(addr), split_addr(link.target.addr))
 
         _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
         _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
-        link_list.append({"source": get_name(combine_addr(source_block)), "target": get_name(combine_addr(target_block)), "value": 1})
+        link_list.append({"source": _source, "target": _target, "instance_of": instance_of})
 
     return link_list
 
 def is_path_without_end_nodes(G, blocks, source, target):
-    #print(f"Checking path from {source} to {target}")
-    # Ensure source and target are not the same and both are in the graph
+    """"
+    Is there a direct path between two nodes? (allowed to go through chained signals and interfaces)
+    """
+    #TODO: Got tired of finding nets myself so started using networkx.
+    # Probably going to have to cluster all those utils together somewhere
     if source == target or source not in G or target not in G:
-        print("exit")
         return False
     # Remove other end nodes from the graph temporarily
     G_temp = G.copy()
     for block in blocks:
         if block not in (source, target) and (blocks[block]['type'] == "module" or blocks[block]['type'] == "component") and block in G_temp.nodes:
             G_temp.remove_node(block)
-    #print(f"Nodes in G_temp: {G_temp.nodes}")
     # Check if there's a path in the modified graph
     has_path = nx.has_path(G_temp, source, target)
 
@@ -192,7 +158,6 @@ def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
 
     # Add the links to the graph
     for link in links:
-        #print(f"Adding edge from {link['source']['block']} to {link['target']['block']}")
         if link['type'] == "interface" and link['instance_of'] != "Power":
             G.add_edge(link['source']['block'], link['target']['block'])
         # G.add_edge(link['source']['block'], link['target']['block'])
@@ -233,7 +198,6 @@ def get_vis_dict(root: AddrStr) -> str:
 
             connection_list = get_block_to_block_links(addr)
 
-            nodes = get_nodes(addr)
             link_list = process_links_simple(addr)
 
             return_json[instance] = {
@@ -242,13 +206,6 @@ def get_vis_dict(root: AddrStr) -> str:
                 "links": link_list,
                 "connections": connection_list,
             }
-            print(instance)
-            # return_json = {
-            #     "parent": parent,
-            #     "nodes": nodes,
-            #     "links": link_list,
-            #     "connections": connection_list,
-            # }
 
     return json.dumps(return_json)
 
