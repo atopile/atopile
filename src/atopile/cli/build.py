@@ -20,7 +20,7 @@ from atopile.config import BuildContext
 from atopile.errors import handle_ato_errors, iter_through_errors
 from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
-from atopile.vis_dict_builder import get_vis_dict
+from atopile.viewer_utils import get_vis_dict
 
 log = logging.getLogger(__name__)
 
