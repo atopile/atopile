@@ -175,6 +175,12 @@ def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
 
 
+@muster.register("drc", default=False)
+def generate_drc_report(build_ctx: BuildContext) -> None:
+    """Generate a designator map for the project."""
+    atopile.manufacturing_data.generate_drc_report(build_ctx)
+
+
 @muster.register("clone-footprints")
 def clone_footprints(build_args: BuildContext) -> None:
     """Clone the footprints for the project."""
