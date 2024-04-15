@@ -35,13 +35,13 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
     """
     block_dict = {}
     for child in get_children(addr):
-        if match_modules(child) or match_components(child) or match_interfaces(child) or match_signals(child):
+        if match_modules(child) or match_components(child) or match_interfaces(child) or match_pins_and_signals(child):
             type = "module"
             if match_components(child):
                 type = "component"
             elif match_interfaces(child):
                 type = "interface"
-            elif match_signals(child):
+            elif match_pins_and_signals(child):
                 type = "signal"
             block_dict[get_name(child)] = {
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
