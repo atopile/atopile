@@ -168,7 +168,7 @@ def get_vis_dict(root: AddrStr) -> str:
 
 def get_current_depth(addr: AddrStr) -> int:
     instance_section = get_instance_section(addr)
-    if instance_section == None or instance_section == "":
+    if instance_section is None or instance_section == "":
         return 0
     else:
         return len(instance_section.split("."))
