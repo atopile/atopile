@@ -1,0 +1,17 @@
+.edgebutton {
+    background: #eee;
+    border: 1px solid #fff;
+    cursor: pointer;
+    border-radius: 5%;
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .edgebutton:hover {
+    box-shadow: 0 0 6px 2px rgba(0, 0, 0, 0.08);
+  }
+
+.edge-label {
+    color: blue;
+  }
+

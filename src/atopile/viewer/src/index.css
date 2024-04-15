@@ -1,0 +1,25 @@
+.floatingedges {
+  flex-direction: column;
+  display: flex;
+  flex-grow: 1;
+  height: 100%;
+}
+
+.floatingedges .react-flow__handle {
+  opacity: 0;
+}
+.reactflow-container {
+  width: 100%; /* or any specific width */
+  height: 500px; /* or any specific height */
+  /* Ensure the container is not hidden */
+  display: block;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: sans-serif;
+}
