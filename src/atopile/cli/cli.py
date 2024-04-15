@@ -6,7 +6,7 @@ from rich.logging import RichHandler
 from atopile import telemetry
 from atopile.cli.rich_console import console
 
-from . import build, configure, create, inspect, install
+from . import build, configure, create, inspect, install, view
 
 FORMAT = "%(message)s"
 logging.basicConfig(
@@ -58,6 +58,7 @@ cli.add_command(create.create)
 cli.add_command(install.install)
 cli.add_command(configure.configure)
 cli.add_command(inspect.inspect)
+cli.add_command(view.view)
 
 
 if __name__ == "__main__":
