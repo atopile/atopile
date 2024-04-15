@@ -50,8 +50,7 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
 
     return block_dict
 
-
-def process_links_simple(addr: AddrStr) -> list[dict]:
+def process_links(addr: AddrStr) -> list[dict]:
     """
     returns a list of links:
     [
@@ -73,18 +72,20 @@ def process_links_simple(addr: AddrStr) -> list[dict]:
     for link in links:
         # Type is either interface or signal
         if match_pins_and_signals(link.source.addr):
+            type = "signal"
             instance_of = "signal"
         else:
+            type = "interface"
             instance_of = get_name(get_supers_list(link.source.addr)[0].obj_def.address)
-        #TODO: Very cruddy, will have to move this to addr utils
         source_block, source_port = split_list_at_n(get_current_depth(addr), split_addr(link.source.addr))
         target_block, target_port = split_list_at_n(get_current_depth(addr), split_addr(link.target.addr))
 
         _source = {"block": get_name(combine_addr(source_block)), "port": combine_addr(source_port)}
         _target = {"block": get_name(combine_addr(target_block)), "port": combine_addr(target_port)}
-        link_list.append({"source": _source, "target": _target, "instance_of": instance_of})
+        link_list.append({"source": _source, "target": _target, "type": type, "instance_of": instance_of})
 
     return link_list
+
 
 def is_path_without_end_nodes(G, blocks, source, target):
     """"
@@ -112,7 +113,7 @@ def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
     ]
     """
     blocks = get_blocks(addr)
-    links = process_links_simple(addr)
+    links = process_links(addr)
 
     # Create a graph with the blocks
     G = nx.Graph()
@@ -154,7 +155,7 @@ def get_vis_dict(root: AddrStr) -> str:
             instance = get_instance_section(addr) or "root"
             parent = get_parent(addr, root)
             block_dict = get_blocks(addr)
-            link_list = process_links_simple(addr)
+            link_list = process_links(addr)
             connection_list = get_block_to_block_links(addr)
 
             return_json[instance] = {
