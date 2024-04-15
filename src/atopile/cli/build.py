@@ -20,6 +20,7 @@ from atopile.config import BuildContext
 from atopile.errors import handle_ato_errors, iter_through_errors
 from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
+from atopile.viewer_utils import get_vis_dict
 
 log = logging.getLogger(__name__)
 
@@ -201,3 +202,9 @@ def generate_module_map(build_args: BuildContext) -> None:
 def generate_assertion_report(build_ctx: BuildContext) -> None:
     """Generate a report based on assertions made in the source code."""
     atopile.assertions.generate_assertion_report(build_ctx)
+
+@muster.register("view-dict")
+def generate_view_dict(build_ctx: BuildContext) -> None:
+    """Generate a dictionary for the viewer."""
+    with open(build_ctx.output_base.with_suffix(".view.json"), "w", encoding="utf-8") as f:
+        f.write(get_vis_dict(build_ctx.entry))
