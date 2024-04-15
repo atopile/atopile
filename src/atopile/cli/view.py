@@ -48,7 +48,7 @@ def home():
 @click.command()
 @project_options
 def view(build_ctxs: list[BuildContext]):
-    log.info(f"Spinning up the viewer")
+    log.info("Spinning up the viewer")
 
     if len(build_ctxs) == 0:
         errors.AtoNotImplementedError("No build contexts found.")
