@@ -12,9 +12,12 @@ export const CustomNodeBlock = ({ data }: {data: NodeProps}) => {
             style={{ bottom: 10, background: '#555' }}
             onConnect={(params) => console.log('handle onConnect', params)}
         />
-        <div onClick={() => data.handleExpandClick(data.address)} style={{ textAlign: 'center', padding: '10px', borderRadius: '10px', backgroundColor: data.color }}>
-            <div>{data.instance_of}</div>
-            <div style={{fontWeight: 'bold'}}>{data.title}</div>
+        <div onClick={() => data.handleExpandClick(data.address)} style={{ width: '160px', padding: '10px', paddingTop: '4px', borderRadius: '10px', backgroundColor: data.color }}>
+            <div style={{ fontSize: '8px'}}>{data.type}</div>
+            <div style={{textAlign: 'center'}}>
+                <div style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px' }}>{data.instance_of}</div>
+                <div style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px', fontWeight: 'bold'}}>{data.title}</div>
+            </div>
         </div>
         <Handle
             type="source"
