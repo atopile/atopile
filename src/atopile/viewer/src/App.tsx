@@ -9,12 +9,15 @@ import ReactFlow, {
   useReactFlow,
   ReactFlowProvider,
   Panel,
+  Position,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import { createNodesAndEdges } from './utils.js';
 import { CustomNodeBlock, CircularNodeComponent } from './CustomNode';
 import CustomEdge from './CustomEdge';
+
+import SimpleTable from './link-table';
 
 import './index.css';
 
@@ -42,15 +45,15 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
     id: 'root',
     layoutOptions: options,
     children: nodes.map((node) => ({
-      ...node,
-      // Adjust the target and source handle positions based on the layout
-      // direction.
-      targetPosition: isHorizontal ? 'left' : 'top',
-      sourcePosition: isHorizontal ? 'right' : 'bottom',
+        ...node,
+        // Adjust the target and source handle positions based on the layout
+        // direction.
+        targetPosition: isHorizontal ? 'left' : 'top',
+        sourcePosition: isHorizontal ? 'right' : 'bottom',
 
-      // Hardcode a width and height for elk to use when layouting.
-      width: 200,
-      height: 50,
+        // Hardcode a width and height for elk to use when layouting.
+        width: 200,
+        height: 50,
     })),
     edges: edges,
   };
@@ -58,14 +61,14 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
   return elk
     .layout(graph)
     .then((layoutedGraph) => ({
-      nodes: layoutedGraph.children.map((node) => ({
-        ...node,
-        // React Flow expects a position property on the node instead of `x`
-        // and `y` fields.
-        position: { x: node.x, y: node.y },
-      })),
+        nodes: layoutedGraph.children.map((node) => ({
+            ...node,
+            // React Flow expects a position property on the node instead of `x`
+            // and `y` fields.
+            position: { x: node.x, y: node.y },
+        })),
 
-      edges: layoutedGraph.edges,
+        edges: layoutedGraph.edges,
     }))
     .catch(console.error);
 };
@@ -98,13 +101,13 @@ const NodeAsHandleFlow = () => {
     const [block_id, setBlockId] = useState("root");
     const [parent_block_addr, setParentBlockAddr] = useState("none");
 
-    const onConnect = useCallback(
-    (params) =>
-        setEdges((eds) =>
-        addEdge({ ...params, type: 'default', markerEnd: { type: MarkerType.Arrow } }, eds)
-        ),
-    [setEdges]
-    );
+    // const onConnect = useCallback(
+    // (params) =>
+    //     setEdges((eds) =>
+    //     addEdge({ ...params, type: 'default', markerEnd: { type: MarkerType.Arrow } }, eds)
+    //     ),
+    // [setEdges]
+    // );
 
     const handleExpandClick = (newBlockId) => {
         setBlockId(newBlockId);
@@ -146,9 +149,9 @@ const NodeAsHandleFlow = () => {
                 populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
             }
             else if (displayedNode['blocks'][node]['type'] == 'module') {
-                populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, position: position });
+                populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
             } else {
-                populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, position: position });
+                populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
             }
         }
         // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
@@ -156,18 +159,20 @@ const NodeAsHandleFlow = () => {
         const populatedEdges = [];
         for (const edge of displayedNode['links']) {
             populatedEdges.push({
-            id: `${edge['source']['block']}${edge['source']['port']}-${edge['target']['block']}${edge['target']['port']}`,
-            source: edge['source']['block'],
-            target: edge['target']['block'],
-            type: 'custom',
-            markerEnd: {
-                type: MarkerType.Arrow,
-            },
-            data: {
-                source: edge['source']['port'],
-                target: edge['target']['port'],
-                instance_of: edge['instance_of']
-            }
+                id: `${edge['source']['block']}${edge['source']['port']}-${edge['target']['block']}${edge['target']['port']}`,
+                source: edge['source']['block'],
+                target: edge['target']['block'],
+                type: 'custom',
+                sourcePosition: Position.Right,
+                targetPosition: Position.Left,
+                markerEnd: {
+                    type: MarkerType.Arrow,
+                },
+                data: {
+                    source: edge['source']['port'],
+                    target: edge['target']['port'],
+                    instance_of: edge['instance_of']
+                }
             });
         }
         setEdges(populatedEdges);
@@ -192,17 +197,21 @@ const NodeAsHandleFlow = () => {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
+        //onConnect={onConnect}
         fitView
         edgeTypes={edgeTypes}
         nodeTypes={nodeTypes}
         >
         <Panel position="top-left">
             <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
+                <div style={{textAlign: 'center'}}> Model inspection pane</div>
                 <div><i>Inspecting:</i> <b>{block_id}</b></div>
                 <div><i>Parent:</i> {parent_block_addr}</div>
                 <button onClick={() => handleExpandClick(parent_block_addr)}>return</button>
             </div>
+        </Panel>
+        <Panel position="top-right">
+            <SimpleTable />
         </Panel>
         <Background />
         </ReactFlow>

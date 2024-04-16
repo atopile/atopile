@@ -61,35 +61,35 @@ export default function CustomEdge({
         <>
         <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
         <div className="edge-label">
-        <EdgeLabelRenderer>
-        <EdgeLabel
-                transform={`translate(0%, 100%) translate(${Math.floor(sourceX)}px,${Math.floor(sourceY)}px)`}
-                label= {data.source}
-                isClicked={isClicked}
-            />
-            <EdgeLabel
-                transform={`translate(0%, -100%) translate(${Math.floor(targetX)}px,${Math.floor(targetY)}px)`}
-                label= {data.target}
-                isClicked={isClicked}
-            />
-            <div
-            style={{
-                position: 'absolute',
-                transform: `translate(-50%, -50%)translate(${labelX}px,${labelY}px)`,
-                padding: 10,
-                borderRadius: 5,
-                fontSize: 12,
-                fontWeight: 700,
-                pointerEvents: 'all',
-            }}
-            className="nodrag nopan"
-            onClick={handleClick}
-            >
-            <button className="edgebutton">
-            {data.instance_of}
-            </button>
-            </div>
-        </EdgeLabelRenderer>
+            <EdgeLabelRenderer>
+                <EdgeLabel
+                    transform={`translate(0%, 100%) translate(${Math.floor(sourceX)}px,${Math.floor(sourceY)}px)`}
+                    label= {data.source}
+                    isClicked={isClicked}
+                />
+                <EdgeLabel
+                    transform={`translate(0%, -100%) translate(${Math.floor(targetX)}px,${Math.floor(targetY)}px)`}
+                    label= {data.target}
+                    isClicked={isClicked}
+                />
+                <div
+                    style={{
+                        position: 'absolute',
+                        transform: `translate(-50%, -50%)translate(${labelX}px,${labelY}px)`,
+                        padding: 10,
+                        borderRadius: 5,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        pointerEvents: 'all',
+                    }}
+                    className="nodrag nopan"
+                    onClick={handleClick}
+                >
+                    <button className="customedge">
+                        {data.instance_of}
+                    </button>
+                </div>
+            </EdgeLabelRenderer>
         </div>
         </>
     );
