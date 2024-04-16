@@ -28,6 +28,9 @@ nav:
   - development.md
   - roadmap.md
 - Packages: https://packages.atopile.io
+- Example Projects:
+  - spin.md
+  - swoop.md
 - Blog:
   - blog/index.md
 plugins:
