@@ -49,8 +49,8 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
       sourcePosition: isHorizontal ? 'right' : 'bottom',
 
       // Hardcode a width and height for elk to use when layouting.
-      width: 150,
-      height: 36,
+      width: 200,
+      height: 50,
     })),
     edges: edges,
   };
@@ -107,7 +107,7 @@ const NodeAsHandleFlow = () => {
     );
 
     const handleExpandClick = (newBlockId) => {
-    setBlockId(newBlockId);
+        setBlockId(newBlockId);
     };
 
     const onLayout = useCallback(
@@ -141,14 +141,14 @@ const NodeAsHandleFlow = () => {
             };
             let style;
             if (displayedNode['blocks'][node]['type'] == 'signal') {
-            populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#8ECAE6' }, position: position });
+                populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#8ECAE6' }, position: position });
             } else if (displayedNode['blocks'][node]['type'] == 'interface') {
-            populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
+                populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
             }
             else if (displayedNode['blocks'][node]['type'] == 'module') {
-            populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], color: '#FB8500', handleExpandClick: handleExpandClick }, position: position });
+                populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, position: position });
             } else {
-            populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], color: '#FFB703', handleExpandClick: handleExpandClick }, position: position });
+                populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, position: position });
             }
         }
         // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
@@ -179,15 +179,9 @@ const NodeAsHandleFlow = () => {
     updateNodesFromJson();
     }, [block_id]);
 
-    useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const param = searchParams.get('block_addr'); // Replace 'paramName' with your parameter key
-    console.log(param); // Use the parameter as needed
-    }, []);
-
     // Calculate the initial layout on mount.
     useLayoutEffect(() => {
-    onLayout({ direction: 'DOWN' });
+        onLayout({ direction: 'DOWN' });
     }, [edges]);
 
     return (
