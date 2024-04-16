@@ -1,8 +1,7 @@
 # SPIN
 SPIN is a BLDC motor controller using the SimpleFOC library. Designed as a reference project, hopefully serving as a starting point for your own projects with motor control!
 
-<img src="assets/images/slow-to-fast-hq.gif" width="200px" alt="Slow to Fast HQ">
-
+![Slow to Fast HQ](assets/images/slow-to-fast-hq.gif)
 
 ## Specs
 

@@ -1,8 +1,7 @@
 # Swoop
 Swoop is an open-source motion based flight controller for drones. It uses an IMU to generate commanded yaw, pitch, and roll angles, and sends these commands to the flight controller over ExpressLRS.
 
-<img src="assets/images/swoop.png" width="400" alt="Swoop">
-
+![Swoop](assets/images/swoop.png)
 
 ## Specs
 
@@ -13,8 +12,7 @@ Swoop is an open-source motion based flight controller for drones. It uses an IM
 - Powered by 1000mah internal LiPo battery (~ 4hrs of flight time)
 
 ### Block Diagram
-<img src="assets/images/swoop-block-diagram.png" width="700px" alt="Swoop Block Diagram">
-
+![Swoop Block Diagram](assets/images/swoop-block-diagram.png)
 ## Features
 
 - Status LEDs
@@ -36,8 +34,7 @@ Second version of the board is currently in manufacturing to add CAN bus and I2C
 
 ### Initial Testing
 
-<img src="assets/images/swoop-bringup.png" width="600" alt="Swoop Bringup Process">
-
+![Swoop Bringup Process](assets/images/swoop-bringup.png)
 ## Documentation
 
 Interested? We are looking for collaborators! Check out the [repo](https://github.com/atopile/swoop) and [discord](https://discord.gg/3AtvZ9Hu) for more information on how to get started!
