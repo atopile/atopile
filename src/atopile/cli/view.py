@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-viewer_app = Flask(__name__, static_folder='../viewer/dist', static_url_path='')
+viewer_app = Flask(__name__, static_folder='../viewer/distribution', static_url_path='')
 # Enable CORS for all domains on all routes
 CORS(viewer_app)
 
