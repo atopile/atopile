@@ -92,6 +92,9 @@ async function loadJsonAsDict() {
 
 const block_id = "root";
 const parent_block_addr = "none";
+const selected_link_data = [];
+const selected_link_source = "none";
+const selected_link_target = "none";
 
 
 const NodeAsHandleFlow = () => {
@@ -100,6 +103,12 @@ const NodeAsHandleFlow = () => {
     const { fitView } = useReactFlow();
     const [block_id, setBlockId] = useState("root");
     const [parent_block_addr, setParentBlockAddr] = useState("none");
+    const [selected_link_id, setSelectedLinkId] = useState("none");
+    const [selected_link_data, setSelectedLinkData] = useState([]);
+    const [selected_link_source, setSelectedLinkSource] = useState("none");
+    const [selected_link_target, setSelectedLinkTarget] = useState("none");
+
+    let selected_links_data = {};
 
     // const onConnect = useCallback(
     // (params) =>
@@ -111,6 +120,16 @@ const NodeAsHandleFlow = () => {
 
     const handleExpandClick = (newBlockId) => {
         setBlockId(newBlockId);
+    };
+
+    const handleLinkSelectClick = (newSelectedLinkId) => {
+        setSelectedLinkId(newSelectedLinkId);
+        console.log(newSelectedLinkId);
+        console.log(selected_links_data[newSelectedLinkId]);
+        setSelectedLinkData(selected_links_data[newSelectedLinkId]['links']);
+        setSelectedLinkSource(selected_links_data[newSelectedLinkId]['source']);
+        setSelectedLinkTarget(selected_links_data[newSelectedLinkId]['target']);
+        console.log(selected_link_data);
     };
 
     const onLayout = useCallback(
@@ -125,63 +144,68 @@ const NodeAsHandleFlow = () => {
 
         window.requestAnimationFrame(() => fitView());
         });
-    },
-    [nodes, edges]
-    );
+    }, [nodes] );
 
 
     useEffect(() => {
-    const updateNodesFromJson = async () => {
-        try {
-        const fetchedNodes = await loadJsonAsDict();
-        const displayedNode = fetchedNodes[block_id];
-        setParentBlockAddr(displayedNode['parent']);
-        const populatedNodes = [];
-        for (const node in displayedNode['blocks']) {
-            const position = {
-            x: Math.random() * window.innerWidth,
-            y: Math.random() * window.innerHeight,
-            };
-            let style;
-            if (displayedNode['blocks'][node]['type'] == 'signal') {
-                populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#8ECAE6' }, position: position });
-            } else if (displayedNode['blocks'][node]['type'] == 'interface') {
-                populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
-            }
-            else if (displayedNode['blocks'][node]['type'] == 'module') {
-                populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
-            } else {
-                populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
-            }
-        }
-        // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
-        setNodes(populatedNodes);
-        const populatedEdges = [];
-        for (const edge of displayedNode['links']) {
-            populatedEdges.push({
-                id: `${edge['source']['block']}${edge['source']['port']}-${edge['target']['block']}${edge['target']['port']}`,
-                source: edge['source']['block'],
-                target: edge['target']['block'],
-                type: 'custom',
-                sourcePosition: Position.Right,
-                targetPosition: Position.Left,
-                markerEnd: {
-                    type: MarkerType.Arrow,
-                },
-                data: {
-                    source: edge['source']['port'],
-                    target: edge['target']['port'],
-                    instance_of: edge['instance_of']
+        const updateNodesFromJson = async () => {
+            try {
+            const fetchedNodes = await loadJsonAsDict();
+            const displayedNode = fetchedNodes[block_id];
+            setParentBlockAddr(displayedNode['parent']);
+            const populatedNodes = [];
+            for (const node in displayedNode['blocks']) {
+                const position = {
+                x: Math.random() * window.innerWidth,
+                y: Math.random() * window.innerHeight,
+                };
+                let style;
+                if (displayedNode['blocks'][node]['type'] == 'signal') {
+                    populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#8ECAE6' }, position: position });
+                } else if (displayedNode['blocks'][node]['type'] == 'interface') {
+                    populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
                 }
-            });
-        }
-        setEdges(populatedEdges);
-        } catch (error) {
-        console.error("Failed to fetch nodes:", error);
-        }
-    };
+                else if (displayedNode['blocks'][node]['type'] == 'module') {
+                    populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                } else {
+                    populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                }
+            }
+            // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
+            setNodes(populatedNodes);
+            const populatedEdges = [];
+            for (const edge_id in displayedNode['harnesses']) {
+                const edge = displayedNode['harnesses'][edge_id];
 
-    updateNodesFromJson();
+                // for each edge_id, update the data structure with the list of links on that harness
+                selected_links_data[edge_id] = {source: edge['source'], target: edge['target'], links: edge['links']};
+
+                // create a react edge element for each harness
+                populatedEdges.push({
+                    id: edge_id,
+                    source: edge['source'],
+                    target: edge['target'],
+                    type: 'custom',
+                    sourcePosition: Position.Right,
+                    targetPosition: Position.Left,
+                    markerEnd: {
+                        type: MarkerType.Arrow,
+                    },
+                    data: {
+                        source: edge['source'],
+                        target: edge['target'],
+                        instance_of: edge['source'],
+                        handleLinkSelectClick: handleLinkSelectClick
+                    }
+                });
+            }
+            setEdges(populatedEdges);
+            } catch (error) {
+            console.error("Failed to fetch nodes:", error);
+            }
+        };
+
+        updateNodesFromJson();
     }, [block_id]);
 
     // Calculate the initial layout on mount.
@@ -211,7 +235,7 @@ const NodeAsHandleFlow = () => {
             </div>
         </Panel>
         <Panel position="top-right">
-            <SimpleTable />
+            <SimpleTable source={selected_link_source} target={selected_link_target} data={selected_link_data} />
         </Panel>
         <Background />
         </ReactFlow>

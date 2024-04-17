@@ -85,7 +85,7 @@ export default function CustomEdge({
                     className="nodrag nopan"
                     onClick={handleClick}
                 >
-                    <button className="customedge">
+                    <button className="customedge" onClick={() => data.handleLinkSelectClick(id)}>
                         {data.instance_of}
                     </button>
                 </div>

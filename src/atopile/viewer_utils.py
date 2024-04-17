@@ -12,6 +12,9 @@ from atopile.instance_methods import (
 import json
 import networkx as nx
 
+from collections import defaultdict
+from typing import DefaultDict, Tuple
+
 
 def get_parent(addr: AddrStr, root) -> AddrStr:
     """
@@ -105,6 +108,7 @@ def is_path_without_end_nodes(G, blocks, source, target):
 
     return has_path
 
+# Deprecated but keeping here for reference
 def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
     """
     returns a list of block to block links:
@@ -142,6 +146,63 @@ def get_block_to_block_links(addr: AddrStr) -> list[tuple[str, str]]:
 
     return block_to_block_list
 
+# Bundled connections will be called harnesses
+def get_harnesses(addr: AddrStr) -> list[dict]:
+    """
+    returns a list of bundled connections (harnesses):
+    [
+        {
+            "source": "block_name",
+            "target": "block_name",
+            "name": "harness_name",
+            "links": [
+                {
+                    "source": "port_name",
+                    "target": "port_name",
+                    "type": "interface/signal"
+                    "instance_of": "instance_name"
+                }
+        }, ...
+    ]
+    """
+    harness_list: DefaultDict[Tuple[str, str], list] = defaultdict(list)
+    links = get_links(addr)
+    for link in links:
+        # Type is either interface or signal
+        if match_pins_and_signals(link.source.addr):
+            type = "signal"
+            instance_of = "signal"
+        else:
+            type = "interface"
+            instance_of = get_name(get_supers_list(link.source.addr)[0].obj_def.address)
+        source_block, source_port = split_list_at_n(get_current_depth(addr), split_addr(link.source.addr))
+        target_block, target_port = split_list_at_n(get_current_depth(addr), split_addr(link.target.addr))
+
+        source_block = get_name(combine_addr(source_block))
+        target_block = get_name(combine_addr(target_block))
+        source_port = combine_addr(source_port)
+        target_port = combine_addr(target_port)
+
+        harness_list[(source_block, target_block)].append({
+            "source": source_port,
+            "target": target_port,
+            "type": type,
+            "instance_of": instance_of
+        })
+
+    harness_return_dict: DefaultDict[str, list] = defaultdict(list)
+
+    for source_block, target_block in harness_list:
+        key = f"{source_block}_{target_block}"
+        harness_return_dict[key] = {
+            "source": source_block,
+            "target": target_block,
+            "name": f"{source_block}_{target_block}", # name needs improvement
+            "links": harness_list[(source_block, target_block)]
+        }
+
+    return harness_return_dict
+
 
 def get_vis_dict(root: AddrStr) -> str:
     return_json = {}
@@ -156,13 +217,13 @@ def get_vis_dict(root: AddrStr) -> str:
             parent = get_parent(addr, root)
             block_dict = get_blocks(addr)
             link_list = process_links(addr)
-            connection_list = get_block_to_block_links(addr)
+            harness_dict = get_harnesses(addr)
 
             return_json[instance] = {
                 "parent": parent,
                 "blocks": block_dict,
                 "links": link_list,
-                "connections": connection_list,
+                "harnesses": harness_dict,
             }
 
     return json.dumps(return_json)
