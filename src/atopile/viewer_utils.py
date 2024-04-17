@@ -193,11 +193,15 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
     harness_return_dict: DefaultDict[str, list] = defaultdict(list)
 
     for source_block, target_block in harness_list:
+        instance_of_set = set()
+        for link in harness_list[(source_block, target_block)]:
+            instance_of_set.add(link['instance_of'])
+        name = "/".join(sorted(instance_of_set))
         key = f"{source_block}_{target_block}"
         harness_return_dict[key] = {
             "source": source_block,
             "target": target_block,
-            "name": f"{source_block}_{target_block}", # name needs improvement
+            "name": name, # name needs improvement
             "links": harness_list[(source_block, target_block)]
         }
 
