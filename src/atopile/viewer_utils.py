@@ -210,7 +210,6 @@ def get_vis_dict(root: AddrStr) -> str:
     for addr in all_descendants(root):
         block_dict = {}
         link_list = []
-        connection_list = []
         # we only create an entry for modules, not for components
         if match_modules(root) and not match_components(root):
             instance = get_instance_section(addr) or "root"

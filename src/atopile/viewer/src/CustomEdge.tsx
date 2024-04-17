@@ -41,12 +41,6 @@ export default function CustomEdge({
     markerEnd,
     data,
 }: EdgeProps) {
-    //const { setEdges } = useReactFlow();
-    const [isClicked, setIsClicked] = useState(false);
-
-    const handleClick = () => {
-        setIsClicked(!isClicked);
-    }
 
     const [edgePath, labelX, labelY] = getBezierPath({
         sourceX,
@@ -62,16 +56,6 @@ export default function CustomEdge({
         <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
         <div className="edge-label">
             <EdgeLabelRenderer>
-                <EdgeLabel
-                    transform={`translate(0%, 100%) translate(${Math.floor(sourceX)}px,${Math.floor(sourceY)}px)`}
-                    label= {data.source}
-                    isClicked={isClicked}
-                />
-                <EdgeLabel
-                    transform={`translate(0%, -100%) translate(${Math.floor(targetX)}px,${Math.floor(targetY)}px)`}
-                    label= {data.target}
-                    isClicked={isClicked}
-                />
                 <div
                     style={{
                         position: 'absolute',
@@ -83,11 +67,10 @@ export default function CustomEdge({
                         pointerEvents: 'all',
                     }}
                     className="nodrag nopan"
-                    onClick={handleClick}
                 >
-                    <button className="customedge" onClick={() => data.handleLinkSelectClick(id)}>
-                        {data.instance_of}
-                    </button>
+                    <div className="customedge">
+                        {data.name}
+                    </div>
                 </div>
             </EdgeLabelRenderer>
         </div>

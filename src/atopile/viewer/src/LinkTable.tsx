@@ -7,9 +7,6 @@ type SimpleTableProps = {
 };
 
 const SimpleTable: React.FC<SimpleTableProps> = ({source, target, data}) => {
-    console.log(source);
-    console.log(target);
-    console.log(data);
 
     return (
         <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
