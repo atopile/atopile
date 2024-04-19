@@ -250,7 +250,7 @@ const AtopileViewer = () => {
                 <div><i>Inspecting:</i> <b>{block_id}</b></div>
                 <div><i>Parent:</i> {parent_block_addr}</div>
                 <button onClick={() => handleExpandClick(parent_block_addr)}>return</button>
-                <button onClick={() => onLayout({ direction: 'DOWN' })}>layout</button>
+                <button onClick={() => onLayout({ direction: 'DOWN' })}>re-layout</button>
             </div>
         </Panel>
         <Panel position="top-right">
