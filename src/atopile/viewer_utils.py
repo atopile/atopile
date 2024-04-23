@@ -7,6 +7,7 @@ from atopile.instance_methods import (
     match_modules,
     match_components,
     match_interfaces,
+    match_signals,
     match_pins_and_signals
 )
 import json
@@ -24,6 +25,26 @@ def get_parent(addr: AddrStr, root) -> AddrStr:
         return "null"
 
     return get_instance_section(get_parent_instance_addr(addr)) or "root"
+
+def get_interfaces(addr: AddrStr) -> dict[str, dict[str, str]]:
+    """
+    returns interfaces
+    """
+    interfaces = []
+    for child in get_children(addr):
+        if match_interfaces(child):
+            interfaces.append(get_name(child))
+    return interfaces
+
+def get_signals(addr: AddrStr) -> dict[str, dict[str, str]]:
+    """
+    returns interfaces
+    """
+    signals = []
+    for child in get_children(addr):
+        if match_signals(child):
+            signals.append(get_name(child))
+    return signals
 
 def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
     """
@@ -49,7 +70,9 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
             block_dict[get_name(child)] = {
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
                 "type": type,
-                "address": get_instance_section(child)}
+                "address": get_instance_section(child),
+                "interfaces": get_interfaces(child),
+                "signals": get_signals(child)}
 
     return block_dict
 
@@ -157,8 +180,14 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
             "name": "harness_name",
             "links": [
                 {
-                    "source": "port_name",
-                    "target": "port_name",
+                    "source": {
+                        "block": "block_name",
+                        "port": "port_name"
+                    },
+                    "target": {
+                        "block": "block_name",
+                        "port": "port_name"
+                    },
                     "type": "interface/signal"
                     "instance_of": "instance_name"
                 }
@@ -207,6 +236,16 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
 
     return harness_return_dict
 
+def get_type(addr: AddrStr) -> str:
+    if match_modules(addr):
+        return "module"
+    elif match_components(addr):
+        return "component"
+    elif match_interfaces(addr):
+        return "interface"
+    elif match_pins_and_signals(addr):
+        return "signal"
+
 
 def get_vis_dict(root: AddrStr) -> str:
     return_json = {}
@@ -217,6 +256,7 @@ def get_vis_dict(root: AddrStr) -> str:
         # we only create an entry for modules, not for components
         if match_modules(root) and not match_components(root):
             instance = get_instance_section(addr) or "root"
+            _type = get_type(addr)
             parent = get_parent(addr, root)
             block_dict = get_blocks(addr)
             link_list = process_links(addr)
@@ -224,6 +264,7 @@ def get_vis_dict(root: AddrStr) -> str:
 
             return_json[instance] = {
                 "parent": parent,
+                "type": _type,
                 "blocks": block_dict,
                 "links": link_list,
                 "harnesses": harness_dict,

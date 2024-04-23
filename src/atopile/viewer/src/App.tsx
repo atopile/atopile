@@ -16,7 +16,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { createNodesAndEdges } from './utils.js';
-import { CustomNodeBlock, CircularNodeComponent } from './CustomNode';
+import { CustomNodeBlock, CircularNodeComponent, ComponentNode } from './CustomNode';
 import CustomEdge from './CustomEdge';
 
 import SimpleTable from './LinkTable.js';
@@ -77,7 +77,8 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
 
 const nodeTypes = {
     customNode: CustomNodeBlock, // Register your custom node type
-    customCircularNode: CircularNodeComponent
+    customCircularNode: CircularNodeComponent,
+    componentNode: ComponentNode
 };
 
 const edgeTypes = {
@@ -163,7 +164,20 @@ const AtopileViewer = () => {
                     else if (displayedNode['blocks'][node]['type'] == 'module') {
                         populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
                     } else {
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                        populatedNodes.push({
+                            id: node,
+                            type: 'componentNode',
+                            data: {
+                                title: node,
+                                instance_of: displayedNode['blocks'][node]['instance_of'],
+                                address: displayedNode['blocks'][node]['address'],
+                                type: displayedNode['blocks'][node]['type'],
+                                interfaces: displayedNode['blocks'][node]['interfaces'],
+                                signals: displayedNode['blocks'][node]['signals'],
+                                color: '#FFB703', handleExpandClick: handleExpandClick},
+                            sourcePosition: Position.Bottom,
+                            targetPosition: Position.Right,
+                            position: position });
                     }
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
@@ -176,23 +190,43 @@ const AtopileViewer = () => {
                     // for each edge_id, update the data structure with the list of links on that harness
                     selected_links_data[edge_id] = {source: edge['source'], target: edge['target'], links: edge['links']};
 
-                    // create a react edge element for each harness
-                    populatedEdges.push({
-                        id: edge_id,
-                        source: edge['source'],
-                        target: edge['target'],
-                        type: 'custom',
-                        sourcePosition: Position.Right,
-                        targetPosition: Position.Left,
-                        markerEnd: {
-                            type: MarkerType.Arrow,
-                        },
-                        data: {
+                    if (displayedNode['type'] == "component") {
+                        for (const link of edge['links']) {
+                            console.log(link)
+                            populatedEdges.push({
+                                id: edge_id,
+                                source: edge['source'],
+                                target: edge['target'],
+                                sourceHandle: link['source'],
+                                targetHandle: link['target'],
+                                type: 'custom',
+                                markerEnd: {
+                                    type: MarkerType.Arrow,
+                                },
+                                data: {
+                                    source: edge['source'],
+                                    target: edge['target'],
+                                    name: edge['name']
+                                }
+                            });
+                        }
+                    }
+                    else {
+                        populatedEdges.push({
+                            id: edge_id,
                             source: edge['source'],
                             target: edge['target'],
-                            name: edge['name']
-                        }
-                    });
+                            type: 'custom',
+                            markerEnd: {
+                                type: MarkerType.Arrow,
+                            },
+                            data: {
+                                source: edge['source'],
+                                target: edge['target'],
+                                name: edge['name']
+                            }
+                        });
+                    }
                 }
                 setEdges(populatedEdges);
                 setRequestRelayout(true);
