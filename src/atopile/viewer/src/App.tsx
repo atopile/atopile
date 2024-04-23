@@ -162,6 +162,7 @@ const AtopileViewer = () => {
                         populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
                     }
                     else if (displayedNode['blocks'][node]['type'] == 'module') {
+                        console.log(displayedNode['blocks'][node]['type'])
                         populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
                     } else {
                         populatedNodes.push({
@@ -190,43 +191,21 @@ const AtopileViewer = () => {
                     // for each edge_id, update the data structure with the list of links on that harness
                     selected_links_data[edge_id] = {source: edge['source'], target: edge['target'], links: edge['links']};
 
-                    if (displayedNode['type'] == "component") {
-                        for (const link of edge['links']) {
-                            console.log(link)
-                            populatedEdges.push({
-                                id: edge_id,
-                                source: edge['source'],
-                                target: edge['target'],
-                                sourceHandle: link['source'],
-                                targetHandle: link['target'],
-                                type: 'custom',
-                                markerEnd: {
-                                    type: MarkerType.Arrow,
-                                },
-                                data: {
-                                    source: edge['source'],
-                                    target: edge['target'],
-                                    name: edge['name']
-                                }
-                            });
-                        }
-                    }
-                    else {
-                        populatedEdges.push({
-                            id: edge_id,
+                    populatedEdges.push({
+                        id: edge_id,
+                        source: edge['source'],
+                        target: edge['target'],
+                        targetHandle: "p2",
+                        type: 'custom',
+                        markerEnd: {
+                            type: MarkerType.Arrow,
+                        },
+                        data: {
                             source: edge['source'],
                             target: edge['target'],
-                            type: 'custom',
-                            markerEnd: {
-                                type: MarkerType.Arrow,
-                            },
-                            data: {
-                                source: edge['source'],
-                                target: edge['target'],
-                                name: edge['name']
-                            }
-                        });
-                    }
+                            name: edge['name']
+                        }
+                    });
                 }
                 setEdges(populatedEdges);
                 setRequestRelayout(true);
