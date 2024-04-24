@@ -19,6 +19,8 @@ nav:
   - class.md
   - maths.md
   - doc-strings.md
+  - View your project:
+    - view.md
   - Layout on kicad:
     - kicad.md
   - Version control / Manufacturing:
