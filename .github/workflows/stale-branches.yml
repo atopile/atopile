@@ -8,6 +8,6 @@ jobs:
         runs-on: ubuntu-latest
         steps:
         -
-            uses: fpicalausa/remove-stale-branches@v1.6.0
+            uses: fpicalausa/remove-stale-branches@v2.0.1
             with:
                 dry-run: true # Check out the console output before setting this to false
