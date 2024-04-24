@@ -23,7 +23,7 @@ import SimpleTable from './LinkTable.tsx';
 
 import './index.css';
 
-import ELK from 'elkjs/lib/elk.bundled.tsx';
+import ELK from 'elkjs/lib/elk.bundled.js';
 
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
 
