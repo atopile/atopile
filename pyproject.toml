@@ -112,9 +112,6 @@ exclude = [
     "docs/",
 ]
 
-# [tool.hatch.metadata.hooks]
-# package-data = {include = ["src/viewer/dist/*"]}
-
 ignore = [
     "E501",  # line too long (ignore for the minute)
     "C901",  # too complex
