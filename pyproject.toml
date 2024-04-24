@@ -37,7 +37,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "antlr4-python3-runtime==4.13.0",
+    "antlr4-python3-runtime==4.13.1",
     "attrs>=23.2.0",
     "cattrs>=23.2.3",
     "case-converter>=1.1.0",
