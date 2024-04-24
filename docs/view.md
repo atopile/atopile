@@ -30,5 +30,6 @@ Clicking on a link will show the source and target address that the link is conn
 
 - Saving the position of blocks
 - Inspecting a links pin to pin connections
-- Expanding and contracting modules
+- Expanding and contracting modules (instead of navigating in and out of modules)
 - A decent way to see components and their pins
+- Ability to inspect multiple build configurations
