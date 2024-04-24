@@ -2,14 +2,15 @@
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+# Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
 artifacts = [
-  "**/dist",
+  "**/viewer/dist",
 ]
 
 [tool.hatch.build.targets.sdist]
 artifacts = [
-  "**/dist",
+  "**/viewer/dist",
 ]
 
 [project]
