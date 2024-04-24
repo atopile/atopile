@@ -2,6 +2,12 @@
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.sdist.force-include]
+"src/atopile/viewer/dist" = "src/atopile/viewer/dist"
+
+# [tool.hatch.build.targets.wheel.force-include]
+# "building" = "./building"
+
 [project]
 name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"

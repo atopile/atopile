@@ -42,7 +42,7 @@ jobs:
       -
         name: Build Web Application
         run: |
-          npm install
+          npm ci
           npm run build
         working-directory: ./src/atopile/viewer
       -
