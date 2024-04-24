@@ -34,6 +34,18 @@ jobs:
           python-version: '3.11'
 
       -
+        name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      -
+        name: Build Web Application
+        run: |
+          cd src/viewer
+          npm install
+          npm run build
+      -
         name: Make python package
         run: |
           pip install build twine

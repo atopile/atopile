@@ -16,8 +16,8 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { createNodesAndEdges } from './utils.js';
-import { CustomNodeBlock, CircularNodeComponent } from './CustomNode';
-import CustomEdge from './CustomEdge';
+import { CustomNodeBlock, CircularNodeComponent } from './CustomNode.js';
+import CustomEdge from './CustomEdge.js';
 
 import SimpleTable from './LinkTable.js';
 
