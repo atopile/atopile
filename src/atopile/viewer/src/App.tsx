@@ -15,7 +15,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import { createNodesAndEdges } from './utils.js';
+import { createNodesAndEdges } from './utils.tsx';
 import { CustomNodeBlock, CircularNodeComponent } from './CustomNode.js';
 import CustomEdge from './CustomEdge.js';
 
