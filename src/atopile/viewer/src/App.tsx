@@ -15,15 +15,15 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import { createNodesAndEdges } from './utils.js';
-import { CustomNodeBlock, CircularNodeComponent } from './CustomNode';
-import CustomEdge from './CustomEdge';
+import { createNodesAndEdges } from './utils.tsx';
+import { CustomNodeBlock, CircularNodeComponent } from './CustomNode.tsx';
+import CustomEdge from './CustomEdge.tsx';
 
-import SimpleTable from './LinkTable.js';
+import SimpleTable from './LinkTable.tsx';
 
 import './index.css';
 
-import ELK from 'elkjs/lib/elk.bundled.js';
+import ELK from 'elkjs/lib/elk.bundled.tsx';
 
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
 
