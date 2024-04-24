@@ -2,6 +2,17 @@
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+# Add the built viewer to the python package
+[tool.hatch.build.targets.wheel]
+artifacts = [
+  "**/viewer/dist",
+]
+
+[tool.hatch.build.targets.sdist]
+artifacts = [
+  "**/viewer/dist",
+]
+
 [project]
 name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"
