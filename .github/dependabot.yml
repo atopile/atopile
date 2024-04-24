@@ -1,14 +1,14 @@
 version: 2
 updates:
   - package-ecosystem: 'github-actions'
-    directory: /src/vscode-atopile/
+    directory: "/"
     schedule:
       interval: monthly
     labels:
       - 'no-changelog'
 
   - package-ecosystem: 'pip'
-    directory: /src/vscode-atopile/src/test/python_tests
+    directory: /
     schedule:
       interval: daily
     labels:
