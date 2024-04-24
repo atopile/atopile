@@ -2,11 +2,15 @@
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.sdist.force-include]
-"src/atopile/viewer/dist" = "src/atopile/viewer/dist"
+[tool.hatch.build.targets.wheel]
+artifacts = [
+  "**/dist",
+]
 
-# [tool.hatch.build.targets.wheel.force-include]
-# "building" = "./building"
+[tool.hatch.build.targets.sdist]
+artifacts = [
+  "**/dist",
+]
 
 [project]
 name = "atopile"
