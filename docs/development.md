@@ -30,3 +30,37 @@ This will run a [`debugpy`](https://github.com/microsoft/debugpy) server on port
 
 ??? help "Syntax highlighting isn't working"
     If you're having trouble with syntax highlighting in the debugger, it might be because VSCode sets up a mapping between the remote and local file paths by default - remove it.
+
+## Viewer development
+
+### Building the viewer
+
+You first need to build the viewer when installing atopile from it's repository directly. First, navigate to the viewer directly:
+
+``` sh
+cd src/atopile/viewer
+```
+
+Then install the node dependencies:
+
+``` sh
+npm install
+```
+
+Finally, build the viewer:
+
+``` sh
+npm run build
+```
+
+This will create a `dist` directory within the viewer directory. Invoking the `ato view` command will point the server to it.
+
+### Dev viewer server
+
+When working on the viewer, it is quite handy to use the following command to start a dev server:
+
+``` sh
+npm run dev
+```
+
+As you save your work, vite will automatically rebuild your project and advertise it on a local address. Navigate to the address to inspect your work. We recommend running the `ato view` command from one of your existing projects, so you have a project to look at during development.
