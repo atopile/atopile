@@ -69,22 +69,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     } - context.keys()
 
                     for symbol in new_symbols:
-                        parent_inst = instance_methods.get_instance(
-                            address.get_parent_instance_addr(symbol)
-                        )
-                        assign_name = address.get_name(symbol)
-
-                        if assign_name not in parent_inst.assignments:
-                            raise errors.AtoKeyError(
-                                f"No attribute '{assign_name}' bound on '{parent_inst.addr}'"
-                            )
-
-                        assignment = parent_inst.assignments[assign_name][0]
-                        if assignment.value is None:
-                            raise errors.AtoTypeError(
-                                f"'{symbol}' is defined, but has no value"
-                            )
-                        context[symbol] = assignment.value
+                        context[symbol] = instance_methods.get_data(symbol)
 
                     try:
                         a = assertion.lhs(context)
@@ -168,17 +153,7 @@ def solve_assertions(build_ctx: config.BuildContext):
                 new_symbols = assertion_symbols - referenced_symbols
                 referenced_symbols |= new_symbols
                 for symbol in new_symbols:
-                    parent_inst = instance_methods.get_instance(
-                        address.get_parent_instance_addr(symbol)
-                    )
-                    assign_name = address.get_name(symbol)
-
-                    if assign_name not in parent_inst.assignments:
-                        raise errors.AtoKeyError(
-                            f"No attribute '{assign_name}' bound on '{parent_inst.addr}'"
-                        )
-
-                    assignment = parent_inst.assignments[assign_name][0]
+                    assignment = instance_methods.get_assignments(symbol)[0]
                     if assignment.value is None:
                         # TEMP: this is in place because our discretization strategy
                         # requires E96 things
