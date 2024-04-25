@@ -124,11 +124,11 @@ class Muster:
 
 muster = Muster()
 
-
 @muster.register("copy-footprints")
 def consolidate_footprints(build_args: BuildContext) -> None:
     """Consolidate all the project's footprints into a single directory."""
     fp_target = build_args.build_path / "footprints" / "footprints.pretty"
+    fp_target_step = build_args.build_path / "footprints" / "footprints.3dshapes"
     fp_target.mkdir(exist_ok=True, parents=True)
 
     for fp in atopile.config.get_project_context().project_path.glob("**/*.kicad_mod"):
@@ -136,6 +136,17 @@ def consolidate_footprints(build_args: BuildContext) -> None:
             shutil.copy(fp, fp_target)
         except shutil.SameFileError:
             log.debug("Footprint %s already exists in the target directory", fp)
+
+    """Post-process all the footprints in the target directory."""
+    for fp in fp_target.glob("**/*.kicad_mod"):
+        with open(fp, "r+", encoding="utf-8") as file:
+            content = file.read()
+            content = content.replace("{build_dir}", str(fp_target_step))
+            file.seek(0)
+            file.write(content)
+            file.truncate()
+
+
 
 @muster.register("copy-3dmodels")
 def consolidate_3dmodels(build_args: BuildContext) -> None:
