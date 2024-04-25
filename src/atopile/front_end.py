@@ -1453,6 +1453,26 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         return Roley(self._instance_addr_stack.top).visitArithmetic_expression(ctx)
 
 
+def reset_caches(file: Path | str):
+    """Remove a file from the cache."""
+    if file in parser.cache:
+        del parser.cache[file]
+
+    # TODO: only clear these caches of what's been invalidated
+    file_str = str(file)
+
+    def _clear_cache(cache: dict[str, Any]):
+        # We do this in two steps to avoid modifying
+        # the dict while iterating over it
+        to_clear = filter(lambda addr: addr.startswith(file_str), cache)
+        for addr in to_clear:
+            del cache[addr]
+
+    _clear_cache(lofty._output_cache)
+    _clear_cache(dizzy._output_cache)
+    lofty._output_cache.clear()
+
+
 scoop = Scoop(parser.get_ast_from_file)
 dizzy = Dizzy(scoop.get_obj_def)
 lofty = Lofty(dizzy.get_layer)
