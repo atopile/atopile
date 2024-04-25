@@ -107,11 +107,7 @@ class RangedValue:
 
     def to(self, unit: str | PlainUnit | pint.Unit) -> "RangedValue":
         """Return a new RangedValue in the given unit."""
-        return RangedValue(
-            self.min_qty,
-            self.max_qty,
-            unit
-        )
+        return RangedValue(self.min_qty, self.max_qty, unit)
 
     def to_compact(self) -> "RangedValue":
         """Return a new RangedValue in the most compact unit."""
@@ -122,9 +118,7 @@ class RangedValue:
         )
 
     def pretty_str(
-        self,
-        max_decimals: Optional[int] = 2,
-        unit: Optional[pint.Unit] = None
+        self, max_decimals: Optional[int] = 2, unit: Optional[pint.Unit] = None
     ) -> str:
         """Return a pretty string representation of the RangedValue."""
         if unit is not None:
@@ -135,15 +129,17 @@ class RangedValue:
         if max_decimals is None:
             nom = str(val.nominal)
             if val.tolerance != 0:
-                nom += f' +/- {str(val.tolerance)}'
+                nom += f" +/- {str(val.tolerance)}"
                 if val.tolerance_pct is not None:
-                    nom += f' ({str(val.tolerance_pct)}%)'
+                    nom += f" ({str(val.tolerance_pct)}%)"
         else:
             nom = _custom_float_format(val.nominal, max_decimals)
             if val.tolerance != 0:
-                nom += f' +/- {_custom_float_format(val.tolerance, max_decimals)}'
+                nom += f" +/- {_custom_float_format(val.tolerance, max_decimals)}"
                 if val.tolerance_pct is not None:
-                    nom += f' ({_custom_float_format(val.tolerance_pct, max_decimals)}%)'
+                    nom += (
+                        f" ({_custom_float_format(val.tolerance_pct, max_decimals)}%)"
+                    )
 
         return f"{nom} {val.best_usr_unit}"
 
@@ -276,9 +272,7 @@ class RangedValue:
         return self.__sub__(other)
 
     def __neg__(self) -> "RangedValue":
-        return self.__class__(
-            -self.max_qty, -self.min_qty, self.unit, self.pretty_unit
-        )
+        return self.__class__(-self.max_qty, -self.min_qty, self.unit, self.pretty_unit)
 
     def within(self, other: Union["RangedValue", float, int]) -> bool:
         """Check that this RangedValue completely falls within another."""
@@ -305,7 +299,9 @@ class RangedValue:
             return self.min_qty == other.min_qty and self.max_qty == other.max_qty
 
         # NOTE: this doesn't work for farenheit or kelvin, but everything else is okay
-        if self.min_val == self.max_val == other and (self.unit.dimensionless or other == 0):
+        if self.min_val == self.max_val == other and (
+            self.unit.dimensionless or other == 0
+        ):
             return True
         return False
 
@@ -357,6 +353,48 @@ class Expression:
     def __call__(self, context: Mapping[str, NumericishTypes]) -> RangedValue:
         return self.lambda_(context)
 
+    def substitute(
+        self, substitutions: Mapping[Symbol, NumericishTypes]
+    ) -> NumericishTypes:
+        """Return a new expression with all the symbols substituted."""
+
+        # Do a little data checky check
+        if not all(symbol in self.symbols for symbol in substitutions):
+            raise ValueError("Substitution contains symbols not in the expression")
+
+        # Sort the substitutions into constants and expressions
+        constants: Mapping[Symbol, int | float | RangedValue] = {}
+        callables: Mapping[Symbol, Expression | Symbol] = {}
+        for symbol, value in substitutions.items():
+            if callable(value):
+                callables[symbol] = value
+            else:
+                constants[symbol] = value
+
+        # Create a new lambda function with the substitutions
+        def _new_lambda(context):
+            assert not (
+                set(context) & set(constants)
+            ), "Constants are being overwritten"
+            new_context = {**context, **constants}
+            for symbol, func in callables.items():
+                new_context[symbol] = func(new_context)
+            return self.lambda_(new_context)
+
+        # Figure out what new symbols are required for this expression
+        # Remove the constants we've substituted in, and add any new
+        # symbols from the new expressions
+        new_symbols = self.symbols - set(constants) | {
+            symbol for expr in callables.values() for symbol in expr.symbols
+        }
+
+        # In the case we've completely substituted all the symbols
+        # we can just return a new constant
+        if not new_symbols:
+            return _new_lambda({})
+
+        return Expression(symbols=new_symbols, lambda_=_new_lambda)
+
 
 def _get_symbols(thing: NumericishTypes) -> set[Symbol]:
     if isinstance(thing, Expression):
@@ -396,3 +434,118 @@ def defer_operation_factory(
             return operator(lhs, rhs(context))
 
     return deffering_type(symbols=symbols, lambda_=lambda_)
+
+
+def simplify_expression_pool(
+    pool: Mapping[str, NumericishTypes]
+) -> Mapping[str, NumericishTypes]:
+    """
+    Simplify an expression, based on additional context we can give it.
+
+    This is split from simplify_expression_pool, because we also need
+    to simplify expressions that don't have symbols pointing to them.
+    This is the case for the expressions in assertions, for example.
+
+    # Usage
+
+    The "pool" should contain a mapping of addresses to their assigned
+    values. If something's declared, but not defined (eg. "A") in the
+    below example, it should not be in the pool.
+
+    # Problem Statement
+
+    Take the example:
+    A: int
+    B = A + 1
+    C = B + 2
+    D = 3
+    E = D + 4
+
+    "A" remains a symbol, but we need to realise
+    that it's a symbol, implying it's a strong, independent
+    variable (who don't need no man)
+
+    "B" is a simple expression, which we can't simplify,
+    because it's already in terms of nothing other than constants
+    and symbols.
+
+    "C" is a more complex expression, so we can simplify it
+    to "A + 3" or "(A + 1) + 2" for all I care.
+
+    "D" is a constant, so it can't be simplified.
+
+    "E" is an expression completely in terms of constants
+    and defined symbols, so it can be simplified to "7".
+
+    In summary:
+    - Expressions or Symbols that are in terms of other
+        expressions can be simplified
+    - Expressions that are completely in terms of constants or
+        defined symbols can be simplified
+    - Nothing else can be simplified:
+        - Constants and unassigned Symbols are independent, and
+            can't be simplified
+        - Expressions that are completely in independent terms
+            can't be simplified further
+    """
+
+    # Expressions which we haven't got to yet
+    touched = set()
+    simplified = {}
+
+    def _visit(key: str, stack: list) -> NumericishTypes:
+        if key in stack:
+            raise ValueError("Circular dependency detected")
+
+        if key in touched:
+            return simplified[key]  # no wakkas
+
+        # Get the value from the pool
+        value = pool[key]
+
+        # If this is something simple, just return it in the first place
+        if not callable(value):
+            simplified[key] = value
+            touched.add(key)
+            return value
+
+        # If this thing points at something else, we can simplify it
+        # For expressions, we find all the keys we have access to, and
+        # go evaluate them first, before subbing them in
+        if isinstance(value, Expression):
+            child_symbols_we_have = {s.key for s in value.symbols} - set(pool.keys())
+            context = {s: _visit(s, stack + [key]) for s in child_symbols_we_have}
+            simplified[key] = value.substitute(context)
+            touched.add(key)
+            return simplified[key]
+
+        # If it's a symbol, we simplify it by sticking the value in the
+        # address there used to be a symbol instead
+        elif isinstance(value, Symbol):
+            if value.key in pool:
+                simplified[key] = _visit(value.key, stack + [key])
+                touched.add(key)
+                return simplified[key]
+
+            simplified[key] = value
+            touched.add(key)
+            return value
+
+        raise ValueError("Unknown value type")
+
+    # Iterate over the pool, simplifying as we go
+    for key in pool:
+        _visit(key, [])
+
+    return simplified
+
+
+def simplify_expression(
+    expression: Expression,
+    context: Mapping[Symbol, NumericishTypes],
+) -> Expression:
+    """Simplify a single expression"""
+    expression = expression.substitute(
+        {symbol: context[symbol] for symbol in expression.symbols if symbol in context}
+    )
+    return expression
