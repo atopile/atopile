@@ -1048,7 +1048,10 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
             return KeyOptMap.empty()
 
         assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        if len(assigned_value_ref) > 1:
+        # FIXME: we need to avoid arithmetic expressions here because
+        # they need the context of their address at build time - which we
+        # don't have at the class-level
+        if len(assigned_value_ref) > 1 or assignable_ctx.arithmetic_expression():
             # we'll deal with overrides later too!
             return KeyOptMap.empty()
 
@@ -1279,18 +1282,28 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         if assignable_ctx.new_stmt():
             return self.handle_new_assignment(ctx)
 
-        ########## Handle Overrides ##########
-
+        ########## Skip basic assignments ##########
         # We've already dealt with direct assignments in the previous layer
-        if len(assigned_ref) == 1:
+
+        # FIXME: perhaps it's be better to consolidate the class layers
+        # and instance construction. The ClassLayers just aren't that useful
+        # and require a bunch of this BS to function
+
+        if len(assigned_ref) == 1 and not assignable_ctx.arithmetic_expression():
             return KeyOptMap.empty()
 
+        ########## Handle Overrides + Arithmetic ##########
+
+        # Figure out what Instance object the assignment is being made to
         instance_addr_assigned_to = address.add_instances(
             self._instance_addr_stack.top, assigned_ref[:-1]
         )
         with _translate_addr_key_errors(ctx):
             instance_assigned_to = self._output_cache[instance_addr_assigned_to]
 
+        # Find the class associated with the assignment
+        # FIXME: wait a second... class associated with the assignment?
+        # I'm unconvinced this makes sense.
         # TODO: de-triplicate this
         if type_info := ctx.type_info():
             given_type = lookup_class_in_closure(
@@ -1430,7 +1443,14 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
 
         return KeyOptMap.empty()
 
+    def visitArithmetic_expression(self, ctx: ap.Arithmetic_expressionContext):
+        """
+        Handle arithmetic expressions, yielding either a numeric value or callable expression
 
+        This sits here because we need to defer these to Roley,
+        with the context of the current instance.
+        """
+        return Roley(self._instance_addr_stack.top).visitArithmetic_expression(ctx)
 
 
 scoop = Scoop(parser.get_ast_from_file)
