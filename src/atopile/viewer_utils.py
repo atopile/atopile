@@ -31,6 +31,9 @@ def get_interfaces(addr: AddrStr) -> dict[str, dict[str, str]]:
     returns interfaces
     """
     interfaces = []
+    # interfaces themselves are interfaces
+    if match_interfaces(addr):
+        interfaces.append(get_name(addr))
     for child in get_children(addr):
         if match_interfaces(child):
             interfaces.append(get_name(child))
@@ -52,8 +55,9 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
     {
         "block_name": {
             "instance_of": "instance_name",
-            "type": "module/component/interface/signal"
-            "address": "a.b.c"
+            "type": "module/component/interface/signal",
+            "address": "a.b.c",
+            "interfaces": ["interface_name", "interface_name"], ...
         }, ...
     }
     """
@@ -71,8 +75,7 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
                 "type": type,
                 "address": get_instance_section(child),
-                "interfaces": get_interfaces(child),
-                "signals": get_signals(child)}
+                "interfaces": get_interfaces(child) + get_signals(child)}
 
     return block_dict
 
