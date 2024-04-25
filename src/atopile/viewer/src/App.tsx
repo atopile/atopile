@@ -16,7 +16,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { createNodesAndEdges } from './utils.js';
-import { CustomNodeBlock, CircularNodeComponent, ComponentNode } from './CustomNode';
+import { CustomNodeBlock, CircularNodeComponent, ComponentNode, InterfaceNode } from './CustomNode';
 import CustomEdge from './CustomEdge';
 
 import SimpleTable from './LinkTable.js';
@@ -78,7 +78,8 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
 const nodeTypes = {
     customNode: CustomNodeBlock, // Register your custom node type
     customCircularNode: CircularNodeComponent,
-    componentNode: ComponentNode
+    componentNode: ComponentNode,
+    InterfaceNode: InterfaceNode
 };
 
 const edgeTypes = {
@@ -159,11 +160,31 @@ const AtopileViewer = () => {
                     if (displayedNode['blocks'][node]['type'] == 'signal') {
                         populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#8ECAE6' }, position: position });
                     } else if (displayedNode['blocks'][node]['type'] == 'interface') {
-                        populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
+                        populatedNodes.push({
+                            id: node,
+                            type: 'InterfaceNode',
+                            data: {
+                                title: node,
+                                instance_of: displayedNode['blocks'][node]['instance_of'],
+                                interfaces: displayedNode['blocks'][node]['interfaces'],
+                                color: '#219EBC' },
+                            position: position });
                     }
                     else if (displayedNode['blocks'][node]['type'] == 'module') {
                         console.log(displayedNode['blocks'][node]['type'])
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                        populatedNodes.push({
+                            id: node,
+                            type: 'componentNode',
+                            data: {
+                                title: node,
+                                instance_of: displayedNode['blocks'][node]['instance_of'],
+                                address: displayedNode['blocks'][node]['address'],
+                                type: displayedNode['blocks'][node]['type'],
+                                interfaces: displayedNode['blocks'][node]['interfaces'],
+                                color: '#FB8500', handleExpandClick: handleExpandClick },
+                            sourcePosition: Position.Bottom,
+                            targetPosition: Position.Right,
+                            position: position });
                     } else {
                         populatedNodes.push({
                             id: node,
@@ -174,7 +195,6 @@ const AtopileViewer = () => {
                                 address: displayedNode['blocks'][node]['address'],
                                 type: displayedNode['blocks'][node]['type'],
                                 interfaces: displayedNode['blocks'][node]['interfaces'],
-                                signals: displayedNode['blocks'][node]['signals'],
                                 color: '#FFB703', handleExpandClick: handleExpandClick},
                             sourcePosition: Position.Bottom,
                             targetPosition: Position.Right,
@@ -190,22 +210,41 @@ const AtopileViewer = () => {
 
                     // for each edge_id, update the data structure with the list of links on that harness
                     selected_links_data[edge_id] = {source: edge['source'], target: edge['target'], links: edge['links']};
-
-                    populatedEdges.push({
-                        id: edge_id,
-                        source: edge['source'],
-                        target: edge['target'],
-                        targetHandle: "p2",
-                        type: 'custom',
-                        markerEnd: {
-                            type: MarkerType.Arrow,
-                        },
-                        data: {
+                    for (const link of edge['links']) {
+                        console.log('source:', edge['source'], link['source'], 'target:', edge['target'], link['target']);
+                        populatedEdges.push({
+                            id: edge_id + link['source'],
                             source: edge['source'],
+                            sourceHandle: link['source'],
                             target: edge['target'],
-                            name: edge['name']
-                        }
-                    });
+                            targetHandle: link['source'],
+                            type: 'custom',
+                            markerEnd: {
+                                type: MarkerType.Arrow,
+                            },
+                            data: {
+                                source: edge['source'],
+                                target: edge['target'],
+                                name: link['name']
+                            }
+                        });
+                    }
+                    // populatedEdges.push({
+                    //     id: edge_id,
+                    //     source: edge['source'],
+                    //     sourceHandle: "p1",
+                    //     target: edge['target'],
+                    //     targetHandle: "p2",
+                    //     type: 'custom',
+                    //     markerEnd: {
+                    //         type: MarkerType.Arrow,
+                    //     },
+                    //     data: {
+                    //         source: edge['source'],
+                    //         target: edge['target'],
+                    //         name: edge['name']
+                    //     }
+                    // });
                 }
                 setEdges(populatedEdges);
                 setRequestRelayout(true);
@@ -220,7 +259,7 @@ const AtopileViewer = () => {
     // Calculate the initial layout on mount.
     useLayoutEffect(() => {
         if (requestRelayout) {
-            onLayout({ direction: 'DOWN' });
+            onLayout({ direction: 'RIGHT' });
             console.log('Relayout requested');
             setRequestRelayout(false);
         }
