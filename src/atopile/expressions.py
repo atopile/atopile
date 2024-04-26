@@ -3,6 +3,7 @@ Work with expressions and ranged values.
 """
 
 import collections.abc
+from collections import ChainMap
 from typing import Callable, Mapping, Optional, Type, Union
 
 import pint
@@ -357,19 +358,23 @@ class Expression:
         self, substitutions: Mapping[Symbol, NumericishTypes]
     ) -> NumericishTypes:
         """Return a new expression with all the symbols substituted."""
-
         # Do a little data checky check
         if not all(symbol in self.symbols for symbol in substitutions):
             raise ValueError("Substitution contains symbols not in the expression")
 
         # Sort the substitutions into constants and expressions
-        constants: Mapping[Symbol, int | float | RangedValue] = {}
-        callables: Mapping[Symbol, Expression | Symbol] = {}
+        constants: Mapping[str, int | float | RangedValue] = {}
+        constants_symbols = set()
+        callables: Mapping[str, Expression | Symbol] = {}
         for symbol, value in substitutions.items():
+            # FIXME: this is here because the context and expressions
+            # hold reference to the values of attributes differently
+            key = symbol.key if hasattr(symbol, "key") else symbol
             if callable(value):
-                callables[symbol] = value
+                callables[key] = value
             else:
-                constants[symbol] = value
+                constants[key] = value
+                constants_symbols.add(symbol)
 
         # Create a new lambda function with the substitutions
         def _new_lambda(context):
@@ -384,9 +389,8 @@ class Expression:
         # Figure out what new symbols are required for this expression
         # Remove the constants we've substituted in, and add any new
         # symbols from the new expressions
-        new_symbols = self.symbols - set(constants) | {
-            symbol for expr in callables.values() for symbol in expr.symbols
-        }
+        callables_symbols = {symbol for expr in callables.values() for symbol in expr.symbols}
+        new_symbols = self.symbols - constants_symbols | callables_symbols
 
         # In the case we've completely substituted all the symbols
         # we can just return a new constant
@@ -492,20 +496,20 @@ def simplify_expression_pool(
     # Expressions which we haven't got to yet
     touched = set()
     simplified = {}
+    context = ChainMap(simplified, pool)
 
     def _visit(key: str, stack: list) -> NumericishTypes:
         if key in stack:
             raise ValueError("Circular dependency detected")
 
         if key in touched:
-            return simplified[key]  # no wakkas
+            return context[key]  # no wakkas
 
         # Get the value from the pool
-        value = pool[key]
+        value = context[key]
 
         # If this is something simple, just return it in the first place
         if not callable(value):
-            simplified[key] = value
             touched.add(key)
             return value
 
@@ -513,9 +517,13 @@ def simplify_expression_pool(
         # For expressions, we find all the keys we have access to, and
         # go evaluate them first, before subbing them in
         if isinstance(value, Expression):
-            child_symbols_we_have = {s.key for s in value.symbols} - set(pool.keys())
-            context = {s: _visit(s, stack + [key]) for s in child_symbols_we_have}
-            simplified[key] = value.substitute(context)
+            simplified[key] = value.substitute(
+                {
+                    s: _visit(s.key, stack + [key])
+                    for s in value.symbols
+                    if s.key in pool
+                }
+            )
             touched.add(key)
             return simplified[key]
 

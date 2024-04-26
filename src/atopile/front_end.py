@@ -1464,8 +1464,7 @@ def reset_caches(file: Path | str):
     def _clear_cache(cache: dict[str, Any]):
         # We do this in two steps to avoid modifying
         # the dict while iterating over it
-        to_clear = filter(lambda addr: addr.startswith(file_str), cache)
-        for addr in to_clear:
+        for addr in list(filter(lambda addr: addr.startswith(file_str), cache)):
             del cache[addr]
 
     _clear_cache(lofty._output_cache)

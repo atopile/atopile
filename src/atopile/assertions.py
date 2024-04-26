@@ -15,7 +15,7 @@ from rich.style import Style
 from rich.table import Table
 from scipy.optimize import minimize
 
-from atopile import address, config, errors, instance_methods, loop_soup, telemetry
+from atopile import address, config, errors, instance_methods, loop_soup, telemetry, expressions
 from atopile.front_end import (
     Assertion,
     Assignment,
@@ -314,6 +314,33 @@ def solve_assertions(build_ctx: config.BuildContext):
     log.info("Values for solved variables:")
     rich.print(table)
 
+
+def simplify_expressions(entry_addr: address.AddrStr):
+    """
+    Simplify the expressions in the build context.
+    """
+
+    # Build the context to simplify everything on
+    # FIXME: I hate that we're iterating over the whole model, to grab
+    # all the context all at once and duplicated it into a dict.
+    context: dict[str, expressions.NumericishTypes] = {}
+    for instance_addr in instance_methods.all_descendants(entry_addr):
+        instance = lofty.get_instance(instance_addr)
+        for assignment_key, assignment in instance.assignments.items():
+            if assignment and assignment[0].value is not None:
+                context[address.add_instance(instance_addr, assignment_key)] = assignment[0].value
+
+    # Simplify the expressions
+    simplified = expressions.simplify_expression_pool(context)
+
+    # Update the model with simplified expressions
+    for addr in simplified:
+        parent_addr = address.get_parent_instance_addr(addr)
+        name = address.get_name(addr)
+        parent_instance = lofty.get_instance(parent_addr)
+        parent_instance.assignments[name].appendleft(
+            Assignment(name, value=simplified, given_type=None)
+        )
 
 def _translator_factory(
     args: Iterable, arg_units: Iterable[pint.Unit], known_context: dict
