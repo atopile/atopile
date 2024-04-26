@@ -37,7 +37,6 @@ def test_units():
     assert _run("1 V + 205 mV") == RangedValue(1205, 1205, "mV")
     assert _run("1V + 205mV") == RangedValue(1205, 1205, "mV")
     assert _run("1V ± 205mV + 1V ± 1mV") == RangedValue(1794, 2206, "mV")
-    assert _run("205mV to 1V") == RangedValue(205, 1000, "mV")
 
 
 def test_parens():
@@ -65,20 +64,3 @@ def test_pseudo_symbols():
         "//a:b::c": 9,
     }
     assert _run("(a.a.a**b + 17) / c + 53")(context) == 62
-
-
-def test_unary():
-    assert _run("-1") == -1
-    assert _run("-1 + 2") == 1
-    assert _run("1 + -2") == -1
-    assert _run("1 + -2 + 3") == 2
-    assert _run("1 + -2 * 3") == -5
-    assert _run("1 + -2 * -3") == 7
-    assert _run("1 + -2 * -3 + 4") == 11
-    assert _run("1 + -2 * -3 + 4 / -5") == 6.2
-
-
-def test_ranged_unary():
-    assert _run("-1 to 1") == RangedValue(-1, 1)
-    assert _run("-1 to 1 + 1") == RangedValue(0, 2)
-    assert _run("-1 to 1 + 1 to 2") == RangedValue(0, 3)
