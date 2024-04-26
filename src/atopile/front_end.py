@@ -438,6 +438,17 @@ class HandlesPrimaries(AtopileParserVisitor):
             # In this case there's a named unit on the tolerance itself
             # We need to make sure it's dimensionally compatible with the nominal
             tol_quantity = RangedValue(-tol_num, tol_num, _get_unit_from_ctx(tol_ctx.name()), tol_ctx)
+
+            # If the nominal has no unit, then we take the unit's tolerance for the nominal
+            if nominal_quantity.unit == pint.Unit(""):
+                return RangedValue(
+                    src_ctx=ctx,
+                    val_a=nominal_quantity.min_val - tol_quantity.min_val,
+                    val_b=nominal_quantity.max_val + tol_quantity.max_val,
+                    unit=tol_quantity.unit,
+                )
+
+            # If the nominal has a unit, then we rely on the ranged value's unit compatibility
             try:
                 return nominal_quantity + tol_quantity
             except pint.DimensionalityError as ex:
@@ -464,6 +475,25 @@ class HandlesPrimaries(AtopileParserVisitor):
         end = self.visitQuantity(ctx.quantity(1))
         assert end.tolerance == 0
 
+        # If only one of them has a unit, take the unit from the one which does
+        if (start.unit == pint.Unit("")) ^ (end.unit == pint.Unit("")):
+            if start.unit == pint.Unit(""):
+                known_unit = end.unit
+                known_pretty_unit = end.pretty_unit
+            else:
+                known_unit = start.unit
+                known_pretty_unit = start.pretty_unit
+
+            return RangedValue(
+                src_ctx=ctx,
+                val_a=start.min_val,
+                val_b=end.min_val,
+                unit=known_unit,
+                pretty_unit=known_pretty_unit,
+            )
+
+        # If they've both got units, let the RangedValue handle
+        # the dimensional compatibility
         try:
             return RangedValue(
                 src_ctx=ctx,
