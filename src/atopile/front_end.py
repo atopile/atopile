@@ -84,9 +84,10 @@ class RangedValue(expressions.RangedValue):
         val_b: Number | pint.Quantity,
         unit: Optional[pint.Unit] = None,
         src_ctx: Optional[ParserRuleContext] = None,
+        pretty_unit: Optional[str] = None,
     ):
         self.src_ctx = src_ctx
-        super().__init__(val_a, val_b, unit)
+        super().__init__(val_a, val_b, unit, pretty_unit)
 
 
 class Expression(expressions.Expression):
@@ -379,8 +380,8 @@ class HandlesPrimaries(AtopileParserVisitor):
 
     def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
         """Yield a physical value from a physical context."""
-        if ctx.implicit_quantity():
-            return self.visitImplicit_quantity(ctx.implicit_quantity())
+        if ctx.quantity():
+            return self.visitQuantity(ctx.quantity())
         if ctx.bilateral_quantity():
             return self.visitBilateral_quantity(ctx.bilateral_quantity())
         if ctx.bound_quantity():
@@ -388,9 +389,13 @@ class HandlesPrimaries(AtopileParserVisitor):
 
         raise ValueError  # this should be protected because it shouldn't be parseable
 
-    def visitImplicit_quantity(self, ctx: ap.Implicit_quantityContext) -> RangedValue:
+    def visitQuantity(self, ctx: ap.QuantityContext) -> RangedValue:
         """Yield a physical value from an implicit quantity context."""
         value = float(ctx.NUMBER().getText())
+
+        # Ignore the positive unary operator
+        if ctx.MINUS():
+            value = -value
 
         if ctx.name():
             unit = _get_unit_from_ctx(ctx.name())
@@ -406,107 +411,72 @@ class HandlesPrimaries(AtopileParserVisitor):
 
     def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> RangedValue:
         """Yield a physical value from a bilateral quantity context."""
-        nominal = float(ctx.bilateral_nominal().NUMBER().getText())
-
-        if ctx.bilateral_nominal().name():
-            unit = _get_unit_from_ctx(ctx.bilateral_nominal().name())
-        else:
-            unit = pint.Unit("")
+        nominal_quantity = self.visitQuantity(ctx.quantity())
 
         tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
         tol_num = float(tol_ctx.NUMBER().getText())
 
         if tol_ctx.PERCENT():
             tol_divider = 100
-        # FIXME: hardcoding this seems wrong, but the parser/lexer wasn't picking up on it
         elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
             tol_divider = 1e6
         else:
             tol_divider = None
 
         if tol_divider:
-            if nominal == 0:
+            if nominal_quantity == 0:
                 raise errors.AtoError.from_ctx(
                     tol_ctx,
                     "Can't calculate tolerance percentage of a nominal value of zero",
                 )
 
             # In this case, life's a little easier, and we can simply multiply the nominal
-            return RangedValue(
-                src_ctx=ctx,
-                val_a=nominal * (1 - tol_num / tol_divider),
-                val_b=nominal * (1 + tol_num / tol_divider),
-                unit=unit,
-            )
+            tol = tol_num / tol_divider
+            return nominal_quantity * RangedValue(-tol, tol)
 
         if tol_ctx.name():
             # In this case there's a named unit on the tolerance itself
             # We need to make sure it's dimensionally compatible with the nominal
-            tolerance_unit = _get_unit_from_ctx(tol_ctx.name())
+            tol_quantity = RangedValue(-tol_num, tol_num, _get_unit_from_ctx(tol_ctx.name()), tol_ctx)
             try:
-                tolerance = (tol_num * tolerance_unit).to(unit).magnitude
+                return nominal_quantity + tol_quantity
             except pint.DimensionalityError as ex:
                 raise errors.AtoTypeError.from_ctx(
                     tol_ctx.name(),
-                    f"Tolerance unit '{tolerance_unit}' is not dimensionally"
-                    f" compatible with nominal unit '{unit}'",
+                    f"Tolerance unit '{tol_quantity.unit}' is not dimensionally"
+                    f" compatible with nominal unit '{nominal_quantity.unit}'",
                 ) from ex
-
-            return RangedValue(
-                src_ctx=ctx,
-                val_a=nominal - tolerance,
-                val_b=nominal + tolerance,
-                unit=unit,
-            )
 
         # If there's no unit or percent, then we have a simple tolerance in the same units
         # as the nominal
         return RangedValue(
             src_ctx=ctx,
-            val_a=nominal - tol_num,
-            val_b=nominal + tol_num,
-            unit=unit,
+            val_a=nominal_quantity.min_val - tol_num,
+            val_b=nominal_quantity.max_val + tol_num,
+            unit=nominal_quantity.unit,
         )
 
     def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> RangedValue:
         """Yield a physical value from a bound quantity context."""
 
-        def _parse_end(
-            ctx: ap.Quantity_endContext,
-        ) -> tuple[float, Optional[pint.Unit]]:
-            value = float(ctx.NUMBER().getText())
-            if ctx.name():
-                unit = _get_unit_from_ctx(ctx.name())
-            else:
-                unit = None
-            return value, unit
+        start = self.visitQuantity(ctx.quantity(0))
+        assert start.tolerance == 0
+        end = self.visitQuantity(ctx.quantity(1))
+        assert end.tolerance == 0
 
-        start_val, start_unit = _parse_end(ctx.quantity_end(0))
-        end_val, end_unit = _parse_end(ctx.quantity_end(1))
-
-        if start_unit is None and end_unit is None:
-            unit = pint.Unit("")
-        elif start_unit and end_unit:
-            unit = start_unit
-            try:
-                end_val = (end_val * end_unit).to(start_unit).magnitude
-            except pint.DimensionalityError as ex:
-                raise errors.AtoTypeError.from_ctx(
-                    ctx,
-                    f"Tolerance unit '{end_unit}' is not dimensionally"
-                    f" compatible with nominal unit '{start_unit}'",
-                ) from ex
-        elif start_unit:
-            unit = start_unit
-        else:
-            unit = end_unit
-
-        return RangedValue(
-            src_ctx=ctx,
-            val_a=start_val,
-            val_b=end_val,
-            unit=unit,
-        )
+        try:
+            return RangedValue(
+                src_ctx=ctx,
+                val_a=start.min_qty,
+                val_b=end.min_qty,
+                pretty_unit=start.pretty_unit,
+            )
+        except pint.DimensionalityError as ex:
+            raise errors.AtoTypeError.from_ctx(
+                ctx,
+                f"Tolerance unit '{end.unit}' is not dimensionally"
+                f" compatible with nominal unit '{start.unit}'",
+            ) from ex
 
 
 class HandleStmtsFunctional(AtopileParserVisitor):
@@ -625,35 +595,27 @@ class Roley(HandlesPrimaries):
             return expressions.defer_operation_factory(
                 self.visit(ctx.term()),
                 operator.mul,
-                self.visit(ctx.factor()),
+                self.visit(ctx.power()),
             )
 
         if ctx.DIV():
             return expressions.defer_operation_factory(
                 self.visit(ctx.term()),
                 operator.truediv,
-                self.visit(ctx.factor()),
+                self.visit(ctx.power()),
             )
-
-        return self.visit(ctx.factor())
-
-    def visitFactor(self, ctx: ap.FactorContext) -> expressions.NumericishTypes:
-        # Ignore the unary plus operator
-
-        if ctx.MINUS():
-            return operator.neg(self.visit(ctx.power()))
 
         return self.visit(ctx.power())
 
     def visitPower(self, ctx: ap.PowerContext) -> expressions.NumericishTypes:
-        if ctx.factor():
+        if ctx.POWER():
             return expressions.defer_operation_factory(
-                self.visit(ctx.atom()),
+                self.visit(ctx.atom(0)),
                 operator.pow,
-                self.visit(ctx.factor()),
+                self.visit(ctx.atom(1)),
             )
 
-        return self.visit(ctx.atom())
+        return self.visit(ctx.atom(0))
 
     def visitAtom(self, ctx: ap.AtomContext) -> expressions.NumericishTypes:
         if ctx.arithmetic_group():

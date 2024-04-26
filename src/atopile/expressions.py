@@ -303,7 +303,9 @@ class RangedValue:
         # NOTE: realistically this is only useful for testing
         if isinstance(other, RangedValue):
             return self.min_qty == other.min_qty and self.max_qty == other.max_qty
-        if self.min_val == self.max_val == other and self.unit.dimensionless:
+
+        # NOTE: this doesn't work for farenheit or kelvin, but everything else is okay
+        if self.min_val == self.max_val == other and (self.unit.dimensionless or other == 0):
             return True
         return False
 
