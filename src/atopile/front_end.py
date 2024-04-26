@@ -416,6 +416,7 @@ class HandlesPrimaries(AtopileParserVisitor):
         tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
         tol_num = float(tol_ctx.NUMBER().getText())
 
+        # Handle proportional tolerances
         if tol_ctx.PERCENT():
             tol_divider = 100
         elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
@@ -431,9 +432,14 @@ class HandlesPrimaries(AtopileParserVisitor):
                 )
 
             # In this case, life's a little easier, and we can simply multiply the nominal
-            tol = tol_num / tol_divider
-            return nominal_quantity * RangedValue(-tol, tol)
+            return RangedValue(
+                src_ctx=ctx,
+                val_a=nominal_quantity.min_val - (nominal_quantity.min_val * tol_num / tol_divider),
+                val_b=nominal_quantity.max_val + (nominal_quantity.max_val * tol_num / tol_divider),
+                unit=nominal_quantity.unit,
+            )
 
+        # Handle tolerances with units
         if tol_ctx.name():
             # In this case there's a named unit on the tolerance itself
             # We need to make sure it's dimensionally compatible with the nominal

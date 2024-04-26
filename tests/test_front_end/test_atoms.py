@@ -2,6 +2,7 @@ import pytest
 
 from antlr4 import InputStream
 
+from atopile import errors
 from atopile.expressions import RangedValue
 from atopile.front_end import HandlesPrimaries
 from atopile.parse import make_parser
@@ -70,3 +71,15 @@ def test_bound_quantity(src, expected):
 )
 def test_bilateral_quantity(src, expected):
     assert _run(src) == expected
+
+
+def test_bilateral_quantity_percent():
+    r: RangedValue = _run("5.1kohm ± 1%")
+    assert r.min_val == pytest.approx(5.1 * 0.99)
+    assert r.max_val == pytest.approx(5.1 * 1.01)
+    assert str(r.unit) == "kiloohm"
+
+
+def test_zero_proportional_qty():
+    with pytest.raises(errors.AtoError):
+        _run("0V ± 10%")
