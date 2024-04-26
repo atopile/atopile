@@ -84,12 +84,17 @@ arithmetic_expression
     ;
 
 term
-    : term ('*' | '/') power
-    | power
+    : term ('*' | '/') factor
+    | factor
     ;
 
+factor
+    : '+' factor
+    | '-' factor
+    | power;
+
 power
-    : atom ('**' atom)?
+    : atom ('**' factor)?
     ;
 
 
@@ -107,11 +112,13 @@ arithmetic_group
 literal_physical
     : bound_quantity
     | bilateral_quantity
-    | quantity;
+    | implicit_quantity;
 
-bound_quantity: quantity 'to' quantity;
-bilateral_quantity: quantity PLUS_OR_MINUS bilateral_tolerance;
-quantity: ('+' | '-')? NUMBER name?;
+bound_quantity: quantity_end 'to' quantity_end;
+quantity_end: NUMBER name?;
+bilateral_quantity: bilateral_nominal PLUS_OR_MINUS bilateral_tolerance;
+implicit_quantity: NUMBER name?;
+bilateral_nominal: NUMBER name?;
 bilateral_tolerance: NUMBER ('%' | name)?;
 
 name_or_attr: attr | name;
