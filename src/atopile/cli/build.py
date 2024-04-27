@@ -1,4 +1,5 @@
 """CLI command definition for `ato build`."""
+import itertools
 import json
 import logging
 import shutil
@@ -7,13 +8,13 @@ from typing import Callable, Optional
 
 import click
 
+import atopile.assertions
 import atopile.bom
 import atopile.config
 import atopile.front_end
 import atopile.layout
 import atopile.manufacturing_data
 import atopile.netlist
-import atopile.assertions
 from atopile.cli.common import project_options
 from atopile.components import configure_cache, download_footprint
 from atopile.config import BuildContext
@@ -124,6 +125,7 @@ class Muster:
 
 muster = Muster()
 
+
 @muster.register("copy-footprints")
 def consolidate_footprints(build_args: BuildContext) -> None:
     """Consolidate all the project's footprints into a single directory."""
@@ -137,7 +139,7 @@ def consolidate_footprints(build_args: BuildContext) -> None:
         except shutil.SameFileError:
             log.debug("Footprint %s already exists in the target directory", fp)
 
-    """Post-process all the footprints in the target directory."""
+    # Post-process all the footprints in the target directory
     for fp in fp_target.glob("**/*.kicad_mod"):
         with open(fp, "r+", encoding="utf-8") as file:
             content = file.read()
@@ -147,14 +149,15 @@ def consolidate_footprints(build_args: BuildContext) -> None:
             file.truncate()
 
 
-
 @muster.register("copy-3dmodels")
 def consolidate_3dmodels(build_args: BuildContext) -> None:
     """Consolidate all the project's 3d models into a single directory."""
     fp_target = build_args.build_path / "footprints" / "footprints.3dshapes"
     fp_target.mkdir(exist_ok=True, parents=True)
 
-    for fp in atopile.config.get_project_context().project_path.glob("**/*.step"):
+    prj_path = atopile.config.get_project_context().project_path
+
+    for fp in itertools.chain(prj_path.glob("**/*.step"), prj_path.glob("**/*.wrl")):
         try:
             shutil.copy(fp, fp_target)
         except shutil.SameFileError:
