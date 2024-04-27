@@ -24,7 +24,7 @@ def _custom_float_format(value, max_decimals: int):
 
 def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
     """Return the best unit for the two quantities."""
-    if str(qty_a.to(qty_b.units).magnitude) < str(qty_b.to(qty_a.units).magnitude):
+    if len(str(qty_a.to(qty_b.units).magnitude)) > len(str(qty_b.to(qty_a.units).magnitude)):
         return qty_a.units
     return qty_b.units
 
@@ -303,7 +303,9 @@ class RangedValue:
         # NOTE: realistically this is only useful for testing
         if isinstance(other, RangedValue):
             return self.min_qty == other.min_qty and self.max_qty == other.max_qty
-        if self.min_val == self.max_val == other and self.unit.dimensionless:
+
+        # NOTE: this doesn't work for farenheit or kelvin, but everything else is okay
+        if self.min_val == self.max_val == other and (self.unit.dimensionless or other == 0):
             return True
         return False
 

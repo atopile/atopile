@@ -91,6 +91,7 @@ dev = [
     "ruff",
     "black",
     "debugpy",
+    "antlr4-tools",
 ]
 
 [project.scripts]

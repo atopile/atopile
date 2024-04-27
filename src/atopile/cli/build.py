@@ -214,6 +214,7 @@ def generate_assertion_report(build_ctx: BuildContext) -> None:
     """Generate a report based on assertions made in the source code."""
     atopile.assertions.generate_assertion_report(build_ctx)
 
+
 @muster.register("view-dict")
 def generate_view_dict(build_ctx: BuildContext) -> None:
     """Generate a dictionary for the viewer."""
