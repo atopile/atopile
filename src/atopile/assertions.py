@@ -259,11 +259,19 @@ def solve_assertions(build_ctx: config.BuildContext):
                         title=title,
                         message=msg,
                     )
-                else:
-                    raise errors.AtoError(
-                        msg,
-                        title=title,
-                    )
+
+                msg += "\n\nAssertions:\n"
+                for a in assertions:
+                    msg += f"  {a}\n"
+
+                msg += "\n\nVariables:\n"
+                for v in group_vars:
+                    msg += f"  {v}\n"
+
+                raise errors.AtoError(
+                    msg,
+                    title=title,
+                )
 
             # Here we're attempting to shuffle the values into eseries
             result_means = [
