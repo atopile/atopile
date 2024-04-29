@@ -552,7 +552,10 @@ def simplify_expression(
     expression: Expression,
     context: Mapping[Symbol, NumericishTypes],
 ) -> Expression:
-    """Simplify a single expression"""
+    """
+    Simplify a single expression.
+    This will only work if the context is already in its simplest forms.
+    """
     expression = expression.substitute(
         {symbol: context[symbol] for symbol in expression.symbols if symbol in context}
     )

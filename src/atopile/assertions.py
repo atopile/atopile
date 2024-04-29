@@ -342,6 +342,16 @@ def simplify_expressions(entry_addr: address.AddrStr):
             Assignment(name, value=value, given_type=None)
         )
 
+    # Great, now simplify the expressions in the assertions
+    # TODO:
+    simplified_context = {**context, **simplified}
+    for instance_addr in instance_methods.all_descendants(entry_addr):
+        instance = lofty.get_instance(instance_addr)
+        for assertion in instance.assertions:
+            assertion.lhs = expressions.simplify_expression(assertion.lhs, simplified_context)
+            assertion.rhs = expressions.simplify_expression(assertion.rhs, simplified_context)
+
+
 def _translator_factory(
     args: Iterable, arg_units: Iterable[pint.Unit], known_context: dict
 ):
