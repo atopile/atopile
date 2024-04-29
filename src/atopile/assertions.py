@@ -334,12 +334,12 @@ def simplify_expressions(entry_addr: address.AddrStr):
     simplified = expressions.simplify_expression_pool(context)
 
     # Update the model with simplified expressions
-    for addr in simplified:
+    for addr, value in simplified.items():
         parent_addr = address.get_parent_instance_addr(addr)
         name = address.get_name(addr)
         parent_instance = lofty.get_instance(parent_addr)
         parent_instance.assignments[name].appendleft(
-            Assignment(name, value=simplified, given_type=None)
+            Assignment(name, value=value, given_type=None)
         )
 
 def _translator_factory(
