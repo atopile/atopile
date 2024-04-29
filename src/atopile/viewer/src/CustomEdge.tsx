@@ -65,11 +65,38 @@ export default function CustomEdge({
                         fontSize: 12,
                         fontWeight: 700,
                         pointerEvents: 'all',
+                        fontSize: '8px',
                     }}
                     className="nodrag nopan"
                 >
                     <div className="customedge">
-                        {data.name}
+                        <ul style={{
+                            listStyleType: 'none',
+                            padding: '2px',
+                            margin: 0,
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                            textOverflow: 'ellipsis',
+                            maxWidth: '100px'}}>
+                            {data.preview_names.slice(0, 4).map((name, index) => (
+                            <li key={index} style={{
+                                overflow: 'hidden',
+                                whiteSpace: 'nowrap',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '200px'  // This maxWidth applies to each li
+                              }}>{name}</li>
+                            ))}
+                            {data.preview_names.length > 4 && (
+                            <li style={{
+                                overflow: 'hidden',
+                                whiteSpace: 'nowrap',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '200px'
+                                }}>
+                                ...
+                            </li>
+                        )}
+                        </ul>
                     </div>
                 </div>
             </EdgeLabelRenderer>

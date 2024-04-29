@@ -154,7 +154,8 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
         {
             "source": "block_name",
             "target": "block_name",
-            "name": "harness_name",
+            "name": "name_1/name_2/...",
+            "preview_names": ["name_1", "name_2",...],
             "links": [
                 {
                     "source": "port_name",
@@ -193,15 +194,25 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
     harness_return_dict: DefaultDict[str, list] = defaultdict(list)
 
     for source_block, target_block in harness_list:
-        instance_of_set = set()
+        preview_name_set = set()
         for link in harness_list[(source_block, target_block)]:
-            instance_of_set.add(link['instance_of'])
-        name = "/".join(sorted(instance_of_set))
+            if link['type'] == "signal":
+                preview_name_set.add(f"{link['source']} ~ {link['target']}")
+            # special case for pairs as they could be anything
+            elif link['type'] == "interface" and link['instance_of'] == "Pair":
+                preview_name_set.add(f"{link['source']} ~ {link['target']}")
+            # for interfaces
+            else:
+                preview_name_set.add(link['instance_of'])
+
+        preview_names = sorted(preview_name_set)
+        name = "/".join(preview_names)
         key = f"{source_block}_{target_block}"
         harness_return_dict[key] = {
             "source": source_block,
             "target": target_block,
-            "name": name, # name needs improvement
+            "name": name,
+            "preview_names": preview_names,
             "links": harness_list[(source_block, target_block)]
         }
 

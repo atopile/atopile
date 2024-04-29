@@ -190,7 +190,8 @@ const AtopileViewer = () => {
                         data: {
                             source: edge['source'],
                             target: edge['target'],
-                            name: edge['name']
+                            name: edge['name'],
+                            preview_names: edge['preview_names'],
                         }
                     });
                 }
