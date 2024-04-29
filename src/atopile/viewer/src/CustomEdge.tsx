@@ -50,7 +50,6 @@ export default function CustomEdge({
         targetY,
         targetPosition,
     });
-    console.log(data);
 
     return (
         <>
