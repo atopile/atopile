@@ -37,7 +37,6 @@ assignable
     : string
     | new_stmt
     | literal_physical
-    | name_or_attr
     | arithmetic_expression
     ;
 

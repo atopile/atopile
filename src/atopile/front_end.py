@@ -1051,7 +1051,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
         # FIXME: we need to avoid arithmetic expressions here because
         # they need the context of their address at build time - which we
         # don't have at the class-level
-        if len(assigned_value_ref) > 1 or assignable_ctx.arithmetic_expression():
+        if len(assigned_value_ref) > 1 or assignable_ctx.arithmetic_expression() or assignable_ctx.name_or_attr():
             # we'll deal with overrides later too!
             return KeyOptMap.empty()
 

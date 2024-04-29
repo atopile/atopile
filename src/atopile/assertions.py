@@ -77,6 +77,8 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     except errors.AtoError as e:
                         raise ErrorComputingAssertion(f"Exception computing assertion: {str(e)}") from e
 
+                    assert isinstance(a, RangedValue)
+                    assert isinstance(b, RangedValue)
                     numeric = a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
                     if _do_op(a, assertion.operator, b):
                         log.debug(
