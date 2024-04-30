@@ -703,7 +703,7 @@ class Scoop(HandleStmtsFunctional, HandlesPrimaries):
             return self._output_cache[addr]
         except KeyError as ex:
             raise BlockNotFoundError(
-                f"No block named $addr in {address.get_file(addr)}", addr=addr
+                f"No block named {addr} in {address.get_file(addr)}"
             ) from ex
 
     def _register_obj_tree(

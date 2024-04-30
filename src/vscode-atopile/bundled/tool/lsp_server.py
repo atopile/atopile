@@ -194,6 +194,64 @@ def completions(params: Optional[lsp.CompletionParams] = None) -> lsp.Completion
     return lsp.CompletionList(is_incomplete=False, items=items,)
 
 
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_HOVER)
+def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
+    if not params.text_document.uri.startswith("file://"):
+        return lsp.CompletionList(is_incomplete=False, items=[])
+
+    document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
+
+    file = Path(document.path)
+    try:
+        atopile.config.get_project_context()
+    except ValueError:
+        atopile.config.set_project_context(atopile.config.ProjectContext.from_path(file))
+    class_addr = _get_def_addr_from_line(file, params.position.line)
+    if not class_addr:
+        class_addr = str(file)
+
+    word, range_ = utils.cursor_word_and_range(document, params.position)
+    try:
+        word = word[:word.index(".", params.position.character - range_.start.character)]
+    except ValueError:
+        pass
+    # remove special characters like brackets
+    word = "".join(e for e in word if e not in "(){}")
+    output_str = ""
+
+    # check if it is an instance
+    instance_addr = atopile.address.add_instances(class_addr, word.split("."))
+    try:
+        instances = atopile.front_end.lofty.get_instance(instance_addr)
+    except (KeyError, atopile.errors.AtoError, AttributeError):
+        pass
+    else:
+        # TODO: deal with assignments made to super
+        output_str += f"**class**: {str(atopile.address.get_name(instances.supers[0].address))}\n\n"
+        for key in instances.assignments:
+            if instances.assignments[key]:
+                # iterate through until we find an assignment that's not None
+                for x in instances.assignments[key]:
+                    if x:
+                        output_str += "**"+key+"**: "
+                        if (x.value is None):
+                            output_str += 'not assigned\n\n'
+                        else:
+                            output_str += str(x.value) +'\n\n'
+                        break
+
+    # check if it is an assignment
+    class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None)
+    if class_assignments:
+        output_str = str(class_assignments.value)
+
+    if output_str:
+        return lsp.Hover(contents=lsp.MarkupContent(
+                        kind=lsp.MarkupKind.Markdown,
+                        value=output_str.strip(),
+                    ))
+    return None
+
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[lsp.Location]:
     """Handler for goto definition."""
@@ -207,7 +265,6 @@ def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[l
         atopile.config.get_project_context()
     except ValueError:
         atopile.config.set_project_context(atopile.config.ProjectContext.from_path(file))
-
     class_addr = _get_def_addr_from_line(file, params.position.line)
     if not class_addr:
         class_addr = str(file)
@@ -217,9 +274,12 @@ def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[l
         word = word[:word.index(".", params.position.character - range_.start.character)]
     except ValueError:
         pass
-
+    # remove special characters like brackets
+    word = "".join(e for e in word if e not in "(){}")
+    
     # See if it's an instance
     instance_addr = atopile.address.add_instances(class_addr, word.split("."))
+
     src_ctx = None
     try:
         src_ctx = atopile.front_end.lofty.get_instance(instance_addr).src_ctx
