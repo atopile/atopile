@@ -147,12 +147,15 @@ class RangedValue:
             return self.str_rep
 
         # Single-ended
-        if self.tolerance_pct is None or self.tolerance_pct * 1e4 < pow(10, -max_decimals):
+        if self.tolerance == 0 or (
+            self.tolerance_pct and
+            self.tolerance_pct * 1e4 < pow(10, -max_decimals)
+        ):
             nom, unit = pretty_unit(self.nominal * self.unit)
             return f"{_f(nom)}{unit}"
 
         # Bound values
-        if self.tolerance_pct > 20 or format_ == "bound":
+        if self.tolerance_pct and self.tolerance_pct > 20 or format_ == "bound":
             min_val, min_unit = pretty_unit(self.min_qty)
             max_val, max_unit = pretty_unit(self.max_qty)
 
@@ -164,6 +167,8 @@ class RangedValue:
         nom, unit = pretty_unit(self.nominal * self.unit)
         tol, tol_unit = pretty_unit(self.tolerance * self.unit)
 
+        if nom == 0:
+            return f"± {_f(tol)}{unit}"
         if unit == tol_unit or nom == 0 or tol == 0:
             return f"{_f(nom)} ± {_f(tol)} {unit}"
         return f"{_f(nom)}{unit} ± {_f(tol)}{tol_unit}"
@@ -191,7 +196,7 @@ class RangedValue:
         """Return the tolerance as a percentage of the nominal value."""
         if self.nominal == 0:
             return None
-        return self.tolerance / self.nominal * 100
+        return abs(self.tolerance / self.nominal * 100)
 
     def to_dict(self) -> dict:
         """Convert the Physical instance to a dictionary."""
