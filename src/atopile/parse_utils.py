@@ -3,7 +3,7 @@ Utils related to handling the parse tree
 """
 from pathlib import Path
 
-from antlr4 import InputStream, ParserRuleContext, ParseTreeVisitor, Token, TerminalNode
+from antlr4 import InputStream, ParserRuleContext, ParseTreeVisitor, Token
 
 
 def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
@@ -17,6 +17,12 @@ def get_src_info_from_ctx(ctx: ParserRuleContext) -> tuple[str | Path, int, int,
     token: Token = ctx.start
     _, stop_line, stop_char = get_src_info_from_token(ctx.stop)
     return *get_src_info_from_token(token), stop_line, stop_char
+
+
+def format_src_info(ctx: ParserRuleContext) -> str:
+    """Format the source path, line, and column"""
+    src, start_line, start_col, _, _ = get_src_info_from_ctx(ctx)
+    return f"{src}:{start_line}:{start_col}"
 
 
 # FIXME: I hate this pattern

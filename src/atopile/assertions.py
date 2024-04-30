@@ -15,14 +15,17 @@ from rich.style import Style
 from rich.table import Table
 from scipy.optimize import minimize
 
-from atopile import address, config, errors, instance_methods, loop_soup, telemetry, expressions
-from atopile.front_end import (
-    Assertion,
-    Assignment,
-    Expression,
-    RangedValue,
-    lofty,
+from atopile import (
+    address,
+    config,
+    errors,
+    expressions,
+    instance_methods,
+    loop_soup,
+    parse_utils,
+    telemetry,
 )
+from atopile.front_end import Assertion, Assignment, Expression, RangedValue, lofty
 
 log = logging.getLogger(__name__)
 
@@ -75,11 +78,15 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                         a = assertion.lhs(context)
                         b = assertion.rhs(context)
                     except errors.AtoError as e:
-                        raise ErrorComputingAssertion(f"Exception computing assertion: {str(e)}") from e
+                        raise ErrorComputingAssertion(
+                            f"Exception computing assertion: {str(e)}"
+                        ) from e
 
                     assert isinstance(a, RangedValue)
                     assert isinstance(b, RangedValue)
-                    numeric = a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
+                    numeric = (
+                        a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
+                    )
                     if _do_op(a, assertion.operator, b):
                         log.debug(
                             textwrap.dedent(f"""
@@ -249,6 +256,24 @@ def solve_assertions(build_ctx: config.BuildContext):
                     """
                 )
 
+                msg += "\n\nVariables:\n"
+                for v in group_vars:
+                    msg += f"  {v}\n"
+                    assignment_origin = instance_methods.get_assignments(v)[0].src_ctx
+                    msg += f"    (^ assigned {parse_utils.format_src_info(assignment_origin)})\n\n"
+
+                if constants:
+                    msg += "\n\nConstants:\n"
+                    for c, v in constants.items():
+                        msg += f"  {c} = {v}\n"
+
+                msg += "\n\nAssertions:\n"
+                for a in assertions:
+                    if hasattr(a, "src_ctx") and a.src_ctx:
+                        msg += f"  {parse_utils.reconstruct(a.src_ctx)}\n"
+                    else:
+                        msg += "  Unknown Source\n"
+
                 if (
                     len(assertions) == 1
                     and hasattr(assertions[0], "src_ctx")
@@ -260,14 +285,6 @@ def solve_assertions(build_ctx: config.BuildContext):
                         message=msg,
                     )
 
-                msg += "\n\nAssertions:\n"
-                for a in assertions:
-                    msg += f"  {a}\n"
-
-                msg += "\n\nVariables:\n"
-                for v in group_vars:
-                    msg += f"  {v}\n"
-
                 raise errors.AtoError(
                     msg,
                     title=title,
@@ -275,10 +292,14 @@ def solve_assertions(build_ctx: config.BuildContext):
 
             # Here we're attempting to shuffle the values into eseries
             result_means = [
-                (result.x[i * 2] + result.x[i * 2 + 1]) / 2 for i in range(len(group_vars))
+                (result.x[i * 2] + result.x[i * 2 + 1]) / 2
+                for i in range(len(group_vars))
             ]
             for r_vals in itertools.product(
-                *[eseries.find_nearest_few(eseries.E96, x_val) for x_val in result_means],
+                *[
+                    eseries.find_nearest_few(eseries.E96, x_val)
+                    for x_val in result_means
+                ],
                 repeat=1,
             ):
                 final_values = [
@@ -338,7 +359,9 @@ def simplify_expressions(entry_addr: address.AddrStr):
         instance = lofty.get_instance(instance_addr)
         for assignment_key, assignment in instance.assignments.items():
             if assignment and assignment[0].value is not None:
-                context[address.add_instance(instance_addr, assignment_key)] = assignment[0].value
+                context[address.add_instance(instance_addr, assignment_key)] = (
+                    assignment[0].value
+                )
 
     # Simplify the expressions
     simplified = expressions.simplify_expression_pool(context)
