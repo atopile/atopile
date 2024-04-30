@@ -131,7 +131,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                             textwrap.dedent(f"""
                                 Assertion [green]passed![/]
                                 address: {instance_addr}
-                                assertion: {assertion}
+                                assertion: {assertion_str}
                                 numeric: {numeric}
                             """).strip(),
                             extra={"markup": True}
@@ -146,7 +146,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                             assertion.src_ctx,
                             textwrap.dedent(f"""
                                 address: $addr
-                                assertion: {assertion}
+                                assertion: {assertion_str}
                                 numeric: {numeric}
                             """).strip(),
                             addr=instance_addr,
