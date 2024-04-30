@@ -9,7 +9,6 @@ import operator
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
 from itertools import chain
-from numbers import Number
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
 
@@ -17,9 +16,10 @@ import pint
 from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
-from atopile import address, config, errors, expressions
+from atopile import address, config, errors, expressions, parse_utils
 from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
+from atopile.expressions import RangedValue
 from atopile.generic_methods import recurse
 from atopile.parse import parser
 from atopile.parse_utils import get_src_info_from_ctx
@@ -75,19 +75,6 @@ class ClassDef(Base):
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.address}>"
-
-
-class RangedValue(expressions.RangedValue):
-    def __init__(
-        self,
-        val_a: Number | pint.Quantity,
-        val_b: Number | pint.Quantity,
-        unit: Optional[pint.Unit] = None,
-        src_ctx: Optional[ParserRuleContext] = None,
-        pretty_unit: Optional[str] = None,
-    ):
-        self.src_ctx = src_ctx
-        super().__init__(val_a, val_b, unit, pretty_unit)
 
 
 class Expression(expressions.Expression):
@@ -402,12 +389,16 @@ class HandlesPrimaries(AtopileParserVisitor):
         else:
             unit = pint.Unit("")
 
-        return RangedValue(
-            src_ctx=ctx,
+        value = RangedValue(
             val_a=value,
             val_b=value,
             unit=unit,
+            str_rep=parse_utils.reconstruct(ctx),
+            # We don't bother with other formatting info here
+            # because it's not used for un-toleranced values
         )
+        setattr(value, "src_ctx", ctx)
+        return value
 
     def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> RangedValue:
         """Yield a physical value from a bilateral quantity context."""
@@ -432,12 +423,14 @@ class HandlesPrimaries(AtopileParserVisitor):
                 )
 
             # In this case, life's a little easier, and we can simply multiply the nominal
-            return RangedValue(
-                src_ctx=ctx,
+            value = RangedValue(
                 val_a=nominal_quantity.min_val - (nominal_quantity.min_val * tol_num / tol_divider),
                 val_b=nominal_quantity.max_val + (nominal_quantity.max_val * tol_num / tol_divider),
                 unit=nominal_quantity.unit,
+                str_rep=parse_utils.reconstruct(ctx),
             )
+            setattr(value, "src_ctx", ctx)
+            return value
 
         # Handle tolerances with units
         if tol_ctx.name():
@@ -447,12 +440,14 @@ class HandlesPrimaries(AtopileParserVisitor):
 
             # If the nominal has no unit, then we take the unit's tolerance for the nominal
             if nominal_quantity.unit == pint.Unit(""):
-                return RangedValue(
-                    src_ctx=ctx,
+                value = RangedValue(
                     val_a=nominal_quantity.min_val - tol_quantity.min_val,
                     val_b=nominal_quantity.max_val + tol_quantity.max_val,
                     unit=tol_quantity.unit,
+                    str_rep=parse_utils.reconstruct(ctx),
                 )
+                setattr(value, "src_ctx", ctx)
+                return value
 
             # If the nominal has a unit, then we rely on the ranged value's unit compatibility
             try:
@@ -466,12 +461,14 @@ class HandlesPrimaries(AtopileParserVisitor):
 
         # If there's no unit or percent, then we have a simple tolerance in the same units
         # as the nominal
-        return RangedValue(
-            src_ctx=ctx,
+        value = RangedValue(
             val_a=nominal_quantity.min_val - tol_num,
             val_b=nominal_quantity.max_val + tol_num,
             unit=nominal_quantity.unit,
+            str_rep=parse_utils.reconstruct(ctx),
         )
+        setattr(value, "src_ctx", ctx)
+        return value
 
     def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> RangedValue:
         """Yield a physical value from a bound quantity context."""
@@ -485,28 +482,28 @@ class HandlesPrimaries(AtopileParserVisitor):
         if (start.unit == pint.Unit("")) ^ (end.unit == pint.Unit("")):
             if start.unit == pint.Unit(""):
                 known_unit = end.unit
-                known_pretty_unit = end.pretty_unit
             else:
                 known_unit = start.unit
-                known_pretty_unit = start.pretty_unit
 
-            return RangedValue(
-                src_ctx=ctx,
+            value = RangedValue(
                 val_a=start.min_val,
                 val_b=end.min_val,
                 unit=known_unit,
-                pretty_unit=known_pretty_unit,
+                str_rep=parse_utils.reconstruct(ctx),
             )
+            setattr(value, "src_ctx", ctx)
+            return value
 
         # If they've both got units, let the RangedValue handle
         # the dimensional compatibility
         try:
-            return RangedValue(
-                src_ctx=ctx,
+            value = RangedValue(
                 val_a=start.min_qty,
                 val_b=end.min_qty,
-                pretty_unit=start.pretty_unit,
+                str_rep=parse_utils.reconstruct(ctx),
             )
+            setattr(value, "src_ctx", ctx)
+            return value
         except pint.DimensionalityError as ex:
             raise errors.AtoTypeError.from_ctx(
                 ctx,

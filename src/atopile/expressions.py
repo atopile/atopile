@@ -30,23 +30,47 @@ def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
     return qty_b.units
 
 
-_favourable_units = [
-    pint.Unit("V"),
-    pint.Unit("ohm"),
-    pint.Unit("A"),
-    pint.Unit("W"),
-    pint.Unit("Hz"),
-    pint.Unit("F"),
-    pint.Unit("H"),
-]
+_multiplier_map = {
+    "femto": "f",
+    "pico": "p",
+    "nano": "n",
+    "micro": "u",
+    "milli": "m",
+    "": "",
+    "kilo": "k",
+    "mega": "M",
+    "giga": "G",
+    "tera": "T",
+}
 
 
-def _favourable_unit(unit: PlainUnit) -> PlainUnit:
-    """Return the most favourable unit for the given unit."""
-    for fav_unit in _favourable_units:
-        if unit.is_compatible_with(fav_unit):
-            return fav_unit
-    return unit
+_pretty_unit_map = {
+    "volt": "V",
+    "ohm": "Ω",
+    "ampere": "A",
+    "watt": "W",
+    "hertz": "Hz",
+    "farad": "F",
+    "henry": "H",
+    "second": "s",
+}
+
+
+pretty_unit_map = {lm + lu: sm + su for lm, sm in _multiplier_map.items() for lu, su in  _pretty_unit_map.items()}
+favorite_units_map = {pint.Unit(k).dimensionality: pint.Unit(k) for k in pretty_unit_map}
+
+
+def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
+    """Return the most favorable magnitude and unit for the given quantity."""
+    if qty.units.dimensionless:
+        return qty.magnitude, ""
+
+    if qty.units.dimensionality in favorite_units_map:
+        qty = qty.to(favorite_units_map[qty.units.dimensionality])
+    qty = qty.to_compact()
+
+    units = str(qty.units)
+    return qty.magnitude, pretty_unit_map.get(units, units)
 
 
 class RangedValue:
@@ -62,7 +86,7 @@ class RangedValue:
         val_a: Union[float, int, pint.Quantity],
         val_b: Optional[Union[float, int, pint.Quantity]] = None,
         unit: Optional[str | PlainUnit | pint.Unit] = None,
-        pretty_unit: Optional[str] = None,
+        str_rep: Optional[str] = None,
     ):
         # This is a bit of a hack, but simplifies upstream code marginally
         if val_b is None:
@@ -95,54 +119,49 @@ class RangedValue:
         assert isinstance(val_b_mag, (float, int))
 
         # Make the noise
-        self.pretty_unit = pretty_unit
+        self.str_rep = str_rep
         self.min_val = min(val_a_mag, val_b_mag)
         self.max_val = max(val_a_mag, val_b_mag)
-
-    @property
-    def best_usr_unit(self) -> str:
-        """Return a pretty string representation of the unit."""
-        if self.pretty_unit:
-            return self.pretty_unit
-        return str(self.unit)
 
     def to(self, unit: str | PlainUnit | pint.Unit) -> "RangedValue":
         """Return a new RangedValue in the given unit."""
         return RangedValue(self.min_qty, self.max_qty, unit)
 
-    def to_compact(self) -> "RangedValue":
-        """Return a new RangedValue in the most compact unit."""
-        return RangedValue(
-            # FIXME: still shit
-            self.min_qty.to_compact(),
-            self.max_qty.to_compact(),
-        )
-
     def pretty_str(
-        self, max_decimals: Optional[int] = 2, unit: Optional[pint.Unit] = None
+        self,
+        max_decimals: Optional[int] = 2,
+        format: Optional[str] = None,
     ) -> str:
         """Return a pretty string representation of the RangedValue."""
-        if unit is not None:
-            val = self.to(unit)
-        else:
-            val = self.to(_favourable_unit(self.unit)).to_compact()
+        def _f(val: float):
+            if max_decimals is None:
+                return str(val)
+            return _custom_float_format(val, max_decimals)
 
-        if max_decimals is None:
-            nom = str(val.nominal)
-            if val.tolerance != 0:
-                nom += f" +/- {str(val.tolerance)}"
-                if val.tolerance_pct is not None:
-                    nom += f" ({str(val.tolerance_pct)}%)"
-        else:
-            nom = _custom_float_format(val.nominal, max_decimals)
-            if val.tolerance != 0:
-                nom += f" +/- {_custom_float_format(val.tolerance, max_decimals)}"
-                if val.tolerance_pct is not None:
-                    nom += (
-                        f" ({_custom_float_format(val.tolerance_pct, max_decimals)}%)"
-                    )
+        if self.str_rep:
+            return self.str_rep
 
-        return f"{nom} {val.best_usr_unit}"
+        # Single-ended
+        if self.tolerance_pct * 1e4 < pow(10, -max_decimals):
+            nom, unit = pretty_unit(self.nominal * self.unit)
+            return f"{_f(nom)}{unit}"
+
+        # Bound values
+        if self.tolerance_pct > 20 or format == "bound":
+            min_val, min_unit = pretty_unit(self.min_qty)
+            max_val, max_unit = pretty_unit(self.max_qty)
+
+            if min_unit == max_unit:
+                return f"{_f(min_val)} to {_f(max_val)} {min_unit}"
+            return f"{_f(min_val)}{min_unit} to {_f(max_val)}{max_unit}"
+
+        # Bilateral values
+        nom, unit = pretty_unit(self.nominal * self.unit)
+        tol, tol_unit = pretty_unit(self.tolerance * self.unit)
+
+        if unit == tol_unit:
+            return f"{_f(nom)} ± {_f(tol)} {unit}"
+        return f"{_f(nom)}{unit} ± {_f(tol)}{tol_unit}"
 
     def __str__(self) -> str:
         return self.pretty_str()

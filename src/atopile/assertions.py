@@ -54,11 +54,40 @@ class ErrorComputingAssertion(AssertionException):
     values."""
 
 
+class AssertionTable(Table):
+    def __init__(self) -> None:
+        super().__init__(show_header=True, header_style="bold green", title="Assertions")
+
+        self.add_column("Status")
+        self.add_column("Assertion")
+        self.add_column("Numeric")
+        self.add_column("Address")
+        self.add_column("Notes")
+
+    def add_row(
+        self,
+        status: str,
+        assertion_str: str,
+        numeric: str,
+        addr: address.AddrStr,
+        notes: str,
+    ):
+        super().add_row(
+            status,
+            assertion_str,
+            numeric,
+            address.get_instance_section(addr),
+            notes,
+            style=dark_row if len(self.rows) % 2 else light_row,
+        )
+
+
 def generate_assertion_report(build_ctx: config.BuildContext):
     """
     Generate a report based on assertions made in the source code.
     """
 
+    table = AssertionTable()
     context = {}
     with errors.ExceptionAccumulator() as exception_accumulator:
         for instance_addr in instance_methods.all_descendants(build_ctx.entry):
@@ -74,10 +103,23 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     for symbol in new_symbols:
                         context[symbol] = instance_methods.get_data(symbol)
 
+                    assertion_str = parse_utils.reconstruct(assertion.src_ctx)
+
+                    instance_src = instance_addr
+                    if instance.src_ctx:
+                        instance_src += "\n (^ defined" + parse_utils.format_src_info(instance.src_ctx) + ")"
+
                     try:
                         a = assertion.lhs(context)
                         b = assertion.rhs(context)
                     except errors.AtoError as e:
+                        table.add_row(
+                            "[red]ERROR[/]",
+                            assertion_str,
+                            "",
+                            instance_src,
+                            str(e),
+                        )
                         raise ErrorComputingAssertion(
                             f"Exception computing assertion: {str(e)}"
                         ) from e
@@ -88,6 +130,13 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                         a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
                     )
                     if _do_op(a, assertion.operator, b):
+                        table.add_row(
+                            "[green]PASSED[/]",
+                            assertion_str,
+                            numeric,
+                            instance_src,
+                            "",
+                        )
                         log.debug(
                             textwrap.dedent(f"""
                                 Assertion [green]passed![/]
@@ -98,6 +147,13 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                             extra={"markup": True}
                         )
                     else:
+                        table.add_row(
+                            "[red]FAILED[/red]",
+                            assertion_str,
+                            numeric,
+                            instance_src,
+                            "",
+                        )
                         raise AssertionFailed.from_ctx(
                             assertion.src_ctx,
                             textwrap.dedent(f"""
@@ -107,6 +163,9 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                             """).strip(),
                             addr=instance_addr,
                         )
+
+        # Dump the output to the console
+        rich.print(table)
 
 
 def _do_op(a: RangedValue, op: str, b: RangedValue) -> bool:
