@@ -13,7 +13,7 @@ links:
 I am pretty excited about this one. In our latest release 0.2.5, we are introducing 'Cloud Components' - a way to parametrically define and select components from a server.
 
 ## How it works
-First step is defining the requirements of the component, much like you would in a digikey search. Currently our library has support for resistors, capacitors, inductors, diodes, and FETs. Here's an example of how you would define a few components:
+First step is defining the requirements of the component, much like you would in a digikey search. Currently our library has support for resistors and capacitors with experimental support for diodes, inductors, and FETs. Here's an example of how you would define a few components:
 ```ato
 resistor = new Resistor
 resistor.value = 10kohm +/- 20%
@@ -23,6 +23,8 @@ cap = new Capacitor
 cap.value = 1uF +/- 10%
 cap.package = "0603"
 
+
+#### experimental ####
 fet = new NFET
 fet.current_a = 30A to 100A
 fet.drain_source_voltage_v = 30V to 100V
