@@ -188,49 +188,24 @@ const AtopileViewer = () => {
                     // for each edge_id, update the data structure with the list of links on that harness
                     selected_links_data[edge_id] = {source: edge['source'], target: edge['target'], links: edge['links']};
 
-                    if (edge['expanded']) {
-                        for (const link of edge['links']) {
-                            console.log('source:', edge['source'], link['source'], 'target:', edge['target'], link['target']);
-                            populatedEdges.push({
-                                id: edge_id + link['source'] + link['target'],
-                                source: edge['source'],
-                                sourceHandle: link['source_id'],
-                                target: edge['target'],
-                                targetHandle: link['target_id'],
-                                type: 'custom',
-                                sourcePosition: Position.Right,
-                                targetPosition: Position.Left,
-                                markerEnd: {
-                                    type: MarkerType.Arrow,
-                                },
-                                data: {
-                                    source: edge['source'],
-                                    target: edge['target'],
-                                    name: edge['name'],
-                                    preview_names: [],
-                                }
-                            });
-                        }
-                    } else {
                     // create a react edge element for each harness
-                        populatedEdges.push({
-                            id: edge_id,
+                    populatedEdges.push({
+                        id: edge_id,
+                        source: edge['source'],
+                        target: edge['target'],
+                        type: 'custom',
+                        sourcePosition: Position.Right,
+                        targetPosition: Position.Left,
+                        markerEnd: {
+                            type: MarkerType.Arrow,
+                        },
+                        data: {
                             source: edge['source'],
                             target: edge['target'],
-                            type: 'custom',
-                            sourcePosition: Position.Right,
-                            targetPosition: Position.Left,
-                            markerEnd: {
-                                type: MarkerType.Arrow,
-                            },
-                            data: {
-                                source: edge['source'],
-                                target: edge['target'],
-                                name: edge['name'],
-                                preview_names: edge['preview_names'],
-                            }
-                        });
-                    }
+                            name: edge['name'],
+                            preview_names: edge['preview_names'],
+                        }
+                    });
                 }
                 setEdges(populatedEdges);
                 setRequestRelayout(true);

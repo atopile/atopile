@@ -14,7 +14,6 @@ from atopile.components import get_specd_value
 
 import json
 import networkx as nx
-import re
 
 from collections import defaultdict
 from typing import DefaultDict, Tuple
