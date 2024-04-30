@@ -65,7 +65,9 @@ def _do_build(build_ctx: BuildContext) -> None:
     configure_cache(atopile.config.get_project_context().project_path)
 
     # Solve the unknown variables
+    atopile.assertions.simplify_expressions(build_ctx.entry)
     atopile.assertions.solve_assertions(build_ctx)
+    atopile.assertions.simplify_expressions(build_ctx.entry)
 
     # Ensure the build directory exists
     log.info("Writing outputs to %s", build_ctx.build_path)

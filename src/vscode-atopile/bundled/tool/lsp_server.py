@@ -29,23 +29,10 @@ _line_to_def_block: dict[Path, dict[int, atopile.address.AddrStr]] = {}
 
 def _reset_caches(file: Path):
     """Remove a file from the cache."""
-    if file in atopile.parse.parser.cache:
-        del atopile.parse.parser.cache[file]
-
     if file in _line_to_def_block:
         del _line_to_def_block[file]
 
-    # TODO: only clear these caches of what's been invalidated
-    file_str = str(file)
-    to_clear = [addr for addr in atopile.front_end.scoop._output_cache if addr.startswith(file_str)]
-    for addr in to_clear:
-        del atopile.front_end.scoop._output_cache[addr]
-
-    to_clear = [addr for addr in atopile.front_end.dizzy._output_cache if addr.startswith(file_str)]
-    for addr in to_clear:
-        del atopile.front_end.dizzy._output_cache[addr]
-
-    atopile.front_end.lofty._output_cache.clear()
+    atopile.front_end.reset_caches(file)
 
 
 def _index_class_defs_by_line(file: Path):

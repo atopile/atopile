@@ -15,7 +15,7 @@ from rich.style import Style
 from rich.table import Table
 from scipy.optimize import minimize
 
-from atopile import address, config, errors, instance_methods, loop_soup, telemetry
+from atopile import address, config, errors, instance_methods, loop_soup, telemetry, expressions
 from atopile.front_end import (
     Assertion,
     Assignment,
@@ -69,22 +69,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     } - context.keys()
 
                     for symbol in new_symbols:
-                        parent_inst = instance_methods.get_instance(
-                            address.get_parent_instance_addr(symbol)
-                        )
-                        assign_name = address.get_name(symbol)
-
-                        if assign_name not in parent_inst.assignments:
-                            raise errors.AtoKeyError(
-                                f"No attribute '{assign_name}' bound on '{parent_inst.addr}'"
-                            )
-
-                        assignment = parent_inst.assignments[assign_name][0]
-                        if assignment.value is None:
-                            raise errors.AtoTypeError(
-                                f"'{symbol}' is defined, but has no value"
-                            )
-                        context[symbol] = assignment.value
+                        context[symbol] = instance_methods.get_data(symbol)
 
                     try:
                         a = assertion.lhs(context)
@@ -92,6 +77,8 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     except errors.AtoError as e:
                         raise ErrorComputingAssertion(f"Exception computing assertion: {str(e)}") from e
 
+                    assert isinstance(a, RangedValue)
+                    assert isinstance(b, RangedValue)
                     numeric = a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
                     if _do_op(a, assertion.operator, b):
                         log.debug(
@@ -168,17 +155,7 @@ def solve_assertions(build_ctx: config.BuildContext):
                 new_symbols = assertion_symbols - referenced_symbols
                 referenced_symbols |= new_symbols
                 for symbol in new_symbols:
-                    parent_inst = instance_methods.get_instance(
-                        address.get_parent_instance_addr(symbol)
-                    )
-                    assign_name = address.get_name(symbol)
-
-                    if assign_name not in parent_inst.assignments:
-                        raise errors.AtoKeyError(
-                            f"No attribute '{assign_name}' bound on '{parent_inst.addr}'"
-                        )
-
-                    assignment = parent_inst.assignments[assign_name][0]
+                    assignment = instance_methods.get_assignments(symbol)[0]
                     if assignment.value is None:
                         # TEMP: this is in place because our discretization strategy
                         # requires E96 things
@@ -338,6 +315,47 @@ def solve_assertions(build_ctx: config.BuildContext):
     # Solved for assertion values
     log.info("Values for solved variables:")
     rich.print(table)
+
+
+def simplify_expressions(entry_addr: address.AddrStr):
+    """
+    Simplify the expressions in the build context.
+    """
+
+    # Build the context to simplify everything on
+    # FIXME: I hate that we're iterating over the whole model, to grab
+    # all the context all at once and duplicated it into a dict.
+    context: dict[str, expressions.NumericishTypes] = {}
+    for instance_addr in instance_methods.all_descendants(entry_addr):
+        instance = lofty.get_instance(instance_addr)
+        for assignment_key, assignment in instance.assignments.items():
+            if assignment and assignment[0].value is not None:
+                context[address.add_instance(instance_addr, assignment_key)] = assignment[0].value
+
+    # Simplify the expressions
+    simplified = expressions.simplify_expression_pool(context)
+
+    # Update the model with simplified expressions
+    for addr, value in simplified.items():
+        parent_addr = address.get_parent_instance_addr(addr)
+        name = address.get_name(addr)
+        parent_instance = lofty.get_instance(parent_addr)
+        parent_instance.assignments[name].appendleft(
+            Assignment(name, value=value, given_type=None)
+        )
+
+    # Great, now simplify the expressions in the assertions
+    # TODO:
+    simplified_context = {**context, **simplified}
+    for instance_addr in instance_methods.all_descendants(entry_addr):
+        instance = lofty.get_instance(instance_addr)
+        for assertion in instance.assertions:
+            assertion.lhs = expressions.Expression.from_numericish(
+                expressions.simplify_expression(assertion.lhs, simplified_context)
+            )
+            assertion.rhs = expressions.Expression.from_numericish(
+                expressions.simplify_expression(assertion.rhs, simplified_context)
+            )
 
 
 def _translator_factory(
