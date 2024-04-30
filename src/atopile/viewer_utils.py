@@ -1,4 +1,4 @@
-from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section
+from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section, get_entry_section
 from atopile.instance_methods import (
     get_children,
     get_links,
@@ -7,10 +7,14 @@ from atopile.instance_methods import (
     match_modules,
     match_components,
     match_interfaces,
-    match_pins_and_signals
+    match_pins_and_signals,
+    get_supers_list,
 )
+from atopile.components import get_specd_value
+
 import json
 import networkx as nx
+import re
 
 from collections import defaultdict
 from typing import DefaultDict, Tuple
@@ -31,17 +35,24 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
     {
         "block_name": {
             "instance_of": "instance_name",
-            "type": "module/component/interface/signal"
-            "address": "a.b.c"
+            "type": "module/component/interface/signal/builtin",
+            "address": "a.b.c",
+            "value": "value"
         }, ...
     }
     """
     block_dict = {}
     for child in get_children(addr):
         if match_modules(child) or match_components(child) or match_interfaces(child) or match_pins_and_signals(child):
+            value = "none"
             type = "module"
+            lib_key = "none"
             if match_components(child):
                 type = "component"
+                if _is_builtin(child):
+                    value = get_specd_value(child)
+                    type = "builtin"
+                    lib_key = _is_builtin(child)
             elif match_interfaces(child):
                 type = "interface"
             elif match_pins_and_signals(child):
@@ -49,7 +60,9 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
             block_dict[get_name(child)] = {
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
                 "type": type,
-                "address": get_instance_section(child)}
+                "lib_key": lib_key,
+                "address": get_instance_section(child),
+                "value": value}
 
     return block_dict
 
@@ -261,3 +274,15 @@ def split_list_at_n(n, list_of_strings):
     second_part = list_of_strings[n+1:]
 
     return first_part, second_part
+
+def _is_builtin(addr: AddrStr) -> bool|str:
+    """
+    Check if the given address is a builtin component, if so, return the builtin type (Resistor, Capacitor, etc.)
+    """
+    _supers_list = get_supers_list(addr)
+    for duper in _supers_list:
+        if get_entry_section(duper.address) == "Resistor":
+            return "Resistor"
+        elif get_entry_section(duper.address) == "Capacitor":
+            return "Capacitor"
+    return False
