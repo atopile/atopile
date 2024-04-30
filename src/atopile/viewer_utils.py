@@ -232,12 +232,12 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
 
 def get_vis_dict(root: AddrStr) -> str:
     return_json = {}
-    # for addr in chain(root, all_descendants(root)):
+
     for addr in all_descendants(root):
         block_dict = {}
         link_list = []
         # we only create an entry for modules, not for components
-        if match_modules(root) and not match_components(root):
+        if match_modules(addr) and not match_components(addr):
             instance = get_instance_section(addr) or "root"
             parent = get_parent(addr, root)
             block_dict = get_blocks(addr)
