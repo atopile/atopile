@@ -130,7 +130,7 @@ class RangedValue:
     def pretty_str(
         self,
         max_decimals: Optional[int] = 2,
-        format: Optional[str] = None,
+        format_: Optional[str] = None,
     ) -> str:
         """Return a pretty string representation of the RangedValue."""
         def _f(val: float):
@@ -142,12 +142,12 @@ class RangedValue:
             return self.str_rep
 
         # Single-ended
-        if self.tolerance_pct * 1e4 < pow(10, -max_decimals):
+        if self.tolerance_pct is None or self.tolerance_pct * 1e4 < pow(10, -max_decimals):
             nom, unit = pretty_unit(self.nominal * self.unit)
             return f"{_f(nom)}{unit}"
 
         # Bound values
-        if self.tolerance_pct > 20 or format == "bound":
+        if self.tolerance_pct > 20 or format_ == "bound":
             min_val, min_unit = pretty_unit(self.min_qty)
             max_val, max_unit = pretty_unit(self.max_qty)
 
@@ -292,7 +292,7 @@ class RangedValue:
         return self.__sub__(other)
 
     def __neg__(self) -> "RangedValue":
-        return self.__class__(-self.max_qty, -self.min_qty, self.unit, self.pretty_unit)
+        return self.__class__(-self.max_qty, -self.min_qty, self.unit)
 
     def within(self, other: Union["RangedValue", float, int]) -> bool:
         """Check that this RangedValue completely falls within another."""
