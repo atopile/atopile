@@ -61,23 +61,17 @@ class AssertionTable(Table):
         self.add_column("Status")
         self.add_column("Assertion")
         self.add_column("Numeric")
-        self.add_column("Address")
-        self.add_column("Notes")
 
     def add_row(
         self,
         status: str,
         assertion_str: str,
         numeric: str,
-        addr: address.AddrStr,
-        notes: str,
     ):
         super().add_row(
             status,
             assertion_str,
             numeric,
-            address.get_instance_section(addr),
-            notes,
             style=dark_row if len(self.rows) % 2 else light_row,
         )
 
@@ -117,8 +111,6 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                             "[red]ERROR[/]",
                             assertion_str,
                             "",
-                            instance_src,
-                            str(e),
                         )
                         raise ErrorComputingAssertion(
                             f"Exception computing assertion: {str(e)}"
@@ -134,14 +126,12 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                             "[green]PASSED[/]",
                             assertion_str,
                             numeric,
-                            instance_src,
-                            "",
                         )
                         log.debug(
                             textwrap.dedent(f"""
                                 Assertion [green]passed![/]
                                 address: {instance_addr}
-                                assertion: {assertion}
+                                assertion: {assertion_str}
                                 numeric: {numeric}
                             """).strip(),
                             extra={"markup": True}
@@ -151,14 +141,12 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                             "[red]FAILED[/red]",
                             assertion_str,
                             numeric,
-                            instance_src,
-                            "",
                         )
                         raise AssertionFailed.from_ctx(
                             assertion.src_ctx,
                             textwrap.dedent(f"""
                                 address: $addr
-                                assertion: {assertion}
+                                assertion: {assertion_str}
                                 numeric: {numeric}
                             """).strip(),
                             addr=instance_addr,
