@@ -8,7 +8,6 @@ from atopile.instance_methods import (
     match_components,
     match_interfaces,
     match_pins_and_signals,
-    get_supers_list,
 )
 from atopile.components import get_specd_value
 
