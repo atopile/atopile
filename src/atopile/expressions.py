@@ -57,7 +57,7 @@ _pretty_unit_map = {
 
 
 pretty_unit_map = {lm + lu: sm + su for lm, sm in _multiplier_map.items() for lu, su in  _pretty_unit_map.items()}
-favorite_units_map = {pint.Unit(k).dimensionality: pint.Unit(k) for k in pretty_unit_map}
+favorite_units_map = {pint.Unit(k).dimensionality: pint.Unit(k) for k in _pretty_unit_map}
 
 
 def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
@@ -65,12 +65,17 @@ def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
     if qty.units.dimensionless:
         return qty.magnitude, ""
 
+    # If there's a favorite unit for this dimensionality, use it
     if qty.units.dimensionality in favorite_units_map:
         qty = qty.to(favorite_units_map[qty.units.dimensionality])
+
+    # Compact the units to standardise them
     qty = qty.to_compact()
 
+    # Convert the units to a pretty string
     units = str(qty.units)
-    return qty.magnitude, pretty_unit_map.get(units, units)
+    pretty_unit = pretty_unit_map.get(units, units)
+    return qty.magnitude, pretty_unit
 
 
 class RangedValue:
@@ -151,7 +156,7 @@ class RangedValue:
             min_val, min_unit = pretty_unit(self.min_qty)
             max_val, max_unit = pretty_unit(self.max_qty)
 
-            if min_unit == max_unit:
+            if min_unit == max_unit or min_val == 0 or max_val == 0:
                 return f"{_f(min_val)} to {_f(max_val)} {min_unit}"
             return f"{_f(min_val)}{min_unit} to {_f(max_val)}{max_unit}"
 
@@ -159,7 +164,7 @@ class RangedValue:
         nom, unit = pretty_unit(self.nominal * self.unit)
         tol, tol_unit = pretty_unit(self.tolerance * self.unit)
 
-        if unit == tol_unit:
+        if unit == tol_unit or nom == 0 or tol == 0:
             return f"{_f(nom)} ± {_f(tol)} {unit}"
         return f"{_f(nom)}{unit} ± {_f(tol)}{tol_unit}"
 
