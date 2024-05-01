@@ -25,6 +25,10 @@ import './index.css';
 
 import ELK from 'elkjs/lib/elk.bundled.js';
 
+import { Schematic } from "@tscircuit/schematic-viewer"
+import "react-data-grid/lib/styles.css";
+import { SchematicElements, loadSchematicJsonAsDict } from './SchematicElements.tsx';
+
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
 
 
@@ -99,6 +103,7 @@ const selected_link_source = "none";
 const selected_link_target = "none";
 const requestRelayout = false;
 let selected_links_data = {};
+const schematic_elements = <resistor />
 
 
 const AtopileViewer = () => {
@@ -112,6 +117,7 @@ const AtopileViewer = () => {
     const [selected_link_data, setSelectedLinkData] = useState([]);
     const [selected_link_source, setSelectedLinkSource] = useState("none");
     const [selected_link_target, setSelectedLinkTarget] = useState("none");
+    const [schematic_elements, setSchematicElements] = useState(<Schematic><resistor /></Schematic>);
 
 
     const handleExpandClick = (newBlockId) => {
@@ -196,6 +202,14 @@ const AtopileViewer = () => {
                     });
                 }
                 setEdges(populatedEdges);
+
+                // Fetch the schematic data
+                const schematic_json = await loadSchematicJsonAsDict();
+                const schematic_data = schematic_json[block_id];
+                console.log(schematic_data);
+                setSchematicElements(<SchematicElements data={schematic_data} />);
+
+                // Request a re-layout
                 setRequestRelayout(true);
             } catch (error) {
                 console.error("Failed to fetch nodes:", error);
@@ -234,16 +248,17 @@ const AtopileViewer = () => {
     return (
     <div className="floatingedges">
         <ReactFlow
-        key={block_id}
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onSelectionChange={onSelectionChange}
-        //onConnect={onConnect}
-        fitView
-        edgeTypes={edgeTypes}
-        nodeTypes={nodeTypes}
+            key={block_id}
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onSelectionChange={onSelectionChange}
+            //onConnect={onConnect}
+            fitView
+            edgeTypes={edgeTypes}
+            nodeTypes={nodeTypes}
+            style={{ width: '100%', height: '50%' }}
         >
         <Panel position="top-left">
             <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
@@ -259,14 +274,18 @@ const AtopileViewer = () => {
         </Panel>
         <Background />
         </ReactFlow>
+        {schematic_elements}
     </div>
     );
 };
 
-// export default NodeAsHandleFlow;
 
-export default () => (
-    <ReactFlowProvider>
-        <AtopileViewer />
-    </ReactFlowProvider>
-);
+function App() {
+    return (
+        <ReactFlowProvider>
+            <AtopileViewer />
+        </ReactFlowProvider>
+    );
+}
+
+export default App;

@@ -28,10 +28,19 @@ viewer_app = Flask(__name__, static_folder='../viewer/dist', static_url_path='')
 CORS(viewer_app)
 
 @viewer_app.route('/data')
-def send_json():
+def send_viewer_data():
     build_dir_path = viewer_app.config.get('build_dir_path', 'Default value if not set')
     #TODO: handle other builds than defaults
     view_data_path = os.path.join(build_dir_path, 'default.view.json')
+    with open(view_data_path, 'r') as file:
+        data = json.load(file)
+    return jsonify(data)
+
+@viewer_app.route('/schematic-data')
+def send_schematic_data():
+    build_dir_path = viewer_app.config.get('build_dir_path', 'Default value if not set')
+    #TODO: handle other builds than defaults
+    view_data_path = os.path.join(build_dir_path, 'default.schematic.json')
     with open(view_data_path, 'r') as file:
         data = json.load(file)
     return jsonify(data)
