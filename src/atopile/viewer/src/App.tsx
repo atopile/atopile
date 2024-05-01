@@ -16,7 +16,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { createNodesAndEdges } from './utils.tsx';
-import { CustomNodeBlock, CircularNodeComponent } from './CustomNode.tsx';
+import { CustomNodeBlock, CircularNodeComponent, BuiltInNodeBlock } from './CustomNode.tsx';
 import CustomEdge from './CustomEdge.tsx';
 
 import SimpleTable from './LinkTable.tsx';
@@ -76,8 +76,9 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
 };
 
 const nodeTypes = {
-    customNode: CustomNodeBlock, // Register your custom node type
-    customCircularNode: CircularNodeComponent
+    customNode: CustomNodeBlock,
+    customCircularNode: CircularNodeComponent,
+    builtinNode: BuiltInNodeBlock,
 };
 
 const edgeTypes = {
@@ -159,9 +160,20 @@ const AtopileViewer = () => {
                         populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#8ECAE6' }, position: position });
                     } else if (displayedNode['blocks'][node]['type'] == 'interface') {
                         populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
-                    }
-                    else if (displayedNode['blocks'][node]['type'] == 'module') {
+                    } else if (displayedNode['blocks'][node]['type'] == 'module') {
                         populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                    } else if (displayedNode['blocks'][node]['type'] == 'builtin') {
+                        populatedNodes.push({ id: node, type: 'builtinNode', data: {
+                            title: node,
+                            instance_of: displayedNode['blocks'][node]['instance_of'],
+                            address: displayedNode['blocks'][node]['address'],
+                            type: displayedNode['blocks'][node]['type'],
+                            value: displayedNode['blocks'][node]['value'],
+                            lib_key: displayedNode['blocks'][node]['lib_key'],
+                            color: '#FFFFFF', handleExpandClick: handleExpandClick },
+                            sourcePosition: Position.Bottom,
+                            targetPosition: Position.Right,
+                            position: position });
                     } else {
                         populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
                     }
