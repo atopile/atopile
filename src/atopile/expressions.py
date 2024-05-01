@@ -57,7 +57,7 @@ _pretty_unit_map = {
 
 
 pretty_unit_map = {lm + lu: sm + su for lm, sm in _multiplier_map.items() for lu, su in  _pretty_unit_map.items()}
-favorite_units_map = {pint.Unit(k).dimensionality: pint.Unit(k) for k in pretty_unit_map}
+favorite_units_map = {pint.Unit(k).dimensionality: pint.Unit(k) for k in _pretty_unit_map}
 
 
 def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
@@ -65,12 +65,17 @@ def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
     if qty.units.dimensionless:
         return qty.magnitude, ""
 
+    # If there's a favorite unit for this dimensionality, use it
     if qty.units.dimensionality in favorite_units_map:
         qty = qty.to(favorite_units_map[qty.units.dimensionality])
+
+    # Compact the units to standardise them
     qty = qty.to_compact()
 
+    # Convert the units to a pretty string
     units = str(qty.units)
-    return qty.magnitude, pretty_unit_map.get(units, units)
+    pretty_unit = pretty_unit_map.get(units, units)
+    return qty.magnitude, pretty_unit
 
 
 class RangedValue:
@@ -130,7 +135,7 @@ class RangedValue:
     def pretty_str(
         self,
         max_decimals: Optional[int] = 2,
-        format: Optional[str] = None,
+        format_: Optional[str] = None,
     ) -> str:
         """Return a pretty string representation of the RangedValue."""
         def _f(val: float):
@@ -142,16 +147,19 @@ class RangedValue:
             return self.str_rep
 
         # Single-ended
-        if self.tolerance_pct * 1e4 < pow(10, -max_decimals):
+        if self.tolerance == 0 or (
+            self.tolerance_pct and
+            self.tolerance_pct * 1e4 < pow(10, -max_decimals)
+        ):
             nom, unit = pretty_unit(self.nominal * self.unit)
             return f"{_f(nom)}{unit}"
 
         # Bound values
-        if self.tolerance_pct > 20 or format == "bound":
+        if self.tolerance_pct and self.tolerance_pct > 20 or format_ == "bound":
             min_val, min_unit = pretty_unit(self.min_qty)
             max_val, max_unit = pretty_unit(self.max_qty)
 
-            if min_unit == max_unit:
+            if min_unit == max_unit or min_val == 0 or max_val == 0:
                 return f"{_f(min_val)} to {_f(max_val)} {min_unit}"
             return f"{_f(min_val)}{min_unit} to {_f(max_val)}{max_unit}"
 
@@ -159,7 +167,9 @@ class RangedValue:
         nom, unit = pretty_unit(self.nominal * self.unit)
         tol, tol_unit = pretty_unit(self.tolerance * self.unit)
 
-        if unit == tol_unit:
+        if nom == 0:
+            return f"± {_f(tol)}{unit}"
+        if unit == tol_unit or nom == 0 or tol == 0:
             return f"{_f(nom)} ± {_f(tol)} {unit}"
         return f"{_f(nom)}{unit} ± {_f(tol)}{tol_unit}"
 
@@ -186,7 +196,7 @@ class RangedValue:
         """Return the tolerance as a percentage of the nominal value."""
         if self.nominal == 0:
             return None
-        return self.tolerance / self.nominal * 100
+        return abs(self.tolerance / self.nominal * 100)
 
     def to_dict(self) -> dict:
         """Convert the Physical instance to a dictionary."""
@@ -292,7 +302,7 @@ class RangedValue:
         return self.__sub__(other)
 
     def __neg__(self) -> "RangedValue":
-        return self.__class__(-self.max_qty, -self.min_qty, self.unit, self.pretty_unit)
+        return self.__class__(-self.max_qty, -self.min_qty, self.unit)
 
     def within(self, other: Union["RangedValue", float, int]) -> bool:
         """Check that this RangedValue completely falls within another."""

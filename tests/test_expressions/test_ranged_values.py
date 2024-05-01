@@ -49,6 +49,16 @@ def test_pretty_str():
     assert RangedValue(3, 5, pint.Unit("V")).pretty_str() == "3 to 5 V"
     assert RangedValue(3, 3.1, pint.Unit("V")).pretty_str() == "3.05V ± 50mV"
 
+    # # Test Zeros
+    assert RangedValue(0, 0, pint.Unit("V")).pretty_str() == "0V"
+    assert RangedValue(0, 50, pint.Unit("V")).pretty_str() == "0 to 50 V"
+    assert RangedValue(-50, 0, pint.Unit("V")).pretty_str() == "-50 to 0 V"
+
+    # Test Negatives
+    assert RangedValue(-50, -48, pint.Unit("V")).pretty_str() == "-49 ± 1 V"
+    assert RangedValue(-50, -30, pint.Unit("V")).pretty_str() == "-50 to -30 V"
+    assert RangedValue(-50, 50, pint.Unit("V")).pretty_str() == "± 50V"
+
     # Make sure combined units compact properly
     v = RangedValue(3, 3, pint.Unit("V"))
     r = RangedValue(1000, 1000, pint.Unit("Ω"))

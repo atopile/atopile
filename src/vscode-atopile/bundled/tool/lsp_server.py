@@ -215,30 +215,24 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
         word = word[:word.index(".", params.position.character - range_.start.character)]
     except ValueError:
         pass
-    # remove special characters like brackets
-    word = "".join(e for e in word if e not in "(){}")
+    word = utils.remove_special_character(word)
     output_str = ""
 
     # check if it is an instance
-    instance_addr = atopile.address.add_instances(class_addr, word.split("."))
     try:
-        instances = atopile.front_end.lofty.get_instance(instance_addr)
+        instance_addr = atopile.address.add_instances(class_addr, word.split("."))
+        instance = atopile.front_end.lofty.get_instance(instance_addr)
     except (KeyError, atopile.errors.AtoError, AttributeError):
         pass
     else:
         # TODO: deal with assignments made to super
-        output_str += f"**class**: {str(atopile.address.get_name(instances.supers[0].address))}\n\n"
-        for key in instances.assignments:
-            if instances.assignments[key]:
-                # iterate through until we find an assignment that's not None
-                for x in instances.assignments[key]:
-                    if x:
-                        output_str += "**"+key+"**: "
-                        if (x.value is None):
-                            output_str += 'not assigned\n\n'
-                        else:
-                            output_str += str(x.value) +'\n\n'
-                        break
+        output_str += f"**class**: {str(atopile.address.get_name(instance.supers[0].address))}\n\n"
+        for key, assignment in instance.assignments.items():
+            output_str += "**"+key+"**: "
+            if (assignment[0] is None):
+                output_str += 'not assigned\n\n'
+            else:
+                output_str += str(assignment[0].value) +'\n\n'
 
     # check if it is an assignment
     class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None)
@@ -274,8 +268,7 @@ def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[l
         word = word[:word.index(".", params.position.character - range_.start.character)]
     except ValueError:
         pass
-    # remove special characters like brackets
-    word = "".join(e for e in word if e not in "(){}")
+    word = utils.remove_special_character(word)
     
     # See if it's an instance
     instance_addr = atopile.address.add_instances(class_addr, word.split("."))
