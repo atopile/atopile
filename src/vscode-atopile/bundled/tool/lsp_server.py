@@ -59,7 +59,9 @@ def _index_class_defs_by_line(file: Path):
         except AttributeError:
             continue
 
-        for i in range(start_line + 1, stop_line + 1):
+        # We need to subtract one from the line numbers
+        # because the LSP uses 0-based indexing
+        for i in range(start_line - 1, stop_line - 1):
             _line_to_def_block[file][i] = cls_def.address
 
 
@@ -208,9 +210,10 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
         atopile.config.set_project_context(atopile.config.ProjectContext.from_path(file))
     class_addr = _get_def_addr_from_line(file, params.position.line)
     if not class_addr:
-        class_addr = str(file)
+        class_addr = str(file) + "::"
 
-    word, range_ = utils.cursor_word_and_range(document, params.position)
+    if word_and_range := utils.cursor_word_and_range(document, params.position):
+        word, range_ = word_and_range
     try:
         word = word[:word.index(".", params.position.character - range_.start.character)]
     except ValueError:
