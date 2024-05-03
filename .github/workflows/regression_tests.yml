@@ -13,30 +13,15 @@ jobs:
           'atopile/spin-servo-drive'
         ]
     steps:
-      - name: Checkout atopile tool
-        uses: actions/checkout@v4
-        with:
-          repository: 'atopile/atopile'  # Ensure this is your correct repository slug
-          ref: ${{ github.ref }}
-          path: 'atopile'
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Sanitize version string
-        run: |
-          echo "Original version from GitHub ref: ${{ github.ref_name }}"
-          # Improved sanitization to remove everything after the '+'
-          SANITIZED_VERSION=$(echo "${{ github.ref_name }}" | sed 's/+.*//' | sed 's/-dev/dev/')
-          echo "Sanitized version: $SANITIZED_VERSION"
-          echo "SANITIZED_VERSION=$SANITIZED_VERSION" >> $GITHUB_ENV
-
-      - name: Install atopile
-        run: |
-          pip install -e ./atopile
+      - name: Install dependencies
+        run: pip install -e .
 
       - name: Checkout circuit repository
         uses: actions/checkout@v4
