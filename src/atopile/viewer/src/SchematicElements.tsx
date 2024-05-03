@@ -24,15 +24,13 @@ const rotation_dict = {
 }
 
 const TwoPinHandle = ({port_1, port_2, orientation}) => {
-    console.log(port_1)
-    console.log(port_2)
-    console.log(orientation)
     return (
         <>
             <Handle
                 type="source"
                 id={port_1}
                 position={rotation_dict['port_1'][orientation]}
+                style={{ top: `25px`}}
             />
             <Handle
                 type="target"
@@ -87,6 +85,23 @@ export const Capacitor = ( { data }: {data: NodeProps} ) => {
             <div style={{transform: rotation_dict[data.orientation]}}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="M0 74.97h65.5m84.5.28H84.5m0-31.25v62m-19-62v62"/>
+                </svg>
+            </div>
+        </div>
+    )
+};
+
+export const LED = ( { data }: {data: NodeProps} ) => {
+    // From: https://github.com/chris-pikul/electronic-symbols/tree/main
+    return (
+        <div>
+            <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
+            <div style={{transform: rotation_dict[data.orientation]}}>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+                    <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="m100 75-50 31.25v-62.5L100 75zm0-34.25v68.5M50 75H0m100 0h50m-50-43.75 18.75-18.75"/>
+                    <path d="m122.49 19.34 3.87-14.45-14.45 3.87 10.58 10.58z"/>
+                    <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="m118.75 50 18.75-18.75"/>
+                    <path d="m141.24 38.09 3.87-14.45-14.45 3.87 10.58 10.58z"/>
                 </svg>
             </div>
         </div>
