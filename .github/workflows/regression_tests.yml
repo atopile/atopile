@@ -26,6 +26,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Sanitize version string
+        run: |
+          echo "Original version from GitHub ref: ${{ github.ref_name }}"
+          # Sanitize version string by removing metadata after '+'
+          SANITIZED_VERSION=$(echo "${{ github.ref_name }}" | sed 's/+.*//')
+          echo "Sanitized version: $SANITIZED_VERSION"
+          echo "SANITIZED_VERSION=$SANITIZED_VERSION" >> $GITHUB_ENV
+
       - name: Install atopile
         run: |
           pip install -e ./atopile
