@@ -29,8 +29,8 @@ jobs:
       - name: Sanitize version string
         run: |
           echo "Original version from GitHub ref: ${{ github.ref_name }}"
-          # Sanitize version string by removing metadata after '+'
-          SANITIZED_VERSION=$(echo "${{ github.ref_name }}" | sed 's/+.*//')
+          # Improved sanitization to remove everything after the '+'
+          SANITIZED_VERSION=$(echo "${{ github.ref_name }}" | sed 's/+.*//' | sed 's/-dev/dev/')
           echo "Sanitized version: $SANITIZED_VERSION"
           echo "SANITIZED_VERSION=$SANITIZED_VERSION" >> $GITHUB_ENV
 
