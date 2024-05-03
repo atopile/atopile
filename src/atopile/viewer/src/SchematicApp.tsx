@@ -27,7 +27,21 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 
 
 import "react-data-grid/lib/styles.css";
-import { Resistor, ResistorData, Capacitor, Ground, Vcc, Bug, OpAmp, NPNTransistor, loadSchematicJsonAsDict } from './SchematicElements.tsx';
+import { Resistor,
+    Capacitor,
+    Ground,
+    Vcc,
+    Bug,
+    OpAmp,
+    LED,
+    NPN,
+    PNP,
+    NFET,
+    PFET,
+    Diode,
+    ZenerDiode,
+    SchottkyDiode,
+    loadSchematicJsonAsDict } from './SchematicElements.tsx';
 
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
 
@@ -81,12 +95,18 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
 
 const nodeTypes = {
     Resistor: Resistor,
-    CapNode: Capacitor,
+    Capacitor: Capacitor,
+    LED: LED,
     GroundNode: Ground,
     VccNode: Vcc,
     BugNode: Bug,
-    OpAmpNode: OpAmp,
-    NPNTransistorNode: NPNTransistor,
+    OpAmp: OpAmp,
+    NPN: NPN,
+    NFET: NFET,
+    PFET: PFET,
+    Diode: Diode,
+    ZenerDiode: ZenerDiode,
+    SchottkyDiode: SchottkyDiode,
 };
 
 const edgeTypes = {
@@ -150,20 +170,32 @@ const AtopileViewer = () => {
                     if (component_data['contacting_power']) {
                         orientation = "vertical";
                     }
-                    if (component_data['instance_of'] == 'Resistor') {
+                    if (component_data['std_lib_id'] == 'Resistor') {
                         populatedNodes.push({ id: component_name, type: component_data["instance_of"], data: {component_data: component_data, orientation: orientation}, position: position });
-                    } else if (component_data['instance_of'] == 'Capacitor') {
-                        populatedNodes.push({ id: component_name, type: 'CapNode', data: {component_data: component_data, orientation: orientation} , position: position });
-                    } else if (component_data['instance_of'] == 'Power.gnd') {
+                    } else if (component_data['std_lib_id'] == 'Capacitor') {
+                        populatedNodes.push({ id: component_name, type: 'Capacitor', data: {component_data: component_data, orientation: orientation} , position: position });
+                    } else if (component_data['std_lib_id'] == 'Power.gnd') {
                         populatedNodes.push({ id: component_name, type: 'GroundNode', data: component_data , position: position });
-                    } else if (component_data['instance_of'] == 'Power.vcc') {
+                    } else if (component_data['std_lib_id'] == 'Power.vcc') {
                         populatedNodes.push({ id: component_name, type: 'VccNode', data: component_data , position: position });
-                    } else if (component_data['instance_of'] == 'OpAmp') {
-                        populatedNodes.push({ id: component_name, type: 'OpAmpNode', data: component_data , position: position });
-                    } else if (component_data['instance_of'] == 'NPN') {
-                        populatedNodes.push({ id: component_name, type: 'NPNTransistorNode', data: component_data , position: position });
+                    } else if (component_data['std_lib_id'] == 'OpAmp') {
+                        populatedNodes.push({ id: component_name, type: 'OpAmp', data: component_data , position: position });
+                    } else if (component_data['std_lib_id'] == 'NPN') {
+                        populatedNodes.push({ id: component_name, type: 'NPN', data: component_data , position: position });
+                    } else if (component_data['std_lib_id'] == 'LED') {
+                        populatedNodes.push({ id: component_name, type: "LED", data: {component_data: component_data, orientation: orientation}, position: position });
+                    } else if (component_data['std_lib_id'] == 'Diode') {
+                        populatedNodes.push({ id: component_name, type: "Diode", data: {component_data: component_data, orientation: orientation}, position: position });
+                    } else if (component_data['std_lib_id'] == 'ZenerDiode') {
+                        populatedNodes.push({ id: component_name, type: "ZenerDiode", data: {component_data: component_data, orientation: orientation}, position: position });
+                    } else if (component_data['std_lib_id'] == 'SchottkyDiode') {
+                        populatedNodes.push({ id: component_name, type: "SchottkyDiode", data: {component_data: component_data, orientation: orientation}, position: position });
+                    } else if (component_data['std_lib_id'] == 'NFET') {
+                        populatedNodes.push({ id: component_name, type: "NFET", data: {component_data: component_data, orientation: orientation}, position: position });
+                    } else if (component_data['std_lib_id'] == 'PFET') {
+                        populatedNodes.push({ id: component_name, type: "PFET", data: {component_data: component_data, orientation: orientation}, position: position });
                     } else {
-                        populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
+                        // populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
                     }
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
