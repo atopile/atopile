@@ -83,9 +83,9 @@ export const Capacitor = ( { data }: {data: NodeProps} ) => {
 export const LED = ( { data }: {data: NodeProps} ) => {
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
-        <div>
+        <>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
-            <div style={{transform: rotation_dict[data.orientation]}}>
+            <div style={{ transform: data.orientation === "horizontal" ? "none" : `rotate(90deg)`, }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="m100 75-50 31.25v-62.5L100 75zm0-34.25v68.5M50 75H0m100 0h50m-50-43.75 18.75-18.75"/>
                     <path d="m122.49 19.34 3.87-14.45-14.45 3.87 10.58 10.58z"/>
@@ -93,15 +93,15 @@ export const LED = ( { data }: {data: NodeProps} ) => {
                     <path d="m141.24 38.09 3.87-14.45-14.45 3.87 10.58 10.58z"/>
                 </svg>
             </div>
-        </div>
+        </>
     )
 };
 export const NFET = ( { data }: {data: NodeProps} ) => {
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
-        <div>
+        <>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
-            <div style={{transform: rotation_dict[data.orientation]}}>
+            <div style={{ transform: data.orientation === "horizontal" ? "none" : `rotate(90deg)`, }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <g fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5">
                         <circle cx="75" cy="75" r="50"/>
@@ -109,7 +109,7 @@ export const NFET = ( { data }: {data: NodeProps} ) => {
                     </g>
                 </svg>
             </div>
-        </div>
+        </>
     )
 };
 export const PFET = ( { data }: {data: NodeProps} ) => {
@@ -117,7 +117,7 @@ export const PFET = ( { data }: {data: NodeProps} ) => {
     return (
         <div>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
-            <div style={{transform: rotation_dict[data.orientation]}}>
+            <div style={{ transform: data.orientation === "horizontal" ? "none" : `rotate(90deg)`, }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <g fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5">
                         <circle cx="75" cy="75" r="50"/>
@@ -134,7 +134,7 @@ export const Diode = ( { data }: {data: NodeProps} ) => {
     return (
         <div>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
-            <div style={{transform: rotation_dict[data.orientation]}}>
+            <div style={{ transform: data.orientation === "horizontal" ? "none" : `rotate(90deg)`, }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="m100 75-50 31.25v-62.5L100 75zm0-34.25v68.5M50 75H0m100 0h50"/>
                 </svg>
@@ -147,7 +147,7 @@ export const ZenerDiode = ( { data }: {data: NodeProps} ) => {
     return (
         <div>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
-            <div style={{transform: rotation_dict[data.orientation]}}>
+            <div style={{ transform: data.orientation === "horizontal" ? "none" : `rotate(90deg)`, }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <g fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5">
                         <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
@@ -163,7 +163,7 @@ export const SchottkyDiode = ( { data }: {data: NodeProps} ) => {
     return (
         <div>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
-            <div style={{transform: rotation_dict[data.orientation]}}>
+            <div style={{ transform: data.orientation === "horizontal" ? "none" : `rotate(90deg)`, }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <g fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5">
                         <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
