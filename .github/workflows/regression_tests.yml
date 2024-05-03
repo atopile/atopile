@@ -13,14 +13,14 @@ jobs:
           'atopile/spin-servo-drive'
         ]
     steps:
-      - name: Checkout compiler tool
+      - name: Checkout atopile
         uses: actions/checkout@v4
         with:
           path: 'atopile'
 
       - name: Install atopile
         run: |
-          pip install -e ./atopile"[dev,test]"
+          pip install -e ./atopile
 
       - name: Checkout circuit repository
         uses: actions/checkout@v4
