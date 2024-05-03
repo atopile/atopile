@@ -1,4 +1,4 @@
-from atopile.address import AddrStr, get_name, get_instance_section
+from atopile.address import AddrStr, get_name, get_instance_section, add_instance
 from atopile.instance_methods import (
     get_children,
     get_links,
@@ -9,9 +9,11 @@ from atopile.instance_methods import (
     match_components,
     match_interfaces,
     match_signals,
+    match_pins_and_signals
 )
+from atopile.front_end import Link
+from atopile import errors
 
-from atopile.cli.inspect import find_nets
 import json
 
 from typing import Optional
@@ -67,7 +69,9 @@ def get_schematic_dict(addr: AddrStr) -> dict:
             links_at_and_below_component = []
             for block in blocks_at_or_below_component:
                 links_at_and_below_component.extend(list(get_links(block)))
-            component_nets = find_nets(links_at_and_below_component)
+
+            pins_and_signals_at_and_below_component = list(filter(match_pins_and_signals, all_descendants(component)))
+            component_nets = find_nets(pins_and_signals_at_and_below_component, links_at_and_below_component)
 
             # Component ports
             component_ports_dict: dict[int, dict[str, str]] = {}
@@ -150,3 +154,58 @@ def get_schematic_dict(addr: AddrStr) -> dict:
 
     return json.dumps(return_json_str)
 
+
+#TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways
+def find_nets(pins_and_signals: list[AddrStr], links: list[Link]) -> list[list[AddrStr]]:
+    # Convert links to an adjacency list
+    graph = {}
+
+    # Short the pins and signals to each other on the first run to make sure they are recorded as nets
+    source = pins_and_signals
+    target = pins_and_signals
+    for link in links:
+        if match_interfaces(link.source.addr) and match_interfaces(link.target.addr):
+            for int_pin in get_children(link.source.addr):
+                if match_pins_and_signals(int_pin):
+                    source.append(int_pin)
+                    target.append(add_instance(link.target.addr, get_name(int_pin)))
+                else:
+                    raise errors.AtoNotImplementedError("Cannot nest interfaces yet.")
+        elif match_interfaces(link.source.addr) or match_interfaces(link.target.addr):
+            # If only one of the nodes is an interface, then we need to throw an error
+            raise errors.AtoTypeError.from_ctx(
+                link.src_ctx,
+                f"Cannot connect an interface to a non-interface: {link.source.addr} ~ {link.target.addr}"
+            )
+        # just a single link
+        else:
+            source.append(link.source.addr)
+            target.append(link.target.addr)
+
+        for source, target in zip(source, target):
+            if source not in graph:
+                graph[source] = []
+            if target not in graph:
+                graph[target] = []
+            graph[source].append(target)
+            graph[target].append(source)
+
+        source = []
+        target = []
+
+    def dfs(node, component):
+        visited.add(node)
+        component.append(node)
+        for neighbor in graph.get(node, []):
+            if neighbor not in visited:
+                dfs(neighbor, component)
+
+    connected_components = []
+    visited = set()
+    for node in graph:
+        if node not in visited:
+            component = []
+            dfs(node, component)
+            connected_components.append(component)
+
+    return connected_components
