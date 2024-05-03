@@ -1,0 +1,35 @@
+name: Continuous Integration
+
+on: push
+
+jobs:
+  regression_tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: [
+          'atopile/swoop',
+          'atopile/spin-servo-drive'
+        ]
+    steps:
+      - name: Checkout compiler tool
+        uses: actions/checkout@v4
+        with:
+          path: 'atopile'
+
+      - name: Install atopile
+        run: |
+          pip install -e ./atopile"[dev,test]"
+
+      - name: Checkout circuit repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'circuit_repo'
+
+      - name: Build circuits
+        run: |
+          cd circuit_repo
+          ato build
