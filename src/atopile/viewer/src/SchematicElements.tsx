@@ -36,16 +36,19 @@ const TwoPinHandle = ({port_1, port_2, orientation}) => {
                 type="target"
                 id={port_1}
                 position={rotation_dict['port_1'][orientation]}
+                style={{ top: `25px`}}
             />
             <Handle
                 type="source"
                 id={port_2}
                 position={rotation_dict['port_2'][orientation]}
+                style={{ top: `25px`}}
             />
             <Handle
                 type="target"
                 id={port_2}
                 position={rotation_dict['port_2'][orientation]}
+                style={{ top: `25px`}}
             />
         </>
     )
@@ -64,7 +67,9 @@ export const Resistor = ( { data }: {data: NodeProps} ) => {
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
         <>
-        <div>
+        <div style={{
+          transform: `rotate(90deg)`,
+        }}>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
             <div style={{transform: rotation_dict[data.orientation]}}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
@@ -80,7 +85,9 @@ export const Resistor = ( { data }: {data: NodeProps} ) => {
 export const Capacitor = ( { data }: {data: NodeProps} ) => {
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
-        <div>
+        <div style={{
+            transform: `rotate(0deg)`,
+          }}>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
             <div style={{transform: rotation_dict[data.orientation]}}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
