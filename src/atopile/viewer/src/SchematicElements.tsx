@@ -86,11 +86,89 @@ export const LED = ( { data }: {data: NodeProps} ) => {
         <div>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
             <div style={{transform: rotation_dict[data.orientation]}}>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="m100 75-50 31.25v-62.5L100 75zm0-34.25v68.5M50 75H0m100 0h50m-50-43.75 18.75-18.75"/>
                     <path d="m122.49 19.34 3.87-14.45-14.45 3.87 10.58 10.58z"/>
                     <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="m118.75 50 18.75-18.75"/>
                     <path d="m141.24 38.09 3.87-14.45-14.45 3.87 10.58 10.58z"/>
+                </svg>
+            </div>
+        </div>
+    )
+};
+export const NFET = ( { data }: {data: NodeProps} ) => {
+    // From: https://github.com/chris-pikul/electronic-symbols/tree/main
+    return (
+        <div>
+            <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
+            <div style={{transform: rotation_dict[data.orientation]}}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
+                    <g fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5">
+                        <circle cx="75" cy="75" r="50"/>
+                        <path d="M0 75h50m12.5-31.25v62.5M99.66 0v56.25H62.5M99.66 150V93.75H62.5M50 50v50"/>
+                    </g>
+                </svg>
+            </div>
+        </div>
+    )
+};
+export const PFET = ( { data }: {data: NodeProps} ) => {
+    // From: https://github.com/chris-pikul/electronic-symbols/tree/main
+    return (
+        <div>
+            <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
+            <div style={{transform: rotation_dict[data.orientation]}}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
+                    <g fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5">
+                        <circle cx="75" cy="75" r="50"/>
+                        <path d="M0 75h31.25M62.5 43.75v62.5M99.66 0v56.25H62.5M99.66 150V93.75H62.5M50 50v50"/>
+                        <circle cx="37.5" cy="75" r="6.25"/>
+                    </g>
+                </svg>
+            </div>
+        </div>
+    )
+};
+export const Diode = ( { data }: {data: NodeProps} ) => {
+    // From: https://github.com/chris-pikul/electronic-symbols/tree/main
+    return (
+        <div>
+            <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
+            <div style={{transform: rotation_dict[data.orientation]}}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
+                    <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="m100 75-50 31.25v-62.5L100 75zm0-34.25v68.5M50 75H0m100 0h50"/>
+                </svg>
+            </div>
+        </div>
+    )
+};
+export const ZenerDiode = ( { data }: {data: NodeProps} ) => {
+    // From: https://github.com/chris-pikul/electronic-symbols/tree/main
+    return (
+        <div>
+            <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
+            <div style={{transform: rotation_dict[data.orientation]}}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
+                    <g fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5">
+                        <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
+                        <path d="M112.5 109.5 100 100V50l-12.5-9.5"/>
+                    </g>
+                </svg>
+            </div>
+        </div>
+    )
+};
+export const SchottkyDiode = ( { data }: {data: NodeProps} ) => {
+    // From: https://github.com/chris-pikul/electronic-symbols/tree/main
+    return (
+        <div>
+            <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
+            <div style={{transform: rotation_dict[data.orientation]}}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
+                    <g fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5">
+                        <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
+                        <path d="M87.5 97v12.5H100v-69h12.5V53"/>
+                    </g>
                 </svg>
             </div>
         </div>
@@ -216,7 +294,7 @@ export const OpAmp = ( { data }: {data: NodeProps} ) => {
 };
 
 
-export const NPNTransistor = ( { data }: {data: NodeProps} ) => {
+export const NPN = ( { data }: {data: NodeProps} ) => {
     const port_ids = Object.keys(data.ports);
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
