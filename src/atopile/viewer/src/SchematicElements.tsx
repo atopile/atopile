@@ -10,45 +10,34 @@ export async function loadSchematicJsonAsDict() {
     return response.json();
 }
 
-const rotation_dict = {
-    "port_1": {
-        "horizontal": Position.Left,
-        "vertical": Position.Bottom,
-    },
-    "port_2": {
-        "horizontal": Position.Right,
-        "vertical": Position.Top,
-    },
-    "horizontal": "rotate(0deg)",
-    "vertical": "rotate(90deg)",
-}
-
 const TwoPinHandle = ({port_1, port_2, orientation}) => {
+    // Determine the orientation based on the provided prop or a default value
+    const currentOrientation = orientation || "horizontal";
+
     return (
         <>
+            {/* Handles for port_1 */}
             <Handle
                 type="source"
                 id={port_1}
-                position={rotation_dict['port_1'][orientation]}
-                style={{ top: `25px`}}
+                position={currentOrientation === "horizontal" ? Position.Left : Position.Top}
             />
             <Handle
                 type="target"
                 id={port_1}
-                position={rotation_dict['port_1'][orientation]}
-                style={{ top: `25px`}}
+                position={currentOrientation === "horizontal" ? Position.Left : Position.Top}
             />
+
+            {/* Handles for port_2 */}
             <Handle
                 type="source"
                 id={port_2}
-                position={rotation_dict['port_2'][orientation]}
-                style={{ top: `25px`}}
+                position={currentOrientation === "horizontal" ? Position.Right : Position.Bottom}
             />
             <Handle
                 type="target"
                 id={port_2}
-                position={rotation_dict['port_2'][orientation]}
-                style={{ top: `25px`}}
+                position={currentOrientation === "horizontal" ? Position.Right : Position.Bottom}
             />
         </>
     )
@@ -67,17 +56,12 @@ export const Resistor = ( { data }: {data: NodeProps} ) => {
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
         <>
-        <div style={{
-          transform: `rotate(90deg)`,
-        }}>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
-            <div style={{transform: rotation_dict[data.orientation]}}>
+            <div style={{ transform: data.orientation === "horizontal" ? "none" : `rotate(90deg)`, }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="M25 56.25h100v37.5H25zM25 75H0m125 0h25"/>;
                 </svg>
             </div>
-        </div>
-        <NameAndValue name="R" value="1kohm"/>
         </>
     )
 };
@@ -85,16 +69,14 @@ export const Resistor = ( { data }: {data: NodeProps} ) => {
 export const Capacitor = ( { data }: {data: NodeProps} ) => {
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
-        <div style={{
-            transform: `rotate(0deg)`,
-          }}>
+        <>
             <TwoPinHandle port_1={data.component_data.ports[0].net_id} port_2={data.component_data.ports[1].net_id} orientation={data.orientation}/>
-            <div style={{transform: rotation_dict[data.orientation]}}>
+            <div style={{ transform: data.orientation === "horizontal" ? "none" : `rotate(90deg)`, }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150">
                     <path fill="none" stroke="#000" strokeMiterlimit="10" strokeWidth="5" d="M0 74.97h65.5m84.5.28H84.5m0-31.25v62m-19-62v62"/>
                 </svg>
             </div>
-        </div>
+        </>
     )
 };
 
