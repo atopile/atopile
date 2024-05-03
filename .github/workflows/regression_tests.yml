@@ -13,10 +13,12 @@ jobs:
           'atopile/spin-servo-drive'
         ]
     steps:
-      - name: Checkout atopile
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          path: 'atopile'
+          python-version: '3.11'
 
       - name: Install atopile
         run: |
