@@ -5,6 +5,9 @@ on: push
 jobs:
   regression_tests:
     runs-on: ubuntu-latest
+    env:
+        ATO_NON_INTERACTIVE: '1'
+        SETUPTOOLS_SCM_PRETEND_VERSION: "0.2.45"
     strategy:
       fail-fast: false
       matrix:
