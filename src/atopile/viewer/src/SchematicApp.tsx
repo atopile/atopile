@@ -27,7 +27,7 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 
 
 import "react-data-grid/lib/styles.css";
-import { Resistor, loadSchematicJsonAsDict } from './SchematicElements.tsx';
+import { Resistor, ResistorData, Capacitor, Ground, Vcc, Bug, OpAmp, NPNTransistor, loadSchematicJsonAsDict } from './SchematicElements.tsx';
 
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
 
@@ -80,8 +80,13 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
 };
 
 const nodeTypes = {
-    customNode: CustomNodeBlock, // Register your custom node type
-    customCircularNode: CircularNodeComponent
+    Resistor: Resistor,
+    CapNode: Capacitor,
+    GroundNode: Ground,
+    VccNode: Vcc,
+    BugNode: Bug,
+    OpAmpNode: OpAmp,
+    NPNTransistorNode: NPNTransistor,
 };
 
 const edgeTypes = {
@@ -103,7 +108,6 @@ const selected_link_source = "none";
 const selected_link_target = "none";
 const requestRelayout = false;
 let selected_links_data = {};
-const schematic_elements = <resistor />
 
 
 const AtopileViewer = () => {
@@ -117,97 +121,71 @@ const AtopileViewer = () => {
     const [selected_link_data, setSelectedLinkData] = useState([]);
     const [selected_link_source, setSelectedLinkSource] = useState("none");
     const [selected_link_target, setSelectedLinkTarget] = useState("none");
-    const [schematic_elements, setSchematicElements] = useState(<Schematic><resistor /></Schematic>);
-
-
-    const handleExpandClick = (newBlockId) => {
-        setSelectedLinkId("none");
-        setSelectedLinkData([]);
-        setSelectedLinkSource("none");
-        setSelectedLinkTarget("none");
-        setBlockId(newBlockId);
-    };
-
-    const handleLinkSelectClick = (newSelectedLinkId) => {
-        setSelectedLinkId(newSelectedLinkId);
-        setSelectedLinkData(selected_links_data[newSelectedLinkId]['links']);
-        setSelectedLinkSource(selected_links_data[newSelectedLinkId]['source']);
-        setSelectedLinkTarget(selected_links_data[newSelectedLinkId]['target']);
-    };
 
     const onLayout = useCallback(
-    ({ direction }) => {
-        const opts = { 'elk.direction': direction, ...elkOptions };
+        ({ direction }) => {
+            const opts = { 'elk.direction': direction, ...elkOptions };
 
-        getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
+            getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
+            setNodes(layoutedNodes);
+            setEdges(layoutedEdges);
 
-        window.requestAnimationFrame(() => fitView());
-        });
-    }, [edges] );
-
+            window.requestAnimationFrame(() => fitView());
+            });
+        }, [edges] );
 
     useEffect(() => {
         const updateNodesFromJson = async () => {
             try {
-                const fetchedNodes = await loadJsonAsDict();
-                const displayedNode = fetchedNodes[block_id];
-                setParentBlockAddr(displayedNode['parent']);
+                const fetchedNodes = await loadSchematicJsonAsDict();
+
                 const populatedNodes = [];
-                for (const node in displayedNode['blocks']) {
+                for (const component_name in fetchedNodes['components']) {
+                    let component_data = fetchedNodes['components'][component_name];
                     const position = {
-                    x: Math.random() * window.innerWidth,
-                    y: Math.random() * window.innerHeight,
+                        x: Math.random() * window.innerWidth,
+                        y: Math.random() * window.innerHeight,
                     };
-                    let style;
-                    if (displayedNode['blocks'][node]['type'] == 'signal') {
-                        populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#8ECAE6' }, position: position });
-                    } else if (displayedNode['blocks'][node]['type'] == 'interface') {
-                        populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
+                    let orientation = "horizontal";
+                    if (component_data['contacting_power']) {
+                        orientation = "vertical";
                     }
-                    else if (displayedNode['blocks'][node]['type'] == 'module') {
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                    if (component_data['instance_of'] == 'Resistor') {
+                        populatedNodes.push({ id: component_name, type: component_data["instance_of"], data: {component_data: component_data, orientation: orientation}, position: position });
+                    } else if (component_data['instance_of'] == 'Capacitor') {
+                        populatedNodes.push({ id: component_name, type: 'CapNode', data: {component_data: component_data, orientation: orientation} , position: position });
+                    } else if (component_data['instance_of'] == 'Power.gnd') {
+                        populatedNodes.push({ id: component_name, type: 'GroundNode', data: component_data , position: position });
+                    } else if (component_data['instance_of'] == 'Power.vcc') {
+                        populatedNodes.push({ id: component_name, type: 'VccNode', data: component_data , position: position });
+                    } else if (component_data['instance_of'] == 'OpAmp') {
+                        populatedNodes.push({ id: component_name, type: 'OpAmpNode', data: component_data , position: position });
+                    } else if (component_data['instance_of'] == 'NPN') {
+                        populatedNodes.push({ id: component_name, type: 'NPNTransistorNode', data: component_data , position: position });
                     } else {
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                        populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
                     }
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
                 setNodes(populatedNodes);
                 const populatedEdges = [];
                 selected_links_data = {};
-                for (const edge_id in displayedNode['harnesses']) {
-                    const edge = displayedNode['harnesses'][edge_id];
-
-                    // for each edge_id, update the data structure with the list of links on that harness
-                    selected_links_data[edge_id] = {source: edge['source'], target: edge['target'], links: edge['links']};
-
+                for (const edge of fetchedNodes['links']) {
                     // create a react edge element for each harness
                     populatedEdges.push({
-                        id: edge_id,
-                        source: edge['source'],
-                        target: edge['target'],
-                        type: 'custom',
-                        sourcePosition: Position.Right,
-                        targetPosition: Position.Left,
-                        markerEnd: {
-                            type: MarkerType.Arrow,
+                        id: edge['source']['component'] + edge['target']['component'],
+                        source: edge['source']['component'],
+                        sourceHandle: edge['source']['port'],
+                        target: edge['target']['component'],
+                        targetHandle: edge['target']['port'],
+                        type: 'step',
+                        style: {
+                            stroke: 'black',
+                            strokeWidth: 2,
                         },
-                        data: {
-                            source: edge['source'],
-                            target: edge['target'],
-                            name: edge['name'],
-                            preview_names: edge['preview_names'],
-                        }
                     });
                 }
                 setEdges(populatedEdges);
-
-                // Fetch the schematic data
-                const schematic_json = await loadSchematicJsonAsDict();
-                const schematic_data = schematic_json[block_id];
-                console.log(schematic_data);
-                setSchematicElements(<SchematicElements data={schematic_data} />);
 
                 // Request a re-layout
                 setRequestRelayout(true);
@@ -222,7 +200,7 @@ const AtopileViewer = () => {
     // Calculate the initial layout on mount.
     useLayoutEffect(() => {
         if (requestRelayout) {
-            onLayout({ direction: 'DOWN' });
+            onLayout({ direction: 'RIGHT' });
             console.log('Relayout requested');
             setRequestRelayout(false);
         }

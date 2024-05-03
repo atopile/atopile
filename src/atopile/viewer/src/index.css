@@ -6,7 +6,9 @@
 }
 
 .floatingedges .react-flow__handle {
-  opacity: 0;
+  opacity: 1;
+  background-color: #FFF;
+  border: 1px solid black;
 }
 .reactflow-container {
   width: 100%; /* or any specific width */
