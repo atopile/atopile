@@ -31,6 +31,7 @@ import { Resistor,
     Capacitor,
     Ground,
     Vcc,
+    Signal,
     Bug,
     OpAmp,
     LED,
@@ -99,6 +100,7 @@ const nodeTypes = {
     LED: LED,
     GroundNode: Ground,
     VccNode: Vcc,
+    Signal: Signal,
     BugNode: Bug,
     OpAmp: OpAmp,
     NPN: NPN,
@@ -160,8 +162,7 @@ const AtopileViewer = () => {
                 const fetchedNodes = await loadSchematicJsonAsDict();
 
                 const populatedNodes = [];
-                for (const component_name in fetchedNodes['components']) {
-                    let component_data = fetchedNodes['components'][component_name];
+                for (const [component_name, component_data] of Object.entries(fetchedNodes['components'])) {
                     const position = {
                         x: Math.random() * window.innerWidth,
                         y: Math.random() * window.innerHeight,
@@ -174,10 +175,6 @@ const AtopileViewer = () => {
                         populatedNodes.push({ id: component_name, type: component_data["instance_of"], data: {component_data: component_data, orientation: orientation}, position: position });
                     } else if (component_data['std_lib_id'] == 'Capacitor') {
                         populatedNodes.push({ id: component_name, type: 'Capacitor', data: {component_data: component_data, orientation: orientation} , position: position });
-                    } else if (component_data['std_lib_id'] == 'Power.gnd') {
-                        populatedNodes.push({ id: component_name, type: 'GroundNode', data: component_data , position: position });
-                    } else if (component_data['std_lib_id'] == 'Power.vcc') {
-                        populatedNodes.push({ id: component_name, type: 'VccNode', data: component_data , position: position });
                     } else if (component_data['std_lib_id'] == 'OpAmp') {
                         populatedNodes.push({ id: component_name, type: 'OpAmp', data: component_data , position: position });
                     } else if (component_data['std_lib_id'] == 'NPN') {
@@ -196,6 +193,20 @@ const AtopileViewer = () => {
                         populatedNodes.push({ id: component_name, type: "PFET", data: {component_data: component_data, orientation: orientation}, position: position });
                     } else {
                         // populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
+                    }
+                }
+                for (const [signal_name, signal_data] of Object.entries(fetchedNodes['signals'])) {
+                    const position = {
+                        x: Math.random() * window.innerWidth,
+                        y: Math.random() * window.innerHeight,
+                    };
+                    if (signal_data['std_lib_id'] == 'Power.vcc') {
+                        populatedNodes.push({ id: signal_name, type: 'VccNode', data: signal_data , position: position });
+                    } else if (signal_data['std_lib_id'] == 'Power.gnd') {
+                        populatedNodes.push({ id: signal_name, type: 'GroundNode', data: signal_data , position: position });
+                    } else {
+                        populatedNodes.push({ id: signal_name, type: 'Signal', data: signal_data , position: position });
+                        console.log(signal_name);
                     }
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
