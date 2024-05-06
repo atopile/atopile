@@ -31,6 +31,7 @@ import { Resistor,
     Capacitor,
     Ground,
     Vcc,
+    Signal,
     Bug,
     OpAmp,
     LED,
@@ -99,6 +100,7 @@ const nodeTypes = {
     LED: LED,
     GroundNode: Ground,
     VccNode: Vcc,
+    Signal: Signal,
     BugNode: Bug,
     OpAmp: OpAmp,
     NPN: NPN,
@@ -160,7 +162,7 @@ const AtopileViewer = () => {
                 const fetchedNodes = await loadSchematicJsonAsDict();
 
                 const populatedNodes = [];
-                for (const [component_name, component_data] of Object.entries(fetchedNodes['signals'])) {
+                for (const [component_name, component_data] of Object.entries(fetchedNodes['components'])) {
                     const position = {
                         x: Math.random() * window.innerWidth,
                         y: Math.random() * window.innerHeight,
@@ -202,6 +204,9 @@ const AtopileViewer = () => {
                         populatedNodes.push({ id: signal_name, type: 'VccNode', data: signal_data , position: position });
                     } else if (signal_data['std_lib_id'] == 'Power.gnd') {
                         populatedNodes.push({ id: signal_name, type: 'GroundNode', data: signal_data , position: position });
+                    } else {
+                        populatedNodes.push({ id: signal_name, type: 'Signal', data: signal_data , position: position });
+                        console.log(signal_name);
                     }
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow

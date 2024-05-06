@@ -162,11 +162,9 @@ def get_schematic_dict(addr: AddrStr) -> dict:
         parent_source_component = get_parent(link.source.addr)
         parent_target_component = get_parent(link.target.addr)
 
-        if get_std_lib(parent_source_component) == "Power":
-            components_dict[parent_target_component]["contacting_power"] = True
+        if match_interfaces(parent_source_component):
             parent_source_component = link.source.addr
-        if get_std_lib(parent_target_component) == "Power":
-            components_dict[parent_source_component]["contacting_power"] = True
+        if match_interfaces(parent_target_component):
             parent_target_component = link.target.addr
 
         links_list.append({

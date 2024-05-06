@@ -217,6 +217,23 @@ export const Vcc = ( { data }: {data: NodeProps} ) => {
     )
 };
 
+
+export const Signal = ( { data }: {data: NodeProps} ) => {
+    // From: https://github.com/chris-pikul/electronic-symbols/tree/main
+    return (
+        <div style={{width: '100px', height: '100px'}}>
+            <Handle
+                type="source"
+                position={Position.Bottom}
+            />
+            <Handle
+                type="target"
+                position={Position.Bottom}
+            />
+        </div>
+    )
+};
+
 export const OpAmp = ( { data }: {data: NodeProps} ) => {
     const port_ids = Object.keys(data.ports);
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
