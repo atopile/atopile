@@ -1,6 +1,6 @@
 import logging
 
-from atopile.address import AddrStr, get_name, get_instance_section, add_instance
+from atopile.address import AddrStr, get_name, get_instance_section, add_instance, get_entry_section
 from atopile.instance_methods import (
     get_children,
     get_links,
@@ -45,6 +45,19 @@ def get_std_lib(addr: AddrStr) -> str:
     #TODO: The time has come to bake the standard lib as a compiler dependency...
     #std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "Diode", "TransistorNPN", "TransistorPNP"]
     std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "LED", "Power", "NPN", "PNP", "Diode", "SchottkyDiode", "ZenerDiode"]
+
+    # Handle signals
+    if match_signals(addr):
+        signal_parent = get_parent(addr)
+        if match_interfaces(signal_parent):
+            matching_super = find_matching_super(signal_parent, std_lib_supers)
+            if matching_super is not None:
+                if get_entry_section(matching_super) == "Power":
+                    return "Power." + get_name(addr)
+            else:
+                return "none"
+
+    # handle components
     matching_super = find_matching_super(addr, std_lib_supers)
     if matching_super is None:
         return ""
@@ -120,6 +133,7 @@ def get_schematic_dict(addr: AddrStr) -> dict:
         signals_in_interface = list(filter(match_signals, get_children(interface)))
         for signal in signals_in_interface:
             signals_dict[signal] = {
+                "std_lib_id": get_std_lib(signal),
                 "instance_of": get_name(get_supers_list(interface)[0].obj_def.address),
                 "address": get_instance_section(signal),
                 "name": get_name(signal)}
@@ -130,6 +144,7 @@ def get_schematic_dict(addr: AddrStr) -> dict:
     signals_at_view = list(filter(match_signals, get_children(addr)))
     for signal in signals_at_view:
         signals_dict[signal] = {
+            "std_lib_id": get_std_lib(signal),
             "instance_of": "signal",
             "address": get_instance_section(signal),
             "name": get_name(signal)}

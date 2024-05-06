@@ -176,7 +176,6 @@ export const SchottkyDiode = ( { data }: {data: NodeProps} ) => {
 };
 
 export const Ground = ( { data }: {data: NodeProps} ) => {
-    const port_ids = Object.keys(data.ports);
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
         <>
@@ -198,7 +197,6 @@ export const Ground = ( { data }: {data: NodeProps} ) => {
 };
 
 export const Vcc = ( { data }: {data: NodeProps} ) => {
-    const port_ids = Object.keys(data.ports);
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
         <>
