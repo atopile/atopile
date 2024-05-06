@@ -38,7 +38,7 @@ def find_matching_super(
 def get_std_lib(addr: AddrStr) -> str:
     #TODO: The time has come to bake the standard lib as a compiler dependency...
     #std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "Diode", "TransistorNPN", "TransistorPNP"]
-    std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "LED", "Power", "NPN", "PNP", "Diode", "SchottkyDiode", "ZenerDiode"]
+    std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "LED", "Power", "NPN", "PNP", "Diode", "SchottkyDiode", "ZenerDiode", "NFET", "PFET"]
     matching_super = find_matching_super(addr, std_lib_supers)
     if matching_super is None:
         return ""

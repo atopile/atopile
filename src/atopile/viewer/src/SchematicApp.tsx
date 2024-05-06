@@ -16,7 +16,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { createNodesAndEdges } from './utils.tsx';
-import { CustomNodeBlock, CircularNodeComponent } from './CustomNode.tsx';
+// import { CustomNodeBlock, CircularNodeComponent } from './CustomNode.tsx';
 import CustomEdge from './CustomEdge.tsx';
 
 import SimpleTable from './LinkTable.tsx';
@@ -28,19 +28,19 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 
 import "react-data-grid/lib/styles.css";
 import { Resistor,
-    Capacitor,
-    Ground,
-    Vcc,
-    Bug,
-    OpAmp,
+    // Capacitor,
+    // Ground,
+    // Vcc,
+    // Bug,
+    // OpAmp,
     LED,
-    NPN,
-    PNP,
+    // NPN,
+    // PNP,
     NFET,
-    PFET,
-    Diode,
-    ZenerDiode,
-    SchottkyDiode,
+    // PFET,
+    // Diode,
+    // ZenerDiode,
+    // SchottkyDiode,
     loadSchematicJsonAsDict } from './SchematicElements.tsx';
 
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
@@ -95,18 +95,18 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
 
 const nodeTypes = {
     Resistor: Resistor,
-    Capacitor: Capacitor,
+    // Capacitor: Capacitor,
     LED: LED,
-    GroundNode: Ground,
-    VccNode: Vcc,
-    BugNode: Bug,
-    OpAmp: OpAmp,
-    NPN: NPN,
+    // GroundNode: Ground,
+    // VccNode: Vcc,
+    // BugNode: Bug,
+    // OpAmp: OpAmp,
+    // NPN: NPN,
     NFET: NFET,
-    PFET: PFET,
-    Diode: Diode,
-    ZenerDiode: ZenerDiode,
-    SchottkyDiode: SchottkyDiode,
+    // PFET: PFET,
+    // Diode: Diode,
+    // ZenerDiode: ZenerDiode,
+    // SchottkyDiode: SchottkyDiode,
 };
 
 const edgeTypes = {
@@ -166,34 +166,34 @@ const AtopileViewer = () => {
                         x: Math.random() * window.innerWidth,
                         y: Math.random() * window.innerHeight,
                     };
-                    let orientation = "horizontal";
-                    if (component_data['contacting_power']) {
-                        orientation = "vertical";
-                    }
+                    // let orientation = "horizontal";
+                    // if (component_data['contacting_power']) {
+                    //     orientation = "vertical";
+                    // }
                     if (component_data['std_lib_id'] == 'Resistor') {
-                        populatedNodes.push({ id: component_name, type: component_data["instance_of"], data: {component_data: component_data, orientation: orientation}, position: position });
-                    } else if (component_data['std_lib_id'] == 'Capacitor') {
-                        populatedNodes.push({ id: component_name, type: 'Capacitor', data: {component_data: component_data, orientation: orientation} , position: position });
-                    } else if (component_data['std_lib_id'] == 'Power.gnd') {
-                        populatedNodes.push({ id: component_name, type: 'GroundNode', data: component_data , position: position });
-                    } else if (component_data['std_lib_id'] == 'Power.vcc') {
-                        populatedNodes.push({ id: component_name, type: 'VccNode', data: component_data , position: position });
-                    } else if (component_data['std_lib_id'] == 'OpAmp') {
-                        populatedNodes.push({ id: component_name, type: 'OpAmp', data: component_data , position: position });
-                    } else if (component_data['std_lib_id'] == 'NPN') {
-                        populatedNodes.push({ id: component_name, type: 'NPN', data: component_data , position: position });
+                        populatedNodes.push({ id: component_name, type: component_data["instance_of"], data: component_data, position: position });
+                    // } else if (component_data['std_lib_id'] == 'Capacitor') {
+                    //     populatedNodes.push({ id: component_name, type: 'Capacitor', data: {component_data: component_data, orientation: orientation} , position: position });
+                    // } else if (component_data['std_lib_id'] == 'Power.gnd') {
+                    //     populatedNodes.push({ id: component_name, type: 'GroundNode', data: component_data , position: position });
+                    // } else if (component_data['std_lib_id'] == 'Power.vcc') {
+                    //     populatedNodes.push({ id: component_name, type: 'VccNode', data: component_data , position: position });
+                    // } else if (component_data['std_lib_id'] == 'OpAmp') {
+                    //     populatedNodes.push({ id: component_name, type: 'OpAmp', data: component_data , position: position });
+                    // } else if (component_data['std_lib_id'] == 'NPN') {
+                    //     populatedNodes.push({ id: component_name, type: 'NPN', data: component_data , position: position });
                     } else if (component_data['std_lib_id'] == 'LED') {
-                        populatedNodes.push({ id: component_name, type: "LED", data: {component_data: component_data, orientation: orientation}, position: position });
-                    } else if (component_data['std_lib_id'] == 'Diode') {
-                        populatedNodes.push({ id: component_name, type: "Diode", data: {component_data: component_data, orientation: orientation}, position: position });
-                    } else if (component_data['std_lib_id'] == 'ZenerDiode') {
-                        populatedNodes.push({ id: component_name, type: "ZenerDiode", data: {component_data: component_data, orientation: orientation}, position: position });
-                    } else if (component_data['std_lib_id'] == 'SchottkyDiode') {
-                        populatedNodes.push({ id: component_name, type: "SchottkyDiode", data: {component_data: component_data, orientation: orientation}, position: position });
+                        populatedNodes.push({ id: component_name, type: "LED", data: component_data, position: position });
+                    // } else if (component_data['std_lib_id'] == 'Diode') {
+                    //     populatedNodes.push({ id: component_name, type: "Diode", data: {component_data: component_data, orientation: orientation}, position: position });
+                    // } else if (component_data['std_lib_id'] == 'ZenerDiode') {
+                    //     populatedNodes.push({ id: component_name, type: "ZenerDiode", data: {component_data: component_data, orientation: orientation}, position: position });
+                    // } else if (component_data['std_lib_id'] == 'SchottkyDiode') {
+                    //     populatedNodes.push({ id: component_name, type: "SchottkyDiode", data: {component_data: component_data, orientation: orientation}, position: position });
                     } else if (component_data['std_lib_id'] == 'NFET') {
-                        populatedNodes.push({ id: component_name, type: "NFET", data: {component_data: component_data, orientation: orientation}, position: position });
-                    } else if (component_data['std_lib_id'] == 'PFET') {
-                        populatedNodes.push({ id: component_name, type: "PFET", data: {component_data: component_data, orientation: orientation}, position: position });
+                        populatedNodes.push({ id: component_name, type: "NFET", data: component_data, position: position });
+                    // } else if (component_data['std_lib_id'] == 'PFET') {
+                    //     populatedNodes.push({ id: component_name, type: "PFET", data: {component_data: component_data, orientation: orientation}, position: position });
                     } else {
                         // populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
                     }
