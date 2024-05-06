@@ -76,6 +76,10 @@ def get_schematic_dict(addr: AddrStr) -> dict:
     component_nets_dict: dict[str, list[AddrStr]] = {}
     connectable_to_nets_map: dict[AddrStr, str] = {}
 
+    links_above_components: list[Link] = []
+
+    signals_dict: dict[AddrStr, dict] = {}
+
     # We start exploring the modules
     for module in modules_at_and_below_view:
         #TODO: provide error message if we can't handle the component
@@ -123,58 +127,77 @@ def get_schematic_dict(addr: AddrStr) -> dict:
                 "contacting_power": False}
         else:
             log.info("Currently not handling modules in schematic view. Skipping %s", module)
+            links_above_components.extend(list(get_links(module)))
 
-    signals_dict: dict[AddrStr, dict] = {}
+                    #TODO: this only handles interfaces in the highest module, not in nested modules
+            interfaces_at_module = list(filter(match_interfaces, get_children(module)))
+            for interface in interfaces_at_module:
+                #TODO: handle signals or interfaces that are not power
+                signals_in_interface = list(filter(match_signals, get_children(interface)))
+                for signal in signals_in_interface:
+                    signals_dict[signal] = {
+                        "std_lib_id": get_std_lib(signal),
+                        "instance_of": get_name(get_supers_list(interface)[0].obj_def.address),
+                        "address": get_instance_section(signal),
+                        "name": get_name(get_parent(signal)) + "." + get_name(signal)}
 
-    #TODO: this only handles interfaces in the highest module, not in nested modules
-    interfaces_at_view = list(filter(match_interfaces, get_children(addr)))
-    for interface in interfaces_at_view:
-        #TODO: handle signals or interfaces that are not power
-        signals_in_interface = list(filter(match_signals, get_children(interface)))
-        for signal in signals_in_interface:
-            signals_dict[signal] = {
-                "std_lib_id": get_std_lib(signal),
-                "instance_of": get_name(get_supers_list(interface)[0].obj_def.address),
-                "address": get_instance_section(signal),
-                "name": get_name(signal)}
-
-            # Make sure signals are not replaced with clusters in the step below
-            connectable_to_nets_map[signal] = signal
-
-    signals_at_view = list(filter(match_signals, get_children(addr)))
-    for signal in signals_at_view:
-        signals_dict[signal] = {
-            "std_lib_id": get_std_lib(signal),
-            "instance_of": "signal",
-            "address": get_instance_section(signal),
-            "name": get_name(signal)}
-
-        # Make sure signals are not replaced with clusters in the step below
-        connectable_to_nets_map[signal] = signal
+            signals_at_view = list(filter(match_signals, get_children(module)))
+            for signal in signals_at_view:
+                signals_dict[signal] = {
+                    "std_lib_id": get_std_lib(signal),
+                    "instance_of": "signal",
+                    "address": get_instance_section(signal),
+                    "name": get_name(signal)}
 
 
     #TODO: if the connection is coming from a higher level cluster, we'll have to resolve that later
     # Link dict that we will return
     links_list: list[dict] = []
-    links_at_root_module = list(get_links(addr))
-    for link in links_at_root_module:
-        #TODO: this will break with instances
-        parent_source_component = get_parent(link.source.addr)
-        parent_target_component = get_parent(link.target.addr)
+    for link in links_above_components:
+        source = []
+        target = []
+        # Create individual links for interfaces
+        if match_interfaces(link.source.addr) and match_interfaces(link.target.addr):
+            for int_pin in get_children(link.source.addr):
+                if match_pins_and_signals(int_pin):
+                    source.append(int_pin)
+                    target.append(add_instance(link.target.addr, get_name(int_pin)))
+                else:
+                    raise errors.AtoNotImplementedError("Cannot nest interfaces yet.")
+        elif match_interfaces(link.source.addr) or match_interfaces(link.target.addr):
+            # If only one of the nodes is an interface, then we need to throw an error
+            raise errors.AtoTypeError.from_ctx(
+                link.src_ctx,
+                f"Cannot connect an interface to a non-interface: {link.source.addr} ~ {link.target.addr}"
+            )
+        # just a single link
+        else:
+            source.append(link.source.addr)
+            target.append(link.target.addr)
 
-        if match_interfaces(parent_source_component):
-            parent_source_component = link.source.addr
-        if match_interfaces(parent_target_component):
-            parent_target_component = link.target.addr
+        for source_conn, target_conn in zip(source, target):
+            if source_conn in connectable_to_nets_map:
+                source_component = get_parent(link.source.addr)
+                source_port = connectable_to_nets_map[source_conn]
+            else:
+                source_component = source_conn
+                source_port = source_conn
 
-        links_list.append({
-            "source": {
-                "component": parent_source_component,
-                "port": connectable_to_nets_map[link.source.addr],},
-            "target": {
-                "component": parent_target_component,
-                "port": connectable_to_nets_map[link.target.addr]}
-        })
+            if target_conn in connectable_to_nets_map:
+                target_component = get_parent(link.target.addr)
+                target_port = connectable_to_nets_map[target_conn]
+            else:
+                target_component = target_conn
+                target_port = target_conn
+
+            links_list.append({
+                "source": {
+                    "component": source_component,
+                    "port": source_port},
+                "target": {
+                    "component": target_component,
+                    "port": target_port}
+            })
 
     return_json_str = {
         "components": components_dict,

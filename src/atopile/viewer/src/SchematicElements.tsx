@@ -221,15 +221,16 @@ export const Vcc = ( { data }: {data: NodeProps} ) => {
 export const Signal = ( { data }: {data: NodeProps} ) => {
     // From: https://github.com/chris-pikul/electronic-symbols/tree/main
     return (
-        <div style={{width: '100px', height: '100px'}}>
+        <div>
             <Handle
                 type="source"
-                position={Position.Bottom}
+                position={Position.Right}
             />
             <Handle
                 type="target"
-                position={Position.Bottom}
+                position={Position.Left}
             />
+            <div style={{padding: '10px'}}>{data.name}</div>
         </div>
     )
 };
