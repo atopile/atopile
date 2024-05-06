@@ -103,7 +103,6 @@ const selected_link_source = "none";
 const selected_link_target = "none";
 const requestRelayout = false;
 let selected_links_data = {};
-const schematic_elements = <resistor />
 
 
 const AtopileViewer = () => {
@@ -117,7 +116,6 @@ const AtopileViewer = () => {
     const [selected_link_data, setSelectedLinkData] = useState([]);
     const [selected_link_source, setSelectedLinkSource] = useState("none");
     const [selected_link_target, setSelectedLinkTarget] = useState("none");
-    const [schematic_elements, setSchematicElements] = useState(<Schematic><resistor /></Schematic>);
 
 
     const handleExpandClick = (newBlockId) => {
