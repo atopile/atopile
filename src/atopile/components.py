@@ -57,38 +57,44 @@ class NoMatchingComponent(errors.AtoError):
     title = "No component matches parameters"
 
 
-component_cache: dict[str, Any]
-cache_file_path: Path
+_component_cache: Optional[dict[str, Any]] = None
+def get_component_cache() -> dict[str, Any]:
+    """Return the component cache."""
+    global _component_cache
+    if _component_cache is None:
+        configure_cache()
+    return _component_cache
 
-def configure_cache(top_level_path: Path):
+
+def configure_cache():
     """Configure the cache to be used by the component module."""
-    global component_cache
-    global cache_file_path
-    cache_file_path = top_level_path / ".ato/component_cache.json"
+    global _component_cache
+    cache_file_path = config.get_project_context().project_path / ".ato/component_cache.json"
     if cache_file_path.exists():
         with open(cache_file_path, "r") as cache_file:
-                component_cache = json.load(cache_file)
+                _component_cache = json.load(cache_file)
         # Clean out stale entries
         clean_cache()
     else:
-        component_cache = {}
+        _component_cache = {}
 
 def save_cache():
     """Saves the current state of the cache to a file."""
+    cache_file_path = config.get_project_context().project_path / ".ato/component_cache.json"
     cache_file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(cache_file_path, "w") as cache_file:
         # Convert the ChainMap to a regular dictionary
-        serializable_cache = dict(component_cache)
+        serializable_cache = dict(get_component_cache())
         json.dump(serializable_cache, cache_file)
 
 
 def get_component_from_cache(component_addr: AddrStr, current_data: dict) -> Optional[dict]:
     """Retrieve a component from the cache, if available, not stale, and unchanged."""
-    if component_addr not in component_cache:
+    # Check the cache age
+    cached_entry = get_component_cache().get(component_addr)
+    if not cached_entry:
         return None
 
-    # Check the cache age
-    cached_entry = component_cache[component_addr]
     cached_timestamp = datetime.fromtimestamp(cached_entry["timestamp"])
     cache_age = datetime.now() - cached_timestamp
     if cache_age > timedelta(days=14):
@@ -104,7 +110,7 @@ def get_component_from_cache(component_addr: AddrStr, current_data: dict) -> Opt
 
 def update_cache(component_addr, component_data, address_data):
     """Update the cache with new component data and save it."""
-    component_cache[component_addr] = {
+    get_component_cache()[component_addr] = {
         "data": component_data,
         "timestamp": time.time(),  # Current time as a timestamp
         "address_data": dict(address_data),  # Source attributes used to detect changes
@@ -115,6 +121,7 @@ def update_cache(component_addr, component_data, address_data):
 def clean_cache():
     """Clean out entries older than 1 day."""
     addrs_to_delete = set()
+    component_cache = get_component_cache()
     for addr, entry in component_cache.items():
         cached_timestamp = datetime.fromtimestamp(entry["timestamp"])
         if datetime.now() - cached_timestamp >= timedelta(days=1):
