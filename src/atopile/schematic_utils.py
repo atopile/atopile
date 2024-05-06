@@ -1,3 +1,5 @@
+import logging
+
 from atopile.address import AddrStr, get_name, get_instance_section, add_instance
 from atopile.instance_methods import (
     get_children,
@@ -22,8 +24,10 @@ import hashlib
 
 from atopile.components import get_specd_value
 
+log = logging.getLogger(__name__)
 
 #FIXME: this function is a reimplementation of the one in instance methods, since I don't have access to the std lib
+# Diff is the additon of get_name(...)
 def find_matching_super(
     addr: AddrStr, candidate_supers: list[AddrStr]
 ) -> Optional[AddrStr]:
@@ -57,10 +61,11 @@ def get_schematic_dict(addr: AddrStr) -> dict:
     modules_at_and_below_view: list[AddrStr] = list(filter(match_modules, all_descendants(addr)))
 
     component_nets_dict: dict[str, list[AddrStr]] = {}
-    connectable_to_nets_dict: dict[AddrStr, str] = {}
+    connectable_to_nets_map: dict[AddrStr, str] = {}
 
     # We start exploring the modules
     for module in modules_at_and_below_view:
+        #TODO: provide error message if we can't handle the component
         if match_components(module):
             component = module
             # There might be nested interfaces that we need to extract
@@ -93,7 +98,7 @@ def get_schematic_dict(addr: AddrStr) -> dict:
                 # so build a map of each of those so we can map them to each other
                 component_nets_dict[net_hash] = component_net
                 for connectable in component_net:
-                    connectable_to_nets_dict[connectable] = net_hash
+                    connectable_to_nets_map[connectable] = net_hash
 
             components_dict[component] = {
                 "instance_of": get_name(get_supers_list(component)[0].obj_def.address),
@@ -103,22 +108,34 @@ def get_schematic_dict(addr: AddrStr) -> dict:
                 "name": get_name(component),
                 "ports": component_ports_dict,
                 "contacting_power": False}
+        else:
+            log.info("Currently not handling modules in schematic view. Skipping %s", module)
 
     signals_dict: dict[AddrStr, dict] = {}
 
     #TODO: this only handles interfaces in the highest module, not in nested modules
     interfaces_at_view = list(filter(match_interfaces, get_children(addr)))
     for interface in interfaces_at_view:
-        if get_std_lib(interface) == "Power":
-            signals_in_interface = list(filter(match_signals, get_children(interface)))
-            for signal in signals_in_interface:
-                signals_dict[signal] = {
-                    "instance_of": "Power",
-                    "address": get_instance_section(signal),
-                    "name": get_name(signal)}
+        #TODO: handle signals or interfaces that are not power
+        signals_in_interface = list(filter(match_signals, get_children(interface)))
+        for signal in signals_in_interface:
+            signals_dict[signal] = {
+                "instance_of": get_name(get_supers_list(interface)[0].obj_def.address),
+                "address": get_instance_section(signal),
+                "name": get_name(signal)}
 
-                # Make sure signals are not replaced below
-                connectable_to_nets_dict[signal] = signal
+            # Make sure signals are not replaced with clusters in the step below
+            connectable_to_nets_map[signal] = signal
+
+    signals_at_view = list(filter(match_signals, get_children(addr)))
+    for signal in signals_at_view:
+        signals_dict[signal] = {
+            "instance_of": "signal",
+            "address": get_instance_section(signal),
+            "name": get_name(signal)}
+
+        # Make sure signals are not replaced with clusters in the step below
+        connectable_to_nets_map[signal] = signal
 
 
     #TODO: if the connection is coming from a higher level cluster, we'll have to resolve that later
@@ -140,10 +157,10 @@ def get_schematic_dict(addr: AddrStr) -> dict:
         links_list.append({
             "source": {
                 "component": parent_source_component,
-                "port": connectable_to_nets_dict[link.source.addr],},
+                "port": connectable_to_nets_map[link.source.addr],},
             "target": {
                 "component": parent_target_component,
-                "port": connectable_to_nets_dict[link.target.addr]}
+                "port": connectable_to_nets_map[link.target.addr]}
         })
 
     return_json_str = {
@@ -157,13 +174,19 @@ def get_schematic_dict(addr: AddrStr) -> dict:
 
 #TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways
 def find_nets(pins_and_signals: list[AddrStr], links: list[Link]) -> list[list[AddrStr]]:
+    """
+    pins_and_signals: list of all the pins and signals that are expected to end up in the net
+    links: links that connect the pins_and_signals_together
+    """
     # Convert links to an adjacency list
     graph = {}
+    for pin_and_signal in pins_and_signals:
+        graph[pin_and_signal] = []
 
     # Short the pins and signals to each other on the first run to make sure they are recorded as nets
-    source = pins_and_signals
-    target = pins_and_signals
     for link in links:
+        source = []
+        target = []
         if match_interfaces(link.source.addr) and match_interfaces(link.target.addr):
             for int_pin in get_children(link.source.addr):
                 if match_pins_and_signals(int_pin):
@@ -190,8 +213,6 @@ def find_nets(pins_and_signals: list[AddrStr], links: list[Link]) -> list[list[A
             graph[source].append(target)
             graph[target].append(source)
 
-        source = []
-        target = []
 
     def dfs(node, component):
         visited.add(node)
