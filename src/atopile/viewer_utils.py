@@ -219,7 +219,7 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
     return harness_return_dict
 
 
-def get_vis_dict(root: AddrStr) -> str:
+def get_vis_dict(root: AddrStr) -> dict:
     return_json = {}
     # for addr in chain(root, all_descendants(root)):
     for addr in all_descendants(root):
@@ -240,7 +240,7 @@ def get_vis_dict(root: AddrStr) -> str:
                 "harnesses": harness_dict,
             }
 
-    return json.dumps(return_json)
+    return return_json
 
 def get_current_depth(addr: AddrStr) -> int:
     instance_section = get_instance_section(addr)
