@@ -50,9 +50,10 @@ async def monitor_changes(src_dir: Path):
     """Background task to monitor the project for changes."""
     log.info(f"Monitoring {src_dir} for changes")
 
-    async for change, file in awatch(src_dir, recursive=True):
-        log.log(logging.NOTSET, "Change detected in %s: %s", file, change.name)
-        atopile.front_end.reset_caches(file)
+    async for changes in awatch(src_dir, recursive=True):
+        for change, file in changes:
+            log.log(logging.NOTSET, "Change detected in %s: %s", file, change.name)
+            atopile.front_end.reset_caches(file)
 
 
 @app.before_serving
