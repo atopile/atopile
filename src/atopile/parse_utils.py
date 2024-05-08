@@ -7,7 +7,6 @@ from typing import Any, Optional
 from antlr4 import (
     InputStream,
     Lexer,
-    Parser,
     ParserRuleContext,
     ParseTreeVisitor,
     Token,

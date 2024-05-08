@@ -15,6 +15,7 @@ import atopile.front_end
 import atopile.layout
 import atopile.manufacturing_data
 import atopile.netlist
+import atopile.variable_report
 from atopile.cli.common import project_options
 from atopile.components import configure_cache, download_footprint
 from atopile.config import BuildContext
@@ -225,3 +226,9 @@ def generate_view_dict(build_ctx: BuildContext) -> None:
     """Generate a dictionary for the viewer."""
     with open(build_ctx.output_base.with_suffix(".view.json"), "w", encoding="utf-8") as f:
         f.write(get_vis_dict(build_ctx.entry))
+
+
+@muster.register("variable-report")
+def generate_variable_report(build_ctx: BuildContext) -> None:
+    """Generate a report of all the variable values in the design."""
+    atopile.variable_report.generate(build_ctx)

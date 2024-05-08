@@ -10,6 +10,8 @@ import pint
 from attrs import define, frozen
 from pint.facets.plain import PlainUnit
 
+from atopile import address, errors
+
 _UNITLESS = pint.Unit("")
 
 
@@ -529,7 +531,12 @@ def simplify_expression_pool(
 
     def _visit(key: str, stack: list) -> NumericishTypes:
         if key in stack:
-            raise ValueError("Circular dependency detected")
+            loop = [key] + stack[:stack.index(key) + 1]
+            loop = [address.get_instance_section(addr) for addr in loop]
+            raise errors.AtoError(
+                f"{' references '.join(loop)}",
+                title="Circular dependency detected"
+            )
 
         if key in touched:
             return context[key]  # no wakkas
