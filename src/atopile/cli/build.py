@@ -16,13 +16,11 @@ import atopile.layout
 import atopile.manufacturing_data
 import atopile.netlist
 from atopile.cli.common import project_options
-from atopile.components import configure_cache, download_footprint
+from atopile.components import download_footprint
 from atopile.config import BuildContext
 from atopile.errors import handle_ato_errors, iter_through_errors
 from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
-from atopile.viewer_utils import get_vis_dict
-from atopile.schematic_utils import get_schematic_dict
 
 log = logging.getLogger(__name__)
 
@@ -59,12 +57,6 @@ def build(build_ctxs: list[BuildContext]):
 
 def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
-
-    # Configure the cache for component data
-    # TODO: flip this around so that the cache pulls what it needs from the
-    # project context
-    configure_cache(atopile.config.get_project_context().project_path)
-
     # Solve the unknown variables
     atopile.assertions.simplify_expressions(build_ctx.entry)
     atopile.assertions.solve_assertions(build_ctx)
@@ -219,16 +211,3 @@ def generate_module_map(build_args: BuildContext) -> None:
 def generate_assertion_report(build_ctx: BuildContext) -> None:
     """Generate a report based on assertions made in the source code."""
     atopile.assertions.generate_assertion_report(build_ctx)
-
-
-@muster.register("view-dict")
-def generate_view_dict(build_ctx: BuildContext) -> None:
-    """Generate a dictionary for the viewer."""
-    with open(build_ctx.output_base.with_suffix(".view.json"), "w", encoding="utf-8") as f:
-        f.write(get_vis_dict(build_ctx.entry))
-
-@muster.register("schematic-dict")
-def generate_view_dict(build_ctx: BuildContext) -> None:
-    """Generate a dictionary for the viewer."""
-    with open(build_ctx.output_base.with_suffix(".schematic.json"), "w", encoding="utf-8") as f:
-        f.write(get_schematic_dict(build_ctx.entry))
