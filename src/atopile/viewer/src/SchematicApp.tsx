@@ -1,17 +1,18 @@
 // @ts-nocheck
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReactFlow, {
-  addEdge,
-  Background,
-  useNodesState,
-  useEdgesState,
-  MarkerType,
-  useReactFlow,
-  ReactFlowProvider,
-  Panel,
-  Position,
-  isEdge,
-  Edge
+    addEdge,
+    Background,
+    useNodesState,
+    useEdgesState,
+    MarkerType,
+    useReactFlow,
+    ReactFlowProvider,
+    Panel,
+    Position,
+    isEdge,
+    Edge,
+    useStore
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -47,53 +48,6 @@ import { Resistor,
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
 
 
-const elk = new ELK();
-
-// Elk has a *huge* amount of options to configure. To see everything you can
-// tweak check out:
-//
-// - https://www.eclipse.org/elk/reference/algorithms.html
-// - https://www.eclipse.org/elk/reference/options.html
-const elkOptions = {
-    'elk.algorithm': 'layered',
-    'elk.layered.spacing.nodeNodeBetweenLayers': '100',
-    'elk.spacing.nodeNode': '80',
-};
-
-const getLayoutedElements = (nodes, edges, options = {}) => {
-    const isHorizontal = options?.['elk.direction'] === 'RIGHT';
-    const graph = {
-        id: 'root',
-        layoutOptions: options,
-        children: nodes.map((node) => ({
-            ...node,
-            // Adjust the target and source handle positions based on the layout
-            // direction.
-            targetPosition: isHorizontal ? 'left' : 'top',
-            sourcePosition: isHorizontal ? 'right' : 'bottom',
-
-            // Hardcode a width and height for elk to use when layouting.
-            width: 200,
-            height: 50,
-        })),
-        edges: edges,
-};
-
-  return elk
-    .layout(graph)
-    .then((layoutedGraph) => ({
-        nodes: layoutedGraph.children.map((node) => ({
-            ...node,
-            // React Flow expects a position property on the node instead of `x`
-            // and `y` fields.
-            position: { x: node.x, y: node.y },
-        })),
-
-        edges: layoutedGraph.edges,
-    }))
-    .catch(console.error);
-};
-
 const nodeTypes = {
     Resistor: Resistor,
     Capacitor: Capacitor,
@@ -125,36 +79,18 @@ async function loadJsonAsDict() {
 
 const block_id = "root";
 const parent_block_addr = "none";
-const selected_link_data = [];
-const selected_link_source = "none";
-const selected_link_target = "none";
-const requestRelayout = false;
-let selected_links_data = {};
+let request_ratsnest_update = false;
+let nets = [];
+let nets_distance = [];
+let port_to_component_map = {};
 
 
 const AtopileViewer = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-    const [requestRelayout, setRequestRelayout] = useState(false);
     const { fitView } = useReactFlow();
     const [block_id, setBlockId] = useState("root");
     const [parent_block_addr, setParentBlockAddr] = useState("none");
-    const [selected_link_id, setSelectedLinkId] = useState("none");
-    const [selected_link_data, setSelectedLinkData] = useState([]);
-    const [selected_link_source, setSelectedLinkSource] = useState("none");
-    const [selected_link_target, setSelectedLinkTarget] = useState("none");
-
-    const onLayout = useCallback(
-        ({ direction }) => {
-            const opts = { 'elk.direction': direction, ...elkOptions };
-
-            getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-            setNodes(layoutedNodes);
-            setEdges(layoutedEdges);
-
-            window.requestAnimationFrame(() => fitView());
-            });
-        }, [edges] );
 
     useEffect(() => {
         const updateNodesFromJson = async () => {
@@ -194,6 +130,9 @@ const AtopileViewer = () => {
                     } else {
                         // populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
                     }
+                    for (const port in component_data['ports']) {
+                        port_to_component_map[component_data['ports'][port]['net_id']] = component_name;
+                    }
                 }
                 for (const [signal_name, signal_data] of Object.entries(fetchedNodes['signals'])) {
                     const position = {
@@ -205,33 +144,15 @@ const AtopileViewer = () => {
                     } else if (signal_data['std_lib_id'] == 'Power.gnd') {
                         populatedNodes.push({ id: signal_name, type: 'GroundNode', data: signal_data , position: position });
                     } else {
-                        populatedNodes.push({ id: signal_name, type: 'Signal', data: signal_data , position: position });
-                        console.log(signal_name);
+                        //populatedNodes.push({ id: signal_name, type: 'Signal', data: signal_data , position: position });
                     }
+                    port_to_component_map[signal_name] = signal_name;
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
                 setNodes(populatedNodes);
-                const populatedEdges = [];
-                selected_links_data = {};
-                for (const edge of fetchedNodes['links']) {
-                    // create a react edge element for each harness
-                    populatedEdges.push({
-                        id: edge['source']['component'] + edge['target']['component'],
-                        source: edge['source']['component'],
-                        sourceHandle: edge['source']['port'],
-                        target: edge['target']['component'],
-                        targetHandle: edge['target']['port'],
-                        type: 'step',
-                        style: {
-                            stroke: 'black',
-                            strokeWidth: 2,
-                        },
-                    });
-                }
-                setEdges(populatedEdges);
 
-                // Request a re-layout
-                setRequestRelayout(true);
+                nets = fetchedNodes['nets'];
+
             } catch (error) {
                 console.error("Failed to fetch nodes:", error);
             }
@@ -240,31 +161,86 @@ const AtopileViewer = () => {
         updateNodesFromJson();
     }, [block_id]);
 
-    // Calculate the initial layout on mount.
-    useLayoutEffect(() => {
-        if (requestRelayout) {
-            onLayout({ direction: 'RIGHT' });
-            console.log('Relayout requested');
-            setRequestRelayout(false);
-        }
-    }, [edges]);
-
     const onSelectionChange = (elements) => {
-        // Filter out the selected edges from the selection
-        const selectedEdge = elements['edges'][0];
-        // check if there is a selected edge
-        if (selectedEdge && !requestRelayout) {
-            setSelectedLinkId(selectedEdge.id);
-            setSelectedLinkData(selected_links_data[selectedEdge.id]['links']);
-            setSelectedLinkSource(selected_links_data[selectedEdge.id]['source']);
-            setSelectedLinkTarget(selected_links_data[selectedEdge.id]['target']);
-        } else if (selected_link_id != "none") {
-            setSelectedLinkId("none");
-            setSelectedLinkData([]);
-            setSelectedLinkSource("none");
-            setSelectedLinkTarget("none");
+        if (request_ratsnest_update) {
+            request_ratsnest_update = false;
+            addLinks();
+            return;
         }
+        request_ratsnest_update = true;
     };
+
+    function addLinks() {
+        // Get all the component positions
+        let component_positions = {};
+        for (const node of nodes) {
+            component_positions[node.id] = node.position;
+        }
+        // for each component in the net, calculate the distance to the other components in the net
+        let nets_distances = [];
+        for (const net of nets) {
+            let net_distances = {};
+            for (const conn_id of net) {
+                let conn_to_conn_distance = {};
+                for (const other_conn_id of net) {
+                    if (conn_id != other_conn_id) {
+                        const conn_pos = component_positions[port_to_component_map[conn_id]];
+                        const other_conn_pos = component_positions[port_to_component_map[other_conn_id]];
+                        conn_to_conn_distance[other_conn_id] = Math.sqrt(Math.pow(conn_pos.x - other_conn_pos.x, 2) + Math.pow(conn_pos.y - other_conn_pos.y, 2));
+                    }
+                }
+                net_distances[conn_id] = conn_to_conn_distance;
+            }
+            nets_distances.push(net_distances);
+        }
+
+        // nearest neighbor algorithm https://en.wikipedia.org/wiki/Nearest_neighbour_algorithm
+        let conn_visited = {};
+        for (const net of nets) {
+            for (const conn_id of net) {
+                conn_visited[conn_id] = false;
+            }
+        }
+
+        let links_to_add = {};
+        for (const net of nets_distances) {
+            for (const conn_id in net) {
+                if (conn_visited[conn_id]) {
+                    continue;
+                }
+                let closest_conn_id = "none";
+                let closest_conn_distance = Infinity;
+                for (const other_conn_id in net) {
+                    if (conn_id == other_conn_id) {
+                        continue;
+                    }
+                    if (net[conn_id][other_conn_id] < closest_conn_distance && conn_visited[other_conn_id] === false) {
+                        closest_conn_id = other_conn_id;
+                        closest_conn_distance = net[conn_id][other_conn_id];
+                    }
+                }
+                conn_visited[conn_id] = true;
+                links_to_add[conn_id] = closest_conn_id;
+            }
+        }
+
+        const populatedEdges = [];
+        for (const edge in links_to_add) {
+            populatedEdges.push({
+                id: edge + links_to_add[edge],
+                source: port_to_component_map[edge],
+                sourceHandle: edge,
+                target: port_to_component_map[links_to_add[edge]],
+                targetHandle: links_to_add[edge],
+                type: 'step',
+                style: {
+                    stroke: 'black',
+                    strokeWidth: 2,
+                },
+            });
+        }
+        setEdges(populatedEdges);
+    }
 
     return (
     <div className="floatingedges">
@@ -289,9 +265,6 @@ const AtopileViewer = () => {
                 <button onClick={() => handleExpandClick(parent_block_addr)}>return</button>
                 <button onClick={() => onLayout({ direction: 'DOWN' })}>re-layout</button>
             </div>
-        </Panel>
-        <Panel position="top-right">
-            <SimpleTable source={selected_link_source} target={selected_link_target} data={selected_link_data} />
         </Panel>
         <Background />
         </ReactFlow>
