@@ -1,0 +1,14 @@
+component Comp:
+    footprint = ""
+    mpn = ""
+    pin 1
+    pin 2
+
+module Test:
+    c1 = new Comp
+    c2 = new Comp
+    c3 = new Comp
+
+    c1.2 ~ c2.1
+    c1.1 ~ c2.2
+    c1.2 ~ c3.1

@@ -22,9 +22,12 @@ from typing import Optional
 
 import hashlib
 
-from atopile.components import get_specd_value
+from atopile.components import get_specd_value, MissingData
 
 log = logging.getLogger(__name__)
+
+
+_get_specd_value = errors.downgrade(get_specd_value, MissingData)
 
 #FIXME: this function is a reimplementation of the one in instance methods, since I don't have access to the std lib
 # Diff is the additon of get_name(...)
@@ -119,7 +122,7 @@ def get_schematic_dict(addr: AddrStr) -> dict:
             components_dict[component] = {
                 "instance_of": get_name(get_supers_list(component)[0].obj_def.address),
                 "std_lib_id": get_std_lib(component),
-                "value": get_specd_value(component),
+                "value": _get_specd_value(component),
                 "address": get_instance_section(component),
                 "name": get_name(component),
                 "ports": component_ports_dict}

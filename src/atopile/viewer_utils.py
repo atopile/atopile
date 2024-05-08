@@ -9,7 +9,6 @@ from atopile.instance_methods import (
     match_interfaces,
     match_pins_and_signals
 )
-import json
 import networkx as nx
 
 from collections import defaultdict
@@ -38,14 +37,22 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
     """
     block_dict = {}
     for child in get_children(addr):
-        if match_modules(child) or match_components(child) or match_interfaces(child) or match_pins_and_signals(child):
-            type = "module"
+        if (
+            match_modules(child) or
+            match_components(child) or
+            match_interfaces(child) or
+            match_pins_and_signals(child)
+        ):
+
             if match_components(child):
                 type = "component"
             elif match_interfaces(child):
                 type = "interface"
             elif match_pins_and_signals(child):
                 type = "signal"
+            else:
+                type = "module"
+
             block_dict[get_name(child)] = {
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
                 "type": type,
@@ -219,7 +226,7 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
     return harness_return_dict
 
 
-def get_vis_dict(root: AddrStr) -> str:
+def get_vis_dict(root: AddrStr) -> dict:
     return_json = {}
     # for addr in chain(root, all_descendants(root)):
     for addr in all_descendants(root):
@@ -240,7 +247,7 @@ def get_vis_dict(root: AddrStr) -> str:
                 "harnesses": harness_dict,
             }
 
-    return json.dumps(return_json)
+    return return_json
 
 def get_current_depth(addr: AddrStr) -> int:
     instance_section = get_instance_section(addr)
