@@ -88,7 +88,7 @@ async def save_pose(
     return data, 200
 
 
-@app.route("/schematic-data")
+@app.route("/schematic")
 async def send_schematic_data():
     build_ctx: BuildContext = app.config["build_ctx"]
     return jsonify(atopile.schematic_utils.get_schematic_dict(build_ctx.entry))

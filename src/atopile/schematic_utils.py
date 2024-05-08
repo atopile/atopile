@@ -176,13 +176,13 @@ def get_schematic_dict(addr: AddrStr) -> dict:
             output_net.append(conn)
         net_links.append(output_net)
 
-    return_json_str = {
+    return_json = {
         "components": components_dict,
         "signals": signals_dict,
         "nets": net_links
     }
 
-    return json.dumps(return_json_str)
+    return return_json
 
 
 #TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways and move this function 

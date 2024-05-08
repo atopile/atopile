@@ -16,16 +16,9 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import { createNodesAndEdges } from './utils.tsx';
-import { CustomNodeBlock, CircularNodeComponent } from './CustomNode.tsx';
-import CustomEdge from './CustomEdge.tsx';
-
 import SimpleTable from './LinkTable.tsx';
 
 import './index.css';
-
-import ELK from 'elkjs/lib/elk.bundled.js';
-
 
 import "react-data-grid/lib/styles.css";
 import { Resistor,
@@ -42,10 +35,7 @@ import { Resistor,
     PFET,
     Diode,
     ZenerDiode,
-    SchottkyDiode,
-    loadSchematicJsonAsDict } from './SchematicElements.tsx';
-
-const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
+    SchottkyDiode } from './SchematicElements.tsx';
 
 
 const nodeTypes = {
@@ -65,12 +55,10 @@ const nodeTypes = {
     SchottkyDiode: SchottkyDiode,
 };
 
-const edgeTypes = {
-    custom: CustomEdge,
-};
+const edgeTypes = {};
 
-async function loadJsonAsDict() {
-    const response = await fetch('http://127.0.0.1:8080/block-diagram');
+async function loadSchematicJsonAsDict() {
+    const response = await fetch('http://127.0.0.1:8080/schematic');
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -85,7 +73,7 @@ let nets_distance = [];
 let port_to_component_map = {};
 
 
-const AtopileViewer = () => {
+const AtopileSchematicApp = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
@@ -171,6 +159,7 @@ const AtopileViewer = () => {
     };
 
     function addLinks() {
+        // Add the shortest links to complete all the nets
         // Get all the component positions
         let component_positions = {};
         for (const node of nodes) {
@@ -251,34 +240,22 @@ const AtopileViewer = () => {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onSelectionChange={onSelectionChange}
-            //onConnect={onConnect}
             fitView
             edgeTypes={edgeTypes}
             nodeTypes={nodeTypes}
             style={{ width: '100%', height: '50%' }}
         >
-        <Panel position="top-left">
+        {/* <Panel position="top-left">
             <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
                 <div style={{textAlign: 'center'}}> Model inspection pane</div>
                 <div><i>Inspecting:</i> <b>{block_id}</b></div>
                 <div><i>Parent:</i> {parent_block_addr}</div>
-                <button onClick={() => handleExpandClick(parent_block_addr)}>return</button>
-                <button onClick={() => onLayout({ direction: 'DOWN' })}>re-layout</button>
             </div>
-        </Panel>
+        </Panel> */}
         <Background />
         </ReactFlow>
     </div>
     );
 };
 
-
-function App() {
-    return (
-        <ReactFlowProvider>
-            <AtopileViewer />
-        </ReactFlowProvider>
-    );
-}
-
-export default App;
+export default AtopileSchematicApp;

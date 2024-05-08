@@ -2,14 +2,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { Handle, Position, NodeProps, NodeToolbar } from 'reactflow';
 
-export async function loadSchematicJsonAsDict() {
-    const response = await fetch('http://127.0.0.1:8080/schematic');
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json();
-}
-
 const TwoPinHandle = ({port_1, port_2, orientation}) => {
     // Determine the orientation based on the provided prop or a default value
     const currentOrientation = orientation || "horizontal";
