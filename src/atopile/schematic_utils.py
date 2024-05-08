@@ -43,8 +43,7 @@ def find_matching_super(
 
 def get_std_lib(addr: AddrStr) -> str:
     #TODO: The time has come to bake the standard lib as a compiler dependency...
-    #std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "Diode", "TransistorNPN", "TransistorPNP"]
-    std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "LED", "Power", "NPN", "PNP", "Diode", "SchottkyDiode", "ZenerDiode"]
+    std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "LED", "Power", "NPN", "PNP", "Diode", "SchottkyDiode", "ZenerDiode", "NFET"]
 
     # Handle signals
     if match_signals(addr):
@@ -71,20 +70,25 @@ def get_schematic_dict(addr: AddrStr) -> dict:
     components_dict: dict[AddrStr, dict] = {}
 
     # Those are all the modules at or below the module currently being inspected
-    modules_at_and_below_view: list[AddrStr] = list(filter(match_modules, all_descendants(addr)))
+    blocks_at_and_below_view: list[AddrStr] = list(filter(match_modules, all_descendants(addr)))
+    blocks_at_and_below_view.extend(list(filter(match_interfaces, all_descendants(addr))))
 
-    component_nets_dict: dict[str, list[AddrStr]] = {}
+    links_at_and_below_view: list[Link] = []
+    for module in blocks_at_and_below_view:
+        links_at_and_below_view.extend(list(get_links(module)))
+
+    pins_and_signals_at_and_below_view = list(filter(match_pins_and_signals, all_descendants(addr)))
+
+    # This is a map of connectables beneath components to their net cluster id
     connectable_to_nets_map: dict[AddrStr, str] = {}
-
-    links_above_components: list[Link] = []
 
     signals_dict: dict[AddrStr, dict] = {}
 
     # We start exploring the modules
-    for module in modules_at_and_below_view:
+    for block in blocks_at_and_below_view:
         #TODO: provide error message if we can't handle the component
-        if match_components(module):
-            component = module
+        if match_components(block):
+            component = block
             # There might be nested interfaces that we need to extract
             blocks_at_or_below_component = list(filter(match_modules, all_descendants(component)))
             # Extract all links at or below the current component and form nets
@@ -106,14 +110,9 @@ def get_schematic_dict(addr: AddrStr) -> dict:
 
                 component_ports_dict[component_net_index] = {
                     "net_id": net_hash,
-                    #TODO: might want to update the net naming convention in the future
                     "name": '/'.join(map(get_name, component_net))
                 }
 
-                # We will later have to replace the source and target connectable
-                # with the source and target connectable net cluster
-                # so build a map of each of those so we can map them to each other
-                component_nets_dict[net_hash] = component_net
                 for connectable in component_net:
                     connectable_to_nets_map[connectable] = net_hash
 
@@ -123,14 +122,14 @@ def get_schematic_dict(addr: AddrStr) -> dict:
                 "value": get_specd_value(component),
                 "address": get_instance_section(component),
                 "name": get_name(component),
-                "ports": component_ports_dict,
-                "contacting_power": False}
-        else:
-            log.info("Currently not handling modules in schematic view. Skipping %s", module)
-            links_above_components.extend(list(get_links(module)))
+                "ports": component_ports_dict}
 
-                    #TODO: this only handles interfaces in the highest module, not in nested modules
-            interfaces_at_module = list(filter(match_interfaces, get_children(module)))
+        elif match_interfaces(block):
+            pass
+
+        else:
+            #TODO: this only handles interfaces in the highest module, not in nested modules
+            interfaces_at_module = list(filter(match_interfaces, get_children(block)))
             for interface in interfaces_at_module:
                 #TODO: handle signals or interfaces that are not power
                 signals_in_interface = list(filter(match_signals, get_children(interface)))
@@ -141,7 +140,10 @@ def get_schematic_dict(addr: AddrStr) -> dict:
                         "address": get_instance_section(signal),
                         "name": get_name(get_parent(signal)) + "." + get_name(signal)}
 
-            signals_at_view = list(filter(match_signals, get_children(module)))
+                    if get_std_lib(signal) != "none":
+                        connectable_to_nets_map[signal] = signal
+
+            signals_at_view = list(filter(match_signals, get_children(block)))
             for signal in signals_at_view:
                 signals_dict[signal] = {
                     "std_lib_id": get_std_lib(signal),
@@ -150,65 +152,38 @@ def get_schematic_dict(addr: AddrStr) -> dict:
                     "name": get_name(signal)}
 
 
-    #TODO: if the connection is coming from a higher level cluster, we'll have to resolve that later
-    # Link dict that we will return
-    links_list: list[dict] = []
-    for link in links_above_components:
-        source = []
-        target = []
-        # Create individual links for interfaces
-        if match_interfaces(link.source.addr) and match_interfaces(link.target.addr):
-            for int_pin in get_children(link.source.addr):
-                if match_pins_and_signals(int_pin):
-                    source.append(int_pin)
-                    target.append(add_instance(link.target.addr, get_name(int_pin)))
-                else:
-                    raise errors.AtoNotImplementedError("Cannot nest interfaces yet.")
-        elif match_interfaces(link.source.addr) or match_interfaces(link.target.addr):
-            # If only one of the nodes is an interface, then we need to throw an error
-            raise errors.AtoTypeError.from_ctx(
-                link.src_ctx,
-                f"Cannot connect an interface to a non-interface: {link.source.addr} ~ {link.target.addr}"
-            )
-        # just a single link
-        else:
-            source.append(link.source.addr)
-            target.append(link.target.addr)
 
-        for source_conn, target_conn in zip(source, target):
-            if source_conn in connectable_to_nets_map:
-                source_component = get_parent(link.source.addr)
-                source_port = connectable_to_nets_map[source_conn]
-            else:
-                source_component = source_conn
-                source_port = source_conn
+    # This step is meant to remove the irrelevant signals and interfaces so that we
+    # don't show them in the viewer
+    nets_above_components = find_nets(pins_and_signals_at_and_below_view, links_at_and_below_view)
+    converted_nets_above_components = []
+    for net in nets_above_components:
+        # Make it a set so we don't add multiple times the same hash
+        converted_net = set()
+        for connectable in net:
+            if connectable in connectable_to_nets_map:
+                converted_net.add(connectable_to_nets_map[connectable])
+        converted_nets_above_components.append(list(converted_net))
 
-            if target_conn in connectable_to_nets_map:
-                target_component = get_parent(link.target.addr)
-                target_port = connectable_to_nets_map[target_conn]
-            else:
-                target_component = target_conn
-                target_port = target_conn
-
-            links_list.append({
-                "source": {
-                    "component": source_component,
-                    "port": source_port},
-                "target": {
-                    "component": target_component,
-                    "port": target_port}
-            })
+    net_links = []
+    # for each net in the component_net_above_components, create a link between each of the nodes in the net
+    for net in converted_nets_above_components:
+        output_net = []
+        for conn in net:
+            output_net.append(conn)
+        net_links.append(output_net)
 
     return_json_str = {
         "components": components_dict,
         "signals": signals_dict,
-        "links": links_list
+        "nets": net_links
     }
 
     return json.dumps(return_json_str)
 
 
-#TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways
+#TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways and move this function 
+# to a common location
 def find_nets(pins_and_signals: list[AddrStr], links: list[Link]) -> list[list[AddrStr]]:
     """
     pins_and_signals: list of all the pins and signals that are expected to end up in the net
