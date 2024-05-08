@@ -91,35 +91,26 @@ async function loadJsonAsDict() {
     return response.json();
 }
 
-const block_id = "root";
-const parent_block_addr = "none";
 const selected_link_data = [];
 const selected_link_source = "none";
 const selected_link_target = "none";
 const requestRelayout = false;
 let selected_links_data = {};
+let direction = "DOWN";
 
 
-const AtopileBlockDiagramApp = () => {
+const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [requestRelayout, setRequestRelayout] = useState(false);
     const { fitView } = useReactFlow();
-    const [block_id, setBlockId] = useState("root");
-    const [parent_block_addr, setParentBlockAddr] = useState("none");
     const [selected_link_id, setSelectedLinkId] = useState("none");
     const [selected_link_data, setSelectedLinkData] = useState([]);
     const [selected_link_source, setSelectedLinkSource] = useState("none");
     const [selected_link_target, setSelectedLinkTarget] = useState("none");
 
+    console.log('reLayout: ', reLayout);
 
-    const handleExpandClick = (newBlockId) => {
-        setSelectedLinkId("none");
-        setSelectedLinkData([]);
-        setSelectedLinkSource("none");
-        setSelectedLinkTarget("none");
-        setBlockId(newBlockId);
-    };
 
     const handleLinkSelectClick = (newSelectedLinkId) => {
         setSelectedLinkId(newSelectedLinkId);
@@ -128,16 +119,27 @@ const AtopileBlockDiagramApp = () => {
         setSelectedLinkTarget(selected_links_data[newSelectedLinkId]['target']);
     };
 
+    useEffect(() => {
+        onLayout({ direction: "DOWN" });
+    }, [reLayout])
+
     const onLayout = useCallback(
     ({ direction }) => {
         const opts = { 'elk.direction': direction, ...elkOptions };
 
-        getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
+        if (reLayout) {
+            console.log('re-layout started');
+            getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
+                setNodes(layoutedNodes);
+                setEdges(layoutedEdges);
 
-        window.requestAnimationFrame(() => fitView());
-        });
+                window.requestAnimationFrame(() => fitView());
+            });
+            reLayoutCleared();
+        }
+        else {
+            console.log('re-layout skipped');
+        }
     }, [edges] );
 
 
@@ -145,8 +147,8 @@ const AtopileBlockDiagramApp = () => {
         const updateNodesFromJson = async () => {
             try {
                 const fetchedNodes = await loadJsonAsDict();
-                const displayedNode = fetchedNodes[block_id];
-                setParentBlockAddr(displayedNode['parent']);
+                const displayedNode = fetchedNodes[viewBlockId];
+                handleBlockLoad(displayedNode['parent']);
                 const populatedNodes = [];
                 for (const node in displayedNode['blocks']) {
                     const position = {
@@ -160,9 +162,10 @@ const AtopileBlockDiagramApp = () => {
                         populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
                     }
                     else if (displayedNode['blocks'][node]['type'] == 'module') {
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                        //TODO: change the name of the explore click
+                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExploreClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
                     } else {
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExploreClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
                     }
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
@@ -204,7 +207,7 @@ const AtopileBlockDiagramApp = () => {
         };
 
         updateNodesFromJson();
-    }, [block_id]);
+    }, [viewBlockId]);
 
     // Calculate the initial layout on mount.
     useLayoutEffect(() => {
@@ -235,7 +238,7 @@ const AtopileBlockDiagramApp = () => {
     return (
     <div className="floatingedges">
         <ReactFlow
-            key={block_id}
+            key={viewBlockId}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
@@ -247,7 +250,7 @@ const AtopileBlockDiagramApp = () => {
             nodeTypes={nodeTypes}
             style={{ width: '100%', height: '50%' }}
         >
-        <Panel position="top-left">
+        {/* <Panel position="top-left">
             <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
                 <div style={{textAlign: 'center'}}> Model inspection pane</div>
                 <div><i>Inspecting:</i> <b>{block_id}</b></div>
@@ -255,7 +258,7 @@ const AtopileBlockDiagramApp = () => {
                 <button onClick={() => handleExpandClick(parent_block_addr)}>return</button>
                 <button onClick={() => onLayout({ direction: 'DOWN' })}>re-layout</button>
             </div>
-        </Panel>
+        </Panel> */}
         <Panel position="top-right">
             <SimpleTable source={selected_link_source} target={selected_link_target} data={selected_link_data} />
         </Panel>
