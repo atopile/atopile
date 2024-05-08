@@ -1,6 +1,6 @@
 import re
 import sys
-from typing import TextIO
+from typing import TextIO, Any
 
 from antlr4 import InputStream, Lexer
 from antlr4.Token import CommonToken
@@ -17,11 +17,13 @@ class AtopileLexerBase(Lexer):
         self.tokens = []
         self.indents = []
         self.opened = 0
+        self.comments: dict[tuple[Any, int], str] = {}
 
     def reset(self):
         self.tokens = []
         self.indents = []
         self.opened = 0
+        self.comments = {}
         super().reset()
 
     def emitToken(self, token):
@@ -99,3 +101,14 @@ class AtopileLexerBase(Lexer):
                 while len(self.indents) > 0 and self.indents[-1] > indent:
                     self.emitToken(self.createDedent())
                     self.indents.pop()
+
+    def skip(self):
+        """
+        Skip the token, but in case it's a comment,
+        first store it in the comments dictionary.
+        """
+        # FIXME: there's surely a better way to distinguish comments
+        if self.text[0] == "#":
+            comment = self.text[1:].strip()
+            self.comments[(self.inputStream.name, self._tokenStartLine)] = comment
+        super().skip()

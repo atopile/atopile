@@ -2,8 +2,16 @@
 Utils related to handling the parse tree
 """
 from pathlib import Path
+from typing import Any, Optional
 
-from antlr4 import InputStream, ParserRuleContext, ParseTreeVisitor, Token
+from antlr4 import (
+    InputStream,
+    Lexer,
+    Parser,
+    ParserRuleContext,
+    ParseTreeVisitor,
+    Token,
+)
 
 
 def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
@@ -60,3 +68,20 @@ def reconstruct(ctx: ParserRuleContext) -> str:
     reco = _Reconstructor()
     reco.visit(ctx)
     return reco.txt
+
+
+def get_comment_from_token(token: Token) -> Optional[str]:
+    """Return the comment from a token's start line."""
+    lexer: Optional[Lexer] = token.getTokenSource()
+    if not lexer or not hasattr(lexer, "comments"):
+        return None
+
+    comments: dict[tuple[Any, int], str] = lexer.comments
+    line: int = token.line
+
+    if input_stream := token.getInputStream():
+        source_name = input_stream.name
+    else:
+        return None
+
+    return comments.get((source_name, line))
