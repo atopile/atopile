@@ -1463,7 +1463,7 @@ def reset_caches(file: Path | str):
         for addr in list(filter(lambda addr: addr.startswith(file_str), cache)):
             del cache[addr]
 
-    _clear_cache(lofty._output_cache)
+    _clear_cache(scoop._output_cache)
     _clear_cache(dizzy._output_cache)
     lofty._output_cache.clear()
 
