@@ -16,7 +16,7 @@ import atopile.layout
 import atopile.manufacturing_data
 import atopile.netlist
 from atopile.cli.common import project_options
-from atopile.components import configure_cache, download_footprint
+from atopile.components import download_footprint
 from atopile.config import BuildContext
 from atopile.errors import handle_ato_errors, iter_through_errors
 from atopile.instance_methods import all_descendants, match_components

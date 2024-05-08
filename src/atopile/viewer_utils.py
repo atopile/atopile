@@ -9,7 +9,6 @@ from atopile.instance_methods import (
     match_interfaces,
     match_pins_and_signals
 )
-import json
 import networkx as nx
 
 from collections import defaultdict
@@ -38,14 +37,22 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
     """
     block_dict = {}
     for child in get_children(addr):
-        if match_modules(child) or match_components(child) or match_interfaces(child) or match_pins_and_signals(child):
-            type = "module"
+        if (
+            match_modules(child) or
+            match_components(child) or
+            match_interfaces(child) or
+            match_pins_and_signals(child)
+        ):
+
             if match_components(child):
                 type = "component"
             elif match_interfaces(child):
                 type = "interface"
             elif match_pins_and_signals(child):
                 type = "signal"
+            else:
+                type = "module"
+
             block_dict[get_name(child)] = {
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
                 "type": type,
