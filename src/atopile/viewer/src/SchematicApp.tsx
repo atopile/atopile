@@ -11,7 +11,8 @@ import ReactFlow, {
   Panel,
   Position,
   isEdge,
-  Edge
+  Edge,
+  useUpdateNodeInternals
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -127,6 +128,7 @@ const selected_link_data = [];
 const selected_link_source = "none";
 const selected_link_target = "none";
 const requestRelayout = false;
+let populatedEdges = [];
 let selected_links_data = {};
 
 
@@ -134,6 +136,7 @@ const AtopileViewer = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [requestRelayout, setRequestRelayout] = useState(false);
+    const [selectedNode, setSelectedNode] = useState(null); // State to track the selected node
     const { fitView } = useReactFlow();
     const [block_id, setBlockId] = useState("root");
     const [parent_block_addr, setParentBlockAddr] = useState("none");
@@ -142,17 +145,60 @@ const AtopileViewer = () => {
     const [selected_link_source, setSelectedLinkSource] = useState("none");
     const [selected_link_target, setSelectedLinkTarget] = useState("none");
 
+
     const onLayout = useCallback(
         ({ direction }) => {
             const opts = { 'elk.direction': direction, ...elkOptions };
 
             getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
             setNodes(layoutedNodes);
-            setEdges(layoutedEdges);
+            // setEdges(layoutedEdges);
 
             window.requestAnimationFrame(() => fitView());
             });
         }, [edges] );
+
+    useEffect(() => {
+        const handleKeyPress = (event) => {
+            if (selectedNode) {
+                if (event.key === 'r' || event.key === 'R') {
+                    console.log('R key pressed with node selected:', selectedNode.id);
+                    setNodes(nodes.map(node => {
+                        if (node.id === selectedNode.id) {
+                            return {
+                                ...node,
+                                data: {
+                                    ...node.data,
+                                    rotation: (node.data.rotation + 90) % 360
+                                }
+                            };
+                        }
+
+                        return node;
+                    }));
+                } else if (event.key === 'f' || event.key === 'F') {
+                    console.log('F key pressed with node selected:', selectedNode.id);
+                    setNodes(nodes.map(node => {
+                        if (node.id === selectedNode.id) {
+                            return {
+                                ...node,
+                                data: {
+                                    ...node.data,
+                                    mirror: !node.data.mirror
+                                }
+                            };
+                        }
+                        return node;
+                    }));
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyPress);
+        return () => {
+            window.removeEventListener('keydown', handleKeyPress);
+        };
+    }, [selectedNode, nodes]);
 
     useEffect(() => {
         const updateNodesFromJson = async () => {
@@ -171,7 +217,7 @@ const AtopileViewer = () => {
                     //     orientation = "vertical";
                     // }
                     if (component_data['std_lib_id'] == 'Resistor') {
-                        populatedNodes.push({ id: component_name, type: component_data["instance_of"], data: component_data, position: position });
+                        populatedNodes.push({ id: component_name, type: "Resistor", data: component_data, position: position });
                     // } else if (component_data['std_lib_id'] == 'Capacitor') {
                     //     populatedNodes.push({ id: component_name, type: 'Capacitor', data: {component_data: component_data, orientation: orientation} , position: position });
                     // } else if (component_data['std_lib_id'] == 'Power.gnd') {
@@ -200,7 +246,7 @@ const AtopileViewer = () => {
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
                 setNodes(populatedNodes);
-                const populatedEdges = [];
+                populatedEdges = [];
                 selected_links_data = {};
                 for (const edge of fetchedNodes['links']) {
                     // create a react edge element for each harness
@@ -236,9 +282,14 @@ const AtopileViewer = () => {
             console.log('Relayout requested');
             setRequestRelayout(false);
         }
-    }, [edges]);
+    }, [edges, selectedNode]);
 
     const onSelectionChange = (elements) => {
+        if (elements.nodes && elements.nodes.length > 0) {
+            setSelectedNode(elements.nodes[0]); // Set the selected node
+        } else {
+            setSelectedNode(null); // Clear selection if no node is selected
+        }
         // Filter out the selected edges from the selection
         const selectedEdge = elements['edges'][0];
         // check if there is a selected edge
@@ -254,6 +305,30 @@ const AtopileViewer = () => {
             setSelectedLinkTarget("none");
         }
     };
+
+    function handleExpandClick(parent_block_addr) {
+        setEdges([]);
+        //setEdges(populatedEdges);
+    }
+
+    function smth(parent_block_addr) {
+        //remove one element off the list
+        populatedEdges.pop();
+        populatedEdges.pop();
+        populatedEdges.push({
+            id: "an_id",
+            source: "/Users/narayanpowderly/Documents/atopile-workspace/testing1234/elec/src/testing1234.ato:Testing1234::resistor",
+            sourceHandle: "bbca68bb",
+            target: "/Users/narayanpowderly/Documents/atopile-workspace/testing1234/elec/src/testing1234.ato:Testing1234::led",
+            targetHandle: "00e9fb21",
+            type: 'step',
+            style: {
+                stroke: 'black',
+                strokeWidth: 2,
+            },
+        });
+        setEdges(populatedEdges);
+    }
 
     return (
     <div className="floatingedges">
@@ -276,6 +351,7 @@ const AtopileViewer = () => {
                 <div><i>Inspecting:</i> <b>{block_id}</b></div>
                 <div><i>Parent:</i> {parent_block_addr}</div>
                 <button onClick={() => handleExpandClick(parent_block_addr)}>return</button>
+                <button onClick={() => smth(parent_block_addr)}>fix</button>
                 <button onClick={() => onLayout({ direction: 'DOWN' })}>re-layout</button>
             </div>
         </Panel>
