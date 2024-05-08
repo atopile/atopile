@@ -55,6 +55,7 @@ dependencies = [
     "pandas>=2.1.4",
     "pint>=0.23",
     "pygls>=1.3.0",
+    "quart-schema[pydantic]>=0.19.1",
     "quart>=0.19.5",
     "quart-cors>=0.7.0",
     "rich>=13.7.0",
