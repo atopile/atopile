@@ -1,5 +1,6 @@
 import logging
 from contextlib import contextmanager
+from os import PathLike
 from pathlib import Path
 
 from antlr4 import CommonTokenStream, FileStream, InputStream
@@ -8,7 +9,7 @@ from antlr4.error.ErrorListener import ErrorListener
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 
-from .errors import AtoSyntaxError, AtoFileNotFoundError
+from .errors import AtoFileNotFoundError, AtoSyntaxError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -92,16 +93,19 @@ class FileParser:
         self.cache = {}
 
     def get_ast_from_file(
-        self, src_path: str | Path
+        self, src_origin: PathLike
     ) -> AtopileParser.File_inputContext:
         """Get the AST from a file."""
-        if src_path not in self.cache:
-            src_path = Path(src_path)
-            if not src_path.exists():
-                raise AtoFileNotFoundError(str(src_path))
-            self.cache[src_path] = parse_file(src_path)
 
-        return self.cache[src_path]
+        src_origin_str = str(src_origin)
+        src_origin_path = Path(src_origin)
+
+        if src_origin_str not in self.cache:
+            if not src_origin_path.exists():
+                raise AtoFileNotFoundError(src_origin_str)
+            self.cache[src_origin_str] = parse_file(src_origin_path)
+
+        return self.cache[src_origin_str]
 
 
 parser = FileParser()

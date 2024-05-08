@@ -63,7 +63,10 @@ async def startup():
     build_ctx: BuildContext = app.config["build_ctx"]
 
     # Monitor the project for changes to reset caches
-    app.add_background_task(monitor_changes, build_ctx.project_context.src_path)
+    app.add_background_task(
+        monitor_changes,
+        build_ctx.project_context.src_path
+    )
 
     # Pre-build the entry point
     atopile.instance_methods.get_instance(build_ctx.entry)
