@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { Handle, Position, NodeProps, NodeToolbar } from 'reactflow';
 
 export async function loadSchematicJsonAsDict() {
-    const response = await fetch('http://127.0.0.1:8080/schematic-data');
+    const response = await fetch('http://127.0.0.1:8080/schematic');
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }

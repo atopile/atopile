@@ -7,6 +7,8 @@ This file provides utilities for working with addresses.
 """
 from typing import Optional, Iterable
 from functools import wraps
+from os import PathLike
+from pathlib import Path
 
 
 class AddrStr(str):
@@ -63,15 +65,16 @@ def get_file(address: AddrStr) -> str:
     return address.split(":")[0]
 
 
-def get_relative_addr_str(address: AddrStr) -> AddrStr:
+def get_relative_addr_str(address: AddrStr, base_path: PathLike) -> AddrStr:
     """
     Extract the relative address starting with the .ato file
     /abs/path/to/file.ato:Entry.Path::instance.path -> file.ato:Entry.Path::instance.path
 
-    FIXME: relative is a little misleading, as it's not relative to anything in particular,
-    it's merely the address without the absolute path.
+    FIXME: this is the first and currently only place we're
+    using these relative addresses. We should codify them
     """
-    return address.split("/")[-1]
+    rel_file = Path(get_file(address)).relative_to(base_path)
+    return from_parts(str(rel_file), get_entry_section(address))
 
 
 def get_entry(address: AddrStr) -> AddrStr:

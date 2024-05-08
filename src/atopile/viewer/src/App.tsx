@@ -89,7 +89,7 @@ const edgeTypes = {
 };
 
 async function loadJsonAsDict() {
-    const response = await fetch('http://127.0.0.1:8080/data');
+    const response = await fetch('http://127.0.0.1:8080/block-diagram');
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
