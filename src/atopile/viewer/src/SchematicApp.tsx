@@ -46,7 +46,6 @@ import { Resistor,
 
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
 
-
 const elk = new ELK();
 
 // Elk has a *huge* amount of options to configure. To see everything you can
@@ -131,6 +130,54 @@ const requestRelayout = false;
 let populatedEdges = [];
 let selected_links_data = {};
 
+const useKeyHandler = (nodes, selectedNode, setNodes, updateNodeInternals) => {
+    useEffect(() => {
+        const handleKeyPress = (event) => {
+            if (selectedNode) {
+                let shouldUpdateInternals = false;
+
+                const updatedNodes = nodes.map(node => {
+                    if (node.id === selectedNode.id) {
+                        if (event.key === 'r' || event.key === 'R') {
+                            console.log(`Rotating node ${node.id}`);
+                            shouldUpdateInternals = true;
+                            return {
+                                ...node,
+                                data: {
+                                    ...node.data,
+                                    rotation: (node.data.rotation + 90) % 360
+                                }
+                            };
+                        } else if (event.key === 'f' || event.key === 'F') {
+                            console.log(`Flipping node ${node.id}`);
+                            shouldUpdateInternals = true;
+                            return {
+                                ...node,
+                                data: {
+                                    ...node.data,
+                                    mirror: !node.data.mirror
+                                }
+                            };
+                        }
+                    }
+                    return node;
+                });
+
+                setNodes(updatedNodes);
+                if (shouldUpdateInternals) {
+                    // Delay the internals update to ensure it happens after the state update
+                    setTimeout(() => updateNodeInternals(selectedNode.id), 0);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyPress);
+        return () => {
+            window.removeEventListener('keydown', handleKeyPress);
+        };
+    }, [nodes, selectedNode, setNodes, updateNodeInternals]);
+};
+
 
 const AtopileViewer = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -144,6 +191,8 @@ const AtopileViewer = () => {
     const [selected_link_data, setSelectedLinkData] = useState([]);
     const [selected_link_source, setSelectedLinkSource] = useState("none");
     const [selected_link_target, setSelectedLinkTarget] = useState("none");
+    const updateNodeInternals = useUpdateNodeInternals();
+    useKeyHandler(nodes, selectedNode, setNodes, updateNodeInternals);
 
 
     const onLayout = useCallback(
@@ -159,48 +208,6 @@ const AtopileViewer = () => {
         }, [edges] );
 
     useEffect(() => {
-        const handleKeyPress = (event) => {
-            if (selectedNode) {
-                if (event.key === 'r' || event.key === 'R') {
-                    console.log('R key pressed with node selected:', selectedNode.id);
-                    setNodes(nodes.map(node => {
-                        if (node.id === selectedNode.id) {
-                            return {
-                                ...node,
-                                data: {
-                                    ...node.data,
-                                    rotation: (node.data.rotation + 90) % 360
-                                }
-                            };
-                        }
-
-                        return node;
-                    }));
-                } else if (event.key === 'f' || event.key === 'F') {
-                    console.log('F key pressed with node selected:', selectedNode.id);
-                    setNodes(nodes.map(node => {
-                        if (node.id === selectedNode.id) {
-                            return {
-                                ...node,
-                                data: {
-                                    ...node.data,
-                                    mirror: !node.data.mirror
-                                }
-                            };
-                        }
-                        return node;
-                    }));
-                }
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyPress);
-        return () => {
-            window.removeEventListener('keydown', handleKeyPress);
-        };
-    }, [selectedNode, nodes]);
-
-    useEffect(() => {
         const updateNodesFromJson = async () => {
             try {
                 const fetchedNodes = await loadSchematicJsonAsDict();
@@ -212,34 +219,12 @@ const AtopileViewer = () => {
                         x: Math.random() * window.innerWidth,
                         y: Math.random() * window.innerHeight,
                     };
-                    // let orientation = "horizontal";
-                    // if (component_data['contacting_power']) {
-                    //     orientation = "vertical";
-                    // }
                     if (component_data['std_lib_id'] == 'Resistor') {
                         populatedNodes.push({ id: component_name, type: "Resistor", data: component_data, position: position });
-                    // } else if (component_data['std_lib_id'] == 'Capacitor') {
-                    //     populatedNodes.push({ id: component_name, type: 'Capacitor', data: {component_data: component_data, orientation: orientation} , position: position });
-                    // } else if (component_data['std_lib_id'] == 'Power.gnd') {
-                    //     populatedNodes.push({ id: component_name, type: 'GroundNode', data: component_data , position: position });
-                    // } else if (component_data['std_lib_id'] == 'Power.vcc') {
-                    //     populatedNodes.push({ id: component_name, type: 'VccNode', data: component_data , position: position });
-                    // } else if (component_data['std_lib_id'] == 'OpAmp') {
-                    //     populatedNodes.push({ id: component_name, type: 'OpAmp', data: component_data , position: position });
-                    // } else if (component_data['std_lib_id'] == 'NPN') {
-                    //     populatedNodes.push({ id: component_name, type: 'NPN', data: component_data , position: position });
                     } else if (component_data['std_lib_id'] == 'LED') {
                         populatedNodes.push({ id: component_name, type: "LED", data: component_data, position: position });
-                    // } else if (component_data['std_lib_id'] == 'Diode') {
-                    //     populatedNodes.push({ id: component_name, type: "Diode", data: {component_data: component_data, orientation: orientation}, position: position });
-                    // } else if (component_data['std_lib_id'] == 'ZenerDiode') {
-                    //     populatedNodes.push({ id: component_name, type: "ZenerDiode", data: {component_data: component_data, orientation: orientation}, position: position });
-                    // } else if (component_data['std_lib_id'] == 'SchottkyDiode') {
-                    //     populatedNodes.push({ id: component_name, type: "SchottkyDiode", data: {component_data: component_data, orientation: orientation}, position: position });
                     } else if (component_data['std_lib_id'] == 'NFET') {
                         populatedNodes.push({ id: component_name, type: "NFET", data: component_data, position: position });
-                    // } else if (component_data['std_lib_id'] == 'PFET') {
-                    //     populatedNodes.push({ id: component_name, type: "PFET", data: {component_data: component_data, orientation: orientation}, position: position });
                     } else {
                         // populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
                     }

@@ -108,7 +108,6 @@ const RenderElectronicComponent = (data, svgContent) => {
     const [mirror, setMirror] = useState(false);
     const [position, setCompPosition] = useState({ x: 0, y: 0 });
 
-
     useEffect(() => {
         setRotation(data.rotation);
         setMirror(data.mirror);
