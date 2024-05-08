@@ -33,16 +33,39 @@ import { Resistor,
     // Ground,
     // Vcc,
     // Bug,
-    // OpAmp,
-    LED,
+    // OpAmp
     // NPN,
     // PNP,
     NFET,
-    // PFET,
-    // Diode,
-    // ZenerDiode,
-    // SchottkyDiode,
-    loadSchematicJsonAsDict } from './SchematicElements.tsx';
+
+    loadSchematicJsonAsDict } from './components/SchematicElements.tsx';
+
+import {
+    LED,
+    Diode,
+    ZenerDiode,
+    ShottkyDiode,
+}   from './components/diodes.tsx';
+
+import {
+    GND,
+    VCC,
+} from './components/power.tsx';
+
+const nodeTypes = {
+    Resistor: Resistor,
+    // Capacitor: Capacitor,
+    GND: GND,
+    VCC: VCC,
+    LED: LED,
+    // OpAmp: OpAmp,
+    // NPN: NPN,
+    NFET: NFET,
+    // PFET: PFET,
+    Diode: Diode,
+    ZenerDiode: ZenerDiode,
+    ShottkyDiode: ShottkyDiode,
+};
 
 const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
 
@@ -93,22 +116,6 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
     .catch(console.error);
 };
 
-const nodeTypes = {
-    Resistor: Resistor,
-    // Capacitor: Capacitor,
-    LED: LED,
-    // GroundNode: Ground,
-    // VccNode: Vcc,
-    // BugNode: Bug,
-    // OpAmp: OpAmp,
-    // NPN: NPN,
-    NFET: NFET,
-    // PFET: PFET,
-    // Diode: Diode,
-    // ZenerDiode: ZenerDiode,
-    // SchottkyDiode: SchottkyDiode,
-};
-
 const edgeTypes = {
     custom: CustomEdge,
 };
@@ -139,7 +146,6 @@ const useKeyHandler = (nodes, selectedNode, setNodes, updateNodeInternals) => {
                 const updatedNodes = nodes.map(node => {
                     if (node.id === selectedNode.id) {
                         if (event.key === 'r' || event.key === 'R') {
-                            console.log(`Rotating node ${node.id}`);
                             shouldUpdateInternals = true;
                             return {
                                 ...node,
@@ -149,7 +155,6 @@ const useKeyHandler = (nodes, selectedNode, setNodes, updateNodeInternals) => {
                                 }
                             };
                         } else if (event.key === 'f' || event.key === 'F') {
-                            console.log(`Flipping node ${node.id}`);
                             shouldUpdateInternals = true;
                             return {
                                 ...node,
@@ -166,7 +171,7 @@ const useKeyHandler = (nodes, selectedNode, setNodes, updateNodeInternals) => {
                 setNodes(updatedNodes);
                 if (shouldUpdateInternals) {
                     // Delay the internals update to ensure it happens after the state update
-                    setTimeout(() => updateNodeInternals(selectedNode.id), 0);
+                    setTimeout(() => updateNodeInternals(selectedNode.id), 10);
                 }
             }
         };
@@ -214,7 +219,7 @@ const AtopileViewer = () => {
 
                 const populatedNodes = [];
                 for (const component_name in fetchedNodes['components']) {
-                    let component_data = fetchedNodes['components'][component_name];
+                    const component_data = fetchedNodes['components'][component_name];
                     const position = {
                         x: Math.random() * window.innerWidth,
                         y: Math.random() * window.innerHeight,
@@ -225,9 +230,29 @@ const AtopileViewer = () => {
                         populatedNodes.push({ id: component_name, type: "LED", data: component_data, position: position });
                     } else if (component_data['std_lib_id'] == 'NFET') {
                         populatedNodes.push({ id: component_name, type: "NFET", data: component_data, position: position });
+                    } else if (component_data['std_lib_id'] == 'ShottkyDiode') {
+                        populatedNodes.push({ id: component_name, type: "ShottkyDiode", data: component_data, position: position });
+                    } else if (component_data['std_lib_id'] == 'ZenerDiode') {
+                        populatedNodes.push({ id: component_name, type: "ZenerDiode", data: component_data, position: position });
+                    } else if (component_data['std_lib_id'] == 'Diode') {
+                        populatedNodes.push({ id: component_name, type: "Diode", data: component_data, position: position });
                     } else {
                         // populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
                     }
+                }
+                for (const [signal_name, signal_data] of Object.entries(fetchedNodes['signals'])) {
+                    const position = {
+                        x: Math.random() * window.innerWidth,
+                        y: Math.random() * window.innerHeight,
+                    };
+                    if (signal_data['std_lib_id'] == 'Power.vcc') {
+                        populatedNodes.push({ id: signal_name, type: 'VCC', data: signal_data , position: position });
+                    } else if (signal_data['std_lib_id'] == 'Power.gnd') {
+                        populatedNodes.push({ id: signal_name, type: 'GND', data: signal_data , position: position });
+                    } else {
+                        //populatedNodes.push({ id: signal_name, type: 'Signal', data: signal_data , position: position });
+                    }
+                    port_to_component_map[signal_name] = signal_name;
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
                 setNodes(populatedNodes);
