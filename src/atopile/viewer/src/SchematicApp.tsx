@@ -240,20 +240,6 @@ const AtopileViewer = () => {
                         // populatedNodes.push({ id: component_name, type: 'BugNode', data: component_data , position: position });
                     }
                 }
-                for (const [signal_name, signal_data] of Object.entries(fetchedNodes['signals'])) {
-                    const position = {
-                        x: Math.random() * window.innerWidth,
-                        y: Math.random() * window.innerHeight,
-                    };
-                    if (signal_data['std_lib_id'] == 'Power.vcc') {
-                        populatedNodes.push({ id: signal_name, type: 'VCC', data: signal_data , position: position });
-                    } else if (signal_data['std_lib_id'] == 'Power.gnd') {
-                        populatedNodes.push({ id: signal_name, type: 'GND', data: signal_data , position: position });
-                    } else {
-                        //populatedNodes.push({ id: signal_name, type: 'Signal', data: signal_data , position: position });
-                    }
-                    port_to_component_map[signal_name] = signal_name;
-                }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
                 setNodes(populatedNodes);
                 populatedEdges = [];
