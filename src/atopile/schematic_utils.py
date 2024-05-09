@@ -113,7 +113,9 @@ def get_schematic_dict(addr: AddrStr) -> dict:
 
                 component_ports_dict[component_net_index] = {
                     "net_id": net_hash,
-                    "name": '/'.join(map(get_name, component_net))
+                    # "name": '/'.join(map(get_name, component_net))
+                    "signal": get_name(component_net[0]),
+                    "pin": get_name(component_net[1])
                 }
 
                 for connectable in component_net:
