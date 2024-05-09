@@ -162,7 +162,7 @@ class RangedValue:
             max_val, max_unit = pretty_unit(self.max_qty)
 
             if min_unit == max_unit or min_val == 0 or max_val == 0:
-                return f"{_f(min_val)} to {_f(max_val)} {min_unit}"
+                return f"{_f(min_val)} to {_f(max_val)} {max_unit}"
             return f"{_f(min_val)}{min_unit} to {_f(max_val)}{max_unit}"
 
         # Bilateral values
