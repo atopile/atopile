@@ -125,7 +125,9 @@ def get_schematic_dict(addr: AddrStr) -> dict:
                 "value": _get_specd_value(component),
                 "address": get_instance_section(component),
                 "name": get_name(component),
-                "ports": component_ports_dict}
+                "ports": component_ports_dict,
+                "rotation": 0,
+                "mirror": False}
 
         elif match_interfaces(block):
             pass

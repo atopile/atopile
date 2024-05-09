@@ -12,7 +12,10 @@ import ReactFlow, {
     Position,
     isEdge,
     Edge,
-    useStore
+    useStore,
+    useKeyPress,
+    useUpdateNodeInternals,
+    applyNodeChanges
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -21,38 +24,13 @@ import SimpleTable from './LinkTable.tsx';
 import './index.css';
 
 import "react-data-grid/lib/styles.css";
-import { Resistor,
-    Capacitor,
-    Ground,
-    Vcc,
-    Signal,
-    Bug,
-    OpAmp,
-    LED,
-    NPN,
-    PNP,
-    NFET,
-    PFET,
-    Diode,
-    ZenerDiode,
-    SchottkyDiode } from './SchematicElements.tsx';
+import { Resistor } from './components/SchematicElements.tsx';
+import { ZenerDiode } from './components/diodes.tsx';
 
 
 const nodeTypes = {
     Resistor: Resistor,
-    Capacitor: Capacitor,
-    LED: LED,
-    GroundNode: Ground,
-    VccNode: Vcc,
-    Signal: Signal,
-    BugNode: Bug,
-    OpAmp: OpAmp,
-    NPN: NPN,
-    NFET: NFET,
-    PFET: PFET,
-    Diode: Diode,
-    ZenerDiode: ZenerDiode,
-    SchottkyDiode: SchottkyDiode,
+    ZenerDiode: ZenerDiode
 };
 
 const edgeTypes = {};
@@ -77,6 +55,10 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
     const { fitView } = useReactFlow();
     const [isDataLoaded, setIsDataLoaded] = useState(false);
 
+    const rotateAction = useKeyPress(['r', 'R']);
+    const mirrorAction = useKeyPress(['f', 'F']);
+    const updateNodeInternals = useUpdateNodeInternals();
+
     useEffect(() => {
         const updateNodesFromJson = async () => {
             try {
@@ -94,9 +76,9 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
                         orientation = "vertical";
                     }
                     if (component_data['std_lib_id'] == 'Resistor') {
-                        populatedNodes.push({ id: component_name, type: component_data["instance_of"], data: {component_data: component_data, orientation: orientation}, position: position });
+                        populatedNodes.push({ id: component_name, type: component_data["instance_of"], data: component_data, position: position });
                     } else if (component_data['std_lib_id'] == 'Capacitor') {
-                        populatedNodes.push({ id: component_name, type: 'Capacitor', data: {component_data: component_data, orientation: orientation} , position: position });
+                        populatedNodes.push({ id: component_name, type: 'Capacitor', data: component_data, position: position });
                     } else if (component_data['std_lib_id'] == 'OpAmp') {
                         populatedNodes.push({ id: component_name, type: 'OpAmp', data: component_data , position: position });
                     } else if (component_data['std_lib_id'] == 'NPN') {
@@ -106,7 +88,7 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
                     } else if (component_data['std_lib_id'] == 'Diode') {
                         populatedNodes.push({ id: component_name, type: "Diode", data: {component_data: component_data, orientation: orientation}, position: position });
                     } else if (component_data['std_lib_id'] == 'ZenerDiode') {
-                        populatedNodes.push({ id: component_name, type: "ZenerDiode", data: {component_data: component_data, orientation: orientation}, position: position });
+                        populatedNodes.push({ id: component_name, type: "ZenerDiode", data: component_data, position: position });
                     } else if (component_data['std_lib_id'] == 'SchottkyDiode') {
                         populatedNodes.push({ id: component_name, type: "SchottkyDiode", data: {component_data: component_data, orientation: orientation}, position: position });
                     } else if (component_data['std_lib_id'] == 'NFET') {
@@ -146,8 +128,63 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
 
         updateNodesFromJson();
         setIsDataLoaded(true);
-        //addLinks();
     }, [viewBlockId]);
+
+    useEffect(() => {
+        let updatedNodes = [];
+        updatedNodes = nodes.map((node) => {
+            if (node.selected) {
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        rotation: rotateAction? (node.data.rotation + 90) % 360 : node.data.rotation,
+                        mirror: mirrorAction? !node.data.mirror : node.data.mirror,
+                    }
+                };
+                // node.data = {
+                //     ...node.data,
+                //     rotation: rotateAction? (node.data.rotation + 90) % 360 : node.data.rotation,
+                //     mirror: mirrorAction? !node.data.mirror : node.data.mirror,
+                // };
+            }
+            //updateNodeInternals(node.id);
+            return node;
+        });
+        setNodes(updatedNodes);
+        // if (shouldUpdateInternals) {
+            // Delay the internals update to ensure it happens after the state update
+        //setTimeout(() => updateNodeInternals(("/Users/timot/Dev/atopile/community-projects/demo-p…oProject::esd_protection_fet_src_gate_zener_diode"), 10));
+        // for (const node of updatedNodes) {
+        //     console.log(node);
+        //     updateNodeInternals(node.id);
+        // }
+    }, [rotateAction, mirrorAction]);
+
+    // const onNodeChange = useCallback(
+    //     (changes) => {
+    //       setNodes((oldNodes) => applyNodeChanges(changes, oldNodes));
+    //     },
+    //     [setNodes],
+    //   );
+    function handleUpdateNodes() {
+        console.log("Updating node");
+        updateNodeInternals("/Users/timot/Dev/atopile/community-projects/demo-p…oProject::esd_protection_fet_src_gate_zener_diode");
+    }
+
+    useEffect(() => {
+        setTimeout(() => {
+          const node = nodeInternals.get(props.id);
+          const propSymbols = Object.getOwnPropertySymbols(node);
+          const handleBounds = node[propSymbols[0]].handleBounds;
+          const orphans = edges.filter(
+            (e) =>
+              e.source === node.id &&
+              !handleBounds.source.find((h) => h.id === e.sourceHandle)
+          );
+          reactFlowInstance.deleteElements({ edges: orphans });
+        }, 0);
+      }, [nodeInternals, props.id, edges, reactFlowInstance]);
 
     const onSelectionChange = (elements) => {
         if (request_ratsnest_update && isDataLoaded) {
@@ -261,6 +298,11 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
         <Background />
         </ReactFlow>
         </ReactFlowProvider>
+        <button onClick={() => {
+            handleUpdateNodes();
+        }}>
+            Update nodes
+        </button>
     </div>
     );
 };
