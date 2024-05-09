@@ -1,8 +1,14 @@
 //@ts-nocheck
-import { Position, RenderElectronicComponent } from './SchematicElements';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { SchematicElectronicComponent } from './SchematicElements';
+import { Handle, useUpdateNodeInternals, Position } from 'reactflow';
 
 
-const DiodeComponent = ({ data, svgContent }) => {
+const DiodeComponent = ({ id, data, svgContent}) => {
+    const [rotation, setRotation] = useState(0);
+    const [mirror, setMirror] = useState(false);
+    const [position, setCompPosition] = useState({ x: 0, y: 0 });
+    const updateNodeInternals = useUpdateNodeInternals();
     const adjustedPorts = [
         {
             id: data.ports[0].net_id,
@@ -48,23 +54,82 @@ const ShottkyDiodeSvg = (
     </svg>
 );
 
-export const ShottkyDiode = ({ data }) => {
-    return <DiodeComponent data={data} svgContent={ShottkyDiodeSvg} />;
-}
+export const ZenerDiode = ({ id, data }) => {
+    const [rotation, setRotation] = useState(0);
+    const [mirror, setMirror] = useState(false);
+    const [position, setCompPosition] = useState({ x: 0, y: 0 });
+    const updateNodeInternals = useUpdateNodeInternals();
+    // const adjustedPorts = [
+    //     {
+    //         id: data.ports[0].net_id,
+    //         initialPosition: Position.LEFT,
+    //         name: data.ports[0].name,
+    //         offset: 35,
+    //         offset_dir: Position.TOP
+    //     },
+    //     {
+    //         id: data.ports[1].net_id,
+    //         initialPosition: Position.RIGHT,
+    //         name: data.ports[1].name,
+    //         offset: 25,
+    //         offset_dir: Position.TOP
+    //     }
+    //     ];
+
+    // return RenderElectronicComponent({ ...data, ports: adjustedPorts }, svgContent);
+    useEffect(() => {
+        setRotation(data.rotation);
+        setMirror(data.mirror);
+        setCompPosition(data.position);
+        updateNodeInternals(id);
+    }, [data]); // Only re-run if `data` changes
+
+    function handleRotation() {
+        setRotation(rotation + 1);
+        console.log(rotation);
+        console.log(id);
+        updateNodeInternals(id);
+    }
+    return (
+        <>
+          <Handle
+              type="source"
+              id={data.ports[0].net_id}
+              position={"top"}
+              style={{ left: `${rotation}px`} }
+          />
+          <Handle
+              type="target"
+              id={data.ports[0].net_id}
+              position={"top"}
+              style={{ left: `${rotation}px`} }
+          />
+          <div style={{ width: '50px', height: '50px' }}>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+             <g fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5">
+                 <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
+                 <path d="M112.5 109.5 100 100V50l-12.5-9.5"/>
+             </g>
+         </svg>
+          </div>
+          <button onClick={handleRotation}>Rotate</button>
+        </>
+      );
+    };
 
 // Zenner Diode
-const ZenerDiodeSvg = (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
-        <g fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5">
-            <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
-            <path d="M112.5 109.5 100 100V50l-12.5-9.5"/>
-        </g>
-    </svg>
-);
+// const ZenerDiodeSvg = (
+//     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+//         <g fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5">
+//             <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
+//             <path d="M112.5 109.5 100 100V50l-12.5-9.5"/>
+//         </g>
+//     </svg>
+// );
 
-export const ZenerDiode = ({ data }) => {
-    return <DiodeComponent data={data} svgContent={ZenerDiodeSvg} />;
-}
+// export const ZenerDiode = ({ data }) => {
+//     return <DiodeComponent data={data} svgContent={ZenerDiodeSvg} />;
+// }
 
 // Diode
 const DiodeSvg = (

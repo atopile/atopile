@@ -46,7 +46,19 @@ def find_matching_super(
 
 def get_std_lib(addr: AddrStr) -> str:
     #TODO: The time has come to bake the standard lib as a compiler dependency...
-    std_lib_supers = ["Resistor", "Capacitor", "CapacitorElectrolytic", "LED", "Power", "NPN", "PNP", "Diode", "SchottkyDiode", "ZenerDiode", "NFET"]
+    std_lib_supers = [
+        "Resistor",
+        "Capacitor",
+        "CapacitorElectrolytic",
+        "LED",
+        "Power",
+        "NPN",
+        "PNP",
+        "Diode",
+        "SchottkyDiode",
+        "ZenerDiode",
+        "NFET",
+        "Opamp"]
 
     # Handle signals
     if match_signals(addr):
@@ -65,124 +77,130 @@ def get_std_lib(addr: AddrStr) -> str:
         return ""
     return get_name(matching_super)
 
-def get_schematic_dict(addr: AddrStr) -> dict:
-    # Start by creating a list of all the components in the view and their ports.
-    # Ports consist of cluster of pins, signals and signals within interfaces
+def get_schematic_dict(root: AddrStr) -> dict:
 
-    # Component dict that we will return
-    components_dict: dict[AddrStr, dict] = {}
+    return_json = {}
 
-    # Those are all the modules at or below the module currently being inspected
-    blocks_at_and_below_view: list[AddrStr] = list(filter(match_modules, all_descendants(addr)))
-    blocks_at_and_below_view.extend(list(filter(match_interfaces, all_descendants(addr))))
+    for addr in all_descendants(root):
+        if match_modules(addr) and not match_components(addr):
+            # Start by creating a list of all the components in the view and their ports.
+            # Ports consist of cluster of pins, signals and signals within interfaces
 
-    links_at_and_below_view: list[Link] = []
-    for module in blocks_at_and_below_view:
-        links_at_and_below_view.extend(list(get_links(module)))
+            # Component dict that we will return
+            components_dict: dict[AddrStr, dict] = {}
 
-    pins_and_signals_at_and_below_view = list(filter(match_pins_and_signals, all_descendants(addr)))
+            # Those are all the modules at or below the module currently being inspected
+            blocks_at_and_below_view: list[AddrStr] = list(filter(match_modules, all_descendants(addr)))
+            blocks_at_and_below_view.extend(list(filter(match_interfaces, all_descendants(addr))))
 
-    # This is a map of connectables beneath components to their net cluster id
-    connectable_to_nets_map: dict[AddrStr, str] = {}
+            links_at_and_below_view: list[Link] = []
+            for module in blocks_at_and_below_view:
+                links_at_and_below_view.extend(list(get_links(module)))
 
-    signals_dict: dict[AddrStr, dict] = {}
+            pins_and_signals_at_and_below_view = list(filter(match_pins_and_signals, all_descendants(addr)))
 
-    # We start exploring the modules
-    for block in blocks_at_and_below_view:
-        #TODO: provide error message if we can't handle the component
-        if match_components(block):
-            component = block
-            # There might be nested interfaces that we need to extract
-            blocks_at_or_below_component = list(filter(match_modules, all_descendants(component)))
-            # Extract all links at or below the current component and form nets
-            links_at_and_below_component = []
-            for block in blocks_at_or_below_component:
-                links_at_and_below_component.extend(list(get_links(block)))
+            # This is a map of connectables beneath components to their net cluster id
+            connectable_to_nets_map: dict[AddrStr, str] = {}
 
-            pins_and_signals_at_and_below_component = list(filter(match_pins_and_signals, all_descendants(component)))
-            component_nets = find_nets(pins_and_signals_at_and_below_component, links_at_and_below_component)
+            signals_dict: dict[AddrStr, dict] = {}
 
-            # Component ports
-            component_ports_dict: dict[int, dict[str, str]] = {}
-            for component_net_index, component_net in enumerate(component_nets):
-                # create a hash of the net
-                hash_object = hashlib.sha256()
-                json_string = json.dumps(component_net)
-                hash_object.update(json_string.encode())
-                net_hash = hash_object.hexdigest()[:8]
+            # We start exploring the modules
+            for block in blocks_at_and_below_view:
+                #TODO: provide error message if we can't handle the component
+                if match_components(block):
+                    component = block
+                    # There might be nested interfaces that we need to extract
+                    blocks_at_or_below_component = list(filter(match_modules, all_descendants(component)))
+                    # Extract all links at or below the current component and form nets
+                    links_at_and_below_component = []
+                    for block in blocks_at_or_below_component:
+                        links_at_and_below_component.extend(list(get_links(block)))
 
-                component_ports_dict[component_net_index] = {
-                    "net_id": net_hash,
-                    "name": '/'.join(map(get_name, component_net))
-                }
+                    pins_and_signals_at_and_below_component = list(filter(match_pins_and_signals, all_descendants(component)))
+                    component_nets = find_nets(pins_and_signals_at_and_below_component, links_at_and_below_component)
 
-                for connectable in component_net:
-                    connectable_to_nets_map[connectable] = net_hash
+                    # Component ports
+                    component_ports_dict: dict[int, dict[str, str]] = {}
+                    for component_net_index, component_net in enumerate(component_nets):
+                        # create a hash of the net
+                        hash_object = hashlib.sha256()
+                        json_string = json.dumps(component_net)
+                        hash_object.update(json_string.encode())
+                        net_hash = hash_object.hexdigest()[:8]
 
-            components_dict[component] = {
-                "instance_of": get_name(get_supers_list(component)[0].obj_def.address),
-                "std_lib_id": get_std_lib(component),
-                "value": _get_specd_value(component),
-                "address": get_instance_section(component),
-                "name": get_name(component),
-                "ports": component_ports_dict,
-                "rotation": 0,
-                "mirror": False}
+                        component_ports_dict[component_net_index] = {
+                            "net_id": net_hash,
+                            "name": '/'.join(map(get_name, component_net))
+                        }
 
-        elif match_interfaces(block):
-            pass
+                        for connectable in component_net:
+                            connectable_to_nets_map[connectable] = net_hash
 
-        else:
-            #TODO: this only handles interfaces in the highest module, not in nested modules
-            interfaces_at_module = list(filter(match_interfaces, get_children(block)))
-            for interface in interfaces_at_module:
-                #TODO: handle signals or interfaces that are not power
-                signals_in_interface = list(filter(match_signals, get_children(interface)))
-                for signal in signals_in_interface:
-                    signals_dict[signal] = {
-                        "std_lib_id": get_std_lib(signal),
-                        "instance_of": get_name(get_supers_list(interface)[0].obj_def.address),
-                        "address": get_instance_section(signal),
-                        "name": get_name(get_parent(signal)) + "." + get_name(signal)}
+                    components_dict[component] = {
+                        "instance_of": get_name(get_supers_list(component)[0].obj_def.address),
+                        "std_lib_id": get_std_lib(component),
+                        "value": _get_specd_value(component),
+                        "address": get_instance_section(component),
+                        "name": get_name(component),
+                        "ports": component_ports_dict,
+                        "rotation": 0,
+                        "mirror": False}
 
-                    if get_std_lib(signal) != "none":
-                        connectable_to_nets_map[signal] = signal
+                elif match_interfaces(block):
+                    pass
 
-            signals_at_view = list(filter(match_signals, get_children(block)))
-            for signal in signals_at_view:
-                signals_dict[signal] = {
-                    "std_lib_id": get_std_lib(signal),
-                    "instance_of": "signal",
-                    "address": get_instance_section(signal),
-                    "name": get_name(signal)}
+                else:
+                    #TODO: this only handles interfaces in the highest module, not in nested modules
+                    interfaces_at_module = list(filter(match_interfaces, get_children(block)))
+                    for interface in interfaces_at_module:
+                        #TODO: handle signals or interfaces that are not power
+                        signals_in_interface = list(filter(match_signals, get_children(interface)))
+                        for signal in signals_in_interface:
+                            signals_dict[signal] = {
+                                "std_lib_id": get_std_lib(signal),
+                                "instance_of": get_name(get_supers_list(interface)[0].obj_def.address),
+                                "address": get_instance_section(signal),
+                                "name": get_name(get_parent(signal)) + "." + get_name(signal)}
+
+                            if get_std_lib(signal) != "none":
+                                connectable_to_nets_map[signal] = signal
+
+                    signals_at_view = list(filter(match_signals, get_children(block)))
+                    for signal in signals_at_view:
+                        signals_dict[signal] = {
+                            "std_lib_id": get_std_lib(signal),
+                            "instance_of": "signal",
+                            "address": get_instance_section(signal),
+                            "name": get_name(signal)}
 
 
 
-    # This step is meant to remove the irrelevant signals and interfaces so that we
-    # don't show them in the viewer
-    nets_above_components = find_nets(pins_and_signals_at_and_below_view, links_at_and_below_view)
-    converted_nets_above_components = []
-    for net in nets_above_components:
-        # Make it a set so we don't add multiple times the same hash
-        converted_net = set()
-        for connectable in net:
-            if connectable in connectable_to_nets_map:
-                converted_net.add(connectable_to_nets_map[connectable])
-        converted_nets_above_components.append(list(converted_net))
+            # This step is meant to remove the irrelevant signals and interfaces so that we
+            # don't show them in the viewer
+            nets_above_components = find_nets(pins_and_signals_at_and_below_view, links_at_and_below_view)
+            converted_nets_above_components = []
+            for net in nets_above_components:
+                # Make it a set so we don't add multiple times the same hash
+                converted_net = set()
+                for connectable in net:
+                    if connectable in connectable_to_nets_map:
+                        converted_net.add(connectable_to_nets_map[connectable])
+                converted_nets_above_components.append(list(converted_net))
 
-    net_links = []
-    # for each net in the component_net_above_components, create a link between each of the nodes in the net
-    for net in converted_nets_above_components:
-        output_net = []
-        for conn in net:
-            output_net.append(conn)
-        net_links.append(output_net)
+            net_links = []
+            # for each net in the component_net_above_components, create a link between each of the nodes in the net
+            for net in converted_nets_above_components:
+                output_net = []
+                for conn in net:
+                    output_net.append(conn)
+                net_links.append(output_net)
 
-    return_json = {
-        "components": components_dict,
-        "signals": signals_dict,
-        "nets": net_links
-    }
+            instance = get_instance_section(addr) or "root"
+            return_json[instance] = {
+                "components": components_dict,
+                "signals": signals_dict,
+                "nets": net_links
+            }
 
     return return_json
 

@@ -98,7 +98,7 @@ const requestRelayout = false;
 let selected_links_data = {};
 
 
-const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => {
+const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared, reCenter, setReCenter }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
@@ -129,7 +129,6 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
             window.requestAnimationFrame(() => fitView());
         });
     }, [edges] );
-
 
     useEffect(() => {
         const updateNodesFromJson = async () => {
@@ -194,7 +193,6 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
 
         updateNodesFromJson();
     }, [viewBlockId]);
-
 
     const onSelectionChange = (elements) => {
         // Filter out the selected edges from the selection
