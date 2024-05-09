@@ -124,7 +124,7 @@ exclude = [
     "docs/",
 ]
 
-ignore = [
+lint.ignore = [
     "E501",  # line too long (ignore for the minute)
     "C901",  # too complex
 ]
