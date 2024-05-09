@@ -214,10 +214,10 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
     };
 
     return (
-    <div className="floatingedges">
+    <div className="providerflow">
         <ReactFlowProvider>
         <ReactFlow
-            key={viewBlockId}
+            key={viewBlockId + "block"}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}

@@ -75,6 +75,7 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
+    const [isDataLoaded, setIsDataLoaded] = useState(false);
 
     useEffect(() => {
         const updateNodesFromJson = async () => {
@@ -144,10 +145,12 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
         };
 
         updateNodesFromJson();
+        setIsDataLoaded(true);
+        //addLinks();
     }, [viewBlockId]);
 
     const onSelectionChange = (elements) => {
-        if (request_ratsnest_update) {
+        if (request_ratsnest_update && isDataLoaded) {
             request_ratsnest_update = false;
             addLinks();
             return;
@@ -156,83 +159,88 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
     };
 
     function addLinks() {
-        // Add the shortest links to complete all the nets
-        // Get all the component positions
-        let component_positions = {};
-        for (const node of nodes) {
-            component_positions[node.id] = node.position;
-        }
-        // for each component in the net, calculate the distance to the other components in the net
-        let nets_distances = [];
-        for (const net of nets) {
-            let net_distances = {};
-            for (const conn_id of net) {
-                let conn_to_conn_distance = {};
-                for (const other_conn_id of net) {
-                    if (conn_id != other_conn_id) {
-                        const conn_pos = component_positions[port_to_component_map[conn_id]];
-                        const other_conn_pos = component_positions[port_to_component_map[other_conn_id]];
-                        conn_to_conn_distance[other_conn_id] = Math.sqrt(Math.pow(conn_pos.x - other_conn_pos.x, 2) + Math.pow(conn_pos.y - other_conn_pos.y, 2));
+        try {
+            // Add the shortest links to complete all the nets
+            // Get all the component positions
+            let component_positions = {};
+            for (const node of nodes) {
+                component_positions[node.id] = node.position;
+            }
+            // for each component in the net, calculate the distance to the other components in the net
+            let nets_distances = [];
+            let test = nets;
+            for (const net of test) {
+                let net_distances = {};
+                for (const conn_id of net) {
+                    let conn_to_conn_distance = {};
+                    for (const other_conn_id of net) {
+                        if (conn_id != other_conn_id) {
+                            const conn_pos = component_positions[port_to_component_map[conn_id]];
+                            const other_conn_pos = component_positions[port_to_component_map[other_conn_id]];
+                            conn_to_conn_distance[other_conn_id] = Math.sqrt(Math.pow(conn_pos.x - other_conn_pos.x, 2) + Math.pow(conn_pos.y - other_conn_pos.y, 2));
+                        }
                     }
+                    net_distances[conn_id] = conn_to_conn_distance;
                 }
-                net_distances[conn_id] = conn_to_conn_distance;
+                nets_distances.push(net_distances);
             }
-            nets_distances.push(net_distances);
-        }
 
-        // nearest neighbor algorithm https://en.wikipedia.org/wiki/Nearest_neighbour_algorithm
-        let conn_visited = {};
-        for (const net of nets) {
-            for (const conn_id of net) {
-                conn_visited[conn_id] = false;
-            }
-        }
-
-        let links_to_add = {};
-        for (const net of nets_distances) {
-            for (const conn_id in net) {
-                if (conn_visited[conn_id]) {
-                    continue;
+            // nearest neighbor algorithm https://en.wikipedia.org/wiki/Nearest_neighbour_algorithm
+            let conn_visited = {};
+            for (const net of nets) {
+                for (const conn_id of net) {
+                    conn_visited[conn_id] = false;
                 }
-                let closest_conn_id = "none";
-                let closest_conn_distance = Infinity;
-                for (const other_conn_id in net) {
-                    if (conn_id == other_conn_id) {
+            }
+
+            let links_to_add = {};
+            for (const net of nets_distances) {
+                for (const conn_id in net) {
+                    if (conn_visited[conn_id]) {
                         continue;
                     }
-                    if (net[conn_id][other_conn_id] < closest_conn_distance && conn_visited[other_conn_id] === false) {
-                        closest_conn_id = other_conn_id;
-                        closest_conn_distance = net[conn_id][other_conn_id];
+                    let closest_conn_id = "none";
+                    let closest_conn_distance = Infinity;
+                    for (const other_conn_id in net) {
+                        if (conn_id == other_conn_id) {
+                            continue;
+                        }
+                        if (net[conn_id][other_conn_id] < closest_conn_distance && conn_visited[other_conn_id] === false) {
+                            closest_conn_id = other_conn_id;
+                            closest_conn_distance = net[conn_id][other_conn_id];
+                        }
                     }
+                    conn_visited[conn_id] = true;
+                    links_to_add[conn_id] = closest_conn_id;
                 }
-                conn_visited[conn_id] = true;
-                links_to_add[conn_id] = closest_conn_id;
             }
-        }
 
-        const populatedEdges = [];
-        for (const edge in links_to_add) {
-            populatedEdges.push({
-                id: edge + links_to_add[edge],
-                source: port_to_component_map[edge],
-                sourceHandle: edge,
-                target: port_to_component_map[links_to_add[edge]],
-                targetHandle: links_to_add[edge],
-                type: 'step',
-                style: {
-                    stroke: 'black',
-                    strokeWidth: 2,
-                },
-            });
+            const populatedEdges = [];
+            for (const edge in links_to_add) {
+                populatedEdges.push({
+                    id: edge + links_to_add[edge],
+                    source: port_to_component_map[edge],
+                    sourceHandle: edge,
+                    target: port_to_component_map[links_to_add[edge]],
+                    targetHandle: links_to_add[edge],
+                    type: 'step',
+                    style: {
+                        stroke: 'black',
+                        strokeWidth: 2,
+                    },
+                });
+            }
+            setEdges(populatedEdges);
+        } catch (error) {
+            console.error("Failed to add links:", error);
         }
-        setEdges(populatedEdges);
     }
 
     return (
-    <div className="floatingedges">
+    <div className="providerflow">
         <ReactFlowProvider>
         <ReactFlow
-            key={viewBlockId + "schematic"}
+            key={"schematic"}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
