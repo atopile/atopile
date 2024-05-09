@@ -96,21 +96,16 @@ const selected_link_source = "none";
 const selected_link_target = "none";
 const requestRelayout = false;
 let selected_links_data = {};
-let direction = "DOWN";
 
 
 const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-    const [requestRelayout, setRequestRelayout] = useState(false);
     const { fitView } = useReactFlow();
     const [selected_link_id, setSelectedLinkId] = useState("none");
     const [selected_link_data, setSelectedLinkData] = useState([]);
     const [selected_link_source, setSelectedLinkSource] = useState("none");
     const [selected_link_target, setSelectedLinkTarget] = useState("none");
-
-    console.log('reLayout: ', reLayout);
-
 
     const handleLinkSelectClick = (newSelectedLinkId) => {
         setSelectedLinkId(newSelectedLinkId);
@@ -121,25 +116,18 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
 
     useEffect(() => {
         onLayout({ direction: "DOWN" });
+        reLayoutCleared();
     }, [reLayout])
 
     const onLayout = useCallback(
     ({ direction }) => {
         const opts = { 'elk.direction': direction, ...elkOptions };
+        getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
+            setNodes(layoutedNodes);
+            setEdges(layoutedEdges);
 
-        if (reLayout) {
-            console.log('re-layout started');
-            getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-                setNodes(layoutedNodes);
-                setEdges(layoutedEdges);
-
-                window.requestAnimationFrame(() => fitView());
-            });
-            reLayoutCleared();
-        }
-        else {
-            console.log('re-layout skipped');
-        }
+            window.requestAnimationFrame(() => fitView());
+        });
     }, [edges] );
 
 
@@ -199,8 +187,6 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
                 }
                 setEdges(populatedEdges);
 
-                // Request a re-layout
-                setRequestRelayout(true);
             } catch (error) {
                 console.error("Failed to fetch nodes:", error);
             }
@@ -209,14 +195,6 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
         updateNodesFromJson();
     }, [viewBlockId]);
 
-    // Calculate the initial layout on mount.
-    useLayoutEffect(() => {
-        if (requestRelayout) {
-            onLayout({ direction: 'DOWN' });
-            console.log('Relayout requested');
-            setRequestRelayout(false);
-        }
-    }, [edges]);
 
     const onSelectionChange = (elements) => {
         // Filter out the selected edges from the selection
@@ -237,6 +215,7 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
 
     return (
     <div className="floatingedges">
+        <ReactFlowProvider>
         <ReactFlow
             key={viewBlockId}
             nodes={nodes}
@@ -264,6 +243,7 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
         </Panel>
         <Background />
         </ReactFlow>
+        </ReactFlowProvider>
     </div>
     );
 };

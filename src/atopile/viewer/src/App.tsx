@@ -8,10 +8,13 @@ import ReactFlow, {
 import AtopileSchematicApp from './SchematicApp.tsx';
 import AtopileBlockDiagramApp from './BlockDiagramApp.tsx';
 
+let activeApp;
+
 const App = () => {
     const [viewBlockId, setViewBlockId] = useState('root');
     const [parentBlockId, setParentBlockId] = useState('none');
     const [reLayout, setReLayout] = useState(false);
+    const [schematicModeEnabled, setSchematicModeEnabled] = useState(false);
 
     function handleReturnClick() {
         if (parentBlockId === 'none') {
@@ -27,10 +30,10 @@ const App = () => {
 
     function handleBlockLoad(parent_block_id: string) {
         setParentBlockId(parent_block_id);
+        setReLayout(true);
     }
 
     function handleReLayout() {
-        console.log('re-layout clicked');
         setReLayout(true);
     }
 
@@ -38,10 +41,20 @@ const App = () => {
         setReLayout(false);
     }
 
+    function handleModeSwitch() {
+        setSchematicModeEnabled(!schematicModeEnabled);
+    }
+
+    useEffect(() => {
+        activeApp = schematicModeEnabled ? <AtopileSchematicApp viewBlockId={viewBlockId} /> : <AtopileBlockDiagramApp viewBlockId={viewBlockId} handleBlockLoad={handleBlockLoad} handleExploreClick={handleExploreClick} reLayout={reLayout} reLayoutCleared={reLayoutCleared} />;
+    }, [schematicModeEnabled]);
+
     return (
-        <ReactFlowProvider>
-            <AtopileBlockDiagramApp viewBlockId={viewBlockId} handleBlockLoad={handleBlockLoad} handleExploreClick={handleExploreClick} reLayout={reLayout} reLayoutCleared={reLayoutCleared}/>
-            {/* <AtopileSchematicViewer /> */}
+        <> 
+            <button onClick={() => handleModeSwitch()}>mode switch</button>
+            <ReactFlowProvider>
+                <AtopileSchematicApp viewBlockId={viewBlockId} />
+            {/* <AtopileBlockDiagramApp viewBlockId={viewBlockId} handleBlockLoad={handleBlockLoad} handleExploreClick={handleExploreClick} reLayout={reLayout} reLayoutCleared={reLayoutCleared} /> */}
             <Panel position="top-left">
                 <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
                     <div style={{textAlign: 'center'}}> Model inspection pane</div>
@@ -49,9 +62,11 @@ const App = () => {
                     <div><i>Parent:</i> {parentBlockId}</div>
                     <button onClick={() => handleReturnClick()}>return</button>
                     <button onClick={() => handleReLayout()}>re-layout</button>
+                    <button onClick={() => handleModeSwitch()}>mode switch</button>
                 </div>
             </Panel>
-        </ReactFlowProvider>
+            </ReactFlowProvider>
+        </>
     );
 }
 

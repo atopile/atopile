@@ -65,25 +65,22 @@ async function loadSchematicJsonAsDict() {
     return response.json();
 }
 
-const block_id = "root";
-const parent_block_addr = "none";
 let request_ratsnest_update = false;
 let nets = [];
 let nets_distance = [];
 let port_to_component_map = {};
 
 
-const AtopileSchematicApp = () => {
+const AtopileSchematicApp = ({ viewBlockId }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
-    const [block_id, setBlockId] = useState("root");
-    const [parent_block_addr, setParentBlockAddr] = useState("none");
 
     useEffect(() => {
         const updateNodesFromJson = async () => {
             try {
                 const fetchedNodes = await loadSchematicJsonAsDict();
+                //handleBlockLoad("root");
 
                 const populatedNodes = [];
                 for (const [component_name, component_data] of Object.entries(fetchedNodes['components'])) {
@@ -147,7 +144,7 @@ const AtopileSchematicApp = () => {
         };
 
         updateNodesFromJson();
-    }, [block_id]);
+    }, [viewBlockId]);
 
     const onSelectionChange = (elements) => {
         if (request_ratsnest_update) {
@@ -233,8 +230,9 @@ const AtopileSchematicApp = () => {
 
     return (
     <div className="floatingedges">
+        <ReactFlowProvider>
         <ReactFlow
-            key={block_id}
+            key={viewBlockId + "schematic"}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
@@ -254,6 +252,7 @@ const AtopileSchematicApp = () => {
         </Panel> */}
         <Background />
         </ReactFlow>
+        </ReactFlowProvider>
     </div>
     );
 };
