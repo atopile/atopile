@@ -108,6 +108,9 @@ export const SchematicComponent = ({ id, data }) => {
 
     let index = 0;
     for (const [key, value] of Object.entries(populated_ports)) {
+        if (populated_ports[key] === undefined || data.ports[index] === undefined) {
+            throw new Error(`Port ${key} not found in component metadata. Did you update your generics library?`);
+        }
         populated_ports[key].id = data.ports[index].net_id;
         populated_ports[key].name = data.ports[index].name;
         index++;
