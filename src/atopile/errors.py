@@ -187,7 +187,7 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
             addr = ex.addr
         else:
             addr = address.add_entry(
-                Path(address.get_file(address)).name,
+                Path(address.get_file(ex.addr)).name,
                 address.get_entry_section(ex.addr)
             )
         # FIXME: we ignore the escaping of the address here
