@@ -100,11 +100,16 @@ async def home():
     return await send_from_directory(app.static_folder, "index.html")
 
 
+def _ato_file_filter(_, path: str):
+    """Filter for files that are not ato files."""
+    return path.endswith(".ato")
+
+
 async def monitor_changes(src_dir: Path):
     """Background task to monitor the project for changes."""
     log.info(f"Monitoring {src_dir} for changes")
 
-    async for changes in awatch(src_dir, recursive=True):
+    async for changes in awatch(src_dir, watch_filter=_ato_file_filter, recursive=True):
         for change, file in changes:
             log.log(logging.NOTSET, "Change detected in %s: %s", file, change.name)
             atopile.front_end.reset_caches(file)
@@ -119,7 +124,7 @@ async def startup():
     # Monitor the project for changes to reset caches
     app.add_background_task(
         monitor_changes,
-        build_ctx.project_context.src_path
+        build_ctx.project_context.project_path
     )
 
     # Pre-build the entry point
