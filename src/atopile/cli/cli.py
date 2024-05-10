@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import click
 from rich.logging import RichHandler
@@ -22,12 +23,21 @@ logging.basicConfig(
 )
 
 
+def python_interpreter_path(ctx, param, value):
+    """Print the current python interpreter path."""
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(sys.executable)
+    ctx.exit()
+
+
 # cli root
 @click.version_option()
 @click.group()
 @click.option("--non-interactive", is_flag=True, envvar="ATO_NON_INTERACTIVE")
 @click.option("--debug", is_flag=True)
 @click.option("-v", "--verbose", count=True)
+@click.option("--python-path", is_flag=True, callback=python_interpreter_path, expose_value=False)
 @click.pass_context  # This decorator makes the context available to the command.
 def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
     """Base CLI group."""
