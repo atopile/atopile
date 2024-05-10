@@ -1452,11 +1452,10 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
 
 def reset_caches(file: Path | str):
     """Remove a file from the cache."""
-    if file in parser.cache:
-        del parser.cache[file]
-
-    # TODO: only clear these caches of what's been invalidated
     file_str = str(file)
+
+    if file_str in parser.cache:
+        del parser.cache[file_str]
 
     def _clear_cache(cache: dict[str, Any]):
         # We do this in two steps to avoid modifying
@@ -1464,7 +1463,7 @@ def reset_caches(file: Path | str):
         for addr in list(filter(lambda addr: addr.startswith(file_str), cache)):
             del cache[addr]
 
-    _clear_cache(lofty._output_cache)
+    _clear_cache(scoop._output_cache)
     _clear_cache(dizzy._output_cache)
     lofty._output_cache.clear()
 

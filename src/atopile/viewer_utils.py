@@ -1,4 +1,4 @@
-from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section, get_entry_section
+from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section, get_relative_addr_str
 from atopile.instance_methods import (
     get_children,
     get_links,
@@ -9,25 +9,35 @@ from atopile.instance_methods import (
     match_interfaces,
     match_pins_and_signals,
 )
-from atopile.components import get_specd_value
+import atopile.config
 
-import json
 import networkx as nx
 
 from collections import defaultdict
 from typing import DefaultDict, Tuple
 
 
-def get_parent(addr: AddrStr, root) -> AddrStr:
+def get_parent(addr: AddrStr, build_ctx: atopile.config.BuildContext) -> AddrStr:
     """
     returns the parent of the given address or root if there is none
     """
-    if addr == root:
+    if addr == build_ctx.entry:
         return "null"
+    elif get_parent_instance_addr(addr) == build_ctx.entry:
+        return "root"
 
-    return get_instance_section(get_parent_instance_addr(addr)) or "root"
+    return get_relative_addr_str(get_parent_instance_addr(addr), build_ctx.project_context.project_path)
 
-def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
+def get_id(addr: AddrStr, build_ctx: atopile.config.BuildContext) -> AddrStr:
+    """
+    returns the parent of the given address or root if there is none
+    """
+    if addr == build_ctx.entry:
+        return "root"
+
+    return get_relative_addr_str(addr, build_ctx.project_context.project_path)
+
+def get_blocks(addr, build_ctx: atopile.config.BuildContext) -> dict[str, dict[str, str]]:
     """
     returns a dictionary of blocks:
     {
@@ -42,25 +52,20 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
     block_dict = {}
     for child in get_children(addr):
         if match_modules(child) or match_components(child) or match_interfaces(child) or match_pins_and_signals(child):
-            value = "none"
             type = "module"
-            lib_key = "none"
             if match_components(child):
                 type = "component"
-                if _is_builtin(child):
-                    value = get_specd_value(child)
-                    type = "builtin"
-                    lib_key = _is_builtin(child)
             elif match_interfaces(child):
                 type = "interface"
             elif match_pins_and_signals(child):
                 type = "signal"
+            else:
+                type = "module"
+
             block_dict[get_name(child)] = {
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
                 "type": type,
-                "lib_key": lib_key,
-                "address": get_instance_section(child),
-                "value": value}
+                "address": get_relative_addr_str(child, build_ctx.project_context.project_path)}
 
     return block_dict
 
@@ -230,17 +235,17 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
     return harness_return_dict
 
 
-def get_vis_dict(root: AddrStr) -> str:
+def get_vis_dict(build_ctx: atopile.config.BuildContext) -> dict:
     return_json = {}
-
-    for addr in all_descendants(root):
+    # for addr in chain(root, all_descendants(root)):
+    for addr in all_descendants(build_ctx.entry):
         block_dict = {}
         link_list = []
         # we only create an entry for modules, not for components
         if match_modules(addr) and not match_components(addr):
-            instance = get_instance_section(addr) or "root"
-            parent = get_parent(addr, root)
-            block_dict = get_blocks(addr)
+            instance = get_id(addr, build_ctx)
+            parent = get_parent(addr, build_ctx)
+            block_dict = get_blocks(addr, build_ctx)
             link_list = process_links(addr)
             harness_dict = get_harnesses(addr)
 
@@ -251,7 +256,7 @@ def get_vis_dict(root: AddrStr) -> str:
                 "harnesses": harness_dict,
             }
 
-    return json.dumps(return_json)
+    return return_json
 
 def get_current_depth(addr: AddrStr) -> int:
     instance_section = get_instance_section(addr)
@@ -272,15 +277,3 @@ def split_list_at_n(n, list_of_strings):
     second_part = list_of_strings[n+1:]
 
     return first_part, second_part
-
-def _is_builtin(addr: AddrStr) -> bool|str:
-    """
-    Check if the given address is a builtin component, if so, return the builtin type (Resistor, Capacitor, etc.)
-    """
-    _supers_list = get_supers_list(addr)
-    for duper in _supers_list:
-        if get_entry_section(duper.address) == "Resistor":
-            return "Resistor"
-        elif get_entry_section(duper.address) == "Capacitor":
-            return "Capacitor"
-    return False

@@ -4,7 +4,7 @@ from typing import Optional
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from toolz import groupby
 
-from atopile import components, errors, nets, layout
+from atopile import components, errors, nets, layout, config
 from atopile.address import AddrStr, get_name, get_relative_addr_str
 from atopile.instance_methods import (
     all_descendants,
@@ -56,7 +56,7 @@ class NetlistBuilder:
         #     return instance.origin
 
         super_abs_addr = get_next_super(comp_addr).obj_def.address
-        super_addr = get_relative_addr_str(super_abs_addr)
+        super_addr = get_relative_addr_str(super_abs_addr, config.get_project_context().project_path)
         constructed_libpart = KicadLibpart(
             part=_get_mpn(comp_addr),
             description=super_addr,
