@@ -15,6 +15,7 @@ const App = () => {
     const [viewBlockId, setViewBlockId] = useState('root');
     const [parentBlockId, setParentBlockId] = useState('none');
     const [reLayout, setReLayout] = useState(false);
+    const [reload, setReload] = useState(false);
     const [schematicModeEnabled, setSchematicModeEnabled] = useState(false);
 
     function handleReturnClick() {
@@ -60,9 +61,9 @@ const App = () => {
               'Content-Type': 'application/json' // Set the content type header for sending JSON
             },
             body: JSON.stringify({
-                "angle": 0,
-                "x": 0,
-                "y": 2
+                "angle": angle,
+                "x": pos.x,
+                "y": pos.y
               })
           });
         if (!response.ok) {
@@ -75,6 +76,7 @@ const App = () => {
         <AtopileSchematicApp
             viewBlockId={viewBlockId}
             savePos={savePos}
+            reload={reload}
         />
         :
         <AtopileBlockDiagramApp
@@ -91,16 +93,18 @@ const App = () => {
         <>
             <ReactFlowProvider>
                 {activeApp}
-            <Panel position="top-left">
-                <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
-                    <div style={{textAlign: 'center'}}> Model inspection pane</div>
-                    <div><i>Inspecting:</i> <b>{viewBlockId}</b></div>
-                    <div><i>Parent:</i> {parentBlockId}</div>
-                    <button style={{margin: '5px'}} onClick={() => handleReturnClick()} disabled={schematicModeEnabled} >return</button>
-                    <button style={{margin: '5px'}} onClick={() => handleReLayout()} disabled={schematicModeEnabled} >re-layout</button>
-                    <button style={{margin: '5px'}} onClick={() => handleModeSwitch()}>mode switch</button>
-                </div>
-            </Panel>
+                <Panel position="top-left">
+                    <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
+                        <div style={{textAlign: 'center'}}> Model inspection pane</div>
+                        <div><i>Inspecting:</i> <b>{viewBlockId}</b></div>
+                        <div><i>Parent:</i> {parentBlockId}</div>
+                        <div>Mode: {schematicModeEnabled ? 'schematic' : 'block diagram'}</div>
+                        <button style={{margin: '5px'}} onClick={() => handleReturnClick()} disabled={schematicModeEnabled} >return</button>
+                        <button style={{margin: '5px'}} onClick={() => handleReLayout()} disabled={schematicModeEnabled} >re-layout</button>
+                        <button style={{margin: '5px'}} onClick={() => handleModeSwitch()}>mode switch</button>
+                        <button style={{margin: '5px'}} onClick={() => setReload(!reload)} disabled={!schematicModeEnabled}>reload</button>
+                    </div>
+                </Panel>
             </ReactFlowProvider>
         </>
     );

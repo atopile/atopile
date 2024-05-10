@@ -209,6 +209,21 @@ function getComponentMetaData(component) {
             },
             "svg": `<path fill="none" stroke="#000" d="M25 56.25h100v37.5H25zM25 75H0m125 0h25"/>`
         },
+        "Inductor": {
+            "ports": {
+                "p1": {
+                    initialPosition: Position.Left,
+                    offset: 35,
+                    offset_dir: Position.Top
+                },
+                "p2": {
+                    initialPosition: Position.Right,
+                    offset: 25,
+                    offset_dir: Position.Top
+                }
+            },
+            "svg": `<path fill="none" stroke="#000" stroke-linejoin="round" stroke-width="5" d="M0 75.13h12.5s0-18.82 15.63-18.82S43.75 75 43.75 75s0-18.75 15.63-18.75S75 75 75 75s0-18.75 15.63-18.75S106.25 75 106.25 75s0-18.75 15.63-18.75S137.5 75 137.5 75H150"/>`
+        },
         "ZenerDiode": {
             "ports": {
                 "anode": {
@@ -226,6 +241,39 @@ function getComponentMetaData(component) {
                         <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
                         <path d="M112.5 109.5 100 100V50l-12.5-9.5"/>
                     </g>`
+        },
+        "SchottkyDiode": {
+            "ports": {
+                "anode": {
+                    initialPosition: Position.Left,
+                    offset: 35,
+                    offset_dir: Position.Top
+                },
+                "cathode": {
+                    initialPosition: Position.Right,
+                    offset: 25,
+                    offset_dir: Position.Top
+                }
+            },
+            "svg":  `<g fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5">
+                        <path d="m100 75-50 31.25v-62.5L100 75zm-50 0H0m100 0h50"/>
+                        <path d="M87.5 97v12.5H100v-69h12.5V53"/>
+                    </g>`
+        },
+        "Diode": {
+            "ports": {
+                "anode": {
+                    initialPosition: Position.Left,
+                    offset: 25,
+                    offset_dir: Position.Top
+                },
+                "cathode": {
+                    initialPosition: Position.Right,
+                    offset: 25,
+                    offset_dir: Position.Top
+                }
+            },
+            "svg": `<path fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5" d="m100 75-50 31.25v-62.5L100 75zm0-34.25v68.5M50 75H0m100 0h50"/>`
         },
         "LED": {
             "ports": {
@@ -313,6 +361,164 @@ function getComponentMetaData(component) {
                         <circle cx="75" cy="75" r="50"/>
                         <path d="M0 75h50m12.5-31.25v62.5M99.66 0v56.25H62.5M99.66 150V93.75H62.5M50 50v50"/>
                     </g>`
+        },
+        "PFET": {
+            "ports": {
+                "gate": {
+                    initialPosition: Position.Left,
+                    offset: {
+                        0: 25,
+                        90: 25,
+                        180: 25,
+                        270: 25
+                    },
+                    offset_dir: {
+                        0: Position.Top,
+                        90: Position.Left,
+                        180: Position.Top,
+                        270: Position.Left
+                    }
+                },
+                "source": {
+                    initialPosition: Position.Top,
+                    offset: {
+                        0: 33,
+                        90: 33,
+                        180: 17,
+                        270: 17
+                    },
+                    offset_dir: {
+                        0: Position.Left,
+                        90: Position.Top,
+                        180: Position.Left,
+                        270: Position.Top
+                    }
+                },
+                "drain": {
+                    initialPosition: Position.Bottom,
+                    offset: {
+                        0: 33,
+                        90: 33,
+                        180: 17,
+                        270: 17
+                    },
+                    offset_dir: {
+                        0: Position.Left,
+                        90: Position.Top,
+                        180: Position.Left,
+                        270: Position.Top
+                    }
+                },
+            },
+            "svg": `<g fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5">
+                        <circle cx="75" cy="75" r="50"/>
+                        <path d="M0 75h31.25M62.5 43.75v62.5M99.66 0v56.25H62.5M99.66 150V93.75H62.5M50 50v50"/>
+                        <circle cx="37.5" cy="75" r="6.25"/>
+                    </g>`
+        },
+        "PNP": {
+            "ports": {
+                "gate": {
+                    initialPosition: Position.Left,
+                    offset: {
+                        0: 25,
+                        90: 25,
+                        180: 25,
+                        270: 25
+                    },
+                    offset_dir: {
+                        0: Position.Top,
+                        90: Position.Left,
+                        180: Position.Top,
+                        270: Position.Left
+                    }
+                },
+                "drain": {
+                    initialPosition: Position.Bottom,
+                    offset: {
+                        0: 33,
+                        90: 33,
+                        180: 17,
+                        270: 17
+                    },
+                    offset_dir: {
+                        0: Position.Left,
+                        90: Position.Top,
+                        180: Position.Left,
+                        270: Position.Top
+                    }
+                },
+                "source": {
+                    initialPosition: Position.Top,
+                    offset: {
+                        0: 33,
+                        90: 33,
+                        180: 17,
+                        270: 17
+                    },
+                    offset_dir: {
+                        0: Position.Left,
+                        90: Position.Top,
+                        180: Position.Left,
+                        270: Position.Top
+                    }
+                }
+            },
+            "svg": `<circle cx="75" cy="75" r="50" fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5"/>
+                    <path fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5" d="M0 75h50m0 31.25v-62.5M100 150v-40.5l-50-22M99.84 0v31.25L62.22 53.94"/>
+                    <path d="M60.23 46.41 53 59.5l14.95-.28-7.72-12.81z"/>`
+        },
+        "NPN": {
+            "ports": {
+                "gate": {
+                    initialPosition: Position.Left,
+                    offset: {
+                        0: 25,
+                        90: 25,
+                        180: 25,
+                        270: 25
+                    },
+                    offset_dir: {
+                        0: Position.Top,
+                        90: Position.Left,
+                        180: Position.Top,
+                        270: Position.Left
+                    }
+                },
+                "drain": {
+                    initialPosition: Position.Bottom,
+                    offset: {
+                        0: 33,
+                        90: 33,
+                        180: 17,
+                        270: 17
+                    },
+                    offset_dir: {
+                        0: Position.Left,
+                        90: Position.Top,
+                        180: Position.Left,
+                        270: Position.Top
+                    }
+                },
+                "source": {
+                    initialPosition: Position.Top,
+                    offset: {
+                        0: 33,
+                        90: 33,
+                        180: 17,
+                        270: 17
+                    },
+                    offset_dir: {
+                        0: Position.Left,
+                        90: Position.Top,
+                        180: Position.Left,
+                        270: Position.Top
+                    }
+                }
+            },
+            "svg": `<circle cx="75" cy="75" r="50" fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5"/>
+                    <path fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5" d="M100 150v-31.25M0 75h50m0-31.25v62.5M100 0v40.5l-50 22m0 25 37.52 22.47"/>
+                    <path d="m81.8 115.26 14.95.24-7.27-13.07-7.68 12.83z"/>`
         },
         "Opamp": {
             "ports": {

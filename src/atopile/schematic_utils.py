@@ -51,8 +51,8 @@ def get_std_lib(addr: AddrStr) -> str:
     #TODO: The time has come to bake the standard lib as a compiler dependency...
     std_lib_supers = [
         "Resistor",
+        "Inductor",
         "Capacitor",
-        "CapacitorElectrolytic",
         "LED",
         "Power",
         "NPN",
@@ -61,6 +61,7 @@ def get_std_lib(addr: AddrStr) -> str:
         "SchottkyDiode",
         "ZenerDiode",
         "NFET",
+        "PFET",
         "Opamp"]
 
     # Handle signals

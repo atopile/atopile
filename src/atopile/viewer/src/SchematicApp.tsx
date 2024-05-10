@@ -47,13 +47,15 @@ let request_ratsnest_update = false;
 let nets = [];
 let nets_distance = [];
 let port_to_component_map = {};
+let component_positions = {};
 
 
-const AtopileSchematicApp = ({ viewBlockId, savePos }) => {
+const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
-    const [isDataLoaded, setIsDataLoaded] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [tooLarge, setTooLarge] = useState(false);
 
     const rotateAction = useKeyPress(['r', 'R']);
     const mirrorAction = useKeyPress(['f', 'F']);
@@ -65,29 +67,35 @@ const AtopileSchematicApp = ({ viewBlockId, savePos }) => {
                 const fetchedNodes = await loadSchematicJsonAsDict();
                 const displayedNode = fetchedNodes[viewBlockId];
                 //handleBlockLoad("root");
+                if (Object.keys(displayedNode['components']).length > 10) {
+                    setTooLarge(true);
+                    return;
+                }
 
                 const populatedNodes = [];
                 for (const [component_name, component_data] of Object.entries(displayedNode['components'])) {
-                    const position = {
+                    let position = {
                         x: Math.random() * window.innerWidth,
                         y: Math.random() * window.innerHeight,
                     };
                     if (component_data['std_lib_id'] !== "") {
+                        if (component_name in component_positions) {
+                            position = component_positions[component_name];
+                        }
                         populatedNodes.push({ id: component_name, type: "SchematicComponent", data: component_data, position: position });
                         for (const port in component_data['ports']) {
                             port_to_component_map[component_data['ports'][port]['net_id']] = component_name;
                         }
                     } else {
                         Object.entries(component_data['ports']).forEach(([port_id, port_data], index) => {
-                            const portPosition = {
-                                x: position.x + index * 10, // Offset each port node slightly for visibility
-                                y: position.y + index * 10
-                            };
+                            if (port_data['net_id'] in component_positions) {
+                                position = component_positions[port_data['net_id']];
+                            }
                             populatedNodes.push({
                                 id: port_data['net_id'],
                                 type: "SchematicScatter",
                                 data: { id: port_data['net_id'], name: port_data['name'] },
-                                position: portPosition
+                                position: position
                             });
                             port_to_component_map[port_data['net_id']] = port_data['net_id'];
                         });
@@ -114,8 +122,8 @@ const AtopileSchematicApp = ({ viewBlockId, savePos }) => {
         };
 
         updateNodesFromJson();
-        setIsDataLoaded(true);
-    }, [viewBlockId]);
+        setLoading(false);
+    }, [viewBlockId, reload]);
 
     useEffect(() => {
         let updatedNodes = [];
@@ -137,7 +145,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos }) => {
 
 
     const onSelectionChange = (elements) => {
-        if (request_ratsnest_update && isDataLoaded) {
+        if (request_ratsnest_update && !loading) {
             request_ratsnest_update = false;
             addLinks();
             return;
@@ -149,7 +157,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos }) => {
         try {
             // Add the shortest links to complete all the nets
             // Get all the component positions
-            let component_positions = {};
+            component_positions = {};
             for (const node of nodes) {
                 component_positions[node.id] = node.position;
             }
@@ -224,6 +232,11 @@ const AtopileSchematicApp = ({ viewBlockId, savePos }) => {
 
     return (
     <div className="providerflow">
+        {tooLarge ? (
+        <div style={{ width: '100%', height: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <b>There are too many components to display. Navigate to a different module.</b>
+        </div>
+      ) : (
         <ReactFlowProvider>
             <ReactFlow
                 key={"schematic"}
@@ -239,7 +252,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos }) => {
             >
                 <Background />
             </ReactFlow>
-        </ReactFlowProvider>
+        </ReactFlowProvider>)}
     </div>
     );
 };
