@@ -16,13 +16,15 @@ The viewer will spool up a server on your local machine at [http://127.0.0.1:808
 
 ## Viewer interfaces
 
-<!-- Add pictures of what those interfaces look like -->
-
 ### Block diagram
+
+![Block Diagram](assets/images/block_diagram_example.png)
 
 The block diagram is meant to provide a view that resembles your code structure. In the block diagram view, you will see the same signals and interfaces that are present in your code as well as how they interact with each other. This view will help you navigate through your project and it's structure.
 
 ### Schematic
+
+![Schematic](assets/images/schematic_example.png)
 
 The schematic view follows a more standard view of your design. This view can be used for documentation or inspecting a more concrete view of your final circuit. The schematic view can be enabled by navigating with the block diagram to the block you want to inspect and pressing the schematic button. You can switch back to block diagram by pressing the same button.
 
