@@ -119,6 +119,7 @@ export const SchematicComponent = ({ id, data }) => {
             <div style={{ transform, width: '50px', height: '50px' }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150" strokeWidth="5" dangerouslySetInnerHTML={{ __html: component_metadata.svg }} >
                 </svg>
+                <div style={{position: "absolute", top: "0", left: "0", fontSize: "7px"}}>{data.name}</div>
             </div>
         </>
     );
