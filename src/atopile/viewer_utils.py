@@ -1,4 +1,4 @@
-from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section, get_relative_addr_str
+from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section, get_relative_addr_str, get_entry_section
 from atopile.instance_methods import (
     get_children,
     get_links,
@@ -7,9 +7,12 @@ from atopile.instance_methods import (
     match_modules,
     match_components,
     match_interfaces,
-    match_pins_and_signals
+    match_pins_and_signals,
 )
 import atopile.config
+from atopile.components import get_specd_value
+
+import json
 import networkx as nx
 
 from collections import defaultdict
@@ -42,20 +45,16 @@ def get_blocks(addr, build_ctx: atopile.config.BuildContext) -> dict[str, dict[s
     {
         "block_name": {
             "instance_of": "instance_name",
-            "type": "module/component/interface/signal"
-            "address": "a.b.c"
+            "type": "module/component/interface/signal/builtin",
+            "address": "a.b.c",
+            "value": "value"
         }, ...
     }
     """
     block_dict = {}
     for child in get_children(addr):
-        if (
-            match_modules(child) or
-            match_components(child) or
-            match_interfaces(child) or
-            match_pins_and_signals(child)
-        ):
-
+        if match_modules(child) or match_components(child) or match_interfaces(child) or match_pins_and_signals(child):
+            type = "module"
             if match_components(child):
                 type = "component"
             elif match_interfaces(child):
@@ -280,3 +279,15 @@ def split_list_at_n(n, list_of_strings):
     second_part = list_of_strings[n+1:]
 
     return first_part, second_part
+
+def _is_builtin(addr: AddrStr) -> bool|str:
+    """
+    Check if the given address is a builtin component, if so, return the builtin type (Resistor, Capacitor, etc.)
+    """
+    _supers_list = get_supers_list(addr)
+    for duper in _supers_list:
+        if get_entry_section(duper.address) == "Resistor":
+            return "Resistor"
+        elif get_entry_section(duper.address) == "Capacitor":
+            return "Capacitor"
+    return False

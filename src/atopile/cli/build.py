@@ -15,6 +15,7 @@ import atopile.front_end
 import atopile.layout
 import atopile.manufacturing_data
 import atopile.netlist
+import atopile.variable_report
 from atopile.cli.common import project_options
 from atopile.components import download_footprint
 from atopile.config import BuildContext
