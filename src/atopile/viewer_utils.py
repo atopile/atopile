@@ -1,4 +1,4 @@
-from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section
+from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section, get_relative_addr_str
 from atopile.instance_methods import (
     get_children,
     get_links,
@@ -9,22 +9,34 @@ from atopile.instance_methods import (
     match_interfaces,
     match_pins_and_signals
 )
+import atopile.config
 import networkx as nx
 
 from collections import defaultdict
 from typing import DefaultDict, Tuple
 
 
-def get_parent(addr: AddrStr, root) -> AddrStr:
+def get_parent(addr: AddrStr, build_ctx: atopile.config.BuildContext) -> AddrStr:
     """
     returns the parent of the given address or root if there is none
     """
-    if addr == root:
+    if addr == build_ctx.entry:
         return "null"
+    elif get_parent_instance_addr(addr) == build_ctx.entry:
+        return "root"
 
-    return get_instance_section(get_parent_instance_addr(addr)) or "root"
+    return get_relative_addr_str(get_parent_instance_addr(addr), build_ctx.project_context.project_path)
 
-def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
+def get_id(addr: AddrStr, build_ctx: atopile.config.BuildContext) -> AddrStr:
+    """
+    returns the parent of the given address or root if there is none
+    """
+    if addr == build_ctx.entry:
+        return "root"
+
+    return get_relative_addr_str(addr, build_ctx.project_context.project_path)
+
+def get_blocks(addr, build_ctx: atopile.config.BuildContext) -> dict[str, dict[str, str]]:
     """
     returns a dictionary of blocks:
     {
@@ -56,7 +68,7 @@ def get_blocks(addr: AddrStr) -> dict[str, dict[str, str]]:
             block_dict[get_name(child)] = {
                 "instance_of": get_name(get_supers_list(child)[0].obj_def.address),
                 "type": type,
-                "address": get_instance_section(child)}
+                "address": get_relative_addr_str(child, build_ctx.project_context.project_path)}
 
     return block_dict
 
@@ -226,17 +238,17 @@ def get_harnesses(addr: AddrStr) -> list[dict]:
     return harness_return_dict
 
 
-def get_vis_dict(root: AddrStr) -> dict:
+def get_vis_dict(build_ctx: atopile.config.BuildContext) -> dict:
     return_json = {}
     # for addr in chain(root, all_descendants(root)):
-    for addr in all_descendants(root):
+    for addr in all_descendants(build_ctx.entry):
         block_dict = {}
         link_list = []
         # we only create an entry for modules, not for components
         if match_modules(addr) and not match_components(addr):
-            instance = get_instance_section(addr) or "root"
-            parent = get_parent(addr, root)
-            block_dict = get_blocks(addr)
+            instance = get_id(addr, build_ctx)
+            parent = get_parent(addr, build_ctx)
+            block_dict = get_blocks(addr, build_ctx)
             link_list = process_links(addr)
             harness_dict = get_harnesses(addr)
 

@@ -34,6 +34,7 @@ function mirrorPosition(position, mirror) {
   }
 
 const MultiPinHandle = ({ ports, rotationDegrees = 0, mirrorX = false}) => {
+    //TODO: remove this
     const portsArray = Array.isArray(ports) ? ports : Object.values(ports);
 
     if (!portsArray.length) {
@@ -85,7 +86,7 @@ const MultiPinHandle = ({ ports, rotationDegrees = 0, mirrorX = false}) => {
 
 
 // Common function to handle and render electronic components
-export const SchematicElectronicComponent = ({ id, data }) => {
+export const SchematicComponent = ({ id, data }) => {
     const [rotation, setRotation] = useState(0);
     const [mirror, setMirror] = useState(false);
     const [position, setCompPosition] = useState({ x: 0, y: 0 });
@@ -93,7 +94,8 @@ export const SchematicElectronicComponent = ({ id, data }) => {
 
     useEffect(() => {
         setRotation(data.rotation);
-        setMirror(data.mirror);
+        //TODO: add mirroring for more complex components
+        //setMirror(data.mirror);
         setCompPosition(data.position);
         updateNodeInternals(id);
     }, [data]);
@@ -122,10 +124,75 @@ export const SchematicElectronicComponent = ({ id, data }) => {
     );
 };
 
+// Common function to handle and render electronic signal
+export const SchematicSignal = ({ id, data }) => {
+    const [position, setCompPosition] = useState({ x: 0, y: 0 });
+    const updateNodeInternals = useUpdateNodeInternals();
+
+    useEffect(() => {
+        setCompPosition(data.position);
+        updateNodeInternals(id);
+    }, [data]);
+
+    // Get the data for each component type
+    const component_metadata = getComponentMetaData(data.std_lib_id);
+    let populated_ports = component_metadata.ports;
+
+    let index = 0;
+    for (const [key, value] of Object.entries(populated_ports)) {
+        populated_ports[key].id = data.address;
+        populated_ports[key].name = data.name;
+        index++;
+    }
+
+    return (
+        <>
+            <MultiPinHandle ports={populated_ports} rotationDegrees={0} mirrorX={false} position={position}/>
+            <div style={{ width: '50px', height: '50px' }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150" strokeWidth="5" dangerouslySetInnerHTML={{ __html: component_metadata.svg }} >
+                </svg>
+                <div style={{fontSize: "7px"}}>{data.name}</div>
+            </div>
+        </>
+    );
+};
+
+// Common function to handle and render electronic pins scattered around the place
+export const SchematicScatter = ({ id, data }) => {
+    const [position, setCompPosition] = useState({ x: 0, y: 0 });
+    const [mirror, setMirror] = useState(false);
+    const updateNodeInternals = useUpdateNodeInternals();
+
+    useEffect(() => {
+        setCompPosition(data.position);
+        setMirror(data.mirror);
+        updateNodeInternals(id);
+    }, [data]);
+
+    return (
+        <>
+            <Handle
+                type="source"
+                id={id}
+                position={mirror?Position.Right:Position.Left}
+            />
+            <div style={{border: "2px solid black", padding: "2px", borderRadius: "5px"}}>
+                {data.name}
+            </div>
+            <Handle
+                type="target"
+                id={id}
+                position={mirror?Position.Right:Position.Left}
+            />
+        </>
+    );
+};
 
 function getComponentMetaData(component) {
-    //TODO: move the std lib back into the compiler????
+    //TODO: move the std lib back into the compiler?
     // components courtesy of: https://github.com/chris-pikul/electronic-symbols
+
+    //TODO: we will have to break this up into multiple different files. Keeping this here for the second.
     const component_metadata = {
         "Resistor": {
             "ports": {
@@ -326,6 +393,28 @@ function getComponentMetaData(component) {
                 }
             },
             "svg": `<path fill="none" stroke="#000" strokeMiterlimit="10" d="M25 25v100l100-50L25 25zm0 25H0m125 25h25M0 100h25m9.5-47H53m-9.25-9.25v18.5M34.5 97H53M74.69 0v50m.37 100v-50"/>`
+        },
+        "Power.vcc": {
+            "ports": {
+                "Power.vcc": {
+                    initialPosition: Position.Bottom,
+                    offset: 35,
+                    offset_dir: Position.Left
+                }
+            },
+            "svg": `<g transform="rotate(180 75 75)">
+                    <path fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5" d="M75 0v62.5m-50 0h100L75 125 25 62.5z"/>
+                    </g>`
+        },
+        "Power.gnd": {
+            "ports": {
+                "Power.gnd": {
+                    initialPosition: Position.Top,
+                    offset: 35,
+                    offset_dir: Position.Left
+                }
+            },
+            "svg": `<path fill="none" stroke="#000" stroke-miterlimit="10" stroke-width="5" d="M75 0v75m-50 0h100m-56.25 50h12.5M50 100h50"/>`
         }
     };
 

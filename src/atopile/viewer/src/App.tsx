@@ -15,7 +15,6 @@ const App = () => {
     const [viewBlockId, setViewBlockId] = useState('root');
     const [parentBlockId, setParentBlockId] = useState('none');
     const [reLayout, setReLayout] = useState(false);
-    const [reCenter, setReCenter] = useState(false);
     const [schematicModeEnabled, setSchematicModeEnabled] = useState(false);
 
     function handleReturnClick() {
@@ -47,12 +46,36 @@ const App = () => {
         setSchematicModeEnabled(!schematicModeEnabled);
     }
 
-    function handleReCenter() {
-        setReCenter(true);
+    function handleSavePos() {
+        console.log('save pos');
+        savePos("/Users/timot/Dev/atopile/community-projects/viewer-test/elec/src/viewer-test.ato:ViewerTest::amp")
+    }
+
+    async function savePos(addr, pos, angle) {
+        const mode = schematicModeEnabled ? 'schematic' : 'block-diagram';
+        const url = `http://127.0.0.1:8080/${mode}/${addr}/pose`;
+        const response = await fetch(url, {
+            method: 'POST', // Set the method to POST
+            headers: {
+              'Content-Type': 'application/json' // Set the content type header for sending JSON
+            },
+            body: JSON.stringify({
+                "angle": 0,
+                "x": 0,
+                "y": 2
+              })
+          });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
     }
 
     activeApp = schematicModeEnabled ?
-        <AtopileSchematicApp viewBlockId={viewBlockId} />
+        <AtopileSchematicApp
+            viewBlockId={viewBlockId}
+            savePos={savePos}
+        />
         :
         <AtopileBlockDiagramApp
             viewBlockId={viewBlockId}
@@ -60,8 +83,7 @@ const App = () => {
             handleExploreClick={handleExploreClick}
             reLayout={reLayout}
             reLayoutCleared={reLayoutCleared}
-            reCenter={reCenter}
-            setReCenter={setReCenter}
+            savePos={savePos}
             />;
 
 
@@ -74,9 +96,9 @@ const App = () => {
                     <div style={{textAlign: 'center'}}> Model inspection pane</div>
                     <div><i>Inspecting:</i> <b>{viewBlockId}</b></div>
                     <div><i>Parent:</i> {parentBlockId}</div>
-                    <button onClick={() => handleReturnClick()}>return</button>
-                    <button onClick={() => handleReLayout()}>re-layout</button>
-                    <button onClick={() => handleModeSwitch()}>mode switch</button>
+                    <button style={{margin: '5px'}} onClick={() => handleReturnClick()} disabled={schematicModeEnabled} >return</button>
+                    <button style={{margin: '5px'}} onClick={() => handleReLayout()} disabled={schematicModeEnabled} >re-layout</button>
+                    <button style={{margin: '5px'}} onClick={() => handleModeSwitch()}>mode switch</button>
                 </div>
             </Panel>
             </ReactFlowProvider>

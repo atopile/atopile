@@ -24,11 +24,13 @@ import SimpleTable from './LinkTable.tsx';
 import './index.css';
 
 import "react-data-grid/lib/styles.css";
-import { SchematicElectronicComponent } from './components/SchematicElements.tsx';
+import { SchematicComponent, SchematicSignal, SchematicScatter } from './components/SchematicElements.tsx';
 
 
 const nodeTypes = {
-    SchematicElectronicComponent: SchematicElectronicComponent
+    SchematicComponent: SchematicComponent,
+    SchematicSignal: SchematicSignal,
+    SchematicScatter: SchematicScatter
 };
 
 const edgeTypes = {};
@@ -47,7 +49,7 @@ let nets_distance = [];
 let port_to_component_map = {};
 
 
-const AtopileSchematicApp = ({ viewBlockId }) => {
+const AtopileSchematicApp = ({ viewBlockId, savePos }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
@@ -70,28 +72,37 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
                         x: Math.random() * window.innerWidth,
                         y: Math.random() * window.innerHeight,
                     };
-                    if (component_data['std_lib_id'] != "") {
-                        populatedNodes.push({ id: component_name, type: "SchematicElectronicComponent", data: component_data, position: position });
-                    }
-
-                    for (const port in component_data['ports']) {
-                        port_to_component_map[component_data['ports'][port]['net_id']] = component_name;
-                    }
-                }
-                for (const [signal_name, signal_data] of Object.entries(displayedNode['signals'])) {
-                    const position = {
-                        x: Math.random() * window.innerWidth,
-                        y: Math.random() * window.innerHeight,
-                    };
-                    if (signal_data['std_lib_id'] == 'Power.vcc') {
-                        populatedNodes.push({ id: signal_name, type: 'VccNode', data: signal_data , position: position });
-                    } else if (signal_data['std_lib_id'] == 'Power.gnd') {
-                        populatedNodes.push({ id: signal_name, type: 'GroundNode', data: signal_data , position: position });
+                    if (component_data['std_lib_id'] !== "") {
+                        populatedNodes.push({ id: component_name, type: "SchematicComponent", data: component_data, position: position });
+                        for (const port in component_data['ports']) {
+                            port_to_component_map[component_data['ports'][port]['net_id']] = component_name;
+                        }
                     } else {
-                        //populatedNodes.push({ id: signal_name, type: 'Signal', data: signal_data , position: position });
+                        Object.entries(component_data['ports']).forEach(([port_id, port_data], index) => {
+                            const portPosition = {
+                                x: position.x + index * 10, // Offset each port node slightly for visibility
+                                y: position.y + index * 10
+                            };
+                            populatedNodes.push({
+                                id: port_data['net_id'],
+                                type: "SchematicScatter",
+                                data: { id: port_data['net_id'], name: port_data['name'] },
+                                position: portPosition
+                            });
+                            port_to_component_map[port_data['net_id']] = port_data['net_id'];
+                        });
                     }
-                    port_to_component_map[signal_name] = signal_name;
                 }
+                // for (const [signal_name, signal_data] of Object.entries(displayedNode['signals'])) {
+                //     const position = {
+                //         x: Math.random() * window.innerWidth,
+                //         y: Math.random() * window.innerHeight,
+                //     };
+                //     if (signal_data['std_lib_id'] !== "") {
+                //         populatedNodes.push({ id: signal_name, type: "SchematicSignal", data: signal_data, position: position });
+                //         port_to_component_map[signal_name] = signal_name;
+                //     }
+                // }
                 // Assuming displayedNode is an array of nodes in the format expected by React Flow
                 setNodes(populatedNodes);
 
@@ -122,7 +133,7 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
             return node;
         });
         setNodes(updatedNodes);
-    }, [rotateAction]);
+    }, [rotateAction, mirrorAction]);
 
 
     const onSelectionChange = (elements) => {
@@ -144,13 +155,12 @@ const AtopileSchematicApp = ({ viewBlockId }) => {
             }
             // for each component in the net, calculate the distance to the other components in the net
             let nets_distances = [];
-            let test = nets;
-            for (const net of test) {
+            for (const net of nets) {
                 let net_distances = {};
                 for (const conn_id of net) {
                     let conn_to_conn_distance = {};
                     for (const other_conn_id of net) {
-                        if (conn_id != other_conn_id) {
+                        if (conn_id != other_conn_id && conn_id in port_to_component_map && other_conn_id in port_to_component_map) {
                             const conn_pos = component_positions[port_to_component_map[conn_id]];
                             const other_conn_pos = component_positions[port_to_component_map[other_conn_id]];
                             conn_to_conn_distance[other_conn_id] = Math.sqrt(Math.pow(conn_pos.x - other_conn_pos.x, 2) + Math.pow(conn_pos.y - other_conn_pos.y, 2));

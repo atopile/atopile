@@ -98,7 +98,7 @@ const requestRelayout = false;
 let selected_links_data = {};
 
 
-const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared, reCenter, setReCenter }) => {
+const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared, savePos }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
@@ -214,33 +214,24 @@ const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreCli
     return (
     <div className="providerflow">
         <ReactFlowProvider>
-        <ReactFlow
-            key={viewBlockId + "block"}
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onSelectionChange={onSelectionChange}
-            //onConnect={onConnect}
-            fitView
-            edgeTypes={edgeTypes}
-            nodeTypes={nodeTypes}
-            style={{ width: '100%', height: '50%' }}
-        >
-        {/* <Panel position="top-left">
-            <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
-                <div style={{textAlign: 'center'}}> Model inspection pane</div>
-                <div><i>Inspecting:</i> <b>{block_id}</b></div>
-                <div><i>Parent:</i> {parent_block_addr}</div>
-                <button onClick={() => handleExpandClick(parent_block_addr)}>return</button>
-                <button onClick={() => onLayout({ direction: 'DOWN' })}>re-layout</button>
-            </div>
-        </Panel> */}
-        <Panel position="top-right">
-            <SimpleTable source={selected_link_source} target={selected_link_target} data={selected_link_data} />
-        </Panel>
-        <Background />
-        </ReactFlow>
+            <ReactFlow
+                key={viewBlockId + "block"}
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onSelectionChange={onSelectionChange}
+                //onConnect={onConnect}
+                fitView
+                edgeTypes={edgeTypes}
+                nodeTypes={nodeTypes}
+                style={{ width: '100%', height: '50%' }}
+            >
+                <Panel position="top-right">
+                    <SimpleTable source={selected_link_source} target={selected_link_target} data={selected_link_data} />
+                </Panel>
+                <Background />
+            </ReactFlow>
         </ReactFlowProvider>
     </div>
     );

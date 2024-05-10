@@ -1,6 +1,6 @@
 import logging
 
-from atopile.address import AddrStr, get_name, get_instance_section, add_instance, get_entry_section
+from atopile.address import AddrStr, get_name, get_instance_section, add_instance, get_entry_section, get_relative_addr_str
 from atopile.instance_methods import (
     get_children,
     get_links,
@@ -15,6 +15,9 @@ from atopile.instance_methods import (
 )
 from atopile.front_end import Link
 from atopile import errors
+import atopile.config
+
+from atopile.viewer_utils import get_id
 
 import json
 
@@ -69,7 +72,7 @@ def get_std_lib(addr: AddrStr) -> str:
                 if get_entry_section(matching_super) == "Power":
                     return "Power." + get_name(addr)
             else:
-                return "none"
+                return ""
 
     # handle components
     matching_super = find_matching_super(addr, std_lib_supers)
@@ -77,11 +80,11 @@ def get_std_lib(addr: AddrStr) -> str:
         return ""
     return get_name(matching_super)
 
-def get_schematic_dict(root: AddrStr) -> dict:
+def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
 
     return_json = {}
 
-    for addr in all_descendants(root):
+    for addr in all_descendants(build_ctx.entry):
         if match_modules(addr) and not match_components(addr):
             # Start by creating a list of all the components in the view and their ports.
             # Ports consist of cluster of pins, signals and signals within interfaces
@@ -136,11 +139,12 @@ def get_schematic_dict(root: AddrStr) -> dict:
                         for connectable in component_net:
                             connectable_to_nets_map[connectable] = net_hash
 
-                    components_dict[component] = {
+                    comp_addr = get_relative_addr_str(component, build_ctx.project_context.project_path)
+                    components_dict[comp_addr] = {
                         "instance_of": get_name(get_supers_list(component)[0].obj_def.address),
                         "std_lib_id": get_std_lib(component),
                         "value": _get_specd_value(component),
-                        "address": get_instance_section(component),
+                        "address": get_relative_addr_str(component, build_ctx.project_context.project_path),
                         "name": get_name(component),
                         "ports": component_ports_dict,
                         "rotation": 0,
@@ -159,18 +163,19 @@ def get_schematic_dict(root: AddrStr) -> dict:
                             signals_dict[signal] = {
                                 "std_lib_id": get_std_lib(signal),
                                 "instance_of": get_name(get_supers_list(interface)[0].obj_def.address),
-                                "address": get_instance_section(signal),
+                                "address": get_relative_addr_str(signal, build_ctx.project_context.project_path),
                                 "name": get_name(get_parent(signal)) + "." + get_name(signal)}
 
                             if get_std_lib(signal) != "none":
-                                connectable_to_nets_map[signal] = signal
+                                pass
+                                #connectable_to_nets_map[signal] = signal
 
                     signals_at_view = list(filter(match_signals, get_children(block)))
                     for signal in signals_at_view:
                         signals_dict[signal] = {
                             "std_lib_id": get_std_lib(signal),
                             "instance_of": "signal",
-                            "address": get_instance_section(signal),
+                            "address": get_relative_addr_str(signal, build_ctx.project_context.project_path),
                             "name": get_name(signal)}
 
 
@@ -187,25 +192,25 @@ def get_schematic_dict(root: AddrStr) -> dict:
                         converted_net.add(connectable_to_nets_map[connectable])
                 converted_nets_above_components.append(list(converted_net))
 
-            net_links = []
-            # for each net in the component_net_above_components, create a link between each of the nodes in the net
-            for net in converted_nets_above_components:
-                output_net = []
-                for conn in net:
-                    output_net.append(conn)
-                net_links.append(output_net)
+            # net_links = []
+            # # for each net in the component_net_above_components, create a link between each of the nodes in the net
+            # for net in converted_nets_above_components:
+            #     output_net = []
+            #     for conn in net:
+            #         output_net.append(conn)
+            #     net_links.append(output_net)
 
-            instance = get_instance_section(addr) or "root"
+            instance = get_id(addr, build_ctx)
             return_json[instance] = {
                 "components": components_dict,
                 "signals": signals_dict,
-                "nets": net_links
+                "nets": converted_nets_above_components
             }
 
     return return_json
 
 
-#TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways and move this function 
+#TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways and move this function
 # to a common location
 def find_nets(pins_and_signals: list[AddrStr], links: list[Link]) -> list[list[AddrStr]]:
     """

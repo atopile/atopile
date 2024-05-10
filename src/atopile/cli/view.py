@@ -38,7 +38,7 @@ QuartSchema(app)
 @app.route("/block-diagram")
 async def send_viewer_data():
     build_ctx: BuildContext = app.config["build_ctx"]
-    return jsonify(atopile.viewer_utils.get_vis_dict(build_ctx.entry))
+    return jsonify(atopile.viewer_utils.get_vis_dict(build_ctx))
 
 
 class Pose(BaseModel):
@@ -91,7 +91,7 @@ async def save_pose(
 @app.route("/schematic")
 async def send_schematic_data():
     build_ctx: BuildContext = app.config["build_ctx"]
-    return jsonify(atopile.schematic_utils.get_schematic_dict(build_ctx.entry))
+    return jsonify(atopile.schematic_utils.get_schematic_dict(build_ctx))
 
 
 @app.route("/")
