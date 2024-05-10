@@ -1,6 +1,6 @@
 import logging
 
-from atopile.address import AddrStr, get_name, get_instance_section, add_instance, get_entry_section, get_relative_addr_str
+from atopile.address import AddrStr, get_name, add_instance, get_entry_section, get_relative_addr_str
 from atopile.instance_methods import (
     get_children,
     get_links,

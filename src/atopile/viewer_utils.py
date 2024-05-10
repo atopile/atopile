@@ -1,4 +1,4 @@
-from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section, get_relative_addr_str, get_entry_section
+from atopile.address import AddrStr, get_parent_instance_addr, get_name, get_instance_section, get_relative_addr_str
 from atopile.instance_methods import (
     get_children,
     get_links,
@@ -10,7 +10,6 @@ from atopile.instance_methods import (
     match_pins_and_signals,
 )
 import atopile.config
-from atopile.components import get_specd_value
 
 import json
 import networkx as nx
@@ -279,15 +278,3 @@ def split_list_at_n(n, list_of_strings):
     second_part = list_of_strings[n+1:]
 
     return first_part, second_part
-
-def _is_builtin(addr: AddrStr) -> bool|str:
-    """
-    Check if the given address is a builtin component, if so, return the builtin type (Resistor, Capacitor, etc.)
-    """
-    _supers_list = get_supers_list(addr)
-    for duper in _supers_list:
-        if get_entry_section(duper.address) == "Resistor":
-            return "Resistor"
-        elif get_entry_section(duper.address) == "Capacitor":
-            return "Capacitor"
-    return False
