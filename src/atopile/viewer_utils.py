@@ -11,7 +11,6 @@ from atopile.instance_methods import (
 )
 import atopile.config
 
-import json
 import networkx as nx
 
 from collections import defaultdict
