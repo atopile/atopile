@@ -6,17 +6,26 @@ This extension provides syntax highlighting, auto-completion and goto definition
 
 ## Installation
 
-Instructions from the docs: https://atopile.io/getting-started/#vscode-extension-extension-store
+Install it from your favourite extension store!
 
-There's a small amount of one-time configuration required to get type-hints from the extension.
 
-1. Get the path to your python interpreter that has ato installed. This is usually in a virtual environment.
-   - You can find this by running `which python` while your venv is activated.
-2. Configure VSCode to use it!
-   - `Cmd + Shift + P` (or `Ctrl + Shift + P` on Windows) to open the command palette
-   - Type "Python: Select Interpreter" and select it
-   - If your venv isn't there, you can add it by selecting "Enter interpreter path" and pasting the path to your venv's python binary.
+## Configuration
 
-All together now!
+### 1. - Easy
 
-![](/docs/assets/images/extension-python-setup.gif)
+If `ato` is in your PATH, the extension will find it automatically.
+
+
+### 2. - Harder
+
+If not, you can set the `atopile.interpreter` setting in your vscode settings to the path of the `ato` executable.
+eg. in your `settings.json` ():
+```json
+{
+    "atopile.interpreter": ["/path/to/the/python/interpreter/used/for/ato"]
+}
+```
+
+You can find `/path/to/the/python/interpreter/used/for/ato` by running `ato --python-path` in your terminal, where `ato` is available.
+
+These instructions are also in the docs: https://atopile.io/getting-started/#vscode-extension-extension-store
