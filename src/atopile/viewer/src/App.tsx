@@ -101,7 +101,7 @@ const App = () => {
                         <div>Mode: {schematicModeEnabled ? 'schematic' : 'block diagram'}</div>
                         <button style={{margin: '5px'}} onClick={() => handleReturnClick()} disabled={schematicModeEnabled} >return</button>
                         <button style={{margin: '5px'}} onClick={() => handleReLayout()} disabled={schematicModeEnabled} >re-layout</button>
-                        <button style={{margin: '5px'}} onClick={() => handleModeSwitch()}>mode switch</button>
+                        <button style={{margin: '5px'}} onClick={() => handleModeSwitch()}>{schematicModeEnabled ? 'block diagram' : 'schematic'}</button>
                         <button style={{margin: '5px'}} onClick={() => setReload(!reload)} disabled={!schematicModeEnabled}>reload</button>
                     </div>
                 </Panel>
