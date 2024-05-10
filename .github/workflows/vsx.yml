@@ -4,7 +4,12 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release'
+        required: true
+        type: string
 
 jobs:
   vsx-extension:
@@ -21,19 +26,20 @@ jobs:
 
       - run: npm ci
 
-      # Ensure the last tag was a valid version
-      - run: git describe --tags --abbrev=0 | grep -q 'v[0-9]\+\.[0-9]\+\.[0-9]\+' || exit 1
+      # Set the version in package.json from a workflow dispatch input
+      - run: npm version --no-git-tag-version ${{ inputs.version }}
+        if: github.event_name == 'workflow_dispatch'
+      # Otherwise use the tag name
+      - run: npm version --no-git-tag-version ${{ github.ref_name }}
+        if: github.event_name == 'push'
 
       - name: Publish to VS Code Marketplace
         # Skip duplicate here to allow manual triggering
-        run: npx vsce publish --no-git-tag-version --skip-duplicate ${$(git describe --tags --abbrev=0)#v}
+        run: npx vsce publish --skip-duplicate
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish to Open VSX
-        # version isn't needed here (nor possible?) because
-        # it's already handelled by the vsce publish command
-        # SKip duplicate here to allow manual triggering
         run: npx ovsx publish --skip-duplicate
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
