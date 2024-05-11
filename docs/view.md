@@ -30,6 +30,24 @@ The schematic view follows a more standard view of your design. This view can be
 
 The schematic diagram will represent all the components that are at the level or below the current module.
 
+For a component to show up on the schematic, it needs to be an instance of a component in the generics library. Here are the current components we support:
+
+- Resistor
+- Inductor
+- Capcitor
+- LED
+- Powr
+- NPN
+- PNP
+- Diode
+- SchottkyDide
+- ZeneDiode
+- NFET
+- PFET
+- Opamp
+
+Other larger components will show up as scattered signals that can be moved around to relevant places.
+
 ## Navigate within your design
 
 To navigate within a module or component, simply click on it.
@@ -48,3 +66,5 @@ Clicking on a link in the block diagram will show the source and target address 
 - Inspecting a links pin to pin connections
 - Expanding and contracting modules (instead of navigating in and out of modules)
 - A decent way to see components and their pins
+
+Join us on discord if you have feedback about the viewer!
