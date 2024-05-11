@@ -212,3 +212,9 @@ def generate_module_map(build_args: BuildContext) -> None:
 def generate_assertion_report(build_ctx: BuildContext) -> None:
     """Generate a report based on assertions made in the source code."""
     atopile.assertions.generate_assertion_report(build_ctx)
+
+
+@muster.register("variable-report")
+def generate_variable_report(build_ctx: BuildContext) -> None:
+    """Generate a report of all the variable values in the design."""
+    atopile.variable_report.generate(build_ctx)
