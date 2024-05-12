@@ -30,6 +30,8 @@ The schematic view follows a more standard view of your design. This view can be
 
 The schematic diagram will represent all the components that are at the level or below the current module.
 
+#### Supported components
+
 For a component to show up on the schematic, it needs to be an instance of a component in the generics library. Here are the current components we support:
 
 - Resistor
@@ -47,6 +49,10 @@ For a component to show up on the schematic, it needs to be an instance of a com
 - Opamp
 
 Other larger components will show up as scattered signals that can be moved around to relevant places.
+
+#### Moving, rotating, mirroring components
+
+To rotate, you can select a component and press the `R` key. To mirror a signal, you can use the `F` key. To move a component, simply drag and drop it with your mouse.
 
 ## Navigate within your design
 
