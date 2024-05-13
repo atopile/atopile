@@ -73,25 +73,15 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
             try {
                 const fetchedNodes = await loadSchematicJsonAsDict();
                 const displayedNode = fetchedNodes[viewBlockId];
-                //handleBlockLoad("root");
-                if (Object.keys(displayedNode['components']).length > 50) {
+
+                if (Object.keys(displayedNode['components']).length > 30) {
                     setTooLarge(true);
                     return;
                 }
 
                 const populatedNodes = [];
-                let index = 0;
                 for (const [component_name, component_data] of Object.entries(displayedNode['components'])) {
-                    //FIXME: original placement kind of sucks
-                    let position = {
-                        x: 100,
-                        y: 50 * index,
-                    };
-                    index++;
                     if (component_data['std_lib_id'] !== "") {
-                        if (component_name in component_positions) {
-                            position = component_positions[component_name];
-                        }
                         populatedNodes.push({ id: component_name, type: "SchematicComponent", data: component_data, position: component_data['position'] });
                         for (const port in component_data['ports']) {
                             port_to_component_map[component_data['ports'][port]['net_id']] = component_name;
@@ -180,6 +170,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
         try {
             // Add the shortest links to complete all the nets
             // Get all the component positions
+            //TODO: component position are now saved so this could be improved
             component_positions = {};
             for (const node of nodes) {
                 component_positions[node.id] = node.position;
@@ -257,7 +248,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
     <div className="providerflow">
         {tooLarge ? (
         <div style={{ width: '100%', height: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <b>There are more than 20 components to display. Navigate to a different module.</b>
+            <b>There are more than 30 components to display. Navigate to a different module.</b>
         </div>
       ) : (
         <ReactFlowProvider>
