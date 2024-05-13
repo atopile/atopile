@@ -177,8 +177,14 @@ def _check_assertion(assertion: Assertion, context: dict) -> bool:
         b = assertion.rhs(context)
         return _do_op(a, assertion.operator, b)
     except pint.errors.DimensionalityError as ex:
+        if assertion.src_ctx:
+            raise errors.AtoTypeError.from_ctx(
+                assertion.src_ctx,
+                f"Dimensionality mismatch in assertion"
+                f" ({ex.units1} incompatible with {ex.units2})"
+            ) from ex
         raise errors.AtoTypeError(
-            f"Dimensionality mismatch in assertion: {assertion}"
+            f"Dimensionality mismatch in assertion"
             f" ({ex.units1} incompatible with {ex.units2})"
         ) from ex
 
