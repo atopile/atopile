@@ -62,17 +62,24 @@ pretty_unit_map = {lm + lu: sm + su for lm, sm in _multiplier_map.items() for lu
 favorite_units_map = {pint.Unit(k).dimensionality: pint.Unit(k) for k in _pretty_unit_map}
 
 
-def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
-    """Return the most favorable magnitude and unit for the given quantity."""
-    if qty.units.dimensionless:
-        return qty.magnitude, ""
-
+def _convert_to_favorite_unit(qty: pint.Quantity) -> pint.Quantity:
+    """Convert the quantity to the favorite unit for its dimensionality."""
     # If there's a favorite unit for this dimensionality, use it
     if qty.units.dimensionality in favorite_units_map:
         qty = qty.to(favorite_units_map[qty.units.dimensionality])
 
     # Compact the units to standardise them
     qty = qty.to_compact()
+
+    return qty
+
+
+def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
+    """Return the most favorable magnitude and unit for the given quantity."""
+    if qty.units.dimensionless:
+        return qty.magnitude, ""
+
+    qty = _convert_to_favorite_unit(qty)
 
     # Convert the units to a pretty string
     units = str(qty.units)
@@ -202,13 +209,15 @@ class RangedValue:
 
     def to_dict(self) -> dict:
         """Convert the Physical instance to a dictionary."""
+        min_qty = _convert_to_favorite_unit(self.min_qty)
+        multiplier = min_qty.magnitude / self.min_val
         return {
-            "unit": str(self.unit),
-            "min_val": self.min_val,
-            "max_val": self.max_val,
+            "unit": str(min_qty.units),
+            "min_val": min_qty.magnitude,
+            "max_val": self.max_val * multiplier,
             # TODO: remove these - we shouldn't be duplicating this kind of information
-            "nominal": self.nominal,
-            "tolerance": self.tolerance,
+            "nominal": self.nominal * multiplier,
+            "tolerance": self.tolerance * multiplier,
             "tolerance_pct": self.tolerance_pct,
         }
 
