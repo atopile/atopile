@@ -25,13 +25,6 @@ def _custom_float_format(value, max_decimals: int):
     return formatted.rstrip("0").rstrip(".")
 
 
-def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
-    """Return the best unit for the two quantities."""
-    if len(str(qty_a.to(qty_b.units).magnitude)) > len(str(qty_b.to(qty_a.units).magnitude)):
-        return qty_a.units
-    return qty_b.units
-
-
 _multiplier_map = {
     "femto": "f",
     "pico": "p",
@@ -47,6 +40,7 @@ _multiplier_map = {
 
 
 _pretty_unit_map = {
+    "": "",  # Dimensionless is desirable too
     "volt": "V",
     "ohm": "Ω",
     "ampere": "A",
@@ -72,6 +66,18 @@ def _convert_to_favorite_unit(qty: pint.Quantity) -> pint.Quantity:
     qty = qty.to_compact()
 
     return qty
+
+
+def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
+    """Return the best unit for the two quantities."""
+    a_fav = _convert_to_favorite_unit(qty_a)
+    b_fav = _convert_to_favorite_unit(qty_b)
+
+    # If converting b to a's units results in a shorter representation, use a's units
+    # Otherwise, use b's units
+    if len(str(qty_b.to(a_fav.units).magnitude)) < len(str(qty_a.to(b_fav.units).magnitude)):
+        return a_fav.units
+    return b_fav.units
 
 
 def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
