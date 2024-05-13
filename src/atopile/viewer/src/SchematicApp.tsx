@@ -92,7 +92,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
                         if (component_name in component_positions) {
                             position = component_positions[component_name];
                         }
-                        populatedNodes.push({ id: component_name, type: "SchematicComponent", data: component_data, position: position });
+                        populatedNodes.push({ id: component_name, type: "SchematicComponent", data: component_data, position: component_data['position'] });
                         for (const port in component_data['ports']) {
                             port_to_component_map[component_data['ports'][port]['net_id']] = component_name;
                         }
@@ -104,8 +104,8 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
                             populatedNodes.push({
                                 id: port_data['net_id'],
                                 type: "SchematicScatter",
-                                data: { id: port_data['net_id'], name: port_data['name'], rotation: 0, mirror: false },
-                                position: position
+                                data: { id: port_data['net_id'], name: port_data['name'], rotation: 0, mirror: port_data['mirror_y'] },
+                                position: port_data['position']
                             });
                             port_to_component_map[port_data['net_id']] = port_data['net_id'];
                         });

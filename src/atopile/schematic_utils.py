@@ -20,6 +20,7 @@ import atopile.config
 from atopile.viewer_utils import get_id
 
 import json
+import yaml
 
 from typing import Optional
 
@@ -82,8 +83,9 @@ def get_std_lib(addr: AddrStr) -> str:
     return get_name(matching_super)
 
 def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
+    return_json: dict = {}
 
-    return_json = {}
+    ato_lock_contents = get_ato_lock_file(build_ctx)
 
     for addr in all_descendants(build_ctx.entry):
         if match_modules(addr) and not match_components(addr):
@@ -132,15 +134,23 @@ def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
                         hash_object.update(json_string.encode())
                         net_hash = hash_object.hexdigest()[:8]
 
+                        position, rotation, mirror_x, mirror_y = get_pose(ato_lock_contents, net_hash)
+
                         component_ports_dict[component_net_index] = {
                             "net_id": net_hash,
-                            "name": '/'.join(map(get_name, component_net))
+                            "name": '/'.join(map(get_name, component_net)),
+                            "position": position,
+                            "rotation": rotation,
+                            "mirror_x": mirror_x,
+                            "mirror_y": mirror_y
                         }
 
                         for connectable in component_net:
                             connectable_to_nets_map[connectable] = net_hash
 
                     comp_addr = get_relative_addr_str(component, build_ctx.project_context.project_path)
+                    position, rotation, mirror_x, mirror_y = get_pose(ato_lock_contents, comp_addr)
+
                     components_dict[comp_addr] = {
                         "instance_of": get_name(get_supers_list(component)[0].obj_def.address),
                         "std_lib_id": get_std_lib(component),
@@ -148,8 +158,11 @@ def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
                         "address": get_relative_addr_str(component, build_ctx.project_context.project_path),
                         "name": get_name(component),
                         "ports": component_ports_dict,
-                        "rotation": 0,
-                        "mirror": False}
+                        "position": position,
+                        "rotation": rotation,
+                        "mirror_x": mirror_x,
+                        "mirror_y": mirror_y
+                    }
 
                 elif match_interfaces(block):
                     pass
@@ -210,6 +223,21 @@ def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
 
     return return_json
 
+def get_ato_lock_file(build_ctx: atopile.config.BuildContext) -> dict:
+    ato_lock_contents = {}
+
+    if build_ctx.project_context.lock_file_path.exists():
+        with build_ctx.project_context.lock_file_path.open("r") as lock_file:
+            ato_lock_contents = yaml.safe_load(lock_file)
+
+    return ato_lock_contents
+
+def get_pose(ato_lock_contents: dict, id: str) -> tuple[dict[str, float], float, bool, bool]:
+    position = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("position", {'x': 0, 'y': 0})
+    rotation = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("rotation", 0)
+    mirror_x = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("mirror_x", False)
+    mirror_y = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("mirror_y", False)
+    return position, rotation, mirror_x, mirror_y
 
 #TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways and move this function
 # to a common location

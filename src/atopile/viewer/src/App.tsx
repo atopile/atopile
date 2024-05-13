@@ -52,8 +52,7 @@ const App = () => {
         savePos("/Users/timot/Dev/atopile/community-projects/viewer-test/elec/src/viewer-test.ato:ViewerTest::amp")
     }
 
-    async function savePos(addr, pos, angle, mirror_x, mirror_y) {
-        console.log('save pos', addr, pos, angle);
+    async function savePos(addr, pos, rotation, mirror_x, mirror_y) {
         const mode = schematicModeEnabled ? 'schematic' : 'block-diagram';
         const url = `http://127.0.0.1:8080/${mode}/${addr}/pose`;
         const response = await fetch(url, {
@@ -62,9 +61,8 @@ const App = () => {
               'Content-Type': 'application/json' // Set the content type header for sending JSON
             },
             body: JSON.stringify({
-                "x": pos.x,
-                "y": pos.y,
-                "angle": angle,
+                "position": pos,
+                "rotation": rotation,
                 "mirror_x": mirror_x,
                 "mirror_y": mirror_y
               })

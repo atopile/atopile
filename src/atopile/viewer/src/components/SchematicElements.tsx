@@ -88,7 +88,7 @@ const MultiPinHandle = ({ ports, rotationDegrees = 0, mirrorX = false}) => {
 // Common function to handle and render electronic components
 export const SchematicComponent = ({ id, data }) => {
     const [rotation, setRotation] = useState(0);
-    const [mirror, setMirror] = useState(false);
+    const [mirror_x, setMirror] = useState(false);
     const updateNodeInternals = useUpdateNodeInternals();
 
     useEffect(() => {
@@ -98,7 +98,7 @@ export const SchematicComponent = ({ id, data }) => {
         updateNodeInternals(id);
     }, [data]);
 
-    const transform = `rotate(${rotation}deg) ${mirror ? 'scaleX(-1)' : ''}`;
+    const transform = `rotate(${data.rotation}deg) ${data.mirror_x ? 'scaleX(-1)' : ''}`;
 
     // Get the data for each component type
     const component_metadata = getComponentMetaData(data.std_lib_id);
@@ -116,7 +116,7 @@ export const SchematicComponent = ({ id, data }) => {
 
     return (
         <>
-            <MultiPinHandle ports={populated_ports} rotationDegrees={rotation} mirrorX={mirror} />
+            <MultiPinHandle ports={populated_ports} rotationDegrees={data.rotation} mirrorX={data.mirror_x} />
             <div style={{ transform, width: '50px', height: '50px' }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150" strokeWidth="5" dangerouslySetInnerHTML={{ __html: component_metadata.svg }} >
                 </svg>

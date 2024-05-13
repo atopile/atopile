@@ -43,9 +43,8 @@ async def send_viewer_data():
 
 class Pose(BaseModel):
     """The position, orientation, flipping etc... of an element."""
-    x: float
-    y: float
-    angle: int  # degrees, but should only be 0, 90, 180, 270
+    position: dict[str, float] # {x: 0.0, y: 0.0}
+    rotation: int  # degrees, but should only be 0, 90, 180, 270
     mirror_x: bool = False # defined before rotation is applied.
     mirror_y: bool = False # defined before rotation is applied.
 
@@ -68,14 +67,12 @@ async def save_pose(
     diagram_type = DiagramType(diagram_type)
     build_ctx: BuildContext = app.config["build_ctx"]
     # addr = "/" + atopile.address.AddrStr(addr)
-    print(addr)
-    print(data)
 
     # FIXME: rip this logic outta here
     # We save the pose information to one file per-project
     # FIXME: figure out how we should actually
     # interact with these config files
-    lock_path = build_ctx.project_context.project_path / "ato-lock.yaml"
+    lock_path = build_ctx.project_context.lock_file_path
     if lock_path.exists():
         with lock_path.open("r") as lock_file:
             lock_data = yaml.safe_load(lock_file) or {}
