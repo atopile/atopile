@@ -4,12 +4,18 @@ from atopile.expressions import RangedValue
 
 
 def test_comparitors():
-    a = RangedValue(1, 2)
-    b = RangedValue(2, 3)
-    c = RangedValue(1, 3)
+    a = RangedValue(1, 2)  # a: |---|
+    b = RangedValue(2, 3)  # b:     |---|
+    c = RangedValue(1, 3)  # c: |-------|
+    d = RangedValue(3, 4)  # d:         |---|
 
-    assert a < b
-    assert b > a
+    assert a <= b
+    assert not a < b
+    assert a < d
+
+    assert b >= a
+    assert not b > a
+
     assert not a.within(b)
     assert a.within(c)
     assert a == RangedValue(1, 2)

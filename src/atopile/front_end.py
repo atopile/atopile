@@ -1421,6 +1421,10 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
                 operators.append("<")
             elif child_ctx := comp_ctx.gt_arithmetic_or():
                 operators.append(">")
+            elif child_ctx := comp_ctx.lt_eq_arithmetic_or():
+                operators.append("<=")
+            elif child_ctx := comp_ctx.gt_eq_arithmetic_or():
+                operators.append(">=")
             elif child_ctx := comp_ctx.in_arithmetic_or():
                 operators.append("within")
             else:

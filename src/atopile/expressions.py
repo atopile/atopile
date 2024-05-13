@@ -325,12 +325,19 @@ class RangedValue:
             return self.min_val == self.max_val == other
         return self.min_qty >= other.min_qty and other.max_qty >= self.max_qty
 
-    # NOTE: we use the < and > operators interchangeably with the <= and >= operators
     def __lt__(self, other: Union["RangedValue", float, int]) -> bool:
+        other = self._ensure(other)
+        return self.max_qty < other.min_qty
+
+    def __gt__(self, other: Union["RangedValue", float, int]) -> bool:
+        other = self._ensure(other)
+        return self.min_qty > other.max_qty
+
+    def __le__(self, other: Union["RangedValue", float, int]) -> bool:
         other = self._ensure(other)
         return self.max_qty <= other.min_qty
 
-    def __gt__(self, other: Union["RangedValue", float, int]) -> bool:
+    def __ge__(self, other: Union["RangedValue", float, int]) -> bool:
         other = self._ensure(other)
         return self.min_qty >= other.max_qty
 

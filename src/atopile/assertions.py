@@ -164,6 +164,10 @@ def _do_op(a: RangedValue, op: str, b: RangedValue) -> bool:
         return a < b
     elif op == ">":
         return a > b
+    elif op == "<=":
+        return a <= b
+    elif op == ">=":
+        return a >= b
     else:
         raise ValueError(f"Unrecognized operator: {op}")
 
@@ -489,13 +493,37 @@ def _constraint_factory(assertion: Assertion, translator):
             return (
                 b(ctx).min_qty.to_base_units().magnitude
                 - a(ctx).max_qty.to_base_units().magnitude
-            )
+            ) or -1  # To make 0 exclusive
 
         return [
             {"type": "ineq", "fun": _brrr},
         ]
 
     def greater_than(a: Expression, b: Expression) -> list[dict]:
+        def _brrr(x):
+            ctx = translator(x)
+            return (
+                a(ctx).min_qty.to_base_units().magnitude
+                - b(ctx).max_qty.to_base_units().magnitude
+            ) or -1  # To make 0 exclusive
+
+        return [
+            {"type": "ineq", "fun": _brrr},
+        ]
+
+    def lower_than_eq(a: Expression, b: Expression) -> list[dict]:
+        def _brrr(x):
+            ctx = translator(x)
+            return (
+                b(ctx).min_qty.to_base_units().magnitude
+                - a(ctx).max_qty.to_base_units().magnitude
+            )
+
+        return [
+            {"type": "ineq", "fun": _brrr},
+        ]
+
+    def greater_than_eq(a: Expression, b: Expression) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (
@@ -531,6 +559,12 @@ def _constraint_factory(assertion: Assertion, translator):
         return lower_than(assertion.lhs, assertion.rhs)
 
     elif assertion.operator == ">":
+        return greater_than(assertion.lhs, assertion.rhs)
+
+    elif assertion.operator == "<=":
+        return lower_than(assertion.lhs, assertion.rhs)
+
+    elif assertion.operator == ">=":
         return greater_than(assertion.lhs, assertion.rhs)
 
     elif assertion.operator == "within":
