@@ -89,14 +89,12 @@ const MultiPinHandle = ({ ports, rotationDegrees = 0, mirrorX = false}) => {
 export const SchematicComponent = ({ id, data }) => {
     const [rotation, setRotation] = useState(0);
     const [mirror, setMirror] = useState(false);
-    const [position, setCompPosition] = useState({ x: 0, y: 0 });
     const updateNodeInternals = useUpdateNodeInternals();
 
     useEffect(() => {
         setRotation(data.rotation);
         //TODO: add mirroring for more complex components
         //setMirror(data.mirror);
-        setCompPosition(data.position);
         updateNodeInternals(id);
     }, [data]);
 
@@ -118,7 +116,7 @@ export const SchematicComponent = ({ id, data }) => {
 
     return (
         <>
-            <MultiPinHandle ports={populated_ports} rotationDegrees={rotation} mirrorX={mirror} position={position}/>
+            <MultiPinHandle ports={populated_ports} rotationDegrees={rotation} mirrorX={mirror} />
             <div style={{ transform, width: '50px', height: '50px' }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 150 150" strokeWidth="5" dangerouslySetInnerHTML={{ __html: component_metadata.svg }} >
                 </svg>
@@ -130,11 +128,11 @@ export const SchematicComponent = ({ id, data }) => {
 
 // Common function to handle and render electronic signal
 export const SchematicSignal = ({ id, data }) => {
-    const [position, setCompPosition] = useState({ x: 0, y: 0 });
+    const [rotation, setRotation] = useState(0);
+    const [mirror, setMirror] = useState(false);
     const updateNodeInternals = useUpdateNodeInternals();
 
     useEffect(() => {
-        setCompPosition(data.position);
         updateNodeInternals(id);
     }, [data]);
 
@@ -163,12 +161,10 @@ export const SchematicSignal = ({ id, data }) => {
 
 // Common function to handle and render electronic pins scattered around the place
 export const SchematicScatter = ({ id, data }) => {
-    const [position, setCompPosition] = useState({ x: 0, y: 0 });
     const [mirror, setMirror] = useState(false);
     const updateNodeInternals = useUpdateNodeInternals();
 
     useEffect(() => {
-        setCompPosition(data.position);
         setMirror(data.mirror);
         updateNodeInternals(id);
     }, [data]);

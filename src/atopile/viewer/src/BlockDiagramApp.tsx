@@ -98,7 +98,7 @@ const requestRelayout = false;
 let selected_links_data = {};
 
 
-const AtopileBlockDiagramApp = ({ viewBlockId, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared, savePos }) => {
+const AtopileBlockDiagramApp = ({ viewBlockId, savePos, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();

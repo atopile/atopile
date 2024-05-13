@@ -46,6 +46,8 @@ class Pose(BaseModel):
     x: float
     y: float
     angle: int  # degrees, but should only be 0, 90, 180, 270
+    mirror_x: bool = False # defined before rotation is applied.
+    mirror_y: bool = False # defined before rotation is applied.
 
 
 class DiagramType(str, Enum):
@@ -65,7 +67,9 @@ async def save_pose(
     """Save the pose of an element."""
     diagram_type = DiagramType(diagram_type)
     build_ctx: BuildContext = app.config["build_ctx"]
-    addr = "/" + atopile.address.AddrStr(addr)
+    # addr = "/" + atopile.address.AddrStr(addr)
+    print(addr)
+    print(data)
 
     # FIXME: rip this logic outta here
     # We save the pose information to one file per-project
@@ -79,7 +83,8 @@ async def save_pose(
         lock_data = {}
 
     # Find the relative address of the element to the project
-    rel_addr = atopile.address.get_relative_addr_str(addr, build_ctx.project_context.project_path)
+    # Address is already relative
+    rel_addr = addr
     lock_data.setdefault("poses", {}).setdefault(diagram_type.name, {})[rel_addr] = data.model_dump()
 
     with lock_path.open("w") as lock_file:

@@ -50,9 +50,9 @@ For a component to show up on the schematic, it needs to be an instance of a com
 
 Other larger components will show up as scattered signals that can be moved around to relevant places.
 
-#### Moving, rotating, mirroring components
+#### Selecting, moving, rotating, mirroring components
 
-To rotate, you can select a component and press the `R` key. To mirror a signal, you can use the `F` key. To move a component, simply drag and drop it with your mouse.
+To select a component, simply click on it. To select multiple components, press the cmd/ctrl key while selecting nodes. To rotate, select a component and press the `R` key. To mirror a signal, you can use the `F` key (only signals can be mirrored for the moment). To move a component, simply drag and drop it with your mouse.
 
 ## Navigate within your design
 

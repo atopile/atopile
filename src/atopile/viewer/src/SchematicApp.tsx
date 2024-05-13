@@ -60,7 +60,14 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
     const rotateAction = useKeyPress(['r', 'R']);
     const mirrorAction = useKeyPress(['f', 'F']);
 
+    // Save position once the user has finished dragging the node around
+    const onNodeDragStop = (event, node, nodes) => {
+        for (const node of nodes) {
+            savePos(node.id, node.position, node.data.rotation, false, node.data.mirror);
+        }
+    };
 
+    // Update the graph using data coming from the backend
     useEffect(() => {
         const updateNodesFromJson = async () => {
             try {
@@ -75,6 +82,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
                 const populatedNodes = [];
                 let index = 0;
                 for (const [component_name, component_data] of Object.entries(displayedNode['components'])) {
+                    //FIXME: original placement kind of sucks
                     let position = {
                         x: 100,
                         y: 50 * index,
@@ -96,7 +104,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
                             populatedNodes.push({
                                 id: port_data['net_id'],
                                 type: "SchematicScatter",
-                                data: { id: port_data['net_id'], name: port_data['name'] },
+                                data: { id: port_data['net_id'], name: port_data['name'], rotation: 0, mirror: false },
                                 position: position
                             });
                             port_to_component_map[port_data['net_id']] = port_data['net_id'];
@@ -127,16 +135,27 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
         setLoading(false);
     }, [viewBlockId, reload]);
 
+    // Rerender nodes if rotation or mirroring is requested + save their state
     useEffect(() => {
         let updatedNodes = [];
         updatedNodes = nodes.map((node) => {
             if (node.selected) {
+                //FIXME: this saves the mirror and rotationg state of nodes that don't have it enabled
+                let rotation = rotateAction? (node.data.rotation + 90) % 360 : node.data.rotation;
+                let mirror = mirrorAction? !node.data.mirror : node.data.mirror;
+
+                // Only certain type of data is saved for certain types of nodes
+                if (node.type === "SchematicScatter") {
+                    savePos(node.id, node.position, 0, false, mirror);
+                } else {
+                    savePos(node.id, node.position, rotation, false, false);
+                }
                 return {
                     ...node,
                     data: {
                         ...node.data,
-                        rotation: rotateAction? (node.data.rotation + 90) % 360 : node.data.rotation,
-                        mirror: mirrorAction? !node.data.mirror : node.data.mirror,
+                        rotation: rotation,
+                        mirror: mirror,
                     }
                 };
             }
@@ -146,6 +165,8 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
     }, [rotateAction, mirrorAction]);
 
 
+    // Update links live when components are moved
+    //FIXME: routing algorithms doesn't always seem to select shortest path
     const onSelectionChange = (elements) => {
         if (request_ratsnest_update && !loading) {
             request_ratsnest_update = false;
@@ -247,6 +268,7 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onSelectionChange={onSelectionChange}
+                onNodeDragStop={onNodeDragStop}
                 fitView
                 edgeTypes={edgeTypes}
                 nodeTypes={nodeTypes}
