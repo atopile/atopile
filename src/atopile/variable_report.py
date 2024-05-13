@@ -57,7 +57,16 @@ def generate(build_ctx: config.BuildContext):
                 continue
 
             k_addr = address.get_instance_section(address.add_instance(addr, key))
-            value = str(assignments[0].value)
+
+            if isinstance(assignments[0].value, expressions.Expression):
+                # There was not enough information to determine the value
+                raw_value: expressions.Expression = assignments[0].value
+                value = "Unknown. Missing variables:\n" + "\n".join(
+                    address.get_instance_section(s.key) for s in raw_value.symbols
+                )
+            else:
+                # There was sufficent information to determine the value
+                value = str(assignments[0].value)
             src_ctx = assignments[1].src_ctx
             if src_ctx:
                 comment = parse_utils.get_comment_from_token(src_ctx.stop) or ""
