@@ -48,6 +48,8 @@ def test_parens():
     assert _run("1 * (2 + 3) * 4 + 5") == 25
     assert _run("1 * (2 + 3) * (4 + 5)") == 45
     assert _run("1 * (2 + 3) * (4 + 5) + 6") == 51
+    assert _run("1 / 2 * 3)") == 1.5
+    assert _run("1 / (2 * 3)") == 1 / 6
 
 
 def test_simple_pseudo_symbols():
