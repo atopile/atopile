@@ -22,6 +22,10 @@ The viewer will spool up a server on your local machine at [http://127.0.0.1:808
 
 The block diagram is meant to provide a view that resembles your code structure. In the block diagram view, you will see the same signals and interfaces that are present in your code as well as how they interact with each other. This view will help you navigate through your project and it's structure.
 
+#### Saving block position
+
+We currently don't handle saving component position in the block diagram but we'll add this feature shortly. We do support that feature for the schematic though.
+
 ### Schematic
 
 ![Schematic](assets/images/schematic_example.png)
@@ -53,6 +57,10 @@ Other larger components will show up as scattered signals that can be moved arou
 #### Selecting, moving, rotating, mirroring components
 
 To select a component, simply click on it. To select multiple components, press the cmd/ctrl key while selecting nodes. To rotate, select a component and press the `R` key. To mirror a signal, you can use the `F` key (only signals can be mirrored for the moment). To move a component, simply drag and drop it with your mouse.
+
+#### Saving component position
+
+As you move components around, the `ato-lock.yaml` file located in the root of your project will be updated to store the position, rotation angle and mirroring state of components. Make sure to add this file to your git repository if you'd like save those positions. Signals on the schematic can only be mirrored but not rotated. Components can only be rotated in increments of 90 degrees (0, 90, 180, 270) but not mirrored (yet). We don't currently handle saving position in the block diagram.
 
 ## Navigate within your design
 
