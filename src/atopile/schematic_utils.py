@@ -16,6 +16,7 @@ from atopile.instance_methods import (
 from atopile.front_end import Link
 from atopile import errors
 import atopile.config
+from atopile.viewer_core import Pose, Position
 
 from atopile.viewer_utils import get_id
 
@@ -125,6 +126,8 @@ def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
                     pins_and_signals_at_and_below_component = list(filter(match_pins_and_signals, all_descendants(component)))
                     component_nets = find_nets(pins_and_signals_at_and_below_component, links_at_and_below_component)
 
+                    pose = Pose()
+
                     # Component ports
                     component_ports_dict: dict[int, dict[str, str]] = {}
                     for component_net_index, component_net in enumerate(component_nets):
@@ -134,22 +137,22 @@ def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
                         hash_object.update(json_string.encode())
                         net_hash = hash_object.hexdigest()[:8]
 
-                        position, rotation, mirror_x, mirror_y = get_pose(ato_lock_contents, net_hash)
+                        pose = get_pose(ato_lock_contents, net_hash)
 
                         component_ports_dict[component_net_index] = {
                             "net_id": net_hash,
                             "name": '/'.join(map(get_name, component_net)),
-                            "position": position,
-                            "rotation": rotation,
-                            "mirror_x": mirror_x,
-                            "mirror_y": mirror_y
+                            "position": pose.position,
+                            "rotation": pose.rotation,
+                            "mirror_x": pose.mirror_x,
+                            "mirror_y": pose.mirror_y
                         }
 
                         for connectable in component_net:
                             connectable_to_nets_map[connectable] = net_hash
 
                     comp_addr = get_relative_addr_str(component, build_ctx.project_context.project_path)
-                    position, rotation, mirror_x, mirror_y = get_pose(ato_lock_contents, comp_addr)
+                    pose = get_pose(ato_lock_contents, comp_addr)
 
                     components_dict[comp_addr] = {
                         "instance_of": get_name(get_supers_list(component)[0].obj_def.address),
@@ -158,10 +161,10 @@ def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
                         "address": get_relative_addr_str(component, build_ctx.project_context.project_path),
                         "name": get_name(component),
                         "ports": component_ports_dict,
-                        "position": position,
-                        "rotation": rotation,
-                        "mirror_x": mirror_x,
-                        "mirror_y": mirror_y
+                        "position": pose.position,
+                        "rotation": pose.rotation,
+                        "mirror_x": pose.mirror_x,
+                        "mirror_y": pose.mirror_y
                     }
 
                 elif match_interfaces(block):
@@ -232,12 +235,18 @@ def get_ato_lock_file(build_ctx: atopile.config.BuildContext) -> dict:
 
     return ato_lock_contents
 
-def get_pose(ato_lock_contents: dict, id: str) -> tuple[dict[str, float], float, bool, bool]:
+def get_pose(ato_lock_contents: dict, id: str) -> Pose:
     position = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("position", {'x': 0, 'y': 0})
     rotation = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("rotation", 0)
     mirror_x = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("mirror_x", False)
     mirror_y = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("mirror_y", False)
-    return position, rotation, mirror_x, mirror_y
+
+    return Pose(
+        position=Position(x=position['x'], y=position['y']),
+        rotation=rotation,
+        mirror_x=mirror_x,
+        mirror_y=mirror_y
+    )
 
 #TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways and move this function
 # to a common location

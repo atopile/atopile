@@ -10,7 +10,6 @@ from pathlib import Path
 
 import click
 import yaml
-from pydantic import BaseModel
 from quart import Quart, jsonify, send_from_directory
 from quart_cors import cors
 from quart_schema import QuartSchema, validate_request, validate_response
@@ -25,6 +24,7 @@ import atopile.viewer_utils
 from atopile import errors
 from atopile.cli.common import project_options
 from atopile.config import BuildContext, set_project_context
+from atopile.viewer_core import Pose
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -39,14 +39,6 @@ QuartSchema(app)
 async def send_viewer_data():
     build_ctx: BuildContext = app.config["build_ctx"]
     return jsonify(atopile.viewer_utils.get_vis_dict(build_ctx))
-
-
-class Pose(BaseModel):
-    """The position, orientation, flipping etc... of an element."""
-    position: dict[str, float] # {x: 0.0, y: 0.0}
-    rotation: int  # degrees, but should only be 0, 90, 180, 270
-    mirror_x: bool = False # defined before rotation is applied.
-    mirror_y: bool = False # defined before rotation is applied.
 
 
 class DiagramType(str, Enum):
@@ -66,7 +58,6 @@ async def save_pose(
     """Save the pose of an element."""
     diagram_type = DiagramType(diagram_type)
     build_ctx: BuildContext = app.config["build_ctx"]
-    # addr = "/" + atopile.address.AddrStr(addr)
 
     # FIXME: rip this logic outta here
     # We save the pose information to one file per-project
@@ -79,10 +70,7 @@ async def save_pose(
     else:
         lock_data = {}
 
-    # Find the relative address of the element to the project
-    # Address is already relative
-    rel_addr = addr
-    lock_data.setdefault("poses", {}).setdefault(diagram_type.name, {})[rel_addr] = data.model_dump()
+    lock_data.setdefault("poses", {}).setdefault(diagram_type.name, {})[addr] = data.model_dump()
 
     with lock_path.open("w") as lock_file:
         yaml.safe_dump(lock_data, lock_file)
