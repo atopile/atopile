@@ -10,7 +10,6 @@ from pathlib import Path
 
 import click
 import yaml
-from pydantic import BaseModel
 from quart import Quart, jsonify, send_from_directory
 from quart_cors import cors
 from quart_schema import QuartSchema, validate_request, validate_response
@@ -25,6 +24,7 @@ import atopile.viewer_utils
 from atopile import errors
 from atopile.cli.common import project_options
 from atopile.config import BuildContext, set_project_context
+from atopile.viewer_core import Pose
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -39,13 +39,6 @@ QuartSchema(app)
 async def send_viewer_data():
     build_ctx: BuildContext = app.config["build_ctx"]
     return jsonify(atopile.viewer_utils.get_vis_dict(build_ctx))
-
-
-class Pose(BaseModel):
-    """The position, orientation, flipping etc... of an element."""
-    x: float
-    y: float
-    angle: int  # degrees, but should only be 0, 90, 180, 270
 
 
 class DiagramType(str, Enum):
@@ -65,22 +58,19 @@ async def save_pose(
     """Save the pose of an element."""
     diagram_type = DiagramType(diagram_type)
     build_ctx: BuildContext = app.config["build_ctx"]
-    addr = "/" + atopile.address.AddrStr(addr)
 
     # FIXME: rip this logic outta here
     # We save the pose information to one file per-project
     # FIXME: figure out how we should actually
     # interact with these config files
-    lock_path = build_ctx.project_context.project_path / "ato-lock.yaml"
+    lock_path = build_ctx.project_context.lock_file_path
     if lock_path.exists():
         with lock_path.open("r") as lock_file:
             lock_data = yaml.safe_load(lock_file) or {}
     else:
         lock_data = {}
 
-    # Find the relative address of the element to the project
-    rel_addr = atopile.address.get_relative_addr_str(addr, build_ctx.project_context.project_path)
-    lock_data.setdefault("poses", {}).setdefault(diagram_type.name, {})[rel_addr] = data.model_dump()
+    lock_data.setdefault("poses", {}).setdefault(diagram_type.name, {})[addr] = data.model_dump()
 
     with lock_path.open("w") as lock_file:
         yaml.safe_dump(lock_data, lock_file)

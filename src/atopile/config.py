@@ -25,6 +25,7 @@ CONFIG_FILENAME = "ato.yaml"
 ATO_DIR_NAME = ".ato"
 MODULE_DIR_NAME = "modules"
 BUILD_DIR_NAME = "build"
+LOCK_FILE_NAME = "ato-lock.yaml"
 
 
 _converter = cattrs.Converter()
@@ -235,6 +236,7 @@ class ProjectContext:
     src_path: Path  # abs path to the source directory
     module_path: Path  # abs path to the module directory
     layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
+    lock_file_path: Path  # eg. path/to/project/ato-lock.yaml
     config: ProjectConfig
 
     @classmethod
@@ -246,6 +248,7 @@ class ProjectContext:
             src_path=Path(config.location) / config.paths.src,
             module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,
             layout_path=Path(config.location) / config.paths.layout,
+            lock_file_path=Path(config.location) / LOCK_FILE_NAME,
             config=config,
         )
 
@@ -304,6 +307,7 @@ class BuildContext:
     fail_on_drcs: bool
 
     layout_path: Optional[Path]  # eg. path/to/project/layouts/default/default.kicad_pcb
+    lock_file_path: Optional[Path]  # eg. path/to/project/ato-lock.yaml
     build_path: Path  # eg. path/to/project/build/<build-name>
 
     output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
@@ -327,6 +331,7 @@ class BuildContext:
             targets=build_config.targets,
             fail_on_drcs=build_config.fail_on_drcs,
             layout_path=find_layout(project_context.project_path / project_context.layout_path / config_name),
+            lock_file_path=project_context.project_path / LOCK_FILE_NAME,
             build_path=build_path,
             output_base=build_path / config_name,
         )
