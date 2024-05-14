@@ -90,12 +90,16 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                 with exception_accumulator():
                     _try_log_assertion(assertion)
 
+                    # Build the context in which to evaluate the assertion
                     new_symbols = {
                         s.key for s in assertion.lhs.symbols | assertion.rhs.symbols
                     } - context.keys()
 
                     for symbol in new_symbols:
                         context[symbol] = instance_methods.get_data(symbol)
+
+                    for symbol in assertion.lhs.symbols | assertion.rhs.symbols:
+                        assert symbol.key in context, f"Symbol {symbol} not found in context"
 
                     assertion_str = parse_utils.reconstruct(assertion.src_ctx)
 

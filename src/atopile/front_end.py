@@ -658,12 +658,9 @@ class Roley(HandlesPrimaries):
             return self.visit(ctx.literal_physical())
 
         if ctx.name_or_attr():
-            return expressions.Symbol(
-                address.add_instances(
-                    self.addr,
-                    self.visit_ref_helper(ctx.name_or_attr()),
-                )
-            )
+            ref = self.visit_ref_helper(ctx.name_or_attr())
+            addr = address.add_instances(self.addr, ref)
+            return expressions.Symbol(addr)
 
         raise ValueError
 
@@ -1058,6 +1055,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
             value=self.visitAssignable(assignable_ctx),
             given_type=self._get_type_info(ctx),
         )
+        _, line, *_ = get_src_info_from_ctx(ctx)
         return KeyOptMap.from_kv(assigned_value_ref, assignment)
 
     def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
