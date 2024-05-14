@@ -19,6 +19,7 @@ nav:
   - class.md
   - maths.md
   - doc-strings.md
+  - how-to.md
   - View your project:
     - view.md
   - Layout on kicad:
