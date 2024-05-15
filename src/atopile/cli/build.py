@@ -18,7 +18,7 @@ import atopile.variable_report
 from atopile.cli.common import project_options
 from atopile.components import download_footprint
 from atopile.config import BuildContext
-from atopile.errors import iter_through_errors
+from atopile.errors import ExceptionAccumulator, iter_through_errors
 from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
 
@@ -33,56 +33,63 @@ def build(build_ctxs: list[BuildContext]):
     Specify the root source file with the argument SOURCE.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
-    for err_cltr, build_ctx in iter_through_errors(build_ctxs):
-        log.info("Building %s", build_ctx.name)
+    with ExceptionAccumulator() as err_cltr:
+        for build_ctx in build_ctxs:
+            log.info("Building %s", build_ctx.name)
+            with err_cltr():
+                _do_build(build_ctx)
+
         with err_cltr():
-            _do_build(build_ctx)
+            project_context = atopile.config.get_project_context()
 
-    project_context = atopile.config.get_project_context()
+            # FIXME: this should be done elsewhere, but there's no other "overview"
+            # that can see all the builds simultaneously
+            manifest = {}
+            manifest["version"] = "2.0"
+            for ctx in build_ctxs:
+                if ctx.layout_path:
+                    by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
+                    by_layout_manifest["layouts"] = str(ctx.output_base.with_suffix(".layouts.json"))
 
-    # FIXME: this should be done elsewhere, but there's no other "overview"
-    # that can see all the builds simultaneously
-    manifest = {}
-    manifest["version"] = "2.0"
-    for ctx in build_ctxs:
-        if ctx.layout_path:
-            by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
-            by_layout_manifest["layouts"] = str(ctx.output_base.with_suffix(".layouts.json"))
+            manifest_path = project_context.project_path / "build" / "manifest.json"
+            manifest_path.parent.mkdir(exist_ok=True, parents=True)
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f)
 
-    manifest_path = project_context.project_path / "build" / "manifest.json"
-    manifest_path.parent.mkdir(exist_ok=True, parents=True)
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f)
+    log.info("Build complete!")
 
 
 def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
-    # Solve the unknown variables
-    atopile.assertions.simplify_expressions(build_ctx.entry)
-    atopile.assertions.solve_assertions(build_ctx)
-    atopile.assertions.simplify_expressions(build_ctx.entry)
+    with ExceptionAccumulator() as err_cltr:
 
-    # Ensure the build directory exists
-    log.info("Writing outputs to %s", build_ctx.build_path)
-    build_ctx.build_path.mkdir(parents=True, exist_ok=True)
-
-    if build_ctx.targets == ["__default__"]:
-        targets = muster.do_by_default
-    elif build_ctx.targets == ["*"] or build_ctx.targets == ["all"]:
-        targets = list(muster.targets.keys())
-    else:
-        targets = build_ctx.targets
-
-    build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
-
-    built_targets = []
-    for err_cltr, target_name in iter_through_errors(targets):
+        # Solve the unknown variables
         with err_cltr():
-            log.info(f"Building '{target_name}' for '{build_ctx.name}' config")
-            muster.targets[target_name](build_ctx)
-        built_targets.append(target_name)
+            atopile.assertions.simplify_expressions(build_ctx.entry)
+            atopile.assertions.solve_assertions(build_ctx)
+            atopile.assertions.simplify_expressions(build_ctx.entry)
 
-    log.info(f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
+        # Ensure the build directory exists
+        log.info("Writing outputs to %s", build_ctx.build_path)
+        build_ctx.build_path.mkdir(parents=True, exist_ok=True)
+
+        if build_ctx.targets == ["__default__"]:
+            targets = muster.do_by_default
+        elif build_ctx.targets == ["*"] or build_ctx.targets == ["all"]:
+            targets = list(muster.targets.keys())
+        else:
+            targets = build_ctx.targets
+
+        build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
+
+        built_targets = []
+        for target_name in targets:
+            log.info(f"Building '{target_name}' for '{build_ctx.name}' config")
+            with err_cltr():
+                muster.targets[target_name](build_ctx)
+            built_targets.append(target_name)
+
+        log.info(f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
 
 
 TargetType = Callable[[BuildContext], None]
