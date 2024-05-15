@@ -29,9 +29,36 @@ The `.ato` files are human readable and can be version controlled, so you can co
 
 To run atopile, you will need the atopile compiler, the VSCode extension for syntax highlighting and git credential manager.
 
-### atopile compiler - with pip <small>recommended</small>
+### atopile compiler - with `pipx` <small>recommended</small>
 
 atopile is published as a [python package](https://pypi.org/project/atopile/) on pypi. You can install it using `pip` from your command line. We recommend setting up a virtual environment for atopile so that atopile's dependencies don't clash with the rest of your system.
+
+It's dead simple with [`pipx`](https://pipx.pypa.io/stable/)
+``` sh
+pipx install atopile
+```
+
+??? question "How do I install `pipx`?"
+    `pipx` has some dead simple installation instructions here: https://pipx.pypa.io/stable/installation/#installing-pipx
+
+
+atopile should be installed. You can verify that it worked with the following command which should give you the current version of atopile.
+``` sh
+ato --version
+```
+---
+
+:fontawesome-brands-youtube:{ style="color: #EE0F0F" }
+__[Getting started with atopile - get setup and build your first project from scratch]__ – :octicons-clock-24:
+32m – We have a video of how to install atopile and setup your project here.
+
+  [Getting started with atopile - get setup and build your first project from scratch]: https://www.youtube.com/watch?v=7aeZLlA_VYA
+
+---
+
+### atopile compiler - for development
+
+atopile can be directly installed from [GitHub](https://github.com/atopile/atopile) by cloning the repository into a subfolder of your project root. This could be useful if you want to use the latest version of atopile:
 
 Start by making sure you have `python@3.11` or later installed on your machine.
 
@@ -54,29 +81,6 @@ Activate the venv:
 source venv/bin/activate
 ```
 
-Now you can install atopile:
-``` sh
-pip install atopile
-```
-
-atopile should be installed. You can verify that it worked with the following command which should give you the current version of atopile.
-``` sh
-ato --version
-```
----
-
-:fontawesome-brands-youtube:{ style="color: #EE0F0F" }
-__[Getting started with atopile - get setup and build your first project from scratch]__ – :octicons-clock-24:
-32m – We have a video of how to install atopile and setup your project here.
-
-  [Getting started with atopile - get setup and build your first project from scratch]: https://www.youtube.com/watch?v=7aeZLlA_VYA
-
----
-
-### atopile compiler - with git
-
-atopile can be directly installed from [GitHub](https://github.com/atopile/atopile) by cloning the repository into a subfolder of your project root. This could be useful if you want to use the latest version of atopile:
-
 ```
 git clone https://github.com/atopile/atopile.git
 ```
@@ -94,20 +98,24 @@ From VSCode, navigate to the VSCode extensions and install atopile.
 
 ![](assets/images/ato_extension.png)
 
-#### Configuration
+The extension needs to know where your ato compiler's python interpreter is located. There are two ways to do this:
 
-There's a small amount of one-time configuration required to get type-hints from the extension.
+#### 1. - Easy
 
-1. Get the path to your python interpreter that has ato installed. This is usually in a virtual environment.
-   - You can find this by running `which python` while your venv is activated.
-2. Configure VSCode to use it!
-   - `Cmd + Shift + P` (or `Ctrl + Shift + P` on Windows) to open the command palette
-   - Type "Python: Select Interpreter" and select it
-   - If your venv isn't there, you can add it by selecting "Enter interpreter path" and pasting the path to your venv's python binary.
+If `ato` is in your PATH, the extension will find it automatically.
 
-All together now!
 
-![](/docs/assets/images/extension-python-setup.gif)
+#### 2. - Harder
+
+If not, you can set the `atopile.interpreter` setting in your vscode settings to the path of the `ato` executable.
+eg. in your `settings.json` ():
+```json
+{
+    "atopile.interpreter": ["/path/to/the/python/interpreter/used/for/ato"]
+}
+```
+
+You can find `/path/to/the/python/interpreter/used/for/ato` by running `ato --python-path` in your terminal, where `ato` is available.
 
 
 ## Making a simple circuit

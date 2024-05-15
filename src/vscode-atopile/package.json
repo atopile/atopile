@@ -39,7 +39,8 @@
         "virtualWorkspaces": {
             "supported": false,
             "description": "Virtual Workspaces are not supported with atopile."
-        }
+        },
+        "hoverProvider" : "true"
     },
     "activationEvents": [
         "onLanguage:atopile",

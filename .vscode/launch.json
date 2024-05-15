@@ -17,8 +17,8 @@
             "name": "Debug Extension Only",
             "type": "extensionHost",
             "request": "launch",
-            "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
-            "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+            "args": ["--extensionDevelopmentPath=${workspaceFolder}/src/vscode-atopile"],
+            "outFiles": ["${workspaceFolder}/src/vscode-atopile/dist/**/*.js"],
             "preLaunchTask": "npm: watch",
             "presentation": {
                 "hidden": false,
@@ -55,8 +55,8 @@
             "name": "Debug Extension (hidden)",
             "type": "extensionHost",
             "request": "launch",
-            "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
-            "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+            "args": ["--extensionDevelopmentPath=${workspaceFolder}/src/vscode-atopile"],
+            "outFiles": ["${workspaceFolder}/src/vscode-atopile/dist/**/*.js"],
             "env": {
                 "USE_DEBUGPY": "True"
             },

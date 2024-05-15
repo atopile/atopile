@@ -3,7 +3,6 @@ import itertools
 import json
 import logging
 import shutil
-from functools import wraps
 from typing import Callable, Optional
 
 import click
@@ -15,13 +14,13 @@ import atopile.front_end
 import atopile.layout
 import atopile.manufacturing_data
 import atopile.netlist
+import atopile.variable_report
 from atopile.cli.common import project_options
-from atopile.components import configure_cache, download_footprint
+from atopile.components import download_footprint
 from atopile.config import BuildContext
-from atopile.errors import handle_ato_errors, iter_through_errors
+from atopile.errors import ExceptionAccumulator
 from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
-from atopile.viewer_utils import get_vis_dict
 
 log = logging.getLogger(__name__)
 
@@ -34,61 +33,72 @@ def build(build_ctxs: list[BuildContext]):
     Specify the root source file with the argument SOURCE.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
-    for err_cltr, build_ctx in iter_through_errors(build_ctxs):
-        log.info("Building %s", build_ctx.name)
+    with ExceptionAccumulator() as err_cltr:
+        for build_ctx in build_ctxs:
+            log.info("Building %s", build_ctx.name)
+            with err_cltr():
+                _do_build(build_ctx)
+
         with err_cltr():
-            _do_build(build_ctx)
+            project_context = atopile.config.get_project_context()
 
-    project_context = atopile.config.get_project_context()
+            # FIXME: this should be done elsewhere, but there's no other "overview"
+            # that can see all the builds simultaneously
+            manifest = {}
+            manifest["version"] = "2.0"
+            for ctx in build_ctxs:
+                if ctx.layout_path:
+                    by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
+                    by_layout_manifest["layouts"] = str(ctx.output_base.with_suffix(".layouts.json"))
 
-    # FIXME: this should be done elsewhere, but there's no other "overview"
-    # that can see all the builds simultaneously
-    manifest = {}
-    manifest["version"] = "2.0"
-    for ctx in build_ctxs:
-        if ctx.layout_path:
-            by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
-            by_layout_manifest["layouts"] = str(ctx.output_base.with_suffix(".layouts.json"))
+            manifest_path = project_context.project_path / "build" / "manifest.json"
+            manifest_path.parent.mkdir(exist_ok=True, parents=True)
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f)
 
-    manifest_path = project_context.project_path / "build" / "manifest.json"
-    manifest_path.parent.mkdir(exist_ok=True, parents=True)
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f)
+    log.info("Build complete!")
 
 
 def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
+    with ExceptionAccumulator() as err_cltr:
 
-    # Configure the cache for component data
-    # TODO: flip this around so that the cache pulls what it needs from the
-    # project context
-    configure_cache(atopile.config.get_project_context().project_path)
+        # Solve the unknown variables
+        if not build_ctx.dont_solve_equations:
+            with err_cltr():
+                atopile.assertions.simplify_expressions(build_ctx.entry)
+                atopile.assertions.solve_assertions(build_ctx)
+                atopile.assertions.simplify_expressions(build_ctx.entry)
 
-    # Solve the unknown variables
-    atopile.assertions.simplify_expressions(build_ctx.entry)
-    atopile.assertions.solve_assertions(build_ctx)
-    atopile.assertions.simplify_expressions(build_ctx.entry)
+        # Ensure the build directory exists
+        log.info("Writing outputs to %s", build_ctx.build_path)
+        build_ctx.build_path.mkdir(parents=True, exist_ok=True)
 
-    # Ensure the build directory exists
-    log.info("Writing outputs to %s", build_ctx.build_path)
-    build_ctx.build_path.mkdir(parents=True, exist_ok=True)
+        # Figure out what targets to build
+        if build_ctx.targets == ["__default__"]:
+            targets = muster.do_by_default
+        elif build_ctx.targets == ["*"] or build_ctx.targets == ["all"]:
+            targets = list(muster.targets.keys())
+        else:
+            targets = build_ctx.targets
 
-    if build_ctx.targets == ["__default__"]:
-        targets = muster.do_by_default
-    elif build_ctx.targets == ["*"] or build_ctx.targets == ["all"]:
-        targets = list(muster.targets.keys())
-    else:
-        targets = build_ctx.targets
+        # Remove targets we don't know about, or are excluded
+        excluded_targets = set(build_ctx.exclude_targets)
+        known_targets = set(muster.targets.keys())
+        targets = set(targets) - excluded_targets & known_targets
 
-    build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure the output directory exists
+        build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
 
-    built_targets = []
-    for err_cltr, target_name in iter_through_errors(targets):
-        with err_cltr():
-            muster.targets[target_name](build_ctx)
-        built_targets.append(target_name)
+        # Make the noise
+        built_targets = []
+        for target_name in targets:
+            log.info(f"Building '{target_name}' for '{build_ctx.name}' config")
+            with err_cltr():
+                muster.targets[target_name](build_ctx)
+            built_targets.append(target_name)
 
-    log.info(f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
+        log.info(f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
 
 
 TargetType = Callable[[BuildContext], None]
@@ -114,13 +124,8 @@ class Muster:
         """Register a target under a given name."""
 
         def decorator(func: TargetType):
-            @wraps(func)
-            def wrapper(build_args: BuildContext):
-                with handle_ato_errors():
-                    return func(build_args)
-
-            self.add_target(wrapper, name, default)
-            return wrapper
+            self.add_target(func, name, default)
+            return func
 
         return decorator
 
@@ -220,8 +225,7 @@ def generate_assertion_report(build_ctx: BuildContext) -> None:
     atopile.assertions.generate_assertion_report(build_ctx)
 
 
-@muster.register("view-dict")
-def generate_view_dict(build_ctx: BuildContext) -> None:
-    """Generate a dictionary for the viewer."""
-    with open(build_ctx.output_base.with_suffix(".view.json"), "w", encoding="utf-8") as f:
-        f.write(get_vis_dict(build_ctx.entry))
+@muster.register("variable-report")
+def generate_variable_report(build_ctx: BuildContext) -> None:
+    """Generate a report of all the variable values in the design."""
+    atopile.variable_report.generate(build_ctx)

@@ -10,6 +10,8 @@ import pint
 from attrs import define, frozen
 from pint.facets.plain import PlainUnit
 
+from atopile import address, errors
+
 _UNITLESS = pint.Unit("")
 
 
@@ -21,13 +23,6 @@ def _custom_float_format(value, max_decimals: int):
     formatted = f"{value:.{max_decimals}f}"
     # Remove trailing zeros and the decimal point if not needed
     return formatted.rstrip("0").rstrip(".")
-
-
-def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
-    """Return the best unit for the two quantities."""
-    if len(str(qty_a.to(qty_b.units).magnitude)) > len(str(qty_b.to(qty_a.units).magnitude)):
-        return qty_a.units
-    return qty_b.units
 
 
 _multiplier_map = {
@@ -45,6 +40,7 @@ _multiplier_map = {
 
 
 _pretty_unit_map = {
+    "": "",  # Dimensionless is desirable too
     "volt": "V",
     "ohm": "Ω",
     "ampere": "A",
@@ -60,17 +56,36 @@ pretty_unit_map = {lm + lu: sm + su for lm, sm in _multiplier_map.items() for lu
 favorite_units_map = {pint.Unit(k).dimensionality: pint.Unit(k) for k in _pretty_unit_map}
 
 
-def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
-    """Return the most favorable magnitude and unit for the given quantity."""
-    if qty.units.dimensionless:
-        return qty.magnitude, ""
-
+def _convert_to_favorite_unit(qty: pint.Quantity) -> pint.Quantity:
+    """Convert the quantity to the favorite unit for its dimensionality."""
     # If there's a favorite unit for this dimensionality, use it
     if qty.units.dimensionality in favorite_units_map:
         qty = qty.to(favorite_units_map[qty.units.dimensionality])
 
     # Compact the units to standardise them
     qty = qty.to_compact()
+
+    return qty
+
+
+def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
+    """Return the best unit for the two quantities."""
+    a_fav = _convert_to_favorite_unit(qty_a)
+    b_fav = _convert_to_favorite_unit(qty_b)
+
+    # If converting b to a's units results in a shorter representation, use a's units
+    # Otherwise, use b's units
+    if len(str(qty_b.to(a_fav.units).magnitude)) < len(str(qty_a.to(b_fav.units).magnitude)):
+        return a_fav.units
+    return b_fav.units
+
+
+def pretty_unit(qty: pint.Quantity) -> tuple[float, str]:
+    """Return the most favorable magnitude and unit for the given quantity."""
+    if qty.units.dimensionless:
+        return qty.magnitude, ""
+
+    qty = _convert_to_favorite_unit(qty)
 
     # Convert the units to a pretty string
     units = str(qty.units)
@@ -143,7 +158,7 @@ class RangedValue:
                 return str(val)
             return _custom_float_format(val, max_decimals)
 
-        if self.str_rep:
+        if self.str_rep and format_ is None:
             return self.str_rep
 
         # Single-ended
@@ -155,12 +170,12 @@ class RangedValue:
             return f"{_f(nom)}{unit}"
 
         # Bound values
-        if self.tolerance_pct and self.tolerance_pct > 20 or format_ == "bound":
+        if (self.tolerance_pct and self.tolerance_pct > 20) or format_ == "bound":
             min_val, min_unit = pretty_unit(self.min_qty)
             max_val, max_unit = pretty_unit(self.max_qty)
 
             if min_unit == max_unit or min_val == 0 or max_val == 0:
-                return f"{_f(min_val)} to {_f(max_val)} {min_unit}"
+                return f"{_f(min_val)} to {_f(max_val)} {max_unit}"
             return f"{_f(min_val)}{min_unit} to {_f(max_val)}{max_unit}"
 
         # Bilateral values
@@ -200,13 +215,15 @@ class RangedValue:
 
     def to_dict(self) -> dict:
         """Convert the Physical instance to a dictionary."""
+        min_qty = _convert_to_favorite_unit(self.min_qty)
+        multiplier = min_qty.magnitude / self.min_val
         return {
-            "unit": str(self.unit),
-            "min_val": self.min_val,
-            "max_val": self.max_val,
+            "unit": str(min_qty.units),
+            "min_val": min_qty.magnitude,
+            "max_val": self.max_val * multiplier,
             # TODO: remove these - we shouldn't be duplicating this kind of information
-            "nominal": self.nominal,
-            "tolerance": self.tolerance,
+            "nominal": self.nominal * multiplier,
+            "tolerance": self.tolerance * multiplier,
             "tolerance_pct": self.tolerance_pct,
         }
 
@@ -314,12 +331,19 @@ class RangedValue:
             return self.min_val == self.max_val == other
         return self.min_qty >= other.min_qty and other.max_qty >= self.max_qty
 
-    # NOTE: we use the < and > operators interchangeably with the <= and >= operators
     def __lt__(self, other: Union["RangedValue", float, int]) -> bool:
+        other = self._ensure(other)
+        return self.max_qty < other.min_qty
+
+    def __gt__(self, other: Union["RangedValue", float, int]) -> bool:
+        other = self._ensure(other)
+        return self.min_qty > other.max_qty
+
+    def __le__(self, other: Union["RangedValue", float, int]) -> bool:
         other = self._ensure(other)
         return self.max_qty <= other.min_qty
 
-    def __gt__(self, other: Union["RangedValue", float, int]) -> bool:
+    def __ge__(self, other: Union["RangedValue", float, int]) -> bool:
         other = self._ensure(other)
         return self.min_qty >= other.max_qty
 
@@ -337,6 +361,14 @@ class RangedValue:
 
     def __req__(self, other: Union["RangedValue", float, int]) -> bool:
         return self.__eq__(other)
+
+    def min(self) -> "RangedValue":
+        """Return a new RangedValue with the minimum value."""
+        return self.__class__(self.min_qty, self.min_qty)
+
+    def max(self) -> "RangedValue":
+        """Return a new RangedValue with the maximum value."""
+        return self.__class__(self.max_qty, self.max_qty)
 
 
 NumericishTypes = Union["Expression", RangedValue, float, int, "Symbol"]
@@ -439,32 +471,27 @@ def _get_symbols(thing: NumericishTypes) -> set[Symbol]:
 
 
 def defer_operation_factory(
-    lhs: NumericishTypes,
-    operator: Callable,
-    rhs: NumericishTypes,
+    func: Callable,
+    *args: NumericishTypes,
     deffering_type: Type = Expression,
 ) -> NumericishTypes:
     """Create a deferred operation, using deffering_type as the base for teh callable."""
-    if not callable(lhs) and not callable(rhs):
+    if not any(map(callable, args)):
         # in this case we can just do the operation now, skip ahead and merry christmas
-        return operator(lhs, rhs)
+        return func(*args)
 
     # if we're here, we need to create an expression
-    symbols = _get_symbols(lhs) | _get_symbols(rhs)
-    if callable(lhs) and callable(rhs):
+    symbols = set.union(*map(_get_symbols, args))
 
-        def lambda_(context):
-            return operator(lhs(context), rhs(context))
+    def _make_callable(not_callable):
+        def _now_its_callable(_):
+            return not_callable
+        return _now_its_callable
 
-    elif callable(lhs):
+    partials = [arg if callable(arg) else _make_callable(arg) for arg in args]
 
-        def lambda_(context):
-            return operator(lhs(context), rhs)
-
-    else:
-
-        def lambda_(context):
-            return operator(lhs, rhs(context))
+    def lambda_(context):
+        return func(*(arg(context) for arg in partials))
 
     return deffering_type(symbols=symbols, lambda_=lambda_)
 
@@ -529,7 +556,12 @@ def simplify_expression_pool(
 
     def _visit(key: str, stack: list) -> NumericishTypes:
         if key in stack:
-            raise ValueError("Circular dependency detected")
+            loop = [key] + stack[:stack.index(key) + 1]
+            loop = [address.get_instance_section(addr) for addr in loop]
+            raise errors.AtoError(
+                f"{' references '.join(loop)}",
+                title="Circular dependency detected"
+            )
 
         if key in touched:
             return context[key]  # no wakkas

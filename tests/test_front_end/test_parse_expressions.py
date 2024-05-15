@@ -31,6 +31,8 @@ def test_basic_expression():
     assert _run("1 * 2 + 3") == 5
     assert _run("1 * (2 + 3)") == 5
     assert _run("(1 * 2) ** 3") == 8
+    assert _run("1 * max(1 to 2 ** 3)") == 8
+    assert _run("1 * min(1 to 2 ** 3)") == 1
 
 
 def test_units():
@@ -48,6 +50,8 @@ def test_parens():
     assert _run("1 * (2 + 3) * 4 + 5") == 25
     assert _run("1 * (2 + 3) * (4 + 5)") == 45
     assert _run("1 * (2 + 3) * (4 + 5) + 6") == 51
+    assert _run("1 / 2 * 3)") == 1.5
+    assert _run("1 / (2 * 3)") == 1 / 6
 
 
 def test_simple_pseudo_symbols():

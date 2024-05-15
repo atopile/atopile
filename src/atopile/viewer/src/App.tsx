@@ -1,284 +1,114 @@
 // @ts-nocheck
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReactFlow, {
-  addEdge,
-  Background,
-  useNodesState,
-  useEdgesState,
-  MarkerType,
-  useReactFlow,
   ReactFlowProvider,
   Panel,
-  Position,
-  isEdge,
-  Edge
 } from 'reactflow';
-import 'reactflow/dist/style.css';
 
-import { createNodesAndEdges } from './utils.tsx';
-import { CustomNodeBlock, CircularNodeComponent, BuiltInNodeBlock } from './CustomNode.tsx';
-import CustomEdge from './CustomEdge.tsx';
-
-import SimpleTable from './LinkTable.tsx';
-
-import './index.css';
-
-import ELK from 'elkjs/lib/elk.bundled.js';
-
-const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
+import AtopileSchematicApp from './SchematicApp.tsx';
+import AtopileBlockDiagramApp from './BlockDiagramApp.tsx';
 
 
-const elk = new ELK();
+let activeApp;
 
-// Elk has a *huge* amount of options to configure. To see everything you can
-// tweak check out:
-//
-// - https://www.eclipse.org/elk/reference/algorithms.html
-// - https://www.eclipse.org/elk/reference/options.html
-const elkOptions = {
-    'elk.algorithm': 'layered',
-    'elk.layered.spacing.nodeNodeBetweenLayers': '100',
-    'elk.spacing.nodeNode': '80',
-};
+const App = () => {
+    const [viewBlockId, setViewBlockId] = useState('root');
+    const [parentBlockId, setParentBlockId] = useState('none');
+    const [reLayout, setReLayout] = useState(false);
+    const [reload, setReload] = useState(false);
+    const [schematicModeEnabled, setSchematicModeEnabled] = useState(false);
 
-const getLayoutedElements = (nodes, edges, options = {}) => {
-    const isHorizontal = options?.['elk.direction'] === 'RIGHT';
-    const graph = {
-        id: 'root',
-        layoutOptions: options,
-        children: nodes.map((node) => ({
-            ...node,
-            // Adjust the target and source handle positions based on the layout
-            // direction.
-            targetPosition: isHorizontal ? 'left' : 'top',
-            sourcePosition: isHorizontal ? 'right' : 'bottom',
-
-            // Hardcode a width and height for elk to use when layouting.
-            width: 200,
-            height: 50,
-        })),
-        edges: edges,
-};
-
-  return elk
-    .layout(graph)
-    .then((layoutedGraph) => ({
-        nodes: layoutedGraph.children.map((node) => ({
-            ...node,
-            // React Flow expects a position property on the node instead of `x`
-            // and `y` fields.
-            position: { x: node.x, y: node.y },
-        })),
-
-        edges: layoutedGraph.edges,
-    }))
-    .catch(console.error);
-};
-
-const nodeTypes = {
-    customNode: CustomNodeBlock,
-    customCircularNode: CircularNodeComponent,
-    builtinNode: BuiltInNodeBlock,
-};
-
-const edgeTypes = {
-    custom: CustomEdge,
-};
-
-async function loadJsonAsDict() {
-    const response = await fetch('http://127.0.0.1:8080/data');
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    function handleReturnClick() {
+        if (parentBlockId === 'none' || parentBlockId === 'null') {
+            console.log('no parent block id');
+            return;
+        }
+        setViewBlockId(parentBlockId);
     }
-    return response.json();
-}
 
-const block_id = "root";
-const parent_block_addr = "none";
-const selected_link_data = [];
-const selected_link_source = "none";
-const selected_link_target = "none";
-const requestRelayout = false;
-let selected_links_data = {};
+    function handleExploreClick(block_id: string) {
+        setViewBlockId(block_id);
+    }
 
+    function handleBlockLoad(parent_block_id: string) {
+        setParentBlockId(parent_block_id);
+        setReLayout(true);
+    }
 
-const AtopileViewer = () => {
-    const [nodes, setNodes, onNodesChange] = useNodesState([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-    const [requestRelayout, setRequestRelayout] = useState(false);
-    const { fitView } = useReactFlow();
-    const [block_id, setBlockId] = useState("root");
-    const [parent_block_addr, setParentBlockAddr] = useState("none");
-    const [selected_link_id, setSelectedLinkId] = useState("none");
-    const [selected_link_data, setSelectedLinkData] = useState([]);
-    const [selected_link_source, setSelectedLinkSource] = useState("none");
-    const [selected_link_target, setSelectedLinkTarget] = useState("none");
+    function handleReLayout() {
+        setReLayout(true);
+    }
 
+    function reLayoutCleared() {
+        setReLayout(false);
+    }
 
-    const handleExpandClick = (newBlockId) => {
-        setSelectedLinkId("none");
-        setSelectedLinkData([]);
-        setSelectedLinkSource("none");
-        setSelectedLinkTarget("none");
-        setBlockId(newBlockId);
-    };
+    function handleModeSwitch() {
+        setSchematicModeEnabled(!schematicModeEnabled);
+    }
 
-    const handleLinkSelectClick = (newSelectedLinkId) => {
-        setSelectedLinkId(newSelectedLinkId);
-        setSelectedLinkData(selected_links_data[newSelectedLinkId]['links']);
-        setSelectedLinkSource(selected_links_data[newSelectedLinkId]['source']);
-        setSelectedLinkTarget(selected_links_data[newSelectedLinkId]['target']);
-    };
+    function handleSavePos() {
+        console.log('save pos');
+        savePos("/Users/timot/Dev/atopile/community-projects/viewer-test/elec/src/viewer-test.ato:ViewerTest::amp")
+    }
 
-    const onLayout = useCallback(
-    ({ direction }) => {
-        const opts = { 'elk.direction': direction, ...elkOptions };
-
-        getLayoutedElements(nodes, edges, opts).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
-
-        window.requestAnimationFrame(() => fitView());
-        });
-    }, [edges] );
-
-
-    useEffect(() => {
-        const updateNodesFromJson = async () => {
-            try {
-                const fetchedNodes = await loadJsonAsDict();
-                const displayedNode = fetchedNodes[block_id];
-                setParentBlockAddr(displayedNode['parent']);
-                const populatedNodes = [];
-                for (const node in displayedNode['blocks']) {
-                    const position = {
-                    x: Math.random() * window.innerWidth,
-                    y: Math.random() * window.innerHeight,
-                    };
-                    let style;
-                    if (displayedNode['blocks'][node]['type'] == 'signal') {
-                        populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#8ECAE6' }, position: position });
-                    } else if (displayedNode['blocks'][node]['type'] == 'interface') {
-                        populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
-                    } else if (displayedNode['blocks'][node]['type'] == 'module') {
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
-                    } else if (displayedNode['blocks'][node]['type'] == 'builtin') {
-                        populatedNodes.push({ id: node, type: 'builtinNode', data: {
-                            title: node,
-                            instance_of: displayedNode['blocks'][node]['instance_of'],
-                            address: displayedNode['blocks'][node]['address'],
-                            type: displayedNode['blocks'][node]['type'],
-                            value: displayedNode['blocks'][node]['value'],
-                            lib_key: displayedNode['blocks'][node]['lib_key'],
-                            color: '#FFFFFF', handleExpandClick: handleExpandClick },
-                            sourcePosition: Position.Bottom,
-                            targetPosition: Position.Right,
-                            position: position });
-                    } else {
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExpandClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
-                    }
-                }
-                // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
-                setNodes(populatedNodes);
-                const populatedEdges = [];
-                selected_links_data = {};
-                for (const edge_id in displayedNode['harnesses']) {
-                    const edge = displayedNode['harnesses'][edge_id];
-
-                    // for each edge_id, update the data structure with the list of links on that harness
-                    selected_links_data[edge_id] = {source: edge['source'], target: edge['target'], links: edge['links']};
-
-                    // create a react edge element for each harness
-                    populatedEdges.push({
-                        id: edge_id,
-                        source: edge['source'],
-                        target: edge['target'],
-                        type: 'custom',
-                        sourcePosition: Position.Right,
-                        targetPosition: Position.Left,
-                        markerEnd: {
-                            type: MarkerType.Arrow,
-                        },
-                        data: {
-                            source: edge['source'],
-                            target: edge['target'],
-                            name: edge['name'],
-                            preview_names: edge['preview_names'],
-                        }
-                    });
-                }
-                setEdges(populatedEdges);
-                setRequestRelayout(true);
-            } catch (error) {
-                console.error("Failed to fetch nodes:", error);
-            }
-        };
-
-        updateNodesFromJson();
-    }, [block_id]);
-
-    // Calculate the initial layout on mount.
-    useLayoutEffect(() => {
-        if (requestRelayout) {
-            onLayout({ direction: 'DOWN' });
-            console.log('Relayout requested');
-            setRequestRelayout(false);
+    async function savePos(addr, pos, rotation, mirror_x, mirror_y) {
+        const mode = schematicModeEnabled ? 'schematic' : 'block-diagram';
+        const url = `http://127.0.0.1:8080/${mode}/${addr}/pose`;
+        const response = await fetch(url, {
+            method: 'POST', // Set the method to POST
+            headers: {
+              'Content-Type': 'application/json' // Set the content type header for sending JSON
+            },
+            body: JSON.stringify({
+                "position": pos,
+                "rotation": rotation,
+                "mirror_x": mirror_x,
+                "mirror_y": mirror_y
+              })
+          });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-    }, [edges]);
+        return response.json();
+    }
 
-    const onSelectionChange = (elements) => {
-        // Filter out the selected edges from the selection
-        const selectedEdge = elements['edges'][0];
-        // check if there is a selected edge
-        if (selectedEdge && !requestRelayout) {
-            setSelectedLinkId(selectedEdge.id);
-            setSelectedLinkData(selected_links_data[selectedEdge.id]['links']);
-            setSelectedLinkSource(selected_links_data[selectedEdge.id]['source']);
-            setSelectedLinkTarget(selected_links_data[selectedEdge.id]['target']);
-        } else if (selected_link_id != "none") {
-            setSelectedLinkId("none");
-            setSelectedLinkData([]);
-            setSelectedLinkSource("none");
-            setSelectedLinkTarget("none");
-        }
-    };
+    activeApp = schematicModeEnabled ?
+        <AtopileSchematicApp
+            viewBlockId={viewBlockId}
+            savePos={savePos}
+            reload={reload}
+        />
+        :
+        <AtopileBlockDiagramApp
+            viewBlockId={viewBlockId}
+            savePos={savePos}
+            handleBlockLoad={handleBlockLoad}
+            handleExploreClick={handleExploreClick}
+            reLayout={reLayout}
+            reLayoutCleared={reLayoutCleared}
+            />;
+
 
     return (
-    <div className="floatingedges">
-        <ReactFlow
-        key={block_id}
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onSelectionChange={onSelectionChange}
-        //onConnect={onConnect}
-        fitView
-        edgeTypes={edgeTypes}
-        nodeTypes={nodeTypes}
-        >
-        <Panel position="top-left">
-            <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
-                <div style={{textAlign: 'center'}}> Model inspection pane</div>
-                <div><i>Inspecting:</i> <b>{block_id}</b></div>
-                <div><i>Parent:</i> {parent_block_addr}</div>
-                <button onClick={() => handleExpandClick(parent_block_addr)}>return</button>
-                <button onClick={() => onLayout({ direction: 'DOWN' })}>re-layout</button>
-            </div>
-        </Panel>
-        <Panel position="top-right">
-            <SimpleTable source={selected_link_source} target={selected_link_target} data={selected_link_data} />
-        </Panel>
-        <Background />
-        </ReactFlow>
-    </div>
+        <>
+            <ReactFlowProvider>
+                {activeApp}
+                <Panel position="top-left">
+                    <div style={{backgroundColor: 'lightgray', border: '2px solid grey', margin: '10px', padding: '10px', borderRadius: '10px'}}>
+                        <div style={{textAlign: 'center'}}> Model inspection pane</div>
+                        <div><i>Inspecting:</i> <b>{viewBlockId}</b></div>
+                        <div><i>Parent:</i> {parentBlockId}</div>
+                        <div>Mode: {schematicModeEnabled ? 'schematic' : 'block diagram'}</div>
+                        <button style={{margin: '5px'}} onClick={() => handleReturnClick()} disabled={schematicModeEnabled} >return</button>
+                        <button style={{margin: '5px'}} onClick={() => handleReLayout()} disabled={schematicModeEnabled} >re-layout</button>
+                        <button style={{margin: '5px'}} onClick={() => handleModeSwitch()}>{schematicModeEnabled ? 'block diagram' : 'schematic'}</button>
+                        <button style={{margin: '5px'}} onClick={() => setReload(!reload)} disabled={!schematicModeEnabled}>reload</button>
+                    </div>
+                </Panel>
+            </ReactFlowProvider>
+        </>
     );
-};
+}
 
-// export default NodeAsHandleFlow;
-
-export default () => (
-    <ReactFlowProvider>
-        <AtopileViewer />
-    </ReactFlowProvider>
-);
+export default App;

@@ -90,12 +90,16 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                 with exception_accumulator():
                     _try_log_assertion(assertion)
 
+                    # Build the context in which to evaluate the assertion
                     new_symbols = {
                         s.key for s in assertion.lhs.symbols | assertion.rhs.symbols
                     } - context.keys()
 
                     for symbol in new_symbols:
                         context[symbol] = instance_methods.get_data(symbol)
+
+                    for symbol in assertion.lhs.symbols | assertion.rhs.symbols:
+                        assert symbol.key in context, f"Symbol {symbol} not found in context"
 
                     assertion_str = parse_utils.reconstruct(assertion.src_ctx)
 
@@ -106,20 +110,22 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     try:
                         a = assertion.lhs(context)
                         b = assertion.rhs(context)
-                    except errors.AtoError as e:
+                    except (errors.AtoError, KeyError) as e:
                         table.add_row(
                             "[red]ERROR[/]",
                             assertion_str,
                             "",
                         )
                         raise ErrorComputingAssertion(
-                            f"Exception computing assertion: {str(e)}"
+                            f"Exception computing assertion: {e.__class__.__name__} {str(e)}"
                         ) from e
 
                     assert isinstance(a, RangedValue)
                     assert isinstance(b, RangedValue)
                     numeric = (
-                        a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
+                        a.pretty_str(format_="bound") +
+                        " " + assertion.operator +
+                        " " + b.pretty_str(format_="bound")
                     )
                     if _do_op(a, assertion.operator, b):
                         table.add_row(
@@ -164,6 +170,10 @@ def _do_op(a: RangedValue, op: str, b: RangedValue) -> bool:
         return a < b
     elif op == ">":
         return a > b
+    elif op == "<=":
+        return a <= b
+    elif op == ">=":
+        return a >= b
     else:
         raise ValueError(f"Unrecognized operator: {op}")
 
@@ -177,8 +187,14 @@ def _check_assertion(assertion: Assertion, context: dict) -> bool:
         b = assertion.rhs(context)
         return _do_op(a, assertion.operator, b)
     except pint.errors.DimensionalityError as ex:
+        if assertion.src_ctx:
+            raise errors.AtoTypeError.from_ctx(
+                assertion.src_ctx,
+                f"Dimensionality mismatch in assertion"
+                f" ({ex.units1} incompatible with {ex.units2})"
+            ) from ex
         raise errors.AtoTypeError(
-            f"Dimensionality mismatch in assertion: {assertion}"
+            f"Dimensionality mismatch in assertion"
             f" ({ex.units1} incompatible with {ex.units2})"
         ) from ex
 
@@ -201,7 +217,7 @@ def solve_assertions(build_ctx: config.BuildContext):
     ):
         instance = lofty.get_instance(instance_addr)
         for assertion in instance.assertions:
-            with error_collector():
+            with error_collector(assertion.src_ctx):
                 # Bucket new symbols into variables and constants
                 assertion_symbols = {
                     s.key for s in assertion.lhs.symbols | assertion.rhs.symbols
@@ -483,13 +499,37 @@ def _constraint_factory(assertion: Assertion, translator):
             return (
                 b(ctx).min_qty.to_base_units().magnitude
                 - a(ctx).max_qty.to_base_units().magnitude
-            )
+            ) or -1  # To make 0 exclusive
 
         return [
             {"type": "ineq", "fun": _brrr},
         ]
 
     def greater_than(a: Expression, b: Expression) -> list[dict]:
+        def _brrr(x):
+            ctx = translator(x)
+            return (
+                a(ctx).min_qty.to_base_units().magnitude
+                - b(ctx).max_qty.to_base_units().magnitude
+            ) or -1  # To make 0 exclusive
+
+        return [
+            {"type": "ineq", "fun": _brrr},
+        ]
+
+    def lower_than_eq(a: Expression, b: Expression) -> list[dict]:
+        def _brrr(x):
+            ctx = translator(x)
+            return (
+                b(ctx).min_qty.to_base_units().magnitude
+                - a(ctx).max_qty.to_base_units().magnitude
+            )
+
+        return [
+            {"type": "ineq", "fun": _brrr},
+        ]
+
+    def greater_than_eq(a: Expression, b: Expression) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (
@@ -525,6 +565,12 @@ def _constraint_factory(assertion: Assertion, translator):
         return lower_than(assertion.lhs, assertion.rhs)
 
     elif assertion.operator == ">":
+        return greater_than(assertion.lhs, assertion.rhs)
+
+    elif assertion.operator == "<=":
+        return lower_than(assertion.lhs, assertion.rhs)
+
+    elif assertion.operator == ">=":
         return greater_than(assertion.lhs, assertion.rhs)
 
     elif assertion.operator == "within":

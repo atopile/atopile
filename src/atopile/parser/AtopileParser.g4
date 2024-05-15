@@ -67,10 +67,14 @@ comparison
 compare_op_pair
     : lt_arithmetic_or
     | gt_arithmetic_or
+    | lt_eq_arithmetic_or
+    | gt_eq_arithmetic_or
     | in_arithmetic_or;
 
 lt_arithmetic_or: '<' arithmetic_expression;
 gt_arithmetic_or: '>' arithmetic_expression;
+lt_eq_arithmetic_or: '<=' arithmetic_expression;
+gt_eq_arithmetic_or: '>=' arithmetic_expression;
 in_arithmetic_or: 'within' arithmetic_expression;
 
 
@@ -88,7 +92,12 @@ term
     ;
 
 power
-    : atom ('**' atom)?
+    : functional ('**' functional)?
+    ;
+
+functional
+    : atom
+    | name '(' atom+ ')'
     ;
 
 
@@ -98,7 +107,8 @@ power
 atom
     : name_or_attr
     | literal_physical
-    | arithmetic_group;
+    | arithmetic_group
+    ;
 
 arithmetic_group
     : '(' arithmetic_expression ')';

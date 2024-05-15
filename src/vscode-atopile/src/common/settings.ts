@@ -4,6 +4,11 @@
 import { ConfigurationChangeEvent, ConfigurationScope, WorkspaceConfiguration, WorkspaceFolder } from 'vscode';
 import { getInterpreterDetails } from './python';
 import { getConfiguration, getWorkspaceFolders } from './vscodeapi';
+import { promisify } from 'util';
+import { exec } from 'node:child_process';
+import { traceError, traceLog } from './log/logging';
+
+const async_exec = promisify(exec);
 
 export interface ISettings {
     cwd: string;
@@ -56,8 +61,19 @@ export async function getWorkspaceSettings(
     let interpreter: string[] = [];
     if (includeInterpreter) {
         interpreter = getInterpreterFromSetting(namespace, workspace) ?? [];
+
+        // If no interpreter is set, try to get it from the ato command
         if (interpreter.length === 0) {
-            interpreter = (await getInterpreterDetails(workspace.uri)).path ?? [];
+            try {
+                const { stdout, stderr } = await async_exec('ato --python-path');
+                interpreter = [stdout.trim()];
+            } catch (error) {
+                traceError('Error getting interpreter from ato --python-path: ', error);
+                throw error;
+            }
+            traceLog(`Using interpreter from ato --python-path: ${interpreter.join(' ')}`);
+        } else {
+            traceLog(`Using interpreter from ${namespace}.interpreter: ${interpreter.join(' ')}`);
         }
     }
 
