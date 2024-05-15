@@ -77,7 +77,6 @@ POWER_ASSIGN=76
 IDIV_ASSIGN=77
 SKIP_=78
 UNKNOWN_CHAR=79
-SPACES=80
 'component'=6
 'module'=7
 'interface'=8

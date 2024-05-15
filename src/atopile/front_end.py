@@ -609,15 +609,15 @@ class Roley(HandlesPrimaries):
     ) -> expressions.NumericishTypes:
         if ctx.ADD():
             return expressions.defer_operation_factory(
-                self.visit(ctx.arithmetic_expression()),
                 operator.add,
+                self.visit(ctx.arithmetic_expression()),
                 self.visit(ctx.term()),
             )
 
         if ctx.MINUS():
             return expressions.defer_operation_factory(
-                self.visit(ctx.arithmetic_expression()),
                 operator.sub,
+                self.visit(ctx.arithmetic_expression()),
                 self.visit(ctx.term()),
             )
 
@@ -626,15 +626,15 @@ class Roley(HandlesPrimaries):
     def visitTerm(self, ctx: ap.TermContext) -> expressions.NumericishTypes:
         if ctx.STAR():  # multiply
             return expressions.defer_operation_factory(
-                self.visit(ctx.term()),
                 operator.mul,
+                self.visit(ctx.term()),
                 self.visit(ctx.power()),
             )
 
         if ctx.DIV():
             return expressions.defer_operation_factory(
-                self.visit(ctx.term()),
                 operator.truediv,
+                self.visit(ctx.term()),
                 self.visit(ctx.power()),
             )
 
@@ -643,10 +643,26 @@ class Roley(HandlesPrimaries):
     def visitPower(self, ctx: ap.PowerContext) -> expressions.NumericishTypes:
         if ctx.POWER():
             return expressions.defer_operation_factory(
-                self.visit(ctx.atom(0)),
                 operator.pow,
-                self.visit(ctx.atom(1)),
+                self.visit(ctx.functional(0)),
+                self.visit(ctx.functional(1)),
             )
+
+        return self.visit(ctx.functional(0))
+
+    def visitFunctional(self, ctx: ap.FunctionalContext) -> expressions.NumericishTypes:
+        """Parse a functional expression."""
+        if ctx.name():
+            name = ctx.name().getText()
+            if name == "min":
+                func = expressions.RangedValue.min
+            elif name == "max":
+                func = expressions.RangedValue.max
+            else:
+                raise errors.AtoNotImplementedError(f"Unknown function '{name}'")
+
+            values = tuple(map(self.visit, ctx.atom()))
+            return expressions.defer_operation_factory(func, *values)
 
         return self.visit(ctx.atom(0))
 

@@ -31,6 +31,8 @@ def test_basic_expression():
     assert _run("1 * 2 + 3") == 5
     assert _run("1 * (2 + 3)") == 5
     assert _run("(1 * 2) ** 3") == 8
+    assert _run("1 * max(1 to 2 ** 3)") == 8
+    assert _run("1 * min(1 to 2 ** 3)") == 1
 
 
 def test_units():

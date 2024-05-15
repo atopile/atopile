@@ -362,6 +362,14 @@ class RangedValue:
     def __req__(self, other: Union["RangedValue", float, int]) -> bool:
         return self.__eq__(other)
 
+    def min(self) -> "RangedValue":
+        """Return a new RangedValue with the minimum value."""
+        return self.__class__(self.min_qty, self.min_qty)
+
+    def max(self) -> "RangedValue":
+        """Return a new RangedValue with the maximum value."""
+        return self.__class__(self.max_qty, self.max_qty)
+
 
 NumericishTypes = Union["Expression", RangedValue, float, int, "Symbol"]
 
@@ -463,32 +471,27 @@ def _get_symbols(thing: NumericishTypes) -> set[Symbol]:
 
 
 def defer_operation_factory(
-    lhs: NumericishTypes,
-    operator: Callable,
-    rhs: NumericishTypes,
+    func: Callable,
+    *args: NumericishTypes,
     deffering_type: Type = Expression,
 ) -> NumericishTypes:
     """Create a deferred operation, using deffering_type as the base for teh callable."""
-    if not callable(lhs) and not callable(rhs):
+    if not any(map(callable, args)):
         # in this case we can just do the operation now, skip ahead and merry christmas
-        return operator(lhs, rhs)
+        return func(*args)
 
     # if we're here, we need to create an expression
-    symbols = _get_symbols(lhs) | _get_symbols(rhs)
-    if callable(lhs) and callable(rhs):
+    symbols = set.union(*map(_get_symbols, args))
 
-        def lambda_(context):
-            return operator(lhs(context), rhs(context))
+    def _make_callable(not_callable):
+        def _now_its_callable(_):
+            return not_callable
+        return _now_its_callable
 
-    elif callable(lhs):
+    partials = [arg if callable(arg) else _make_callable(arg) for arg in args]
 
-        def lambda_(context):
-            return operator(lhs(context), rhs)
-
-    else:
-
-        def lambda_(context):
-            return operator(lhs, rhs(context))
+    def lambda_(context):
+        return func(*(arg(context) for arg in partials))
 
     return deffering_type(symbols=symbols, lambda_=lambda_)
 

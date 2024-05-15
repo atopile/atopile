@@ -92,7 +92,12 @@ term
     ;
 
 power
-    : atom ('**' atom)?
+    : functional ('**' functional)?
+    ;
+
+functional
+    : atom
+    | name '(' atom+ ')'
     ;
 
 
@@ -102,7 +107,8 @@ power
 atom
     : name_or_attr
     | literal_physical
-    | arithmetic_group;
+    | arithmetic_group
+    ;
 
 arithmetic_group
     : '(' arithmetic_expression ')';
