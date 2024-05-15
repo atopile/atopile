@@ -158,7 +158,7 @@ class RangedValue:
                 return str(val)
             return _custom_float_format(val, max_decimals)
 
-        if self.str_rep:
+        if self.str_rep and format_ is None:
             return self.str_rep
 
         # Single-ended
@@ -170,7 +170,7 @@ class RangedValue:
             return f"{_f(nom)}{unit}"
 
         # Bound values
-        if self.tolerance_pct and self.tolerance_pct > 20 or format_ == "bound":
+        if (self.tolerance_pct and self.tolerance_pct > 20) or format_ == "bound":
             min_val, min_unit = pretty_unit(self.min_qty)
             max_val, max_unit = pretty_unit(self.max_qty)
 

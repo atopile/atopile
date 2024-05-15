@@ -3,7 +3,6 @@ import itertools
 import json
 import logging
 import shutil
-from functools import wraps
 from typing import Callable, Optional
 
 import click
@@ -19,7 +18,7 @@ import atopile.variable_report
 from atopile.cli.common import project_options
 from atopile.components import download_footprint
 from atopile.config import BuildContext
-from atopile.errors import handle_ato_errors, iter_through_errors
+from atopile.errors import iter_through_errors
 from atopile.instance_methods import all_descendants, match_components
 from atopile.netlist import get_netlist_as_str
 
@@ -79,6 +78,7 @@ def _do_build(build_ctx: BuildContext) -> None:
     built_targets = []
     for err_cltr, target_name in iter_through_errors(targets):
         with err_cltr():
+            log.info(f"Building '{target_name}' for '{build_ctx.name}' config")
             muster.targets[target_name](build_ctx)
         built_targets.append(target_name)
 
@@ -108,13 +108,8 @@ class Muster:
         """Register a target under a given name."""
 
         def decorator(func: TargetType):
-            @wraps(func)
-            def wrapper(build_args: BuildContext):
-                with handle_ato_errors():
-                    return func(build_args)
-
-            self.add_target(wrapper, name, default)
-            return wrapper
+            self.add_target(func, name, default)
+            return func
 
         return decorator
 
