@@ -35,7 +35,7 @@ def get_assignments(addr: str, key: Optional[str] = None) -> list[Assignment]:
     parent_inst = lofty.get_instance(parent_addr)
 
     if key not in parent_inst.assignments:
-        raise errors.AtoKeyError(f"{addr} has no attribute {key}")
+        raise errors.AtoKeyError(f"{parent_inst} has no attribute {key}")
 
     return parent_inst.assignments[key]
 

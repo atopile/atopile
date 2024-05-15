@@ -134,6 +134,16 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#lt_eq_arithmetic_or.
+    def visitLt_eq_arithmetic_or(self, ctx:AtopileParser.Lt_eq_arithmetic_orContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#gt_eq_arithmetic_or.
+    def visitGt_eq_arithmetic_or(self, ctx:AtopileParser.Gt_eq_arithmetic_orContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#in_arithmetic_or.
     def visitIn_arithmetic_or(self, ctx:AtopileParser.In_arithmetic_orContext):
         return self.visitChildren(ctx)
@@ -151,6 +161,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtopileParser#power.
     def visitPower(self, ctx:AtopileParser.PowerContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#functional.
+    def visitFunctional(self, ctx:AtopileParser.FunctionalContext):
         return self.visitChildren(ctx)
 
 

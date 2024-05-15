@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from typing import Callable, ContextManager, Iterable, Optional, Type, TypeVar
+from types import ModuleType
 
 import rich
 from antlr4 import ParserRuleContext, Token
@@ -186,9 +187,10 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
         if debug:
             addr = ex.addr
         else:
-            addr = address.add_entry(
+            addr = address.from_parts(
                 Path(address.get_file(ex.addr)).name,
-                address.get_entry_section(ex.addr)
+                address.get_entry_section(ex.addr),
+                address.get_instance_section(ex.addr),
             )
         # FIXME: we ignore the escaping of the address here
         fmt_addr = f"[bold cyan]{addr}[/]"
@@ -227,16 +229,16 @@ def _log_ato_errors(
     ex.log(logger)
 
 
-def in_debug_session() -> bool:
+def in_debug_session() -> Optional[ModuleType]:
     """
-    Return whether we're in a debug session.
+    Return the debugpy module if we're in a debugging session.
     """
     if "debugpy" in sys.modules:
-        from debugpy import (
-            is_client_connected,  # pylint: disable=import-outside-toplevel
-        )
-        return is_client_connected()
-    return False
+        import debugpy
+        if debugpy.is_client_connected():
+            return debugpy
+
+    return None
 
 
 @contextmanager
@@ -251,8 +253,8 @@ def handle_ato_errors(logger: logging.Logger = log) -> None:
         # If we're in a debug session, we want to see the
         # unadulterated exception. We do this pre-logging because
         # we don't want the logging to potentially obstruct the debugger.
-        if in_debug_session():
-            raise
+        if debugpy := in_debug_session():
+            debugpy.breakpoint()
 
         # FIXME: we're gonna repeat ourselves a lot if the same
         # error causes an issue multiple times (which they do)
@@ -316,17 +318,15 @@ class ExceptionAccumulator:
         """
         @contextmanager
         def _collect_ato_errors():
-            # If in a debugging session - don't collect errors
-            # because we want to see the unadulterated exception
-            # to stop the debugger
-            if in_debug_session():
-                yield
-                return
-
             try:
                 yield
             except* self.accumulate_types as ex:
+                if debugpy := in_debug_session():
+                    debugpy.breakpoint()
                 self.errors.extend(ex.exceptions)
+            except* Exception:
+                if debugpy := in_debug_session():
+                    debugpy.breakpoint()
 
         return _collect_ato_errors
 

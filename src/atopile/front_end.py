@@ -609,15 +609,15 @@ class Roley(HandlesPrimaries):
     ) -> expressions.NumericishTypes:
         if ctx.ADD():
             return expressions.defer_operation_factory(
-                self.visit(ctx.arithmetic_expression()),
                 operator.add,
+                self.visit(ctx.arithmetic_expression()),
                 self.visit(ctx.term()),
             )
 
         if ctx.MINUS():
             return expressions.defer_operation_factory(
-                self.visit(ctx.arithmetic_expression()),
                 operator.sub,
+                self.visit(ctx.arithmetic_expression()),
                 self.visit(ctx.term()),
             )
 
@@ -626,15 +626,15 @@ class Roley(HandlesPrimaries):
     def visitTerm(self, ctx: ap.TermContext) -> expressions.NumericishTypes:
         if ctx.STAR():  # multiply
             return expressions.defer_operation_factory(
-                self.visit(ctx.term()),
                 operator.mul,
+                self.visit(ctx.term()),
                 self.visit(ctx.power()),
             )
 
         if ctx.DIV():
             return expressions.defer_operation_factory(
-                self.visit(ctx.term()),
                 operator.truediv,
+                self.visit(ctx.term()),
                 self.visit(ctx.power()),
             )
 
@@ -643,10 +643,26 @@ class Roley(HandlesPrimaries):
     def visitPower(self, ctx: ap.PowerContext) -> expressions.NumericishTypes:
         if ctx.POWER():
             return expressions.defer_operation_factory(
-                self.visit(ctx.atom(0)),
                 operator.pow,
-                self.visit(ctx.atom(1)),
+                self.visit(ctx.functional(0)),
+                self.visit(ctx.functional(1)),
             )
+
+        return self.visit(ctx.functional(0))
+
+    def visitFunctional(self, ctx: ap.FunctionalContext) -> expressions.NumericishTypes:
+        """Parse a functional expression."""
+        if ctx.name():
+            name = ctx.name().getText()
+            if name == "min":
+                func = expressions.RangedValue.min
+            elif name == "max":
+                func = expressions.RangedValue.max
+            else:
+                raise errors.AtoNotImplementedError(f"Unknown function '{name}'")
+
+            values = tuple(map(self.visit, ctx.atom()))
+            return expressions.defer_operation_factory(func, *values)
 
         return self.visit(ctx.atom(0))
 
@@ -658,12 +674,9 @@ class Roley(HandlesPrimaries):
             return self.visit(ctx.literal_physical())
 
         if ctx.name_or_attr():
-            return expressions.Symbol(
-                address.add_instances(
-                    self.addr,
-                    self.visit_ref_helper(ctx.name_or_attr()),
-                )
-            )
+            ref = self.visit_ref_helper(ctx.name_or_attr())
+            addr = address.add_instances(self.addr, ref)
+            return expressions.Symbol(addr)
 
         raise ValueError
 
@@ -1058,6 +1071,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
             value=self.visitAssignable(assignable_ctx),
             given_type=self._get_type_info(ctx),
         )
+        _, line, *_ = get_src_info_from_ctx(ctx)
         return KeyOptMap.from_kv(assigned_value_ref, assignment)
 
     def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
@@ -1421,6 +1435,10 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
                 operators.append("<")
             elif child_ctx := comp_ctx.gt_arithmetic_or():
                 operators.append(">")
+            elif child_ctx := comp_ctx.lt_eq_arithmetic_or():
+                operators.append("<=")
+            elif child_ctx := comp_ctx.gt_eq_arithmetic_or():
+                operators.append(">=")
             elif child_ctx := comp_ctx.in_arithmetic_or():
                 operators.append("within")
             else:
