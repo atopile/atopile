@@ -123,7 +123,9 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     assert isinstance(a, RangedValue)
                     assert isinstance(b, RangedValue)
                     numeric = (
-                        a.pretty_str() + " " + assertion.operator + " " + b.pretty_str()
+                        a.pretty_str(format_="bound") +
+                        " " + assertion.operator +
+                        " " + b.pretty_str(format_="bound")
                     )
                     if _do_op(a, assertion.operator, b):
                         table.add_row(
