@@ -47,8 +47,10 @@ class ProjectBuildConfig:
     """Config for a build."""
 
     entry: Optional[str] = None
-    targets: list[str] = ["__default__"]
+    targets: list[str] = Factory(lambda: ["__default__"])
+    exclude_targets: list[str] = Factory(list)
     fail_on_drcs: bool = False
+    dont_solve_equations: bool = False
 
 
 @define
@@ -301,7 +303,9 @@ class BuildContext:
 
     entry: address.AddrStr  # eg. "path/to/project/src/entry-name.ato:module.path"
     targets: list[str]
+    exclude_targets: list[str]
     fail_on_drcs: bool
+    dont_solve_equations: bool
 
     layout_path: Optional[Path]  # eg. path/to/project/layouts/default/default.kicad_pcb
     build_path: Path  # eg. path/to/project/build/<build-name>
@@ -325,7 +329,9 @@ class BuildContext:
             name=config_name,
             entry=abs_entry,
             targets=build_config.targets,
+            exclude_targets=build_config.exclude_targets,
             fail_on_drcs=build_config.fail_on_drcs,
+            dont_solve_equations=build_config.dont_solve_equations,
             layout_path=find_layout(project_context.project_path / project_context.layout_path / config_name),
             build_path=build_path,
             output_base=build_path / config_name,

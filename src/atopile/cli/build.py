@@ -64,15 +64,17 @@ def _do_build(build_ctx: BuildContext) -> None:
     with ExceptionAccumulator() as err_cltr:
 
         # Solve the unknown variables
-        with err_cltr():
-            atopile.assertions.simplify_expressions(build_ctx.entry)
-            atopile.assertions.solve_assertions(build_ctx)
-            atopile.assertions.simplify_expressions(build_ctx.entry)
+        if not build_ctx.dont_solve_equations:
+            with err_cltr():
+                atopile.assertions.simplify_expressions(build_ctx.entry)
+                atopile.assertions.solve_assertions(build_ctx)
+                atopile.assertions.simplify_expressions(build_ctx.entry)
 
         # Ensure the build directory exists
         log.info("Writing outputs to %s", build_ctx.build_path)
         build_ctx.build_path.mkdir(parents=True, exist_ok=True)
 
+        # Figure out what targets to build
         if build_ctx.targets == ["__default__"]:
             targets = muster.do_by_default
         elif build_ctx.targets == ["*"] or build_ctx.targets == ["all"]:
@@ -80,8 +82,15 @@ def _do_build(build_ctx: BuildContext) -> None:
         else:
             targets = build_ctx.targets
 
+        # Remove targets we don't know about, or are excluded
+        excluded_targets = set(build_ctx.exclude_targets)
+        known_targets = set(muster.targets.keys())
+        targets = set(targets) - excluded_targets & known_targets
+
+        # Ensure the output directory exists
         build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
 
+        # Make the noise
         built_targets = []
         for target_name in targets:
             log.info(f"Building '{target_name}' for '{build_ctx.name}' config")
