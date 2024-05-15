@@ -324,9 +324,6 @@ class ExceptionAccumulator:
                 if debugpy := in_debug_session():
                     debugpy.breakpoint()
                 self.errors.extend(ex.exceptions)
-            except* Exception:
-                if debugpy := in_debug_session():
-                    debugpy.breakpoint()
 
         return _collect_ato_errors
 
