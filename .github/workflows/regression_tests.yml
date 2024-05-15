@@ -7,30 +7,26 @@ jobs:
     runs-on: ubuntu-latest
     env:
         ATO_NON_INTERACTIVE: '1'
-        SETUPTOOLS_SCM_PRETEND_VERSION: "0.2.45"
     strategy:
       fail-fast: false
       matrix:
-        repo: [
-          'atopile/swoop',
-          'atopile/spin-servo-drive'
-        ]
+        repo:
+          - 'atopile/swoop'
+          - 'atopile/spin-servo-drive'
+
     steps:
       - uses: actions/checkout@v4
-      - name: Get latest released tag
-        run: |
-          LATEST_TAG=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-              | jq -r .tag_name)
-          echo "SETUPTOOLS_SCM_PRETEND_VERSION=$LATEST_TAG" >> $GITHUB_ENV
+      # Required due to a bug in the checkout action
+      # https://github.com/actions/checkout/issues/1471
+      - run: git fetch --prune --unshallow --tags
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -e .
+        run: pip install .
 
       - name: Checkout circuit repository
         uses: actions/checkout@v4
