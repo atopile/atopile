@@ -215,7 +215,7 @@ def solve_assertions(build_ctx: config.BuildContext):
     ):
         instance = lofty.get_instance(instance_addr)
         for assertion in instance.assertions:
-            with error_collector():
+            with error_collector(assertion.src_ctx):
                 # Bucket new symbols into variables and constants
                 assertion_symbols = {
                     s.key for s in assertion.lhs.symbols | assertion.rhs.symbols
