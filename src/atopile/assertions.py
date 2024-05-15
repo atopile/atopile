@@ -110,14 +110,14 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     try:
                         a = assertion.lhs(context)
                         b = assertion.rhs(context)
-                    except errors.AtoError as e:
+                    except (errors.AtoError, KeyError) as e:
                         table.add_row(
                             "[red]ERROR[/]",
                             assertion_str,
                             "",
                         )
                         raise ErrorComputingAssertion(
-                            f"Exception computing assertion: {str(e)}"
+                            f"Exception computing assertion: {e.__class__.__name__} {str(e)}"
                         ) from e
 
                     assert isinstance(a, RangedValue)
