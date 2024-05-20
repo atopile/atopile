@@ -101,7 +101,7 @@ let selected_links_data = {};
 const AtopileBlockDiagram = ({ viewBlockId, savePos, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-    const { fitView, zoomIn, zoomOut } = useReactFlow();
+    const { fitView } = useReactFlow();
     const [selected_link_id, setSelectedLinkId] = useState("none");
     const [selected_link_data, setSelectedLinkData] = useState([]);
     const [selected_link_source, setSelectedLinkSource] = useState("none");
