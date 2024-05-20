@@ -47,11 +47,6 @@ const App = () => {
         setSchematicModeEnabled(!schematicModeEnabled);
     }
 
-    function handleSavePos() {
-        console.log('save pos');
-        savePos("/Users/timot/Dev/atopile/community-projects/viewer-test/elec/src/viewer-test.ato:ViewerTest::amp")
-    }
-
     async function savePos(addr, pos, rotation, mirror_x, mirror_y) {
         const mode = schematicModeEnabled ? 'schematic' : 'block-diagram';
         const url = `http://127.0.0.1:8080/${mode}/${addr}/pose`;
