@@ -50,7 +50,7 @@ let port_to_component_map = {};
 let component_positions = {};
 
 
-const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
+const AtopileSchematic = ({ viewBlockId, savePos, reload }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
@@ -251,25 +251,34 @@ const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => {
             <b>There are more than 30 components to display. Navigate to a different module.</b>
         </div>
       ) : (
-        <ReactFlowProvider>
-            <ReactFlow
-                key={"schematic"}
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onSelectionChange={onSelectionChange}
-                onNodeDragStop={onNodeDragStop}
-                fitView
-                edgeTypes={edgeTypes}
-                nodeTypes={nodeTypes}
-                style={{ width: '100%', height: '50%' }}
-            >
-                <Background />
-            </ReactFlow>
-        </ReactFlowProvider>)}
+        <ReactFlow
+            key={"schematic"}
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onSelectionChange={onSelectionChange}
+            onNodeDragStop={onNodeDragStop}
+            fitView
+            edgeTypes={edgeTypes}
+            nodeTypes={nodeTypes}
+            style={{ width: '100%', height: '50%' }}
+        >
+            <Background />
+        </ReactFlow>)}
     </div>
     );
 };
+
+
+export const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => (
+    <ReactFlowProvider>
+        <AtopileSchematic
+            viewBlockId={viewBlockId}
+            savePos={savePos}
+            reload={reload}
+        />
+    </ReactFlowProvider>
+);
 
 export default AtopileSchematicApp;
