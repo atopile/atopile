@@ -33,6 +33,7 @@ log.setLevel(logging.INFO)
 @click.option("--link", is_flag=True, help="Keep this dependency linked to the source")
 @click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
 @errors.muffle_fatalities
+@errors.log_ato_errors
 def install(
     to_install: str,
     jlcpcb: bool,
@@ -69,12 +70,13 @@ def do_install(
 
     if to_install:  # eg. "ato install some-atopile-module"
         dependency = atopile.config.Dependency.from_str(to_install)
+        name = _name_and_clone_url_helper(dependency.name)[0]
         if link:
             dependency.link_broken = False
-            abs_path = ctx.module_path / dependency.name
+            abs_path = ctx.module_path / name
             dependency.path = abs_path.relative_to(ctx.project_path)
         else:
-            abs_path = ctx.src_path / dependency.name
+            abs_path = ctx.src_path / name
             dependency.path = abs_path.relative_to(ctx.project_path)
             dependency.link_broken = True
 
@@ -119,11 +121,15 @@ def get_package_repo_from_registry(module_name: str) -> str:
     """
     Get the git repo for a package from the ato registry.
     """
-    response = requests.post(
-        "https://get-package-atsuhzfd5a-uc.a.run.app",
-        json={"name": module_name},
-        timeout=10,
-    )
+    try:
+        response = requests.post(
+            "https://get-package-atsuhzfd5a-uc.a.run.app",
+            json={"name": module_name},
+            timeout=10,
+        )
+    except requests.exceptions.ReadTimeout as ex:
+        raise errors.AtoInfraError(f"Request to registry timed out for package '{module_name}'") from ex
+
     if response.status_code == 500:
         raise errors.AtoError(f"Could not find package '{module_name}' in registry.")
     response.raise_for_status()
@@ -148,13 +154,7 @@ def install_dependency(
 
     # Figure out what we're trying to install here
     module_spec = dependency.version_spec or "*"
-    parsed_url = urlparse(dependency.name)
-    if not parsed_url.scheme:
-        module_name = dependency.name
-        clone_url = get_package_repo_from_registry(dependency.name)
-    else:
-        module_name = parsed_url.path.split("/")[-1]
-        clone_url = dependency.name
+    module_name, clone_url = _name_and_clone_url_helper(dependency.name)
 
     try:
         # This will raise an exception if the directory does not exist
@@ -268,3 +268,13 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
             "Oh no! Looks like this component doesnt have a model available. "
             f"More information about the component can be found here: {component_link}"
         )
+
+
+def _name_and_clone_url_helper(name: str) -> tuple[str, str]:
+    """Return the name of the package and the URL to clone it from."""
+    parsed_url = urlparse(name)
+    if not parsed_url.scheme:
+        return name, get_package_repo_from_registry(name)
+    else:
+        splitted = parsed_url.path.split("/")
+        return splitted[-1] or splitted[-2], name

@@ -75,7 +75,7 @@ class Dependency:
         for splitter in atopile.version.OPERATORS + ("@",):
             if splitter in spec_str:
                 try:
-                    name, version_spec = spec_str.split(splitter)
+                    name, version_spec = spec_str.rsplit(splitter, 1)
                     name = name.strip()
                     version_spec = version_spec.strip()
                     version_spec = splitter + version_spec
