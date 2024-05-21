@@ -102,7 +102,7 @@ export function useURLBlockID() {
     const [searchParams] = useSearchParams();
     const block_id = searchParams.get("block_id");
     if (block_id === null) {
-        return { block_id: "root" };
+        return { "block_id": "root" };
     }
     return { block_id };
 }
