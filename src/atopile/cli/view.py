@@ -35,7 +35,7 @@ app = cors(app, allow_origin="*")
 QuartSchema(app)
 
 
-@app.route("/block-diagram")
+@app.route("/block-diagram-data")
 async def send_viewer_data():
     build_ctx: BuildContext = app.config["build_ctx"]
     return jsonify(atopile.viewer_utils.get_vis_dict(build_ctx))
@@ -78,7 +78,7 @@ async def save_pose(
     return data, 200
 
 
-@app.route("/schematic")
+@app.route("/schematic-data")
 async def send_schematic_data():
     build_ctx: BuildContext = app.config["build_ctx"]
     return jsonify(atopile.schematic_utils.get_schematic_dict(build_ctx))

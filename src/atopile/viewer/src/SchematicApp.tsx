@@ -37,7 +37,7 @@ const nodeTypes = {
 const edgeTypes = {};
 
 async function loadSchematicJsonAsDict() {
-    const response = await fetch('http://127.0.0.1:8080/schematic');
+    const response = await fetch('http://127.0.0.1:8080/schematic-data');
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
