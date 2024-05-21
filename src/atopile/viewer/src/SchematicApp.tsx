@@ -26,6 +26,7 @@ import './index.css';
 import "react-data-grid/lib/styles.css";
 import { SchematicComponent, SchematicSignal, SchematicScatter } from './components/SchematicElements.tsx';
 
+import { useURLBlockID } from './utils.tsx';
 
 const nodeTypes = {
     SchematicComponent: SchematicComponent,
@@ -50,7 +51,7 @@ let port_to_component_map = {};
 let component_positions = {};
 
 
-const AtopileSchematic = ({ viewBlockId, savePos, reload }) => {
+const AtopileSchematic = ({ viewBlockId, savePos, handleLoad }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
@@ -88,9 +89,6 @@ const AtopileSchematic = ({ viewBlockId, savePos, reload }) => {
                         }
                     } else {
                         Object.entries(component_data['ports']).forEach(([port_id, port_data], index) => {
-                            if (port_data['net_id'] in component_positions) {
-                                position = component_positions[port_data['net_id']];
-                            }
                             populatedNodes.push({
                                 id: port_data['net_id'],
                                 type: "SchematicScatter",
@@ -122,8 +120,9 @@ const AtopileSchematic = ({ viewBlockId, savePos, reload }) => {
         };
 
         updateNodesFromJson();
+        handleLoad('schematic');
         setLoading(false);
-    }, [viewBlockId, reload]);
+    }, [viewBlockId]);
 
     // Rerender nodes if rotation or mirroring is requested + save their state
     useEffect(() => {
@@ -271,14 +270,17 @@ const AtopileSchematic = ({ viewBlockId, savePos, reload }) => {
 };
 
 
-export const AtopileSchematicApp = ({ viewBlockId, savePos, reload }) => (
-    <ReactFlowProvider>
-        <AtopileSchematic
-            viewBlockId={viewBlockId}
-            savePos={savePos}
-            reload={reload}
-        />
-    </ReactFlowProvider>
-);
+export const AtopileSchematicApp = ({ savePos, handleLoad }) => {
+    const { block_id } = useURLBlockID();
+    return (
+        <ReactFlowProvider>
+            <AtopileSchematic
+                viewBlockId={block_id}
+                savePos={savePos}
+                handleLoad={handleLoad}
+            />
+        </ReactFlowProvider>
+    );
+};
 
 export default AtopileSchematicApp;
