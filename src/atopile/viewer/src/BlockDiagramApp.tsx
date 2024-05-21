@@ -15,7 +15,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import { CustomNodeBlock, CircularNodeComponent } from './CustomNode.tsx';
+import { CustomNodeBlock, ModuleNode, CircularNodeComponent } from './CustomNode.tsx';
 import CustomEdge from './CustomEdge.tsx';
 
 import SimpleTable from './LinkTable.tsx';
@@ -25,6 +25,8 @@ import './index.css';
 import ELK from 'elkjs/lib/elk.bundled.js';
 
 import "react-data-grid/lib/styles.css";
+
+import { useURLBlockID } from './utils.tsx';
 
 
 const elk = new ELK();
@@ -76,6 +78,7 @@ const getLayoutedElements = (nodes, edges, options = {}) => {
 
 const nodeTypes = {
     customNode: CustomNodeBlock,
+    moduleNode: ModuleNode,
     customCircularNode: CircularNodeComponent
 };
 
@@ -84,7 +87,7 @@ const edgeTypes = {
 };
 
 async function loadJsonAsDict() {
-    const response = await fetch('http://127.0.0.1:8080/block-diagram');
+    const response = await fetch('http://127.0.0.1:8080/block-diagram-data');
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -98,7 +101,7 @@ const requestRelayout = false;
 let selected_links_data = {};
 
 
-const AtopileBlockDiagram = ({ viewBlockId, savePos, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => {
+const AtopileBlockDiagram = ({ viewBlockId, savePos, handleLoad, reLayout, reLayoutCleared }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
@@ -135,7 +138,7 @@ const AtopileBlockDiagram = ({ viewBlockId, savePos, handleBlockLoad, handleExpl
             try {
                 const fetchedNodes = await loadJsonAsDict();
                 const displayedNode = fetchedNodes[viewBlockId];
-                handleBlockLoad(displayedNode['parent']);
+                handleLoad('block-diagram', displayedNode['parent']);
                 const populatedNodes = [];
                 for (const node in displayedNode['blocks']) {
                     const position = {
@@ -149,10 +152,9 @@ const AtopileBlockDiagram = ({ viewBlockId, savePos, handleBlockLoad, handleExpl
                         populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
                     }
                     else if (displayedNode['blocks'][node]['type'] == 'module') {
-                        //TODO: change the name of the explore click
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500', handleExpandClick: handleExploreClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                        populatedNodes.push({ id: node, type: 'moduleNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500' }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
                     } else {
-                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703', handleExpandClick: handleExploreClick }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
+                        populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703' }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
                     }
                 }
                 // Assuming fetchedNodes is an array of nodes in the format expected by React Flow
@@ -236,17 +238,19 @@ const AtopileBlockDiagram = ({ viewBlockId, savePos, handleBlockLoad, handleExpl
 };
 
 
-export const AtopileBlockDiagramApp = ({ viewBlockId, savePos, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => (
-    <ReactFlowProvider>
-        <AtopileBlockDiagram
-            viewBlockId={viewBlockId}
-            savePos={savePos}
-            handleBlockLoad={handleBlockLoad}
-            handleExploreClick={handleExploreClick}
-            reLayout={reLayout}
-            reLayoutCleared={reLayoutCleared}
-        />
-    </ReactFlowProvider>
-);
+export const AtopileBlockDiagramApp = ({ savePos, handleLoad, reLayout, reLayoutCleared }) => {
+    const { block_id } = useURLBlockID();
+    return (
+        <ReactFlowProvider>
+            <AtopileBlockDiagram
+                viewBlockId={block_id}
+                savePos={savePos}
+                handleLoad={handleLoad}
+                reLayout={reLayout}
+                reLayoutCleared={reLayoutCleared}
+            />
+        </ReactFlowProvider>
+    );
+}
 
 export default AtopileBlockDiagramApp;

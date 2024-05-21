@@ -1,4 +1,5 @@
 import { Position, MarkerType } from 'reactflow';
+import { useSearchParams } from "react-router-dom";
 
 interface NodeWithPosition {
     width: number;
@@ -95,4 +96,13 @@ export function createNodesAndEdges() {
     });
 
     return { nodes, edges };
+}
+
+export function useURLBlockID() {
+    const [searchParams] = useSearchParams();
+    const block_id = searchParams.get("block_id");
+    if (block_id === null) {
+        return { block_id: "root" };
+    }
+    return { block_id };
 }
