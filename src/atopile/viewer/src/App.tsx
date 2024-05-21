@@ -17,10 +17,6 @@ const App = () => {
     const [schematicModeEnabled, setSchematicModeEnabled] = useState(false);
 
     const navigate = useNavigate();
-    const location = useLocation();
-    if (location.pathname === '/schematic') {
-        //setSchematicModeEnabled(true);
-    }
 
     const { block_id } = useURLBlockID();
 
@@ -29,6 +25,7 @@ const App = () => {
             console.log('no parent block id');
             return;
         }
+        // return click only works in block diagram mode
         navigate(`/?block_id=${parentBlockId}`);
     }
 
@@ -58,9 +55,9 @@ const App = () => {
         const mode = schematicModeEnabled ? 'schematic' : 'block-diagram';
         const url = `http://127.0.0.1:8080/${mode}/${addr}/pose`;
         const response = await fetch(url, {
-            method: 'POST', // Set the method to POST
+            method: 'POST',
             headers: {
-              'Content-Type': 'application/json' // Set the content type header for sending JSON
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 "position": pos,

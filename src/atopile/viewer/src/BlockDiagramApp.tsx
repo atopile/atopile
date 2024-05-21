@@ -152,7 +152,6 @@ const AtopileBlockDiagram = ({ viewBlockId, savePos, handleLoad, reLayout, reLay
                         populatedNodes.push({ id: node, type: 'customCircularNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], color: '#219EBC' }, position: position });
                     }
                     else if (displayedNode['blocks'][node]['type'] == 'module') {
-                        //TODO: change the name of the explore click
                         populatedNodes.push({ id: node, type: 'moduleNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FB8500' }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
                     } else {
                         populatedNodes.push({ id: node, type: 'customNode', data: { title: node, instance_of: displayedNode['blocks'][node]['instance_of'], address: displayedNode['blocks'][node]['address'], type: displayedNode['blocks'][node]['type'], color: '#FFB703' }, sourcePosition: Position.Bottom, targetPosition: Position.Right, position: position });
