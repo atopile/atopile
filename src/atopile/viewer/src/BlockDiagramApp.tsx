@@ -1,17 +1,17 @@
 // @ts-nocheck
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReactFlow, {
-  addEdge,
-  Background,
-  useNodesState,
-  useEdgesState,
-  MarkerType,
-  useReactFlow,
-  ReactFlowProvider,
-  Panel,
-  Position,
-  isEdge,
-  Edge
+    addEdge,
+    Background,
+    useNodesState,
+    useEdgesState,
+    MarkerType,
+    useReactFlow,
+    ReactFlowProvider,
+    Panel,
+    Position,
+    isEdge,
+    Edge
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -98,7 +98,7 @@ const requestRelayout = false;
 let selected_links_data = {};
 
 
-const AtopileBlockDiagramApp = ({ viewBlockId, savePos, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => {
+const AtopileBlockDiagram = ({ viewBlockId, savePos, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const { fitView } = useReactFlow();
@@ -213,28 +213,40 @@ const AtopileBlockDiagramApp = ({ viewBlockId, savePos, handleBlockLoad, handleE
 
     return (
     <div className="providerflow">
-        <ReactFlowProvider>
-            <ReactFlow
-                key={viewBlockId + "block"}
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onSelectionChange={onSelectionChange}
-                //onConnect={onConnect}
-                fitView
-                edgeTypes={edgeTypes}
-                nodeTypes={nodeTypes}
-                style={{ width: '100%', height: '50%' }}
-            >
-                <Panel position="top-right">
-                    <SimpleTable source={selected_link_source} target={selected_link_target} data={selected_link_data} />
-                </Panel>
-                <Background />
-            </ReactFlow>
-        </ReactFlowProvider>
+        <ReactFlow
+            key={viewBlockId + "block"}
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onSelectionChange={onSelectionChange}
+            //onConnect={onConnect}
+            fitView
+            edgeTypes={edgeTypes}
+            nodeTypes={nodeTypes}
+            style={{ width: '100%', height: '50%' }}
+        >
+            <Panel position="top-right">
+                <SimpleTable source={selected_link_source} target={selected_link_target} data={selected_link_data} />
+            </Panel>
+            <Background />
+        </ReactFlow>
     </div>
     );
 };
+
+
+export const AtopileBlockDiagramApp = ({ viewBlockId, savePos, handleBlockLoad, handleExploreClick, reLayout, reLayoutCleared }) => (
+    <ReactFlowProvider>
+        <AtopileBlockDiagram
+            viewBlockId={viewBlockId}
+            savePos={savePos}
+            handleBlockLoad={handleBlockLoad}
+            handleExploreClick={handleExploreClick}
+            reLayout={reLayout}
+            reLayoutCleared={reLayoutCleared}
+        />
+    </ReactFlowProvider>
+);
 
 export default AtopileBlockDiagramApp;
