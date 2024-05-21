@@ -41,6 +41,7 @@ class _BaseAtoError(Exception):
         self.src_path = src_path
         self.src_line = src_line
         self.src_col = src_col
+        self._logged = False
 
     @classmethod
     def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseAtoError":
@@ -87,6 +88,10 @@ class _BaseAtoError(Exception):
         )
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Error info:\n", exc_info=self)
+
+    def mark_logged(self) -> None:
+        """Mark this error as logged."""
+        self._logged = True
 
 
 class AtoFatalError(_BaseAtoError):
@@ -405,5 +410,21 @@ def downgrade(
             if isinstance(default, collections.abc.Callable):
                 return default(*args, *kwargs)
             return default
+
+    return wrapper
+
+
+def log_ato_errors(func):
+    """
+    Decorator to log ato errors.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except* AtoError as ex:
+            _log_ato_errors(ex, log)
+            raise
 
     return wrapper
