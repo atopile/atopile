@@ -5,7 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Attach",
+            "name": "Viewer: Launch Chrome",
+            "request": "launch",
+            "type": "chrome",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/src/atopile/viewer/src",
+            "preLaunchTask": "viewer: dev"
+        },
+        {
+            "name": "Python: Attach to debugpy",
             "type": "python",
             "request": "attach",
             "connect": {
@@ -19,7 +27,7 @@
             "request": "launch",
             "args": ["--extensionDevelopmentPath=${workspaceFolder}/src/vscode-atopile"],
             "outFiles": ["${workspaceFolder}/src/vscode-atopile/dist/**/*.js"],
-            "preLaunchTask": "npm: watch",
+            "preLaunchTask": "vscode-extension: watch",
             "presentation": {
                 "hidden": false,
                 "group": "",
@@ -84,7 +92,7 @@
             "name": "Debug Extension and Python",
             "configurations": ["Python debug server (hidden)", "Debug Extension (hidden)"],
             "stopAll": true,
-            "preLaunchTask": "npm: watch",
+            "preLaunchTask": "vscode-extension: watch",
             "presentation": {
                 "hidden": false,
                 "group": "",
