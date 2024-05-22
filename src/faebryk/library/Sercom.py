@@ -13,10 +13,10 @@ class Sercom(ModuleInterface):
     def __init__(self) -> None:
         super().__init__()
 
-        class _NODEs(Module.NODES()):
+        class IFS(Module.IFS()):
             unnamed = times(4, ElectricLogic)
 
-        self.NODEs = _NODEs(self)
+        self.IFs = IFS(self)
 
         ref = ElectricLogic.connect_all_module_references(self)
         self.add_trait(has_single_electric_reference_defined(ref))

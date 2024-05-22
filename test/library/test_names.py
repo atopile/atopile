@@ -23,7 +23,9 @@ class TestClassNames(unittest.TestCase):
             for cls in classes:
                 file_name = py_file.stem
                 class_name = cls.name
-                self.assertEqual(class_name, file_name)
+                if class_name.startswith("_"):
+                    continue
+                self.assertEqual(class_name, file_name, f"In {py_file}")
 
 
 if __name__ == "__main__":

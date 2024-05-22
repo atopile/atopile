@@ -10,10 +10,10 @@ class MultiSPI(ModuleInterface):
     def __init__(self, data_lane_count: int) -> None:
         super().__init__()
 
-        class _NODEs(ModuleInterface.NODES()):
+        class IFS(ModuleInterface.IFS()):
             data = times(data_lane_count, Electrical)
             sclk = Electrical()
             ss_n = Electrical()
             gnd = Electrical()
 
-        self.NODEs = _NODEs(self)
+        self.IFs = IFS(self)

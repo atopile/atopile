@@ -12,11 +12,11 @@ class SWD(ModuleInterface):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        class _NODEs(ModuleInterface.NODES()):
+        class IFS(ModuleInterface.IFS()):
             clk = ElectricLogic()
             dio = ElectricLogic()
 
-        self.NODEs = _NODEs(self)
+        self.IFs = IFS(self)
 
         ref = ElectricLogic.connect_all_module_references(self)
         self.add_trait(has_single_electric_reference_defined(ref))

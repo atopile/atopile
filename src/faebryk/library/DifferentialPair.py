@@ -13,4 +13,4 @@ class DifferentialPair(ModuleInterface):
             p = Electrical()
             n = Electrical()
 
-        self.NODEs = NODES(self)
+        self.IFs = NODES(self)

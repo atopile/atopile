@@ -15,3 +15,6 @@ class has_kicad_footprint(FootprintTrait):
     @abstractmethod
     def get_pin_names(self) -> dict[Electrical, str]:
         ...
+
+    def get_kicad_footprint_name(self) -> str:
+        return self.get_kicad_footprint().split(":")[-1]

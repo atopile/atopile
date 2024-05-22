@@ -12,4 +12,7 @@ class can_attach_via_pinmap_pinlist(can_attach_via_pinmap.impl()):
 
     def attach(self, pinmap: dict[str, Electrical]):
         for no, intf in pinmap.items():
+            assert (
+                no in self.pin_list
+            ), f"Pin {no} not in pin list: {self.pin_list.keys()}"
             self.pin_list[no].connect(intf)

@@ -17,9 +17,9 @@ import typer
 # library imports
 from faebryk.core.core import Module
 from faebryk.core.util import connect_interfaces_via_chain
-from faebryk.exporters.netlist.graph import make_t1_netlist_from_graph
+from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
+from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
@@ -28,7 +28,9 @@ from faebryk.library.Constant import Constant
 from faebryk.library.Electrical import Electrical
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_defined_type_description import has_defined_type_description
+from faebryk.library.has_simple_value_representation_defined import (
+    has_simple_value_representation_defined,
+)
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.Resistor import Resistor
 from faebryk.library.SMDTwoPin import SMDTwoPin
@@ -39,7 +41,7 @@ from faebryk.libs.logging import setup_basic_logging
 logger = logging.getLogger(__name__)
 
 
-def main(make_graph: bool = True, show_graph: bool = True):
+def App():
     # power
     class Battery(Module):
         class _IFS(Module.IFS()):
@@ -51,20 +53,20 @@ def main(make_graph: bool = True, show_graph: bool = True):
 
             self.add_trait(
                 can_attach_to_footprint_via_pinmap(
-                    {"1": self.IFs.power.NODEs.hv, "2": self.IFs.power.NODEs.lv}
+                    {"1": self.IFs.power.IFs.hv, "2": self.IFs.power.IFs.lv}
                 )
             ).attach(
                 KicadFootprint.with_simple_names(
-                    "BatteryHolder_ComfortableElectronic_CH273-2450_1x2450", 2
+                    "Battery:BatteryHolder_ComfortableElectronic_CH273-2450_1x2450", 2
                 )
             )
-            self.add_trait(has_defined_type_description("B"))
+            self.add_trait(has_simple_value_representation_defined("B"))
 
     battery = Battery()
 
     # functional components
-    resistor1 = Resistor(Constant(100))
-    resistor2 = Resistor(Constant(100))
+    resistor1 = Resistor().builder(lambda r: r.PARAMs.resistance.merge(Constant(100)))
+    resistor2 = Resistor().builder(lambda r: r.PARAMs.resistance.merge(Constant(100)))
     cd4011 = TI_CD4011BE()
 
     # aliases
@@ -75,8 +77,8 @@ def main(make_graph: bool = True, show_graph: bool = True):
     low = ElectricLogic()
 
     power.connect(battery.IFs.power)
-    power.NODEs.hv.connect(vcc)
-    power.NODEs.lv.connect(gnd)
+    power.IFs.hv.connect(vcc)
+    power.IFs.lv.connect(gnd)
 
     high.connect_to_electric(vcc, power)
     low.connect_to_electric(gnd, power)
@@ -84,8 +86,8 @@ def main(make_graph: bool = True, show_graph: bool = True):
     # connections
     connect_interfaces_via_chain(vcc, [resistor1, resistor2], gnd)
 
-    cd4011.NODEs.nands[0].IFs.inputs[0].connect(high)
-    cd4011.NODEs.nands[0].IFs.inputs[1].connect(low)
+    cd4011.NODEs.gates[0].IFs.inputs[0].connect(high)
+    cd4011.NODEs.gates[0].IFs.inputs[1].connect(low)
     cd4011.IFs.power.connect(battery.IFs.power)
 
     # make netlist exportable (packages, pinmaps)
@@ -103,15 +105,28 @@ def main(make_graph: bool = True, show_graph: bool = True):
         resistor2,
         cd4011,
     ]
+
+    return app
+
+
+def main(make_graph: bool = True, show_graph: bool = True):
+    logger.info("Building app")
+    app = App()
+
+    # make graph
+    logger.info("Make graph")
     G = app.get_graph()
 
-    t1 = make_t1_netlist_from_graph(G)
-    t2 = make_t2_netlist_from_t1(t1)
+    logger.info("Make netlist")
+    attach_nets_and_kicad_info(G)
+    t2 = make_t2_netlist_from_graph(G)
     netlist = from_faebryk_t2_netlist(t2)
 
-    if make_graph:
-        export_graph(G.G, show_graph)
     export_netlist(netlist)
+
+    if make_graph:
+        logger.info("Make render")
+        export_graph(G.G, show=True)
 
 
 if __name__ == "__main__":

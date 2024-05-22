@@ -4,7 +4,19 @@
 
 from abc import abstractmethod
 from collections import defaultdict
-from typing import Any, Callable, Generic, Iterable, Iterator, List, Type, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    SupportsInt,
+    Type,
+    TypeVar,
+    get_origin,
+)
 
 
 class lazy:
@@ -48,6 +60,14 @@ def unique(it, key):
     return out
 
 
+def unique_ref(it):
+    return unique(it, id)
+
+
+def duplicates(it, key):
+    return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
+
+
 def get_dict(obj, key, default):
     if key not in obj:
         obj[key] = default()
@@ -71,10 +91,10 @@ def get_key(haystack: dict[T, U], needle: U) -> T:
     return find(haystack.items(), lambda x: x[1] == needle)[0]
 
 
-def find(haystack: Iterable[T], needle: Callable) -> T:
+def find(haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
     results = list(filter(needle, haystack))
     if len(results) != 1:
-        raise ValueError
+        raise KeyError()
     return results[0]
 
 
@@ -134,6 +154,10 @@ class _wrapper(NotifiesOnPropertyChange, Generic[T, P]):
     def get_parent(self) -> P:
         raise NotImplementedError
 
+    @abstractmethod
+    def extend_list(self, list_name: str, *objs: T) -> None:
+        raise NotImplementedError
+
 
 def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
     _T = TypeVar("_T")
@@ -170,11 +194,25 @@ def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
                     self.handle_add(f"{name}{i_acc}", instance)
                 return
 
-            raise Exception("Invalid property added")
+            raise Exception(
+                f"Invalid property added for {name=} {value=} of type {type(value)},"
+                + f"expected {_type} or iterable thereof"
+            )
+
+        def extend_list(self, list_name: str, *objs: T) -> None:
+            if not hasattr(self, list_name):
+                setattr(self, list_name, [])
+            for obj in objs:
+                # emulate property setter
+                list_obj = getattr(self, list_name)
+                idx = len(list_obj)
+                list_obj.append(obj)
+                self._list.append(obj)
+                self.handle_add(f"{list_name}[{idx}]", obj)
 
         def get_all(self) -> list[T]:
             # check for illegal list modifications
-            for name in dir(self):
+            for name in sorted(dir(self)):
                 value = getattr(self, name)
                 if name.startswith("_"):
                     continue
@@ -193,6 +231,9 @@ def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
 
         def get_parent(self) -> P:
             return self._parent
+
+        def repr(self):
+            return f"{type(self).__name__}({self._list})"
 
     return __wrapper[T, P]
 
@@ -218,5 +259,69 @@ def cast_assert(t: type[T], obj) -> T:
     return obj
 
 
-def times(cnt: int, lamb: Callable[[], T]) -> list[T]:
-    return [lamb() for _ in range(cnt)]
+def times(cnt: SupportsInt, lamb: Callable[[], T]) -> list[T]:
+    return [lamb() for _ in range(int(cnt))]
+
+
+T = TypeVar("T")
+U = TypeVar("U")
+
+
+@staticmethod
+def is_type_pair(
+    param1: Any, param2: Any, type1: type[T], type2: type[U]
+) -> Optional[tuple[T, U]]:
+    o1 = get_origin(type1) or type1
+    o2 = get_origin(type2) or type2
+    if isinstance(param1, o1) and isinstance(param2, o2):
+        return param1, param2
+    if isinstance(param2, o1) and isinstance(param1, o2):
+        return param2, param1
+    return None
+
+
+def is_type_set_subclasses(type_subclasses: set[type], types: set[type]) -> bool:
+    hits = {t: any(issubclass(s, t) for s in type_subclasses) for t in types}
+    return all(hits.values()) and all(
+        any(issubclass(s, t) for t in types) for s in type_subclasses
+    )
+
+
+def _print_stack(stack):
+    from colorama import Fore
+
+    for frame_info in stack:
+        frame = frame_info[0]
+        if "venv" in frame_info.filename:
+            continue
+        if "faebryk" not in frame_info.filename:
+            continue
+        # if frame_info.function not in ["_connect_across_hierarchies"]:
+        #    continue
+        yield (
+            f"{Fore.RED} Frame in {frame_info.filename} at line {frame_info.lineno}:"
+            f"{Fore.BLUE} {frame_info.function} {Fore.RESET}"
+        )
+
+        def pretty_val(value):
+            if isinstance(value, dict):
+                import pprint
+
+                return (
+                    ("\n" if len(value) > 1 else "")
+                    + pprint.pformat(
+                        {pretty_val(k): pretty_val(v) for k, v in value.items()},
+                        indent=2,
+                        width=120,
+                    )
+                ).replace("\n", f"\n    {Fore.RESET}")
+            elif isinstance(value, type):
+                return f"<class {value.__name__}>"
+            return value
+
+        for name, value in frame.f_locals.items():
+            yield f"  {Fore.GREEN}{name}{Fore.RESET} = {pretty_val(value)}"
+
+
+def print_stack(stack):
+    return "\n".join(_print_stack(stack))

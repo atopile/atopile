@@ -11,14 +11,15 @@ The goal of this sample is to show how faebryk can be used to iteratively
 Thus this is a netlist sample.
 Netlist samples can be run directly.
 """
+
 import logging
 
 import typer
 from faebryk.core.core import Module, Parameter
 from faebryk.core.util import get_all_nodes, specialize_interface, specialize_module
-from faebryk.exporters.netlist.graph import make_t1_netlist_from_graph
+from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-from faebryk.exporters.netlist.netlist import make_t2_netlist_from_t1
+from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
 from faebryk.exporters.visualize.graph import render_matrix
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_to_footprint_via_pinmap import (
@@ -28,11 +29,14 @@ from faebryk.library.Constant import Constant
 from faebryk.library.Electrical import Electrical
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_defined_type_description import has_defined_type_description
+from faebryk.library.has_simple_value_representation_defined import (
+    has_simple_value_representation_defined,
+)
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.LED import LED
 from faebryk.library.Logic import Logic
-from faebryk.library.NAND import NAND
+from faebryk.library.LogicGates import LogicGates
+from faebryk.library.LogicOps import LogicOps
 from faebryk.library.Resistor import Resistor
 from faebryk.library.SMDTwoPin import SMDTwoPin
 from faebryk.library.Switch import Switch
@@ -66,32 +70,14 @@ class PowerSource(Module):
         self.IFs = IFS(self)
 
 
-class XOR(Module):
+class XOR_with_NANDS(LogicGates.XOR):
     def __init__(
         self,
     ):
-        super().__init__()
-
-        class IFS(Module.IFS()):
-            inputs = times(2, Logic)
-            output = Logic()
-
-        self.IFs = IFS(self)
-
-    def xor(self, in1: Logic, in2: Logic):
-        self.IFs.inputs[0].connect(in1)
-        self.IFs.inputs[1].connect(in2)
-        return self.IFs.output
-
-
-class XOR_with_NANDS(XOR):
-    def __init__(
-        self,
-    ):
-        super().__init__()
+        super().__init__(Constant(2))
 
         class NODES(Module.NODES()):
-            nands = times(4, lambda: NAND(2))
+            nands = times(4, lambda: LogicGates.NAND(Constant(2)))
 
         self.NODEs = NODES(self)
 
@@ -99,21 +85,21 @@ class XOR_with_NANDS(XOR):
         B = self.IFs.inputs[1]
 
         G = self.NODEs.nands
-        Q = self.IFs.output
+        Q = self.IFs.outputs[0]
 
         # ~(a&b)
-        q0 = G[0].nand(A, B)
+        q0 = G[0].get_trait(LogicOps.can_logic_nand).nand(A, B)
         # ~(a&~b)
-        q1 = G[1].nand(A, q0)
+        q1 = G[1].get_trait(LogicOps.can_logic_nand).nand(A, q0)
         # ~(~a&b)
-        q2 = G[2].nand(B, q0)
+        q2 = G[2].get_trait(LogicOps.can_logic_nand).nand(B, q0)
         # (a&~b) o| (~a&b)
-        q3 = G[3].nand(q1, q2)
+        q3 = G[3].get_trait(LogicOps.can_logic_nand).nand(q1, q2)
 
         Q.connect(q3)
 
 
-def main(make_graph: bool = True):
+def App():
     # levels
     on = Logic()
     off = Logic()
@@ -123,17 +109,17 @@ def main(make_graph: bool = True):
 
     # alias
     power = power_source.IFs.power_out
-    gnd = Electrical().connect(power.NODEs.lv)
+    gnd = Electrical().connect(power.IFs.lv)
 
     # logic
     logic_in = Logic()
     logic_out = Logic()
 
-    xor = XOR()
-    logic_out.connect(xor.xor(logic_in, on))
+    xor = LogicGates.XOR(Constant(2))
+    logic_out.connect(xor.get_trait(LogicOps.can_logic_xor).xor(logic_in, on))
 
     # led
-    current_limiting_resistor = Resistor(resistance=TBD())
+    current_limiting_resistor = Resistor()
     led = LED()
     led.IFs.cathode.connect_via(current_limiting_resistor, gnd)
 
@@ -143,16 +129,13 @@ def main(make_graph: bool = True):
     logic_in.connect_via(switch, on)
 
     e_in = specialize_interface(logic_in, ElectricLogic())
-    pull_down_resistor = Resistor(TBD())
-    e_in.pull_down(pull_down_resistor)
+    pull_down_resistor = e_in.get_trait(ElectricLogic.can_be_pulled).pull(up=False)
 
     e_out = specialize_interface(logic_out, ElectricLogic())
-    e_out.NODEs.signal.connect(led.IFs.anode)
+    e_out.IFs.signal.connect(led.IFs.anode)
 
-    specialize_interface(on, ElectricLogic()).connect_to_electric(power.NODEs.hv, power)
-    specialize_interface(off, ElectricLogic()).connect_to_electric(
-        power.NODEs.lv, power
-    )
+    specialize_interface(on, ElectricLogic()).connect_to_electric(power.IFs.hv, power)
+    specialize_interface(off, ElectricLogic()).connect_to_electric(power.IFs.lv, power)
 
     nxor = specialize_module(xor, XOR_with_NANDS())
 
@@ -170,7 +153,6 @@ def main(make_graph: bool = True):
     app = Module()
     app.NODEs.components = [
         led,
-        pull_down_resistor,
         current_limiting_resistor,
         switch,
         battery,
@@ -178,40 +160,36 @@ def main(make_graph: bool = True):
     ]
 
     # parametrizing
-    pull_down_resistor.set_resistance(Constant(100_000))
+    pull_down_resistor.PARAMs.resistance.merge(Constant(100e3))
 
     for node in get_all_nodes(app):
         if isinstance(node, Battery):
             node.voltage = Constant(5)
 
         if isinstance(node, LED):
-            node.set_forward_parameters(
-                voltage_V=Constant(2.4), current_A=Constant(0.020)
-            )
+            node.PARAMs.forward_voltage.merge(Constant(2.4))
+            node.PARAMs.max_current.merge(Constant(0.020))
 
-    assert isinstance(battery.voltage, Constant)
-    current_limiting_resistor.set_resistance(
-        led.get_trait(
-            LED.has_calculatable_needed_series_resistance
-        ).get_needed_series_resistance_ohm(battery.voltage.value)
+    current_limiting_resistor.PARAMs.resistance.merge(
+        led.get_needed_series_resistance_for_current_limit(battery.voltage)
     )
 
     # packaging
     e_switch.get_trait(can_attach_to_footprint).attach(
-        KicadFootprint.with_simple_names("Panasonic_EVQPUJ_EVQPUA", 2)
+        KicadFootprint.with_simple_names("Button_Switch_SMD:Panasonic_EVQPUJ_EVQPUA", 2)
     )
     for node in get_all_nodes(app):
         if isinstance(node, Battery):
             node.add_trait(
                 can_attach_to_footprint_via_pinmap(
-                    {"1": node.IFs.power.NODEs.hv, "2": node.IFs.power.NODEs.lv}
+                    {"1": node.IFs.power.IFs.hv, "2": node.IFs.power.IFs.lv}
                 )
             ).attach(
                 KicadFootprint.with_simple_names(
-                    "BatteryHolder_ComfortableElectronic_CH273-2450_1x2450", 2
+                    "Battery:BatteryHolder_ComfortableElectronic_CH273-2450_1x2450", 2
                 )
             )
-            node.add_trait(has_defined_type_description("B"))
+            node.add_trait(has_simple_value_representation_defined("B"))
 
         if isinstance(node, Resistor):
             node.get_trait(can_attach_to_footprint).attach(
@@ -227,23 +205,30 @@ def main(make_graph: bool = True):
 
     # packages single nands as explicit IC
     nand_ic = TI_CD4011BE()
-    for ic_nand, xor_nand in zip(nand_ic.NODEs.nands, nxor.NODEs.nands):
+    for ic_nand, xor_nand in zip(nand_ic.NODEs.gates, nxor.NODEs.nands):
         specialize_module(xor_nand, ic_nand)
 
     app.NODEs.nand_ic = nand_ic
+
+    # for visualization
+    helpers = [nxor, xor, e_out]
+
+    return app, helpers
+
+
+def main(make_graph: bool = True):
+    logger.info("Building app")
+    app, helpers = App()
 
     # export
     logger.info("Make graph")
     G = app.get_graph()
 
     logger.info("Make netlist")
-    t1 = make_t1_netlist_from_graph(G)
-    t2 = make_t2_netlist_from_t1(t1)
+    attach_nets_and_kicad_info(G)
+    t2 = make_t2_netlist_from_graph(G)
     netlist = from_faebryk_t2_netlist(t2)
 
-    # from pretty import pretty
-    # logger.info("Experiment components")
-    # logger.info("\n" + "\n".join(pretty(c) for c in components))
     export_netlist(netlist)
 
     if make_graph:
@@ -251,7 +236,7 @@ def main(make_graph: bool = True):
         render_matrix(
             G.G,
             nodes_rows=[
-                [nand_ic, led, nxor, xor, e_out],
+                [app.NODEs.nand_ic, app.NODEs.components[0], *helpers],
             ],
             depth=1,
             show_full=False,

@@ -8,7 +8,9 @@ from faebryk.library.can_attach_to_footprint_via_pinmap import (
 from faebryk.library.DifferentialPair import (
     DifferentialPair,
 )
-from faebryk.library.has_defined_type_description import has_defined_type_description
+from faebryk.library.has_designator_prefix_defined import (
+    has_designator_prefix_defined,
+)
 from faebryk.libs.util import times
 
 
@@ -25,15 +27,15 @@ class RJ45_Receptacle(Module):
         self.add_trait(
             can_attach_to_footprint_via_pinmap(
                 {
-                    "1": self.IFs.twisted_pairs[0].NODEs.p,
-                    "2": self.IFs.twisted_pairs[0].NODEs.n,
-                    "3": self.IFs.twisted_pairs[1].NODEs.p,
-                    "4": self.IFs.twisted_pairs[1].NODEs.n,
-                    "5": self.IFs.twisted_pairs[2].NODEs.p,
-                    "6": self.IFs.twisted_pairs[2].NODEs.n,
-                    "7": self.IFs.twisted_pairs[3].NODEs.p,
-                    "8": self.IFs.twisted_pairs[3].NODEs.n,
+                    "1": self.IFs.twisted_pairs[0].IFs.p,
+                    "2": self.IFs.twisted_pairs[0].IFs.n,
+                    "3": self.IFs.twisted_pairs[1].IFs.p,
+                    "4": self.IFs.twisted_pairs[1].IFs.n,
+                    "5": self.IFs.twisted_pairs[2].IFs.p,
+                    "6": self.IFs.twisted_pairs[2].IFs.n,
+                    "7": self.IFs.twisted_pairs[3].IFs.p,
+                    "8": self.IFs.twisted_pairs[3].IFs.n,
                 }
             )
         )
-        self.add_trait(has_defined_type_description("x"))
+        self.add_trait(has_designator_prefix_defined("P"))

@@ -8,18 +8,24 @@ from faebryk.library.can_attach_to_footprint_symmetrically import (
     can_attach_to_footprint_symmetrically,
 )
 from faebryk.library.can_bridge_defined import can_bridge_defined
-from faebryk.library.has_defined_type_description import has_defined_type_description
+from faebryk.library.has_designator_prefix_defined import (
+    has_designator_prefix_defined,
+)
 from faebryk.libs.util import times
 
 T = TypeVar("T", bound=ModuleInterface)
 
 
+class _TSwitch(Module):
+    ...
+
+
 def Switch(interface_type: type[T]):
-    class _Switch(Module):
+    class _Switch(_TSwitch):
         def __init__(self) -> None:
             super().__init__()
 
-            self.add_trait(has_defined_type_description("SW"))
+            self.add_trait(has_designator_prefix_defined("SW"))
             self.add_trait(can_attach_to_footprint_symmetrically())
 
             class _IFs(super().IFS()):

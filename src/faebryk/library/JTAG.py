@@ -13,7 +13,7 @@ class JTAG(ModuleInterface):
     def __init__(self) -> None:
         super().__init__()
 
-        class _NODEs(ModuleInterface.NODES()):
+        class IFS(ModuleInterface.IFS()):
             dbgrq = ElectricLogic()
             tdo = ElectricLogic()
             tdi = ElectricLogic()
@@ -23,7 +23,7 @@ class JTAG(ModuleInterface):
             n_reset = ElectricLogic()
             vtref = Electrical()
 
-        self.NODEs = _NODEs(self)
+        self.IFs = IFS(self)
 
         ref = ElectricLogic.connect_all_module_references(self)
         self.add_trait(has_single_electric_reference_defined(ref))

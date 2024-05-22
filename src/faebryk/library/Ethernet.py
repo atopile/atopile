@@ -9,8 +9,8 @@ class Ethernet(ModuleInterface):
     def __init__(self) -> None:
         super().__init__()
 
-        class _NODEs(Module.NODES()):
+        class IFS(Module.IFS()):
             tx = DifferentialPair()
             rx = DifferentialPair()
 
-        self.NODEs = _NODEs(self)
+        self.IFs = IFS(self)

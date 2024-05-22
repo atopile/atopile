@@ -4,7 +4,8 @@
 import itertools
 import logging
 
-import faebryk.exporters.netlist.kicad.sexp as sexp
+import faebryk.libs.kicad.sexp as sexp
+from faebryk.libs.util import duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -264,11 +265,16 @@ def _defaulted_comp(ref, value, footprint, tstamp, fields, properties):
 
 
 # Test stuff ------------------------------------------------------------------
-def from_faebryk_t2_netlist(netlist, extra_comps=None):
+def from_faebryk_t2_netlist(t2_netlist):
     tstamp = itertools.count(1)
     net_code = itertools.count(1)
 
-    # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
+    netlist = t2_netlist["nets"]
+    pre_comps = t2_netlist["comps"]
+
+    # t2_netlist = {"nets":
+    #       [(properties, vertices=[comp=(name, value, properties), pin)])],
+    #   "comps": [comp]}
 
     # kicad_netlist = {
     #   comps:  [(ref, value, fp, tstamp)],
@@ -282,33 +288,19 @@ def from_faebryk_t2_netlist(netlist, extra_comps=None):
     #   - net_code can be generated (ascending, continuous)
     #   - components unique
 
-    def kicad_fp(fp):
-        # TODO implement
-        # This needs to translate a faebryk footprint to a kicad footprint
-        return fp
-
     def gen_net_name(net):
         import random
 
         return hex(random.randrange(1 << 31))
 
-    def unique(non_unique):
-        out_unique = []
-        for x in non_unique:
-            if x not in out_unique:
-                out_unique.append(x)
-        return out_unique
-
-    pre_comps = unique(
-        [vertex.component for net in netlist for vertex in net.vertices]
-        + (extra_comps or [])
-    )
+    dupes = duplicates(pre_comps, lambda comp: comp.name)
+    assert not dupes, f"Duplicate comps {dupes}"
 
     comps = [
         _defaulted_comp(
             ref=comp.name,
             value=comp.value,
-            footprint=kicad_fp(comp.properties["footprint"]),
+            footprint=comp.properties["footprint"],
             properties={k: v for k, v in comp.properties.items() if k != "footprint"},
             tstamp=next(tstamp),
             fields=list(comp.properties.get("fields", [])),
@@ -316,6 +308,15 @@ def from_faebryk_t2_netlist(netlist, extra_comps=None):
         for comp in sorted(pre_comps, key=lambda comp: comp.name)  # pre_comps
         # sort because tstamp determined by pos
     ]
+
+    # check if all vertices have a component in pre_comps
+    # not sure if this is necessary
+    pre_comp_names = {comp.name for comp in pre_comps}
+    for net in netlist:
+        for vertex in net.vertices:
+            assert (
+                vertex.component.name in pre_comp_names
+            ), f"Missing {vertex.component}"
 
     nets = [
         _gen_net(
@@ -343,5 +344,7 @@ def from_faebryk_t2_netlist(netlist, extra_comps=None):
     )
 
     sexp_netlist = sexp.gensexp(out_netlist)
+    assert isinstance(sexp_netlist, str)
+    sexp_netlist = sexp.prettify_sexp_string(sexp_netlist)
 
     return sexp_netlist

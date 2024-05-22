@@ -61,3 +61,10 @@ class Graph:
         G.add_nodes_from(GIFs)
 
         self.G = G
+
+        # TODO remove
+        self.nodes = nodes
+
+    # TODO get rid of in future
+    def update(self):
+        self.__init__(self.nodes)

@@ -9,10 +9,10 @@ class SPI(ModuleInterface):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        class _NODEs(ModuleInterface.NODES()):
+        class IFS(ModuleInterface.IFS()):
             sclk = Electrical()
             miso = Electrical()
             mosi = Electrical()
             gnd = Electrical()
 
-        self.NODEs = _NODEs(self)
+        self.IFs = IFS(self)

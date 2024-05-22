@@ -13,7 +13,7 @@ from faebryk.core.core import (
     GraphInterfaceSelf,
     Link,
     LinkDirect,
-    LinkParent,
+    LinkNamedParent,
     LinkSibling,
     Node,
 )
@@ -291,7 +291,7 @@ def tag_with_info(G: nx.Graph):
 
         # Direction
         direction = None
-        if isinstance(link, LinkParent):
+        if isinstance(link, LinkNamedParent):
             assert link.get_parent() in [t0, t1]
             assert link.get_child() in [t0, t1]
             direction = (link.get_parent(), link.get_child())
@@ -357,7 +357,7 @@ def render_graph(G: nx.Graph, ax=None):
             if isinstance(link, LinkSibling):
                 color = "#000000"  # black
                 weight = 100
-            elif isinstance(link, LinkParent):
+            elif isinstance(link, LinkNamedParent):
                 color = "#FF0000"  # red
                 weight = 40
             elif isinstance(link, LinkDirect) and all(

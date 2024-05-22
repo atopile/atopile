@@ -9,8 +9,8 @@ from faebryk.library.DifferentialPair import (
     DifferentialPair,
 )
 from faebryk.library.Electrical import Electrical
-from faebryk.library.has_defined_type_description import (
-    has_defined_type_description,
+from faebryk.library.has_designator_prefix_defined import (
+    has_designator_prefix_defined,
 )
 from faebryk.libs.util import times
 
@@ -44,32 +44,32 @@ class USB_Type_C_Receptacle_24_pin(Module):
             can_attach_to_footprint_via_pinmap(
                 {
                     "A1": self.IFs.gnd[0],
-                    "A2": self.IFs.tx1.NODEs.p,
-                    "A3": self.IFs.tx1.NODEs.n,
+                    "A2": self.IFs.tx1.IFs.p,
+                    "A3": self.IFs.tx1.IFs.n,
                     "A4": self.IFs.vbus[0],
                     "A5": self.IFs.cc1,
-                    "A6": self.IFs.d1.NODEs.p,
-                    "A7": self.IFs.d1.NODEs.n,
+                    "A6": self.IFs.d1.IFs.p,
+                    "A7": self.IFs.d1.IFs.n,
                     "A8": self.IFs.sbu1,
                     "A9": self.IFs.vbus[1],
-                    "A10": self.IFs.rx2.NODEs.n,
-                    "A11": self.IFs.rx2.NODEs.p,
+                    "A10": self.IFs.rx2.IFs.n,
+                    "A11": self.IFs.rx2.IFs.p,
                     "A12": self.IFs.gnd[1],
                     "B1": self.IFs.gnd[2],
-                    "B2": self.IFs.tx2.NODEs.p,
-                    "B3": self.IFs.tx2.NODEs.n,
+                    "B2": self.IFs.tx2.IFs.p,
+                    "B3": self.IFs.tx2.IFs.n,
                     "B4": self.IFs.vbus[2],
                     "B5": self.IFs.cc2,
-                    "B6": self.IFs.d2.NODEs.p,
-                    "B7": self.IFs.d2.NODEs.n,
+                    "B6": self.IFs.d2.IFs.p,
+                    "B7": self.IFs.d2.IFs.n,
                     "B8": self.IFs.sbu2,
                     "B9": self.IFs.vbus[3],
-                    "B10": self.IFs.rx1.NODEs.n,
-                    "B11": self.IFs.rx1.NODEs.p,
+                    "B10": self.IFs.rx1.IFs.n,
+                    "B11": self.IFs.rx1.IFs.p,
                     "B12": self.IFs.gnd[3],
                     "0": self.IFs.shield,
                 }
             )
         )
 
-        self.add_trait(has_defined_type_description("x"))
+        self.add_trait(has_designator_prefix_defined("P"))

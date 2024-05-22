@@ -5,13 +5,13 @@
 import logging
 
 from faebryk.libs.util import get_dict
-from sexpdata import SExpBase, loads
+from sexpdata import Symbol, loads
 
 logger = logging.getLogger(__name__)
 
 
 def _cleanparsed(parsed):
-    if isinstance(parsed, SExpBase):
+    if isinstance(parsed, Symbol):
         return parsed.value()
 
     if type(parsed) is list:
@@ -199,13 +199,32 @@ def parse_netlist(obj):
             assert obj[0] == "comp"
             comp = {}
 
+            def parse_property(obj):
+                if "properties" not in comp:
+                    comp["properties"] = {}
+
+                pkey = None
+                pval = None
+                for i in obj:
+                    key = i[0]
+                    val = i[1]
+
+                    if key == "name":
+                        pkey = val
+                    elif key == "value":
+                        pval = val
+
+                if pkey and pval:
+                    comp["properties"][pkey] = pval
+
+            # rest dont care tbh
+
             for i in obj[1:]:
                 key = i[0]
                 if key in [
                     "tstamp",
                     "tstamps",
                     "sheetpath",
-                    "property",
                     "libsource",
                     "datasheet",
                     "fields",
@@ -213,6 +232,8 @@ def parse_netlist(obj):
                     ...
                 elif key in ["ref", "value", "footprint"]:
                     comp[key] = i[1]
+                elif key == "property":
+                    parse_property(i)
                 else:
                     assert False, f"encountered unexpected token [{i}] in comp"
 

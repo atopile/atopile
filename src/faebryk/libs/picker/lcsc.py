@@ -17,8 +17,8 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.has_defined_descriptive_properties import (
     has_defined_descriptive_properties,
 )
-from faebryk.library.has_descriptive_properties import has_descriptive_properties
 from faebryk.library.KicadFootprint import KicadFootprint
+from faebryk.libs.picker.picker import Part, Supplier
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ BUILD_FOLDER = Path("./build")
 LIB_FOLDER = Path("./src/kicad/libs")
 
 
-def attach_footprint(component: Module, partno: str, get_model: bool = True):
+def get_footprint(partno: str, get_model: bool = True):
     # easyeda api access & caching --------------------------------------------
     api = EasyedaApi()
 
@@ -45,8 +45,7 @@ def attach_footprint(component: Module, partno: str, get_model: bool = True):
 
     # API returned no data
     if not data:
-        logging.error(f"Failed to fetch data from EasyEDA API for part {partno}")
-        return
+        raise Exception(f"Failed to fetch data from EasyEDA API for part {partno}")
 
     easyeda_footprint = EasyedaFootprintImporter(
         easyeda_cp_cad_data=data
@@ -70,20 +69,22 @@ def attach_footprint(component: Module, partno: str, get_model: bool = True):
     easyeda_model_info = Easyeda3dModelImporter(
         easyeda_cp_cad_data=data, download_raw_3d_model=False
     ).output
-    assert easyeda_model_info is not None
 
-    model_path = model_base_path_full.joinpath(f"{easyeda_model_info.name}.wrl")
-    if get_model and not model_path.exists():
-        logger.debug(f"Downloading & Exporting 3dmodel {model_path}")
-        easyeda_model = Easyeda3dModelImporter(
-            easyeda_cp_cad_data=data, download_raw_3d_model=True
-        ).output
-        assert easyeda_model is not None
-        ki_model = Exporter3dModelKicad(easyeda_model)
-        ki_model.export(str(model_base_path))
+    if easyeda_model_info is not None:
+        model_path = model_base_path_full.joinpath(f"{easyeda_model_info.name}.wrl")
+        if get_model and not model_path.exists():
+            logger.debug(f"Downloading & Exporting 3dmodel {model_path}")
+            easyeda_model = Easyeda3dModelImporter(
+                easyeda_cp_cad_data=data, download_raw_3d_model=True
+            ).output
+            assert easyeda_model is not None
+            ki_model = Exporter3dModelKicad(easyeda_model)
+            ki_model.export(str(model_base_path))
 
-    if not model_path.exists():
-        ki_footprint.output.model_3d = None
+        if not model_path.exists():
+            ki_footprint.output.model_3d = None
+    else:
+        logger.warn(f"No 3D model for {name}")
 
     if not footprint_filepath.exists():
         logger.debug(f"Exporting footprint {footprint_filepath}")
@@ -98,8 +99,25 @@ def attach_footprint(component: Module, partno: str, get_model: bool = True):
         [p.number for p in easyeda_footprint.pads],
     )
 
+    return fp
+
+
+def attach_footprint_manually(component: Module, fp: KicadFootprint, partno: str):
+    has_defined_descriptive_properties.add_properties_to(component, {"LCSC": partno})
     component.get_trait(can_attach_to_footprint).attach(fp)
 
-    if not component.has_trait(has_descriptive_properties):
-        component.add_trait(has_defined_descriptive_properties({}))
-    component.get_trait(has_descriptive_properties).add_properties({"LCSC": partno})
+
+def attach_footprint(component: Module, partno: str, get_model: bool = True):
+    fp = get_footprint(partno, get_model)
+    attach_footprint_manually(component, fp, partno)
+
+
+class LCSC(Supplier):
+    def attach(self, module: Module, part: Part):
+        assert isinstance(part, LCSC_Part)
+        attach_footprint(component=module, partno=part.partno)
+
+
+class LCSC_Part(Part):
+    def __init__(self, partno: str) -> None:
+        super().__init__(partno=partno, supplier=LCSC())

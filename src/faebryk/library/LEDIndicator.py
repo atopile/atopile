@@ -4,11 +4,11 @@ from faebryk.core.core import Module
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.PoweredLED import PoweredLED
-from faebryk.library.PowerSwitch import PowerSwitch
+from p1_splitter.libtemp import PowerSwitch
 
 
 class LEDIndicator(Module):
-    def __init__(self, logic_low: bool, normally_on: bool) -> None:
+    def __init__(self) -> None:
         super().__init__()
 
         # interfaces
@@ -21,12 +21,9 @@ class LEDIndicator(Module):
         # components
         class _NODEs(Module.NODES()):
             led = PoweredLED()
-            power_switch = PowerSwitch(
-                lowside=not logic_low, normally_closed=normally_on
-            )
+            power_switch = PowerSwitch()
 
         self.NODEs = _NODEs(self)
 
-        #
         self.IFs.power_in.connect_via(self.NODEs.power_switch, self.NODEs.led.IFs.power)
         self.NODEs.power_switch.IFs.logic_in.connect(self.IFs.logic_in)

@@ -4,18 +4,20 @@
 import logging
 
 from faebryk.core.core import Module
-from faebryk.core.util import connect_all_interfaces
 from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
 )
-from faebryk.library.Capacitor import Capacitor
+from faebryk.library.can_be_decoupled import can_be_decoupled
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_defined_type_description import has_defined_type_description
+from faebryk.library.has_designator_prefix_defined import (
+    has_designator_prefix_defined,
+)
+from faebryk.library.has_single_electric_reference_defined import (
+    has_single_electric_reference_defined,
+)
 from faebryk.library.I2C import I2C
-from faebryk.library.Resistor import Resistor
 from faebryk.library.SOIC import SOIC
-from faebryk.library.TBD import TBD
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -25,12 +27,6 @@ logger = logging.getLogger(__name__)
 class M24C08_FMN6TP(Module):
     def __init__(self) -> None:
         super().__init__()
-
-        class _NODEs(Module.NODES()):
-            i2c_termination_resistors = [Resistor(TBD()) for _ in range(2)]
-            decoupling_cap = Capacitor(TBD())
-
-        self.NODEs = _NODEs(self)
 
         class _IFs(Module.IFS()):
             power = ElectricPower()
@@ -44,33 +40,28 @@ class M24C08_FMN6TP(Module):
         self.add_trait(
             can_attach_to_footprint_via_pinmap(
                 {
-                    "1": x.e[0].NODEs.signal,
-                    "2": x.e[1].NODEs.signal,
-                    "3": x.e[2].NODEs.signal,
-                    "4": x.power.NODEs.lv,
-                    "5": x.data.NODEs.sda.NODEs.signal,
-                    "6": x.data.NODEs.scl.NODEs.signal,
-                    "7": x.nwc.NODEs.signal,
-                    "8": x.power.NODEs.hv,
+                    "1": x.e[0].IFs.signal,
+                    "2": x.e[1].IFs.signal,
+                    "3": x.e[2].IFs.signal,
+                    "4": x.power.IFs.lv,
+                    "5": x.data.IFs.sda.IFs.signal,
+                    "6": x.data.IFs.scl.IFs.signal,
+                    "7": x.nwc.IFs.signal,
+                    "8": x.power.IFs.hv,
                 }
             )
         ).attach(SOIC(8, size_xy_mm=(3.9, 4.9), pitch_mm=1.27))
 
-        connect_all_interfaces(
-            list(
-                [e.NODEs.reference for e in self.IFs.e]
-                + [
-                    self.IFs.power,
-                    self.IFs.nwc.NODEs.reference,
-                    self.IFs.data.NODEs.sda.NODEs.reference,
-                ]
+        self.add_trait(
+            has_single_electric_reference_defined(
+                ElectricLogic.connect_all_module_references(self)
             )
         )
 
-        self.IFs.data.terminate(tuple(self.NODEs.i2c_termination_resistors))
-        self.IFs.power.decouple(self.NODEs.decoupling_cap)
+        self.IFs.data.terminate()
+        self.IFs.power.get_trait(can_be_decoupled).decouple()
 
-        self.add_trait(has_defined_type_description("U"))
+        self.add_trait(has_designator_prefix_defined("U"))
 
     def set_address(self, addr: int):
         assert addr < (1 << len(self.IFs.e))

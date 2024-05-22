@@ -1,47 +1,40 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import Enum
+from enum import Enum, auto
 
 from faebryk.core.core import Module
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.Electrical import Electrical
-from faebryk.library.has_defined_type_description import has_defined_type_description
+from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
+from faebryk.library.TBD import TBD
 
 
 class MOSFET(Module):
     class ChannelType(Enum):
-        N_CHANNEL = 1
-        P_CHANNEL = 2
+        N_CHANNEL = auto()
+        P_CHANNEL = auto()
 
     class SaturationType(Enum):
-        ENHANCEMENT = 1
-        DEPLETION = 2
+        ENHANCEMENT = auto()
+        DEPLETION = auto()
 
-    def __new__(cls, *args, **kwargs):
-        self = super().__new__(cls)
-        self._setup_traits()
-        return self
-
-    def __init__(
-        self, channel_type: ChannelType, saturation_type: SaturationType
-    ) -> None:
+    def __init__(self):
         super().__init__()
 
-        self.channel_type = channel_type
-        self.saturation_type = saturation_type
+        class _PARAMs(Module.PARAMS()):
+            channel_type = TBD[MOSFET.ChannelType]()
+            saturation_type = TBD[MOSFET.SaturationType]()
 
-        self._setup_interfaces()
+        self.PARAMs = _PARAMs(self)
 
-    def _setup_traits(self):
-        self.add_trait(has_defined_type_description("Q"))
-
-    def _setup_interfaces(self):
-        class _IFs(super().IFS()):
+        class _IFs(Module.IFS()):
             source = Electrical()
             gate = Electrical()
             drain = Electrical()
 
         self.IFs = _IFs(self)
+
+        self.add_trait(has_designator_prefix_defined("Q"))
         # TODO pretty confusing
         self.add_trait(can_bridge_defined(in_if=self.IFs.source, out_if=self.IFs.drain))

@@ -9,7 +9,7 @@ class RS485(ModuleInterface):
     def __init__(self) -> None:
         super().__init__()
 
-        class _NODEs(Module.NODES()):
+        class IFS(Module.IFS()):
             diff_pair = DifferentialPair()
 
-        self.NODEs = _NODEs(self)
+        self.IFs = IFS(self)

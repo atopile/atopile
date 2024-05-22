@@ -6,9 +6,9 @@ import os
 import re
 import unittest
 
-import faebryk.exporters.netlist.kicad.sexp as sexp_gen
+import faebryk.libs.kicad.sexp as sexp_gen
 import sexpdata
-from faebryk.exporters.netlist.kicad.sexp import multi_key_dict
+from faebryk.libs.kicad.sexp import multi_key_dict
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def _cleanparsed(parsed):
         return tuple(map(_cleanparsed, parsed))
 
     # basecase 1
-    if isinstance(parsed, sexpdata.SExpBase):
+    if isinstance(parsed, sexpdata.Symbol):
         return str(parsed.value())
 
     # workaround for empty strings to make sexpdata behave like sexp_parser
