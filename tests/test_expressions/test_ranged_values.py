@@ -53,6 +53,7 @@ def test_pretty_str():
     assert RangedValue(3, 3, pint.Unit("V"), str_rep=str_rep).pretty_str() == str_rep
     assert RangedValue(3, 3, pint.Unit("V")).pretty_str() == "3V"
     assert RangedValue(3, 5, pint.Unit("V")).pretty_str() == "3 to 5 V"
+    assert RangedValue(3, 5, pint.Unit("mV")).pretty_str() == "3 to 5 mV"
     assert RangedValue(3, 3.1, pint.Unit("V")).pretty_str() == "3.05V ± 50mV"
 
     # # Test Zeros
@@ -64,6 +65,7 @@ def test_pretty_str():
     assert RangedValue(-50, -48, pint.Unit("V")).pretty_str() == "-49 ± 1 V"
     assert RangedValue(-50, -30, pint.Unit("V")).pretty_str() == "-50 to -30 V"
     assert RangedValue(-50, 50, pint.Unit("V")).pretty_str() == "± 50V"
+    assert RangedValue(-50, 50, pint.Unit("mV")).pretty_str() == "± 50mV"
 
     # Make sure combined units compact properly
     v = RangedValue(3, 3, pint.Unit("V"))
