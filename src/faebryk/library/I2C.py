@@ -4,7 +4,7 @@ import logging
 from enum import IntEnum
 
 from faebryk.core.core import ModuleInterface
-from faebryk.library.ElectricLogic import ElectricLogic, can_be_pulled
+from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.has_single_electric_reference_defined import (
     has_single_electric_reference_defined,
 )
@@ -36,8 +36,8 @@ class I2C(ModuleInterface):
     def terminate(self):
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
-        self.IFs.sda.get_trait(can_be_pulled).pull(up=True)
-        self.IFs.scl.get_trait(can_be_pulled).pull(up=True)
+        self.IFs.sda.get_trait(ElectricLogic.can_be_pulled).pull(up=True)
+        self.IFs.scl.get_trait(ElectricLogic.can_be_pulled).pull(up=True)
 
     def _on_connect(self, other: "I2C"):
         super()._on_connect(other)

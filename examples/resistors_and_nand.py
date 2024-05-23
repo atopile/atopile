@@ -10,31 +10,17 @@ It shall primarily demonstrate some simple faebryk concepts.
 Thus this is a netlist sample.
 Netlist samples can be run directly.
 """
+
 import logging
 
+import faebryk.library._F as F
 import typer
-
-# library imports
 from faebryk.core.core import Module
 from faebryk.core.util import connect_interfaces_via_chain
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
-from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
-from faebryk.library.can_attach_to_footprint_via_pinmap import (
-    can_attach_to_footprint_via_pinmap,
-)
-from faebryk.library.Constant import Constant
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_simple_value_representation_defined import (
-    has_simple_value_representation_defined,
-)
-from faebryk.library.KicadFootprint import KicadFootprint
-from faebryk.library.Resistor import Resistor
-from faebryk.library.SMDTwoPin import SMDTwoPin
-from faebryk.library.TI_CD4011BE import TI_CD4011BE
+from faebryk.library._F import Constant
 from faebryk.libs.experiments.buildutil import export_graph, export_netlist
 from faebryk.libs.logging import setup_basic_logging
 
@@ -45,36 +31,36 @@ def App():
     # power
     class Battery(Module):
         class _IFS(Module.IFS()):
-            power = ElectricPower()
+            power = F.ElectricPower()
 
         def __init__(self) -> None:
             super().__init__()
             self.IFs = Battery._IFS(self)
 
             self.add_trait(
-                can_attach_to_footprint_via_pinmap(
+                F.can_attach_to_footprint_via_pinmap(
                     {"1": self.IFs.power.IFs.hv, "2": self.IFs.power.IFs.lv}
                 )
             ).attach(
-                KicadFootprint.with_simple_names(
+                F.KicadFootprint.with_simple_names(
                     "Battery:BatteryHolder_ComfortableElectronic_CH273-2450_1x2450", 2
                 )
             )
-            self.add_trait(has_simple_value_representation_defined("B"))
+            self.add_trait(F.has_simple_value_representation_defined("B"))
 
     battery = Battery()
 
     # functional components
-    resistor1 = Resistor().builder(lambda r: r.PARAMs.resistance.merge(Constant(100)))
-    resistor2 = Resistor().builder(lambda r: r.PARAMs.resistance.merge(Constant(100)))
-    cd4011 = TI_CD4011BE()
+    resistor1 = F.Resistor().builder(lambda r: r.PARAMs.resistance.merge(Constant(100)))
+    resistor2 = F.Resistor().builder(lambda r: r.PARAMs.resistance.merge(Constant(100)))
+    cd4011 = F.TI_CD4011BE()
 
     # aliases
-    power = ElectricPower()
-    vcc = Electrical()
-    gnd = Electrical()
-    high = ElectricLogic()
-    low = ElectricLogic()
+    power = F.ElectricPower()
+    vcc = F.Electrical()
+    gnd = F.Electrical()
+    high = F.ElectricLogic()
+    low = F.ElectricLogic()
 
     power.connect(battery.IFs.power)
     power.IFs.hv.connect(vcc)
@@ -95,7 +81,9 @@ def App():
         resistor1,
         resistor2,
     ]:
-        r.get_trait(can_attach_to_footprint).attach(SMDTwoPin(SMDTwoPin.Type._0805))
+        r.get_trait(F.can_attach_to_footprint).attach(
+            F.SMDTwoPin(F.SMDTwoPin.Type._0805)
+        )
 
     # Export
     app = Module()

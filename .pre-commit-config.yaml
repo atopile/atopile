@@ -1,16 +1,15 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
+  - repo: local
     hooks:
-      - id: black
-        # It is recommended to specify the latest version of Python
-        # supported by your project here, or alternatively use
-        # pre-commit's default_language_version, see
-        # https://pre-commit.com/#top_level-default_language_version
-        language_version: python3.12
+      - id: generate-library-init
+        name: Generate library init
+        entry: tools/library/gen_F.py
+        language: python
+        files: src/faebryk/library/.*.py
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
     rev: v0.4.4
     hooks:
       - id: ruff
+      - id: ruff-format
 

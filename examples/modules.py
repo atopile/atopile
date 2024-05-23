@@ -10,31 +10,17 @@ The goal of this sample is to show how to structurize your system design in modu
 Thus this is a netlist sample.
 Netlist samples can be run directly.
 """
+
 import logging
 
+import faebryk.library._F as F
 import typer
 from faebryk.core.core import Module, Parameter
 from faebryk.core.util import get_all_nodes
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
-from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
-from faebryk.library.can_attach_to_footprint_via_pinmap import (
-    can_attach_to_footprint_via_pinmap,
-)
-from faebryk.library.Constant import Constant
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_simple_value_representation_defined import (
-    has_simple_value_representation_defined,
-)
-from faebryk.library.KicadFootprint import KicadFootprint
-from faebryk.library.LED import LED
-from faebryk.library.MOSFET import MOSFET
-from faebryk.library.Resistor import Resistor
-from faebryk.library.SMDTwoPin import SMDTwoPin
-from faebryk.library.Switch import Switch
-from faebryk.library.TBD import TBD
+from faebryk.library._F import TBD, Constant
 from faebryk.libs.experiments.buildutil import export_graph, export_netlist
 from faebryk.libs.logging import setup_basic_logging
 
@@ -46,7 +32,7 @@ class Battery(Module):
         super().__init__()
 
         class _IFs(Module.IFS()):
-            power = ElectricPower()
+            power = F.ElectricPower()
 
         self.IFs = _IFs(self)
         self.voltage: Parameter = TBD()
@@ -57,16 +43,16 @@ class LED_Indicator(Module):
         super().__init__()
 
         class _IFS(Module.IFS()):
-            input_power = ElectricPower()
-            input_control = Electrical()
+            input_power = F.ElectricPower()
+            input_control = F.Electrical()
 
         class _NODES(Module.NODES()):
-            led = LED()
-            current_limiting_resistor = Resistor()
-            switch = MOSFET().builder(
+            led = F.LED()
+            current_limiting_resistor = F.Resistor()
+            switch = F.MOSFET().builder(
                 lambda m: (
-                    m.PARAMs.channel_type.merge(MOSFET.ChannelType.N_CHANNEL),
-                    m.PARAMs.saturation_type.merge(MOSFET.SaturationType.ENHANCEMENT),
+                    m.PARAMs.channel_type.merge(F.MOSFET.ChannelType.N_CHANNEL),
+                    m.PARAMs.saturation_type.merge(F.MOSFET.SaturationType.ENHANCEMENT),
                 )
             )
 
@@ -88,12 +74,12 @@ class LogicSwitch(Module):
         super().__init__()
 
         class _IFS(Module.IFS()):
-            input_power = ElectricPower()
-            output_control = Electrical()
+            input_power = F.ElectricPower()
+            output_control = F.Electrical()
 
         class _NODES(Module.NODES()):
-            switch = Switch(Electrical)()
-            pull_down_resistor = Resistor()
+            switch = F.Switch(F.Electrical)()
+            pull_down_resistor = F.Resistor()
 
         self.IFs = _IFS(self)
         self.NODEs = _NODES(self)
@@ -132,11 +118,11 @@ class App(Module):
         )
 
         # parametrizing
-        for node in get_all_nodes(self, order_types=[Battery, LED, LED_Indicator]):
+        for node in get_all_nodes(self, order_types=[Battery, F.LED, LED_Indicator]):
             if isinstance(node, Battery):
                 node.voltage = Constant(5)
 
-            if isinstance(node, LED):
+            if isinstance(node, F.LED):
                 node.PARAMs.forward_voltage.merge(Constant(2.4))
                 node.PARAMs.max_current.merge(Constant(0.020))
 
@@ -155,39 +141,39 @@ class App(Module):
         for node in get_all_nodes(self):
             if isinstance(node, Battery):
                 node.add_trait(
-                    can_attach_to_footprint_via_pinmap(
+                    F.can_attach_to_footprint_via_pinmap(
                         {"1": node.IFs.power.IFs.hv, "2": node.IFs.power.IFs.lv}
                     )
                 ).attach(
-                    KicadFootprint.with_simple_names(
+                    F.KicadFootprint.with_simple_names(
                         "Battery:BatteryHolder_ComfortableElectronic_CH273-2450_1x2450",
                         2,
                     )
                 )
-                node.add_trait(has_simple_value_representation_defined("B"))
+                node.add_trait(F.has_simple_value_representation_defined("B"))
 
-            if isinstance(node, Resistor):
-                node.get_trait(can_attach_to_footprint).attach(
-                    SMDTwoPin(SMDTwoPin.Type._0805)
+            if isinstance(node, F.Resistor):
+                node.get_trait(F.can_attach_to_footprint).attach(
+                    F.SMDTwoPin(F.SMDTwoPin.Type._0805)
                 )
 
-            if isinstance(node, Switch(Electrical)):
-                node.get_trait(can_attach_to_footprint).attach(
-                    KicadFootprint.with_simple_names(
+            if isinstance(node, F.Switch(F.Electrical)):
+                node.get_trait(F.can_attach_to_footprint).attach(
+                    F.KicadFootprint.with_simple_names(
                         "Button_Switch_SMD:Panasonic_EVQPUJ_EVQPUA", 2
                     )
                 )
 
-            if isinstance(node, LED):
+            if isinstance(node, F.LED):
                 node.add_trait(
-                    can_attach_to_footprint_via_pinmap(
+                    F.can_attach_to_footprint_via_pinmap(
                         {"1": node.IFs.anode, "2": node.IFs.cathode}
                     )
-                ).attach(SMDTwoPin(SMDTwoPin.Type._0805))
+                ).attach(F.SMDTwoPin(F.SMDTwoPin.Type._0805))
 
-            if isinstance(node, MOSFET):
+            if isinstance(node, F.MOSFET):
                 node.add_trait(
-                    can_attach_to_footprint_via_pinmap(
+                    F.can_attach_to_footprint_via_pinmap(
                         {
                             "1": node.IFs.drain,
                             "2": node.IFs.gate,
@@ -195,7 +181,7 @@ class App(Module):
                         }
                     )
                 ).attach(
-                    KicadFootprint.with_simple_names("Package_TO_SOT_SMD:SOT-23", 3)
+                    F.KicadFootprint.with_simple_names("Package_TO_SOT_SMD:SOT-23", 3)
                 )
 
 
