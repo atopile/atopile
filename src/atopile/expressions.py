@@ -183,8 +183,8 @@ class RangedValue:
         tol, tol_unit = pretty_unit(self.tolerance * self.unit)
 
         if nom == 0:
-            return f"± {_f(tol)}{unit}"
-        if unit == tol_unit or nom == 0 or tol == 0:
+            return f"± {_f(tol)}{tol_unit}"
+        if unit == tol_unit:
             return f"{_f(nom)} ± {_f(tol)} {unit}"
         return f"{_f(nom)}{unit} ± {_f(tol)}{tol_unit}"
 
