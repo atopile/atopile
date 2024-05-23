@@ -35,6 +35,7 @@ def test_no_callables():
 
 
 def test_substitute():
+    # Test simplification
     a = Expression(symbols={"d"}, lambda_=lambda ctx: ctx["d"])
     assert a.substitute({"d": 12}) == 12
 
@@ -43,3 +44,4 @@ def test_substitute():
     subbed = a.substitute({"d": b})
     assert callable(subbed)
     assert subbed({"e": 12}) == 12
+    assert subbed.symbols == {"e"}

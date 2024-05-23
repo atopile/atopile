@@ -450,6 +450,7 @@ def simplify_expressions(entry_addr: address.AddrStr):
             assertion.rhs = expressions.Expression.from_numericish(
                 expressions.simplify_expression(assertion.rhs, simplified_context)
             )
+    pass
 
 
 def _translator_factory(

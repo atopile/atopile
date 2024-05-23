@@ -416,7 +416,7 @@ class Expression:
         return self.lambda_(context)
 
     def substitute(
-        self, substitutions: Mapping[Symbol, NumericishTypes]
+        self, substitutions: Mapping[str | Symbol, NumericishTypes]
     ) -> NumericishTypes:
         """Return a new expression with all the symbols substituted."""
         # Do a little data checky check
@@ -451,7 +451,7 @@ class Expression:
         # Remove the constants we've substituted in, and add any new
         # symbols from the new expressions
         callables_symbols = {symbol for expr in callables.values() for symbol in expr.symbols}
-        new_symbols = self.symbols - constants_symbols | callables_symbols
+        new_symbols = self.symbols - set(substitutions.keys()) | callables_symbols
 
         # In the case we've completely substituted all the symbols
         # we can just return a new constant
@@ -611,13 +611,12 @@ def simplify_expression_pool(
 
 def simplify_expression(
     expression: Expression,
-    context: Mapping[Symbol, NumericishTypes],
+    context: Mapping[str, NumericishTypes],
 ) -> Expression:
     """
     Simplify a single expression.
     This will only work if the context is already in its simplest forms.
     """
-    expression = expression.substitute(
-        {symbol: context[symbol] for symbol in expression.symbols if symbol in context}
-    )
+    substitutions = {symbol: context[symbol.key] for symbol in expression.symbols if symbol.key in context}
+    expression = expression.substitute(substitutions)
     return expression
