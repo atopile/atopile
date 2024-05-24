@@ -4,13 +4,12 @@ but doesn't resolve names of things.
 In building this datamodel, we check for name collisions, but we don't resolve them yet.
 """
 
-import enum
 import operator
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
 from itertools import chain
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional, Type
 
 import pint
 from antlr4 import ParserRuleContext
@@ -264,11 +263,13 @@ resolve_types(Instance)
 resolve_types(Link)
 
 
-class _Sentinel(enum.Enum):
-    NOTHING = enum.auto()
+# Sentinel Classes
+class Nothing:
+    """Representing nothing being passed around the visitor."""
 
 
-NOTHING = _Sentinel.NOTHING
+class AtoAny:
+    """Represents the ato any type (unconstrained)"""
 
 
 def _make_obj_layer(address: AddrStr, super: Optional[ClassLayer] = None) -> ClassLayer:
@@ -511,6 +512,9 @@ class HandlesPrimaries(AtopileParserVisitor):
                 f" compatible with nominal unit '{start.unit}'",
             ) from ex
 
+    def visitAny_(self, ctx: ap.Any_Context | Any):
+        return AtoAny
+
 
 class HandleStmtsFunctional(AtopileParserVisitor):
     """
@@ -524,7 +528,7 @@ class HandleStmtsFunctional(AtopileParserVisitor):
         Override the default "None" return type
         (for things that return nothing) with the Sentinel NOTHING
         """
-        return NOTHING
+        return Nothing
 
     def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
         """
@@ -537,24 +541,24 @@ class HandleStmtsFunctional(AtopileParserVisitor):
             for err_cltr, child in errors.iter_through_errors(children):
                 with err_cltr():
                     child_result = self.visit(child)
-                    if child_result is not NOTHING:
+                    if child_result is not Nothing:
                         yield child_result
 
         child_results = chain.from_iterable(__visit())
-        child_results = list(item for item in child_results if item is not NOTHING)
+        child_results = list(item for item in child_results if item is not Nothing)
         child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
 
         return KeyOptMap(child_results)
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
+    ) -> Iterable[Type[Nothing] | KeyOptItem]:
         """
         This is practically here as a development shim to assert the result is as intended
         """
         result = self.visitChildren(ctx)
         for item in result:
-            if item is not NOTHING:
+            if item is not Nothing:
                 assert isinstance(item, KeyOptItem)
         return result
 
@@ -569,7 +573,7 @@ class HandleStmtsFunctional(AtopileParserVisitor):
             return stmt_returns
         elif ctx.compound_stmt():
             item = self.visit(ctx.compound_stmt())
-            if item is NOTHING:
+            if item is Nothing:
                 return KeyOptMap.empty()
             assert isinstance(item, KeyOptItem)
             return KeyOptMap.from_item(item)
@@ -899,7 +903,7 @@ class Scoop(HandleStmtsFunctional, HandlesPrimaries):
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
+    ) -> Iterable[Type[Nothing] | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
         if ctx.retype_stmt() or ctx.import_stmt() or ctx.dep_import_stmt():
             return super().visitSimple_stmt(ctx)
@@ -1022,9 +1026,9 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
         """I'm not sure how we'd end up here, but if we do, don't go down here"""
         raise RuntimeError("File inputs should not be visited")
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> Type[Nothing]:
         """Don't go down blockdefs, they're just for defining objects."""
-        return NOTHING
+        return Nothing
 
     def _get_type_info(self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext) -> Optional[ClassLayer | pint.Unit]:
         """Return the type information from a type_info context."""
@@ -1092,12 +1096,12 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
+    ) -> Iterable[Type[Nothing] | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
         if ctx.assign_stmt() or ctx.declaration_stmt():
             return super().visitSimple_stmt(ctx)
 
-        return (NOTHING,)
+        return (Nothing,)
 
 
 @contextmanager
@@ -1229,9 +1233,9 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
                 del self._output_cache[new_addr]
             raise
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> Type[Nothing]:
         """Don't go down blockdefs, they're just for defining objects."""
-        return NOTHING
+        return Nothing
 
     def handle_new_assignment(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Specifically handle "something = new XYZ" assignments."""
