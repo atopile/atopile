@@ -110,7 +110,8 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     try:
                         a = assertion.lhs(context)
                         b = assertion.rhs(context)
-                    except (errors.AtoError, KeyError) as e:
+                        passes = _do_op(a, assertion.operator, b)
+                    except (errors.AtoError, KeyError, pint.DimensionalityError) as e:
                         table.add_row(
                             "[red]ERROR[/]",
                             assertion_str,
@@ -127,7 +128,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                         " " + assertion.operator +
                         " " + b.pretty_str(format_="bound")
                     )
-                    if _do_op(a, assertion.operator, b):
+                    if passes:
                         table.add_row(
                             "[green]PASSED[/]",
                             assertion_str,
