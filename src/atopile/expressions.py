@@ -450,7 +450,13 @@ class Expression:
         # Figure out what new symbols are required for this expression
         # Remove the constants we've substituted in, and add any new
         # symbols from the new expressions
-        callables_symbols = {symbol for expr in callables.values() for symbol in expr.symbols}
+        callables_symbols = set()
+        for expr in callables.values():
+            if isinstance(expr, Symbol):
+                callables_symbols.add(expr)
+                continue
+            for symbol in expr.symbols:
+                callables_symbols.add(symbol)
         new_symbols = self.symbols - set(substitutions.keys()) | callables_symbols
 
         # In the case we've completely substituted all the symbols
