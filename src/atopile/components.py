@@ -179,7 +179,7 @@ def _get_component_data(component_addr: str) -> dict[str, Any]:
             response = requests.post(url, json=outgoing_data)
             response.raise_for_status()  # Raises an HTTPError if the response status code is 4xx or 5xx
 
-            component_data = response.json() or {}
+            component_data['best_component'] = response.json() or {}
         except requests.HTTPError as exc:
             if exc.response.status_code == 404:
                 raise NoMatchingComponent(
