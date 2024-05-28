@@ -3,6 +3,7 @@
 
 import logging
 import typing
+from textwrap import indent
 from typing import Generic, TypeVar
 
 from faebryk.core.core import Parameter
@@ -13,8 +14,7 @@ PV = TypeVar("PV")
 
 
 class Operation(Generic[PV], Parameter[PV]):
-    class OperationNotExecutable(Exception):
-        ...
+    class OperationNotExecutable(Exception): ...
 
     def __init__(
         self,
@@ -26,7 +26,12 @@ class Operation(Generic[PV], Parameter[PV]):
         self.operation = operation
 
     def __repr__(self):
-        return super().__repr__() + f"({self.operands!r})"
+        fname = self.operation.__qualname__
+        return (
+            super().__repr__()
+            + f"[{fname}]"
+            + f"(\n{'\n'.join(indent(repr(o), '  ') for o in self.operands)}\n)"
+        )
         # return f"{type(self).__name__}({self.operands!r})@{id(self):#x}"
 
     def execute(self):

@@ -18,6 +18,55 @@ Open-source software-defined EDA tool
 
 </div>
 
+In short faebryk is a python library that allows you to design ready-to-order electronics (PCBs, schematics, etc) in code. It aims to reduce the entry-barrier for hardware design by bridging the gap between software and hardware design.
+
+---
+
+
+## Using faebryk
+
+```bash
+> pip install faebryk
+```
+
+
+```python
+import faebryk.library._F as F
+from faebryk.core.core import Module
+from faebryk.libs.experiments.buildutil import (
+    tag_and_export_module_to_netlist
+)
+
+class App(Module): 
+    def __init__(self) -> None:
+        super().__init__()
+
+        class _NODES(Module.NODES()):
+            led = F.PoweredLED()
+            battery = F.Battery()
+
+        self.NODEs = _NODES(self)
+
+        # Connections
+        self.NODEs.led.IFs.power.connect(
+            self.NODEs.battery.IFs.power)
+
+        # Parametrize
+        self.NODEs.led.NODEs.led.PARAMs.color.merge(
+            F.LED.Color.YELLOW)
+        self.NODEs.led.NODEs.led.PARAMs.brightness.merge(
+            F.Range.lower_bound(30e-3))
+
+
+tag_and_export_module_to_netlist(App())
+```
+
+<div align="center">
+
+![](docs/img/demo.gif)
+
+</div>
+
 ---
 
 ## About
@@ -62,27 +111,9 @@ For pull requests and bug-reports, see our [contributing guidelines](docs/CONTRI
 
 ---
 
-## Using faebryk
+## Development
 
-### From pip (as library)
-
-Setup
-
-```bash
-> pip install faebryk
-```
-
-Running examples
-
-```bash
-> mkdir my_faebryk_project
-> cd my_faebryk_project
-> # download a sample from the faebryk github repo from the /examples folder
-> python3 <sample_name.py>
-```
-
-### From source (editable)
-
+### Installing from source
 Setup
 
 ```bash
@@ -98,10 +129,6 @@ Running examples
 > poetry shell
 > python ./examples/<sample_name>.py
 ```
-
----
-
-## Development
 
 ### Versioning
 

@@ -15,8 +15,10 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
+from faebryk.library.ANY import ANY
 from faebryk.library.BJT import BJT
 from faebryk.library.Battery import Battery
+from faebryk.library.ButtonCell import ButtonCell
 from faebryk.library.CD4011 import CD4011
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.Constant import Constant

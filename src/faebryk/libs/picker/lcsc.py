@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # TODO dont hardcode relative paths
 BUILD_FOLDER = Path("./build")
 LIB_FOLDER = Path("./src/kicad/libs")
+MODEL_PATH: str | None = "${KIPRJMOD}/../libs/"
 
 
 def get_footprint(partno: str, get_model: bool = True):
@@ -88,12 +89,17 @@ def get_footprint(partno: str, get_model: bool = True):
 
     if not footprint_filepath.exists():
         logger.debug(f"Exporting footprint {footprint_filepath}")
+        kicad_model_path = (
+            f"{MODEL_PATH}/3dmodels/lcsc.3dshapes"
+            if MODEL_PATH
+            else str(model_base_path_full.resolve())
+        )
         ki_footprint.export(
             footprint_full_path=str(footprint_filepath),
-            model_3d_path="${KIPRJMOD}/../libs/3dmodels/lcsc.3dshapes",
+            model_3d_path=kicad_model_path,
         )
 
-    # add trat to component ---------------------------------------------------
+    # add trait to component ---------------------------------------------------
     fp = KicadFootprint(
         f"lcsc:{easyeda_footprint.info.name}",
         [p.number for p in easyeda_footprint.pads],

@@ -4,7 +4,7 @@ from faebryk.core.core import Module
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.PoweredLED import PoweredLED
-from p1_splitter.libtemp import PowerSwitch
+from faebryk.library.PowerSwitchMOSFET import PowerSwitchMOSFET
 
 
 class LEDIndicator(Module):
@@ -21,7 +21,8 @@ class LEDIndicator(Module):
         # components
         class _NODEs(Module.NODES()):
             led = PoweredLED()
-            power_switch = PowerSwitch()
+            # TODO make generic
+            power_switch = PowerSwitchMOSFET(lowside=True, normally_closed=False)
 
         self.NODEs = _NODEs(self)
 

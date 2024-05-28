@@ -8,6 +8,7 @@ from typing import TypeVar
 
 from faebryk.core.core import Module, Parameter
 from faebryk.core.core import logger as core_logger
+from faebryk.library.ANY import ANY
 from faebryk.library.Constant import Constant
 from faebryk.library.Operation import Operation
 from faebryk.library.Range import Range
@@ -73,6 +74,11 @@ class TestParameters(unittest.TestCase):
         self.assertEqual(op + 5, Constant(8))
         self.assertEqual(op2.get_most_narrow(), Constant(13))
 
+        # Any
+        self.assertEqual(ONE + ANY(), ANY())
+        self.assertEqual(TBD() + ANY(), ANY())
+        self.assertEqual((TBD() + TBD()) + ANY(), ANY())
+
     def test_resolution(self):
         T = TypeVar("T")
 
@@ -93,6 +99,9 @@ class TestParameters(unittest.TestCase):
             ).value,
             2,
         )
+
+        self.assertEqual(TBD(), TBD())
+        self.assertEqual(ANY(), ANY())
 
     def test_modules(self):
         T = TypeVar("T")

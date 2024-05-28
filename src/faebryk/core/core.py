@@ -44,8 +44,7 @@ class Trait(Generic[T]):
     def impl(cls: Type[Trait]):
         T_ = TypeVar("T_", bound="FaebrykLibObject")
 
-        class _Impl(Generic[T_], TraitImpl[T_], cls):
-            ...
+        class _Impl(Generic[T_], TraitImpl[T_], cls): ...
 
         return _Impl[T]
 
@@ -86,8 +85,7 @@ class TraitImpl(Generic[U], ABC):
         self._obj = _obj
         self.on_obj_set()
 
-    def on_obj_set(self):
-        ...
+    def on_obj_set(self): ...
 
     def remove_obj(self):
         self._obj = None
@@ -128,8 +126,7 @@ class FaebrykLibObject:
         self.traits = []
         return self
 
-    def __init__(self) -> None:
-        ...
+    def __init__(self) -> None: ...
 
     _TImpl = TypeVar("_TImpl", bound=TraitImpl)
 
@@ -203,51 +200,42 @@ class FaebrykLibObject:
 TI = TypeVar("TI", bound="GraphInterface")
 
 
-class _InterfaceTrait(Generic[TI], Trait[TI]):
-    ...
+class _InterfaceTrait(Generic[TI], Trait[TI]): ...
 
 
-class InterfaceTrait(_InterfaceTrait["GraphInterface"]):
-    ...
+class InterfaceTrait(_InterfaceTrait["GraphInterface"]): ...
 
 
 TN = TypeVar("TN", bound="Node")
 
 
-class _NodeTrait(Generic[TN], Trait[TN]):
-    ...
+class _NodeTrait(Generic[TN], Trait[TN]): ...
 
 
-class NodeTrait(_NodeTrait["Node"]):
-    ...
+class NodeTrait(_NodeTrait["Node"]): ...
 
 
 TL = TypeVar("TL", bound="Link")
 
 
-class _LinkTrait(Generic[TL], Trait[TL]):
-    ...
+class _LinkTrait(Generic[TL], Trait[TL]): ...
 
 
-class LinkTrait(_LinkTrait["Link"]):
-    ...
+class LinkTrait(_LinkTrait["Link"]): ...
 
 
 TP = TypeVar("TP", bound="Parameter")
 
 
-class _ParameterTrait(Generic[TP], Trait[TP]):
-    ...
+class _ParameterTrait(Generic[TP], Trait[TP]): ...
 
 
-class ParameterTrait(_ParameterTrait["Parameter"]):
-    ...
+class ParameterTrait(_ParameterTrait["Parameter"]): ...
 
 
 class can_determine_partner_by_single_end(LinkTrait):
     @abstractmethod
-    def get_partner(self, other: GraphInterface) -> GraphInterface:
-        ...
+    def get_partner(self, other: GraphInterface) -> GraphInterface: ...
 
 
 # -----------------------------------------------------------------------------
@@ -338,8 +326,7 @@ class LinkDirect(Link):
         return self.interfaces
 
 
-class LinkFilteredException(Exception):
-    ...
+class LinkFilteredException(Exception): ...
 
 
 class _TLinkDirectShallow(LinkDirect):
@@ -461,16 +448,13 @@ class GraphInterfaceHierarchical(GraphInterface):
         return parent.node, conn.name
 
 
-class GraphInterfaceSelf(GraphInterface):
-    ...
+class GraphInterfaceSelf(GraphInterface): ...
 
 
-class GraphInterfaceModuleSibling(GraphInterfaceHierarchical):
-    ...
+class GraphInterfaceModuleSibling(GraphInterfaceHierarchical): ...
 
 
-class GraphInterfaceModuleConnection(GraphInterface):
-    ...
+class GraphInterfaceModuleConnection(GraphInterface): ...
 
 
 class Node(FaebrykLibObject):
@@ -570,8 +554,7 @@ PV = TypeVar("PV")
 
 
 class Parameter(Generic[PV], Node):
-    class MergeException(Exception):
-        ...
+    class MergeException(Exception): ...
 
     @classmethod
     def GIFS(cls):
@@ -590,6 +573,7 @@ class Parameter(Generic[PV], Node):
     U = TypeVar("U")
 
     def _merge(self, other: "Parameter[PV] | PV") -> "Parameter[PV]":
+        from faebryk.library.ANY import ANY
         from faebryk.library.Constant import Constant
         from faebryk.library.Operation import Operation
         from faebryk.library.Range import Range
@@ -630,6 +614,9 @@ class Parameter(Generic[PV], Node):
         # Generic pairs
 
         if pair := _is_pair(Parameter[PV], TBD):
+            return pair[0]
+
+        if pair := _is_pair(Parameter[PV], ANY):
             return pair[0]
 
         # TODO remove as soon as possible
@@ -675,6 +662,15 @@ class Parameter(Generic[PV], Node):
         except NotImplementedError:
             return False
 
+    def is_more_specific_than(self, other: "Parameter[PV]") -> bool:
+        from faebryk.library.TBD import TBD
+
+        if isinstance(self, TBD):
+            return False
+        if isinstance(other, TBD):
+            return False
+        return self.is_mergeable_with(other)
+
     def merge(self, other: "Parameter[PV] | PV") -> "Parameter[PV]":
         from faebryk.library.Constant import Constant
 
@@ -693,6 +689,7 @@ class Parameter(Generic[PV], Node):
 
     # TODO: replace with graph-based
     def op(self, other: "Parameter[PV] | PV", op: Callable) -> "Parameter[PV]":
+        from faebryk.library.ANY import ANY
         from faebryk.library.Constant import Constant
         from faebryk.library.Operation import Operation
         from faebryk.library.Range import Range
@@ -722,6 +719,12 @@ class Parameter(Generic[PV], Node):
         if pair := _is_pair(Constant, Range):
             sop = pair[2]
             return Range(sop(pair[0], pair[1].min), sop(pair[0], pair[1].max))
+
+        if pair := _is_pair(Parameter, ANY):
+            # TODO
+            return ANY()
+            # sop = pair[2]
+            # return Operation(pair[:2], sop)
 
         if pair := _is_pair(Parameter, Operation):
             sop = pair[2]
@@ -881,12 +884,10 @@ def _resolve_link_duplicate(links: Iterable[type[Link]]) -> type[Link]:
     raise NotImplementedError()
 
 
-class _ModuleInterfaceTrait(Generic[TMI], Trait[TMI]):
-    ...
+class _ModuleInterfaceTrait(Generic[TMI], Trait[TMI]): ...
 
 
-class ModuleInterfaceTrait(_ModuleInterfaceTrait["ModuleInterface"]):
-    ...
+class ModuleInterfaceTrait(_ModuleInterfaceTrait["ModuleInterface"]): ...
 
 
 class _LEVEL:
@@ -946,8 +947,7 @@ class ModuleInterface(Node):
 
         class _LinkDirectShallowMif(
             LinkDirectShallow(lambda link, gif: test(gif.node))
-        ):
-            ...
+        ): ...
 
         return _LinkDirectShallowMif
 
@@ -1158,12 +1158,10 @@ class ModuleInterface(Node):
 TM = TypeVar("TM", bound="Module")
 
 
-class _ModuleTrait(Generic[TM], _NodeTrait[TM]):
-    ...
+class _ModuleTrait(Generic[TM], _NodeTrait[TM]): ...
 
 
-class ModuleTrait(_ModuleTrait["Module"]):
-    ...
+class ModuleTrait(_ModuleTrait["Module"]): ...
 
 
 class Module(Node):
@@ -1224,12 +1222,10 @@ class Module(Node):
 TF = TypeVar("TF", bound="Footprint")
 
 
-class _FootprintTrait(Generic[TF], _ModuleTrait[TF]):
-    ...
+class _FootprintTrait(Generic[TF], _ModuleTrait[TF]): ...
 
 
-class FootprintTrait(_FootprintTrait["Footprint"]):
-    ...
+class FootprintTrait(_FootprintTrait["Footprint"]): ...
 
 
 class Footprint(Module):

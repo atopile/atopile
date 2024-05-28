@@ -58,6 +58,7 @@ def write_netlist(
 
     assert isinstance(netlist, str)
     logger.info("Writing Experiment netlist to {}".format(netlist_path.resolve()))
+    netlist_path.parent.mkdir(parents=True, exist_ok=True)
     netlist_path.write_text(netlist, encoding="utf-8")
 
     return True
