@@ -86,7 +86,7 @@ def get_std_lib(addr: AddrStr) -> str:
 def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
     return_json: dict = {}
 
-    ato_lock_contents = get_ato_lock_file(build_ctx)
+    ato_lock_contents = atopile.config.get_lock_file_contents(build_ctx.lock_file_path)
 
     for addr in all_descendants(build_ctx.entry):
         if match_modules(addr) and not match_components(addr):
@@ -226,14 +226,6 @@ def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
 
     return return_json
 
-def get_ato_lock_file(build_ctx: atopile.config.BuildContext) -> dict:
-    ato_lock_contents = {}
-
-    if build_ctx.project_context.lock_file_path.exists():
-        with build_ctx.project_context.lock_file_path.open("r") as lock_file:
-            ato_lock_contents = yaml.safe_load(lock_file)
-
-    return ato_lock_contents
 
 def get_pose(ato_lock_contents: dict, id: str) -> Pose:
     position = ato_lock_contents.get("poses", {}).get("schematic", {}).get(id, {}).get("position", {'x': 0, 'y': 0})
@@ -247,6 +239,7 @@ def get_pose(ato_lock_contents: dict, id: str) -> Pose:
         mirror_x=mirror_x,
         mirror_y=mirror_y
     )
+
 
 #TODO: copied over from `ato inspect`. We probably need to deprecate `ato inspect` anyways and move this function
 # to a common location

@@ -376,3 +376,48 @@ def get_project_context() -> ProjectContext:
     if _project_context is None:
         raise ValueError("Project context not set")
     return _project_context
+
+
+### Lock file handling
+# WARNING: The lock file can be modified underneath us, and we'd just overwrite it
+_lock_file: dict[Path, dict] = {}
+
+
+def get_lock_file_contents(path: Optional[Path] = None) -> dict:
+    """
+    Get the contents of the lock file.
+    """
+    if path is None:
+        path = get_project_context().lock_file_path
+
+    # Standardise the path
+    path = Path(path).resolve().absolute()
+
+    # If we don't have it cached, load it up
+    if path not in _lock_file:
+        if path.exists():
+            with path.open() as f:
+                _lock_file[path] = yaml.load(f)
+        else:
+            _lock_file[path] = {}
+
+    # Return the copy in memory if it exists
+    return _lock_file[path]
+
+
+def save_lock_file_contents(path: Optional[Path] = None) -> None:
+    """
+    Save the contents of the lock file.
+    """
+    if path is None:
+        path = get_project_context().lock_file_path
+
+    # Standardise the path
+    path = Path(path).resolve().absolute()
+
+    if path not in _lock_file:
+        return
+
+    # Save the contents
+    with path.open("w") as f:
+        yaml.dump(_lock_file[path], f)
