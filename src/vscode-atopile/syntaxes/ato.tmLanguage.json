@@ -70,6 +70,10 @@
 			"name": "keyword.control.ato"
 		},
 		{
+			"match": "\\b(pass)\\b",
+			"name": "keyword.control.ato"
+		},
+		{
 			"match": "\\b[a-zA-Z_][a-zA-Z_0-9]*\\b",
   		 	"name": "variable.other.ato"
 		}
