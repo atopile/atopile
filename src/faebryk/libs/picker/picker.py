@@ -5,6 +5,7 @@ import logging
 import pprint
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Callable, Iterable
 
 from faebryk.core.core import Module, ModuleInterface, ModuleTrait, Parameter
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class Supplier(ABC):
     @abstractmethod
-    def attach(self, component: Module, part: "Part"): ...
+    def attach(self, module: Module, part: "PickerOption"): ...
 
 
 @dataclass
@@ -29,13 +30,19 @@ class Part:
     supplier: Supplier
 
 
+class DescriptiveProperties(StrEnum):
+    manufacturer = "Manufacturer"
+    partno = "Partnumber"
+    datasheet = "Datasheet"
+
+
 @dataclass
 class PickerOption:
     part: Part
     params: dict[str, Parameter] | None = None
     filter: Callable[[Module], bool] | None = None
     pinmap: dict[str, Electrical] | None = None
-    info: dict[str, str] | None = None
+    info: dict[str | DescriptiveProperties, str] | None = None
 
 
 class PickError(Exception): ...
@@ -85,7 +92,7 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
     if option.pinmap:
         module.add_trait(can_attach_to_footprint_via_pinmap(option.pinmap))
 
-    option.part.supplier.attach(module, option.part)
+    option.part.supplier.attach(module, option)
     module.add_trait(has_part_picked_defined(option.part))
 
     # Merge params from footprint option

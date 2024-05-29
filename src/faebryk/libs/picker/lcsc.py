@@ -18,7 +18,11 @@ from faebryk.library.has_defined_descriptive_properties import (
     has_defined_descriptive_properties,
 )
 from faebryk.library.KicadFootprint import KicadFootprint
-from faebryk.libs.picker.picker import Part, Supplier
+from faebryk.libs.picker.picker import (
+    Part,
+    PickerOption,
+    Supplier,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +123,11 @@ def attach_footprint(component: Module, partno: str, get_model: bool = True):
 
 
 class LCSC(Supplier):
-    def attach(self, module: Module, part: Part):
-        assert isinstance(part, LCSC_Part)
-        attach_footprint(component=module, partno=part.partno)
+    def attach(self, module: Module, part: PickerOption):
+        assert isinstance(part.part, LCSC_Part)
+        attach_footprint(component=module, partno=part.part.partno)
+        if part.info is not None:
+            has_defined_descriptive_properties.add_properties_to(module, part.info)
 
 
 class LCSC_Part(Part):
