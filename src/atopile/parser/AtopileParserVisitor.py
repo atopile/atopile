@@ -109,6 +109,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#pass_stmt.
+    def visitPass_stmt(self, ctx:AtopileParser.Pass_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#assert_stmt.
     def visitAssert_stmt(self, ctx:AtopileParser.Assert_stmtContext):
         return self.visitChildren(ctx)
