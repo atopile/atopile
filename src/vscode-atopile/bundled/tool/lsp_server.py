@@ -24,7 +24,7 @@ import atopile.parse_utils
 # Utils for interacting with the atopile front-end
 # **********************************************************
 
-_line_to_def_block: dict[Path, dict[int, atopile.address.AddrStr]] = {}
+_line_to_def_block: dict[Path, list[Optional[atopile.address.AddrStr]]] = {}
 
 
 def _reset_caches(file: Path):
@@ -37,7 +37,7 @@ def _reset_caches(file: Path):
 
 def _index_class_defs_by_line(file: Path):
     """Index class definitions in a given file by the line number"""
-    _line_to_def_block[file] = {}
+    _line_to_def_block[file] = []
     addrs = atopile.front_end.scoop.ingest_file(file)
 
     for addr in addrs:
@@ -61,7 +61,12 @@ def _index_class_defs_by_line(file: Path):
 
         # We need to subtract one from the line numbers
         # because the LSP uses 0-based indexing
-        for i in range(start_line - 1, stop_line - 1):
+        stop_line_index = stop_line - 1
+
+        if stop_line_index >= len(_line_to_def_block[file]):
+            _line_to_def_block[file].extend([None] * (stop_line_index - len(_line_to_def_block[file]) + 1))
+
+        for i in range(start_line - 1, stop_line_index):
             _line_to_def_block[file][i] = cls_def.address
 
 
@@ -69,7 +74,10 @@ def _get_def_addr_from_line(file: Path, line: int) -> Optional[atopile.address.A
     """Get the class definition from a line number"""
     if file not in _line_to_def_block or not _line_to_def_block[file]:
         _index_class_defs_by_line(file)
-    return _line_to_def_block[file].get(line, None)
+    file_lines = _line_to_def_block[file]
+    if line >= len(file_lines):
+        return None
+    return file_lines[line]
 
 
 # **********************************************************
@@ -308,14 +316,22 @@ def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[l
         )
 
 
-# TODO: we don't currently have good enough cache management to support dynamic parsing
-# @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
-# def did_change(params: lsp.DidChangeTextDocumentParams) -> None:
-#     """LSP handler for textDocument/didOpen request."""
-#     document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-
-#     # naive method to real-time lint on every keypress
-#     _linting_helper(document)
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
+def did_change(params: lsp.DidChangeTextDocumentParams) -> None:
+    """LSP handler for textDocument/didOpen request."""
+    # Currently this just handles new lines so the LSP can still give good completions outside modules
+    for event in params.content_changes:
+        # Check if the change is a new line
+        if newlines := event.text.count("\n"):
+            document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
+            file = Path(document.path)
+            line_classes = _line_to_def_block[file]
+            insertion_line = event.range.start.line
+            _line_to_def_block[file] = (
+                line_classes[:insertion_line + 1] +
+                line_classes[insertion_line:insertion_line + 1] * newlines +
+                line_classes[insertion_line + 1:]
+            )
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
