@@ -33,9 +33,7 @@ What's your story in electronics? What would you like us to build? Come talk on 
 
 ## ⚡️`ato` Code Examples
 
-### Simple Examples:
-
-#### Voltage Divider
+### Start with a simple voltage divider
 ```python
 from "generics/resistors.ato" import Resistor
 from "generics/interfaces.ato" import Power, Pair
@@ -65,9 +63,9 @@ module VDiv: #this name needs to match the name in the ato.yaml config file
     i_q = 1mA +/- 10%
 ```
 
-#### RP2040 Blinky Circuit
+### Build the classic "Blinky" circuit
 
-**Code:**
+start with some **ato code**
 ```python
 import RP2040Kit from "rp2040/RP2040Kit.ato" # run `ato install rp2040` to install
 import LEDIndicatorRed from "generics/leds.ato"
@@ -87,15 +85,15 @@ module Blinky:
 
     led_indicator.v_in = 3.3volt +/-10%
 ```
-**Block diagram:**
+generate a **Block diagram** from code
 ![Schematics example](docs/assets/images/block_diagram_example.png)
 
-**Schematics:**
+switch to **schematics** for documentation
 ![Schematics example](docs/assets/images/schematic_example.png)
 
-### Full Projects
+### Discover Full Projects
 
-Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) or the [logic card project](https://github.com/timot05/logic-card).
+Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) or the [swoop motion controller](https://github.com/atopile/swoop).
 
 ## 🔨 Getting Started
 
@@ -107,7 +105,7 @@ Find our [documentation](https://atopile.io/getting-started/), [installation vid
 
 `atopile` requires *python3.11* or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
 
-Then just `pip install atopile` and you're good to go!
+Then just `pipx install atopile` and you're good to go!
 
 ## ❓ Why Atopile?
 
