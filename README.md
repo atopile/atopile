@@ -69,13 +69,13 @@ Define your design with **ato code**
 ```python
 import RP2040Kit from "rp2040/RP2040Kit.ato" # run `ato install rp2040` to install
 import LEDIndicatorRed from "generics/leds.ato"
-import AMS111733 from "ams1117-33/elec/src/ams1117-33.ato" # run `ato install ams1117-33` to install
+import LV2842Kit from "lv2842xlvddcr/lv2842kit.ato" # run `ato install lv2842xlvddcr` to install
 import USBCConn from "usb-connectors/usb-connectors.ato" # run `ato install usb-connectors` to install
 
 module Blinky:
     micro_controller = new RP2040Kit
     led_indicator = new LEDIndicatorRed
-    voltage_regulator = new AMS111733
+    voltage_regulator = new LV2842Kit
     usb_c_connector = new USBCConn
 
     usb_c_connector.power ~ voltage_regulator.power_in
@@ -85,7 +85,7 @@ module Blinky:
 
     led_indicator.v_in = 3.3volt +/-10%
 ```
-Generate a **Block diagram** from code
+Generate a **block diagram** from code
 <h1 align="center">
     <picture>
     <img alt="Schematics example" src="docs/assets/images/block_diagram_example.png" style="width: 80%;">
