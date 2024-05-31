@@ -89,7 +89,7 @@ Checkout out the [servo drive project](https://github.com/atopile/spin-servo-dri
 
 ## 🔨 Getting Started
 
-Find our [documentation](https://atopile.io/getting-started/) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
+Find our [documentation](https://atopile.io/getting-started/), [installation video](https://www.youtube.com/watch?v=XqFhFs-FhQ0) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
 
 `atopile` is on pypi.org: https://pypi.org/project/atopile/
 
