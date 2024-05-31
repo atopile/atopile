@@ -38,41 +38,46 @@ What's your story in electronics? What would you like us to build? Come talk on 
 #### Voltage Divider
 ```python
 from "generics/resistors.ato" import Resistor
+from "generics/interfaces.ato" import Power, Pair
 
-module VoltageDivider:
-    signal top
-    signal out
-    signal bottom
+module VDiv: #this name needs to match the name in the ato.yaml config file
+    power = new Power
+    output = new Pair
 
     r_top = new Resistor
-    r_top.package = "R0402"
+    r_top.package = "0402"
 
     r_bottom = new Resistor
     r_bottom.package = "0402"
 
-    top ~ r_top.p1; r_top.p2 ~ out
-    out ~ r_bottom.p1; r_bottom.p2 ~ bottom
+    power.vcc ~ r_top.p1; r_top.p2 ~ output.io
+    output.io ~ r_bottom.p1; r_bottom.p2 ~ power.gnd; power.gnd ~ output.gnd
 
-    r_total: resistance
     v_in: voltage
     v_out: voltage
     i_q: current
 
     assert v_in * r_bottom.value / (r_top.value + r_bottom.value) within v_out
     assert v_in / (r_bottom.value + r_top.value) within i_q
+
+    v_in = 3.3V +/- 2%
+    v_out = 1.8V +/- 5%
+    i_q = 1mA +/- 10%
 ```
 
 #### RP2040 Blinky Circuit
+
+**Code:**
 ```python
-import RP2040Kit from "rp2040/RP2040Kit.ato"
+import RP2040Kit from "rp2040/RP2040Kit.ato" # run `ato install rp2040` to install
 import LEDIndicatorRed from "generics/leds.ato"
-import LDOReg3V3 from "regulators/regulators.ato"
-import USBCConn from "usb-connectors/usb-connectors.ato"
+import AMS111733 from "ams1117-33/elec/src/ams1117-33.ato" # run `ato install ams1117-33` to install
+import USBCConn from "usb-connectors/usb-connectors.ato" # run `ato install usb-connectors` to install
 
 module Blinky:
     micro_controller = new RP2040Kit
     led_indicator = new LEDIndicatorRed
-    voltage_regulator = new LDOReg3V3
+    voltage_regulator = new AMS111733
     usb_c_connector = new USBCConn
 
     usb_c_connector.power ~ voltage_regulator.power_in
@@ -82,6 +87,11 @@ module Blinky:
 
     led_indicator.v_in = 3.3volt +/-10%
 ```
+**Block diagram:**
+![Schematics example](docs/assets/images/block_diagram_example.png)
+
+**Schematics:**
+![Schematics example](docs/assets/images/schematic_example.png)
 
 ### Full Projects
 
