@@ -1,33 +1,33 @@
-import logging
-
-from atopile.address import AddrStr, get_name, add_instance, get_entry_section, get_relative_addr_str
-from atopile.instance_methods import (
-    get_children,
-    get_links,
-    get_supers_list,
-    all_descendants,
-    get_parent,
-    match_modules,
-    match_components,
-    match_interfaces,
-    match_signals,
-    match_pins_and_signals
-)
-from atopile.front_end import Link
-from atopile import errors
-import atopile.config
-from atopile.viewer_core import Pose, Position
-
-from atopile.viewer_utils import get_id
-
+import hashlib
 import json
-import yaml
-
+import logging
 from typing import Optional
 
-import hashlib
-
-from atopile.components import get_specd_value, MissingData
+import atopile.config
+from atopile import errors
+from atopile.address import (
+    AddrStr,
+    add_instance,
+    get_entry_section,
+    get_name,
+    get_relative_addr_str,
+)
+from atopile.components.abstract import MissingData, get_specd_value
+from atopile.front_end import Link
+from atopile.instance_methods import (
+    all_descendants,
+    get_children,
+    get_links,
+    get_parent,
+    get_supers_list,
+    match_components,
+    match_interfaces,
+    match_modules,
+    match_pins_and_signals,
+    match_signals,
+)
+from atopile.viewer_core import Pose, Position
+from atopile.viewer_utils import get_id
 
 log = logging.getLogger(__name__)
 

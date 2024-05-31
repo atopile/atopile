@@ -4,7 +4,6 @@ but doesn't resolve names of things.
 In building this datamodel, we check for name collisions, but we don't resolve them yet.
 """
 
-import enum
 import operator
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
@@ -264,11 +263,13 @@ resolve_types(Instance)
 resolve_types(Link)
 
 
-class _Sentinel(enum.Enum):
-    NOTHING = enum.auto()
+# Sentinel Classes
+class Nothing:
+    """Representing nothing being passed around the visitor."""
 
 
-NOTHING = _Sentinel.NOTHING
+class AtoAny:
+    """Represents the ato any type (unconstrained)"""
 
 
 def _make_obj_layer(address: AddrStr, super: Optional[ClassLayer] = None) -> ClassLayer:
@@ -524,7 +525,7 @@ class HandleStmtsFunctional(AtopileParserVisitor):
         Override the default "None" return type
         (for things that return nothing) with the Sentinel NOTHING
         """
-        return NOTHING
+        return Nothing
 
     def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
         """
@@ -537,11 +538,11 @@ class HandleStmtsFunctional(AtopileParserVisitor):
             for err_cltr, child in errors.iter_through_errors(children):
                 with err_cltr():
                     child_result = self.visit(child)
-                    if child_result is not NOTHING:
+                    if child_result is not Nothing:
                         yield child_result
 
         child_results = chain.from_iterable(__visit())
-        child_results = list(item for item in child_results if item is not NOTHING)
+        child_results = list(item for item in child_results if item is not Nothing)
         child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
 
         return KeyOptMap(child_results)
@@ -554,7 +555,7 @@ class HandleStmtsFunctional(AtopileParserVisitor):
         """
         result = self.visitChildren(ctx)
         for item in result:
-            if item is not NOTHING:
+            if item is not Nothing:
                 assert isinstance(item, KeyOptItem)
         return result
 
@@ -569,7 +570,7 @@ class HandleStmtsFunctional(AtopileParserVisitor):
             return stmt_returns
         elif ctx.compound_stmt():
             item = self.visit(ctx.compound_stmt())
-            if item is NOTHING:
+            if item is Nothing:
                 return KeyOptMap.empty()
             assert isinstance(item, KeyOptItem)
             return KeyOptMap.from_item(item)
@@ -1024,7 +1025,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
         """Don't go down blockdefs, they're just for defining objects."""
-        return NOTHING
+        return Nothing
 
     def _get_type_info(self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext) -> Optional[ClassLayer | pint.Unit]:
         """Return the type information from a type_info context."""
@@ -1097,7 +1098,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
         if ctx.assign_stmt() or ctx.declaration_stmt():
             return super().visitSimple_stmt(ctx)
 
-        return (NOTHING,)
+        return (Nothing,)
 
 
 @contextmanager
@@ -1231,7 +1232,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
         """Don't go down blockdefs, they're just for defining objects."""
-        return NOTHING
+        return Nothing
 
     def handle_new_assignment(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Specifically handle "something = new XYZ" assignments."""

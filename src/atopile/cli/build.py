@@ -16,7 +16,7 @@ import atopile.manufacturing_data
 import atopile.netlist
 import atopile.variable_report
 from atopile.cli.common import project_options
-from atopile.components import download_footprint
+from atopile.components.manufacturing import download_footprint
 from atopile.config import BuildContext
 from atopile.errors import ExceptionAccumulator
 from atopile.instance_methods import all_descendants, match_components

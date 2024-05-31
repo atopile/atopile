@@ -2,11 +2,12 @@
 
 """Schema and utils for atopile config files."""
 
+import contextlib
 import copy
 import fnmatch
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Generator, Optional
 
 import cattrs
 import deepdiff
@@ -421,3 +422,13 @@ def save_lock_file_contents(path: Optional[Path] = None) -> None:
     # Save the contents
     with path.open("w") as f:
         yaml.dump(_lock_file[path], f)
+
+
+@contextlib.contextmanager
+def lock_file_context(path: Optional[Path] = None) -> Generator[dict, None, None]:
+    """
+    A context manager to handle the lock file.
+    """
+    lock_file = get_lock_file_contents(path)
+    yield lock_file
+    save_lock_file_contents(path)
