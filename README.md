@@ -33,7 +33,7 @@ What's your story in electronics? What would you like us to build? Come talk on 
 
 ## ⚡️`ato` Code Examples
 
-### Start with a simple voltage divider
+### A simple voltage divider
 ```python
 from "generics/resistors.ato" import Resistor
 from "generics/interfaces.ato" import Power, Pair
@@ -63,9 +63,9 @@ module VDiv: #this name needs to match the name in the ato.yaml config file
     i_q = 1mA +/- 10%
 ```
 
-### Build the classic "Blinky" circuit
+### The classic "Blinky" circuit
 
-start with some **ato code**
+Define your design with **ato code**
 ```python
 import RP2040Kit from "rp2040/RP2040Kit.ato" # run `ato install rp2040` to install
 import LEDIndicatorRed from "generics/leds.ato"
@@ -85,11 +85,19 @@ module Blinky:
 
     led_indicator.v_in = 3.3volt +/-10%
 ```
-generate a **Block diagram** from code
-![Schematics example](docs/assets/images/block_diagram_example.png)
+Generate a **Block diagram** from code
+<h1 align="center">
+    <picture>
+    <img alt="Schematics example" src="docs/assets/images/block_diagram_example.png" style="width: 80%;">
+    </picture>
+</h1>
 
-switch to **schematics** for documentation
-![Schematics example](docs/assets/images/schematic_example.png)
+Produce **schematics** for documentation
+<h1 align="center">
+    <picture>
+    <img alt="Schematics example" src="docs/assets/images/schematic_example.png" style="width: 80%;">
+    </picture>
+</h1>
 
 ### Discover Full Projects
 
