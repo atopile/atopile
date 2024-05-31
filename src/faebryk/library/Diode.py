@@ -19,6 +19,8 @@ class Diode(Module):
             forward_voltage = TBD[float]()
             max_current = TBD[float]()
             current = TBD[float]()
+            reverse_working_voltage = TBD[float]()
+            reverse_leakage_current = TBD[float]()
 
         return _PARAMs
 

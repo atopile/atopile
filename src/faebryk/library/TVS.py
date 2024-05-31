@@ -14,6 +14,6 @@ class TVS(Diode):
         super().__init__()
 
         class _PARAMs(Diode.PARAMS()):
-            reverse_working_voltage = TBD()
+            reverse_breakdown_voltage = TBD()
 
         self.PARAMs = _PARAMs(self)
