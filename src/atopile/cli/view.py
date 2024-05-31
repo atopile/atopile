@@ -124,6 +124,9 @@ async def startup():
 @click.command()
 @project_options
 def view(build_ctxs: list[BuildContext]):
+    """
+    View a block diagram or schematic of your project.
+    """
     log.info("Spinning up the viewer")
 
     if len(build_ctxs) != 1:

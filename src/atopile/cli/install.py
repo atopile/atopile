@@ -41,6 +41,9 @@ def install(
     upgrade: bool,
     path: Optional[Path] = None,
 ):
+    """
+    Install atopile packages or components from jlcpcb.com/parts
+    """
     do_install(to_install, jlcpcb, link, upgrade, path)
 
 

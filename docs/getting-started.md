@@ -38,6 +38,8 @@ It's dead simple with [`pipx`](https://pipx.pypa.io/stable/)
 pipx install atopile
 ```
 
+Run `ato --version` to ensure the install worked. You might need to open a new terminal window for the `ato` command to be recognized.
+
 ??? question "How do I install `pipx`?"
     `pipx` has some dead simple installation instructions here: https://pipx.pypa.io/stable/installation/#installing-pipx
 
