@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
 from itertools import chain
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional, Type
 
 import pint
 from antlr4 import ParserRuleContext
@@ -512,6 +512,9 @@ class HandlesPrimaries(AtopileParserVisitor):
                 f" compatible with nominal unit '{start.unit}'",
             ) from ex
 
+    def visitAny_(self, ctx: ap.Any_Context | Any):
+        return AtoAny
+
 
 class HandleStmtsFunctional(AtopileParserVisitor):
     """
@@ -549,7 +552,7 @@ class HandleStmtsFunctional(AtopileParserVisitor):
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
+    ) -> Iterable[Type[Nothing] | KeyOptItem]:
         """
         This is practically here as a development shim to assert the result is as intended
         """
@@ -900,7 +903,7 @@ class Scoop(HandleStmtsFunctional, HandlesPrimaries):
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
+    ) -> Iterable[Type[Nothing] | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
         if ctx.retype_stmt() or ctx.import_stmt() or ctx.dep_import_stmt():
             return super().visitSimple_stmt(ctx)
@@ -1023,7 +1026,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
         """I'm not sure how we'd end up here, but if we do, don't go down here"""
         raise RuntimeError("File inputs should not be visited")
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> Type[Nothing]:
         """Don't go down blockdefs, they're just for defining objects."""
         return Nothing
 
@@ -1093,7 +1096,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
+    ) -> Iterable[Type[Nothing] | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
         if ctx.assign_stmt() or ctx.declaration_stmt():
             return super().visitSimple_stmt(ctx)
@@ -1230,7 +1233,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
                 del self._output_cache[new_addr]
             raise
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> Type[Nothing]:
         """Don't go down blockdefs, they're just for defining objects."""
         return Nothing
 
