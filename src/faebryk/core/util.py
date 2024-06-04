@@ -21,7 +21,7 @@ from faebryk.library.Electrical import Electrical
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.Range import Range
 from faebryk.library.Set import Set
-from faebryk.libs.util import NotNone, cast_assert
+from faebryk.libs.util import NotNone, cast_assert, round_str
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -56,7 +56,6 @@ def unit_map(
 
     effective_mantissa = mantissa * (base**exponent_difference)
     round_digits = round(math.log(base, 10) * (1 - exponent_difference))
-    # print(f"{exponent_difference=}, {effective_mantissa=}, {round_digits=}")
 
     idx = available_exponent + start_idx
     rounded_mantissa = round(effective_mantissa, round_digits)
@@ -83,6 +82,15 @@ def as_unit(value: SupportsFloat, unit: str, base: int = 1000):
     return get_unit_prefix(value, base=base) + unit
 
 
+def as_unit_with_tolerance(param: Range | Constant, unit: str, base: int = 1000):
+    if isinstance(param, Constant):
+        return as_unit(param.value, unit, base=base) + " ± 0%"
+    center, delta = param.as_center_tuple()
+    delta_percent = delta / center * 100
+
+    return f"{as_unit(center, unit, base=base)} ± {round_str(delta_percent)}%"
+
+
 def get_all_nodes(node: Node, order_types=None) -> list[Node]:
     if order_types is None:
         order_types = []
@@ -96,9 +104,9 @@ def get_all_nodes(node: Node, order_types=None) -> list[Node]:
 
     out = sorted(
         out,
-        key=lambda x: order_types.index(type(x))
-        if type(x) in order_types
-        else len(order_types),
+        key=lambda x: (
+            order_types.index(type(x)) if type(x) in order_types else len(order_types)
+        ),
     )
 
     return out
@@ -241,7 +249,7 @@ def get_mif_tree(
 
 def format_mif_tree(tree: dict[ModuleInterface, dict[ModuleInterface, dict]]) -> str:
     def str_tree(
-        tree: dict[ModuleInterface, dict[ModuleInterface, dict]]
+        tree: dict[ModuleInterface, dict[ModuleInterface, dict]],
     ) -> dict[str, dict]:
         def get_name(k: ModuleInterface):
             # get_parent never none, since k gotten from parent

@@ -5,15 +5,15 @@ import logging
 from enum import IntEnum, auto
 
 from faebryk.core.core import Module
-from faebryk.core.util import as_unit
+from faebryk.core.util import as_unit, as_unit_with_tolerance
 from faebryk.library.can_attach_to_footprint_symmetrically import (
     can_attach_to_footprint_symmetrically,
 )
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.has_simple_value_representation_based_on_param import (
-    has_simple_value_representation_based_on_param,
+from faebryk.library.has_simple_value_representation_based_on_params import (
+    has_simple_value_representation_based_on_params,
 )
 from faebryk.library.TBD import TBD
 from faebryk.libs.util import times
@@ -50,9 +50,15 @@ class Capacitor(Module):
         self.add_trait(can_bridge_defined(*self.IFs.unnamed))
 
         self.add_trait(
-            has_simple_value_representation_based_on_param(
-                self.PARAMs.capacitance,
-                lambda p: as_unit(p, "F"),
+            has_simple_value_representation_based_on_params(
+                (
+                    self.PARAMs.capacitance,
+                    self.PARAMs.rated_voltage,
+                    self.PARAMs.temperature_coefficient,
+                ),
+                lambda ps: f"{as_unit_with_tolerance(ps[0], 'F')} "
+                f"{as_unit(ps[1].max, 'V')} "
+                f"{ps[2].max.name}",
             )
         )
         self.add_trait(can_attach_to_footprint_symmetrically())

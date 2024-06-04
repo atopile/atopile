@@ -61,6 +61,9 @@ class Range(Generic[PV], Parameter[PV]):
     def as_tuple(self) -> tuple[PV, PV]:
         return (self.min, self.max)
 
+    def as_center_tuple(self) -> tuple[PV, PV]:
+        return (self.min + self.max) / 2, (self.max - self.min) / 2
+
     @classmethod
     def from_center(cls, center: PV, delta: PV) -> "Range[PV]":
         return cls(center - delta, center + delta)

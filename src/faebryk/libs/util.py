@@ -12,6 +12,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    SupportsFloat,
     SupportsInt,
     Type,
     TypeVar,
@@ -226,8 +227,7 @@ def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
 
             return self._list
 
-        def handle_add(self, name: str, obj: T) -> None:
-            ...
+        def handle_add(self, name: str, obj: T) -> None: ...
 
         def get_parent(self) -> P:
             return self._parent
@@ -285,6 +285,11 @@ def is_type_set_subclasses(type_subclasses: set[type], types: set[type]) -> bool
     return all(hits.values()) and all(
         any(issubclass(s, t) for t in types) for s in type_subclasses
     )
+
+
+def round_str(value: SupportsFloat, n=8):
+    f = round(float(value), n)
+    return str(f).rstrip("0").rstrip(".")
 
 
 def _print_stack(stack):
