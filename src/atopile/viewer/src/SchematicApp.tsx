@@ -15,9 +15,11 @@ import ReactFlow, {
     useStore,
     useKeyPress,
     useUpdateNodeInternals,
-    applyNodeChanges
+    applyNodeChanges,
+    BackgroundVariant
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+
 
 import SimpleTable from './LinkTable.tsx';
 
@@ -252,6 +254,8 @@ const AtopileSchematic = ({ viewBlockId, savePos, handleLoad }) => {
       ) : (
         <ReactFlow
             key={"schematic"}
+            snapToGrid={true}
+            snapGrid={[15, 15]}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
@@ -263,7 +267,7 @@ const AtopileSchematic = ({ viewBlockId, savePos, handleLoad }) => {
             nodeTypes={nodeTypes}
             style={{ width: '100%', height: '50%' }}
         >
-            <Background />
+            <Background gap={15} variant={BackgroundVariant.Dots} />
         </ReactFlow>)}
     </div>
     );
