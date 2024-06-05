@@ -75,7 +75,7 @@ const AtopileSchematic = ({ viewBlockId, savePos, handleLoad }) => {
                 const fetchedNodes = await loadSchematicJsonAsDict();
                 const displayedNode = fetchedNodes[viewBlockId];
 
-                if (Object.keys(displayedNode['components']).length > 200) {
+                if (Object.keys(displayedNode['components']).length > 1000) {
                     setTooLarge(true);
                     return;
                 }
@@ -247,7 +247,7 @@ const AtopileSchematic = ({ viewBlockId, savePos, handleLoad }) => {
     <div className="providerflow">
         {tooLarge ? (
         <div style={{ width: '100%', height: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <b>There are more than 200 components to display. Navigate to a different module.</b>
+            <b>There are more than 1000 components to display. Navigate to a different module.</b>
         </div>
       ) : (
         <ReactFlow
