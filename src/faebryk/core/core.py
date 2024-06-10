@@ -24,6 +24,7 @@ from faebryk.libs.util import (
     cast_assert,
     is_type_pair,
     print_stack,
+    try_avoid_endless_recursion,
     unique_ref,
 )
 from typing_extensions import Self
@@ -407,6 +408,7 @@ class GraphInterface(FaebrykLibObject):
     def __str__(self) -> str:
         return f"{str(self.node)}.{self.name}"
 
+    @try_avoid_endless_recursion
     def __repr__(self) -> str:
         return (
             super().__repr__() + f"| {self.get_full_name()}"
@@ -542,9 +544,11 @@ class Node(FaebrykLibObject):
         else:
             return ".".join([f"{name}" for _, name in hierarchy])
 
+    @try_avoid_endless_recursion
     def __str__(self) -> str:
         return f"<{self.get_full_name(types=True)}>"
 
+    @try_avoid_endless_recursion
     def __repr__(self) -> str:
         id_str = f"(@{hex(id(self))})" if ID_REPR else ""
         return f"<{self.get_full_name(types=True)}>{id_str}"
@@ -805,12 +809,14 @@ class Parameter(Generic[PV], Node):
 
         return most_specific
 
+    @try_avoid_endless_recursion
     def __str__(self) -> str:
         narrowest = self.get_most_narrow()
         if narrowest is self:
             return super().__str__()
         return str(narrowest)
 
+    @try_avoid_endless_recursion
     def __repr__(self) -> str:
         narrowest = self.get_most_narrow()
         if narrowest is self:
@@ -932,6 +938,9 @@ class ModuleInterface(Node):
             # workaround to help pylance
             def get_all(self) -> list[Parameter]:
                 return [cast_assert(Parameter, i) for i in super().get_all()]
+
+            def __str__(self) -> str:
+                return str({p.get_hierarchy()[-1][1]: p for p in self.get_all()})
 
         return PARAMS
 
@@ -1189,6 +1198,9 @@ class Module(Node):
             # workaround to help pylance
             def get_all(self) -> list[Parameter]:
                 return [cast_assert(Parameter, i) for i in super().get_all()]
+
+            def __str__(self) -> str:
+                return str({p.get_hierarchy()[-1][1]: p for p in self.get_all()})
 
         return PARAMS
 

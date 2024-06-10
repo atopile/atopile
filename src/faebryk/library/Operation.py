@@ -7,6 +7,7 @@ from textwrap import indent
 from typing import Generic, TypeVar
 
 from faebryk.core.core import Parameter
+from faebryk.libs.util import try_avoid_endless_recursion
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class Operation(Generic[PV], Parameter[PV]):
         self.operands = operands
         self.operation = operation
 
+    @try_avoid_endless_recursion
     def __repr__(self):
         fname = self.operation.__qualname__
         return (

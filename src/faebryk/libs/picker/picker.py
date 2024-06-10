@@ -14,7 +14,7 @@ from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
 )
 from faebryk.library.Electrical import Electrical
-from faebryk.libs.util import NotNone
+from faebryk.libs.util import NotNone, flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,41 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
     return option
 
 
+def _get_mif_top_level_modules(mif: ModuleInterface):
+    return [n for n in mif.NODEs.get_all() if isinstance(n, Module)] + [
+        m for nmif in mif.IFs.get_all() for m in _get_mif_top_level_modules(nmif)
+    ]
+
+
 def pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
+    try:
+        _pick_part_recursively(module, pick)
+    except PickError as e:
+        failed_parts = list(dict(flatten_dict(e.args[1])).keys())
+        for m in failed_parts:
+            logger.error(f"Could not find pick for {m}:\n {str(m.PARAMs)}")
+        raise PickError(e.args[0])
+
+    # check if lowest children are picked
+    def get_not_picked(m: Module):
+        out = [
+            get_not_picked(mod)
+            for mif in m.IFs.get_all()
+            for mod in _get_mif_top_level_modules(mif)
+        ]
+
+        if m.has_trait(has_part_picked):
+            return out
+        return out + [
+            get_not_picked(c) for c in m.NODEs.get_all() if isinstance(c, Module)
+        ]
+
+    not_picked = get_not_picked(module)
+    for np in not_picked:
+        logger.warning(f"Part without pick {np}")
+
+
+def _pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
     assert isinstance(module, Module)
 
     # pick only for most specialized module
@@ -115,14 +149,10 @@ def pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
         return
 
     # pick mif module parts
-    def _get_mif_top_level_modules(mif: ModuleInterface):
-        return [n for n in mif.NODEs.get_all() if isinstance(n, Module)] + [
-            m for nmif in mif.IFs.get_all() for m in _get_mif_top_level_modules(nmif)
-        ]
 
     for mif in module.IFs.get_all():
         for mod in _get_mif_top_level_modules(mif):
-            pick_part_recursively(mod, pick)
+            _pick_part_recursively(mod, pick)
 
     # pick
     pick(module)
@@ -131,7 +161,7 @@ def pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
 
     # if module has been specialized during pick, try again
     if module.get_most_special() != module:
-        pick_part_recursively(module, pick)
+        _pick_part_recursively(module, pick)
         return
 
     # go level lower
@@ -140,23 +170,22 @@ def pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
     to_pick: set[Module] = {
         c for c in children if isinstance(c, Module) and c is not module
     }
-    failed: set[Module] = set()
-
-    if not to_pick:
-        logger.warning(f"Module without pick: {module}")
+    failed: dict[Module, dict | None] = {}
 
     # try repicking as long as progress is being made
     while to_pick:
         for child in to_pick:
             try:
-                pick_part_recursively(child, pick)
+                _pick_part_recursively(child, pick)
             except PickError as e:
-                # shortcut for better error
-                if len(to_pick) == 1:
-                    raise e
-                failed.add(child)
-        if to_pick == failed:
-            raise PickError(f"Could not pick parts for {module=}: {failed}")
+                logger.debug(f"pick error {child}:")
+                failed[child] = e.args[1] if len(e.args) > 1 else None
+        if to_pick == set(failed.keys()):
+            failed_parts = list(dict(flatten_dict(failed)).keys())
+            raise PickError(
+                f"Could not pick parts for {module=}: {failed_parts}",
+                dict(failed),
+            )
 
-        to_pick = set(failed)
+        to_pick = set(failed.keys())
         failed.clear()
