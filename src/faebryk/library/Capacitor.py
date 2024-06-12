@@ -58,7 +58,7 @@ class Capacitor(Module):
                 ),
                 lambda ps: f"{as_unit_with_tolerance(ps[0], 'F')} "
                 f"{as_unit(ps[1].max, 'V')} "
-                f"{ps[2].max.name}",
+                f"{ps[2].max.value.name}",
             )
         )
         self.add_trait(can_attach_to_footprint_symmetrically())
