@@ -36,3 +36,16 @@ class Set(Generic[PV], Parameter[PV]):
 
     def __hash__(self) -> int:
         return sum(hash(p) for p in self.params)
+
+    # comparison operators
+    def __le__(self, other) -> bool:
+        return all(self.params <= other)
+
+    def __lt__(self, other) -> bool:
+        return all(self.params < other)
+
+    def __ge__(self, other) -> bool:
+        return all(self.params >= other)
+
+    def __gt__(self, other) -> bool:
+        return all(self.params > other)
