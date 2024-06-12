@@ -383,11 +383,8 @@ class GraphInterface(FaebrykLibObject):
         assert link not in other.connections
         self.connections.append(link)
         other.connections.append(link)
-        try:
+        if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"GIF connection: {link}")
-        # TODO
-        except Exception:
-            ...
 
         self.cache[other] = link
         other.cache[self] = link
@@ -792,7 +789,7 @@ class Parameter(Generic[PV], Node):
 
         assert (
             len(narrowest_next) == 1
-        ), f"Ambiguous narrowest {narrowest_next} for {self}"
+        ), "Ambiguous narrowest"  # {narrowest_next} for {self}"
         return next(iter(narrowest_next))
 
     @staticmethod
@@ -987,7 +984,8 @@ class ModuleInterface(Node):
         if not self.is_connected_to(other):
             return self
 
-        logger.debug(f"MIF connection: {self} to {other}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"MIF connection: {self} to {other}")
 
         def cross_connect(
             s_group: dict[ModuleInterface, type[Link]],
@@ -1082,7 +1080,8 @@ class ModuleInterface(Node):
             [type(sublink) for _, _, sublink in connection_map if sublink]
         )
 
-        logger.debug(f"Up connect {src_m} -> {dst_m}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Up connect {src_m} -> {dst_m}")
         src_m.connect(dst_m, linkcls=link)
 
     def _connect_across_hierarchies(self, other: ModuleInterface, linkcls: type[Link]):
@@ -1106,7 +1105,8 @@ class ModuleInterface(Node):
         except LinkFilteredException:
             return
 
-        logger.debug(f"{' '*2*_CONNECT_DEPTH.inc()}Connect {self} to {other}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"{' '*2*_CONNECT_DEPTH.inc()}Connect {self} to {other}")
         self._on_connect(other)
 
         con_depth_one = _CONNECT_DEPTH.value == 1

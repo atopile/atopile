@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 
+import inspect
 import logging
 from abc import abstractmethod
 from collections import defaultdict
+from textwrap import indent
 from typing import (
     Any,
     Callable,
@@ -344,16 +346,112 @@ def flatten_dict(d: dict):
             yield (k, v)
 
 
+def split_recursive_stack(
+    stack: Iterable[inspect.FrameInfo],
+) -> tuple[list[inspect.FrameInfo], int, list[inspect.FrameInfo]]:
+    """
+    Handles RecursionError by splitting the stack into three parts:
+    - recursion: the repeating part of the stack indicating the recursion.
+    - stack_towards_recursion: the part of the stack after the recursion
+        has been detected.
+
+    :param stack: The stack obtained from inspect.stack()
+    :return: tuple (recursion, recursion_depth, stack_towards_recursion)
+    """
+
+    def find_loop_len(sequence):
+        for loop_len in range(1, len(sequence) // 2 + 1):
+            if len(sequence) % loop_len:
+                continue
+            is_loop = True
+            for i in range(0, len(sequence), loop_len):
+                if sequence[i : i + loop_len] != sequence[:loop_len]:
+                    is_loop = False
+                    break
+            if is_loop:
+                return loop_len
+
+        return 0
+
+    def find_last_longest_most_frequent_looping_sequence_in_beginning(stack):
+        stack = list(stack)
+
+        loops = []
+
+        # iterate over all possible beginnings
+        for i in range(len(stack)):
+            # iterate over all possible endings
+            # try to maximize length of looping sequence
+            for j in reversed(range(i + 1, len(stack) + 1)):
+                # determine length of loop within this range
+                loop_len = find_loop_len(stack[i:j])
+                if loop_len:
+                    # check if skipped beginning is partial loop
+                    if stack[:i] != stack[j - i : j]:
+                        continue
+                    loops.append((i, j, loop_len))
+                    continue
+
+        # print(loops)
+        max_loop = max(loops, key=lambda x: (x[1] - x[0], x[1]), default=None)
+        return max_loop
+
+    stack = list(stack)
+
+    # Get the full stack representation as a list of strings
+    full_stack = [f"{frame.filename}:{frame.positions}" for frame in stack]
+
+    max_loop = find_last_longest_most_frequent_looping_sequence_in_beginning(full_stack)
+    assert max_loop
+    i, j, depth = max_loop
+
+    return stack[i : i + depth], depth, stack[j:]
+
+
+CACHED_RECUSION_ERRORS = set()
+
+
 def try_avoid_endless_recursion(f: Callable[..., str]):
     import sys
 
     def _f_no_rec(*args, **kwargs):
         limit = sys.getrecursionlimit()
-        sys.setrecursionlimit(100)
+        target = 100
+        sys.setrecursionlimit(target)
         try:
             return f(*args, **kwargs)
         except RecursionError:
-            logger.error("Recursion error while converting to str")
+            sys.setrecursionlimit(target + 1000)
+
+            rec, depth, non_rec = split_recursive_stack(inspect.stack()[1:])
+            recursion_error_str = indent(
+                "\n".join(
+                    [
+                        f"{frame.filename}:{frame.lineno} {frame.code_context}"
+                        for frame in rec
+                    ]
+                    + [f"... repeats {depth} times ..."]
+                    + [
+                        f"{frame.filename}:{frame.lineno} {frame.code_context}"
+                        for frame in non_rec
+                    ]
+                ),
+                "   ",
+            )
+
+            if recursion_error_str in CACHED_RECUSION_ERRORS:
+                logger.error(
+                    f"Recursion error: {f.__name__} {f.__code__.co_filename}:"
+                    + f"{f.__code__.co_firstlineno}: DUPLICATE"
+                )
+            else:
+                CACHED_RECUSION_ERRORS.add(recursion_error_str)
+                logger.error(
+                    f"Recursion error: {f.__name__} {f.__code__.co_filename}:"
+                    + f"{f.__code__.co_firstlineno}"
+                )
+                logger.error(recursion_error_str)
+
             return "<RECURSION ERROR WHILE CONVERTING TO STR>"
         finally:
             sys.setrecursionlimit(limit)
