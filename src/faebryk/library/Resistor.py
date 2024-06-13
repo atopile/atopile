@@ -44,8 +44,12 @@ class Resistor(Module):
                     self.PARAMs.resistance,
                     self.PARAMs.rated_power,
                 ),
-                lambda ps: f"{as_unit_with_tolerance(ps[0], 'Ω')} "
-                f"{as_unit(ps[1].max, 'W')}",
+                lambda ps: " ".join(
+                    filter(
+                        None,
+                        [as_unit_with_tolerance(ps[0], "Ω"), as_unit(ps[1], "W")],
+                    )
+                ),
             )
         )
         self.add_trait(has_designator_prefix_defined("R"))

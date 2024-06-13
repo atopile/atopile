@@ -5,7 +5,11 @@ import logging
 from enum import IntEnum, auto
 
 from faebryk.core.core import Module
-from faebryk.core.util import as_unit, as_unit_with_tolerance
+from faebryk.core.util import (
+    as_unit,
+    as_unit_with_tolerance,
+    enum_parameter_representation,
+)
 from faebryk.library.can_attach_to_footprint_symmetrically import (
     can_attach_to_footprint_symmetrically,
 )
@@ -56,9 +60,16 @@ class Capacitor(Module):
                     self.PARAMs.rated_voltage,
                     self.PARAMs.temperature_coefficient,
                 ),
-                lambda ps: f"{as_unit_with_tolerance(ps[0], 'F')} "
-                f"{as_unit(ps[1].max, 'V')} "
-                f"{ps[2].max.value.name}",
+                lambda ps: " ".join(
+                    filter(
+                        None,
+                        [
+                            as_unit_with_tolerance(ps[0], "F"),
+                            as_unit(ps[1], "V"),
+                            enum_parameter_representation(ps[2].get_most_narrow()),
+                        ],
+                    )
+                ),
             )
         )
         self.add_trait(can_attach_to_footprint_symmetrically())

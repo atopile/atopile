@@ -3,6 +3,7 @@
 
 import logging
 import math
+from enum import Enum
 from typing import Callable, Iterable, Sequence, SupportsFloat, Tuple, TypeVar, cast
 
 import networkx as nx
@@ -15,12 +16,14 @@ from faebryk.core.core import (
     Node,
     Parameter,
 )
+from faebryk.library.ANY import ANY
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.Constant import Constant
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.Range import Range
 from faebryk.library.Set import Set
+from faebryk.library.TBD import TBD
 from faebryk.libs.util import NotNone, cast_assert, round_str
 
 logger = logging.getLogger(__name__)
@@ -78,17 +81,73 @@ def get_unit_prefix(value: SupportsFloat, base: int = 1000):
     return unit_map(value, units, start="", base=base, allow_out_of_bounds=True)
 
 
-def as_unit(value: SupportsFloat, unit: str, base: int = 1000):
-    return get_unit_prefix(value, base=base) + unit
-
-
-def as_unit_with_tolerance(param: Range | Constant, unit: str, base: int = 1000):
+def enum_parameter_representation(param: Parameter, required: bool = False) -> str:
     if isinstance(param, Constant):
-        return as_unit(param.value, unit, base=base) + " ± 0%"
-    center, delta = param.as_center_tuple()
-    delta_percent = delta / center * 100
+        return param.value.name if isinstance(param.value, Enum) else str(param.value)
+    elif isinstance(param, Range):
+        return (
+            f"{enum_parameter_representation(param.min)} - "
+            f"{enum_parameter_representation(param.max)}"
+        )
+    elif isinstance(param, Set):
+        return f"Set({', '.join(map(enum_parameter_representation, param.params))})"
+    elif isinstance(param, TBD):
+        return "TBD" if required else ""
+    elif isinstance(param, ANY):
+        return "ANY" if required else ""
+    else:
+        return type(param).__name__
 
-    return f"{as_unit(center, unit, base=base)} ± {round_str(delta_percent)}%"
+
+def as_unit(
+    param: Parameter, unit: str, base: int = 1000, required: bool = False
+) -> str:
+    if isinstance(param, Constant):
+        return get_unit_prefix(param.value, base=base) + unit
+    elif isinstance(param, Range):
+        return (
+            as_unit(param.min, unit, base=base)
+            + " - "
+            + as_unit(param.max, unit, base=base, required=True)
+        )
+    elif isinstance(param, Set):
+        return (
+            "Set("
+            + ", ".join(map(lambda x: as_unit(x, unit, required=True), param.params))
+            + ")"
+        )
+    elif isinstance(param, TBD):
+        return "TBD" if required else ""
+    elif isinstance(param, ANY):
+        return "ANY" if required else ""
+
+    raise ValueError(f"Unsupported {param=}")
+
+
+def as_unit_with_tolerance(
+    param: Parameter, unit: str, base: int = 1000, required: bool = False
+) -> str:
+    if isinstance(param, Constant):
+        return as_unit(param, unit, base=base)
+    elif isinstance(param, Range):
+        center, delta = param.as_center_tuple()
+        delta_percent = round_str(delta / center * 100, 2)
+        return (
+            f"{as_unit(center, unit, base=base, required=required)} ±{delta_percent}%"
+        )
+    elif isinstance(param, Set):
+        return (
+            "Set("
+            + ", ".join(
+                map(lambda x: as_unit_with_tolerance(x, unit, base), param.params)
+            )
+            + ")"
+        )
+    elif isinstance(param, TBD):
+        return "TBD" if required else ""
+    elif isinstance(param, ANY):
+        return "ANY" if required else ""
+    raise ValueError(f"Unsupported {param=}")
 
 
 def get_all_nodes(node: Node, order_types=None) -> list[Node]:
