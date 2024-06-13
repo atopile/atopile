@@ -191,7 +191,7 @@ def _clean_none_and_empty(obj, rd=0):
     new_obj = obj
     if obj is None:
         return None
-    if type(obj) is dict:
+    if isinstance(obj, dict):
         new_obj = obj.copy()  # shallow
         for k, v in obj.items():
             v_ = _clean_none_and_empty(v, rd + 1)
@@ -199,14 +199,14 @@ def _clean_none_and_empty(obj, rd=0):
                 del new_obj[k]
                 continue
             new_obj[k] = v_
-    elif type(obj) is sexp.multi_key_dict:
+    elif isinstance(obj, sexp.multi_key_dict):
         new_obj.update(
             tuple_list=_clean_none_and_empty(obj.tuple_list, rd + 1),
             dict_=_clean_none_and_empty(obj.dict_, rd + 1),
         )
-    elif type(obj) is list:
+    elif isinstance(obj, list):
         new_obj = list(filter(lambda x: x is not None, map(_clean_none_and_empty, obj)))
-    elif type(obj) is tuple:
+    elif isinstance(obj, tuple):
         new_obj = tuple(
             filter(lambda x: x is not None, map(_clean_none_and_empty, obj))
         )

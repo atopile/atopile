@@ -153,6 +153,33 @@ class TestParameters(unittest.TestCase):
             resistor.get_current_flow_by_voltage_resistance(Constant(0.5)), Operation
         )
 
+    def test_comparisons(self):
+        # same type
+        self.assertGreater(Constant(2), Constant(1))
+        self.assertLess(Constant(1), Constant(2))
+        self.assertLessEqual(Constant(2), Constant(2))
+        self.assertGreaterEqual(Constant(2), Constant(2))
+        self.assertLess(Range(1, 2), Range(3, 4))
+        self.assertEqual(min(Range(1, 2), Range(3, 4), Range(5, 6)), Range(1, 2))
+
+        # mixed
+        self.assertLess(Constant(1), Range(2, 3))
+        self.assertGreater(Constant(4), Range(2, 3))
+        self.assertFalse(Constant(3) < Range(2, 4))
+        self.assertFalse(Constant(3) > Range(2, 4))
+        self.assertFalse(Constant(3) == Range(2, 4))
+        self.assertEqual(min(Constant(3), Range(5, 6), Constant(4)), Constant(3))
+
+        # nested
+        self.assertLess(Constant(1), Set([Constant(2), Constant(3)]))
+        self.assertLess(Range(1, 2), Range(Constant(3), Constant(4)))
+        self.assertLess(Range(1, 2), Set([Constant(4), Constant(3)]))
+        self.assertLess(Constant(Constant(Constant(1))), 2)
+        self.assertEqual(
+            min(Constant(Constant(Constant(1))), Constant(Constant(2))),
+            Constant(Constant(Constant(1))),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

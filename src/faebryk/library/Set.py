@@ -39,13 +39,13 @@ class Set(Generic[PV], Parameter[PV]):
 
     # comparison operators
     def __le__(self, other) -> bool:
-        return all(self.params <= other)
+        return all(p <= other for p in self.params)
 
     def __lt__(self, other) -> bool:
-        return all(self.params < other)
+        return all(p < other for p in self.params)
 
     def __ge__(self, other) -> bool:
-        return all(self.params >= other)
+        return all(p >= other for p in self.params)
 
     def __gt__(self, other) -> bool:
-        return all(self.params > other)
+        return all(p > other for p in self.params)

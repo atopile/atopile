@@ -14,7 +14,7 @@ def _cleanparsed(parsed):
     if isinstance(parsed, Symbol):
         return parsed.value()
 
-    if type(parsed) is list:
+    if isinstance(parsed, list):
         return tuple(map(_cleanparsed, parsed))
 
     return parsed

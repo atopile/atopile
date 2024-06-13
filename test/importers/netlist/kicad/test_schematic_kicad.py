@@ -5,13 +5,14 @@ import logging
 import os
 import unittest
 
+import pytest
+
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.skip(reason="Not implemented")
 class TestImportSchematicKicad(unittest.TestCase):
     def test_sch_eq(self):
-        self.assertTrue(False)
-
         def load_file(name):
             base_path = os.path.join(
                 os.path.dirname(__file__), "../../../../build/kicad6_test/test/"

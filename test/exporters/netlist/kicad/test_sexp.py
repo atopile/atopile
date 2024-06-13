@@ -55,7 +55,7 @@ def _dict2tuple(obj):
 
 def _cleanparsed(parsed):
     # recursion
-    if type(parsed) is list:
+    if isinstance(parsed, list):
         return tuple(map(_cleanparsed, parsed))
 
     # basecase 1
@@ -63,7 +63,7 @@ def _cleanparsed(parsed):
         return str(parsed.value())
 
     # workaround for empty strings to make sexpdata behave like sexp_parser
-    if type(parsed) is str and parsed == "":
+    if isinstance(parsed, str) and parsed == "":
         return '""'
 
     # basecase 2

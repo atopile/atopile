@@ -5,9 +5,12 @@ import logging
 import os
 import unittest
 
+import pytest
+
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.skip(reason="Not implemented")
 class TestNetlistKicad2FaebrykProject(unittest.TestCase):
     def test_eq(self):
         self.assertTrue(False)
