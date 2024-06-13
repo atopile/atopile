@@ -14,7 +14,7 @@ from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
 )
 from faebryk.library.Electrical import Electrical
-from faebryk.libs.util import NotNone, flatten_dict
+from faebryk.libs.util import NotNone, flatten, flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -122,17 +122,32 @@ def pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
 
     # check if lowest children are picked
     def get_not_picked(m: Module):
-        out = [
-            get_not_picked(mod)
-            for mif in m.IFs.get_all()
-            for mod in _get_mif_top_level_modules(mif)
-        ]
+        ms = m.get_most_special()
+
+        # check if parent is picked
+        if ms is not m:
+            parents = [p for p, _ in ms.get_hierarchy()]
+            if any(p.has_trait(has_part_picked) for p in parents):
+                return []
+
+        m = ms
+
+        out = flatten(
+            [
+                get_not_picked(mod)
+                for mif in m.IFs.get_all()
+                for mod in _get_mif_top_level_modules(mif)
+            ]
+        )
 
         if m.has_trait(has_part_picked):
             return out
-        return out + [
-            get_not_picked(c) for c in m.NODEs.get_all() if isinstance(c, Module)
-        ]
+
+        children = [c for c in m.NODEs.get_all() if isinstance(c, Module)]
+        if not children:
+            return out + [m]
+
+        return out + flatten([get_not_picked(c) for c in children])
 
     not_picked = get_not_picked(module)
     for np in not_picked:
