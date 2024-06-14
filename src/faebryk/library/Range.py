@@ -114,3 +114,9 @@ class Range(Generic[PV], Parameter[PV]):
 
     def __gt__(self, other) -> bool:
         return self.min > other
+
+    def __format__(self, format_spec):
+        return (
+            f"{super().__str__()}({format(self.bounds[0], format_spec)} <-> "
+            f"{format(self.bounds[1], format_spec)})"
+        )

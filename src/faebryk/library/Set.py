@@ -13,9 +13,6 @@ class Set(Generic[PV], Parameter[PV]):
         super().__init__()
         self.params = Set.flatten(set(params))
 
-        if not self.params:
-            raise ValueError("Set must contain at least one parameter")
-
     @staticmethod
     def flatten(params: set[Parameter]) -> set[Parameter]:
         return set(p for p in params if not isinstance(p, Set)) | set(

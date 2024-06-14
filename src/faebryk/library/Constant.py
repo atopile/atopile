@@ -1,14 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Generic, TypeVar
+from typing import Generic, SupportsAbs, TypeVar
 
 from faebryk.core.core import Parameter
 from faebryk.library.is_representable_by_single_value_defined import (
     is_representable_by_single_value_defined,
 )
 
-PV = TypeVar("PV")
+PV = TypeVar("PV", bound=SupportsAbs)
 
 
 class Constant(Generic[PV], Parameter[PV]):
@@ -44,3 +44,9 @@ class Constant(Generic[PV], Parameter[PV]):
 
     def __gt__(self, other) -> bool:
         return self.value > other
+
+    def __abs__(self):
+        return Constant(abs(self.value))
+
+    def __format__(self, format_spec):
+        return f"{super().__str__()}({format(self.value, format_spec)})"
