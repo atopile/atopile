@@ -77,6 +77,19 @@ def sync_track(
     source_board.Remove(new_track)
     return new_track
 
+# also pull in any silkscreen items
+def sync_drawing(
+    source_board: pcbnew.BOARD,
+    drawing: pcbnew.DRAWINGS,
+    target_board: pcbnew.BOARD
+) -> pcbnew.DRAWINGS:
+    """Sync a drawing to the target board."""
+    new_drawing: pcbnew.DRAWINGS = drawing.Duplicate().Cast()
+    new_drawing.SetParent(target_board)
+    new_drawing.SetLayer(drawing.GetLayer())
+    target_board.Add(new_drawing)
+    source_board.Remove(new_drawing)
+    return new_drawing
 
 #TODO: There must be a better way to update net of fill
 def update_zone_net(source_zone: pcbnew.ZONE, source_board: pcbnew.BOARD, target_zone: pcbnew.ZONE, target_board:pcbnew.BOARD, uuid_map: dict[str, str]):

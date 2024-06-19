@@ -8,6 +8,7 @@ from .common import (
     flip_dict,
     get_group_footprints,
     get_layout_map,
+    sync_drawing,
     sync_footprints,
     sync_track,
     sync_zone,
@@ -67,6 +68,10 @@ class PullGroup(pcbnew.ActionPlugin):
 
             for track in source_board.GetTracks():
                 item = sync_track(source_board, track, target_board)
+                g.AddItem(item)
+
+            for drawing in source_board.GetDrawings():
+                item = sync_drawing(source_board, drawing, target_board)
                 g.AddItem(item)
 
             for zone in source_board.Zones():
