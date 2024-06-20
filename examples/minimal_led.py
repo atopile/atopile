@@ -10,6 +10,7 @@ import logging
 import faebryk.library._F as F
 import typer
 from faebryk.core.core import Module
+from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.experiments.buildutil import (
     tag_and_export_module_to_netlist,
 )
@@ -32,7 +33,9 @@ class App(Module):
 
         # Parametrize
         self.NODEs.led.NODEs.led.PARAMs.color.merge(F.LED.Color.YELLOW)
-        self.NODEs.led.NODEs.led.PARAMs.brightness.merge(F.Range.lower_bound(30e-3))
+        self.NODEs.led.NODEs.led.PARAMs.brightness.merge(
+            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+        )
 
 
 def main():
