@@ -7,6 +7,7 @@ from .common import (
     calculate_translation,
     get_group_footprints,
     get_layout_map,
+    sync_drawing,
     sync_footprints,
     sync_track,
 )
@@ -63,9 +64,11 @@ class PushGroup(pcbnew.ActionPlugin):
                 source_board, target_board, known_layouts[g_name]["uuid_map"]
             )
 
-            for track in g.GetItems():
-                if isinstance(track, pcbnew.PCB_TRACK):
-                    sync_track(source_board, track, target_board)
+            for i in g.GetItems():
+                if isinstance(i, pcbnew.PCB_TRACK):
+                    sync_track(source_board, i, target_board)
+                elif isinstance(i, pcbnew.DRAWINGS):
+                    sync_drawing(source_board, i, target_board)
 
             # Shift all objects of interest by offset
             for fp in target_board.GetFootprints():
