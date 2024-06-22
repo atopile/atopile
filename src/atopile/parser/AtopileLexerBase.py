@@ -7,6 +7,8 @@ from antlr4.Token import CommonToken
 
 from .AtopileParser import AtopileParser
 
+import atopile.errors
+
 
 class AtopileLexerBase(Lexer):
     NEW_LINE_PATTERN = re.compile('[^\r\n\f]+')
@@ -16,7 +18,7 @@ class AtopileLexerBase(Lexer):
         super().__init__(input, output)
         self.tokens = []
         self.indents = []
-        self.opened = 0
+        self.opened = 0  # "opened" indicates braces/brackets etc...
         self.comments: dict[tuple[Any, int], str] = {}
 
     def reset(self):
@@ -62,6 +64,13 @@ class AtopileLexerBase(Lexer):
         count = 0
         for c in whitespace:
             if c == '\t':
+                raise atopile.errors.AtoNotImplementedError(
+                    "Tabs aren't supported. Please use spaces instead",
+                    src_path=self.inputStream.name,
+                    src_line=self._tokenStartLine,
+                    src_col=self._tokenStartColumn
+                )
+                # FIXME: this should be based on the last indent or something else instead of 8
                 count += 8 - count % 8
             else:
                 count += 1
@@ -85,8 +94,12 @@ class AtopileLexerBase(Lexer):
         next_ = self._input.LA(1)
         next_next = self._input.LA(2)
 
+        # unicode 10 = line-feed
+        # unicode 13 = carriage-return
+        # unicode 35 = hash (comments)
         if self.opened > 0 or (next_next != -1 and next_ in (10, 13, 35)):
             self.skip()
+
         else:
             self.emitToken(self.commonToken(AtopileParser.NEWLINE, new_line))
             indent = self.getIndentationCount(spaces)
