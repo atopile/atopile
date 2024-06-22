@@ -512,6 +512,32 @@ class HandlesPrimaries(AtopileParserVisitor):
             ) from ex
 
 
+class HandlesGetTypeInfo:
+    def _get_type_info(self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext) -> Optional[ClassLayer | pint.Unit]:
+        """Return the type information from a type_info context."""
+        if type_ctx := ctx.type_info():
+            return type_ctx.name_or_attr().getText()
+        return None
+
+        # TODO: parse types properly
+        if type_info := ctx.type_info():
+            assert isinstance(type_info, ap.Type_infoContext)
+            type_info_str: str = type_info.name_or_attr().getText()
+
+            try:
+                return lookup_class_in_closure(
+                    self.class_def_scope.top,
+                    type_info_str,
+                )
+            except KeyError:
+                pass
+
+            # TODO: implement types for ints, floats, strings, etc.
+            # voltages, currents, lengths etc...
+
+        return None
+
+
 class HandleStmtsFunctional(AtopileParserVisitor):
     """
     The base translator is responsible for methods common to
@@ -948,7 +974,7 @@ class BlockNotFoundError(errors.AtoKeyError):
     """
 
 
-class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
+class Dizzy(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
     """
     Dizzy is responsible for creating object layers, mixing cement,
     sand, aggregate, and water to create concrete.
@@ -1026,30 +1052,6 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
         """Don't go down blockdefs, they're just for defining objects."""
         return NOTHING
 
-    def _get_type_info(self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext) -> Optional[ClassLayer | pint.Unit]:
-        """Return the type information from a type_info context."""
-        if type_ctx := ctx.type_info():
-            return type_ctx.name_or_attr().getText()
-        return None
-
-        # TODO: parse types properly
-        if type_info := ctx.type_info():
-            assert isinstance(type_info, ap.Type_infoContext)
-            type_info_str: str = type_info.name_or_attr().getText()
-
-            try:
-                return lookup_class_in_closure(
-                    self.class_def_scope.top,
-                    type_info_str,
-                )
-            except KeyError:
-                pass
-
-            # TODO: implement types for ints, floats, strings, etc.
-            # voltages, currents, lengths etc...
-
-        return None
-
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
@@ -1110,7 +1112,7 @@ def _translate_addr_key_errors(ctx: ParserRuleContext):
         raise errors.AtoKeyError.from_ctx(ctx, f"Couldn't find {terse_addr}") from ex
 
 
-class Lofty(HandleStmtsFunctional, HandlesPrimaries):
+class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
     """Lofty's job is to walk orthogonally down (or really up) the instance tree."""
 
     def __init__(
@@ -1316,13 +1318,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         # FIXME: wait a second... class associated with the assignment?
         # I'm unconvinced this makes sense.
         # TODO: de-triplicate this
-        if type_info := ctx.type_info():
-            given_type = lookup_class_in_closure(
-                self.obj_layer_getter(self._class_addr_stack.top).obj_def,
-                type_info.name_or_attr()
-            )
-        else:
-            given_type = None
+        given_type = self._get_type_info(ctx)
 
         assignment = Assignment(
             src_ctx=ctx,
