@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,12 +34,24 @@ def rename_column(rows: list[dict[str, str]], old: str, new: str) -> None:
         row[new] = row.pop(old)
 
 
+def split_designator(designator: str) -> tuple[str, int]:
+    match = re.compile(r"(\d+)$").search(designator)
+    if match is None:
+        return (designator, 0)
+    prefix = designator[: match.start()]
+    number = int(match.group())
+    return (prefix, number)
+
+
 def write_bom_jlcpcb(components: set[Module], path: Path) -> None:
     if not path.parent.exists():
         os.makedirs(path.parent)
     with open(path, "w", newline="") as bom_csv:
         bomlines = [line for c in components if (line := _get_bomline(c))]
-        bomlines = sorted(_compact_bomlines(bomlines), key=lambda x: x.Designator)
+        bomlines = sorted(
+            _compact_bomlines(bomlines),
+            key=lambda x: split_designator(x.Designator.split(", ")[0]),
+        )
 
         rows = [vars(line) for line in bomlines]
         rename_column(rows, "LCSC_Partnumber", "LCSC Part #")
@@ -75,11 +88,13 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
                             f"{other_bomline.Designator} "
                             f"with {key}: {getattr(other_bomline,key)}"
                         )
+                # Sort designators in bomline by number
                 compact_bomline.Designator = ", ".join(
                     sorted(
                         (
                             compact_bomline.Designator + ", " + other_bomline.Designator
-                        ).split(", ")
+                        ).split(", "),
+                        key=lambda x: split_designator(x),
                     )
                 )
                 compact_bomline.Quantity += other_bomline.Quantity
