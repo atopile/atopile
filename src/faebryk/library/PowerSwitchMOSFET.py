@@ -2,27 +2,24 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.core import Module
-from faebryk.library.can_switch_power_defined import can_switch_power_defined
 from faebryk.library.Constant import Constant
 from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.MOSFET import MOSFET
+from faebryk.library.PowerSwitch import PowerSwitch
 from faebryk.library.Resistor import Resistor
 
 
-class PowerSwitchMOSFET(Module):
+class PowerSwitchMOSFET(PowerSwitch):
+    """
+    Power switch using a MOSFET
+
+    This power switch uses an NMOS when lowside, and a PMOS when highside.
+    """
+
     def __init__(self, lowside: bool, normally_closed: bool) -> None:
-        super().__init__()
+        super().__init__(normally_closed=normally_closed)
 
         self.lowside = lowside
-        self.normally_closed = normally_closed
-
-        class _IFs(Module.IFS()):
-            logic_in = ElectricLogic()
-            power_in = ElectricPower()
-            switched_power_out = ElectricPower()
-
-        self.IFs = _IFs(self)
 
         # components
         class _NODEs(Module.NODES()):
@@ -43,8 +40,13 @@ class PowerSwitchMOSFET(Module):
         )
 
         # pull gate
+        # lowside     normally_closed   pull up
+        # True        True              True
+        # True        False             False
+        # False       True              False
+        # False       False             True
         self.IFs.logic_in.get_trait(ElectricLogic.can_be_pulled).pull(
-            lowside and not normally_closed
+            lowside == normally_closed
         )
 
         # connect gate to logic
@@ -64,9 +66,3 @@ class PowerSwitchMOSFET(Module):
 
         # TODO do more with logic
         #   e.g check reference being same as power
-
-        self.add_trait(
-            can_switch_power_defined(
-                self.IFs.power_in, self.IFs.switched_power_out, self.IFs.logic_in
-            )
-        )

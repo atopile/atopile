@@ -51,7 +51,9 @@ from faebryk.library.Operation import Operation
 from faebryk.library.PJ398SM import PJ398SM
 from faebryk.library.Potentiometer import Potentiometer
 from faebryk.library.Power import Power
+from faebryk.library.PowerSwitch import PowerSwitch
 from faebryk.library.PowerSwitchMOSFET import PowerSwitchMOSFET
+from faebryk.library.PowerSwitchStatic import PowerSwitchStatic
 from faebryk.library.PoweredLED import PoweredLED
 from faebryk.library.QFN import QFN
 from faebryk.library.RJ45_Receptacle import RJ45_Receptacle
