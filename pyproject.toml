@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 # Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
 artifacts = [
-  "**/viewer/dist",
+    "**/viewer/dist",
 ]
 
 [tool.hatch.build.targets.sdist]
 artifacts = [
-  "**/viewer/dist",
+    "**/viewer/dist",
 ]
 
 [project]

@@ -4,8 +4,9 @@ from typing import Optional
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from toolz import groupby
 
-from atopile import components, errors, nets, layout, config
+from atopile import config, errors, layout, nets
 from atopile.address import AddrStr, get_name, get_relative_addr_str
+from atopile.components import abstract, manufacturing
 from atopile.instance_methods import (
     all_descendants,
     get_children,
@@ -25,11 +26,11 @@ from atopile.kicad6_datamodel import (
 )
 
 _get_mpn = errors.downgrade(
-    components.get_mpn, (components.MissingData, components.NoMatchingComponent)
+    manufacturing.get_mpn, (abstract.MissingData, abstract.NoMatchingComponent)
 )
 _get_value = errors.downgrade(
-    components.get_user_facing_value,
-    (components.MissingData, components.NoMatchingComponent),
+    manufacturing.get_user_facing_value,
+    (abstract.MissingData, abstract.NoMatchingComponent),
     default="?",
 )
 
@@ -74,7 +75,7 @@ class NetlistBuilder:
         parent = get_parent(node_addr)
         node = KicadNode(
             pin=get_name(node_addr),  # eg. 1
-            ref=components.get_designator(parent),  # eg. R1
+            ref=manufacturing.get_designator(parent),  # eg. R1
             pintype="stereo",
         )
         return node
@@ -102,11 +103,11 @@ class NetlistBuilder:
 
         # add the lib: prefix if it's not there or there is a different prefix
         # This is used by kicad to reference which library the footprint is from
-        footprint_with_prefix = components.get_footprint(comp_addr)
+        footprint_with_prefix = manufacturing.get_footprint(comp_addr)
         if ":" not in footprint_with_prefix:
             footprint_with_prefix = "lib:" + footprint_with_prefix
 
-        designator = components.get_designator(comp_addr)
+        designator = manufacturing.get_designator(comp_addr)
         constructed_component = KicadComponent(
             ref=designator,
             value=_get_value(comp_addr),
@@ -130,12 +131,12 @@ class NetlistBuilder:
         # otherwise we can't continue the netlist build
         for cltr, component in errors.iter_through_errors(all_components):
             with cltr():
-                components.get_footprint(component)
+                manufacturing.get_footprint(component)
 
         # group the components by their footprint - because that seems
         # to be the only distinguishing feature KiCAD cares about
         for footprint, group_components in groupby(
-            components.get_footprint, all_components
+            manufacturing.get_footprint, all_components
         ).items():
             libsource = self._libparts[footprint] = self.make_libpart(
                 group_components[0]

@@ -4,7 +4,7 @@ from antlr4 import InputStream
 
 from atopile import errors
 from atopile.expressions import RangedValue
-from atopile.front_end import HandlesPrimaries
+from atopile.front_end import HandlesPrimaries, AtoAny
 from atopile.parse import make_parser
 from atopile.parser.AtopileParser import AtopileParser
 
@@ -83,3 +83,12 @@ def test_bilateral_quantity_percent():
 def test_zero_proportional_qty():
     with pytest.raises(errors.AtoError):
         _run("0V ± 10%")
+
+
+def test_any():
+    input = InputStream("a = any")
+    input.name = "<inline>"
+
+    parsed = HandlesPrimaries().visit(make_parser(input).assign_stmt().assignable())
+
+    assert parsed is AtoAny

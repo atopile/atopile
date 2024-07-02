@@ -39,6 +39,7 @@ assignable
     | new_stmt
     | literal_physical
     | arithmetic_expression
+    | any_  // Any keyword representing an unconstrained variable
     ;
 
 declaration_stmt: name_or_attr type_info;
@@ -134,3 +135,4 @@ totally_an_integer : NUMBER;
 name : NAME;
 string : STRING;
 boolean_ : ('True' | 'False');
+any_ : 'any';

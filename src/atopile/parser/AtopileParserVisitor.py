@@ -249,5 +249,10 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#any_.
+    def visitAny_(self, ctx:AtopileParser.Any_Context):
+        return self.visitChildren(ctx)
+
+
 
 del AtopileParser

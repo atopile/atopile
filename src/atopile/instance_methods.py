@@ -17,7 +17,6 @@ def get_data_dict(addr: str) -> dict[str, Any]:
     instance = lofty.get_instance(addr)
     return {k: v[0].value for k, v in instance.assignments.items()}
 
-
 def _split_parent_and_key(addr: str) -> tuple[str, Optional[str]]:
     """Return the parent and key of the given address"""
     parent_addr = address.get_parent_instance_addr(addr)

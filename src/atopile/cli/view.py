@@ -59,21 +59,12 @@ async def save_pose(
     diagram_type = DiagramType(diagram_type)
     build_ctx: BuildContext = app.config["build_ctx"]
 
-    # FIXME: rip this logic outta here
     # We save the pose information to one file per-project
     # FIXME: figure out how we should actually
     # interact with these config files
-    lock_path = build_ctx.project_context.lock_file_path
-    if lock_path.exists():
-        with lock_path.open("r") as lock_file:
-            lock_data = yaml.safe_load(lock_file) or {}
-    else:
-        lock_data = {}
-
+    lock_data = atopile.config.get_lock_file_contents(build_ctx.lock_file_path)
     lock_data.setdefault("poses", {}).setdefault(diagram_type.name, {})[addr] = data.model_dump()
-
-    with lock_path.open("w") as lock_file:
-        yaml.safe_dump(lock_data, lock_file)
+    atopile.config.save_lock_file_contents(build_ctx.lock_file_path)
 
     return data, 200
 
