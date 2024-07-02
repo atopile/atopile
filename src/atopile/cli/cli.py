@@ -42,9 +42,6 @@ def python_interpreter_path(ctx, param, value):
 def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
     """Base CLI group."""
 
-    # Initialize telemetry
-    telemetry.setup_telemetry_data(ctx.invoked_subcommand)
-
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
 
@@ -52,6 +49,9 @@ def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
         debugpy.listen(("localhost", debug_port))
         logging.info("Starting debugpy on port %s", debug_port)
         debugpy.wait_for_client()
+
+    # Initialize telemetry
+    telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
     # set the log level
     if verbose == 1:

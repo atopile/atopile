@@ -95,7 +95,12 @@ def do_install(
             raise
         # If the link's broken, remove the .git directory so git treats it as copy-pasted code
         if dependency.link_broken:
-            robustly_rm_dir(abs_path / ".git")
+            try:
+                robustly_rm_dir(abs_path / ".git")
+            except (PermissionError, OSError, FileNotFoundError) as ex:
+                errors.AtoError(
+                    f"Failed to remove .git directory: {repr(ex)}"
+                ).log(log, logging.WARNING)
 
         if dependency.version_spec is None and installed_version:
             # If the user didn't specify a version, we'll
