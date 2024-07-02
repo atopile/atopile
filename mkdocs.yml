@@ -7,7 +7,6 @@ site_description: >-
   Join us in this adventure!
 
 nav:
-- Home: index.md
 - Docs:
   - getting-started.md
   - first_project.md
