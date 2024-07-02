@@ -1,4 +1,4 @@
-# Units and tolerances, assertions and maths :nerd_face:
+# Units and tolerances, assertions and maths
 
 Remember how NASA slung a rocket straight into Mars because of a metric/imperial boo boo?
 

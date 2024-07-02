@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from typing import Callable, ContextManager, Iterable, Optional, Type, TypeVar
+from types import ModuleType
 
 import rich
 from antlr4 import ParserRuleContext, Token
@@ -40,6 +41,7 @@ class _BaseAtoError(Exception):
         self.src_path = src_path
         self.src_line = src_line
         self.src_col = src_col
+        self._logged = False
 
     @classmethod
     def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseAtoError":
@@ -48,10 +50,11 @@ class _BaseAtoError(Exception):
         return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
 
     @classmethod
-    def from_ctx(cls, ctx: ParserRuleContext, message: str, *args, **kwargs) -> "_BaseAtoError":
+    def from_ctx(cls, ctx: Optional[ParserRuleContext], message: str, *args, **kwargs) -> "_BaseAtoError":
         """Create an error from a context."""
-        src_path, src_line, src_col, *_ = get_src_info_from_ctx(ctx)
-        return cls(message, src_path=src_path, src_line=src_line, src_col=src_col, *args, **kwargs)
+        self = cls(message, *args, **kwargs)
+        self.set_src_from_ctx(ctx)
+        return self
 
     def set_src_from_ctx(self, ctx: ParserRuleContext):
         """Add source info from a context."""
@@ -85,6 +88,10 @@ class _BaseAtoError(Exception):
         )
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Error info:\n", exc_info=self)
+
+    def mark_logged(self) -> None:
+        """Mark this error as logged."""
+        self._logged = True
 
 
 class AtoFatalError(_BaseAtoError):
@@ -192,7 +199,11 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
         if debug:
             addr = ex.addr
         else:
-            addr = address.get_relative_addr_str(ex.addr)
+            addr = address.from_parts(
+                Path(address.get_file(ex.addr)).name,
+                address.get_entry_section(ex.addr),
+                address.get_instance_section(ex.addr),
+            )
         # FIXME: we ignore the escaping of the address here
         fmt_addr = f"[bold cyan]{addr}[/]"
 
@@ -230,16 +241,16 @@ def _log_ato_errors(
     ex.log(logger)
 
 
-def in_debug_session() -> bool:
+def in_debug_session() -> Optional[ModuleType]:
     """
-    Return whether we're in a debug session.
+    Return the debugpy module if we're in a debugging session.
     """
     if "debugpy" in sys.modules:
-        from debugpy import (
-            is_client_connected,  # pylint: disable=import-outside-toplevel
-        )
-        return is_client_connected()
-    return False
+        import debugpy
+        if debugpy.is_client_connected():
+            return debugpy
+
+    return None
 
 
 @contextmanager
@@ -254,12 +265,9 @@ def handle_ato_errors(logger: logging.Logger = log) -> None:
         # If we're in a debug session, we want to see the
         # unadulterated exception. We do this pre-logging because
         # we don't want the logging to potentially obstruct the debugger.
-        if in_debug_session():
-            raise
+        if debugpy := in_debug_session():
+            debugpy.breakpoint()
 
-        # FIXME: we're gonna repeat ourselves a lot if the same
-        # error causes an issue multiple times (which they do)
-        _log_ato_errors(ex, logger)
         raise AtoFatalError from ex
 
 
@@ -303,7 +311,12 @@ class ExceptionAccumulator:
     Collect a group of errors and only raise
     an exception group at the end of execution.
     """
-    def __init__(self, accumulate_types: Optional[Type[Exception]] = None, group_message: Optional[str] = None) -> None:
+
+    def __init__(
+        self,
+        accumulate_types: Optional[Type[Exception]] = None,
+        group_message: Optional[str] = None,
+    ) -> None:
         self.errors: list[Exception] = []
 
         # Set default values for the arguments
@@ -318,18 +331,17 @@ class ExceptionAccumulator:
         Return a context manager that collects any ato errors raised while executing it.
         """
         @contextmanager
-        def _collect_ato_errors():
-            # If in a debugging session - don't collect errors
-            # because we want to see the unadulterated exception
-            # to stop the debugger
-            if in_debug_session():
-                yield
-                return
-
+        def _collect_ato_errors(ctx: Optional[ParserRuleContext] = None):
             try:
                 yield
             except* self.accumulate_types as ex:
+                if debugpy := in_debug_session():
+                    debugpy.breakpoint()
+                for e in ex.exceptions:
+                    if ctx and hasattr(e, "set_src_from_ctx"):
+                        e.set_src_from_ctx(ctx)
                 self.errors.extend(ex.exceptions)
+                _log_ato_errors(ex, log)
 
         return _collect_ato_errors
 
@@ -404,5 +416,21 @@ def downgrade(
             if isinstance(default, collections.abc.Callable):
                 return default(*args, *kwargs)
             return default
+
+    return wrapper
+
+
+def log_ato_errors(func):
+    """
+    Decorator to log ato errors.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except* AtoError as ex:
+            _log_ato_errors(ex, log)
+            raise
 
     return wrapper

@@ -1,11 +1,13 @@
 import re
 import sys
-from typing import TextIO
+from typing import TextIO, Any
 
 from antlr4 import InputStream, Lexer
 from antlr4.Token import CommonToken
 
 from .AtopileParser import AtopileParser
+
+import atopile.errors
 
 
 class AtopileLexerBase(Lexer):
@@ -16,12 +18,14 @@ class AtopileLexerBase(Lexer):
         super().__init__(input, output)
         self.tokens = []
         self.indents = []
-        self.opened = 0
+        self.opened = 0  # "opened" indicates braces/brackets etc...
+        self.comments: dict[tuple[Any, int], str] = {}
 
     def reset(self):
         self.tokens = []
         self.indents = []
         self.opened = 0
+        self.comments = {}
         super().reset()
 
     def emitToken(self, token):
@@ -60,6 +64,13 @@ class AtopileLexerBase(Lexer):
         count = 0
         for c in whitespace:
             if c == '\t':
+                raise atopile.errors.AtoNotImplementedError(
+                    "Tabs aren't supported. Please use spaces instead",
+                    src_path=self.inputStream.name,
+                    src_line=self._tokenStartLine,
+                    src_col=self._tokenStartColumn
+                )
+                # FIXME: this should be based on the last indent or something else instead of 8
                 count += 8 - count % 8
             else:
                 count += 1
@@ -83,8 +94,12 @@ class AtopileLexerBase(Lexer):
         next_ = self._input.LA(1)
         next_next = self._input.LA(2)
 
+        # unicode 10 = line-feed
+        # unicode 13 = carriage-return
+        # unicode 35 = hash (comments)
         if self.opened > 0 or (next_next != -1 and next_ in (10, 13, 35)):
             self.skip()
+
         else:
             self.emitToken(self.commonToken(AtopileParser.NEWLINE, new_line))
             indent = self.getIndentationCount(spaces)
@@ -99,3 +114,14 @@ class AtopileLexerBase(Lexer):
                 while len(self.indents) > 0 and self.indents[-1] > indent:
                     self.emitToken(self.createDedent())
                     self.indents.pop()
+
+    def skip(self):
+        """
+        Skip the token, but in case it's a comment,
+        first store it in the comments dictionary.
+        """
+        # FIXME: there's surely a better way to distinguish comments
+        if self.text[0] == "#":
+            comment = self.text[1:].strip()
+            self.comments[(self.inputStream.name, self._tokenStartLine)] = comment
+        super().skip()

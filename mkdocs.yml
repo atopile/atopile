@@ -7,7 +7,6 @@ site_description: >-
   Join us in this adventure!
 
 nav:
-- Home: index.md
 - Docs:
   - getting-started.md
   - first_project.md
@@ -18,7 +17,11 @@ nav:
   - types.md
   - class.md
   - maths.md
+  - component_selection.md
   - doc-strings.md
+  - how-to.md
+  - View your project:
+    - view.md
   - Layout on kicad:
     - kicad.md
   - Version control / Manufacturing:
@@ -28,6 +31,9 @@ nav:
   - development.md
   - roadmap.md
 - Packages: https://packages.atopile.io
+- Example Projects:
+  - spin.md
+  - swoop.md
 - Blog:
   - blog/index.md
 plugins:

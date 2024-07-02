@@ -74,7 +74,11 @@ def generate_module_map(build_ctx: config.BuildContext) -> None:
         # Get the build context for the laid out module
         module_super_ctxs = laid_out_modules[module_super]
         if len(module_super_ctxs) > 1:
-            raise errors.AtoNotImplementedError()
+            raise errors.AtoNotImplementedError(
+                "There are multiple build configurations for this module.\n"
+                "We don't currently support multiple layouts for the same module."
+                "Show the issue some love to get it done: https://github.com/atopile/atopile/issues/399"
+            )
         module_super_ctx = module_super_ctxs[0]
 
         # Build up a map of UUIDs of the children of the module

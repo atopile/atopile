@@ -49,6 +49,8 @@ TRUE : 'True';
 FALSE : 'False';
 
 WITHIN : 'within';
+PASS : 'pass';
+
 
 //
 // Stuff from the Python3 grammer we based this on

@@ -68,6 +68,9 @@ def cursor_word_and_range(
             return word
     return None
 
+def remove_special_character(word: str) -> str:
+    return "".join(e for e in word if e not in "(){}")
+
 def as_list(content: Union[Any, List[Any], Tuple[Any]]) -> Union[List[Any], Tuple[Any]]:
     """Ensures we always get a list"""
     if isinstance(content, (list, tuple)):

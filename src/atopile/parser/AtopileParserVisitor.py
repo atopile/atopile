@@ -109,6 +109,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#pass_stmt.
+    def visitPass_stmt(self, ctx:AtopileParser.Pass_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#assert_stmt.
     def visitAssert_stmt(self, ctx:AtopileParser.Assert_stmtContext):
         return self.visitChildren(ctx)
@@ -134,6 +139,16 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#lt_eq_arithmetic_or.
+    def visitLt_eq_arithmetic_or(self, ctx:AtopileParser.Lt_eq_arithmetic_orContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#gt_eq_arithmetic_or.
+    def visitGt_eq_arithmetic_or(self, ctx:AtopileParser.Gt_eq_arithmetic_orContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#in_arithmetic_or.
     def visitIn_arithmetic_or(self, ctx:AtopileParser.In_arithmetic_orContext):
         return self.visitChildren(ctx)
@@ -149,13 +164,13 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#factor.
-    def visitFactor(self, ctx:AtopileParser.FactorContext):
+    # Visit a parse tree produced by AtopileParser#power.
+    def visitPower(self, ctx:AtopileParser.PowerContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#power.
-    def visitPower(self, ctx:AtopileParser.PowerContext):
+    # Visit a parse tree produced by AtopileParser#functional.
+    def visitFunctional(self, ctx:AtopileParser.FunctionalContext):
         return self.visitChildren(ctx)
 
 
@@ -179,23 +194,13 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#quantity_end.
-    def visitQuantity_end(self, ctx:AtopileParser.Quantity_endContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtopileParser#bilateral_quantity.
     def visitBilateral_quantity(self, ctx:AtopileParser.Bilateral_quantityContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#implicit_quantity.
-    def visitImplicit_quantity(self, ctx:AtopileParser.Implicit_quantityContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtopileParser#bilateral_nominal.
-    def visitBilateral_nominal(self, ctx:AtopileParser.Bilateral_nominalContext):
+    # Visit a parse tree produced by AtopileParser#quantity.
+    def visitQuantity(self, ctx:AtopileParser.QuantityContext):
         return self.visitChildren(ctx)
 
 

@@ -21,6 +21,7 @@ simple_stmt
     | assert_stmt
     | declaration_stmt
     | string_stmt
+    | pass_stmt
     ;
 
 compound_stmt: blockdef;
@@ -37,7 +38,6 @@ assignable
     : string
     | new_stmt
     | literal_physical
-    | name_or_attr
     | arithmetic_expression
     ;
 
@@ -55,6 +55,8 @@ new_stmt: 'new' name_or_attr;
 
 string_stmt: string;  // the unbound string is a statement used to add doc-strings
 
+pass_stmt: 'pass';  // the unbound string is a statement used to add doc-strings
+
 assert_stmt: 'assert' comparison;
 
 
@@ -68,10 +70,14 @@ comparison
 compare_op_pair
     : lt_arithmetic_or
     | gt_arithmetic_or
+    | lt_eq_arithmetic_or
+    | gt_eq_arithmetic_or
     | in_arithmetic_or;
 
 lt_arithmetic_or: '<' arithmetic_expression;
 gt_arithmetic_or: '>' arithmetic_expression;
+lt_eq_arithmetic_or: '<=' arithmetic_expression;
+gt_eq_arithmetic_or: '>=' arithmetic_expression;
 in_arithmetic_or: 'within' arithmetic_expression;
 
 
@@ -84,17 +90,17 @@ arithmetic_expression
     ;
 
 term
-    : term ('*' | '/') factor
-    | factor
+    : term ('*' | '/') power
+    | power
     ;
 
-factor
-    : '+' factor
-    | '-' factor
-    | power;
-
 power
-    : atom ('**' factor)?
+    : functional ('**' functional)?
+    ;
+
+functional
+    : atom
+    | name '(' atom+ ')'
     ;
 
 
@@ -104,7 +110,8 @@ power
 atom
     : name_or_attr
     | literal_physical
-    | arithmetic_group;
+    | arithmetic_group
+    ;
 
 arithmetic_group
     : '(' arithmetic_expression ')';
@@ -112,13 +119,11 @@ arithmetic_group
 literal_physical
     : bound_quantity
     | bilateral_quantity
-    | implicit_quantity;
+    | quantity;
 
-bound_quantity: quantity_end 'to' quantity_end;
-quantity_end: NUMBER name?;
-bilateral_quantity: bilateral_nominal PLUS_OR_MINUS bilateral_tolerance;
-implicit_quantity: NUMBER name?;
-bilateral_nominal: NUMBER name?;
+bound_quantity: quantity 'to' quantity;
+bilateral_quantity: quantity PLUS_OR_MINUS bilateral_tolerance;
+quantity: ('+' | '-')? NUMBER name?;
 bilateral_tolerance: NUMBER ('%' | name)?;
 
 name_or_attr: attr | name;

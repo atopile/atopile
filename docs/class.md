@@ -56,7 +56,7 @@ You want some way to say "we're putting a FET here, but we'll tell you which FET
 Subclassing is the way you say what a FET is, the replacement operator gives you the later.
 
 ```ato
-module NFET:
+component NFET:
     signal gate
     signal source
     signal drain

@@ -166,7 +166,7 @@ cython_debug/
 .ruff_cache
 
 # ide
-.vscode
+.vscode/
 
 # generic outputs
 artifacts

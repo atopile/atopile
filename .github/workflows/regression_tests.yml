@@ -1,0 +1,41 @@
+name: Continuous Integration
+
+on: push
+
+jobs:
+  regression_tests:
+    runs-on: ubuntu-latest
+    env:
+        ATO_NON_INTERACTIVE: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        repo:
+          - 'atopile/swoop'
+          - 'atopile/spin-servo-drive'
+
+    steps:
+      - uses: actions/checkout@v4
+      # Required due to a bug in the checkout action
+      # https://github.com/actions/checkout/issues/1471
+      - run: git fetch --prune --unshallow --tags
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install .
+
+      - name: Checkout circuit repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          path: 'circuit_repo'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build circuits
+        run: |
+          cd circuit_repo
+          ato build

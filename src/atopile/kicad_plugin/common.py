@@ -1,7 +1,8 @@
-import logging
 import json
+import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
+
 import pcbnew
 
 LOG_FILE = Path("~/.atopile/kicad-plugin.log").expanduser().absolute()
@@ -61,15 +62,69 @@ def flip_dict(d: dict) -> dict:
     return {v: k for k, v in d.items()}
 
 
-def sync_track(track: pcbnew.PCB_TRACK, target: pcbnew.BOARD) -> pcbnew.PCB_TRACK:
+def sync_track(
+    source_board: pcbnew.BOARD,
+    track: pcbnew.PCB_TRACK,
+    target_board: pcbnew.BOARD
+) -> pcbnew.PCB_TRACK:
     """Sync a track to the target board."""
     new_track: pcbnew.PCB_TRACK = track.Duplicate().Cast()
-    new_track.SetParent(target)
+    new_track.SetParent(target_board)
     new_track.SetStart(track.GetStart())
     new_track.SetEnd(track.GetEnd())
     new_track.SetLayer(track.GetLayer())
-    target.Add(new_track)
+    target_board.Add(new_track)
+    source_board.Remove(new_track)
     return new_track
+
+# also pull in any silkscreen items
+def sync_drawing(
+    source_board: pcbnew.BOARD,
+    drawing: pcbnew.DRAWINGS,
+    target_board: pcbnew.BOARD
+) -> pcbnew.DRAWINGS:
+    """Sync a drawing to the target board."""
+    new_drawing: pcbnew.DRAWINGS = drawing.Duplicate().Cast()
+    new_drawing.SetParent(target_board)
+    new_drawing.SetLayer(drawing.GetLayer())
+    target_board.Add(new_drawing)
+    source_board.Remove(new_drawing)
+    return new_drawing
+
+#TODO: There must be a better way to update net of fill
+def update_zone_net(source_zone: pcbnew.ZONE, source_board: pcbnew.BOARD, target_zone: pcbnew.ZONE, target_board:pcbnew.BOARD, uuid_map: dict[str, str]):
+    '''Finds a pin connected to original zone, pulls pin net name from new board net'''
+    source_netname = source_zone.GetNetname()
+    matched_fp = None
+    matched_pad_index = None
+    for fp in source_board.GetFootprints():
+        for index, pad in enumerate(fp.Pads()):
+            if pad.GetNetname() == source_netname:
+                matched_fp = fp
+                matched_pad_index = index
+
+    if matched_fp and matched_pad_index:
+        matched_fp_uuid = get_footprint_uuid(matched_fp)
+        target_fp_uuid = uuid_map.get(matched_fp_uuid,None)
+        if target_fp_uuid:
+            target_uuids = footprints_by_uuid(target_board)
+            target_fp = target_uuids.get(target_fp_uuid,None)
+            if target_fp:
+                new_netinfo = target_fp.Pads()[matched_pad_index].GetNet()
+                target_zone.SetNet(new_netinfo)
+                return
+
+    # TODO: Verify that this will always set net to no net
+    target_zone.SetNetCode(0)
+
+
+def sync_zone(zone: pcbnew.ZONE, target: pcbnew.BOARD) -> pcbnew.ZONE:
+    """Sync a zone to the target board."""
+    new_zone: pcbnew.ZONE = zone.Duplicate().Cast()
+    new_zone.SetParent(target)
+    new_zone.SetLayer(zone.GetLayer())
+    target.Add(new_zone)
+    return new_zone
 
 
 def sync_footprints(
@@ -90,4 +145,40 @@ def sync_footprints(
         target_fp.SetPosition(source_fp.GetPosition())
         target_fp.SetOrientation(source_fp.GetOrientation())
         target_fp.SetLayer(source_fp.GetLayer())
+        # Ref Designators
+        target_fp.Reference().SetAttributes(source_fp.Reference().GetAttributes())
+        target_ref: pcbnew.FP_TEXT = target_fp.Reference()
+        source_ref: pcbnew.FP_TEXT = source_fp.Reference()
+        target_ref.SetPosition(source_ref.GetPosition())
+
     return missing_uuids
+
+
+def find_anchor_footprint(fps: Iterable[pcbnew.FOOTPRINT]) -> pcbnew.FOOTPRINT:
+    """Return anchor footprint with largest pin count in board or group: tiebreaker size"""
+    # fps = layout.GetFootprints()
+    # fps = [item for item in layout.GetItems() if isinstance(item, pcbnew.FOOTPRINT)]
+    max_padcount = 0
+    max_area = 0
+    anchor_fp = None
+    for fp in fps:
+        if fp.GetPadCount() > max_padcount or (fp.GetPadCount()==max_padcount and fp.GetArea()>max_area):
+            anchor_fp = fp
+            max_padcount = fp.GetPadCount()
+            max_area = fp.GetArea()
+    return anchor_fp
+
+
+def get_group_footprints(group: pcbnew.PCB_GROUP) -> list[pcbnew.FOOTPRINT]:
+    """Return a list of footprints in a group."""
+    return [item for item in group.GetItems() if isinstance(item, pcbnew.FOOTPRINT)]
+
+
+def calculate_translation(source_fps: Iterable[pcbnew.FOOTPRINT], target_fps: Iterable[pcbnew.FOOTPRINT]) -> pcbnew.VECTOR2I:
+    """Calculate the translation vector between two groups of footprints."""
+    source_anchor_fp = find_anchor_footprint(source_fps)
+    source_offset = source_anchor_fp.GetPosition()
+    target_anchor_fp = find_anchor_footprint(target_fps)
+    target_offset = target_anchor_fp.GetPosition()
+    total_offset = target_offset - source_offset
+    return total_offset

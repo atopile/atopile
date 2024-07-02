@@ -25,6 +25,7 @@ CONFIG_FILENAME = "ato.yaml"
 ATO_DIR_NAME = ".ato"
 MODULE_DIR_NAME = "modules"
 BUILD_DIR_NAME = "build"
+LOCK_FILE_NAME = "ato-lock.yaml"
 
 
 _converter = cattrs.Converter()
@@ -47,13 +48,16 @@ class ProjectBuildConfig:
     """Config for a build."""
 
     entry: Optional[str] = None
-    targets: list[str] = ["__default__"]
+    targets: list[str] = Factory(lambda: ["__default__"])
+    exclude_targets: list[str] = Factory(list)
+    fail_on_drcs: bool = False
+    dont_solve_equations: bool = False
 
 
 @define
 class ProjectServicesConfig:
     """A config for services used by the project."""
-    components: str = "https://atopile-component-server-atsuhzfd5a-uc.a.run.app/jlc"
+    components: str = "https://component-server-3033-5335559d-kjaci698.onporter.run/jlc/v1"
 
 
 @define
@@ -71,7 +75,7 @@ class Dependency:
         for splitter in atopile.version.OPERATORS + ("@",):
             if splitter in spec_str:
                 try:
-                    name, version_spec = spec_str.split(splitter)
+                    name, version_spec = spec_str.rsplit(splitter, 1)
                     name = name.strip()
                     version_spec = version_spec.strip()
                     version_spec = splitter + version_spec
@@ -234,6 +238,7 @@ class ProjectContext:
     src_path: Path  # abs path to the source directory
     module_path: Path  # abs path to the module directory
     layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
+    lock_file_path: Path  # eg. path/to/project/ato-lock.yaml
     config: ProjectConfig
 
     @classmethod
@@ -245,6 +250,7 @@ class ProjectContext:
             src_path=Path(config.location) / config.paths.src,
             module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,
             layout_path=Path(config.location) / config.paths.layout,
+            lock_file_path=Path(config.location) / LOCK_FILE_NAME,
             config=config,
         )
 
@@ -300,8 +306,12 @@ class BuildContext:
 
     entry: address.AddrStr  # eg. "path/to/project/src/entry-name.ato:module.path"
     targets: list[str]
+    exclude_targets: list[str]
+    fail_on_drcs: bool
+    dont_solve_equations: bool
 
     layout_path: Optional[Path]  # eg. path/to/project/layouts/default/default.kicad_pcb
+    lock_file_path: Optional[Path]  # eg. path/to/project/ato-lock.yaml
     build_path: Path  # eg. path/to/project/build/<build-name>
 
     output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
@@ -323,7 +333,11 @@ class BuildContext:
             name=config_name,
             entry=abs_entry,
             targets=build_config.targets,
+            exclude_targets=build_config.exclude_targets,
+            fail_on_drcs=build_config.fail_on_drcs,
+            dont_solve_equations=build_config.dont_solve_equations,
             layout_path=find_layout(project_context.project_path / project_context.layout_path / config_name),
+            lock_file_path=project_context.project_path / LOCK_FILE_NAME,
             build_path=build_path,
             output_base=build_path / config_name,
         )

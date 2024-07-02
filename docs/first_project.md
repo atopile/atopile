@@ -23,7 +23,8 @@ You can create your own project instead of using ato create. Perhaps you will wa
 ├── venv -> (active) virtual environment with python^3.11 and atopile installed
 └── your-project
     ├── ato.yaml --> definition file for your atopile project
-    ├── elec --> your virtual environment
+    ├── ato-lock.yaml --> file managed by atopile. Used to store automatically selected components + component position in the schematic
+    ├── elec --> files related to your electrical design
     │    ├── src
     │    │   └── file.ato
     │    └── layout
@@ -32,7 +33,7 @@ You can create your own project instead of using ato create. Perhaps you will wa
     │            ├── kicad-project.kicad_pcb
     │            ├── kicad-project.kicad_sch
     │            └── fp-lib-table
-    └── ci/cd file --> useful for running jobs automatically on your repo
+    └── .github/workflows/ci_and_cd.yml file --> useful for running jobs automatically on your repo through github actions
 ```
 
 !!! tip

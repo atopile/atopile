@@ -2,7 +2,7 @@ from typing import Any, Callable, Iterable, Optional
 
 from atopile import address, errors
 from atopile.address import AddrStr
-from atopile.front_end import ClassLayer, Link, lofty, Instance
+from atopile.front_end import ClassLayer, Link, lofty, Instance, Assignment
 
 
 def get_children(addr: str) -> Iterable[AddrStr]:
@@ -18,14 +18,34 @@ def get_data_dict(addr: str) -> dict[str, Any]:
     return {k: v[0].value for k, v in instance.assignments.items()}
 
 
-def get_data(addr: str, key: str) -> Any:
+def _split_parent_and_key(addr: str) -> tuple[str, Optional[str]]:
+    """Return the parent and key of the given address"""
+    parent_addr = address.get_parent_instance_addr(addr)
+    key = address.get_name(addr)
+    return parent_addr, key
+
+
+def get_assignments(addr: str, key: Optional[str] = None) -> list[Assignment]:
+    """Return the assignment the address points at"""
+    if not key:
+        parent_addr, key = _split_parent_and_key(addr)
+    else:
+        parent_addr = addr
+
+    parent_inst = lofty.get_instance(parent_addr)
+
+    if key not in parent_inst.assignments:
+        raise errors.AtoKeyError(f"{parent_inst} has no attribute {key}")
+
+    return parent_inst.assignments[key]
+
+
+def get_data(addr: str, key: Optional[str] = None) -> Any:
     """Return the data at the given address"""
-    instance = lofty.get_instance(addr)
-    if assignments := instance.assignments.get(key):
-        if assignments[0].value is not None:
-            return assignments[0].value
-        raise errors.AtoKeyError(f"{addr} has no value for {key}")
-    raise errors.AtoKeyError(f"{addr} has no attribute {key}")
+    assignments = get_assignments(addr, key)
+    if assignments[0].value is not None:
+        return assignments[0].value
+    raise errors.AtoKeyError(f"{addr} is declared, but has no value for {key}")
 
 
 def all_descendants(addr: str) -> Iterable[str]:

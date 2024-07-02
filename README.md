@@ -33,46 +33,49 @@ What's your story in electronics? What would you like us to build? Come talk on 
 
 ## ⚡️`ato` Code Examples
 
-### Simple Examples:
-
-#### Voltage Divider
+### A simple voltage divider
 ```python
 from "generics/resistors.ato" import Resistor
+from "generics/interfaces.ato" import Power, Pair
 
-module VoltageDivider:
-    signal top
-    signal out
-    signal bottom
+module VDiv: #this name needs to match the name in the ato.yaml config file
+    power = new Power
+    output = new Pair
 
     r_top = new Resistor
-    r_top.package = "R0402"
+    r_top.package = "0402"
 
     r_bottom = new Resistor
     r_bottom.package = "0402"
 
-    top ~ r_top.p1; r_top.p2 ~ out
-    out ~ r_bottom.p1; r_bottom.p2 ~ bottom
+    power.vcc ~ r_top.p1; r_top.p2 ~ output.io
+    output.io ~ r_bottom.p1; r_bottom.p2 ~ power.gnd; power.gnd ~ output.gnd
 
-    r_total: resistance
     v_in: voltage
     v_out: voltage
     i_q: current
 
     assert v_in * r_bottom.value / (r_top.value + r_bottom.value) within v_out
     assert v_in / (r_bottom.value + r_top.value) within i_q
+
+    v_in = 3.3V +/- 2%
+    v_out = 1.8V +/- 5%
+    i_q = 1mA +/- 10%
 ```
 
-#### RP2040 Blinky Circuit
+### The classic "Blinky" circuit
+
+Define your design with **ato code**
 ```python
-import RP2040Kit from "rp2040/RP2040Kit.ato"
+import RP2040Kit from "rp2040/RP2040Kit.ato" # run `ato install rp2040` to install
 import LEDIndicatorRed from "generics/leds.ato"
-import LDOReg3V3 from "regulators/regulators.ato"
-import USBCConn from "usb-connectors/usb-connectors.ato"
+import LV2842Kit from "lv2842xlvddcr/lv2842kit.ato" # run `ato install lv2842xlvddcr` to install
+import USBCConn from "usb-connectors/usb-connectors.ato" # run `ato install usb-connectors` to install
 
 module Blinky:
     micro_controller = new RP2040Kit
     led_indicator = new LEDIndicatorRed
-    voltage_regulator = new LDOReg3V3
+    voltage_regulator = new LV2842Kit
     usb_c_connector = new USBCConn
 
     usb_c_connector.power ~ voltage_regulator.power_in
@@ -82,14 +85,27 @@ module Blinky:
 
     led_indicator.v_in = 3.3volt +/-10%
 ```
+Generate a **block diagram** from code
+<h1 align="center">
+    <picture>
+    <img alt="Schematics example" src="docs/assets/images/block_diagram_example.png" style="width: 80%;">
+    </picture>
+</h1>
 
-### Full Projects
+Produce **schematics** for documentation
+<h1 align="center">
+    <picture>
+    <img alt="Schematics example" src="docs/assets/images/schematic_example.png" style="width: 80%;">
+    </picture>
+</h1>
 
-Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) or the [logic card project](https://github.com/timot05/logic-card).
+### Discover Full Projects
+
+Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) or the [swoop motion controller](https://github.com/atopile/swoop).
 
 ## 🔨 Getting Started
 
-Find our [documentation](https://atopile.io/getting-started/) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
+Find our [documentation](https://atopile.io/getting-started/), [installation video](https://www.youtube.com/watch?v=XqFhFs-FhQ0) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
 
 `atopile` is on pypi.org: https://pypi.org/project/atopile/
 
@@ -97,7 +113,7 @@ Find our [documentation](https://atopile.io/getting-started/) and getting starte
 
 `atopile` requires *python3.11* or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
 
-Then just `pip install atopile` and you're good to go!
+Then just `pipx install atopile` and you're good to go!
 
 ## ❓ Why Atopile?
 

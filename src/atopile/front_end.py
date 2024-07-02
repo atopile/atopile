@@ -9,7 +9,6 @@ import operator
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
 from itertools import chain
-from numbers import Number
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
 
@@ -17,9 +16,10 @@ import pint
 from antlr4 import ParserRuleContext
 from attrs import define, field, resolve_types
 
-from atopile import address, config, errors, expressions
+from atopile import address, config, errors, expressions, parse_utils
 from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
+from atopile.expressions import RangedValue
 from atopile.generic_methods import recurse
 from atopile.parse import parser
 from atopile.parse_utils import get_src_info_from_ctx
@@ -75,18 +75,6 @@ class ClassDef(Base):
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.address}>"
-
-
-class RangedValue(expressions.RangedValue):
-    def __init__(
-        self,
-        val_a: Number | pint.Quantity,
-        val_b: Number | pint.Quantity,
-        unit: Optional[pint.Unit] = None,
-        src_ctx: Optional[ParserRuleContext] = None,
-    ):
-        self.src_ctx = src_ctx
-        super().__init__(val_a, val_b, unit)
 
 
 class Expression(expressions.Expression):
@@ -379,8 +367,8 @@ class HandlesPrimaries(AtopileParserVisitor):
 
     def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
         """Yield a physical value from a physical context."""
-        if ctx.implicit_quantity():
-            return self.visitImplicit_quantity(ctx.implicit_quantity())
+        if ctx.quantity():
+            return self.visitQuantity(ctx.quantity())
         if ctx.bilateral_quantity():
             return self.visitBilateral_quantity(ctx.bilateral_quantity())
         if ctx.bound_quantity():
@@ -388,125 +376,166 @@ class HandlesPrimaries(AtopileParserVisitor):
 
         raise ValueError  # this should be protected because it shouldn't be parseable
 
-    def visitImplicit_quantity(self, ctx: ap.Implicit_quantityContext) -> RangedValue:
+    def visitQuantity(self, ctx: ap.QuantityContext) -> RangedValue:
         """Yield a physical value from an implicit quantity context."""
         value = float(ctx.NUMBER().getText())
+
+        # Ignore the positive unary operator
+        if ctx.MINUS():
+            value = -value
 
         if ctx.name():
             unit = _get_unit_from_ctx(ctx.name())
         else:
             unit = pint.Unit("")
 
-        return RangedValue(
-            src_ctx=ctx,
+        value = RangedValue(
             val_a=value,
             val_b=value,
             unit=unit,
+            str_rep=parse_utils.reconstruct(ctx),
+            # We don't bother with other formatting info here
+            # because it's not used for un-toleranced values
         )
+        setattr(value, "src_ctx", ctx)
+        return value
 
     def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> RangedValue:
         """Yield a physical value from a bilateral quantity context."""
-        nominal = float(ctx.bilateral_nominal().NUMBER().getText())
-
-        if ctx.bilateral_nominal().name():
-            unit = _get_unit_from_ctx(ctx.bilateral_nominal().name())
-        else:
-            unit = pint.Unit("")
+        nominal_quantity = self.visitQuantity(ctx.quantity())
 
         tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
         tol_num = float(tol_ctx.NUMBER().getText())
 
+        # Handle proportional tolerances
         if tol_ctx.PERCENT():
             tol_divider = 100
-        # FIXME: hardcoding this seems wrong, but the parser/lexer wasn't picking up on it
         elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
             tol_divider = 1e6
         else:
             tol_divider = None
 
         if tol_divider:
-            if nominal == 0:
+            if nominal_quantity == 0:
                 raise errors.AtoError.from_ctx(
                     tol_ctx,
                     "Can't calculate tolerance percentage of a nominal value of zero",
                 )
 
             # In this case, life's a little easier, and we can simply multiply the nominal
-            return RangedValue(
-                src_ctx=ctx,
-                val_a=nominal * (1 - tol_num / tol_divider),
-                val_b=nominal * (1 + tol_num / tol_divider),
-                unit=unit,
+            value = RangedValue(
+                val_a=nominal_quantity.min_val - (nominal_quantity.min_val * tol_num / tol_divider),
+                val_b=nominal_quantity.max_val + (nominal_quantity.max_val * tol_num / tol_divider),
+                unit=nominal_quantity.unit,
+                str_rep=parse_utils.reconstruct(ctx),
             )
+            setattr(value, "src_ctx", ctx)
+            return value
 
+        # Handle tolerances with units
         if tol_ctx.name():
             # In this case there's a named unit on the tolerance itself
             # We need to make sure it's dimensionally compatible with the nominal
-            tolerance_unit = _get_unit_from_ctx(tol_ctx.name())
+            tol_quantity = RangedValue(-tol_num, tol_num, _get_unit_from_ctx(tol_ctx.name()), tol_ctx)
+
+            # If the nominal has no unit, then we take the unit's tolerance for the nominal
+            if nominal_quantity.unit == pint.Unit(""):
+                value = RangedValue(
+                    val_a=nominal_quantity.min_val - tol_quantity.min_val,
+                    val_b=nominal_quantity.max_val + tol_quantity.max_val,
+                    unit=tol_quantity.unit,
+                    str_rep=parse_utils.reconstruct(ctx),
+                )
+                setattr(value, "src_ctx", ctx)
+                return value
+
+            # If the nominal has a unit, then we rely on the ranged value's unit compatibility
             try:
-                tolerance = (tol_num * tolerance_unit).to(unit).magnitude
+                return nominal_quantity + tol_quantity
             except pint.DimensionalityError as ex:
                 raise errors.AtoTypeError.from_ctx(
                     tol_ctx.name(),
-                    f"Tolerance unit '{tolerance_unit}' is not dimensionally"
-                    f" compatible with nominal unit '{unit}'",
+                    f"Tolerance unit '{tol_quantity.unit}' is not dimensionally"
+                    f" compatible with nominal unit '{nominal_quantity.unit}'",
                 ) from ex
-
-            return RangedValue(
-                src_ctx=ctx,
-                val_a=nominal - tolerance,
-                val_b=nominal + tolerance,
-                unit=unit,
-            )
 
         # If there's no unit or percent, then we have a simple tolerance in the same units
         # as the nominal
-        return RangedValue(
-            src_ctx=ctx,
-            val_a=nominal - tol_num,
-            val_b=nominal + tol_num,
-            unit=unit,
+        value = RangedValue(
+            val_a=nominal_quantity.min_val - tol_num,
+            val_b=nominal_quantity.max_val + tol_num,
+            unit=nominal_quantity.unit,
+            str_rep=parse_utils.reconstruct(ctx),
         )
+        setattr(value, "src_ctx", ctx)
+        return value
 
     def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> RangedValue:
         """Yield a physical value from a bound quantity context."""
 
-        def _parse_end(
-            ctx: ap.Quantity_endContext,
-        ) -> tuple[float, Optional[pint.Unit]]:
-            value = float(ctx.NUMBER().getText())
-            if ctx.name():
-                unit = _get_unit_from_ctx(ctx.name())
+        start = self.visitQuantity(ctx.quantity(0))
+        assert start.tolerance == 0
+        end = self.visitQuantity(ctx.quantity(1))
+        assert end.tolerance == 0
+
+        # If only one of them has a unit, take the unit from the one which does
+        if (start.unit == pint.Unit("")) ^ (end.unit == pint.Unit("")):
+            if start.unit == pint.Unit(""):
+                known_unit = end.unit
             else:
-                unit = None
-            return value, unit
+                known_unit = start.unit
 
-        start_val, start_unit = _parse_end(ctx.quantity_end(0))
-        end_val, end_unit = _parse_end(ctx.quantity_end(1))
+            value = RangedValue(
+                val_a=start.min_val,
+                val_b=end.min_val,
+                unit=known_unit,
+                str_rep=parse_utils.reconstruct(ctx),
+            )
+            setattr(value, "src_ctx", ctx)
+            return value
 
-        if start_unit is None and end_unit is None:
-            unit = pint.Unit("")
-        elif start_unit and end_unit:
-            unit = start_unit
+        # If they've both got units, let the RangedValue handle
+        # the dimensional compatibility
+        try:
+            value = RangedValue(
+                val_a=start.min_qty,
+                val_b=end.min_qty,
+                str_rep=parse_utils.reconstruct(ctx),
+            )
+            setattr(value, "src_ctx", ctx)
+            return value
+        except pint.DimensionalityError as ex:
+            raise errors.AtoTypeError.from_ctx(
+                ctx,
+                f"Tolerance unit '{end.unit}' is not dimensionally"
+                f" compatible with nominal unit '{start.unit}'",
+            ) from ex
+
+
+class HandlesGetTypeInfo:
+    def _get_type_info(self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext) -> Optional[ClassLayer | pint.Unit]:
+        """Return the type information from a type_info context."""
+        if type_ctx := ctx.type_info():
+            return type_ctx.name_or_attr().getText()
+        return None
+
+        # TODO: parse types properly
+        if type_info := ctx.type_info():
+            assert isinstance(type_info, ap.Type_infoContext)
+            type_info_str: str = type_info.name_or_attr().getText()
+
             try:
-                end_val = (end_val * end_unit).to(start_unit).magnitude
-            except pint.DimensionalityError as ex:
-                raise errors.AtoTypeError.from_ctx(
-                    ctx,
-                    f"Tolerance unit '{end_unit}' is not dimensionally"
-                    f" compatible with nominal unit '{start_unit}'",
-                ) from ex
-        elif start_unit:
-            unit = start_unit
-        else:
-            unit = end_unit
+                return lookup_class_in_closure(
+                    self.class_def_scope.top,
+                    type_info_str,
+                )
+            except KeyError:
+                pass
 
-        return RangedValue(
-            src_ctx=ctx,
-            val_a=start_val,
-            val_b=end_val,
-            unit=unit,
-        )
+            # TODO: implement types for ints, floats, strings, etc.
+            # voltages, currents, lengths etc...
+
+        return None
 
 
 class HandleStmtsFunctional(AtopileParserVisitor):
@@ -606,15 +635,15 @@ class Roley(HandlesPrimaries):
     ) -> expressions.NumericishTypes:
         if ctx.ADD():
             return expressions.defer_operation_factory(
-                self.visit(ctx.arithmetic_expression()),
                 operator.add,
+                self.visit(ctx.arithmetic_expression()),
                 self.visit(ctx.term()),
             )
 
         if ctx.MINUS():
             return expressions.defer_operation_factory(
-                self.visit(ctx.arithmetic_expression()),
                 operator.sub,
+                self.visit(ctx.arithmetic_expression()),
                 self.visit(ctx.term()),
             )
 
@@ -623,37 +652,45 @@ class Roley(HandlesPrimaries):
     def visitTerm(self, ctx: ap.TermContext) -> expressions.NumericishTypes:
         if ctx.STAR():  # multiply
             return expressions.defer_operation_factory(
-                self.visit(ctx.term()),
                 operator.mul,
-                self.visit(ctx.factor()),
+                self.visit(ctx.term()),
+                self.visit(ctx.power()),
             )
 
         if ctx.DIV():
             return expressions.defer_operation_factory(
-                self.visit(ctx.term()),
                 operator.truediv,
-                self.visit(ctx.factor()),
+                self.visit(ctx.term()),
+                self.visit(ctx.power()),
             )
-
-        return self.visit(ctx.factor())
-
-    def visitFactor(self, ctx: ap.FactorContext) -> expressions.NumericishTypes:
-        # Ignore the unary plus operator
-
-        if ctx.MINUS():
-            return operator.neg(self.visit(ctx.power()))
 
         return self.visit(ctx.power())
 
     def visitPower(self, ctx: ap.PowerContext) -> expressions.NumericishTypes:
-        if ctx.factor():
+        if ctx.POWER():
             return expressions.defer_operation_factory(
-                self.visit(ctx.atom()),
                 operator.pow,
-                self.visit(ctx.factor()),
+                self.visit(ctx.functional(0)),
+                self.visit(ctx.functional(1)),
             )
 
-        return self.visit(ctx.atom())
+        return self.visit(ctx.functional(0))
+
+    def visitFunctional(self, ctx: ap.FunctionalContext) -> expressions.NumericishTypes:
+        """Parse a functional expression."""
+        if ctx.name():
+            name = ctx.name().getText()
+            if name == "min":
+                func = expressions.RangedValue.min
+            elif name == "max":
+                func = expressions.RangedValue.max
+            else:
+                raise errors.AtoNotImplementedError(f"Unknown function '{name}'")
+
+            values = tuple(map(self.visit, ctx.atom()))
+            return expressions.defer_operation_factory(func, *values)
+
+        return self.visit(ctx.atom(0))
 
     def visitAtom(self, ctx: ap.AtomContext) -> expressions.NumericishTypes:
         if ctx.arithmetic_group():
@@ -663,12 +700,9 @@ class Roley(HandlesPrimaries):
             return self.visit(ctx.literal_physical())
 
         if ctx.name_or_attr():
-            return expressions.Symbol(
-                address.add_instances(
-                    self.addr,
-                    self.visit_ref_helper(ctx.name_or_attr()),
-                )
-            )
+            ref = self.visit_ref_helper(ctx.name_or_attr())
+            addr = address.add_instances(self.addr, ref)
+            return expressions.Symbol(addr)
 
         raise ValueError
 
@@ -940,7 +974,7 @@ class BlockNotFoundError(errors.AtoKeyError):
     """
 
 
-class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
+class Dizzy(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
     """
     Dizzy is responsible for creating object layers, mixing cement,
     sand, aggregate, and water to create concrete.
@@ -1018,30 +1052,6 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
         """Don't go down blockdefs, they're just for defining objects."""
         return NOTHING
 
-    def _get_type_info(self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext) -> Optional[ClassLayer | pint.Unit]:
-        """Return the type information from a type_info context."""
-        if type_ctx := ctx.type_info():
-            return type_ctx.name_or_attr().getText()
-        return None
-
-        # TODO: parse types properly
-        if type_info := ctx.type_info():
-            assert isinstance(type_info, ap.Type_infoContext)
-            type_info_str: str = type_info.name_or_attr().getText()
-
-            try:
-                return lookup_class_in_closure(
-                    self.class_def_scope.top,
-                    type_info_str,
-                )
-            except KeyError:
-                pass
-
-            # TODO: implement types for ints, floats, strings, etc.
-            # voltages, currents, lengths etc...
-
-        return None
-
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
@@ -1050,7 +1060,10 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
             return KeyOptMap.empty()
 
         assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        if len(assigned_value_ref) > 1:
+        # FIXME: we need to avoid arithmetic expressions here because
+        # they need the context of their address at build time - which we
+        # don't have at the class-level
+        if len(assigned_value_ref) > 1 or assignable_ctx.arithmetic_expression():
             # we'll deal with overrides later too!
             return KeyOptMap.empty()
 
@@ -1060,6 +1073,7 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries):
             value=self.visitAssignable(assignable_ctx),
             given_type=self._get_type_info(ctx),
         )
+        _, line, *_ = get_src_info_from_ctx(ctx)
         return KeyOptMap.from_kv(assigned_value_ref, assignment)
 
     def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
@@ -1098,7 +1112,7 @@ def _translate_addr_key_errors(ctx: ParserRuleContext):
         raise errors.AtoKeyError.from_ctx(ctx, f"Couldn't find {terse_addr}") from ex
 
 
-class Lofty(HandleStmtsFunctional, HandlesPrimaries):
+class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
     """Lofty's job is to walk orthogonally down (or really up) the instance tree."""
 
     def __init__(
@@ -1285,26 +1299,30 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
         if assignable_ctx.new_stmt():
             return self.handle_new_assignment(ctx)
 
-        ########## Handle Overrides ##########
-
+        ########## Skip basic assignments ##########
         # We've already dealt with direct assignments in the previous layer
-        if len(assigned_ref) == 1:
+
+        # FIXME: perhaps it's be better to consolidate the class layers
+        # and instance construction. The ClassLayers just aren't that useful
+        # and require a bunch of this BS to function
+
+        if len(assigned_ref) == 1 and not assignable_ctx.arithmetic_expression():
             return KeyOptMap.empty()
 
+        ########## Handle Overrides + Arithmetic ##########
+
+        # Figure out what Instance object the assignment is being made to
         instance_addr_assigned_to = address.add_instances(
             self._instance_addr_stack.top, assigned_ref[:-1]
         )
         with _translate_addr_key_errors(ctx):
             instance_assigned_to = self._output_cache[instance_addr_assigned_to]
 
+        # Find the class associated with the assignment
+        # FIXME: wait a second... class associated with the assignment?
+        # I'm unconvinced this makes sense.
         # TODO: de-triplicate this
-        if type_info := ctx.type_info():
-            given_type = lookup_class_in_closure(
-                self.obj_layer_getter(self._class_addr_stack.top).obj_def,
-                type_info.name_or_attr()
-            )
-        else:
-            given_type = None
+        given_type = self._get_type_info(ctx)
 
         assignment = Assignment(
             src_ctx=ctx,
@@ -1417,6 +1435,10 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
                 operators.append("<")
             elif child_ctx := comp_ctx.gt_arithmetic_or():
                 operators.append(">")
+            elif child_ctx := comp_ctx.lt_eq_arithmetic_or():
+                operators.append("<=")
+            elif child_ctx := comp_ctx.gt_eq_arithmetic_or():
+                operators.append(">=")
             elif child_ctx := comp_ctx.in_arithmetic_or():
                 operators.append("within")
             else:
@@ -1436,7 +1458,32 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries):
 
         return KeyOptMap.empty()
 
+    def visitArithmetic_expression(self, ctx: ap.Arithmetic_expressionContext):
+        """
+        Handle arithmetic expressions, yielding either a numeric value or callable expression
 
+        This sits here because we need to defer these to Roley,
+        with the context of the current instance.
+        """
+        return Roley(self._instance_addr_stack.top).visitArithmetic_expression(ctx)
+
+
+def reset_caches(file: Path | str):
+    """Remove a file from the cache."""
+    file_str = str(file)
+
+    if file_str in parser.cache:
+        del parser.cache[file_str]
+
+    def _clear_cache(cache: dict[str, Any]):
+        # We do this in two steps to avoid modifying
+        # the dict while iterating over it
+        for addr in list(filter(lambda addr: addr.startswith(file_str), cache)):
+            del cache[addr]
+
+    _clear_cache(scoop._output_cache)
+    _clear_cache(dizzy._output_cache)
+    lofty._output_cache.clear()
 
 
 scoop = Scoop(parser.get_ast_from_file)
