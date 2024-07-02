@@ -139,6 +139,13 @@ def get_schematic_dict(build_ctx: atopile.config.BuildContext) -> dict:
 
                         pose = get_pose(ato_lock_contents, net_hash)
 
+                        # Make a name for the port by concatenating the names of the connectables
+                        # and the relative address from the view
+                        # FIXME: hacky way to get the relative address
+                        name = '/'.join(map(get_name, component_net))
+                        if component.startswith(addr):
+                            name = component[len(addr):] + "." + name
+
                         component_ports_dict[component_net_index] = {
                             "net_id": net_hash,
                             "name": '/'.join(map(get_name, component_net)),
