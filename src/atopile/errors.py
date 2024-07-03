@@ -41,7 +41,6 @@ class _BaseAtoError(Exception):
         self.src_path = src_path
         self.src_line = src_line
         self.src_col = src_col
-        self._logged = False
 
     @classmethod
     def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseAtoError":
@@ -89,9 +88,19 @@ class _BaseAtoError(Exception):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Error info:\n", exc_info=self)
 
-    def mark_logged(self) -> None:
-        """Mark this error as logged."""
-        self._logged = True
+    def get_frozen(self) -> tuple:
+        """
+        Return a frozen version of this error.
+        """
+        return (
+            self.__class__,
+            self.message,
+            self._title,
+            self.addr,
+            self.src_path,
+            self.src_line,
+            self.src_col,
+        )
 
 
 class AtoFatalError(_BaseAtoError):
@@ -212,10 +221,11 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
 
     return message.strip()
 
-
+_logged_exceptions: set[tuple[Type[Exception], tuple]] = set()
 def _log_ato_errors(
     ex: AtoError | ExceptionGroup,
     logger: logging.Logger,
+    de_dup: bool = True,
 ):
     """Helper function to consistently write errors to the log"""
     if isinstance(ex, ExceptionGroup):
@@ -231,7 +241,13 @@ def _log_ato_errors(
 
         return
 
+    # Check if this error has already been logged
+    hashable = ex.get_frozen()
+    if de_dup and hashable in _logged_exceptions:
+        return
+
     # Format and printout the error
+    _logged_exceptions.add(hashable)
     ex.log(logger)
 
 
