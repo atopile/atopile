@@ -119,8 +119,20 @@ def do_install(
             with _ctx():
                 if not dependency.link_broken:
                     # FIXME: these dependency objects are a little too entangled
-                    dependency.path = ctx.module_path / dependency.name
-                    install_dependency(dependency, upgrade, ctx.project_path / dependency.path)
+                    name = _name_and_clone_url_helper(dependency.name)[0]
+                    abs_path = ctx.module_path / name
+                    dependency.path = abs_path.relative_to(ctx.project_path)
+
+                    try:
+                        installed_version = install_dependency(dependency, upgrade, abs_path)
+                    except GitCommandError as ex:
+                        if "already exists and is not an empty directory" in ex.stderr:
+                            # FIXME: shouldn't `--upgrade` do this already?
+                            raise errors.AtoError(
+                                f"Directory {abs_path} already exists and is not empty. "
+                                "Please move or remove it before installing this new content."
+                            ) from ex
+                        raise
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
