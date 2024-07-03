@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [Install atopile via git](https://atopile.io/getting-started/#atopile-compiler-with-git)
+- [Install atopile via git](https://atopile.io/#atopile-compiler-with-git)
 
 ## Dev Tools
 

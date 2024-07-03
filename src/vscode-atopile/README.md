@@ -28,4 +28,4 @@ eg. in your `settings.json` ():
 
 You can find `/path/to/the/python/interpreter/used/for/ato` by running `ato --python-path` in your terminal, where `ato` is available.
 
-These instructions are also in the docs: https://atopile.io/getting-started/#vscode-extension-extension-store
+These instructions are also in the docs: https://atopile.io/#vscode-extension-extension-store
