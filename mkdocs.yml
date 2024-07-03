@@ -8,7 +8,7 @@ site_description: >-
 
 nav:
 - Docs:
-  - getting-started.md
+  - index.md
   - first_project.md
   - config.md
   - building.md
