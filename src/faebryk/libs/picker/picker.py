@@ -14,7 +14,7 @@ from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
 )
 from faebryk.library.Electrical import Electrical
-from faebryk.libs.util import NotNone, flatten, flatten_dict
+from faebryk.libs.util import NotNone, flatten
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,44 @@ class PickerOption:
     info: dict[str | DescriptiveProperties, str] | None = None
 
 
-class PickError(Exception): ...
+class PickError(Exception):
+    def __init__(self, message: str, module: Module):
+        super().__init__(message)
+        self.message = message
+        self.module = module
+
+
+class PickErrorChildren(PickError):
+    def __init__(self, module: Module, children: dict[Module, PickError]):
+        self.children = children
+
+        message = f"Could not pick parts for children of {module}:\n" + "\n".join(
+            f"{m}: caused by {v.message}" for m, v in self.get_all_children().items()
+        )
+        super().__init__(message, module)
+
+    def get_all_children(self):
+        return {
+            k: v
+            for k, v in self.children.items()
+            if not isinstance(v, PickErrorChildren)
+        } | {
+            module: v2
+            for v in self.children.values()
+            if isinstance(v, PickErrorChildren)
+            for module, v2 in v.get_all_children().items()
+        }
+
+
+class PickErrorParams(PickError):
+    def __init__(self, module: Module, options: list[PickerOption]):
+        self.options = options
+
+        message = f"Could not find part for {module} with params:\n" + "\n".join(
+            f"{pprint.pformat(o.params, indent=4)}" for o in self.options
+        )
+
+        super().__init__(message, module)
 
 
 class has_part_picked(ModuleTrait):
@@ -71,6 +108,8 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
         NotNone(p.get_parent())[1]: p.get_most_narrow() for p in module.PARAMs.get_all()
     }
 
+    options = list(options)
+
     try:
         option = next(
             filter(
@@ -84,10 +123,7 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
             )
         )
     except StopIteration:
-        raise PickError(
-            f"Could not find part for {module=} with params:\n"
-            f" {pprint.pformat(params, indent=4)}"
-        )
+        raise PickErrorParams(module, options)
 
     if option.pinmap:
         module.add_trait(can_attach_to_footprint_via_pinmap(option.pinmap))
@@ -114,11 +150,11 @@ def _get_mif_top_level_modules(mif: ModuleInterface):
 def pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
     try:
         _pick_part_recursively(module, pick)
-    except PickError as e:
-        failed_parts = list(dict(flatten_dict(e.args[1])).keys())
-        for m in failed_parts:
-            logger.error(f"Could not find pick for {m}:\n {str(m.PARAMs)}")
-        raise PickError(e.args[0])
+    except PickErrorChildren as e:
+        failed_parts = e.get_all_children()
+        for m, sube in failed_parts.items():
+            logger.error(f"Could not find pick for {m}:\n {sube.message}")
+        raise e
 
     # check if lowest children are picked
     def get_not_picked(m: Module):
@@ -185,7 +221,7 @@ def _pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
     to_pick: set[Module] = {
         c for c in children if isinstance(c, Module) and c is not module
     }
-    failed: dict[Module, dict | None] = {}
+    failed: dict[Module, PickError] = {}
 
     # try repicking as long as progress is being made
     while to_pick:
@@ -193,14 +229,9 @@ def _pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
             try:
                 _pick_part_recursively(child, pick)
             except PickError as e:
-                logger.debug(f"pick error {child}:")
-                failed[child] = e.args[1] if len(e.args) > 1 else None
+                failed[child] = e
         if to_pick == set(failed.keys()):
-            failed_parts = list(dict(flatten_dict(failed)).keys())
-            raise PickError(
-                f"Could not pick parts for {module=}: {failed_parts}",
-                dict(failed),
-            )
+            raise PickErrorChildren(module, failed)
 
         to_pick = set(failed.keys())
         failed.clear()
