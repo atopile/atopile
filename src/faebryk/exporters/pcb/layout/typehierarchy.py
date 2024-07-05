@@ -10,7 +10,6 @@ from faebryk.core.core import (
 )
 from faebryk.core.util import get_node_direct_children
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.libs.util import find_or, flatten, groupby
 
 logger = logging.getLogger(__name__)
@@ -31,9 +30,6 @@ class LayoutTypeHierarchy(Layout):
         Tip: Make sure at least one parent of node has an absolute position defined
         """
 
-        # Remove nodes that have a position defined
-        node = tuple(n for n in node if not n.has_trait(has_pcb_position))
-
         # Find the layout for each node and group by matched level
         levels = groupby(
             {
@@ -51,11 +47,6 @@ class LayoutTypeHierarchy(Layout):
             nodes = [n for n, _ in nodes_tuple]
 
             direct_children = flatten(get_node_direct_children(n) for n in nodes)
-
-            # Remove nodes that have a position defined
-            direct_children = [
-                n for n in direct_children if not n.has_trait(has_pcb_position)
-            ]
 
             if level is None:
                 self.apply(*direct_children)
