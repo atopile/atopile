@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import uuid
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, Generic, List, Tuple, TypeVar
 
@@ -78,6 +80,42 @@ class Node:
         return str(self) == str(__value)
 
 
+class UUID(Node):
+    @property
+    def uuid(self) -> str:
+        return self.node[1]
+
+    @uuid.setter
+    def uuid(self, value: str):
+        self.node[1] = value
+
+    @staticmethod
+    def gen_uuid(mark: str = ""):
+        # format: d864cebe-263c-4d3f-bbd6-bb51c6d2a608
+        value = uuid.uuid4().hex
+
+        suffix = mark.encode().hex()
+        value = value[: -len(suffix)] + suffix
+
+        DASH_IDX = [8, 12, 16, 20]
+        formatted = value
+        for i, idx in enumerate(DASH_IDX):
+            formatted = formatted[: idx + i] + "-" + formatted[idx + i :]
+
+        return formatted
+
+    def is_marked(self, mark: str):
+        suffix = mark.encode().hex()
+        return self.uuid.replace("-", "").endswith(suffix)
+
+    @classmethod
+    def factory(cls, value: str | None = None):
+        # generate uuid
+        value = value or cls.gen_uuid()
+
+        return cls([Symbol("uuid"), value])
+
+
 class Geom(Node):
     Coord = Tuple[float, float]
     sym: None | str = None
@@ -98,6 +136,151 @@ class Geom(Node):
         return self.get_prop("layer")[0].node[1]
 
 
+class Zone(Node):
+    class OutlineHatchMode(StrEnum):
+        EDGE = "edge"
+        FULL = "full"
+        NONE = "none"
+
+    class PadConnectMode(StrEnum):
+        NONE = "no"
+        SOLID = "yes"
+        THERMAL_RELIEFS = ""
+        THRU_HOLE_ONLY = "thru_hole_only"
+
+    class FillMode(StrEnum):
+        SOLID = ""
+        HATCHED = "hatch"
+
+    class HatchFillBorderAlgorithm(StrEnum):
+        HATCH_THICKNESS = "hatch_thickness"
+
+    class CornerSmoothingMode(StrEnum):
+        NONE = ""
+        FILLET = "fillet"
+        CHAMFER = "chamfer"
+
+    class IslandRemovalMode(StrEnum):
+        DO_NOT_REMOVE = "1"
+        REMOVE_ALL = ""
+        BELOW_AREA_LIMIT = "2"
+
+    @property
+    def net(self) -> int:
+        return int(self.get_prop("net")[0].node[1])
+
+    @property
+    def net_name(self) -> str:
+        return self.get_prop("net_name")[0].node[1]
+
+    @property
+    def layer(self) -> str:
+        return self.get_prop("layer")[0].node[1]
+
+    @property
+    def name(self) -> str:
+        return self.get_prop("name")[0].node[1]
+
+    @property
+    def hatch_outline_mode(self) -> OutlineHatchMode:
+        return self.get_prop("hatch")[0].node[1]
+
+    @property
+    def hatch_outline_pitch(self) -> float:
+        return self.get_prop("hatch")[0].node[2]
+
+    @property
+    def priority(self) -> int:
+        return self.get_prop("priority")[0].node[1]
+
+    @property
+    def uuid(self) -> UUID:
+        return UUID.from_node(self.get_prop("uuid")[0])
+
+    @classmethod
+    def factory(
+        cls,
+        net: int,
+        net_name: str,
+        layer: str,
+        uuid: UUID,
+        name: str,
+        polygon: List[Geom.Coord],
+        locked: bool = False,
+        outline_hatch_mode: OutlineHatchMode = OutlineHatchMode.EDGE,
+        outline_hatch_pitch: float = 0.5,
+        priority: int = 0,
+        connect_pads_mode: PadConnectMode = PadConnectMode.SOLID,
+        zone_pad_clearance: float = 0.5,
+        zone_min_thickness: float = 0.25,
+        filled_areas_thickness: bool = False,
+        fill_mode: FillMode = FillMode.SOLID,
+        hatch_fill_thickness: float = 1,
+        hatch_fill_gap: float = 1.5,
+        hatch_fill_orientation: float = 0,
+        hatch_fill_smoothing_level: int = 1,
+        hatch_fill_smoothing_value: float = 0,
+        hatch_fill_border_algorithm: HatchFillBorderAlgorithm = HatchFillBorderAlgorithm.HATCH_THICKNESS,  # noqa: E501
+        hatch_fill_min_hole_area: float = 0.3,
+        pad_connection_thermal_gap: float = 0.5,
+        pad_connection_thermal_bridge_width: float = 0.25,
+        corner_smoothing_mode: CornerSmoothingMode = CornerSmoothingMode.NONE,
+        corner_smoothing_radius: float = 1,
+        island_removal_mode: IslandRemovalMode = IslandRemovalMode.DO_NOT_REMOVE,
+        island_removal_min_area: float = 10.0,
+    ):
+        return Zone(
+            [
+                Symbol("zone"),
+                [Symbol("net"), net],
+                [Symbol("net_name"), net_name],
+                [Symbol("layer"), layer],
+                uuid.node,
+                [Symbol("name"), name],
+                [Symbol("locked"), yes_no(locked)],
+                [Symbol("hatch"), Symbol(outline_hatch_mode), outline_hatch_pitch],
+                [Symbol("priority"), priority],
+                [
+                    Symbol("connect_pads"),
+                    Symbol(connect_pads_mode),
+                    [Symbol("clearance"), zone_pad_clearance],
+                ],
+                [Symbol("min_thickness"), zone_min_thickness],
+                [Symbol("filled_areas_thickness"), yes_no(filled_areas_thickness)],
+                [
+                    Symbol("fill"),
+                    Symbol("yes"),
+                    [Symbol("mode"), Symbol(fill_mode)] if fill_mode else [],
+                    [Symbol("hatch_thickness"), hatch_fill_thickness],
+                    [Symbol("hatch_gap"), hatch_fill_gap],
+                    [Symbol("hatch_orientation"), hatch_fill_orientation],
+                    [Symbol("hatch_smoothing_level"), hatch_fill_smoothing_level],
+                    [Symbol("hatch_smoothing_value"), hatch_fill_smoothing_value],
+                    [
+                        Symbol("hatch_border_algorithm"),
+                        Symbol(hatch_fill_border_algorithm),
+                    ],
+                    [Symbol("hatch_min_hole_area"), hatch_fill_min_hole_area],
+                    [Symbol("thermal_gap"), pad_connection_thermal_gap],
+                    [
+                        Symbol("thermal_bridge_width"),
+                        pad_connection_thermal_bridge_width,
+                    ],
+                    [Symbol("smoothing"), Symbol(corner_smoothing_mode)]
+                    if corner_smoothing_mode
+                    else [],
+                    [Symbol("radius"), corner_smoothing_radius],
+                    [Symbol("island_removal_mode"), Symbol(island_removal_mode)],
+                    [Symbol("island_area_min"), island_removal_min_area],
+                ],
+                [
+                    Symbol("polygon"),
+                    [Symbol("pts"), *[[Symbol("xy"), *p] for p in polygon]],
+                ],
+            ]
+        )
+
+
 class Line(Geom):
     @property
     def start(self) -> Geom.Coord:
@@ -114,7 +297,7 @@ class Line(Geom):
         end: Geom.Coord,
         stroke: Geom.Stroke,
         layer: str,
-        tstamp: str,
+        uuid: UUID,
     ):
         assert cls.sym is not None
         return cls(
@@ -124,7 +307,7 @@ class Line(Geom):
                 [Symbol("end"), *end],
                 stroke.node,
                 [Symbol("layer"), layer],
-                [Symbol("tstamp"), tstamp],
+                uuid.node,
             ]
         )
 
@@ -158,7 +341,7 @@ class Arc(Geom):
         end: Geom.Coord,
         stroke: Geom.Stroke,
         layer: str,
-        tstamp: str,
+        uuid: UUID,
     ):
         assert cls.sym is not None
         return cls(
@@ -169,7 +352,7 @@ class Arc(Geom):
                 [Symbol("end"), *end],
                 stroke.node,
                 [Symbol("layer"), layer],
-                [Symbol("tstamp"), tstamp],
+                uuid.node,
             ]
         )
 
@@ -199,7 +382,7 @@ class Rect(Geom):
         stroke: Geom.Stroke,
         fill_type: str,
         layer: str,
-        tstamp: str,
+        uuid: Node,
     ):
         assert cls.sym is not None
         return cls(
@@ -210,7 +393,7 @@ class Rect(Geom):
                 stroke.node,
                 [Symbol("fill"), Symbol(fill_type)],
                 [Symbol("layer"), layer],
-                [Symbol("tstamp"), tstamp],
+                uuid.node,
             ]
         )
 
@@ -240,7 +423,7 @@ class Circle(Geom):
         stroke: Geom.Stroke,
         fill_type: str,
         layer: str,
-        tstamp: str,
+        uuid: UUID,
     ):
         assert cls.sym is not None
         return cls(
@@ -251,7 +434,7 @@ class Circle(Geom):
                 stroke.node,
                 [Symbol("fill"), Symbol(fill_type)],
                 [Symbol("layer"), layer],
-                [Symbol("tstamp"), tstamp],
+                uuid.node,
             ]
         )
 
@@ -293,6 +476,10 @@ class PCB(Node):
     @property
     def vias(self) -> List["Via"]:
         return [Via.from_node(n) for n in self.get_prop("via")]
+
+    @property
+    def zones(self) -> List["Zone"]:
+        return [Zone.from_node(n) for n in self.get_prop("zone")]
 
     @property
     def text(self) -> List["GR_Text"]:
@@ -417,8 +604,11 @@ class Pad(Node):
         return self.node[1]
 
     @property
-    def net(self) -> str:
-        return self.get_prop("net")[0].node[1]
+    def net(self) -> str | None:
+        net = self.get_prop("net")
+        if not net:
+            return None
+        return net[0].node[1]
 
     @property
     def size(self) -> Tuple[float, float]:
@@ -440,6 +630,14 @@ class Via(Node):
     def size_drill(self):
         return (self.get_prop("size")[0].node[1], self.get_prop("drill")[0].node[1])
 
+    @property
+    def uuid(self) -> UUID:
+        return UUID.from_node(self.get_prop("uuid")[0])
+
+    @property
+    def net(self) -> str:
+        return self.get_prop("net")[0].node[1]
+
     @classmethod
     def factory(
         cls,
@@ -447,7 +645,7 @@ class Via(Node):
         size_drill: Dimensions,
         layers: Tuple[str, str],
         net: str,
-        tstamp: str,
+        uuid: UUID,
     ):
         return cls(
             [
@@ -457,14 +655,42 @@ class Via(Node):
                 [Symbol("drill"), size_drill[1]],
                 [Symbol("layers"), *layers],
                 [Symbol("net"), net],
-                [Symbol("tstamp"), tstamp],
+                uuid.node,
+            ]
+        )
+
+
+class Font(Node):
+    @classmethod
+    def factory(
+        cls,
+        size: Tuple[float, float],
+        thickness: float,
+        bold: bool = False,
+        face: str = "",
+    ):
+        return cls(
+            [
+                Symbol("font"),
+                [Symbol("size"), *size],
+                [Symbol("thickness"), thickness],
+                [Symbol("bold"), Symbol("yes" if bold else "no")],
+                [Symbol("face"), face],
             ]
         )
 
 
 class Text(Node):
-    Font = Tuple[float, float, float]
+    class Justify(StrEnum):
+        MIRROR = "mirror"
+        LEFT = "left"
+        RIGHT = "right"
+        CENTER = ""
+        BOTTOM = "bottom"
+        TOP = "top"
+
     TEXT_IDX = None
+    TEXT_TYPE = None
 
     @property
     def layer(self) -> Node:
@@ -485,6 +711,10 @@ class Text(Node):
         self.node[self.TEXT_IDX] = value
 
     @property
+    def uuid(self) -> UUID:
+        return UUID.from_node(self.get_prop("uuid")[0])
+
+    @property
     def at(self):
         return At.from_node(self.get_prop("at")[0])
 
@@ -497,57 +727,88 @@ class Text(Node):
 
     @font.setter
     def font(self, value: Font):
-        font = self.get_prop("effects")[0].get_prop("font")[0]
-        font.get_prop("size")[0].node[1:3] = value[0:2]
-        font.get_prop("thickness")[0].node[1] = value[2]
+        self.get_prop("effects")[0].node[1][:] = value.node[:]
 
     def __repr__(self) -> str:
         return f"Text[{self.node}]"
 
     @classmethod
     def factory(
-        cls, text: str, at: "At", layer: str, font: Font, tstamp: str, text_type: str
+        cls,
+        text: str,
+        at: "At",
+        layer: str,
+        font: Font,
+        uuid: UUID,
+        text_type: str | None = None,
+        locked: bool = False,
+        knockout: bool = False,
+        lrjustify: Justify = Justify.CENTER,
+        udjustify: Justify = Justify.CENTER,
     ):
+        text_type = text_type or cls.TEXT_TYPE
+        assert text_type
+
         # TODO make more generic
         return Text(
             [
                 Symbol(text_type),
                 text,
+                [Symbol("locked"), yes_no(locked)],
                 at.node,
-                [Symbol("layer"), layer],
+                [Symbol("layer"), layer, Symbol("knockout") if knockout else None],
                 [
                     Symbol("effects"),
-                    [
-                        Symbol("font"),
-                        [Symbol("size"), *font[0:2]],
-                        [Symbol("thickness"), font[2]],
-                    ],
+                    font.node,
+                    [Symbol("justify"), Symbol(lrjustify), Symbol(udjustify)],
                 ],
-                [Symbol("tstamp"), tstamp],
+                uuid.node,
             ]
         )
 
 
 class FP_Text(Text):
     TEXT_IDX = 2
+    TEXT_TYPE = "fp_text"
 
     @property
     def text_type(self) -> str:
         return self.node[1].value()
 
     @classmethod
-    def factory(cls, text: str, at: "At", layer: str, font: Text.Font, tstamp: str):
-        generic = Text.factory(text, at, layer, font, tstamp, text_type="fp_text")
+    def factory(
+        cls,
+        text: str,
+        at: "At",
+        layer: str,
+        font: Font,
+        uuid: UUID,
+        locked: bool = False,
+        knockout: bool = False,
+        lrjustify: Text.Justify = Text.Justify.CENTER,
+        udjustify: Text.Justify = Text.Justify.CENTER,
+    ):
+        generic = Text.factory(
+            text_type=cls.TEXT_TYPE,
+            text=text,
+            at=at,
+            layer=layer,
+            font=font,
+            uuid=uuid,
+            locked=locked,
+            knockout=knockout,
+            lrjustify=lrjustify,
+            udjustify=udjustify,
+        )
+
+        # TODO: Why is this needed?
         generic.node.insert(1, Symbol("user"))
         return generic
 
 
 class GR_Text(Text):
     TEXT_IDX = 1
-
-    @classmethod
-    def factory(cls, text: str, at: "At", layer: str, font: Text.Font, tstamp: str):
-        return Text.factory(text, at, layer, font, tstamp, text_type="gr_text")
+    TEXT_TYPE = "gr_text"
 
 
 T = TypeVar("T", Tuple[float, float], Tuple[float, float, float])
@@ -557,18 +818,18 @@ class At(Generic[T], Node):
     Coord = T
 
     @property
-    def coord(self) -> Coord:
+    def coord(self) -> T:
         # TODO
         if len(self.node[1:]) < 3:
             return tuple(self.node[1:] + [0])
         return tuple(self.node[1:4])
 
     @coord.setter
-    def coord(self, value: Coord):
+    def coord(self, value: T):
         self.node[1:4] = list(value)
 
     @classmethod
-    def factory(cls, value: Coord):
+    def factory(cls, value: T):
         out = cls([Symbol("at")])
         out.coord = value
         return out
@@ -594,7 +855,17 @@ class Net(Node):
         )
 
 
-class Segment(Node):
+class _Segment(Node):
+    @property
+    def width(self) -> float:
+        return self.get_prop("width")[0].node[1]
+
+    @property
+    def uuid(self) -> UUID:
+        return UUID.from_node(self.get_prop("uuid")[0])
+
+
+class Segment(_Segment):
     Coord = Tuple[float, float]
 
     @classmethod
@@ -605,7 +876,7 @@ class Segment(Node):
         width: float,
         layer: str,
         net_id: int,
-        tstamp: str,
+        uuid: UUID,
     ):
         return cls(
             [
@@ -615,12 +886,12 @@ class Segment(Node):
                 [Symbol("width"), width],
                 [Symbol("layer"), layer],
                 [Symbol("net"), net_id],
-                [Symbol("tstamp"), tstamp],
+                uuid.node,
             ]
         )
 
 
-class Segment_Arc(Node):
+class Segment_Arc(_Segment):
     Coord = Tuple[float, float]
 
     @classmethod
@@ -632,7 +903,7 @@ class Segment_Arc(Node):
         width: float,
         layer: str,
         net_id: int,
-        tstamp: str,
+        uuid: UUID,
     ):
         return cls(
             [
@@ -643,6 +914,10 @@ class Segment_Arc(Node):
                 [Symbol("width"), width],
                 [Symbol("layer"), layer],
                 [Symbol("net"), net_id],
-                [Symbol("tstamp"), tstamp],
+                uuid.node,
             ]
         )
+
+
+def yes_no(value: bool) -> Symbol:
+    return Symbol("yes" if value else "no")

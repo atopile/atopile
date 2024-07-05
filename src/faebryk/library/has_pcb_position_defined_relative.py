@@ -13,8 +13,8 @@ class has_pcb_position_defined_relative(has_pcb_position.impl()):
         self.to = to
 
     def get_position(self) -> has_pcb_position.Point:
-        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+        from faebryk.libs.geometry.basic import Geometry
 
-        return PCB_Transformer.Geometry.abs_pos(
+        return Geometry.abs_pos(
             self.to.get_trait(has_pcb_position).get_position(), self.position_relative
         )

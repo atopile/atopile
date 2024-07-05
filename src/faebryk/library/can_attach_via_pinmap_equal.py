@@ -13,4 +13,4 @@ class can_attach_via_pinmap_equal(can_attach_via_pinmap.impl()):
             for k, v in self.get_obj().get_trait(has_equal_pins).get_pin_map().items()
         }
         for no, intf in pinmap.items():
-            pin_list[no].connect(intf)
+            pin_list[no].attach(intf)

@@ -3,11 +3,13 @@
 
 import logging
 
-from faebryk.core.core import Footprint, Module
+from faebryk.core.core import Module
 from faebryk.core.util import get_connected_mifs, get_parent_of_type
 from faebryk.library.Electrical import Electrical
+from faebryk.library.Footprint import Footprint
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
+from faebryk.library.Pad import Pad
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +35,8 @@ class Net(Module):
                             t := fp.get_trait(can_represent_kicad_footprint)
                         ).get_name_and_value()[0]
                         + "-"
-                        + t.get_pin_name(mif)
-                        for mif, fp in self.get_fps().items()
+                        + t.get_pin_name(pad)
+                        for pad, fp in self.get_fps().items()
                         if fp.has_trait(can_represent_kicad_footprint)
                     )
                 )
@@ -49,9 +51,10 @@ class Net(Module):
 
     def get_fps(self):
         return {
-            mif: fp
+            pad: fp
             for mif in self.get_connected_interfaces()
             if (fp := get_parent_of_type(mif, Footprint)) is not None
+            and (pad := get_parent_of_type(mif, Pad)) is not None
         }
 
     # TODO should this be here?

@@ -394,7 +394,7 @@ class GraphInterface(FaebrykLibObject):
         return set(self.cache.keys())
 
     def _is_connected(self, other: GraphInterface):
-        return self.cache.get(other)
+        return self is other or self.cache.get(other)
 
     def is_connected(self, other: GraphInterface):
         return self._is_connected(other) or other._is_connected(self)
@@ -1229,20 +1229,6 @@ class Module(Node):
             len(specialest_next) == 1
         ), f"Ambiguous specialest {specialest_next} for {self}"
         return next(iter(specialest_next))
-
-
-TF = TypeVar("TF", bound="Footprint")
-
-
-class _FootprintTrait(Generic[TF], _ModuleTrait[TF]): ...
-
-
-class FootprintTrait(_FootprintTrait["Footprint"]): ...
-
-
-class Footprint(Module):
-    def __init__(self) -> None:
-        super().__init__()
 
 
 # -----------------------------------------------------------------------------

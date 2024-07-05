@@ -4,7 +4,15 @@
 import logging
 import math
 from enum import Enum
-from typing import Callable, Iterable, Sequence, SupportsFloat, Tuple, TypeVar, cast
+from typing import (
+    Callable,
+    Iterable,
+    Sequence,
+    SupportsFloat,
+    Tuple,
+    TypeVar,
+    cast,
+)
 
 import networkx as nx
 from faebryk.core.core import (
@@ -15,6 +23,7 @@ from faebryk.core.core import (
     ModuleInterface,
     Node,
     Parameter,
+    Trait,
 )
 from faebryk.library.ANY import ANY
 from faebryk.library.can_bridge_defined import can_bridge_defined
@@ -296,10 +305,54 @@ def zip_moduleinterfaces(
             yield src_i, dst_i
 
 
+def get_node_direct_children(node: Node, include_mifs: bool = True):
+    out: list[Node] = list(node.NODEs.get_all())
+
+    if include_mifs and isinstance(node, (Module, ModuleInterface)):
+        mifs = node.IFs.get_all()
+        out.extend(mifs)
+
+    return out
+
+
+def get_node_tree(
+    node: Node,
+    include_mifs: bool = True,
+    include_root: bool = True,
+) -> dict[Node, dict[Node, dict]]:
+    out = get_node_direct_children(node, include_mifs=include_mifs)
+
+    tree = {
+        n: get_node_tree(n, include_mifs=include_mifs, include_root=False) for n in out
+    }
+
+    if include_root:
+        return {node: tree}
+    return tree
+
+
+def iter_tree_by_depth(tree: dict[Node, dict]):
+    yield list(tree.keys())
+
+    # zip iterators, but if one iterators stops producing, the rest continue
+    def zip_exhaust(*args):
+        while True:
+            out = [next(a, None) for a in args]
+            out = [a for a in out if a]
+            if not out:
+                return
+
+            yield out
+
+    for level in zip_exhaust(*[iter_tree_by_depth(v) for v in tree.values()]):
+        # merge lists of parallel subtrees
+        yield [n for subtree in level for n in subtree]
+
+
 def get_mif_tree(
     obj: ModuleInterface | Module,
 ) -> dict[ModuleInterface, dict[ModuleInterface, dict]]:
-    mifs = obj.IFs.get_all() if isinstance(obj, Module) else obj.IFs.get_all()
+    mifs = obj.IFs.get_all()
     assert all(isinstance(i, ModuleInterface) for i in mifs)
     mifs = cast(list[ModuleInterface], mifs)
 
@@ -516,3 +569,25 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
         net.IFs.part_of.connect(el_if)
         logger.debug(f"Created {net_name} for {el_if}")
         nets[net_name] = net, el_if
+
+
+TR = TypeVar("TR", bound=Trait)
+
+
+def get_parent_with_trait(node: Node, trait: type[TR]):
+    for parent, _ in reversed(node.get_hierarchy()):
+        if parent.has_trait(trait):
+            return parent, parent.get_trait(trait)
+    raise ValueError("No parent with trait found")
+
+
+def get_children_of_type(node: Node, child_type: type[U]) -> list[U]:
+    return [child for child in get_all_nodes(node) if isinstance(child, child_type)]
+
+
+def get_first_child_of_type(node: Node, child_type: type[U]) -> U:
+    for level in iter_tree_by_depth(get_node_tree(node)):
+        for child in level:
+            if isinstance(child, child_type):
+                return child
+    raise ValueError("No child of type found")

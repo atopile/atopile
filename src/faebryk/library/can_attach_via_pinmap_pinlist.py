@@ -3,10 +3,11 @@
 
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.Electrical import Electrical
+from faebryk.library.Pad import Pad
 
 
 class can_attach_via_pinmap_pinlist(can_attach_via_pinmap.impl()):
-    def __init__(self, pin_list: dict[str, Electrical]) -> None:
+    def __init__(self, pin_list: dict[str, Pad]) -> None:
         super().__init__()
         self.pin_list = pin_list
 
@@ -15,4 +16,4 @@ class can_attach_via_pinmap_pinlist(can_attach_via_pinmap.impl()):
             assert (
                 no in self.pin_list
             ), f"Pin {no} not in pin list: {self.pin_list.keys()}"
-            self.pin_list[no].connect(intf)
+            self.pin_list[no].attach(intf)

@@ -14,7 +14,7 @@ class has_pcb_position_defined_relative_to_parent(has_pcb_position.impl()):
         self.position_relative = position_relative
 
     def get_position(self) -> has_pcb_position.Point:
-        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+        from faebryk.libs.geometry.basic import Geometry
 
         for parent, _ in reversed(self.get_obj().get_hierarchy()[:-1]):
             if parent.has_trait(has_pcb_position):
@@ -23,7 +23,7 @@ class has_pcb_position_defined_relative_to_parent(has_pcb_position.impl()):
                     f"Found parent position for: {self.get_obj().get_full_name()}:"
                     f"{pos} [{parent.get_full_name()}]"
                 )
-                return PCB_Transformer.Geometry.abs_pos(
+                return Geometry.abs_pos(
                     pos,
                     self.position_relative,
                 )

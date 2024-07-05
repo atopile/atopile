@@ -3,7 +3,8 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import Footprint, LinkNamedParent
+from faebryk.core.core import LinkNamedParent
+from faebryk.library.Footprint import Footprint
 from faebryk.library.has_footprint import has_footprint
 
 

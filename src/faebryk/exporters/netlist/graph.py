@@ -6,7 +6,6 @@ from abc import abstractmethod
 
 import networkx as nx
 from faebryk.core.core import (
-    FootprintTrait,
     LinkDirect,
     Module,
 )
@@ -14,6 +13,7 @@ from faebryk.core.graph import Graph
 from faebryk.core.util import get_all_nodes_graph, get_connected_mifs
 from faebryk.exporters.netlist.netlist import Component
 from faebryk.library.Electrical import Electrical
+from faebryk.library.FootprintTrait import FootprintTrait
 from faebryk.library.has_defined_descriptive_properties import (
     has_defined_descriptive_properties,
 )
@@ -26,6 +26,7 @@ from faebryk.library.has_simple_value_representation import (
     has_simple_value_representation,
 )
 from faebryk.library.Net import Net
+from faebryk.library.Pad import Pad
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +35,13 @@ class can_represent_kicad_footprint(FootprintTrait):
     kicad_footprint = Component
 
     @abstractmethod
-    def get_name_and_value(self) -> tuple[str, str]:
-        ...
+    def get_name_and_value(self) -> tuple[str, str]: ...
 
     @abstractmethod
-    def get_kicad_obj(self) -> kicad_footprint:
-        ...
+    def get_kicad_obj(self) -> kicad_footprint: ...
 
     @abstractmethod
-    def get_pin_name(self, pin: Electrical) -> str:
-        ...
+    def get_pin_name(self, pin: Pad) -> str: ...
 
 
 def get_or_set_name_and_value_of_node(c: Module):
@@ -86,7 +84,7 @@ class can_represent_kicad_footprint_via_attached_component(
     def get_name_and_value(self):
         return get_or_set_name_and_value_of_node(self.component)
 
-    def get_pin_name(self, pin: Electrical):
+    def get_pin_name(self, pin: Pad):
         return self.get_obj().get_trait(has_kicad_footprint).get_pin_names()[pin]
 
     def get_kicad_obj(self):
@@ -185,8 +183,8 @@ def attach_nets_and_kicad_info(g: Graph):
     for fp in node_fps.values():
         # TODO use graph
         for mif in fp.IFs.get_all():
-            if not isinstance(mif, Electrical):
+            if not isinstance(mif, Pad):
                 continue
-            add_or_get_net(mif)
+            add_or_get_net(mif.IFs.net)
 
     g.update()

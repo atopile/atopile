@@ -104,6 +104,13 @@ def find(haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
     return results[0]
 
 
+def find_or(haystack: Iterable[T], needle: Callable[[T], bool], default: T) -> T:
+    try:
+        return find(haystack, needle)
+    except KeyError:
+        return default
+
+
 def groupby(it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
     out = defaultdict(list)
     for i in it:

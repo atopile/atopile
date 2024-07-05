@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.exporters.pcb.kicad.layout.layout import Layout
+from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.library.has_pcb_layout import has_pcb_layout
 
 

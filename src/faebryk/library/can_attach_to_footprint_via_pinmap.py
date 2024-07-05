@@ -1,10 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Footprint
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.Electrical import Electrical
+from faebryk.library.Footprint import Footprint
 from faebryk.library.has_defined_footprint import has_defined_footprint
 
 

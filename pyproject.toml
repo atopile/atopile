@@ -32,6 +32,7 @@ black = "^24.4.2"
 typing-extensions = "^4.6.3"
 easyeda2kicad = "^0.8.0"
 shapely = "^2.0.1"
+fonttools = "^4.53.0"
 
 [tool.poetry.group.dev.dependencies]
 typer = { version = "^0.9.0", extras = ["all"] }
