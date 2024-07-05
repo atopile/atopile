@@ -24,5 +24,8 @@ class LayoutAbsolute(Layout):
         """
         Tip: Make sure at least one parent of node has an absolute position defined
         """
+        # Remove nodes that have a position defined
+        node = tuple(n for n in node if not n.has_trait(has_pcb_position))
+
         for n in node:
             n.add_trait(has_pcb_position_defined_relative_to_parent(self.pos))

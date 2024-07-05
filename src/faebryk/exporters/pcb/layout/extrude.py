@@ -29,6 +29,9 @@ class LayoutExtrude(Layout):
         Tip: Make sure at least one parent of node has an absolute position defined
         """
 
+        # Remove nodes that have a position defined
+        node = tuple(n for n in node if not n.has_trait(has_pcb_position))
+
         vector = self.vector if len(self.vector) == 3 else (*self.vector, 0)
 
         for i, n in enumerate(node):
