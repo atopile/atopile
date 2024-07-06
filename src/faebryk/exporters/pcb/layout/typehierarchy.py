@@ -10,7 +10,7 @@ from faebryk.core.core import (
 )
 from faebryk.core.util import get_node_direct_children
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.libs.util import find_or, flatten, groupby
+from faebryk.libs.util import NotNone, find_or, flatten, groupby
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class LayoutTypeHierarchy(Layout):
     @dataclass(frozen=True, eq=True)
     class Level:
-        mod_type: type[Module]
+        mod_type: type[Module] | tuple[type[Module], ...]
         layout: Layout
         children_layout: Layout | None = None
 
@@ -35,7 +35,7 @@ class LayoutTypeHierarchy(Layout):
             {
                 n: find_or(
                     self.layouts,
-                    lambda layout: isinstance(n, layout.mod_type),
+                    lambda layout: isinstance(n, NotNone(layout).mod_type),
                     default=None,
                 )
                 for n in node
@@ -43,10 +43,16 @@ class LayoutTypeHierarchy(Layout):
             lambda t: t[1],
         )
 
+        logger.debug(f"Applying to {node}")
+
         for level, nodes_tuple in levels.items():
             nodes = [n for n, _ in nodes_tuple]
 
             direct_children = flatten(get_node_direct_children(n) for n in nodes)
+            logger.debug(
+                f"Level: {level.mod_type if level else None},"
+                f" Children: {direct_children}"
+            )
 
             if level is None:
                 self.apply(*direct_children)
@@ -57,4 +63,7 @@ class LayoutTypeHierarchy(Layout):
             if not level.children_layout:
                 continue
 
-            level.children_layout.apply()
+            level.children_layout.apply(*direct_children)
+
+    def __hash__(self):
+        return sum(map(hash, self.layouts))

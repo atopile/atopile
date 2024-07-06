@@ -97,17 +97,25 @@ def get_key(haystack: dict[T, U], needle: U) -> T:
     return find(haystack.items(), lambda x: x[1] == needle)[0]
 
 
+class KeyErrorNotFound(KeyError): ...
+
+
+class KeyErrorAmbiguous(KeyError): ...
+
+
 def find(haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
     results = list(filter(needle, haystack))
+    if not results:
+        raise KeyErrorNotFound()
     if len(results) != 1:
-        raise KeyError()
+        raise KeyErrorAmbiguous()
     return results[0]
 
 
 def find_or(haystack: Iterable[T], needle: Callable[[T], bool], default: T) -> T:
     try:
         return find(haystack, needle)
-    except KeyError:
+    except KeyErrorNotFound:
         return default
 
 

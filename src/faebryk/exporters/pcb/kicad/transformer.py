@@ -673,8 +673,7 @@ class PCB_Transformer:
         fp.at.coord = coord
 
         # Flip
-        # TODO a bit ugly with the hardcoded front layer
-        flip = layer != "F.Cu" and fp.layer != layer
+        flip = fp.layer != layer
 
         if flip:
             for layer_prop in fp.get_prop(["layer", "layers"], recursive=True):
