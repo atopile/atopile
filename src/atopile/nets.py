@@ -17,6 +17,7 @@ from atopile.instance_methods import (
     match_signals,
     match_modules,
 )
+import atopile.instance_methods
 from atopile.loop_soup import LoopSoup
 from atopile.address import get_name, add_instance
 
@@ -81,8 +82,22 @@ class _Net:
     def generate_base_net_name(self) -> None:
         """Generate the base_name attribute."""
         min_depth = 100
+        override_net_name = set()
         for signal in filter(match_signals, self.nodes_on_net):
             min_depth = min(min_depth, len(list(iter_parents(signal))))
+            try:
+                override_net_name.add(atopile.instance_methods.get_data(signal, "override_net_name"))
+            except errors.AtoKeyError:
+                pass
+
+        if len(override_net_name) == 1:
+            self.base_name = override_net_name.pop()
+            return
+        if len(override_net_name) > 1:
+            raise errors.AtoError(
+                f"Multiple override_net_name values found for net connecting {self.nodes_on_net}"
+                "\n - ".join(override_net_name)
+            )
 
         name_candidates = defaultdict(int)
         for signal in filter(match_signals, self.nodes_on_net):
