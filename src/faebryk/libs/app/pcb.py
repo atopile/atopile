@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -144,10 +145,24 @@ def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool 
     project.dump(prj_path)
 
     # Import netlist into pcb
-    if netlist_has_changed:
-        print(
-            "Open the PCB in kicad and import the netlist.\n"
-            "Then save the pcb and press ENTER.\n"
-            f"PCB location: {pcb_path}"
-        )
-        input()
+    if not netlist_has_changed:
+        return
+
+    print("Importing netlist manually...")
+
+    auto_mode = os.environ.get("FBRK_NETLIST_PCBNEW_AUTO", "y").lower() in [
+        "y",
+        "1",
+    ]
+
+    if auto_mode:
+        import subprocess
+
+        subprocess.Popen(["pcbnew", str(pcb_path)])
+    else:
+        print(f"PCB location: {pcb_path}")
+
+    input(
+        "Load the netlist in File->Import->Netlist: Update PCB\n"
+        "Then press ENTER to continue..."
+    )

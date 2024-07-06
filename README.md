@@ -33,11 +33,10 @@ In short faebryk is a python library that allows you to design ready-to-order el
 ```python
 import faebryk.library._F as F
 from faebryk.core.core import Module
-from faebryk.libs.examples.buildutil import (
-    tag_and_export_module_to_netlist
-)
+from faebryk.libs.brightness import TypicalLuminousIntensity
+from faebryk.libs.examples.buildutil import apply_design_to_pcb
 
-class App(Module): 
+class App(Module):
     def __init__(self) -> None:
         super().__init__()
 
@@ -47,18 +46,16 @@ class App(Module):
 
         self.NODEs = _NODES(self)
 
-        # Connections
-        self.NODEs.led.IFs.power.connect(
-            self.NODEs.battery.IFs.power)
+        self.NODEs.led.IFs.power.connect(self.NODEs.battery.IFs.power)
 
         # Parametrize
-        self.NODEs.led.NODEs.led.PARAMs.color.merge(
-            F.LED.Color.YELLOW)
+        self.NODEs.led.NODEs.led.PARAMs.color.merge(F.LED.Color.YELLOW)
         self.NODEs.led.NODEs.led.PARAMs.brightness.merge(
-            F.Range.lower_bound(30e-3))
+            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+        )
 
 
-tag_and_export_module_to_netlist(App())
+apply_design_to_pcb(App())
 ```
 
 <div align="center">
