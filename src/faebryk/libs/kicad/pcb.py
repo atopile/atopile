@@ -80,6 +80,29 @@ class Node:
         return str(self) == str(__value)
 
 
+class FileNode(Node):
+    @classmethod
+    def load(cls, path: Path):
+        return cls(sexpdata.loads(path.read_text()))
+
+    def garbage_collect(self):
+        def remove_empty(x):
+            if type(x) in [list, tuple]:
+                rec = map(remove_empty, x)
+                return [o for o in rec if (o is not None) and (o not in [[], tuple()])]
+            return x
+
+        cleaned = remove_empty(self.node)
+        self.node = cleaned
+
+    def dump(self, path: Path):
+        self.garbage_collect()
+        sexpout = sexpdata.dumps(self.node)
+        out = prettify_sexp_string(sexpout)
+
+        return path.write_text(out)
+
+
 class UUID(Node):
     @property
     def uuid(self) -> str:
@@ -468,7 +491,7 @@ def get_geoms(node: Node, prefix: str):
     ]
 
 
-class PCB(Node):
+class PCB(FileNode):
     @property
     def footprints(self) -> List["Footprint"]:
         return [Footprint.from_node(n) for n in self.get_prop("footprint")]
@@ -500,27 +523,6 @@ class PCB(Node):
     @property
     def layer_names(self) -> List["str"]:
         return [n[1] for n in self.get_prop("layers")[0].node[1:]]
-
-    @classmethod
-    def load(cls, path: Path):
-        return cls(sexpdata.loads(path.read_text()))
-
-    def garbage_collect(self):
-        def remove_empty(x):
-            if type(x) in [list, tuple]:
-                rec = map(remove_empty, x)
-                return [o for o in rec if (o is not None) and (o not in [[], tuple()])]
-            return x
-
-        cleaned = remove_empty(self.node)
-        self.node = cleaned
-
-    def dump(self, path: Path):
-        self.garbage_collect()
-        pcbsexpout = sexpdata.dumps(self.node)
-        out = prettify_sexp_string(pcbsexpout)
-
-        return path.write_text(out)
 
     def __repr__(self):
         return object.__repr__(self)
@@ -921,3 +923,74 @@ class Segment_Arc(_Segment):
 
 def yes_no(value: bool) -> Symbol:
     return Symbol("yes" if value else "no")
+
+
+class fp_lib_table(FileNode):
+    class lib(Node):
+        @property
+        def name(self):
+            return self.get_prop("name")[0].node[1]
+
+        @property
+        def type(self):
+            return self.get_prop("type")[0].node[1]
+
+        @property
+        def uri(self):
+            return self.get_prop("uri")[0].node[1]
+
+        @property
+        def options(self):
+            return self.get_prop("options")[0].node[1]
+
+        @property
+        def descr(self):
+            return self.get_prop("descr")[0].node[1]
+
+        @classmethod
+        def factory(
+            cls,
+            name: str,
+            uri: str,
+            uri_prj_relative: bool = True,
+            type: str = "KiCad",
+            options: str = "",
+            descr: str = "",
+        ):
+            if uri_prj_relative:
+                assert not uri.startswith("/")
+                assert not uri.startswith("${KIPRJMOD}")
+                uri = "${KIPRJMOD}/" + uri
+
+            return cls(
+                [
+                    Symbol("lib"),
+                    [Symbol("name"), name],
+                    [Symbol("type"), type],
+                    [Symbol("uri"), uri],
+                    [Symbol("options"), options],
+                    [Symbol("descr"), descr],
+                ]
+            )
+
+    @property
+    def version(self):
+        return self.get_prop("version")[0].node[1]
+
+    @property
+    def libs(self):
+        return [fp_lib_table.lib.from_node(n) for n in self.get_prop("lib")]
+
+    def add_lib(self, lib: "fp_lib_table.lib"):
+        self.node.append(lib.node)
+
+    @classmethod
+    def factory(cls, version: int, libs: "list[fp_lib_table.lib] | None" = None):
+        libs = libs or []
+        return cls(
+            [
+                Symbol("fp_lib_table"),
+                [Symbol("version"), version],
+                *[[Symbol("lib"), lib.node] for lib in libs],
+            ]
+        )

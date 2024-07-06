@@ -15,7 +15,7 @@ from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
 from faebryk.libs.app.kicad_netlist import write_netlist
-from faebryk.libs.kicad.pcb import PCB
+from faebryk.libs.kicad.pcb import PCB, fp_lib_table
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,46 @@ def apply_design(
     print("Reopen PCB in kicad")
 
 
+def include_footprints(pcb_path: Path):
+    fplibpath = pcb_path.parent / "fp-lib-table"
+    if fplibpath.exists():
+        fptable = fp_lib_table.load(fplibpath)
+    else:
+        fptable = fp_lib_table.factory(version=7)
+
+    # TODO make more generic, this is very lcsc specific
+    from faebryk.libs.picker.lcsc import LIB_FOLDER as LCSC_LIB_FOLDER
+
+    fppath = LCSC_LIB_FOLDER / "footprints/lcsc.pretty"
+    relative = True
+    try:
+        fppath_rel = fppath.relative_to(pcb_path.parent, walk_up=True)
+        # check if not going up too much
+        if len([part for part in fppath_rel.parts if part == ".."]) > 5:
+            raise ValueError()
+        fppath = fppath_rel
+    except ValueError:
+        relative = False
+
+    if not any(fplib.name == "lcsc" for fplib in fptable.libs):
+        fptable.add_lib(
+            fp_lib_table.lib.factory(
+                "lcsc",
+                uri=str(fppath),
+                uri_prj_relative=relative,
+                descr="FBRK: LCSC footprints auto-downloaded",
+            )
+        )
+        logger.warning(
+            "Changed fp-lib-table to include lcsc library, need to restart pcbnew"
+        )
+
+    fptable.dump(fplibpath)
+
+
 def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool = True):
+    include_footprints(pcb_path)
+
     if netlist_has_changed:
         print(
             "Open the PCB in kicad and import the netlist.\n"
