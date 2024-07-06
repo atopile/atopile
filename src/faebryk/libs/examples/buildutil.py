@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from faebryk.libs.app.erc import simple_erc
 from faebryk.libs.app.kicad_netlist import write_netlist
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.app.pcb import apply_layouts, apply_routing
-from faebryk.libs.experiments.pickers import pick_parts_for_examples
+from faebryk.libs.examples.pickers import pick_parts_for_examples
 from faebryk.libs.kicad.pcb import PCB
 from faebryk.libs.picker.picker import pick_part_recursively
 
@@ -29,6 +30,8 @@ lcsc.BUILD_FOLDER = BUILD_DIR
 lcsc.LIB_FOLDER = BUILD_DIR / Path("kicad/libs")
 lcsc.MODEL_PATH = None
 
+DEV_MODE = os.environ.get("FBRK_EXP_DEV_MODE", False) in ["y", "Y", "True", "true", "1"]
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,27 +45,29 @@ def tag_and_export_module_to_netlist(m: Module, pcb_transform: bool = False):
     """
 
     logger.info("Filling unspecified parameters")
-    # import faebryk.libs.app.parameters as p_mod
+    import faebryk.libs.app.parameters as p_mod
 
-    # lvl = p_mod.logger.getEffectiveLevel()
-    # p_mod.logger.setLevel(logging.DEBUG)
+    lvl = p_mod.logger.getEffectiveLevel()
+    if DEV_MODE:
+        p_mod.logger.setLevel(logging.DEBUG)
     replace_tbd_with_any(m, recursive=True)
-    # p_mod.logger.setLevel(lvl)
+    p_mod.logger.setLevel(lvl)
 
     pick_part_recursively(m, pick_parts_for_examples)
     G = m.get_graph()
     simple_erc(G)
-    tag_and_export_graph_to_netlist(G)
+    netlist_changed = tag_and_export_graph_to_netlist(G)
 
     if not pcb_transform:
         return
 
-    export_pcb(m, G)
+    export_pcb(m, G, netlist_changed=netlist_changed)
     return
 
 
 def tag_and_export_graph_to_netlist(G: Graph):
-    NETLIST_OUT.unlink(missing_ok=True)
+    if not DEV_MODE:
+        NETLIST_OUT.unlink(missing_ok=True)
     return write_netlist(G, NETLIST_OUT, use_kicad_designators=True)
 
 
@@ -89,19 +94,22 @@ def export_graph(g, show):
         plt.show()
 
 
-def export_pcb(app: Module, G: Graph):
+def export_pcb(app: Module, G: Graph, netlist_changed: bool = True):
     example_prj = Path(__file__).parent / Path("resources/example")
 
-    PCB_FILE.unlink(missing_ok=True)
+    removed_pcb = False
+    if not DEV_MODE or not KICAD_SRC.exists():
+        PCB_FILE.unlink(missing_ok=True)
+        shutil.copytree(example_prj, KICAD_SRC, dirs_exist_ok=True)
+        removed_pcb = True
 
-    shutil.copytree(example_prj, KICAD_SRC, dirs_exist_ok=True)
-
-    print(
-        "Open the PCB in kicad and import the netlist.\n"
-        "Then save the pcb and press ENTER.\n"
-        f"PCB location: {PCB_FILE}"
-    )
-    input()
+    if netlist_changed or removed_pcb:
+        print(
+            "Open the PCB in kicad and import the netlist.\n"
+            "Then save the pcb and press ENTER.\n"
+            f"PCB location: {PCB_FILE}"
+        )
+        input()
 
     logger.info("Load PCB")
     pcb = PCB.load(PCB_FILE)

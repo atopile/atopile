@@ -11,7 +11,7 @@ import faebryk.library._F as F
 import typer
 from faebryk.core.core import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.experiments.buildutil import (
+from faebryk.libs.examples.buildutil import (
     tag_and_export_module_to_netlist,
 )
 from faebryk.libs.logging import setup_basic_logging

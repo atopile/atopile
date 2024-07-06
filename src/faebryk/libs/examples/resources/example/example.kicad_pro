@@ -254,7 +254,7 @@
     "last_paths": {
       "gencad": "",
       "idf": "",
-      "netlist": "",
+      "netlist": "../../faebryk/faebryk.net",
       "plot": "",
       "pos_files": "",
       "specctra_dsn": "",

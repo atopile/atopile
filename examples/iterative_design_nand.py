@@ -23,7 +23,7 @@ from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlis
 from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
 from faebryk.exporters.visualize.graph import render_matrix
 from faebryk.library._F import TBD, Constant
-from faebryk.libs.experiments.buildutil import export_netlist
+from faebryk.libs.examples.buildutil import export_netlist
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.util import times
 

@@ -21,7 +21,7 @@ from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
 from faebryk.library._F import TBD, Constant
-from faebryk.libs.experiments.buildutil import export_graph, export_netlist
+from faebryk.libs.examples.buildutil import export_graph, export_netlist
 from faebryk.libs.logging import setup_basic_logging
 
 logger = logging.getLogger(__name__)

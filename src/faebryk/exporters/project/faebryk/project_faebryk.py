@@ -40,7 +40,7 @@ from faebryk.exporters.netlist.graph import (
 #TODO
 {library_imports}
 
-from faebryk.libs.experiments.buildutil import export_graph, export_netlist
+from faebryk.libs.examples.buildutil import export_graph, export_netlist
 
 def run_experiment():
 

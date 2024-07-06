@@ -17,7 +17,7 @@ from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
 from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
-from faebryk.libs.experiments.buildutil import (
+from faebryk.libs.examples.buildutil import (
     tag_and_export_module_to_netlist,
 )
 from faebryk.libs.font import Font

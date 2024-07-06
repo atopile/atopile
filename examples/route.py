@@ -23,7 +23,7 @@ from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import (
 from faebryk.library.has_pcb_routing_strategy_manual import (
     has_pcb_routing_strategy_manual,
 )
-from faebryk.libs.experiments.buildutil import (
+from faebryk.libs.examples.buildutil import (
     tag_and_export_module_to_netlist,
 )
 from faebryk.libs.logging import setup_basic_logging

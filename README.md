@@ -33,7 +33,7 @@ In short faebryk is a python library that allows you to design ready-to-order el
 ```python
 import faebryk.library._F as F
 from faebryk.core.core import Module
-from faebryk.libs.experiments.buildutil import (
+from faebryk.libs.examples.buildutil import (
     tag_and_export_module_to_netlist
 )
 
@@ -143,7 +143,7 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md)
 
 To get inspiration on things to work on check out the issues.
 
-#### Running your own experiments/Making samples
+#### Running your own examples/Making samples
 
 First follow the steps in get running from source.
 Then add a file in examples/ (you can use one of the examples as template).
