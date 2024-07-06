@@ -103,7 +103,9 @@ def include_footprints(pcb_path: Path):
     fppath = LCSC_LIB_FOLDER / "footprints/lcsc.pretty"
     relative = True
     try:
-        fppath_rel = fppath.resolve().relative_to(pcb_path.parent, walk_up=True)
+        fppath_rel = fppath.resolve().relative_to(
+            pcb_path.parent.resolve(), walk_up=True
+        )
         # check if not going up too much
         if len([part for part in fppath_rel.parts if part == ".."]) > 5:
             raise ValueError()
@@ -137,7 +139,7 @@ def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool 
     else:
         project = Project.load(prj_path)
     project.pcbnew.last_paths.netlist = str(
-        netlist_path.resolve().relative_to(pcb_path.parent, walk_up=True)
+        netlist_path.resolve().relative_to(pcb_path.parent.resolve(), walk_up=True)
     )
     project.dump(prj_path)
 
