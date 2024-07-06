@@ -18,7 +18,7 @@ from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
 from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.libs.examples.buildutil import (
-    tag_and_export_module_to_netlist,
+    apply_design_to_pcb,
 )
 from faebryk.libs.font import Font
 from faebryk.libs.logging import setup_basic_logging
@@ -121,16 +121,19 @@ class App(Module):
         self.add_trait(has_pcb_position_defined(Point((0, 0, 0, L.NONE))))
 
 
+# Boilerplate -----------------------------------------------------------------
+
+
 def main():
     logger.info("Building app")
     app = App()
 
     logger.info("Export")
-    tag_and_export_module_to_netlist(app, pcb_transform=True)
+    apply_design_to_pcb(app)
 
 
 if __name__ == "__main__":
     setup_basic_logging()
-    logger.info("Running experiment")
+    logger.info("Running example")
 
     typer.run(main)

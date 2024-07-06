@@ -11,13 +11,17 @@ from faebryk.library.TBD import TBD
 logger = logging.getLogger(__name__)
 
 
-def replace_tbd_with_any(module: Module, recursive: bool):
+def replace_tbd_with_any(module: Module, recursive: bool, loglvl: int | None = None):
     """
     Replace all TBD instances with ANY instances in the given module.
 
     :param module: The module to replace TBD instances in.
     :param recursive: If True, replace TBD instances in submodules as well.
     """
+    lvl = logger.getEffectiveLevel()
+    if loglvl is not None:
+        logger.setLevel(loglvl)
+
     module = module.get_most_special()
 
     for param in module.PARAMs.get_all():
@@ -25,6 +29,8 @@ def replace_tbd_with_any(module: Module, recursive: bool):
             logger.debug(f"Replacing in {module}: {param} with ANY")
             param.merge(ANY())
 
+    logger.setLevel(lvl)
+
     if recursive:
         for m in {_m.get_most_special() for _m in get_all_modules(module)}:
-            replace_tbd_with_any(m, recursive=False)
+            replace_tbd_with_any(m, recursive=False, loglvl=loglvl)

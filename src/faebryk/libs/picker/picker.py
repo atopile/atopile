@@ -6,6 +6,7 @@ import pprint
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
+from textwrap import indent
 from typing import Any, Callable, Iterable
 
 from faebryk.core.core import Module, ModuleInterface, ModuleTrait, Parameter
@@ -78,10 +79,25 @@ class PickErrorParams(PickError):
     def __init__(self, module: Module, options: list[PickerOption]):
         self.options = options
 
-        message = f"Could not find part for {module} with params:\n" + "\n".join(
-            f"{pprint.pformat(o.params, indent=4)}" for o in self.options
-        )
+        MAX = 5
 
+        options_str = "\n".join(
+            f"{pprint.pformat(o.params, indent=4)}" for o in self.options[:MAX]
+        )
+        if len(self.options) > MAX:
+            options_str += f"\n... and {len(self.options) - MAX} more"
+
+        params = {
+            NotNone(p.get_parent())[1]: p.get_most_narrow()
+            for p in module.PARAMs.get_all()
+        }
+        params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
+
+        message = (
+            f"Could not find part for {module}"
+            f"\nwith params:\n{indent(params_str, ' '*4)}"
+            f"\nin options:\n {indent(options_str, ' '*4)}"
+        )
         super().__init__(message, module)
 
 

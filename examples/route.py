@@ -24,7 +24,7 @@ from faebryk.library.has_pcb_routing_strategy_manual import (
     has_pcb_routing_strategy_manual,
 )
 from faebryk.libs.examples.buildutil import (
-    tag_and_export_module_to_netlist,
+    apply_design_to_pcb,
 )
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.util import times
@@ -183,16 +183,19 @@ class App(Module):
         )
 
 
+# Boilerplate -----------------------------------------------------------------
+
+
 def main(count: int = 2, extrude_y: tuple[float, float] = (15, 5)):
     logger.info("Building app")
     app = App(count, extrude_y)
 
     logger.info("Export")
-    tag_and_export_module_to_netlist(app, pcb_transform=True)
+    apply_design_to_pcb(app)
 
 
 if __name__ == "__main__":
     setup_basic_logging()
-    logger.info("Running experiment")
+    logger.info("Running example")
 
     typer.run(main)
