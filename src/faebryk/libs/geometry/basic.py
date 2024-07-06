@@ -1,15 +1,282 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import logging
 import math
 from operator import add
-from typing import TypeVar
+from typing import Iterable, TypeVar
 
 import numpy as np
-from shapely import Point, Polygon, transform
+from shapely import MultiPolygon, Point, Polygon, transform
+
+logger = logging.getLogger(__name__)
 
 
-def fill_poly_with_nodes_on_grid(
+def polygon_insert_cutout(polygon: Polygon, cutout: Polygon) -> Polygon:
+    """
+    Insert a cutout into a polygon
+
+    :param polygon: The polygon to insert the cutout into
+    :param cutout: The cutout to insert
+    :return: The polygon with the cutout inserted
+    """
+
+    p_coords = list(polygon.exterior.coords)
+    c_coords = list(cutout.exterior.coords)
+
+    dist = [
+        (Geometry.distance_euclid(p1, p2), p1, p2) for p1, p2 in zip(p_coords, c_coords)
+    ]
+
+    _, p_closest, c_closest = min(dist, key=lambda x: x[0])
+
+    # roll the cutout so that the closest point is first, then append the first point to
+    # close the cutout
+    c_first_idx = c_coords.index(c_closest)
+    c_coords = list(np.roll(c_coords, -c_first_idx, axis=0))
+    c_coords.append(c_coords[0])
+
+    # Insert the cutout into the polygon
+    p_first_idx = p_coords.index(p_closest)
+    flattened_coords = (
+        p_coords[:p_first_idx]
+        + [p_coords[p_first_idx]]
+        + c_coords
+        + p_coords[p_first_idx:]
+    )
+
+    return Polygon(flattened_coords)
+
+
+def flatten_polygons(polygons: list[Polygon]) -> list[Polygon]:
+    """
+    Flatten a list of polygons by removing polygons that are contained in other polygons
+
+    :param polygons: The polygons to flatten
+    :return: The flattened polygons
+    """
+    flattened_polygons = []
+    while polygons:
+        remaining = []
+        for poly in polygons:
+            # skip lower level polygons
+            if any([p.contains(poly) for p in polygons if p != poly]):
+                remaining.append(poly)
+                continue
+            # cut out polygons that are contained in other polygons
+            if any([z.contains(poly) for z in flattened_polygons]):
+                flattened_polygons = [
+                    polygon_insert_cutout(z, poly) if z.contains(poly) else z
+                    for z in flattened_polygons
+                ]
+            else:
+                # add polygons that are not contained in any other polygon
+                flattened_polygons.append(poly)
+        polygons = remaining
+
+    return flattened_polygons
+
+
+def get_distributed_points_in_polygon(
+    polygon: Polygon,
+    density: float,
+) -> list[Point]:
+    """
+    Get a list of points that are distributed in a polygon
+
+    :param polygon: The polygon to distribute the points in
+    :param density: The density of the points
+    :return: A list of points that are distributed in the polygon
+    """
+
+    num_points = int(polygon.area * density)
+    if polygon.area > 0 and num_points == 0:
+        num_points = 1
+
+    points = get_random_points_in_polygon(polygon, num_points)
+
+    min_x, min_y, max_x, max_y = polygon.bounds
+    size_x = max_x - min_x
+    size_y = max_y - min_y
+
+    while True:
+        point_distance_travel = []
+        for i, point in enumerate(points):
+            point_bubble = polygon
+
+            for p in points:
+                if p == point:
+                    continue
+
+                p1 = np.array((point.x, point.y))
+                p2 = np.array((p.x, p.y))
+
+                p_mid = (p1 + p2) / 2
+
+                v = p2 - p1
+                v_unit = v / np.linalg.norm(v)
+                v_unit_perp = np.array([v_unit[1], -v_unit[0]])
+
+                # create a polygon at least twice as large to cut the polygon up
+                exclusion_polygon = Polygon(
+                    [
+                        (
+                            p_mid[0] + v_unit_perp[0] * size_x / 2,
+                            p_mid[1] + v_unit_perp[1] * size_x / 2,
+                        ),
+                        (
+                            p_mid[0] + v_unit_perp[0] * size_x / 2 + v_unit[0] * size_y,
+                            p_mid[1] + v_unit_perp[1] * size_x / 2 + v_unit[1] * size_y,
+                        ),
+                        (
+                            p_mid[0] - v_unit_perp[0] * size_x / 2 + v_unit[0] * size_y,
+                            p_mid[1] - v_unit_perp[1] * size_x / 2 + v_unit[1] * size_y,
+                        ),
+                        (
+                            p_mid[0] - v_unit_perp[0] * size_x,
+                            p_mid[1] - v_unit_perp[1] * size_x,
+                        ),
+                    ]
+                )
+
+                point_bubble = point_bubble.difference(exclusion_polygon)
+
+            assert point_bubble.contains(point)
+
+            if isinstance(point_bubble, MultiPolygon):
+                for p in list(point_bubble.geoms):
+                    if p.contains(point):
+                        point_bubble = p
+                        break
+
+            new_point = point_bubble.centroid
+
+            # TODO: it is possible it will be outside, then just move it to the
+            # closest point on the polygon.
+            if not point_bubble.contains(new_point):
+                continue
+
+            assert polygon.contains(new_point)
+
+            point_distance_travel.append(
+                Geometry.distance_euclid(
+                    Geometry.Point((point.x, point.y)),
+                    Geometry.Point((new_point.x, new_point.y)),
+                )
+            )
+            logger.debug(
+                f"Point ({point.x:.2f}, {point.y:.2f}) -> ({new_point.x:.2f}, "
+                f"{new_point.y:.2f}), distance: {point_distance_travel[-1]}"
+            )
+
+            points[i] = new_point
+
+        if max(point_distance_travel) < density / 100:
+            break
+
+    return points
+
+
+def closest_point_on_segment_to_point(line: tuple[Point, Point], point: Point) -> Point:
+    """
+    Finds the minimum distance from the point to the line defined by two points
+
+    :param line: The line segment defined by two points
+    :param point: The point to find the distance to
+    :return: The closest point on the line segment to the point
+    """
+    if line[0] == line[1]:
+        return line[0]
+
+    p1 = np.array((line[0].x, line[0].y))
+    p2 = np.array((line[1].x, line[1].y))
+    p3 = np.array((point.x, point.y))
+
+    v_line = p2 - p1
+    v_point = p3 - p1
+
+    # Project point_vec onto line_vec
+    v_line_unit = v_line / np.linalg.norm(v_line)
+
+    # Unit vector in direction of line_vec
+    proj_length = np.dot(v_point, v_line_unit)  # Projection length
+
+    if proj_length < 0:
+        # The projection falls before p1
+        closest_point = p1
+    elif proj_length > np.linalg.norm(v_line):
+        # The projection falls after p2
+        closest_point = p2
+    else:
+        # The projection falls within the segment
+        proj_vec = proj_length * v_line_unit  # Projection vector
+        closest_point = p1 + proj_vec
+
+    p = Point(*closest_point)
+
+    assert p != Point(), f"Could not find closes point on line {line} to point {point}"
+
+    return p
+
+
+def closest_point_on_line(p1, p2, p3):
+    """
+    Finds the closest point on the line defined by p1 and p2 to the point p3.
+
+    Parameters:
+    p1, p2, p3: Arrays or lists representing the coordinates of the points.
+
+    Returns:
+    The coordinates of the closest point on the line to p3.
+    """
+    # Convert points to numpy arrays
+    p1 = np.array(p1)
+    p2 = np.array(p2)
+    p3 = np.array(p3)
+
+    # Vector from p1 to p2
+    line_vec = p2 - p1
+    # Vector from p1 to p3
+    point_vec = p3 - p1
+
+    # Project point_vec onto line_vec
+    line_vec_unit = line_vec / np.linalg.norm(
+        line_vec
+    )  # Unit vector in direction of line_vec
+    proj_length = np.dot(point_vec, line_vec_unit)  # Projection length
+    proj_vec = proj_length * line_vec_unit  # Projection vector
+
+    # Closest point on the line
+    closest_point = p1 + proj_vec
+
+    return closest_point
+
+
+def get_random_points_in_polygon(polygon: Polygon, num_points: int) -> list[Point]:
+    """
+    Get a list of unique random points that are inside a polygon
+
+    :param polygon: The polygon to get the points from
+    :param num_points: The number of points to get
+    :return: A list of unique random points that are inside the polygon
+    """
+    points = []
+    min_x, min_y, max_x, max_y = polygon.bounds
+    while len(points) < num_points:
+        p = Point(np.random.uniform(min_x, max_x), np.random.uniform(min_y, max_y))
+        if polygon.contains(p) and p not in points:
+            points.append(p)
+    return points
+
+
+def polygon_to_lines(polygon: Polygon) -> Iterable[tuple[Point, Point]]:
+    coords = [Point(p) for p in polygon.exterior.coords]
+    coords += [coords[0]]
+    for i in range(len(polygon.exterior.coords) - 1):
+        yield (coords[i], coords[i + 1])
+
+
+def intersect_polygon_with_grid(
     polys: list[Polygon],
     grid_pitch: tuple[float, float],
     grid_offset: tuple[float, float],
@@ -23,7 +290,7 @@ def fill_poly_with_nodes_on_grid(
     :return: A list of points that are inside the polygons
     """
 
-    pixels = []
+    points = []
     min_x, min_y, max_x, max_y = (math.inf, math.inf, -math.inf, -math.inf)
     for b in [(p.bounds) for p in polys]:
         min_x = min(min_x, b[0])
@@ -47,7 +314,7 @@ def fill_poly_with_nodes_on_grid(
         fill_polys.append(poly)
 
     for poly in fill_polys:
-        pixels += [
+        points += [
             Point(x, y)
             for x in grid_x
             for y in grid_y
@@ -55,12 +322,12 @@ def fill_poly_with_nodes_on_grid(
             and not any([p.contains(Point(x, y)) for p in keepout_polys])
         ]
 
-    return pixels
+    return points
 
 
-def transform_polygons(
-    polys: list[list[Polygon]], offset: tuple[float, float], scale: tuple[float, float]
-) -> list[list[Polygon]]:
+def transform_polygon(
+    poly: Polygon, offset: tuple[float, float], scale: tuple[float, float]
+) -> Polygon:
     """
     Transform a list of polygons using a transformation matrix
 
@@ -71,11 +338,7 @@ def transform_polygons(
     :return: The transformed polygons
     """
 
-    tf_polys = []
-    for poly in polys:
-        tf_polys.append(transform(poly, lambda x: (x + offset) * scale))
-
-    return tf_polys
+    return transform(poly, lambda x: (x + offset) * scale)
 
 
 # TODO: cleanup and merge
