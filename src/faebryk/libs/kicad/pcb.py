@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import uuid
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, Generic, List, Tuple, TypeVar
 
 import sexpdata
+from dataclasses_json import CatchAll, Undefined, dataclass_json
 from faebryk.libs.kicad.sexp import prettify_sexp_string
 from sexpdata import Symbol
 
@@ -994,3 +996,37 @@ class fp_lib_table(FileNode):
                 *[[Symbol("lib"), lib.node] for lib in libs],
             ]
         )
+
+
+@dataclass_json(undefined=Undefined.INCLUDE)
+@dataclass
+class Project:
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
+    class _pcbnew:
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class _last_paths:
+            gencad: str = ""
+            idf: str = ""
+            netlist: str = ""
+            plot: str = ""
+            pos_files: str = ""
+            specctra_dsn: str = ""
+            step: str = ""
+            svg: str = ""
+            vrml: str = ""
+            unknown: CatchAll = None
+
+        last_paths: "_last_paths" = field(default_factory=_last_paths)
+        unknown: CatchAll = None
+
+    pcbnew: "_pcbnew" = field(default_factory=_pcbnew)
+    unknown: CatchAll = None
+
+    @classmethod
+    def load(cls, path: Path) -> "Project":
+        return cls.from_json(path.read_text())
+
+    def dump(self, path: Path):
+        return path.write_text(self.to_json(indent=4))

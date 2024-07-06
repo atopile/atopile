@@ -15,7 +15,7 @@ from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
 from faebryk.libs.app.kicad_netlist import write_netlist
-from faebryk.libs.kicad.pcb import PCB, fp_lib_table
+from faebryk.libs.kicad.pcb import PCB, Project, fp_lib_table
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,18 @@ def include_footprints(pcb_path: Path):
 def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool = True):
     include_footprints(pcb_path)
 
+    # Set netlist path in gui menu
+    prj_path = pcb_path.with_suffix(".kicad_pro")
+    if not prj_path.exists():
+        project = Project()
+    else:
+        project = Project.load(prj_path)
+    project.pcbnew.last_paths.netlist = str(
+        netlist_path.relative_to(pcb_path.parent, walk_up=True)
+    )
+    project.dump(prj_path)
+
+    # Import netlist into pcb
     if netlist_has_changed:
         print(
             "Open the PCB in kicad and import the netlist.\n"
