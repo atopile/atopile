@@ -9,7 +9,7 @@ import subprocess
 import sys
 import zipfile
 from functools import cache
-from os import PathLike
+from os import getenv, PathLike
 from pathlib import Path
 from time import time
 from typing import Optional
@@ -51,6 +51,18 @@ def find_kicad_cli() -> PathLike:
         return best_candidate
     elif sys.platform.startswith("linux"):
         return "kicad-cli"  # assume it's on the PATH
+    elif sys.platform.startswith("win"):
+        kicad_cli_candidates = list(
+            (Path(getenv("ProgramFiles")) / "KiCad").glob("**/kicad-cli.exe"))
+
+        def _get_cli_version(path: Path) -> semver.Version:
+            try:
+                return get_cli_version(path)
+            except (ValueError, atopile.errors.AtoError):
+                return semver.Version("0.0.0")
+
+        best_candidate = max(kicad_cli_candidates, key=_get_cli_version)
+        return best_candidate
 
 
 def run(*args, timeout_time: Optional[float] = 10, **kwargs) -> None:
