@@ -21,6 +21,7 @@ from faebryk.library.Battery import Battery
 from faebryk.library.ButtonCell import ButtonCell
 from faebryk.library.CD4011 import CD4011
 from faebryk.library.Capacitor import Capacitor
+from faebryk.library.Comparator import Comparator
 from faebryk.library.Constant import Constant
 from faebryk.library.DIP import DIP
 from faebryk.library.DifferentialPair import DifferentialPair
@@ -49,6 +50,7 @@ from faebryk.library.M24C08_FMN6TP import M24C08_FMN6TP
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.MultiSPI import MultiSPI
 from faebryk.library.Net import Net
+from faebryk.library.OpAmp import OpAmp
 from faebryk.library.Operation import Operation
 from faebryk.library.PJ398SM import PJ398SM
 from faebryk.library.Pad import Pad
