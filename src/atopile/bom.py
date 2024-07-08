@@ -14,17 +14,34 @@ from rich.style import Style
 from rich.table import Table
 from toolz import groupby
 
-from atopile import address, errors, components
+import atopile.instance_methods
+from atopile import address, components, errors
 from atopile.instance_methods import all_descendants, match_components
 
 log = logging.getLogger(__name__)
 
 
-# These functions are used to downgrade the errors to warnings.
-# Those warnings are logged and the default value is returned.
-_get_mpn = errors.downgrade(
-    components.get_mpn, (components.MissingData, components.NoMatchingComponent)
-)
+def _get_mpn(addr: address.AddrStr) -> str | None:
+    """
+    Get the MPN of a component, in the context of a BoM.
+    """
+    try:
+        if atopile.instance_methods.get_data(addr, "do_not_populate") is True:
+            return "Do not populate"
+    except errors.AtoKeyError:
+        pass
+
+    try:
+        if atopile.instance_methods.get_data(addr, "exclude_from_bom") is True:
+            return None
+    except errors.AtoKeyError:
+            pass
+
+    return errors.downgrade(
+        components.get_mpn,
+        (components.MissingData, components.NoMatchingComponent),
+        "?"
+    )(addr)
 
 
 def _get_footprint(addr: address.AddrStr) -> str:
@@ -126,6 +143,10 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
 
     all_components = list(filter(match_components, all_descendants(entry_addr)))
     bom = groupby(_get_mpn, all_components)
+
+    # Filter out None MPNs
+    if None in bom:
+        del bom[None]
 
     # JLC format: Comment (whatever might be helpful) Designator Footprint LCSC
     COLUMNS = ["Comment", "Designator", "Footprint", "LCSC"]
