@@ -8,8 +8,7 @@ from typing import Any, Optional
 
 import requests
 
-from atopile import address, errors, instance_methods, config
-
+from atopile import address, config, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import RangedValue
 
@@ -137,8 +136,18 @@ _db_session = None
 def get_db_session():
     """Return the database session."""
     global _db_session
-    if _db_session is None:
-        _db_session = requests.Session()
+    if _db_session is not None:
+        return _db_session
+
+    _db_session = requests.Session()
+
+    try:
+        import fake_useragent
+    except ImportError:
+        pass
+    else:
+        _db_session.headers["User-Agent"] = fake_useragent.UserAgent().random
+
     return _db_session
 
 
