@@ -122,7 +122,9 @@ def sync_zone(zone: pcbnew.ZONE, target: pcbnew.BOARD) -> pcbnew.ZONE:
     """Sync a zone to the target board."""
     new_zone: pcbnew.ZONE = zone.Duplicate().Cast()
     new_zone.SetParent(target)
-    new_zone.SetLayer(zone.GetLayer())
+    layer = zone.GetLayer()
+    if layer != -1:
+        new_zone.SetLayer(zone.GetLayer())
     target.Add(new_zone)
     return new_zone
 
