@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 import requests
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
+
 
 from atopile import address, config, errors, instance_methods
 from atopile.address import AddrStr
@@ -139,7 +142,18 @@ def get_db_session():
     if _db_session is not None:
         return _db_session
 
+    retry_strategy = Retry(
+        total=5,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["HEAD", "GET", "OPTIONS"],
+    )
+
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+
     _db_session = requests.Session()
+    _db_session.mount("https://", adapter)
+    _db_session.mount("http://", adapter)
 
     try:
         import fake_useragent
