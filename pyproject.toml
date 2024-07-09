@@ -65,6 +65,7 @@ dependencies = [
     "scipy>=1.12.0",
     "semver>=3.0.2",
     "toolz>=0.12.0",
+    "urllib3>=2.2.1",
     "uvicorn[standard]>=0.25.0",
     "watchfiles>=0.21.0",
 ]
