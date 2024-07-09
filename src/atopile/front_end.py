@@ -378,7 +378,11 @@ class HandlesPrimaries(AtopileParserVisitor):
 
     def visitQuantity(self, ctx: ap.QuantityContext) -> RangedValue:
         """Yield a physical value from an implicit quantity context."""
-        value = float(ctx.NUMBER().getText())
+        text = ctx.NUMBER().getText()
+        if text.startswith("0x"):
+            value = int(text, 16)
+        else:
+            value = float(ctx.NUMBER().getText())
 
         # Ignore the positive unary operator
         if ctx.MINUS():
