@@ -36,6 +36,7 @@ from faebryk.library.Ethernet import Ethernet
 from faebryk.library.Footprint import Footprint
 from faebryk.library.FootprintTrait import FootprintTrait
 from faebryk.library.Fuse import Fuse
+from faebryk.library.GenericBusProtection import GenericBusProtection
 from faebryk.library.I2C import I2C
 from faebryk.library.JTAG import JTAG
 from faebryk.library.KicadFootprint import KicadFootprint
