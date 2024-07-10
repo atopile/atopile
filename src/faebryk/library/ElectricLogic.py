@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from abc import abstractmethod
+from enum import Enum, auto
 from typing import Iterable, Self
 
 from faebryk.core.core import (
@@ -22,13 +23,13 @@ from faebryk.library.has_single_electric_reference_defined import (
 )
 from faebryk.library.Logic import Logic
 from faebryk.library.Resistor import Resistor
+from faebryk.library.TBD import TBD
 
 
 class ElectricLogic(Logic):
     class has_pulls(NodeTrait):
         @abstractmethod
-        def get_pulls(self) -> tuple[Resistor | None, Resistor | None]:
-            ...
+        def get_pulls(self) -> tuple[Resistor | None, Resistor | None]: ...
 
     class has_pulls_defined(has_pulls.impl()):
         def __init__(self, up: Resistor | None, down: Resistor | None) -> None:
@@ -41,8 +42,7 @@ class ElectricLogic(Logic):
 
     class can_be_pulled(NodeTrait):
         @abstractmethod
-        def pull(self, up: bool) -> Resistor:
-            ...
+        def pull(self, up: bool) -> Resistor: ...
 
     class can_be_pulled_defined(can_be_pulled.impl()):
         def __init__(self, signal: Electrical, ref: ElectricPower) -> None:
@@ -100,8 +100,18 @@ class ElectricLogic(Logic):
     #
     #        return buffer.NODEs.logic_out
 
+    class PushPull(Enum):
+        PUSH_PULL = auto()
+        OPEN_DRAIN = auto()
+        OPEN_SOURCE = auto()
+
     def __init__(self) -> None:
         super().__init__()
+
+        class PARAMS(Logic.PARAMS()):
+            push_pull: "TBD[ElectricLogic.PushPull]"
+
+        self.PARAMs = PARAMS(self)
 
         class IFS(Logic.NODES()):
             reference = ElectricPower()
