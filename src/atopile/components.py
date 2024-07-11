@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 import requests
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 
-from atopile import address, errors, instance_methods, config
 
+from atopile import address, config, errors, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import RangedValue
 
@@ -132,11 +134,43 @@ def clean_cache():
 
     save_cache()
 
+
+_db_session = None
+def get_db_session():
+    """Return the database session."""
+    global _db_session
+    if _db_session is not None:
+        return _db_session
+
+    retry_strategy = Retry(
+        total=5,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["HEAD", "GET", "OPTIONS"],
+    )
+
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+
+    _db_session = requests.Session()
+    _db_session.mount("https://", adapter)
+    _db_session.mount("http://", adapter)
+
+    try:
+        import fake_useragent
+    except ImportError:
+        pass
+    else:
+        _db_session.headers["User-Agent"] = fake_useragent.UserAgent().random
+
+    return _db_session
+
+
 @cache
 def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     """
     Return the MPN for a component given its address
     """
+    global _db_session
     log.debug("Fetching component for %s", component_addr)
 
     specd_data = instance_methods.get_data_dict(component_addr)
@@ -178,7 +212,8 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     url = config.get_project_context().config.services.components
     headers = {"accept": "application/json", "Content-Type": "application/json"}
     try:
-        response = requests.post(url, json=specd_data_dict, timeout=20, headers=headers)
+        db_sessions = get_db_session()
+        response = db_sessions.post(url, json=specd_data_dict, timeout=20, headers=headers)
         response.raise_for_status()
     except requests.HTTPError as ex:
         if ex.response.status_code == 404:

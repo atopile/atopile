@@ -39,6 +39,7 @@ assignable
     | new_stmt
     | literal_physical
     | arithmetic_expression
+    | boolean_
     ;
 
 declaration_stmt: name_or_attr type_info;
