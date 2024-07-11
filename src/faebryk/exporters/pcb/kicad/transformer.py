@@ -4,14 +4,15 @@
 import logging
 import pprint
 import re
+import uuid
 from abc import abstractmethod
-from operator import add
-from typing import Any, List, Tuple, TypeVar
+from dataclasses import fields
+from itertools import pairwise
+from typing import Any, Callable, Iterable, List, Sequence, TypeVar
 
 import numpy as np
 from faebryk.core.core import (
     Module,
-    ModuleInterface,
     ModuleInterfaceTrait,
     ModuleTrait,
     Node,
@@ -28,34 +29,135 @@ from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.Net import Net as FNet
 from faebryk.library.Pad import Pad as FPad
 from faebryk.libs.geometry.basic import Geometry
-from faebryk.libs.kicad.pcb import (
-    PCB,
+from faebryk.libs.kicad.fileformats import (
     UUID,
-    Arc,
-    At,
-    Font,
-    Footprint,
-    FP_Text,
-    Geom,
-    GR_Arc,
-    GR_Line,
-    GR_Text,
-    Line,
-    Net,
-    Pad,
-    Rect,
-    Segment,
-    Segment_Arc,
-    Text,
-    Via,
-    Zone,
+    C_arc,
+    C_circle,
+    C_effects,
+    C_kicad_pcb_file,
+    C_line,
+    C_rect,
+    C_stroke,
+    C_text,
+    C_wh,
+    C_xy,
+    C_xyr,
+    C_xyz,
 )
-from faebryk.libs.kicad.pcb import (
-    Node as PCB_Node,
-)
-from faebryk.libs.util import find, flatten
+from faebryk.libs.util import find
+from shapely import Polygon
+from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
+
+
+PCB = C_kicad_pcb_file.C_kicad_pcb
+Footprint = PCB.C_pcb_footprint
+Pad = Footprint.C_pad
+Net = PCB.C_net
+
+# TODO remove
+GR_Line = C_line
+GR_Text = C_text
+Font = C_effects.C_font
+Zone = PCB.C_zone
+Arc = C_arc
+Rect = C_rect
+Via = PCB.C_via
+Line = C_line
+
+Geom = C_line | C_arc | C_rect | C_circle
+
+Point = Geometry.Point
+Point2D = Geometry.Point2D
+
+
+def gen_uuid(mark: str = "") -> UUID:
+    # format: d864cebe-263c-4d3f-bbd6-bb51c6d2a608
+    value = uuid.uuid4().hex
+
+    suffix = mark.encode().hex()
+    value = value[: -len(suffix)] + suffix
+
+    DASH_IDX = [8, 12, 16, 20]
+    formatted = value
+    for i, idx in enumerate(DASH_IDX):
+        formatted = formatted[: idx + i] + "-" + formatted[idx + i :]
+
+    return UUID(formatted)
+
+
+def is_marked(uuid: UUID, mark: str):
+    suffix = mark.encode().hex()
+    return uuid.replace("-", "").endswith(suffix)
+
+
+T = TypeVar("T", C_xy, C_xyz, C_xyr)
+T2 = TypeVar("T2", C_xy, C_xyz, C_xyr)
+
+
+def round_coord(coord: T, ndigits=2) -> T:
+    fs = fields(coord)
+    return type(coord)(
+        **{f.name: round(getattr(coord, f.name), ndigits=ndigits) for f in fs}
+    )
+
+
+def round_line(line: tuple[Point2D, Point2D], ndigits=2):
+    return per_point(line, lambda c: round_point(c, ndigits))
+
+
+P = TypeVar("P", Point, Point2D)
+
+
+def round_point(point: P, ndigits=2) -> P:
+    return tuple(round(c, ndigits) for c in point)  # type: ignore
+
+
+def coord_to_point(coord: T) -> Point:
+    return tuple(getattr(coord, f.name) for f in fields(coord))
+
+
+def coord_to_point2d(coord: T) -> Point2D:
+    return coord.x, coord.y
+
+
+def point2d_to_coord(point: Point2D) -> C_xy:
+    return C_xy(x=point[0], y=point[1])
+
+
+def abs_pos(origin: T, vector: T2):
+    return Geometry.abs_pos(coord_to_point(origin), coord_to_point(vector))
+
+
+def abs_pos2d(origin: T, vector: T2) -> Point2D:
+    return Geometry.as2d(
+        Geometry.abs_pos(coord_to_point2d(origin), coord_to_point2d(vector))
+    )
+
+
+R = TypeVar("R")
+
+
+def per_point(
+    line: tuple[Point2D, Point2D], func: Callable[[Point2D], R]
+) -> tuple[R, R]:
+    return func(line[0]), func(line[1])
+
+
+def get_all_geo_containers(obj: PCB | Footprint) -> list[Sequence[Geom]]:
+    if isinstance(obj, C_kicad_pcb_file.C_kicad_pcb):
+        return [obj.gr_lines, obj.gr_arcs, obj.gr_circles, obj.gr_rects]
+    elif isinstance(obj, Footprint):
+        return [obj.fp_lines, obj.fp_arcs, obj.fp_circles, obj.fp_rects]
+
+    raise TypeError()
+
+
+def get_all_geos(obj: PCB | Footprint) -> list[Geom]:
+    candidates = get_all_geo_containers(obj)
+
+    return [geo for geos in candidates for geo in geos]
 
 
 class PCB_Transformer:
@@ -115,8 +217,8 @@ class PCB_Transformer:
         self.dimensions = None
 
         FONT_SCALE = 8
-        FONT = Font.factory(
-            size=(1 / FONT_SCALE, 1 / FONT_SCALE),
+        FONT = Font(
+            size=C_wh(1 / FONT_SCALE, 1 / FONT_SCALE),
             thickness=0.15 / FONT_SCALE,
         )
         self.font = FONT
@@ -125,7 +227,9 @@ class PCB_Transformer:
         self.attach()
 
     def attach(self):
-        footprints = {(f.reference.text, f.name): f for f in self.pcb.footprints}
+        footprints = {
+            (f.propertys["Reference"].value, f.name): f for f in self.pcb.footprints
+        }
 
         for node in {gif.node for gif in self.graph.G.nodes}:
             assert isinstance(node, Node)
@@ -155,7 +259,7 @@ class PCB_Transformer:
             pin_names = g_fp.get_trait(has_kicad_footprint).get_pin_names()
             for fpad in g_fp.IFs.get_all():
                 assert isinstance(fpad, FPad)
-                pad = fp.get_pad(pin_names[fpad])
+                pad = find(fp.pads, lambda p: p.name == pin_names[fpad])
                 fpad.add_trait(
                     PCB_Transformer.has_linked_kicad_pad_defined(fp, pad, self)
                 )
@@ -169,20 +273,17 @@ class PCB_Transformer:
 
     def cleanup(self):
         # delete auto-placed objects
-        candidates = flatten(
-            [self.pcb.vias, self.pcb.segments, self.pcb.text, self.pcb.zones]
-        )
-        for obj in candidates:
-            if self.is_marked(obj):
-                obj.delete()
-
-        # TODO maybe faebryk layer?
-        CLEAN_LAYERS = re.compile(r"^User.[2-9]$")
-        for geo in self.pcb.geoms:
-            if CLEAN_LAYERS.match(geo.layer_name) is None:
-                continue
-            geo.delete()
-        self.pcb.garbage_collect()
+        candidates = [
+            self.pcb.vias,
+            self.pcb.segments,
+            self.pcb.arcs,
+            self.pcb.gr_texts,
+            self.pcb.zones,
+        ] + get_all_geo_containers(self.pcb)
+        for objs in candidates:
+            for obj in objs:
+                if self.is_marked(obj):
+                    objs.remove(obj)
 
     T = TypeVar("T")
 
@@ -190,12 +291,13 @@ class PCB_Transformer:
     def flipped(input_list: list[tuple[T, int]]) -> list[tuple[T, int]]:
         return [(x, (y + 180) % 360) for x, y in reversed(input_list)]
 
-    def gen_uuid(self, mark: bool = False):
-        return UUID.factory(UUID.gen_uuid(mark="FBRK" if mark else ""))
+    @staticmethod
+    def gen_uuid(mark: bool = False):
+        return gen_uuid(mark="FBRK" if mark else "")
 
     @staticmethod
     def is_marked(obj) -> bool:
-        return obj.uuid.is_marked("FBRK")
+        return is_marked(obj.uuid, "FBRK")
 
     # Getter ---------------------------------------------------------------------------
     @staticmethod
@@ -206,20 +308,19 @@ class PCB_Transformer:
         nets = {pcb_net.name: pcb_net for pcb_net in self.pcb.nets}
         return nets[net.get_trait(has_overriden_name).get_name()]
 
-    def get_edge(self) -> list[GR_Line.Coord]:
+    def get_edge(self) -> list[Point2D]:
         def geo_to_lines(
-            geo: Geom, parent: PCB_Node
-        ) -> list[tuple[GR_Line.Coord, GR_Line.Coord]]:
-            lines = []
-            assert geo.sym is not None
+            geo: Geom, fp: Footprint | None = None
+        ) -> list[tuple[Point2D, Point2D]]:
+            lines: list[tuple[Point2D, Point2D]] = []
 
             if isinstance(geo, GR_Line):
-                lines = [(geo.start, geo.end)]
+                lines = [(coord_to_point2d(geo.start), coord_to_point2d(geo.end))]
             elif isinstance(geo, Arc):
-                arc = (geo.start, geo.mid, geo.end)
+                arc = map(coord_to_point2d, (geo.start, geo.mid, geo.end))
                 lines = Geometry.approximate_arc(*arc, resolution=10)
             elif isinstance(geo, Rect):
-                rect = (geo.start, geo.end)
+                rect = (coord_to_point2d(geo.start), coord_to_point2d(geo.end))
 
                 c0 = (rect[0][0], rect[1][1])
                 c1 = (rect[1][0], rect[0][1])
@@ -233,31 +334,30 @@ class PCB_Transformer:
             else:
                 raise NotImplementedError(f"Unsupported type {type(geo)}: {geo}")
 
-            if geo.sym.startswith("fp"):
-                assert isinstance(parent, Footprint)
+            if fp:
+                fpat = coord_to_point(fp.at)
                 lines = [
-                    tuple(Geometry.abs_pos(parent.at.coord, x) for x in line)
+                    per_point(
+                        line,
+                        lambda c: Geometry.as2d(Geometry.abs_pos(fpat, c)),
+                    )
                     for line in lines
                 ]
 
             return lines
 
-        def quantize_line(line: tuple[GR_Line.Coord, GR_Line.Coord]):
-            DIGITS = 2
-            return tuple(tuple(round(c, DIGITS) for c in p) for p in line)
-
-        lines: list[tuple[GR_Line.Coord, GR_Line.Coord]] = [
-            quantize_line(line)
+        lines: list[tuple[Point2D, Point2D]] = [
+            round_line(line)
             for sub_lines in [
-                geo_to_lines(pcb_geo, self.pcb)
-                for pcb_geo in self.pcb.geoms
-                if pcb_geo.layer_name == "Edge.Cuts"
+                geo_to_lines(pcb_geo)
+                for pcb_geo in get_all_geos(self.pcb)
+                if pcb_geo.layer == "Edge.Cuts"
             ]
             + [
                 geo_to_lines(fp_geo, fp)
                 for fp in self.pcb.footprints
-                for fp_geo in fp.geoms
-                if fp_geo.layer_name == "Edge.Cuts"
+                for fp_geo in get_all_geos(fp)
+                if fp_geo.layer == "Edge.Cuts"
             ]
             for line in sub_lines
         ]
@@ -292,7 +392,9 @@ class PCB_Transformer:
                 return []
             raise Exception(f"EdgeCut: Ambiguous polygons {polys}")
 
-        return get_geometry(polys, 0).exterior.coords
+        poly = get_geometry(polys, 0)
+        assert isinstance(poly, Polygon)
+        return list(poly.exterior.coords)
 
     @staticmethod
     def _get_pad(ffp: FFootprint, intf: Electrical):
@@ -304,7 +406,7 @@ class PCB_Transformer:
         )[1]
 
         fp = PCB_Transformer.get_fp(ffp)
-        pad = fp.get_pad(pin_name)
+        pad = find(fp.pads, lambda p: p.name == pin_name)
 
         return fp, pad
 
@@ -316,7 +418,7 @@ class PCB_Transformer:
         return fp, pad, obj
 
     @staticmethod
-    def get_pad_pos_any(intf: Electrical) -> list[tuple[FPad, Geometry.Point]]:
+    def get_pad_pos_any(intf: Electrical) -> list[tuple[FPad, Point]]:
         try:
             fpads = FPad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         except ValueError:
@@ -326,7 +428,7 @@ class PCB_Transformer:
         return [PCB_Transformer._get_pad_pos(fpad) for fpad in fpads]
 
     @staticmethod
-    def get_pad_pos(intf: Electrical) -> tuple[FPad, Geometry.Point] | None:
+    def get_pad_pos(intf: Electrical) -> tuple[FPad, Point] | None:
         try:
             fpad = FPad.find_pad_for_intf_with_parent_that_has_footprint_unique(intf)
         except ValueError:
@@ -338,7 +440,7 @@ class PCB_Transformer:
     def _get_pad_pos(fpad: FPad):
         fp, pad = fpad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()
 
-        point3d = Geometry.abs_pos(fp.at.coord, pad.at.coord)
+        point3d = abs_pos(fp.at, pad.at)
 
         transformer = fpad.get_trait(
             PCB_Transformer.has_linked_kicad_pad
@@ -358,12 +460,16 @@ class PCB_Transformer:
     def get_copper_layers(self):
         COPPER = re.compile(r"^.*\.Cu$")
 
-        return {name for name in self.pcb.layer_names if COPPER.match(name) is not None}
+        return {
+            layer.name
+            for layer in self.pcb.layers
+            if COPPER.match(layer.name) is not None
+        }
 
     def get_copper_layers_pad(self, pad: Pad):
         COPPER = re.compile(r"^.*\.Cu$")
 
-        all_layers = self.pcb.layer_names
+        all_layers = [layer.name for layer in self.pcb.layers]
 
         def dewildcard(layer: str):
             if "*" not in layer:
@@ -394,208 +500,134 @@ class PCB_Transformer:
         return copper_layers[layer_id]
 
     # Insert ---------------------------------------------------------------------------
-    def insert(self, node: PCB_Node, mark: bool = True):
+    @staticmethod
+    def mark(node: R) -> R:
         if hasattr(node, "uuid"):
-            node.uuid.uuid = self.gen_uuid(mark=mark).uuid
-        self.pcb.append(node)
+            node.uuid = PCB_Transformer.gen_uuid(mark=True)  # type: ignore
 
-    # TODO
-    def insert_plane(self, layer: str, net: Any):
-        raise NotImplementedError()
+        return node
+
+    @deprecated("Use the proper inserter, or insert into corresponding field")
+    def insert(self, obj: Any):
+        self._insert(obj)
+
+    def _get_pcb_node_list(self, node: R, prefix: str = "") -> list[R]:
+        root = self.pcb
+        key = prefix + type(node).__name__.removeprefix("C_") + "s"
+
+        assert hasattr(root, key)
+
+        target = getattr(root, key)
+        assert isinstance(target, list)
+        assert all(isinstance(x, type(node)) for x in target)
+        return target
+
+    def _insert(self, obj: Any, prefix: str = ""):
+        obj = PCB_Transformer.mark(obj)
+        self._get_pcb_node_list(obj).append(obj)
+
+    def _delete(self, obj: Any, prefix: str = ""):
+        self._get_pcb_node_list(obj).remove(obj)
 
     def insert_via(
         self, coord: tuple[float, float], net: str, size_drill: tuple[float, float]
     ):
-        self.insert(
-            Via.factory(
-                at=At.factory(coord),
-                size_drill=size_drill,
-                layers=("F.Cu", "B.Cu"),
+        self.pcb.vias.append(
+            Via(
+                at=C_xy(*coord),
+                size=C_wh(size_drill[0], size_drill[0]),
+                drill=size_drill[1],
+                layers=["F.Cu", "B.Cu"],
                 net=net,
                 uuid=self.gen_uuid(mark=True),
             )
         )
 
-    def insert_text(self, text: str, at: "At", font: Font, front: bool = True):
-        self.insert(
-            GR_Text.factory(
+    def insert_text(self, text: str, at: C_xyr, font: Font, front: bool = True):
+        self.pcb.gr_texts.append(
+            GR_Text(
                 text=text,
+                type=GR_Text.E_type.user,
                 at=at,
                 layer=f"{'F' if front else 'B'}.SilkS",
-                font=font,
+                effects=C_effects(
+                    font=font,
+                    justify=(
+                        C_effects.E_justify.mirror
+                        if not front
+                        else C_effects.E_justify.left,
+                        C_effects.E_justify.top,
+                    ),
+                ),
                 uuid=self.gen_uuid(mark=True),
-                lrjustify=Text.Justify.MIRROR if not front else Text.Justify.LEFT,
-                udjustify=Text.Justify.TOP,
             )
         )
 
     def insert_track(
         self,
         net_id: int,
-        points: list[Segment.Coord],
+        points: list[Point2D],
         width: float,
         layer: str,
         arc: bool,
     ):
-        parts = []
+        points_ = [point2d_to_coord(p) for p in points]
         if arc:
-            start_and_ends = points[::2]
-            for s, e, m in zip(start_and_ends[:-1], start_and_ends[1:], points[1::2]):
-                parts.append(
-                    Segment_Arc.factory(
-                        s,
-                        m,
-                        e,
+            start_and_ends = points_[::2]
+            for s, e, m in zip(start_and_ends[:-1], start_and_ends[1:], points_[1::2]):
+                self.pcb.arcs.append(
+                    PCB.C_arc_segment(
+                        start=s,
+                        mid=m,
+                        end=e,
                         width=width,
                         layer=layer,
-                        net_id=net_id,
+                        net=net_id,
                         uuid=self.gen_uuid(mark=True),
                     )
                 )
         else:
-            for s, e in zip(points[:-1], points[1:]):
-                parts.append(
-                    Segment.factory(
-                        s,
-                        e,
+            for s, e in zip(points_[:-1], points_[1:]):
+                self.pcb.segments.append(
+                    PCB.C_segment(
+                        start=s,
+                        end=e,
                         width=width,
                         layer=layer,
-                        net_id=net_id,
+                        net=net_id,
                         uuid=self.gen_uuid(mark=True),
                     )
                 )
 
-        for part in parts:
-            self.insert(part)
+    def insert_line(self, start: C_xy, end: C_xy, width: float, layer: str):
+        self.insert_geo(
+            Line(
+                start=start,
+                end=end,
+                stroke=C_stroke(width, C_stroke.E_type.solid),
+                layer=layer,
+                uuid=self.gen_uuid(mark=True),
+            )
+        )
 
     def insert_geo(self, geo: Geom):
-        self.insert(geo)
+        self._insert(geo, prefix="gr_")
 
-    def insert_via_next_to(
-        self,
-        intf: ModuleInterface,
-        clearance: tuple[float, float],
-        size_drill: tuple[float, float],
-    ):
-        fp, pad, _ = self.get_pad(intf)
-
-        rel_target = tuple(map(add, pad.at.coord, clearance))
-        coord = Geometry.abs_pos(fp.at.coord, rel_target)
-
-        self.insert_via(coord[:2], pad.net, size_drill)
-
-        # print("Inserting via for", ".".join([y for x,y in intf.get_hierarchy()]),
-        # "at:", coord, "in net:", net)
-        ...
-
-    def insert_via_triangle(
-        self,
-        intfs: list[ModuleInterface],
-        depth: float,
-        clearance: float,
-        size_drill: tuple[float, float],
-    ):
-        # get pcb pads
-        fp_pads = list(map(self.get_pad, intfs))
-        pads = [x[1] for x in fp_pads]
-        fp = fp_pads[0][0]
-
-        # from first & last pad
-        rect = [pads[-1].at.coord[i] - pads[0].at.coord[i] for i in range(2)]
-        assert 0 in rect
-        width = [p for p in rect if p != 0][0]
-        start = pads[0].at.coord
-
-        # construct triangle
-        shape = Geometry.triangle(
-            Geometry.abs_pos(fp.at.coord, start),
-            width=width,
-            depth=depth,
-            count=len(pads),
-        )
-
-        # clearance
-        shape = Geometry.translate(
-            tuple([clearance if x != 0 else 0 for x in rect]), shape
-        )
-
-        # place vias
-        for pad, point in zip(pads, shape):
-            self.insert_via(point, pad.net, size_drill)
-
-    def insert_via_line(
-        self,
-        intfs: list[ModuleInterface],
-        length: float,
-        clearance: float,
-        angle_deg: float,
-        size_drill: tuple[float, float],
-    ):
-        raise NotImplementedError()
-        # get pcb pads
-        fp_pads = list(map(self.get_pad, intfs))
-        pads = [x[1] for x in fp_pads]
-        fp = fp_pads[0][0]
-
-        # from first & last pad
-        start = pads[0].at.coord
-        abs_start = Geometry.abs_pos(fp.at.coord, start)
-
-        shape = Geometry.line(
-            start=abs_start,
-            length=length,
-            count=len(pads),
-        )
-
-        shape = Geometry.rotate(
-            axis=abs_start[:2],
-            structure=shape,
-            angle_deg=angle_deg,
-        )
-
-        # clearance
-        shape = Geometry.translate((clearance, 0), shape)
-
-        # place vias
-        for pad, point in zip(pads, shape):
-            self.insert_via(point, pad.net, size_drill)
-
-    def insert_via_line2(
-        self,
-        intfs: list[ModuleInterface],
-        length: tuple[float, float],
-        clearance: tuple[float, float],
-        size_drill: tuple[float, float],
-    ):
-        # get pcb pads
-        fp_pads = list(map(self.get_pad, intfs))
-        pads = [x[1] for x in fp_pads]
-        fp = fp_pads[0][0]
-
-        # from first & last pad
-        start = tuple(map(add, pads[0].at.coord, clearance))
-        abs_start = Geometry.abs_pos(fp.at.coord, start)
-
-        shape = Geometry.line2(
-            start=abs_start,
-            end=Geometry.abs_pos(abs_start, length),
-            count=len(pads),
-        )
-
-        # place vias
-        for pad, point in zip(pads, shape):
-            self.insert_via(point, pad.net, size_drill)
+    def delete_geo(self, geo: Geom):
+        self._delete(geo, prefix="gr_")
 
     def get_net_obj_bbox(self, net: Net, layer: str, tolerance=0.0):
         vias = self.pcb.vias
         pads = [(pad, fp) for fp in self.pcb.footprints for pad in fp.pads]
 
-        net_vias = [via for via in vias if via.net == net.id]
+        net_vias = [via for via in vias if via.net == net.number]
         net_pads = [
-            (pad, fp) for pad, fp in pads if pad.net == net.id and layer in pad.layers
+            (pad, fp)
+            for pad, fp in pads
+            if pad.net == net.number and layer in pad.layers
         ]
-        coords = [via.at.coord for via in net_vias] + [
-            Geometry.abs_pos(fp.at.coord, pad.at.coord) for pad, fp in net_pads
+        coords: list[Point2D] = [coord_to_point2d(via.at) for via in net_vias] + [
+            abs_pos2d(fp.at, pad.at) for pad, fp in net_pads
         ]
 
         # TODO ugly, better get pcb boundaries
@@ -606,7 +638,7 @@ class PCB_Transformer:
 
         return Geometry.rect_to_polygon(bbox)
 
-    def insert_zone(self, net: Net, layer: str, polygon: list[Geometry.Point2D]):
+    def insert_zone(self, net: Net, layer: str, polygon: list[Point2D]):
         zones = self.pcb.zones
 
         # check if exists
@@ -617,14 +649,39 @@ class PCB_Transformer:
             logger.warning(f"Zone already exists in {layer=}")
             return
 
-        self.insert(
-            Zone.factory(
-                net=net.id,
+        self.pcb.zones.append(
+            Zone(
+                net=net.number,
                 net_name=net.name,
                 layer=layer,
                 uuid=self.gen_uuid(mark=True),
                 name=f"layer_fill_{net.name}",
-                polygon=polygon,
+                polygon=Zone.C_polygon([point2d_to_coord(p) for p in polygon]),
+                min_thickness=0.25,
+                filled_areas_thickness=False,
+                fill=Zone.C_fill(
+                    enable=True,
+                    mode=Zone.C_fill.E_mode.solid,
+                    hatch_thickness=0.25,
+                    hatch_gap=0.5,
+                    hatch_orientation=0,
+                    hatch_smoothing_level=0,
+                    hatch_smoothing_value=0,
+                    hatch_border_algorithm=Zone.C_fill.E_hatch_border_algorithm.hatch_thickness,
+                    hatch_min_hole_area=0.3,
+                    thermal_gap=0.5,
+                    thermal_bridge_width=0.25,
+                    smoothing=Zone.C_fill.E_smoothing.none,
+                    radius=1,
+                    island_removal_mode=Zone.C_fill.E_island_removal_mode.do_not_remove,
+                    island_area_min=10.0,
+                ),
+                locked=False,
+                hatch=Zone.C_hatch(mode=Zone.C_hatch.E_mode.edge, pitch=0.5),
+                priority=0,
+                connect_pads=Zone.C_connect_pads(
+                    mode=Zone.C_connect_pads.E_mode.solid, clearance=0.5
+                ),
             )
         )
 
@@ -651,63 +708,61 @@ class PCB_Transformer:
                 raise Exception(f"Component {module}({fp.name}) has no layer defined")
 
             logger.debug(f"Placing {fp.name} at {coord} layer {layer_name[coord[3]]}")
-            self.move_fp(fp, coord[:3], layer_name[coord[3]])
+            self.move_fp(fp, C_xyr(*coord[:3]), layer_name[coord[3]])
 
-    def move_fp(self, fp: Footprint, coord: Footprint.Coord, layer: str):
-        if any([x.text == "FBRK:notouch" for x in fp.user_text]):
+    def move_fp(self, fp: Footprint, coord: C_xyr, layer: str):
+        if any([x.text == "FBRK:notouch" for x in fp.fp_texts]):
             logger.warning(f"Skipped no touch component: {fp.name}")
             return
 
         # Rotate
-        rot_angle = (coord[2] - fp.at.coord[2]) % 360
+        rot_angle = (coord.r - fp.at.r) % 360
 
         if rot_angle:
-            for at_prop in fp.get_prop("at", recursive=True):
-                coords = at_prop.node[1:]
-                # if rot is 0 in coord, its compressed to a 2-tuple by kicad
-                if len(coords) == 2:
-                    coords.append(0)
-                coords[2] = (coords[2] + rot_angle) % 360
-                at_prop.node[1:] = coords
+            # Rotation vector in kicad footprint objs not relative to footprint rotation
+            for obj in fp.pads:
+                obj.at.r = (obj.at.r + rot_angle) % 360
+            # For some reason text rotates in the opposite direction
+            for obj in fp.fp_texts + list(fp.propertys.values()):
+                obj.at.r = (obj.at.r - rot_angle) % 360
 
-        fp.at.coord = coord
+        fp.at = coord
 
         # Flip
         flip = fp.layer != layer
 
         if flip:
-            for layer_prop in fp.get_prop(["layer", "layers"], recursive=True):
 
-                def _flip(x):
-                    return (
-                        x.replace("F.", "<F>.")
-                        .replace("B.", "F.")
-                        .replace("<F>.", "B.")
-                    )
+            def _flip(x):
+                return x.replace("F.", "<F>.").replace("B.", "F.").replace("<F>.", "B.")
 
-                layer_prop.node[1:] = [_flip(x) for x in layer_prop.node[1:]]
+            for obj in fp.pads:
+                obj.layers = [_flip(x) for x in obj.layers]
+
+            for obj in get_all_geos(fp) + fp.fp_texts + list(fp.propertys.values()):
+                obj.layer = _flip(obj.layer)
 
         # Label
-        if any([x.text == "FBRK:autoplaced" for x in fp.user_text]):
-            return
-        fp.append(
-            FP_Text.factory(
-                text="FBRK:autoplaced",
-                at=At.factory((0, 0, 0)),
-                font=self.font,
-                uuid=self.gen_uuid(mark=True),
-                layer="User.5",
+        if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
+            fp.fp_texts.append(
+                C_text(
+                    type=C_text.E_type.user,
+                    text="FBRK:autoplaced",
+                    at=C_xyr(0, 0, rot_angle),
+                    effects=C_effects(self.font),
+                    uuid=self.gen_uuid(mark=True),
+                    layer="User.5",
+                )
             )
-        )
 
     # Edge -----------------------------------------------------------------------------
     # TODO: make generic
-    def connect_lines_via_radius(
+    def connect_line_pair_via_radius(
         self,
         line1: Line,
         line2: Line,
         radius: float,
-    ) -> Tuple[GR_Line, GR_Arc, GR_Line]:
+    ) -> tuple[Line, Arc, Line]:
         # Assert if the endpoints of the lines are not connected
         assert line1.end == line2.start, "The endpoints of the lines are not connected."
 
@@ -731,9 +786,9 @@ class PCB_Transformer:
         arc_start = np.array(line1.end) + v1 * radius
 
         # convert to tuples
-        arc_start = tuple(arc_start)
-        arc_center = tuple(arc_center)
-        arc_end = tuple(arc_end)
+        arc_start = point2d_to_coord(tuple(arc_start))
+        arc_center = point2d_to_coord(tuple(arc_center))
+        arc_end = point2d_to_coord(tuple(arc_end))
 
         logger.debug(f"{v_middle=}")
         logger.debug(f"{v_middle_norm=}")
@@ -751,32 +806,56 @@ class PCB_Transformer:
         logger.debug(f"arc_end: {arc_end}")
 
         # Create the arc
-        arc = GR_Arc.factory(
+        arc = Arc(
             start=arc_start,
             mid=arc_center,
             end=arc_end,
-            stroke=GR_Line.Stroke.factory(0.05, "default"),
+            stroke=C_stroke(0.05, C_stroke.E_type.solid),
             layer="Edge.Cuts",
             uuid=self.gen_uuid(mark=True),
         )
 
         # Create new lines
-        new_line1 = GR_Line.factory(
+        new_line1 = Line(
             start=line1.start,
             end=arc_start,
-            stroke=GR_Line.Stroke.factory(0.05, "default"),
+            stroke=C_stroke(0.05, C_stroke.E_type.solid),
             layer="Edge.Cuts",
             uuid=self.gen_uuid(mark=True),
         )
-        new_line2 = GR_Line.factory(
+        new_line2 = Line(
             start=arc_end,
             end=line2.end,
-            stroke=GR_Line.Stroke.factory(0.05, "default"),
+            stroke=C_stroke(0.05, C_stroke.E_type.solid),
             layer="Edge.Cuts",
             uuid=self.gen_uuid(mark=True),
         )
 
         return new_line1, arc, new_line2
+
+    def round_corners(
+        self, geometry: Sequence[Geom], corner_radius_mm: float
+    ) -> list[Geom]:
+        """
+        Round the corners of a geometry by replacing line pairs with arcs.
+        """
+
+        def _transform(geo1: Geom, geo2: Geom) -> Iterable[Geom]:
+            if not isinstance(geo1, Line) or not isinstance(geo2, Line):
+                return (geo1,)
+
+            new_line1, arc, new_line2 = self.connect_line_pair_via_radius(
+                geo1,
+                geo2,
+                corner_radius_mm,
+            )
+            return new_line1, new_line2, arc
+
+        return [
+            t_geo
+            for pair in pairwise(list(geometry) + [geometry[0]])
+            for t_geo in _transform(*pair)
+        ]
 
     def create_rectangular_edgecut(
         self,
@@ -784,63 +863,45 @@ class PCB_Transformer:
         height_mm: float,
         rounded_corners: bool = False,
         corner_radius_mm: float = 0.0,
-    ) -> List[Geom] | List[GR_Line]:
+    ) -> list[Geom] | list[Line]:
         """
         Create a rectengular board outline (edge cut)
         """
         # make 4 line objects where the end of the last line is the begining of the next
         lines = [
-            GR_Line.factory(
-                start=(0, 0),
-                end=(width_mm, 0),
-                stroke=GR_Line.Stroke.factory(0.05, "default"),
+            Line(
+                start=C_xy(0, 0),
+                end=C_xy(width_mm, 0),
+                stroke=C_stroke(0.05, C_stroke.E_type.solid),
                 layer="Edge.Cuts",
                 uuid=self.gen_uuid(mark=True),
             ),
-            GR_Line.factory(
-                start=(width_mm, 0),
-                end=(width_mm, height_mm),
-                stroke=GR_Line.Stroke.factory(0.05, "default"),
+            Line(
+                start=C_xy(width_mm, 0),
+                end=C_xy(width_mm, height_mm),
+                stroke=C_stroke(0.05, C_stroke.E_type.solid),
                 layer="Edge.Cuts",
                 uuid=self.gen_uuid(mark=True),
             ),
-            GR_Line.factory(
-                start=(width_mm, height_mm),
-                end=(0, height_mm),
-                stroke=GR_Line.Stroke.factory(0.05, "default"),
+            Line(
+                start=C_xy(width_mm, height_mm),
+                end=C_xy(0, height_mm),
+                stroke=C_stroke(0.05, C_stroke.E_type.solid),
                 layer="Edge.Cuts",
                 uuid=self.gen_uuid(mark=True),
             ),
-            GR_Line.factory(
-                start=(0, height_mm),
-                end=(0, 0),
-                stroke=GR_Line.Stroke.factory(0.05, "default"),
+            Line(
+                start=C_xy(0, height_mm),
+                end=C_xy(0, 0),
+                stroke=C_stroke(0.05, C_stroke.E_type.solid),
                 layer="Edge.Cuts",
                 uuid=self.gen_uuid(mark=True),
             ),
         ]
         if rounded_corners:
-            rectangle_geometry = []
-            # calculate from a line pair sharing a corner, a line pair with an arc in
-            # between using connect_lines_via_radius.
-            # replace the original line pair with the new line pair and arc
-            for i in range(len(lines)):
-                line1 = lines[i]
-                line2 = lines[(i + 1) % len(lines)]
-                new_line1, arc, new_line2 = self.connect_lines_via_radius(
-                    line1,
-                    line2,
-                    corner_radius_mm,
-                )
-                lines[i] = new_line1
-                lines[(i + 1) % len(lines)] = new_line2
-                rectangle_geometry.append(arc)
-            for line in lines:
-                rectangle_geometry.append(line)
-
-            return rectangle_geometry
+            rounded_geometry = self.round_corners(lines, corner_radius_mm)
+            return rounded_geometry
         else:
-            # Create the rectangle without rounded corners using lines
             return lines
 
     # plot the board outline with matplotlib
@@ -860,18 +921,19 @@ class PCB_Transformer:
 
         fig, ax = plt.subplots()
         for geo in geometry:
-            if isinstance(geo, GR_Line):
+            if isinstance(geo, Line):
                 # plot a line
-                plt.plot([geo.start[0], geo.end[0]], [geo.start[1], geo.end[1]])
-            elif isinstance(geo, GR_Arc):
+                plt.plot([geo.start.x, geo.end.x], [geo.start.y, geo.end.y])
+            elif isinstance(geo, Arc):
                 plot_arc(geo.start, geo.mid, geo.end)
-                plt.plot([geo.start[0], geo.end[0]], [geo.start[1], geo.end[1]])
+                plt.plot([geo.start.x, geo.end.x], [geo.start.y, geo.end.y])
         plt.show()
 
     def set_pcb_outline_complex(
         self,
-        geometry: List[Geom] | List[GR_Line],
+        geometry: List[Geom],
         remove_existing_outline: bool = True,
+        corner_radius_mm: float = 0.0,
     ):
         """
         Create a board outline (edge cut) consisting out of
@@ -883,19 +945,21 @@ class PCB_Transformer:
 
         # remove existing lines on Egde.cuts layer
         if remove_existing_outline:
-            for geo in self.pcb.geoms:
-                if geo.sym not in ["gr_line", "gr_arc"]:
+            for geo in get_all_geos(self.pcb):
+                if not isinstance(geo, (Line, Arc)):
                     continue
-                if geo.layer_name != "Edge.Cuts":
+                if geo.layer != "Edge.Cuts":
                     continue
-                geo.delete()
+                self.delete_geo(geo)
+
+        # round corners between lines
+        if corner_radius_mm > 0:
+            geometry = self.round_corners(geometry, corner_radius_mm)
 
         # create Edge.Cuts geometries
         for geo in geometry:
-            assert (
-                geo.layer_name == "Edge.Cuts"
-            ), f"Geometry {geo} is not on Edge.Cuts layer"
+            assert geo.layer == "Edge.Cuts", f"Geometry {geo} is not on Edge.Cuts layer"
 
-            self.pcb.append(geo)
+            self.insert_geo(geo)
 
         # find bounding box

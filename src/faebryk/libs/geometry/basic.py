@@ -4,7 +4,7 @@
 import logging
 import math
 from operator import add
-from typing import Iterable, TypeVar
+from typing import Iterable, Sequence, TypeVar
 
 import numpy as np
 from shapely import MultiPolygon, Point, Polygon, transform
@@ -418,10 +418,18 @@ class Geometry:
         ]
 
     @staticmethod
-    def abs_pos(parent: Point, child: Point) -> Point:
+    def as2d(coord: Point | Point2D) -> Point2D:
+        return coord[:2]
+
+    @staticmethod
+    def as4d(coord: Point | Point2D) -> Point:
+        return coord + (0,) * (4 - len(coord))
+
+    @staticmethod
+    def abs_pos(parent_: Point | Point2D, child_: Point | Point2D) -> Point:
         # Extend to x,y,rotation,layer
-        parent = parent + (0,) * (4 - len(parent))
-        child = child + (0,) * (4 - len(child))
+        parent = Geometry.as4d(parent_)
+        child = Geometry.as4d(child_)
 
         rot_parent = parent[2]
         rot_child = child[2]
@@ -545,7 +553,9 @@ class Geometry:
         return np.array([x, y])
 
     @staticmethod
-    def approximate_arc(p_start, p_mid, p_end, resolution=10):
+    def approximate_arc(
+        p_start: Point2D, p_mid: Point2D, p_end: Point2D, resolution=10
+    ) -> list[tuple[Point2D, Point2D]]:
         p_start, p_mid, p_end = (np.array(p) for p in (p_start, p_mid, p_end))
 
         # Calculate the center of the circle
@@ -585,7 +595,9 @@ class Geometry:
         return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
     @staticmethod
-    def bbox(points: list[Point | Point2D], tolerance=0.0) -> tuple[Point2D, Point2D]:
+    def bbox(
+        points: Sequence[Point | Point2D], tolerance=0.0
+    ) -> tuple[Point2D, Point2D]:
         min_x = min(p[0] for p in points)
         min_y = min(p[1] for p in points)
         max_x = max(p[0] for p in points)

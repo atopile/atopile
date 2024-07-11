@@ -127,7 +127,7 @@ class Route(Module):
 def apply_route_in_pcb(route: Route, transformer: PCB_Transformer):
     pcb_net = transformer.get_net(route.net)
 
-    logger.debug(f"Insert tracks for net {pcb_net.name}, {pcb_net.id}, {route}")
+    logger.debug(f"Insert tracks for net {pcb_net.name}, {pcb_net.number}, {route}")
 
     for obj in route.path.path:
         if isinstance(obj, Path.Trace):
@@ -146,7 +146,7 @@ def apply_route_in_pcb(route: Route, transformer: PCB_Transformer):
             )
 
             transformer.insert_track(
-                net_id=pcb_net.id,
+                net_id=pcb_net.number,
                 points=path,
                 width=obj.width,
                 layer=layer_name,
@@ -157,7 +157,7 @@ def apply_route_in_pcb(route: Route, transformer: PCB_Transformer):
             coord = round(obj.pos[0], 2), round(obj.pos[1], 2)
 
             transformer.insert_via(
-                net=pcb_net.id,
+                net=pcb_net.name,
                 coord=coord,
                 size_drill=obj.size_drill,
             )

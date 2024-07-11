@@ -11,7 +11,7 @@ from faebryk.core.core import (
 )
 from faebryk.core.graph import Graph
 from faebryk.core.util import get_all_nodes_graph, get_connected_mifs
-from faebryk.exporters.netlist.netlist import Component
+from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.library.Electrical import Electrical
 from faebryk.library.FootprintTrait import FootprintTrait
 from faebryk.library.has_defined_descriptive_properties import (
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class can_represent_kicad_footprint(FootprintTrait):
-    kicad_footprint = Component
+    kicad_footprint = T2Netlist.Component
 
     @abstractmethod
     def get_name_and_value(self) -> tuple[str, str]: ...

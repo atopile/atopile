@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 
 from faebryk.core.core import Module
+from faebryk.core.graph import Graph
 from faebryk.core.util import get_all_nodes_graph
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.has_overriden_name import has_overriden_name
@@ -12,30 +13,32 @@ from faebryk.library.has_overriden_name import has_overriden_name
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class Component:
-    name: str
-    value: str
-    properties: dict
+@dataclass
+class T2Netlist:
+    @dataclass(frozen=True)
+    class Component:
+        name: str
+        value: str
+        properties: dict[str, str]
 
-    def __hash__(self) -> int:
-        return hash((self.name, self.value, self.properties["footprint"]))
+        def __hash__(self) -> int:
+            return hash((self.name, self.value, self.properties["footprint"]))
+
+    @dataclass(frozen=True)
+    class Net:
+        @dataclass(frozen=True)
+        class Vertex:
+            component: "T2Netlist.Component"
+            pin: str
+
+        properties: dict[str, str]
+        vertices: list[Vertex]
+
+    nets: list[Net]
+    comps: list[Component]
 
 
-@dataclass(frozen=True)
-class Vertex:
-    component: Component
-    pin: str
-
-
-@dataclass(frozen=True)
-class Net:
-    properties: dict
-    vertices: list[Vertex]
-
-
-def make_t2_netlist_from_graph(G):
-    from faebryk.core.graph import Graph
+def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
     from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
     from faebryk.library.Net import Net as FNet
 
@@ -44,11 +47,11 @@ def make_t2_netlist_from_graph(G):
     nets = {n for n in get_all_nodes_graph(G.G) if isinstance(n, FNet)}
 
     t2_nets = [
-        Net(
+        T2Netlist.Net(
             properties={"name": net.get_trait(has_overriden_name).get_name()},
             vertices=sorted(
                 [
-                    Vertex(
+                    T2Netlist.Net.Vertex(
                         component=t.get_kicad_obj(),
                         pin=t.get_pin_name(mif),
                     )
@@ -81,4 +84,4 @@ def make_t2_netlist_from_graph(G):
     ]
     assert not not_found, f"Could not match: {not_found}"
 
-    return {"nets": t2_nets, "comps": comps}
+    return T2Netlist(nets=t2_nets, comps=list(comps))

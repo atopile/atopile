@@ -27,10 +27,7 @@ def write_netlist(
         if netlist_path.exists():
             load_designators_from_netlist(
                 G,
-                {
-                    c.name: c
-                    for c in to_faebryk_t2_netlist(netlist_path.read_text())["comps"]
-                },
+                {c.name: c for c in to_faebryk_t2_netlist(netlist_path).comps},
             )
         attach_random_designators(G)
         override_names_with_designators(G)
@@ -41,7 +38,7 @@ def write_netlist(
     logger.info("Making faebryk netlist")
     t2 = make_t2_netlist_from_graph(G)
     logger.info("Making kicad netlist")
-    netlist = from_faebryk_t2_netlist(t2)
+    netlist = from_faebryk_t2_netlist(t2).dumps()
 
     if netlist_path.exists():
         old_netlist = netlist_path.read_text()
@@ -56,7 +53,6 @@ def write_netlist(
         logger.info(f"Backup old netlist at {backup_path}")
         backup_path.write_text(old_netlist)
 
-    assert isinstance(netlist, str)
     logger.info("Writing Experiment netlist to {}".format(netlist_path.resolve()))
     netlist_path.parent.mkdir(parents=True, exist_ok=True)
     netlist_path.write_text(netlist, encoding="utf-8")

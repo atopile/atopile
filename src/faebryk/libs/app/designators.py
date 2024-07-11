@@ -13,13 +13,14 @@ from faebryk.core.util import (
     get_all_highest_parents_graph,
     get_all_nodes_graph,
 )
-from faebryk.exporters.netlist.netlist import Component
+from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_designator_defined import has_designator_defined
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
+from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 from faebryk.libs.util import duplicates, get_key, groupby
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,9 @@ def attach_hierarchical_designators(graph: Graph):
         ...
 
 
-def load_designators_from_netlist(graph: Graph, t2_netlist_comps: dict[str, Component]):
+def load_designators_from_netlist(
+    graph: Graph, t2_netlist_comps: dict[str, T2Netlist.Component]
+):
     designators: dict[str, str] = {
         comp.properties["faebryk_name"]: comp.name
         for comp in t2_netlist_comps.values()
@@ -131,11 +134,9 @@ def load_designators_from_netlist(graph: Graph, t2_netlist_comps: dict[str, Comp
 
 
 def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: Path):
-    from faebryk.libs.kicad.pcb import PCB
-
     logger.info("Load PCB")
-    pcb = PCB.load(pcbfile)
-    pcb.dump(pcbfile.with_suffix(".bak"))
+    pcb = C_kicad_pcb_file.loads(pcbfile)
+    pcb.dumps(pcbfile.with_suffix(".bak"))
 
     pattern = re.compile(r"^(.*)\[[^\]]*\]$")
     translation = {
@@ -144,8 +145,9 @@ def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: P
         if n.has_trait(has_overriden_name)
     }
 
-    for fp in pcb.footprints:
-        ref = fp.reference.text
+    for fp in pcb.kicad_pcb.footprints:
+        ref_prop = fp.propertys["Reference"]
+        ref = ref_prop.value
         m = pattern.match(ref)
         if not m:
             logger.warning(f"Could not match {ref}")
@@ -155,6 +157,6 @@ def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: P
             logger.warning(f"Could not translate {name}")
             continue
         logger.info(f"Translating {name} to {translation[name]}")
-        fp.reference.text = translation[name]
+        ref_prop.value = translation[name]
 
-    pcb.dump(pcbfile)
+    pcb.dumps(pcbfile)

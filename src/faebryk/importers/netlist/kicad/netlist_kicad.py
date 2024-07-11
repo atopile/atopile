@@ -1,46 +1,42 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.exporters.netlist.netlist import Component, Net, Vertex
-from faebryk.libs.kicad.parser import parse_kicad_netlist
+from pathlib import Path
+
+from faebryk.exporters.netlist.netlist import T2Netlist
+from faebryk.libs.kicad.fileformats import C_kicad_netlist_file
 
 
-def to_faebryk_t2_netlist(kicad_netlist):
-    # t2_netlist = [(properties, vertices=[(comp=(name, value, properties), pin)])]
+def to_faebryk_t2_netlist(kicad_netlist: str | Path | list) -> T2Netlist:
+    netlist = C_kicad_netlist_file.loads(kicad_netlist)
 
-    # kicad_netlist = {
-    #   comps:  [(ref, value, fp, tstamp)],
-    #   nets:   [(code, name, [node=(ref, pin)])],
-    # }
-
-    netlist = parse_kicad_netlist(kicad_netlist)
-
-    components: dict[str, Component] = {
-        comp["ref"]: Component(
-            name=comp["ref"],
-            value=comp["value"],
-            properties={"footprint": comp["footprint"]} | comp.get("properties", {}),
+    components: dict[str, T2Netlist.Component] = {
+        comp.ref: T2Netlist.Component(
+            name=comp.ref,
+            value=comp.value,
+            properties={"footprint": comp.footprint}
+            | {v.name: v.value for v in comp.propertys.values()},
         )
-        for comp in netlist["components"].values()
+        for comp in netlist.export.components.comps
     }
 
-    t2_netlist = {
-        "nets": [
-            Net(
+    t2_netlist = T2Netlist(
+        nets=[
+            T2Netlist.Net(
                 properties={
-                    "name": net["name"],
+                    "name": net.name,
                 },
                 vertices=[
-                    Vertex(
-                        component=components[node["ref"]],
-                        pin=node["pin"],
+                    T2Netlist.Net.Vertex(
+                        component=components[node.ref],
+                        pin=node.pin,
                     )
-                    for node in net["nodes"]
+                    for node in net.nodes
                 ],
             )
-            for net in netlist["nets"].values()
+            for net in netlist.export.nets.nets
         ],
-        "comps": list(components.values()),
-    }
+        comps=list(components.values()),
+    )
 
     return t2_netlist

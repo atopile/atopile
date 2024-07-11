@@ -16,7 +16,11 @@ from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
 from faebryk.libs.app.kicad_netlist import write_netlist
-from faebryk.libs.kicad.pcb import PCB, Project, fp_lib_table
+from faebryk.libs.kicad.fileformats import (
+    C_kicad_fp_lib_table_file,
+    C_kicad_pcb_file,
+    C_kicad_project_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +76,9 @@ def apply_design(
     apply_netlist(pcb_path, netlist_path, changed)
 
     logger.info("Load PCB")
-    pcb = PCB.load(pcb_path)
+    pcb = C_kicad_pcb_file.loads(pcb_path)
 
-    transformer = PCB_Transformer(pcb, G, app)
+    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
 
     logger.info("Transform PCB")
     if transform:
@@ -86,7 +90,7 @@ def apply_design(
     apply_routing(app, transformer)
 
     logger.info(f"Writing pcbfile {pcb_path}")
-    pcb.dump(pcb_path)
+    pcb.dumps(pcb_path)
 
     print("Reopen PCB in kicad")
 
@@ -94,9 +98,11 @@ def apply_design(
 def include_footprints(pcb_path: Path):
     fplibpath = pcb_path.parent / "fp-lib-table"
     if fplibpath.exists():
-        fptable = fp_lib_table.load(fplibpath)
+        fptable = C_kicad_fp_lib_table_file.loads(fplibpath)
     else:
-        fptable = fp_lib_table.factory(version=7)
+        fptable = C_kicad_fp_lib_table_file(
+            C_kicad_fp_lib_table_file.C_fp_lib_table(version=7, libs=[])
+        )
 
     # TODO make more generic, this is very lcsc specific
     from faebryk.libs.picker.lcsc import LIB_FOLDER as LCSC_LIB_FOLDER
@@ -114,12 +120,19 @@ def include_footprints(pcb_path: Path):
     except ValueError:
         relative = False
 
-    if not any(fplib.name == "lcsc" for fplib in fptable.libs):
-        fptable.add_lib(
-            fp_lib_table.lib.factory(
-                "lcsc",
-                uri=str(fppath),
-                uri_prj_relative=relative,
+    uri = str(fppath)
+    if relative:
+        assert not uri.startswith("/")
+        assert not uri.startswith("${KIPRJMOD}")
+        uri = "${KIPRJMOD}/" + uri
+
+    if not any(fplib.name == "lcsc" for fplib in fptable.fp_lib_table.libs):
+        fptable.fp_lib_table.libs.append(
+            C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+                name="lcsc",
+                type="KiCad",
+                uri=uri,
+                options="",
                 descr="FBRK: LCSC footprints auto-downloaded",
             )
         )
@@ -127,7 +140,7 @@ def include_footprints(pcb_path: Path):
             "Changed fp-lib-table to include lcsc library, need to restart pcbnew"
         )
 
-    fptable.dump(fplibpath)
+    fptable.dumps(fplibpath)
 
 
 def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool = True):
@@ -136,13 +149,13 @@ def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool 
     # Set netlist path in gui menu
     prj_path = pcb_path.with_suffix(".kicad_pro")
     if not prj_path.exists():
-        project = Project()
+        project = C_kicad_project_file()
     else:
-        project = Project.load(prj_path)
+        project = C_kicad_project_file.loads(prj_path)
     project.pcbnew.last_paths.netlist = str(
         netlist_path.resolve().relative_to(pcb_path.parent.resolve(), walk_up=True)
     )
-    project.dump(prj_path)
+    project.dumps(prj_path)
 
     # Import netlist into pcb
     if not netlist_has_changed:
@@ -158,7 +171,7 @@ def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool 
     if auto_mode:
         import subprocess
 
-        subprocess.Popen(["pcbnew", str(pcb_path)])
+        subprocess.Popen(["pcbnew", str(pcb_path)], stderr=subprocess.DEVNULL)
     else:
         print(f"PCB location: {pcb_path}")
 

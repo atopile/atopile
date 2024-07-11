@@ -57,14 +57,14 @@ def _test_netlist_graph():
     override_names_with_designators(G)
     attach_nets_and_kicad_info(G)
     t2 = make_t2_netlist_from_graph(G)
-    for comp in t2["comps"]:
+    for comp in t2.comps:
         del comp.properties["faebryk_name"]
     netlist = from_faebryk_t2_netlist(t2)
 
     # test
     _, netlist_t2 = _test_netlist_t2()
     kicad_netlist_t2 = from_faebryk_t2_netlist(netlist_t2)
-    success = netlist == kicad_netlist_t2
+    success = netlist.dumps() == kicad_netlist_t2.dumps()
     if not success:
         logger.error("Graph != T2")
         logger.error("T2: %s", kicad_netlist_t2)
@@ -75,11 +75,11 @@ def _test_netlist_graph():
 
 def _test_netlist_t2():
     from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-    from faebryk.exporters.netlist.netlist import Component, Net, Vertex
+    from faebryk.exporters.netlist.netlist import T2Netlist
 
     # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
 
-    resistor1 = Component(
+    resistor1 = T2Netlist.Component(
         name="R1",
         value="100Ω",
         properties={
@@ -87,7 +87,7 @@ def _test_netlist_t2():
         },
     )
 
-    resistor2 = Component(
+    resistor2 = T2Netlist.Component(
         name="R2",
         value="200Ω",
         properties={
@@ -95,47 +95,47 @@ def _test_netlist_t2():
         },
     )
 
-    netlist = {
-        "nets": [
-            Net(
+    netlist = T2Netlist(
+        nets=[
+            T2Netlist.Net(
                 properties={
                     "name": "GND",
                 },
                 vertices=[
-                    Vertex(
+                    T2Netlist.Net.Vertex(
                         component=resistor1,
                         pin="2",
                     ),
-                    Vertex(
+                    T2Netlist.Net.Vertex(
                         component=resistor2,
                         pin="2",
                     ),
                 ],
             ),
-            Net(
+            T2Netlist.Net(
                 properties={
                     "name": "+3V3",
                 },
                 vertices=[
-                    Vertex(
+                    T2Netlist.Net.Vertex(
                         component=resistor1,
                         pin="1",
                     ),
-                    Vertex(
+                    T2Netlist.Net.Vertex(
                         component=resistor2,
                         pin="1",
                     ),
                 ],
             ),
         ],
-        "comps": [resistor1, resistor2],
-    }
+        comps=[resistor1, resistor2],
+    )
     logger.debug("T2 netlist:", netlist)
 
     kicad_net = from_faebryk_t2_netlist(netlist)
     kicad_net_manu = _test_netlist_manu()
 
-    success = kicad_net == kicad_net_manu
+    success = kicad_net.dumps() == kicad_net_manu.dumps()
     if not success:
         logger.error("T2 != Manu")
         logger.error(kicad_net_manu)
@@ -146,88 +146,70 @@ def _test_netlist_t2():
 def _test_netlist_manu():
     import itertools
 
-    import faebryk.libs.kicad.sexp as sexp
-    from faebryk.exporters.netlist.kicad.netlist_kicad import (
-        _defaulted_comp,
-        _defaulted_netlist,
-        _gen_net,
-        _gen_node,
-    )
+    from faebryk.libs.kicad.fileformats import C_fields, C_kicad_netlist_file
 
     # Footprint pins are just referenced by number through netlist of symbol
-    # We only need
-    #   - components
-    #       - ref
-    #       - value (for silk)
-    #       - footprint
-    #       - tstamp (uuid gen)
-    #   - nets
-    #       - code (uuid gen)
-    #       - name
-    #       - nodes
-    #           - ref (comp)
-    #           - pin (of footprint)
     # Careful comps need distinct timestamps
     tstamp = itertools.count(1)
 
-    resistor_comp = _defaulted_comp(
-        ref="R1",
-        value="100Ω",
-        footprint="Resistor_SMD:R_0805_2012Metric",
-        tstamp=next(tstamp),
-        fields=[],
-        properties={},
-    )
-    resistor_comp2 = _defaulted_comp(
-        ref="R2",
-        value="200Ω",
-        footprint="Resistor_SMD:R_0805_2012Metric",
-        tstamp=next(tstamp),
-        fields=[],
-        properties={},
-    )
-
-    device_nets = [
-        _gen_net(
-            code=1,
-            name="+3V3",
-            nodes=[
-                _gen_node(
-                    ref="R1",
-                    pin="1",
-                ),
-                _gen_node(
-                    ref="R2",
-                    pin="1",
-                ),
-            ],
+    N = C_kicad_netlist_file
+    return C_kicad_netlist_file(
+        N.C_netlist(
+            version="E",
+            components=N.C_netlist.C_components(
+                comps=[
+                    N.C_netlist.C_components.C_component(
+                        ref="R1",
+                        value="100Ω",
+                        footprint="Resistor_SMD:R_0805_2012Metric",
+                        tstamps=str(next(tstamp)),
+                        fields=C_fields(fields={}),
+                        propertys={},
+                    ),
+                    N.C_netlist.C_components.C_component(
+                        ref="R2",
+                        value="200Ω",
+                        footprint="Resistor_SMD:R_0805_2012Metric",
+                        tstamps=str(next(tstamp)),
+                        fields=C_fields(fields={}),
+                        propertys={},
+                    ),
+                ]
+            ),
+            nets=N.C_netlist.C_nets(
+                nets=[
+                    N.C_netlist.C_nets.C_net(
+                        code=1,
+                        name="+3V3",
+                        nodes=[
+                            N.C_netlist.C_nets.C_net.C_node(
+                                ref="R1",
+                                pin="1",
+                            ),
+                            N.C_netlist.C_nets.C_net.C_node(
+                                ref="R2",
+                                pin="1",
+                            ),
+                        ],
+                    ),
+                    N.C_netlist.C_nets.C_net(
+                        code=2,
+                        name="GND",
+                        nodes=[
+                            N.C_netlist.C_nets.C_net.C_node(
+                                ref="R1",
+                                pin="2",
+                            ),
+                            N.C_netlist.C_nets.C_net.C_node(
+                                ref="R2",
+                                pin="2",
+                            ),
+                        ],
+                    ),
+                ]
+            ),
         ),
-        _gen_net(
-            code=2,
-            name="GND",
-            nodes=[
-                _gen_node(
-                    ref="R1",
-                    pin="2",
-                ),
-                _gen_node(
-                    ref="R2",
-                    pin="2",
-                ),
-            ],
-        ),
-    ]
-
-    netlist = _defaulted_netlist(
-        components=[resistor_comp, resistor_comp2],
-        nets=[*device_nets],
     )
-
-    sexpnet = sexp.gensexp(netlist)
-    assert isinstance(sexpnet, str)
-    sexpnet = sexp.prettify_sexp_string(sexpnet)
-
-    return sexpnet
 
 
 class TestNetlist(unittest.TestCase):
