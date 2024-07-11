@@ -4,6 +4,7 @@
 `ato inspect`
 """
 
+import csv
 import itertools
 import logging
 from typing import Optional
@@ -20,9 +21,9 @@ from atopile.config import BuildContext
 from atopile.front_end import Link, lofty
 from atopile.instance_methods import (
     all_descendants,
+    get_children,
     get_links,
     get_parent,
-    get_children,
     iter_parents,
     match_interfaces,
     match_modules,
@@ -33,6 +34,8 @@ from atopile.instance_methods import (
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
+
+
 class DisplayEntry:
     """
     This class represents the nets that are below the inspected module,
@@ -44,6 +47,7 @@ class DisplayEntry:
         self.inspect_consumer: list[AddrStr] = []
         self.context_net: list[AddrStr] = []
         self.context_consumer: list[AddrStr] = []
+
 
 def find_nets(links: list[Link]) -> list[list[AddrStr]]:
     # Convert links to an adjacency list
@@ -94,7 +98,8 @@ def find_nets(links: list[Link]) -> list[list[AddrStr]]:
 
     return connected_components
 
-#TODO: this only works for direct connections but won't work for
+
+# TODO: this only works for direct connections but won't work for
 # nested interfaces or signals within the interface modules
 def find_net_hits(net: list[AddrStr], links: list[Link]) -> list[AddrStr]:
     hits = []
@@ -133,9 +138,11 @@ def visit_branch(tree, addr):
         visit_branch(branch, child)
     return tree
 
+
 def build_tree(root_addr):
     tree = Tree(f"{address.get_instance_section(root_addr)}")
     rich.print(visit_branch(tree, root_addr))
+
 
 odd_row = "on grey11 cornflower_blue"
 even_row = "on grey15 cornflower_blue"
@@ -147,14 +154,16 @@ even_greyed_row = "on grey15 grey0"
 @project_options
 @click.option("--inspect", default=None)
 @click.option("--context", default=None, help="The context from which to inspect the module")
-def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Optional[str]):
+@click.option("--dump-csv", default=None, help="Output the inspection to a CSV file", )
+@errors.log_ato_errors
+def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Optional[str], dump_csv: Optional[str]):
     """
     Utility to inspect what is connected to a component.
     The context set the boundary where something is considered connecting to it.
     For example: --inspect rp2040_micro --context rp2040_micro_ki
     """
     if len(build_ctxs) == 0:
-        errors.AtoNotImplementedError("No build contexts found.")
+        raise errors.AtoNotImplementedError("No build contexts found.")
     elif len(build_ctxs) == 1:
         build_ctx = build_ctxs[0]
     else:
@@ -237,6 +246,9 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
     inspection_table.add_column("Interface", justify="left")
     inspection_table.add_column("Connected to", justify="left")
 
+    # CSV dumping
+    csv_data = []
+
     # Help to fill the table
     bom_row_nb_counter = itertools.count()
     def _add_row(pins, signals, intermediate, consumers):
@@ -247,22 +259,20 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
                 processed_signal.append(address.get_name(get_parent(signal)) + "." + address.get_name(signal))
             else:
                 processed_signal.append(address.get_name(signal))
+
         if consumers == []:
-            inspection_table.add_row(
-                f"{', '.join([address.get_name(x) for x in pins])}",
-                f"{', '.join([x for x in processed_signal])}",
-                f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
-                f"{', '.join([address.get_instance_section(x) for x in consumers])}",
-                style=even_row if row_nb % 2 else odd_row,
-            )
+            style = even_row if row_nb % 2 else odd_row
         else:
-            inspection_table.add_row(
-                f"{', '.join([address.get_name(x) for x in pins])}",
-                f"{', '.join([x for x in processed_signal])}",
-                f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
-                f"{', '.join([address.get_instance_section(x) for x in consumers])}",
-                style=even_greyed_row if row_nb % 2 else odd_greyed_row,
-            )
+            style = even_greyed_row if row_nb % 2 else odd_greyed_row
+
+        row_data = [
+            f"{', '.join([address.get_name(x) for x in pins])}",
+            f"{', '.join([x for x in processed_signal])}",
+            f"{', '.join([address.get_instance_section(x) for x in intermediate])}",
+            f"{', '.join([address.get_instance_section(x) for x in consumers])}",
+        ]
+        inspection_table.add_row(*row_data, style=style)
+        csv_data.append(row_data)
 
     #sorted_entries = natsort.natsorted(displayed_entries, key=lambda obj: obj.connectables[0])
     for entry in inspect_entries:
@@ -271,5 +281,8 @@ def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Opt
 
         _add_row(pins, signals, list(set(entry.inspect_consumer)), list(set(entry.context_consumer)))
 
-
     rich.print(inspection_table)
+    if dump_csv:
+        with open(dump_csv, "w", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerows(csv_data)
