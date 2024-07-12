@@ -45,7 +45,9 @@ class has_pcb_routing_strategy_greedy_direct_line(has_pcb_routing_strategy.impl(
                 raise NotImplementedError()
             layer = next(iter(layers))
 
-            if len(pads) < 2:
+            grouped_pads = group_pads_that_are_connected_already(pads)
+
+            if len(grouped_pads) < 2:
                 return None
 
             logger.debug(f"Routing pads: {pads}")
@@ -54,7 +56,7 @@ class has_pcb_routing_strategy_greedy_direct_line(has_pcb_routing_strategy.impl(
                 # filter pads that are already connected
                 fpads = {
                     (pad := next(iter(pad_group))): pads[pad]
-                    for pad_group in group_pads_that_are_connected_already(pads)
+                    for pad_group in grouped_pads
                 }
 
                 center = Geometry.average([pos for _, pos in fpads.items()])
@@ -66,8 +68,7 @@ class has_pcb_routing_strategy_greedy_direct_line(has_pcb_routing_strategy.impl(
                 return Route(pads=fpads.keys(), path=path)
 
             def get_route_for_direct():
-                _sets = group_pads_that_are_connected_already(pads)
-                sets = [{pads[pad] for pad in group} for group in _sets]
+                sets = [{pads[pad] for pad in group} for group in grouped_pads]
 
                 path = Path()
 

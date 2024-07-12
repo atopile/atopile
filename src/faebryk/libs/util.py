@@ -263,14 +263,6 @@ def NotNone(x):
     return x
 
 
-def consume_iterator(target, it: Iterator):
-    while True:
-        try:
-            yield target(it)
-        except StopIteration:
-            return
-
-
 T = TypeVar("T")
 
 

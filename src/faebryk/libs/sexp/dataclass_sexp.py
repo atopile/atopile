@@ -3,7 +3,7 @@ from dataclasses import Field, dataclass, fields, is_dataclass
 from enum import Enum, StrEnum
 from pathlib import Path
 from types import UnionType
-from typing import Any, Callable, TypeVar, Union, get_args, get_origin
+from typing import Any, Callable, Iterator, TypeVar, Union, get_args, get_origin
 
 import sexpdata
 from faebryk.libs.sexp.util import prettify_sexp_string
@@ -327,3 +327,27 @@ class JSON_File:
         if path:
             path.write_text(text)
         return text
+
+
+def dataclass_dfs(obj) -> Iterator[tuple[Any, list, list[str]]]:
+    return _iterate_tree(obj, [], [])
+
+
+def _iterate_tree(
+    obj, path: list, name_path: list[str]
+) -> Iterator[tuple[Any, list, list[str]]]:
+    out_path = path + [obj]
+
+    yield obj, path, name_path
+
+    if is_dataclass(obj):
+        for f in fields(obj):
+            yield from _iterate_tree(
+                getattr(obj, f.name), out_path, name_path + [f".{f.name}"]
+            )
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from _iterate_tree(v, out_path, name_path + [f"[{i}]"])
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _iterate_tree(v, out_path, name_path + [f"[{repr(k)}]"])

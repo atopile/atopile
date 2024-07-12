@@ -44,7 +44,8 @@ from faebryk.libs.kicad.fileformats import (
     C_xyr,
     C_xyz,
 )
-from faebryk.libs.util import find
+from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
+from faebryk.libs.util import cast_assert, find, get_key
 from shapely import Polygon
 from typing_extensions import deprecated
 
@@ -258,8 +259,9 @@ class PCB_Transformer:
 
             pin_names = g_fp.get_trait(has_kicad_footprint).get_pin_names()
             for fpad in g_fp.IFs.get_all():
-                assert isinstance(fpad, FPad)
-                pad = find(fp.pads, lambda p: p.name == pin_names[fpad])
+                pad = find(
+                    fp.pads, lambda p: p.name == pin_names[cast_assert(FPad, fpad)]
+                )
                 fpad.add_trait(
                     PCB_Transformer.has_linked_kicad_pad_defined(fp, pad, self)
                 )
@@ -272,18 +274,20 @@ class PCB_Transformer:
         logger.debug(f"Attached: {pprint.pformat(attached)}")
 
     def cleanup(self):
-        # delete auto-placed objects
-        candidates = [
-            self.pcb.vias,
-            self.pcb.segments,
-            self.pcb.arcs,
-            self.pcb.gr_texts,
-            self.pcb.zones,
-        ] + get_all_geo_containers(self.pcb)
-        for objs in candidates:
-            for obj in objs:
-                if self.is_marked(obj):
-                    objs.remove(obj)
+        # delete faebryk objects in pcb
+
+        # find all objects with path_len 2 (direct children of a list in pcb)
+        candidates = [o for o in dataclass_dfs(self.pcb) if len(o[1]) == 2]
+        for obj, path, _ in candidates:
+            if not self.is_marked(obj):
+                continue
+
+            # delete object by removing it from the container they are in
+            holder = path[-1]
+            if isinstance(holder, list):
+                holder.remove(obj)
+            elif isinstance(holder, dict):
+                del holder[get_key(obj, holder)]
 
     T = TypeVar("T")
 
@@ -297,6 +301,8 @@ class PCB_Transformer:
 
     @staticmethod
     def is_marked(obj) -> bool:
+        if not hasattr(obj, "uuid"):
+            return False
         return is_marked(obj.uuid, "FBRK")
 
     # Getter ---------------------------------------------------------------------------
