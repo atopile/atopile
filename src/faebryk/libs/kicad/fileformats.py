@@ -612,14 +612,37 @@ class C_footprint:
             rect = auto()
             roundrect = auto()
 
+        @dataclass
+        class C_options:
+            class E_clearance(StrEnum):
+                outline = auto()
+
+            class E_anchor(StrEnum):
+                rect = auto()
+
+            clearance: E_clearance
+            anchor: E_anchor
+
+        @dataclass
+        class C_drill:
+            class E_shape(StrEnum):
+                circle = ""
+                stadium = "oval"
+
+            shape: E_shape = field(**sexp_field(positional=True))
+            size_x: float = field(**sexp_field(positional=True))
+            size_y: Optional[float] = field(**sexp_field(positional=True), default=None)
+
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
         at: C_xyr
         size: C_wh
         layers: list[str]
-        drill: Optional[float] = None
+        drill: Optional[C_drill] = None
         remove_unused_layers: bool = False
+        options: Optional[C_options] = None
+        # primitives
 
     @dataclass
     class C_model:

@@ -472,3 +472,52 @@ def try_avoid_endless_recursion(f: Callable[..., str]):
             sys.setrecursionlimit(limit)
 
     return _f_no_rec
+
+
+def zip_non_locked(left: Iterable[T], right: Iterable[U]):
+    TS = TypeVar("TS")
+    US = TypeVar("US")
+
+    # Theoretically supports any amount of iters,
+    #  but for type hinting limit to two for now
+
+    class _Iter(Iterator[tuple[TS, US]]):
+        class _NONDEFAULT: ...
+
+        def __init__(self, args: list[Iterable]):
+            self.iters = [iter(arg) for arg in args]
+            self.stopped = False
+            self.stepped = False
+            self.values = [None for _ in self.iters]
+
+        def next(self, i: int, default: Any = _NONDEFAULT):
+            try:
+                self.advance(i)
+                return self.values[i]
+            except StopIteration as e:
+                self.stopped = True
+                if default is not self._NONDEFAULT:
+                    return default
+                raise e
+
+        def advance(self, i: int):
+            self.values[i] = next(self.iters[i])
+            self.stepped = True
+
+        def advance_all(self):
+            self.stepped = True
+            try:
+                self.values = [next(iter) for iter in self.iters]
+            except StopIteration:
+                self.stopped = True
+
+        def __next__(self):
+            if not self.stepped:
+                self.advance_all()
+            if self.stopped:
+                raise StopIteration()
+            self.stepped = False
+
+            return tuple(self.values)
+
+    return _Iter[T, U]([left, right])

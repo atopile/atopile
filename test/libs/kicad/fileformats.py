@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from faebryk.libs.kicad.fileformats import (
+    C_footprint,
     C_kicad_footprint_file,
     C_kicad_fp_lib_table_file,
     C_kicad_netlist_file,
@@ -13,7 +14,7 @@ from faebryk.libs.kicad.fileformats import (
 )
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File
-from faebryk.libs.util import find
+from faebryk.libs.util import NotNone, find
 
 TEST_DIR = find(
     Path(__file__).parents,
@@ -84,6 +85,28 @@ class TestFileFormats(unittest.TestCase):
 
         pcb_reload = C_kicad_pcb_file.loads(pcb.dumps())
         self.assertEqual(_d1(pcb_reload).propertys["Value"].value, "LED2")
+
+    def test_empty_enum_positional(self):
+        pcb = C_kicad_pcb_file.loads(PCBFILE)
+
+        def _b1_p1(pcb: C_kicad_pcb_file):
+            return find(
+                find(
+                    pcb.kicad_pcb.footprints,
+                    lambda f: f.propertys["Reference"].value == "B1",
+                ).pads,
+                lambda p: p.name == "1",
+            )
+
+        _b1_p1(pcb).drill = C_footprint.C_pad.C_drill(
+            C_footprint.C_pad.C_drill.E_shape.stadium, 0.5, 0.4
+        )
+        pcb_reload = C_kicad_pcb_file.loads(pcb.dumps())
+
+        self.assertEqual(
+            NotNone(_b1_p1(pcb_reload).drill).shape,
+            C_footprint.C_pad.C_drill.E_shape.stadium,
+        )
 
     def test_dump_load_equality(self):
         def test_reload(path: Path, parser: type[SEXP_File | JSON_File]):

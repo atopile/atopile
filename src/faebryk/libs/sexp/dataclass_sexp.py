@@ -1,13 +1,13 @@
 import logging
 from dataclasses import Field, dataclass, fields, is_dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
-from types import GenericAlias
-from typing import Any, Callable, TypeVar
+from types import UnionType
+from typing import Any, Callable, TypeVar, Union, get_args, get_origin
 
 import sexpdata
 from faebryk.libs.sexp.util import prettify_sexp_string
-from faebryk.libs.util import duplicates, groupby
+from faebryk.libs.util import duplicates, groupby, zip_non_locked
 from sexpdata import Symbol
 
 logger = logging.getLogger(__name__)
@@ -47,18 +47,28 @@ T = TypeVar("T")
 
 
 def _convert(val, t):
-    if isinstance(t, GenericAlias) and t.__origin__ == list:
-        return [_convert(_val, t.__args__[0]) for _val in val]
-    if isinstance(t, GenericAlias) and t.__origin__ == tuple:
-        return tuple(_convert(_val, _t) for _val, _t in zip(val, t.__args__))
-    if t.__name__ == "Optional":
-        return _convert(val, t.__args__[0]) if val is not None else None
-    if t.__name__ == "Union":
-        raise NotImplementedError(
-            "Unions not supported, if you want to use '| None' use Optional instead"
-        )
+    # Recurse (GenericAlias e.g list[])
+    if (origin := get_origin(t)) is not None:
+        args = get_args(t)
+        if origin is list:
+            return [_convert(_val, args[0]) for _val in val]
+        if origin is tuple:
+            return tuple(_convert(_val, _t) for _val, _t in zip(val, args))
+        if origin in (Union, UnionType) and len(args) == 2 and args[1] == type(None):
+            return _convert(val, args[0]) if val is not None else None
+
+        raise NotImplementedError(f"{origin} not supported")
+
+    #
     if is_dataclass(t):
         return _decode(val, t)
+
+    # Primitive
+
+    # Unpack list if single atom
+    if isinstance(val, list) and len(val) == 1 and not isinstance(val[0], list):
+        val = val[0]
+
     if issubclass(t, bool):
         assert val in [Symbol("yes"), Symbol("no")]
         return val == Symbol("yes")
@@ -122,39 +132,31 @@ def _decode(sexp: netlist_type, t: type[T]) -> T:
         logger.debug(f"key_values: {list(key_values.keys())}")
         logger.debug(f"pos_values: {pos_values}")
 
-    # Parse
+    # Parse --------------------------------------------------------------
+
+    # Key-Value
     for s_name, f in key_fields.items():
         name = f.name
         sp = sexp_field.from_field(f)
         if s_name not in key_values:
-            if sp.multidict:
-                value_dict[name] = f.type.__origin__()
+            if sp.multidict and not f.default_factory or f.default:
+                value_dict[name] = get_origin(f.type)()
             # will be automatically filled by factory
             continue
 
-        def _parse_single(kval, t_):
-            logger.debug(f"key_val: {kval}")
-            val: list[list[str | Symbol | int | float | bool]] = kval[1:]
-            assert all(
-                isinstance(v, (str, int, float, Symbol, bool, list)) for v in val
-            )
-
-            return _convert(
-                val[0] if len(val) == 1 and not isinstance(val[0], list) else val,
-                t_,
-            )
-
         values = key_values[s_name]
         if sp.multidict:
-            if isinstance(f.type, GenericAlias) and f.type.__origin__ is list:
-                val_t = f.type.__args__[0]
-                value_dict[name] = [_parse_single(_val, val_t) for _val in values]
-            elif isinstance(f.type, GenericAlias) and f.type.__origin__ is dict:
+            origin = get_origin(f.type)
+            args = get_args(f.type)
+            if origin is list:
+                val_t = args[0]
+                value_dict[name] = [_convert(_val[1:], val_t) for _val in values]
+            elif origin is dict:
                 if not sp.key:
                     raise ValueError(f"Key function required for multidict: {f.name}")
-                key_t = f.type.__args__[0]
-                val_t = f.type.__args__[1]
-                converted_values = [_parse_single(_val, val_t) for _val in values]
+                key_t = args[0]
+                val_t = args[1]
+                converted_values = [_convert(_val[1:], val_t) for _val in values]
                 values_with_key = [(sp.key(_val), _val) for _val in converted_values]
 
                 if not all(isinstance(k, key_t) for k, _ in values_with_key):
@@ -166,15 +168,28 @@ def _decode(sexp: netlist_type, t: type[T]) -> T:
                     raise ValueError(f"Duplicate keys: {d}")
                 value_dict[name] = dict(values_with_key)
             else:
-                raise NotImplementedError(f"Multidict not supported for {f.type}")
+                raise NotImplementedError(
+                    f"Multidict not supported for {origin} in field {f}"
+                )
         else:
             assert len(values) == 1, f"Duplicate key: {name}"
-            value_dict[name] = _parse_single(values[0], f.type)
+            value_dict[name] = _convert(values[0][1:], f.type)
 
-    for (i1, f), (i2, v) in zip(positional_fields.items(), pos_values.items()):
-        name = f.name
-        value_dict[name] = _convert(v, f.type)
+    # Positional
+    for f, v in (it := zip_non_locked(positional_fields.values(), pos_values.values())):
+        # special case for missing positional empty StrEnum fields
+        if isinstance(f.type, type) and issubclass(f.type, StrEnum):
+            if "" in f.type and not isinstance(v, Symbol):
+                value_dict[f.name] = _convert(Symbol(""), f.type)
+                # only advance field iterator
+                # if no more positional fields, there shouldn't be any more values
+                if it.next(0) is None:
+                    raise ValueError(f"Unexpected symbol {v}")
+                continue
 
+        value_dict[f.name] = _convert(v, f.type)
+
+    # Check assertions ----------------------------------------------------
     for f in fs:
         sp = sexp_field.from_field(f)
         if sp.assert_value is not None:
@@ -248,10 +263,10 @@ def _encode(t) -> netlist_type:
 
         if sp.multidict:
             if isinstance(val, list):
-                assert f.type.__origin__ is list
+                assert get_origin(f.type) is list
                 _val = val
             elif isinstance(val, dict):
-                assert f.type.__origin__ is dict
+                assert get_origin(f.type) is dict
                 _val = val
                 _val = val.values()
             else:
