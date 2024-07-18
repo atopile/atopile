@@ -1341,7 +1341,14 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         """This function makes a pin or signal instance and sticks it in the instance tree."""
         # NOTE: name has to come first because both have names,
         # but only pins have a "totally an integer"
-        name = (ctx.name() or ctx.totally_an_integer()).getText()
+        if ctx.name():
+            name = ctx.name().getText()
+        elif ctx.totally_an_integer():
+            name = ctx.totally_an_integer().getText()
+        elif ctx.string():
+            name = self.visitString(ctx.string())
+        else:
+            raise TypeError
 
         current_instance_addr = self._instance_addr_stack.top
         current_instance = self._output_cache[current_instance_addr]
