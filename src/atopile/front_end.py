@@ -1211,6 +1211,10 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             parent=parent_instance,
             src_ctx=src_ctx
         )
+
+        if new_addr in self._output_cache:
+            raise errors.AtoCollisionError(f"Instance already exists at {new_addr}")
+
         self._output_cache[new_addr] = new_instance
 
         if self._instance_addr_stack:
