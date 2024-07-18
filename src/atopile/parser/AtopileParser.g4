@@ -50,7 +50,7 @@ connect_stmt: connectable '~' connectable;
 connectable: name_or_attr | numerical_pin_ref | signaldef_stmt | pindef_stmt;
 
 signaldef_stmt: 'signal' name;
-pindef_stmt: 'pin' (name | totally_an_integer);
+pindef_stmt: 'pin' (name | totally_an_integer | string);
 
 new_stmt: 'new' name_or_attr;
 
