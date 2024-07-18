@@ -34,6 +34,9 @@ dep_import_stmt: 'import' name_or_attr 'from' string;
 import_stmt: 'from' string 'import' name_or_attr (',' name_or_attr)*;
 
 assign_stmt: name_or_attr type_info? '=' assignable;
+cum_assign_stmt: name_or_attr type_info? cum_operator literal_physical;
+cum_operator: '+=' | '-=';
+
 assignable
     : string
     | new_stmt

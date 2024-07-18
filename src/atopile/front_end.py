@@ -160,6 +160,12 @@ class Assignment(Base):
         return f"<Assignment {self.name} = {self.value}>"
 
 
+@define
+class CumulativeAssignment(Assignment):
+    """Represents a cumulative assignment statement."""
+    value: RangedValue
+
+
 @define(repr=False)
 class ClassLayer(Base):
     """
@@ -1310,6 +1316,32 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             return KeyOptMap.empty()
 
         ########## Handle Overrides + Arithmetic ##########
+
+        # Figure out what Instance object the assignment is being made to
+        instance_addr_assigned_to = address.add_instances(
+            self._instance_addr_stack.top, assigned_ref[:-1]
+        )
+        with _translate_addr_key_errors(ctx):
+            instance_assigned_to = self._output_cache[instance_addr_assigned_to]
+
+        # Find the class associated with the assignment
+        # FIXME: wait a second... class associated with the assignment?
+        # I'm unconvinced this makes sense.
+        # TODO: de-triplicate this
+        given_type = self._get_type_info(ctx)
+
+        assignment = Assignment(
+            src_ctx=ctx,
+            name=assigned_name,
+            value=self.visitAssignable(assignable_ctx),
+            given_type=given_type,
+        )
+
+        instance_assigned_to.assignments[assigned_name].appendleft(assignment)
+
+        return KeyOptMap.empty()
+
+    def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
 
         # Figure out what Instance object the assignment is being made to
         instance_addr_assigned_to = address.add_instances(
