@@ -65,6 +65,18 @@ The reason this approach isn't recommended is that it's not very portable. You'r
 If you do want to do this, you can specify the library as well in the footprint field. For example, `footprint = "<library>:<footprint>"`
 
 
+## Attach pins in atopile to footprints
+
+A pin is attached to a footprint via it's name.
+
+For example, if your footprint has a pad named `1`, your component is expected to have a `pin 1` as well.
+
+Pins can be:
+- An integer (e.g. `pin 1`, `pin 2`, `pin 3`)
+- A name (e.g. `pin vcc`, `pin gnd`, `pin sda`, `pin scl`)
+- A string (e.g. `pin "1a"`, `pin "2b"`, `pin "3c"`)
+
+
 ## Something not here?
 
 If you're looking for a how-to that isn't here, please ask us on Discord or open an issue on GitHub!

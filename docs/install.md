@@ -12,10 +12,7 @@ The command will add your footprint and 3D representation to the KiCAD library (
 
 ### Adding components manually
 
-To manually add components, follow the instructions for creating a component or footprint in the section below.
-<!--
-TODO: link to the types
--->
+See [Make a component with your own footprint](/how-to/#make-a-component-with-your-own-footprint)
 
 ## Packages
 
