@@ -5,6 +5,7 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 """
 
 import enum
+import logging
 import operator
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
@@ -181,9 +182,6 @@ class ClassLayer(Base):
     # None indicates that this is a root object
     super: Optional["ClassLayer"]
 
-    # the local objects and vars are things we navigate to a lot
-    assignments: Mapping[str, Assignment]
-
     @property
     def address(self) -> AddrStr:
         return self.obj_def.address
@@ -229,6 +227,8 @@ class Instance(Base):
     # so it's useful to have it all at hand
     addr: AddrStr
     supers: list["ClassLayer"]
+
+    # TODO: flip this around to a list, rather than deque
     assignments: Mapping[str, deque[Assignment]]
     parent: Optional["Instance"]
 
@@ -252,10 +252,6 @@ class Instance(Base):
         supers = list(recurse(lambda x: x.super, super_))
 
         assignments = defaultdict(deque)
-
-        for super_ in supers:
-            for k, v in super_.assignments.items():
-                assignments[k].append(v)
 
         return cls(
             src_ctx=src_ctx,
@@ -289,7 +285,6 @@ def _make_obj_layer(address: AddrStr, super: Optional[ClassLayer] = None) -> Cla
     return ClassLayer(
         obj_def=obj_def,
         super=super,
-        assignments={},
     )
 
 
@@ -1044,9 +1039,6 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             src_ctx=ctx_with_stmts,  # here we save something that's "block-like"
             obj_def=cls_def,
             super=self._get_supers_layer(cls_def),
-            assignments={
-                ref[0]: v for ref, v in strainer.strain(lambda x: isinstance(x.value, Assignment))
-            }
         )
 
         if strainer:
@@ -1062,53 +1054,10 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         """Don't go down blockdefs, they're just for defining objects."""
         return NOTHING
 
-    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
-        assignable_ctx = ctx.assignable()
-        assert isinstance(assignable_ctx, ap.AssignableContext)
-        if assignable_ctx.new_stmt():
-            # ignore new statements here, we'll deal with them in future layers
-            return KeyOptMap.empty()
-
-        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        # FIXME: we need to avoid arithmetic expressions here because
-        # they need the context of their address at build time - which we
-        # don't have at the class-level
-        if len(assigned_value_ref) > 1 or assignable_ctx.arithmetic_expression():
-            # we'll deal with overrides later too!
-            return KeyOptMap.empty()
-
-        assignment = Assignment(
-            src_ctx=ctx,
-            name=assigned_value_ref[0],
-            value=self.visitAssignable(assignable_ctx),
-            given_type=self._get_type_info(ctx),
-        )
-        _, line, *_ = get_src_info_from_ctx(ctx)
-        return KeyOptMap.from_kv(assigned_value_ref, assignment)
-
-    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
-        """Handle declaration statements."""
-        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        if len(assigned_value_ref) > 1:
-            raise errors.AtoSyntaxError(
-                f"Can't declare fields in a nested object {assigned_value_ref}"
-            )
-
-        assignment = Assignment(
-            src_ctx=ctx,
-            name=assigned_value_ref[0],
-            value=None,
-            given_type=self._get_type_info(ctx),
-        )
-        return KeyOptMap.from_kv(assigned_value_ref, assignment)
-
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
     ) -> Iterable[_Sentinel | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.assign_stmt() or ctx.declaration_stmt():
-            return super().visitSimple_stmt(ctx)
-
         return (NOTHING,)
 
 
@@ -1196,7 +1145,6 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             return
         if name in current_scope.children:
             raise errors.AtoError(f"Name '{name}' is already used in this scope. Address: {current_scope.addr}")
-
 
     def build_instance(self, new_addr: AddrStr, super_obj: ClassLayer, src_ctx: Optional[ParserRuleContext] = None) -> None:
         """Create an instance from a reference and a super object layer."""
@@ -1293,6 +1241,32 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         self.build_instance(new_addr, actual_super, ctx)
         return KeyOptMap.empty()
 
+    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
+        """Handle declaration statements."""
+        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
+        if len(assigned_value_ref) > 1:
+            raise errors.AtoSyntaxError(
+                f"Can't declare fields in a nested object {assigned_value_ref}"
+            )
+        assigned_name = assigned_value_ref[0]
+        assignements = self._output_cache[self._instance_addr_stack.top].assignments[assigned_name]
+        if assignements and assignements[0].value is not None:
+            errors.AtoError.from_ctx(
+                ctx, f"Field '{assigned_name}' already declared. Ignoring..."
+            ).log(to_level=logging.WARNING)
+            return KeyOptMap.empty()
+
+        assignment = Assignment(
+            src_ctx=ctx,
+            name=assigned_value_ref[0],
+            value=None,
+            given_type=self._get_type_info(ctx),
+        )
+
+        assignements.appendleft(assignment)
+
+        return KeyOptMap.empty()
+
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Assignments override values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
@@ -1305,18 +1279,8 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         if assignable_ctx.new_stmt():
             return self.handle_new_assignment(ctx)
 
-        ########## Skip basic assignments ##########
-        # We've already dealt with direct assignments in the previous layer
 
-        # FIXME: perhaps it's be better to consolidate the class layers
-        # and instance construction. The ClassLayers just aren't that useful
-        # and require a bunch of this BS to function
-
-        if len(assigned_ref) == 1 and not assignable_ctx.arithmetic_expression():
-            return KeyOptMap.empty()
-
-        ########## Handle Overrides + Arithmetic ##########
-
+        ########## Handle Actual Assignments ##########
         # Figure out what Instance object the assignment is being made to
         instance_addr_assigned_to = address.add_instances(
             self._instance_addr_stack.top, assigned_ref[:-1]

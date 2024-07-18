@@ -33,6 +33,7 @@ block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 dep_import_stmt: 'import' name_or_attr 'from' string;
 import_stmt: 'from' string 'import' name_or_attr (',' name_or_attr)*;
 
+declaration_stmt: name_or_attr type_info;
 assign_stmt: name_or_attr type_info? '=' assignable;
 cum_assign_stmt: name_or_attr type_info? cum_operator literal_physical;
 cum_operator: '+=' | '-=';
@@ -45,7 +46,6 @@ assignable
     | boolean_
     ;
 
-declaration_stmt: name_or_attr type_info;
 
 retype_stmt: name_or_attr '->' name_or_attr;
 
