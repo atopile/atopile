@@ -110,8 +110,12 @@ power
     ;
 
 functional
+    : bound
+    | name '(' bound+ ')'
+    ;
+
+bound
     : atom
-    | name '(' atom+ ')'
     ;
 
 

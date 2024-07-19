@@ -194,6 +194,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#bound.
+    def visitBound(self, ctx:AtopileParser.BoundContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#atom.
     def visitAtom(self, ctx:AtopileParser.AtomContext):
         return self.visitChildren(ctx)

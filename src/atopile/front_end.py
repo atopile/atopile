@@ -698,10 +698,18 @@ class Roley(HandlesPrimaries):
             else:
                 raise errors.AtoNotImplementedError(f"Unknown function '{name}'")
 
-            values = tuple(map(self.visit, ctx.atom()))
+            values = tuple(map(self.visit, ctx.bound()))
             return expressions.defer_operation_factory(func, *values)
 
-        return self.visit(ctx.atom(0))
+        return self.visit(ctx.bound(0))
+
+    def visitBound(self, ctx: ap.BoundContext):
+        # if ctx.arithmetic_group(0):
+        #     return expressions.RangedValue(
+        #         self.visit(ctx.arithmetic_group(0)),
+        #         self.visit(ctx.arithmetic_group(1))
+        #     )
+        return self.visit(ctx.atom())
 
     def visitAtom(self, ctx: ap.AtomContext) -> expressions.NumericishTypes:
         if ctx.arithmetic_group():
@@ -1359,7 +1367,12 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
         assignable = self.visitAssignable(ctx.cum_assignable())
         if existing_value is None:
-            new_value = assignable
+            if ctx.cum_operator().ADD_ASSIGN():
+                new_value = assignable
+            elif ctx.cum_operator().SUB_ASSIGN():
+                new_value = -assignable
+            else:
+                raise ValueError("Unexpected cumulative operator")
         else:
             if ctx.cum_operator().ADD_ASSIGN():
                 new_value = expressions.defer_operation_factory(
