@@ -1268,7 +1268,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         return KeyOptMap.empty()
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
-        """Assignments override values and create new instance of things."""
+        """Assignment values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
 
         assigned_name: str = assigned_ref[-1]
@@ -1278,7 +1278,6 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         ########## Handle New Statements ##########
         if assignable_ctx.new_stmt():
             return self.handle_new_assignment(ctx)
-
 
         ########## Handle Actual Assignments ##########
         # Figure out what Instance object the assignment is being made to
@@ -1294,6 +1293,15 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         # TODO: de-triplicate this
         given_type = self._get_type_info(ctx)
 
+        # TODO: enforce this more strongly: https://github.com/atopile/atopile/issues/433
+        if assigned_name not in instance_assigned_to.assignments:
+            # Raise a warning for now. Enforce this strongly if it's a real issue.
+            errors.AtoError.from_ctx(
+                ctx,
+                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
+                " Declaring implicitly for now, but in the future this may become an error..."
+            ).log(to_level=logging.WARNING)
+
         assignment = Assignment(
             src_ctx=ctx,
             name=assigned_name,
@@ -1306,6 +1314,14 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         return KeyOptMap.empty()
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
+        """
+        Cumulative assignments can only be made on top of
+        nothing (implicitly declared) or declared, but undefined values.
+
+        Unlike assignments, they may not implicitly declare an attribute.
+        """
+        assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
+        assigned_name: str = assigned_ref[-1]
 
         # Figure out what Instance object the assignment is being made to
         instance_addr_assigned_to = address.add_instances(
@@ -1314,16 +1330,45 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         with _translate_addr_key_errors(ctx):
             instance_assigned_to = self._output_cache[instance_addr_assigned_to]
 
-        # Find the class associated with the assignment
-        # FIXME: wait a second... class associated with the assignment?
-        # I'm unconvinced this makes sense.
-        # TODO: de-triplicate this
+        # TODO: de-Nplicate this
         given_type = self._get_type_info(ctx)
 
-        assignment = Assignment(
+        if assigned_name not in instance_assigned_to.assignments:
+            # Raise a warning for now. Enforce this strongly if it's a real issue.
+            raise errors.AtoError.from_ctx(
+                ctx,
+                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
+            )
+
+        existing_value = instance_assigned_to.assignments[assigned_name][0].value
+        if existing_value is not None and not isinstance(
+            instance_assigned_to.assignments[assigned_name][0], CumulativeAssignment
+        ):
+            raise errors.AtoError.from_ctx(
+                ctx,
+                f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
+                " Cumulative assignments can only be made on top of other cumulative assignments,"
+                " nothing or undefined values.",
+            )
+
+        if existing_value is None:
+            new_value = self.visitAssignable(ctx.literal_physical())
+        else:
+            if ctx.cum_operator().PLUS():
+                new_value = expressions.defer_operation_factory(
+                    operator.add, existing_value, self.visitAssignable(ctx.literal_physical())
+                )
+            elif ctx.cum_operator().MINUS():
+                new_value = expressions.defer_operation_factory(
+                    operator.sub, existing_value, self.visitAssignable(ctx.literal_physical())
+                )
+            else:
+                raise ValueError("Unexpected cumulative operator")
+
+        assignment = CumulativeAssignment(
             src_ctx=ctx,
             name=assigned_name,
-            value=self.visitAssignable(assignable_ctx),
+            value=new_value,
             given_type=given_type,
         )
 
@@ -1375,12 +1420,8 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         """
         Connect interfaces together
         """
-        source_addr = self.visitConnectable(ctx.connectable(0))
-        target_addr = self.visitConnectable(ctx.connectable(1))
-
-        with _translate_addr_key_errors(ctx):
-            source_instance = self._output_cache[source_addr]
-            target_instance = self._output_cache[target_addr]
+        source_instance = self.visitConnectable(ctx.connectable(0))
+        target_instance = self.visitConnectable(ctx.connectable(1))
 
         link = Link(
             src_ctx=ctx,
@@ -1393,15 +1434,18 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
         return KeyOptMap.empty()
 
-    def visitConnectable(self, ctx: ap.ConnectableContext) -> AddrStr:
-        """TODO:"""
+    def visitConnectable(self, ctx: ap.ConnectableContext) -> Instance:
+        """Return the address of the connectable object."""
         if ctx.name_or_attr() or ctx.numerical_pin_ref():
             ref = self.visit_ref_helper(ctx.name_or_attr() or ctx.numerical_pin_ref())
-            return address.add_instances(self._instance_addr_stack.top, ref)
+            addr = address.add_instances(self._instance_addr_stack.top, ref)
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():
-            return self.visitChildren(ctx)
+            addr = self.visitChildren(ctx)
         else:
             raise ValueError("Unexpected context in visitConnectable")
+
+        with _translate_addr_key_errors(ctx):
+            return self._output_cache[addr]
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> KeyOptMap:
         """We have to be selective here to deal with the ignored children properly."""
