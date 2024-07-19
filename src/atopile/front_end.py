@@ -1547,7 +1547,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             )
             # TODO: this shouldn't be attached to the expression like this
             # as the only means to pretty-print them
-            expr.src_ctx = ctx
+            setattr(expr, "src_ctx", ctx)
             expressions_.append(expr)
 
         _add_expr_from_context(comparison_ctx.arithmetic_expression())

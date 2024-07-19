@@ -4,7 +4,7 @@ Work with expressions and ranged values.
 
 import collections.abc
 from collections import ChainMap
-from typing import Callable, Mapping, Optional, Type, Union
+from typing import Callable, Mapping, Optional, Union
 
 import pint
 from antlr4 import ParserRuleContext
