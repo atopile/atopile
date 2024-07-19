@@ -59,18 +59,33 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#declaration_stmt.
+    def visitDeclaration_stmt(self, ctx:AtopileParser.Declaration_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#assign_stmt.
     def visitAssign_stmt(self, ctx:AtopileParser.Assign_stmtContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#assignable.
-    def visitAssignable(self, ctx:AtopileParser.AssignableContext):
+    # Visit a parse tree produced by AtopileParser#cum_assign_stmt.
+    def visitCum_assign_stmt(self, ctx:AtopileParser.Cum_assign_stmtContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtopileParser#declaration_stmt.
-    def visitDeclaration_stmt(self, ctx:AtopileParser.Declaration_stmtContext):
+    # Visit a parse tree produced by AtopileParser#cum_operator.
+    def visitCum_operator(self, ctx:AtopileParser.Cum_operatorContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#cum_assignable.
+    def visitCum_assignable(self, ctx:AtopileParser.Cum_assignableContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#assignable.
+    def visitAssignable(self, ctx:AtopileParser.AssignableContext):
         return self.visitChildren(ctx)
 
 
@@ -159,6 +174,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#sum.
+    def visitSum(self, ctx:AtopileParser.SumContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#term.
     def visitTerm(self, ctx:AtopileParser.TermContext):
         return self.visitChildren(ctx)
@@ -171,6 +191,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtopileParser#functional.
     def visitFunctional(self, ctx:AtopileParser.FunctionalContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#bound.
+    def visitBound(self, ctx:AtopileParser.BoundContext):
         return self.visitChildren(ctx)
 
 

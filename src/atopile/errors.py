@@ -134,6 +134,12 @@ class AtoTypeError(AtoError):
     """
 
 
+class AtoValueError(AtoError):
+    """
+    Raised if something is the wrong type.
+    """
+
+
 class AtoImportNotFoundError(AtoError):
     """
     Raised if something has a conflicting name in the same scope.
@@ -170,6 +176,29 @@ class AtoNotImplementedError(AtoError):
     """
     Raised when a feature is not yet implemented.
     """
+
+
+class CountingError(AtoError):
+    count = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.__class__.count is not None:
+            self.__class__.count -= 1
+
+    def log(self, *args, **kwargs):
+        if self.__class__.count > 0:
+            super().log(*args, **kwargs)
+        if self.__class__.count == 0:
+            log.warning("... forgoing more \"%s\" errors of ", self.title or self.__class__.__name__)
+
+
+class ImplicitDeclarationFutureDeprecationWarning(CountingError):
+    """
+    Raised when a feature is deprecated and will be removed in the future.
+    """
+    title = "Implicit Declaration Future Deprecation Warning"
+    count = 5
 
 
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:

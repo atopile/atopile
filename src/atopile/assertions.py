@@ -25,7 +25,7 @@ from atopile import (
     parse_utils,
     telemetry,
 )
-from atopile.front_end import Assertion, Assignment, Expression, RangedValue, lofty
+from atopile.front_end import Assertion, Assignment, RangedValue, lofty
 
 log = logging.getLogger(__name__)
 
@@ -402,7 +402,7 @@ def solve_assertions(build_ctx: config.BuildContext):
                 # FIXME: Do we want to mutate the model here?
                 # FIXME: Creating Assignment object here is annoying
                 parent.assignments[name].appendleft(
-                    Assignment(name, value=val, given_type="None")
+                    Assignment(name, value=val, given_type="None", value_is_derived=True)
                 )
 
     # Solved for assertion values
@@ -436,7 +436,7 @@ def simplify_expressions(entry_addr: address.AddrStr):
         name = address.get_name(addr)
         parent_instance = lofty.get_instance(parent_addr)
         parent_instance.assignments[name].appendleft(
-            Assignment(name, value=value, given_type=None)
+            Assignment(name, value=value, given_type=None, value_is_derived=True)
         )
 
     # Great, now simplify the expressions in the assertions
@@ -494,7 +494,7 @@ def _cost(x):
 
 
 def _constraint_factory(assertion: Assertion, translator):
-    def lower_than(a: Expression, b: Expression) -> list[dict]:
+    def lower_than(a: expressions.Expression, b: expressions.Expression) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (
@@ -506,7 +506,7 @@ def _constraint_factory(assertion: Assertion, translator):
             {"type": "ineq", "fun": _brrr},
         ]
 
-    def greater_than(a: Expression, b: Expression) -> list[dict]:
+    def greater_than(a: expressions.Expression, b: expressions.Expression) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (
@@ -518,7 +518,7 @@ def _constraint_factory(assertion: Assertion, translator):
             {"type": "ineq", "fun": _brrr},
         ]
 
-    def lower_than_eq(a: Expression, b: Expression) -> list[dict]:
+    def lower_than_eq(a: expressions.Expression, b: expressions.Expression) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (
@@ -530,7 +530,7 @@ def _constraint_factory(assertion: Assertion, translator):
             {"type": "ineq", "fun": _brrr},
         ]
 
-    def greater_than_eq(a: Expression, b: Expression) -> list[dict]:
+    def greater_than_eq(a: expressions.Expression, b: expressions.Expression) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (
@@ -542,7 +542,7 @@ def _constraint_factory(assertion: Assertion, translator):
             {"type": "ineq", "fun": _brrr},
         ]
 
-    def within(a: Expression, b: Expression) -> list[dict]:
+    def within(a: expressions.Expression, b: expressions.Expression) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (

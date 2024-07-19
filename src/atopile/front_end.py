@@ -5,6 +5,7 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 """
 
 import enum
+import logging
 import operator
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
@@ -77,26 +78,6 @@ class ClassDef(Base):
         return f"<{self.__class__.__name__} {self.address}>"
 
 
-class Expression(expressions.Expression):
-    def __init__(
-        self,
-        symbols: set[str],
-        lambda_: Callable,
-        src_ctx: Optional[ParserRuleContext] = None
-    ):
-        super().__init__(symbols=symbols, lambda_=lambda_)
-        self.src_ctx = src_ctx
-
-    def __repr__(self) -> str:
-        if not self.src_ctx:
-            return f"<{self.__class__.__name__}>"
-
-        return f"<{self.__class__.__name__} {str(self)}>"
-
-    def __str__(self) -> str:
-        return self.src_ctx.getText()
-
-
 class Assertion:
     def __init__(
         self,
@@ -137,6 +118,7 @@ class Assignment(Base):
     name: str
     value: Optional[Any]
     given_type: Optional[str | pint.Unit]
+    value_is_derived: bool
 
     @property
     def unit(self) -> pint.Unit:
@@ -160,6 +142,13 @@ class Assignment(Base):
         return f"<Assignment {self.name} = {self.value}>"
 
 
+@define
+class CumulativeAssignment(Assignment):
+    """Represents a cumulative assignment statement."""
+    value: RangedValue
+    value_is_derived: bool = True
+
+
 @define(repr=False)
 class ClassLayer(Base):
     """
@@ -174,9 +163,6 @@ class ClassLayer(Base):
 
     # None indicates that this is a root object
     super: Optional["ClassLayer"]
-
-    # the local objects and vars are things we navigate to a lot
-    assignments: Mapping[str, Assignment]
 
     @property
     def address(self) -> AddrStr:
@@ -223,6 +209,8 @@ class Instance(Base):
     # so it's useful to have it all at hand
     addr: AddrStr
     supers: list["ClassLayer"]
+
+    # TODO: flip this around to a list, rather than deque
     assignments: Mapping[str, deque[Assignment]]
     parent: Optional["Instance"]
 
@@ -246,10 +234,6 @@ class Instance(Base):
         supers = list(recurse(lambda x: x.super, super_))
 
         assignments = defaultdict(deque)
-
-        for super_ in supers:
-            for k, v in super_.assignments.items():
-                assignments[k].append(v)
 
         return cls(
             src_ctx=src_ctx,
@@ -283,7 +267,6 @@ def _make_obj_layer(address: AddrStr, super: Optional[ClassLayer] = None) -> Cla
     return ClassLayer(
         obj_def=obj_def,
         super=super,
-        assignments={},
     )
 
 
@@ -637,18 +620,41 @@ class Roley(HandlesPrimaries):
     def visitArithmetic_expression(
         self, ctx: ap.Arithmetic_expressionContext
     ) -> expressions.NumericishTypes:
+        if ctx.OR_OP():
+            return expressions.defer_operation_factory(
+                operator.or_,
+                self.visit(ctx.arithmetic_expression()),
+                self.visit(ctx.sum_()),
+                src_ctx=ctx,
+            )
+
+        if ctx.AND_OP():
+            return expressions.defer_operation_factory(
+                operator.and_,
+                self.visit(ctx.arithmetic_expression()),
+                self.visit(ctx.sum_()),
+                src_ctx=ctx,
+            )
+
+        return self.visit(ctx.sum_())
+
+    def visitSum(
+        self, ctx: ap.SumContext
+    ) -> expressions.NumericishTypes:
         if ctx.ADD():
             return expressions.defer_operation_factory(
                 operator.add,
-                self.visit(ctx.arithmetic_expression()),
+                self.visit(ctx.sum_()),
                 self.visit(ctx.term()),
+                src_ctx=ctx,
             )
 
         if ctx.MINUS():
             return expressions.defer_operation_factory(
                 operator.sub,
-                self.visit(ctx.arithmetic_expression()),
+                self.visit(ctx.sum_()),
                 self.visit(ctx.term()),
+                src_ctx=ctx,
             )
 
         return self.visit(ctx.term())
@@ -659,6 +665,7 @@ class Roley(HandlesPrimaries):
                 operator.mul,
                 self.visit(ctx.term()),
                 self.visit(ctx.power()),
+                src_ctx=ctx,
             )
 
         if ctx.DIV():
@@ -666,6 +673,7 @@ class Roley(HandlesPrimaries):
                 operator.truediv,
                 self.visit(ctx.term()),
                 self.visit(ctx.power()),
+                src_ctx=ctx,
             )
 
         return self.visit(ctx.power())
@@ -676,6 +684,7 @@ class Roley(HandlesPrimaries):
                 operator.pow,
                 self.visit(ctx.functional(0)),
                 self.visit(ctx.functional(1)),
+                src_ctx=ctx,
             )
 
         return self.visit(ctx.functional(0))
@@ -691,10 +700,18 @@ class Roley(HandlesPrimaries):
             else:
                 raise errors.AtoNotImplementedError(f"Unknown function '{name}'")
 
-            values = tuple(map(self.visit, ctx.atom()))
+            values = tuple(map(self.visit, ctx.bound()))
             return expressions.defer_operation_factory(func, *values)
 
-        return self.visit(ctx.atom(0))
+        return self.visit(ctx.bound(0))
+
+    def visitBound(self, ctx: ap.BoundContext):
+        # if ctx.arithmetic_group(0):
+        #     return expressions.RangedValue(
+        #         self.visit(ctx.arithmetic_group(0)),
+        #         self.visit(ctx.arithmetic_group(1))
+        #     )
+        return self.visit(ctx.atom())
 
     def visitAtom(self, ctx: ap.AtomContext) -> expressions.NumericishTypes:
         if ctx.arithmetic_group():
@@ -1038,9 +1055,6 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             src_ctx=ctx_with_stmts,  # here we save something that's "block-like"
             obj_def=cls_def,
             super=self._get_supers_layer(cls_def),
-            assignments={
-                ref[0]: v for ref, v in strainer.strain(lambda x: isinstance(x.value, Assignment))
-            }
         )
 
         if strainer:
@@ -1056,53 +1070,10 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         """Don't go down blockdefs, they're just for defining objects."""
         return NOTHING
 
-    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
-        assignable_ctx = ctx.assignable()
-        assert isinstance(assignable_ctx, ap.AssignableContext)
-        if assignable_ctx.new_stmt():
-            # ignore new statements here, we'll deal with them in future layers
-            return KeyOptMap.empty()
-
-        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        # FIXME: we need to avoid arithmetic expressions here because
-        # they need the context of their address at build time - which we
-        # don't have at the class-level
-        if len(assigned_value_ref) > 1 or assignable_ctx.arithmetic_expression():
-            # we'll deal with overrides later too!
-            return KeyOptMap.empty()
-
-        assignment = Assignment(
-            src_ctx=ctx,
-            name=assigned_value_ref[0],
-            value=self.visitAssignable(assignable_ctx),
-            given_type=self._get_type_info(ctx),
-        )
-        _, line, *_ = get_src_info_from_ctx(ctx)
-        return KeyOptMap.from_kv(assigned_value_ref, assignment)
-
-    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
-        """Handle declaration statements."""
-        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        if len(assigned_value_ref) > 1:
-            raise errors.AtoSyntaxError(
-                f"Can't declare fields in a nested object {assigned_value_ref}"
-            )
-
-        assignment = Assignment(
-            src_ctx=ctx,
-            name=assigned_value_ref[0],
-            value=None,
-            given_type=self._get_type_info(ctx),
-        )
-        return KeyOptMap.from_kv(assigned_value_ref, assignment)
-
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext
     ) -> Iterable[_Sentinel | KeyOptItem]:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.assign_stmt() or ctx.declaration_stmt():
-            return super().visitSimple_stmt(ctx)
-
         return (NOTHING,)
 
 
@@ -1190,7 +1161,6 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             return
         if name in current_scope.children:
             raise errors.AtoError(f"Name '{name}' is already used in this scope. Address: {current_scope.addr}")
-
 
     def build_instance(self, new_addr: AddrStr, super_obj: ClassLayer, src_ctx: Optional[ParserRuleContext] = None) -> None:
         """Create an instance from a reference and a super object layer."""
@@ -1287,8 +1257,35 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         self.build_instance(new_addr, actual_super, ctx)
         return KeyOptMap.empty()
 
+    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
+        """Handle declaration statements."""
+        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
+        if len(assigned_value_ref) > 1:
+            raise errors.AtoSyntaxError(
+                f"Can't declare fields in a nested object {assigned_value_ref}"
+            )
+        assigned_name = assigned_value_ref[0]
+        assignements = self._output_cache[self._instance_addr_stack.top].assignments[assigned_name]
+        if assignements and assignements[0].value is not None:
+            errors.AtoError.from_ctx(
+                ctx, f"Field '{assigned_name}' already declared. Ignoring..."
+            ).log(to_level=logging.WARNING)
+            return KeyOptMap.empty()
+
+        assignment = Assignment(
+            src_ctx=ctx,
+            name=assigned_value_ref[0],
+            value=None,
+            given_type=self._get_type_info(ctx),
+            value_is_derived=False,
+        )
+
+        assignements.appendleft(assignment)
+
+        return KeyOptMap.empty()
+
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
-        """Assignments override values and create new instance of things."""
+        """Assignment values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
 
         assigned_name: str = assigned_ref[-1]
@@ -1299,18 +1296,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         if assignable_ctx.new_stmt():
             return self.handle_new_assignment(ctx)
 
-        ########## Skip basic assignments ##########
-        # We've already dealt with direct assignments in the previous layer
-
-        # FIXME: perhaps it's be better to consolidate the class layers
-        # and instance construction. The ClassLayers just aren't that useful
-        # and require a bunch of this BS to function
-
-        if len(assigned_ref) == 1 and not assignable_ctx.arithmetic_expression():
-            return KeyOptMap.empty()
-
-        ########## Handle Overrides + Arithmetic ##########
-
+        ########## Handle Actual Assignments ##########
         # Figure out what Instance object the assignment is being made to
         instance_addr_assigned_to = address.add_instances(
             self._instance_addr_stack.top, assigned_ref[:-1]
@@ -1324,10 +1310,89 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         # TODO: de-triplicate this
         given_type = self._get_type_info(ctx)
 
+        # TODO: enforce this more strongly: https://github.com/atopile/atopile/issues/433
+        if len(assigned_ref) > 1 and assigned_name not in instance_assigned_to.assignments:
+            # Raise a warning for now. Enforce this strongly if it's a real issue.
+            errors.ImplicitDeclarationFutureDeprecationWarning.from_ctx(
+                ctx,
+                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
+                " Declaring implicitly for now, but in the future this may become an error..."
+            ).log(to_level=logging.WARNING)
+
         assignment = Assignment(
             src_ctx=ctx,
             name=assigned_name,
             value=self.visitAssignable(assignable_ctx),
+            given_type=given_type,
+            value_is_derived=False,
+        )
+
+        instance_assigned_to.assignments[assigned_name].appendleft(assignment)
+
+        return KeyOptMap.empty()
+
+    def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
+        """
+        Cumulative assignments can only be made on top of
+        nothing (implicitly declared) or declared, but undefined values.
+
+        Unlike assignments, they may not implicitly declare an attribute.
+        """
+        assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
+        assigned_name: str = assigned_ref[-1]
+
+        # Figure out what Instance object the assignment is being made to
+        instance_addr_assigned_to = address.add_instances(
+            self._instance_addr_stack.top, assigned_ref[:-1]
+        )
+        with _translate_addr_key_errors(ctx):
+            instance_assigned_to = self._output_cache[instance_addr_assigned_to]
+
+        # TODO: de-Nplicate this
+        given_type = self._get_type_info(ctx)
+
+        if assigned_name not in instance_assigned_to.assignments:
+            # Raise a warning for now. Enforce this strongly if it's a real issue.
+            raise errors.AtoError.from_ctx(
+                ctx,
+                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
+            )
+
+        existing_value = instance_assigned_to.assignments[assigned_name][0].value
+        if existing_value is not None and not isinstance(
+            instance_assigned_to.assignments[assigned_name][0], CumulativeAssignment
+        ):
+            raise errors.AtoError.from_ctx(
+                ctx,
+                f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
+                " Cumulative assignments can only be made on top of other cumulative assignments,"
+                " nothing or undefined values.",
+            )
+
+        assignable = self.visitAssignable(ctx.cum_assignable())
+        if existing_value is None:
+            if ctx.cum_operator().ADD_ASSIGN():
+                new_value = assignable
+            elif ctx.cum_operator().SUB_ASSIGN():
+                new_value = -assignable
+            else:
+                raise ValueError("Unexpected cumulative operator")
+        else:
+            if ctx.cum_operator().ADD_ASSIGN():
+                new_value = expressions.defer_operation_factory(
+                    operator.add, existing_value, assignable
+                )
+            elif ctx.cum_operator().SUB_ASSIGN():
+                new_value = expressions.defer_operation_factory(
+                    operator.sub, existing_value, assignable
+                )
+            else:
+                raise ValueError("Unexpected cumulative operator")
+
+        assignment = CumulativeAssignment(
+            src_ctx=ctx,
+            name=assigned_name,
+            value=new_value,
             given_type=given_type,
         )
 
@@ -1379,12 +1444,8 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         """
         Connect interfaces together
         """
-        source_addr = self.visitConnectable(ctx.connectable(0))
-        target_addr = self.visitConnectable(ctx.connectable(1))
-
-        with _translate_addr_key_errors(ctx):
-            source_instance = self._output_cache[source_addr]
-            target_instance = self._output_cache[target_addr]
+        source_instance = self.visitConnectable(ctx.connectable(0))
+        target_instance = self.visitConnectable(ctx.connectable(1))
 
         link = Link(
             src_ctx=ctx,
@@ -1393,23 +1454,82 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             target=target_instance,
         )
 
+        # Ohhh boy. Let's see how this goes!!!
+        # Here we're entangling the interfaces' attributes
+        # TODO: we might want to do this recursively down the children. For another day
+        # The easy stuff first - these aren't in conflict
+        new_attrs = {
+            attr: source_instance.assignments[attr]
+            for attr in set(source_instance.assignments)
+            - set(target_instance.assignments)
+        }
+        new_attrs.update(
+            {
+                attr: target_instance.assignments[attr]
+                for attr in set(target_instance.assignments)
+                - set(source_instance.assignments)
+            }
+        )
+
+        # Combine the common attributes
+        for attr in set(source_instance.assignments) & set(target_instance.assignments):
+            source_attr = source_instance.assignments[attr][0]
+            target_attr = target_instance.assignments[attr][0]
+
+            # If one of them is just a declaration, accept the other and move on.
+            # Implicitly works if they're both declarations too
+            if source_attr.value is None:
+                new_attrs[attr] = target_instance.assignments[attr]
+                continue
+            elif target_attr.value is None:
+                new_attrs[attr] = source_instance.assignments[attr]
+                continue
+
+            # If they're both cumulative assignments, combine them
+            if isinstance(source_attr, CumulativeAssignment) and isinstance(
+                target_attr, CumulativeAssignment
+            ):
+                new_value = expressions.defer_operation_factory(operator.add, source_attr.value, target_attr.value)
+                new_attrs[attr] = deque([CumulativeAssignment(
+                    src_ctx=ctx,
+                    name=attr,
+                    value=new_value,
+                    given_type=source_attr.given_type,
+                )])
+                continue
+
+            # If they're both regular assignments, well then fuck.
+            raise errors.AtoError.from_ctx(
+                ctx,
+                "The source and target separately defined"
+                f" values for the attribute \"{attr}\""
+            )
+
+        # Finally assign them back to the instances
+        source_instance.assignments = new_attrs
+        target_instance.assignments = new_attrs
+
         self._current_instance.links.append(link)
 
         return KeyOptMap.empty()
 
-    def visitConnectable(self, ctx: ap.ConnectableContext) -> AddrStr:
-        """TODO:"""
+    def visitConnectable(self, ctx: ap.ConnectableContext) -> Instance:
+        """Return the address of the connectable object."""
         if ctx.name_or_attr() or ctx.numerical_pin_ref():
             ref = self.visit_ref_helper(ctx.name_or_attr() or ctx.numerical_pin_ref())
-            return address.add_instances(self._instance_addr_stack.top, ref)
+            addr = address.add_instances(self._instance_addr_stack.top, ref)
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():
-            return self.visitChildren(ctx)
+            addr = self.visitChildren(ctx)
         else:
             raise ValueError("Unexpected context in visitConnectable")
 
+        with _translate_addr_key_errors(ctx):
+            return self._output_cache[addr]
+
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> KeyOptMap:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.assign_stmt() or ctx.connect_stmt() or ctx.assert_stmt():
+        # FIXME: remove this, it shouldn't be necessary anymore
+        if ctx.assign_stmt() or ctx.connect_stmt() or ctx.assert_stmt() or ctx.cum_assign_stmt() or ctx.declaration_stmt():
             return super().visitSimple_stmt(ctx)
 
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():
@@ -1426,7 +1546,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         operators = []
 
         def _add_expr_from_context(ctx: ap.Arithmetic_expressionContext):
-            expr = Expression.from_numericish(
+            expr = expressions.Expression.from_numericish(
                 roley.visit(ctx)
             )
             # TODO: this shouldn't be attached to the expression like this

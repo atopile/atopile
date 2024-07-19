@@ -14,6 +14,7 @@ simple_stmt
     : import_stmt
     | dep_import_stmt
     | assign_stmt
+    | cum_assign_stmt
     | connect_stmt
     | retype_stmt
     | pindef_stmt
@@ -33,7 +34,12 @@ block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 dep_import_stmt: 'import' name_or_attr 'from' string;
 import_stmt: 'from' string 'import' name_or_attr (',' name_or_attr)*;
 
+declaration_stmt: name_or_attr type_info;
 assign_stmt: name_or_attr type_info? '=' assignable;
+cum_assign_stmt: name_or_attr type_info? cum_operator cum_assignable;
+cum_operator: '+=' | '-=';
+cum_assignable: literal_physical | arithmetic_expression;
+
 assignable
     : string
     | new_stmt
@@ -42,7 +48,6 @@ assignable
     | boolean_
     ;
 
-declaration_stmt: name_or_attr type_info;
 
 retype_stmt: name_or_attr '->' name_or_attr;
 
@@ -86,7 +91,12 @@ in_arithmetic_or: 'within' arithmetic_expression;
 // --------------------
 
 arithmetic_expression
-    : arithmetic_expression ('+' | '-') term
+    : arithmetic_expression ('|' | '&') sum
+    | sum
+    ;
+
+sum
+    : sum ('+' | '-') term
     | term
     ;
 
@@ -100,8 +110,12 @@ power
     ;
 
 functional
+    : bound
+    | name '(' bound+ ')'
+    ;
+
+bound
     : atom
-    | name '(' atom+ ')'
     ;
 
 

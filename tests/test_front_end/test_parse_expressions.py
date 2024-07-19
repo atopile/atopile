@@ -86,3 +86,12 @@ def test_ranged_unary():
     assert _run("-1 to 1") == RangedValue(-1, 1)
     assert _run("-1 to 1 + 1") == RangedValue(0, 2)
     assert _run("-1 to 1 + 1 to 2") == RangedValue(0, 3)
+
+
+# def test_bound_to():
+#     context = {
+#         "//a:b::a.a.a": 4,
+#         "//a:b::b": 3,
+#         "//a:b::c": 9,
+#     }
+#     assert _run("(a.a.a) to (b)")(context) == RangedValue(4, 3)

@@ -8,7 +8,7 @@ import rich
 from rich.style import Style
 from rich.table import Table
 
-from atopile import address, config, expressions, instance_methods, parse_utils
+from atopile import address, config, instance_methods, parse_utils
 
 log = logging.getLogger(__name__)
 
@@ -46,33 +46,25 @@ def generate(build_ctx: config.BuildContext):
     """
     report = VariableReport()
     for addr in instance_methods.all_descendants(build_ctx.entry):
+        log.debug("Generating report for %s", addr)
         instance = instance_methods.get_instance(addr)
         for key, assignments in instance.assignments.items():
-            # Expressions always have always at least two assignments
-            if len(assignments) < 2:
+            assert len(assignments) > 0
+
+            # If it's merely an assigned value, ignore and continue
+            if not assignments[0].value_is_derived:
                 continue
 
-            # We're only out here to display the values of expressions
-            if not isinstance(assignments[1].value, expressions.Expression):
-                continue
+            value = str(assignments[0].value) or ""
+
+            comment = ""
+            for assignment in assignments:
+                if hasattr(assignment, "src_ctx"):
+                    if assignment.src_ctx:
+                        comment = parse_utils.get_comment_from_token(assignment.src_ctx.stop) or ""
+                    break
 
             k_addr = address.get_instance_section(address.add_instance(addr, key))
-
-            if isinstance(assignments[0].value, expressions.Expression):
-                # There was not enough information to determine the value
-                raw_value: expressions.Expression = assignments[0].value
-                value = "Unknown. Missing variables:\n" + "\n".join(
-                    address.get_instance_section(s.key) for s in raw_value.symbols
-                )
-            else:
-                # There was sufficent information to determine the value
-                value = str(assignments[0].value)
-            src_ctx = assignments[1].src_ctx
-            if src_ctx:
-                comment = parse_utils.get_comment_from_token(src_ctx.stop) or ""
-            else:
-                comment = ""
-
             report.add(k_addr, value, comment)
 
     rich.print(report)
