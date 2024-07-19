@@ -8,7 +8,7 @@ import rich
 from rich.style import Style
 from rich.table import Table
 
-from atopile import address, config, expressions, instance_methods, parse_utils
+from atopile import address, config, instance_methods, parse_utils
 
 log = logging.getLogger(__name__)
 

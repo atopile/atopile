@@ -1465,7 +1465,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         }
         new_attrs.update(
             {
-                target_instance.assignments[attr]
+                attr: target_instance.assignments[attr]
                 for attr in set(target_instance.assignments)
                 - set(source_instance.assignments)
             }
