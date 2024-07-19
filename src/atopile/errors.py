@@ -178,6 +178,29 @@ class AtoNotImplementedError(AtoError):
     """
 
 
+class CountingError(AtoError):
+    count = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.__class__.count is not None:
+            self.__class__.count -= 1
+
+    def log(self, *args, **kwargs):
+        if self.__class__.count > 0:
+            super().log(*args, **kwargs)
+        if self.__class__.count == 0:
+            log.warning("... forgoing more \"%s\" errors of ", self.title or self.__class__.__name__)
+
+
+class ImplicitDeclarationFutureDeprecationWarning(CountingError):
+    """
+    Raised when a feature is deprecated and will be removed in the future.
+    """
+    title = "Implicit Declaration Future Deprecation Warning"
+    count = 5
+
+
 def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
     """Return the locals from the first frame in the traceback that's in the given class."""
     for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:

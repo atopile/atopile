@@ -402,7 +402,7 @@ def solve_assertions(build_ctx: config.BuildContext):
                 # FIXME: Do we want to mutate the model here?
                 # FIXME: Creating Assignment object here is annoying
                 parent.assignments[name].appendleft(
-                    Assignment(name, value=val, given_type="None")
+                    Assignment(name, value=val, given_type="None", value_is_derived=True)
                 )
 
     # Solved for assertion values
@@ -436,7 +436,7 @@ def simplify_expressions(entry_addr: address.AddrStr):
         name = address.get_name(addr)
         parent_instance = lofty.get_instance(parent_addr)
         parent_instance.assignments[name].appendleft(
-            Assignment(name, value=value, given_type=None)
+            Assignment(name, value=value, given_type=None, value_is_derived=True)
         )
 
     # Great, now simplify the expressions in the assertions

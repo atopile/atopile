@@ -118,6 +118,7 @@ class Assignment(Base):
     name: str
     value: Optional[Any]
     given_type: Optional[str | pint.Unit]
+    value_is_derived: bool
 
     @property
     def unit(self) -> pint.Unit:
@@ -145,6 +146,7 @@ class Assignment(Base):
 class CumulativeAssignment(Assignment):
     """Represents a cumulative assignment statement."""
     value: RangedValue
+    value_is_derived: bool = True
 
 
 @define(repr=False)
@@ -1275,6 +1277,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             name=assigned_value_ref[0],
             value=None,
             given_type=self._get_type_info(ctx),
+            value_is_derived=False,
         )
 
         assignements.appendleft(assignment)
@@ -1310,7 +1313,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         # TODO: enforce this more strongly: https://github.com/atopile/atopile/issues/433
         if len(assigned_ref) > 1 and assigned_name not in instance_assigned_to.assignments:
             # Raise a warning for now. Enforce this strongly if it's a real issue.
-            errors.AtoError.from_ctx(
+            errors.ImplicitDeclarationFutureDeprecationWarning.from_ctx(
                 ctx,
                 f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
                 " Declaring implicitly for now, but in the future this may become an error..."
@@ -1321,6 +1324,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             name=assigned_name,
             value=self.visitAssignable(assignable_ctx),
             given_type=given_type,
+            value_is_derived=False,
         )
 
         instance_assigned_to.assignments[assigned_name].appendleft(assignment)
@@ -1547,7 +1551,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             )
             # TODO: this shouldn't be attached to the expression like this
             # as the only means to pretty-print them
-            setattr(expr, "src_ctx", ctx)
+            expr.src_ctx = ctx
             expressions_.append(expr)
 
         _add_expr_from_context(comparison_ctx.arithmetic_expression())

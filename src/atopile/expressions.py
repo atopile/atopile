@@ -426,6 +426,7 @@ class Expression:
 
     symbols: set[Symbol]
     lambda_: Callable[[Mapping[str, NumericishTypes]], RangedValue]
+    src_ctx: ParserRuleContext | None = None
 
     @classmethod
     def from_expr(cls, expr: "Expression") -> "Expression":
