@@ -59,10 +59,8 @@ def build(build_ctxs: list[BuildContext]):
     log.info("Build complete!")
 
 
-def _do_build(build_ctx: BuildContext) -> None:
-    """Execute a specific build."""
+def do_prebuild(build_ctx: BuildContext) -> None:
     with ExceptionAccumulator() as err_cltr:
-
         # Solve the unknown variables
         if not build_ctx.dont_solve_equations:
             with err_cltr():
@@ -70,6 +68,12 @@ def _do_build(build_ctx: BuildContext) -> None:
                 atopile.assertions.solve_assertions(build_ctx)
                 atopile.assertions.simplify_expressions(build_ctx.entry)
 
+
+def _do_build(build_ctx: BuildContext) -> None:
+    """Execute a specific build."""
+    do_prebuild(build_ctx)
+
+    with ExceptionAccumulator() as err_cltr:
         # Ensure the build directory exists
         log.info("Writing outputs to %s", build_ctx.build_path)
         build_ctx.build_path.mkdir(parents=True, exist_ok=True)
