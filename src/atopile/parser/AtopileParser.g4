@@ -91,7 +91,12 @@ in_arithmetic_or: 'within' arithmetic_expression;
 // --------------------
 
 arithmetic_expression
-    : arithmetic_expression ('+' | '-') term
+    : arithmetic_expression ('|' | '&') sum
+    | sum
+    ;
+
+sum
+    : sum ('+' | '-') term
     | term
     ;
 

@@ -78,26 +78,6 @@ class ClassDef(Base):
         return f"<{self.__class__.__name__} {self.address}>"
 
 
-class Expression(expressions.Expression):
-    def __init__(
-        self,
-        symbols: set[str],
-        lambda_: Callable,
-        src_ctx: Optional[ParserRuleContext] = None
-    ):
-        super().__init__(symbols=symbols, lambda_=lambda_)
-        self.src_ctx = src_ctx
-
-    def __repr__(self) -> str:
-        if not self.src_ctx:
-            return f"<{self.__class__.__name__}>"
-
-        return f"<{self.__class__.__name__} {str(self)}>"
-
-    def __str__(self) -> str:
-        return self.src_ctx.getText()
-
-
 class Assertion:
     def __init__(
         self,
@@ -638,18 +618,41 @@ class Roley(HandlesPrimaries):
     def visitArithmetic_expression(
         self, ctx: ap.Arithmetic_expressionContext
     ) -> expressions.NumericishTypes:
+        if ctx.OR_OP():
+            return expressions.defer_operation_factory(
+                operator.or_,
+                self.visit(ctx.arithmetic_expression()),
+                self.visit(ctx.sum_()),
+                src_ctx=ctx,
+            )
+
+        if ctx.AND_OP():
+            return expressions.defer_operation_factory(
+                operator.and_,
+                self.visit(ctx.arithmetic_expression()),
+                self.visit(ctx.sum_()),
+                src_ctx=ctx,
+            )
+
+        return self.visit(ctx.sum_())
+
+    def visitSum(
+        self, ctx: ap.SumContext
+    ) -> expressions.NumericishTypes:
         if ctx.ADD():
             return expressions.defer_operation_factory(
                 operator.add,
-                self.visit(ctx.arithmetic_expression()),
+                self.visit(ctx.sum_()),
                 self.visit(ctx.term()),
+                src_ctx=ctx,
             )
 
         if ctx.MINUS():
             return expressions.defer_operation_factory(
                 operator.sub,
-                self.visit(ctx.arithmetic_expression()),
+                self.visit(ctx.sum_()),
                 self.visit(ctx.term()),
+                src_ctx=ctx,
             )
 
         return self.visit(ctx.term())
@@ -660,6 +663,7 @@ class Roley(HandlesPrimaries):
                 operator.mul,
                 self.visit(ctx.term()),
                 self.visit(ctx.power()),
+                src_ctx=ctx,
             )
 
         if ctx.DIV():
@@ -667,6 +671,7 @@ class Roley(HandlesPrimaries):
                 operator.truediv,
                 self.visit(ctx.term()),
                 self.visit(ctx.power()),
+                src_ctx=ctx,
             )
 
         return self.visit(ctx.power())
@@ -677,6 +682,7 @@ class Roley(HandlesPrimaries):
                 operator.pow,
                 self.visit(ctx.functional(0)),
                 self.visit(ctx.functional(1)),
+                src_ctx=ctx,
             )
 
         return self.visit(ctx.functional(0))
@@ -1351,16 +1357,17 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 " nothing or undefined values.",
             )
 
+        assignable = self.visitAssignable(ctx.cum_assignable())
         if existing_value is None:
-            new_value = self.visitAssignable(ctx.literal_physical())
+            new_value = assignable
         else:
             if ctx.cum_operator().ADD_ASSIGN():
                 new_value = expressions.defer_operation_factory(
-                    operator.add, existing_value, self.visitAssignable(ctx.literal_physical())
+                    operator.add, existing_value, assignable
                 )
             elif ctx.cum_operator().SUB_ASSIGN():
                 new_value = expressions.defer_operation_factory(
-                    operator.sub, existing_value, self.visitAssignable(ctx.literal_physical())
+                    operator.sub, existing_value, assignable
                 )
             else:
                 raise ValueError("Unexpected cumulative operator")
@@ -1522,7 +1529,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         operators = []
 
         def _add_expr_from_context(ctx: ap.Arithmetic_expressionContext):
-            expr = Expression.from_numericish(
+            expr = expressions.Expression.from_numericish(
                 roley.visit(ctx)
             )
             # TODO: this shouldn't be attached to the expression like this

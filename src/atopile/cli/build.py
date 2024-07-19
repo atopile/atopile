@@ -98,7 +98,7 @@ def _do_build(build_ctx: BuildContext) -> None:
                 muster.targets[target_name](build_ctx)
             built_targets.append(target_name)
 
-        log.info(f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
+    log.info(f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
 
 
 TargetType = Callable[[BuildContext], None]

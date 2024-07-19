@@ -7,6 +7,7 @@ from collections import ChainMap
 from typing import Callable, Mapping, Optional, Type, Union
 
 import pint
+from antlr4 import ParserRuleContext
 from attrs import define, frozen
 from pint.facets.plain import PlainUnit
 
@@ -362,6 +363,36 @@ class RangedValue:
     def __req__(self, other: Union["RangedValue", float, int]) -> bool:
         return self.__eq__(other)
 
+    def __or__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
+        other = self._ensure(other)
+
+        # make sure there's some overlap
+        if self.max_qty < other.min_qty or other.max_qty < self.min_qty:
+            raise errors.AtoValueError(f"Ranges ({self}, {other}) do not overlap")
+
+        return self.__class__(
+            min(self.min_qty, other.min_qty),
+            max(self.max_qty, other.max_qty),
+        )
+
+    def __ror__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
+        return self.__or__(other)
+
+    def __and__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
+        other = self._ensure(other)
+
+        # make sure there's some overlap
+        if self.max_qty < other.min_qty or other.max_qty < self.min_qty:
+            raise errors.AtoValueError(f"Ranges ({self}, {other}) do not overlap")
+
+        return self.__class__(
+            max(self.min_qty, other.min_qty),
+            min(self.max_qty, other.max_qty),
+        )
+
+    def __rand__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
+        return self.__and__(other)
+
     def min(self) -> "RangedValue":
         """Return a new RangedValue with the minimum value."""
         return self.__class__(self.min_qty, self.min_qty)
@@ -479,12 +510,17 @@ def _get_symbols(thing: NumericishTypes) -> set[Symbol]:
 def defer_operation_factory(
     func: Callable,
     *args: NumericishTypes,
-    deffering_type: Type = Expression,
+    src_ctx: ParserRuleContext | None = None,
 ) -> NumericishTypes:
     """Create a deferred operation, using deffering_type as the base for the callable."""
     if not any(map(callable, args)):
         # in this case we can just do the operation now, skip ahead and merry christmas
-        return func(*args)
+        try:
+            return func(*args)
+        except errors.AtoError as e:
+            if src_ctx:
+                e.set_src_from_ctx(src_ctx)
+            raise
 
     # if we're here, we need to create an expression
     symbols = set.union(*map(_get_symbols, args))
@@ -497,9 +533,14 @@ def defer_operation_factory(
     partials = [arg if callable(arg) else _make_callable(arg) for arg in args]
 
     def lambda_(context):
-        return func(*(arg(context) for arg in partials))
+        try:
+            return func(*(arg(context) for arg in partials))
+        except errors.AtoError as e:
+            if src_ctx:
+                e.set_src_from_ctx(src_ctx)
+            raise
 
-    return deffering_type(symbols=symbols, lambda_=lambda_)
+    return Expression(symbols=symbols, lambda_=lambda_)
 
 
 def simplify_expression_pool(

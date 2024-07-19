@@ -134,6 +134,12 @@ class AtoTypeError(AtoError):
     """
 
 
+class AtoValueError(AtoError):
+    """
+    Raised if something is the wrong type.
+    """
+
+
 class AtoImportNotFoundError(AtoError):
     """
     Raised if something has a conflicting name in the same scope.

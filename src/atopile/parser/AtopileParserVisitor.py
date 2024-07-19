@@ -79,6 +79,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#cum_assignable.
+    def visitCum_assignable(self, ctx:AtopileParser.Cum_assignableContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#assignable.
     def visitAssignable(self, ctx:AtopileParser.AssignableContext):
         return self.visitChildren(ctx)
@@ -166,6 +171,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtopileParser#arithmetic_expression.
     def visitArithmetic_expression(self, ctx:AtopileParser.Arithmetic_expressionContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtopileParser#sum.
+    def visitSum(self, ctx:AtopileParser.SumContext):
         return self.visitChildren(ctx)
 
 
