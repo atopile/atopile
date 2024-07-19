@@ -46,16 +46,15 @@ def generate(build_ctx: config.BuildContext):
     """
     report = VariableReport()
     for addr in instance_methods.all_descendants(build_ctx.entry):
-        log.debug("Generating report for %s", addr)
         instance = instance_methods.get_instance(addr)
         for key, assignments in instance.assignments.items():
-            # # Expressions always have always at least two assignments
-            # if len(assignments) < 2:
-            #     continue
+            # Expressions always have always at least two assignments
+            if len(assignments) < 2:
+                continue
 
-            # # We're only out here to display the values of expressions
-            # if not isinstance(assignments[1].value, expressions.Expression):
-            #     continue
+            # We're only out here to display the values of expressions
+            if not isinstance(assignments[1].value, expressions.Expression):
+                continue
 
             k_addr = address.get_instance_section(address.add_instance(addr, key))
 
@@ -68,10 +67,8 @@ def generate(build_ctx: config.BuildContext):
             else:
                 # There was sufficent information to determine the value
                 value = str(assignments[0].value)
-
-            if len(assignments) < 2:
-                comment = ""
-            elif src_ctx := assignments[1].src_ctx:
+            src_ctx = assignments[1].src_ctx
+            if src_ctx:
                 comment = parse_utils.get_comment_from_token(src_ctx.stop) or ""
             else:
                 comment = ""
