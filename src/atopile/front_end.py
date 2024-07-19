@@ -1294,7 +1294,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         given_type = self._get_type_info(ctx)
 
         # TODO: enforce this more strongly: https://github.com/atopile/atopile/issues/433
-        if assigned_name not in instance_assigned_to.assignments:
+        if len(assigned_ref) > 1 and assigned_name not in instance_assigned_to.assignments:
             # Raise a warning for now. Enforce this strongly if it's a real issue.
             errors.AtoError.from_ctx(
                 ctx,
@@ -1354,11 +1354,11 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         if existing_value is None:
             new_value = self.visitAssignable(ctx.literal_physical())
         else:
-            if ctx.cum_operator().PLUS():
+            if ctx.cum_operator().ADD_ASSIGN():
                 new_value = expressions.defer_operation_factory(
                     operator.add, existing_value, self.visitAssignable(ctx.literal_physical())
                 )
-            elif ctx.cum_operator().MINUS():
+            elif ctx.cum_operator().SUB_ASSIGN():
                 new_value = expressions.defer_operation_factory(
                     operator.sub, existing_value, self.visitAssignable(ctx.literal_physical())
                 )
@@ -1430,6 +1430,61 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             target=target_instance,
         )
 
+        # Ohhh boy. Let's see how this goes!!!
+        # Here we're entangling the interfaces' attributes
+        # TODO: we might want to do this recursively down the children. For another day
+        # The easy stuff first - these aren't in conflict
+        new_attrs = {
+            attr: source_instance.assignments[attr]
+            for attr in set(source_instance.assignments)
+            - set(target_instance.assignments)
+        }
+        new_attrs.update(
+            {
+                target_instance.assignments[attr]
+                for attr in set(target_instance.assignments)
+                - set(source_instance.assignments)
+            }
+        )
+
+        # Combine the common attributes
+        for attr in set(source_instance.assignments) & set(target_instance.assignments):
+            source_attr = source_instance.assignments[attr][0]
+            target_attr = target_instance.assignments[attr][0]
+
+            # If one of them is just a declaration, accept the other and move on.
+            # Implicitly works if they're both declarations too
+            if source_attr.value is None:
+                new_attrs[attr] = target_instance.assignments[attr]
+                continue
+            elif target_attr.value is None:
+                new_attrs[attr] = source_instance.assignments[attr]
+                continue
+
+            # If they're both cumulative assignments, combine them
+            if isinstance(source_attr, CumulativeAssignment) and isinstance(
+                target_attr, CumulativeAssignment
+            ):
+                new_value = expressions.defer_operation_factory(operator.add, source_attr.value, target_attr.value)
+                new_attrs[attr] = deque([CumulativeAssignment(
+                    src_ctx=ctx,
+                    name=attr,
+                    value=new_value,
+                    given_type=source_attr.given_type,
+                )])
+                continue
+
+            # If they're both regular assignments, well then fuck.
+            raise errors.AtoError.from_ctx(
+                ctx,
+                "The source and target separately defined"
+                f" values for the attribute \"{attr}\""
+            )
+
+        # Finally assign them back to the instances
+        source_instance.assignments = new_attrs
+        target_instance.assignments = new_attrs
+
         self._current_instance.links.append(link)
 
         return KeyOptMap.empty()
@@ -1449,7 +1504,8 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> KeyOptMap:
         """We have to be selective here to deal with the ignored children properly."""
-        if ctx.assign_stmt() or ctx.connect_stmt() or ctx.assert_stmt():
+        # FIXME: remove this, it shouldn't be necessary anymore
+        if ctx.assign_stmt() or ctx.connect_stmt() or ctx.assert_stmt() or ctx.cum_assign_stmt() or ctx.declaration_stmt():
             return super().visitSimple_stmt(ctx)
 
         elif ctx.pindef_stmt() or ctx.signaldef_stmt():

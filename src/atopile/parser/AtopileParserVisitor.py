@@ -59,6 +59,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#declaration_stmt.
+    def visitDeclaration_stmt(self, ctx:AtopileParser.Declaration_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#assign_stmt.
     def visitAssign_stmt(self, ctx:AtopileParser.Assign_stmtContext):
         return self.visitChildren(ctx)
@@ -76,11 +81,6 @@ class AtopileParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtopileParser#assignable.
     def visitAssignable(self, ctx:AtopileParser.AssignableContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtopileParser#declaration_stmt.
-    def visitDeclaration_stmt(self, ctx:AtopileParser.Declaration_stmtContext):
         return self.visitChildren(ctx)
 
 

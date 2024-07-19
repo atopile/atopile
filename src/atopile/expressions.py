@@ -481,7 +481,7 @@ def defer_operation_factory(
     *args: NumericishTypes,
     deffering_type: Type = Expression,
 ) -> NumericishTypes:
-    """Create a deferred operation, using deffering_type as the base for teh callable."""
+    """Create a deferred operation, using deffering_type as the base for the callable."""
     if not any(map(callable, args)):
         # in this case we can just do the operation now, skip ahead and merry christmas
         return func(*args)
