@@ -428,7 +428,7 @@ class HandlesPrimaries(AtopileParserVisitor):
             # If the nominal has no unit, then we take the unit's tolerance for the nominal
             if nominal_quantity.unit == pint.Unit(""):
                 value = RangedValue(
-                    val_a=nominal_quantity.min_val - tol_quantity.min_val,
+                    val_a=nominal_quantity.min_val + tol_quantity.min_val,
                     val_b=nominal_quantity.max_val + tol_quantity.max_val,
                     unit=tol_quantity.unit,
                     str_rep=parse_utils.reconstruct(ctx),
