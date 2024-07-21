@@ -63,10 +63,19 @@ def test_bound_quantity(src, expected):
         ("-6mV ± 7mV", RangedValue(-13, 1, "millivolt")),
 
         # Mix units
-        ("-6V ± 7V", RangedValue(-13, 1, "V")),
+        ("-6V ± 7000mV", RangedValue(-13, 1, "V")),
 
         # One unit
         ("6V ± 2", RangedValue(4, 8, "V")),
+        ("54 ± 34V", RangedValue(20, 88, "V")),
+
+        # Zeros
+        ("0V ± 5V", RangedValue(-5, 5, "V")),
+        ("0V ± 0V", RangedValue(0, 0, "V")),
+
+        # ppm and %
+        ("5V ± 10ppm", RangedValue(4.99995, 5.00005, "V")),
+        ("5V ± 1%", RangedValue(4.95, 5.05, "V")),
     )
 )
 def test_bilateral_quantity(src, expected):
