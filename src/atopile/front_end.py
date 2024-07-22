@@ -1087,6 +1087,12 @@ def _translate_addr_key_errors(ctx: ParserRuleContext):
         raise errors.AtoKeyError.from_ctx(ctx, f"Couldn't find {terse_addr}") from ex
 
 
+def _src_location_str(ctx: ParserRuleContext) -> str:
+    """Return a string representation of a source location."""
+    file, line, col, *_ = get_src_info_from_ctx(ctx)
+    return f"{file}:{line}:{col}"
+
+
 class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
     """Lofty's job is to walk orthogonally down (or really up) the instance tree."""
 
@@ -1502,7 +1508,9 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             raise errors.AtoError.from_ctx(
                 ctx,
                 "The source and target separately defined"
-                f" values for the attribute \"{attr}\""
+                f" values for the attribute \"{attr}\"\n"
+                f"Source: {_src_location_str(source_attr.src_ctx)}\n"
+                f"Target: {_src_location_str(target_attr.src_ctx)}\n"
             )
 
         # Finally assign them back to the instances
