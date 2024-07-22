@@ -173,7 +173,7 @@ def from_parts(
     """
     Create an address from its parts.
     """
-    address = file
+    address = str(file)
     if entry:
         address = add_entry(address, entry)
     if instance:

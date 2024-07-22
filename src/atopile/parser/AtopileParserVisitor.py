@@ -74,6 +74,11 @@ class AtopileParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtopileParser#set_assign_stmt.
+    def visitSet_assign_stmt(self, ctx:AtopileParser.Set_assign_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtopileParser#cum_operator.
     def visitCum_operator(self, ctx:AtopileParser.Cum_operatorContext):
         return self.visitChildren(ctx)
