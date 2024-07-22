@@ -363,11 +363,20 @@ class RangedValue:
     def __req__(self, other: Union["RangedValue", float, int]) -> bool:
         return self.__eq__(other)
 
+    def _check_overlap(self, other: Union["RangedValue", float, int]) -> bool:
+        other = self._ensure(other)
+        try:
+            return not self.max_qty < other.min_qty or other.max_qty < self.min_qty
+        except pint.DimensionalityError as ex:
+            raise errors.AtoIncompatibleUnitError(
+                f"Cannot compare {self} to {other} because they have incompatible units"
+            ) from ex
+
     def __or__(self, other: Union["RangedValue", float, int]) -> "RangedValue":
         other = self._ensure(other)
 
         # make sure there's some overlap
-        if self.max_qty < other.min_qty or other.max_qty < self.min_qty:
+        if not self._check_overlap(other):
             raise errors.AtoValueError(f"Ranges ({self}, {other}) do not overlap")
 
         return self.__class__(
@@ -382,7 +391,7 @@ class RangedValue:
         other = self._ensure(other)
 
         # make sure there's some overlap
-        if self.max_qty < other.min_qty or other.max_qty < self.min_qty:
+        if not self._check_overlap(other):
             raise errors.AtoValueError(f"Ranges ({self}, {other}) do not overlap")
 
         return self.__class__(

@@ -19,7 +19,7 @@ from attrs import define, field, resolve_types
 
 from atopile import address, config, errors, expressions, parse_utils
 from atopile.address import AddrStr
-from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
+from atopile.datatypes import IDdSet, KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.expressions import RangedValue
 from atopile.generic_methods import recurse
 from atopile.parse import parser
@@ -221,12 +221,19 @@ class Instance(Base):
 
     # TODO: flip this around to a list, rather than deque
     assignments: Mapping[str, deque[Assignment]]
+    # Tracks which other instances this instance has it's assignments merged with from connections
     parent: Optional["Instance"]
 
     # created as supers' ASTs are walked
     assertions: list[Assertion] = field(factory=list)
     children: dict[str, "Instance"] = field(factory=dict)
     links: list[Link] = field(factory=list)
+
+    # Populated by itself
+    assignments_merged_with: IDdSet["Instance"] = field(factory=IDdSet)
+
+    def __attrs_post_init__(self) -> None:
+        self.assignments_merged_with.add(self)
 
     def __repr__(self) -> str:
         return f"<Instance {self.addr}>"
@@ -1591,20 +1598,29 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             if isinstance(source_attr, SumCumulativeAssignment) and isinstance(
                 target_attr, SumCumulativeAssignment
             ):
-                new_value = expressions.defer_operation_factory(operator.add, source_attr.value, target_attr.value)
-                new_attrs[attr] = deque([SumCumulativeAssignment(
-                    src_ctx=ctx,
-                    name=attr,
-                    value=new_value,
-                    given_type=source_attr.given_type,  # TODO: make this narrowing instead
-                )])
+                new_value = expressions.defer_operation_factory(
+                    operator.add, source_attr.value, target_attr.value, src_ctx=ctx
+                )
+                new_attrs[attr] = deque(
+                    [
+                        SumCumulativeAssignment(
+                            src_ctx=ctx,
+                            name=attr,
+                            value=new_value,
+                            given_type=source_attr.given_type,  # TODO: make this narrowing instead
+                        )
+                    ]
+                )
                 continue
             elif isinstance(source_attr, SetCumulativeAssignment) and isinstance(
                 target_attr, SetCumulativeAssignment
             ):
                 if source_attr.anding and target_attr.anding:
                     anding = expressions.defer_operation_factory(
-                        operator.and_, source_attr.anding, target_attr.anding, src_ctx=ctx
+                        operator.and_,
+                        source_attr.anding,
+                        target_attr.anding,
+                        src_ctx=ctx,
                     )
                 elif source_attr.anding:
                     anding = source_attr.anding
@@ -1615,7 +1631,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
                 if source_attr.oring and target_attr.oring:
                     oring = expressions.defer_operation_factory(
-                        operator.or_, source_attr.oring, target_attr.oring
+                        operator.or_, source_attr.oring, target_attr.oring, src_ctx=ctx
                     )
                 elif source_attr.oring:
                     oring = source_attr.oring
@@ -1625,7 +1641,9 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                     oring = None
 
                 if anding and oring:
-                    new_value = expressions.defer_operation_factory(operator.and_, anding, oring)
+                    new_value = expressions.defer_operation_factory(
+                        operator.and_, anding, oring, src_ctx=ctx
+                    )
                 elif anding:
                     new_value = anding
                 elif oring:
@@ -1633,28 +1651,38 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 else:
                     raise ValueError("Unexpected cumulative operator")
 
-                new_attrs[attr] = deque([SetCumulativeAssignment(
-                    src_ctx=ctx,
-                    name=attr,
-                    value=new_value,
-                    given_type=source_attr.given_type,
-                    anding=anding,
-                    oring=oring,
-                )])
+                new_attrs[attr] = deque(
+                    [
+                        SetCumulativeAssignment(
+                            src_ctx=ctx,
+                            name=attr,
+                            value=new_value,
+                            given_type=source_attr.given_type,
+                            anding=anding,
+                            oring=oring,
+                        )
+                    ]
+                )
                 continue
 
             # If they're both regular assignments, well then fuck.
             raise errors.AtoError.from_ctx(
                 ctx,
                 "The source and target separately defined"
-                f" values for the attribute \"{attr}\"\n"
+                f' values for the attribute "{attr}"\n'
                 f"Source: {_src_location_str(source_attr.src_ctx)}\n"
-                f"Target: {_src_location_str(target_attr.src_ctx)}\n"
+                f"Target: {_src_location_str(target_attr.src_ctx)}\n",
             )
 
         # Finally assign them back to the instances
-        source_instance.assignments = new_attrs
-        target_instance.assignments = new_attrs
+        assign_back_to = (
+            source_instance.assignments_merged_with
+            | target_instance.assignments_merged_with
+        )
+        for instance in assign_back_to:
+            assert isinstance(instance, Instance)
+            instance.assignments = new_attrs
+            instance.assignments_merged_with = assign_back_to
 
         self._current_instance.links.append(link)
 
