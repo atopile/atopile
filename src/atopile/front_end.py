@@ -143,9 +143,18 @@ class Assignment(Base):
 
 
 @define
-class CumulativeAssignment(Assignment):
-    """Represents a cumulative assignment statement."""
-    value: RangedValue
+class SumCumulativeAssignment(Assignment):
+    """Represents a sum-cumulative assignment statement."""
+    value: expressions.Expression | RangedValue
+    value_is_derived: bool = True
+
+
+@define
+class SetCumulativeAssignment(Assignment):
+    """Represents a set-cumulative assignment statement."""
+    value: expressions.Expression | RangedValue
+    oring: expressions.Expression | RangedValue | None
+    anding: expressions.Expression | RangedValue | None
     value_is_derived: bool = True
 
 
@@ -558,18 +567,6 @@ class HandleStmtsFunctional(AtopileParserVisitor):
         child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
 
         return KeyOptMap(child_results)
-
-    def visitSimple_stmt(
-        self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
-        """
-        This is practically here as a development shim to assert the result is as intended
-        """
-        result = self.visitChildren(ctx)
-        for item in result:
-            if item is not NOTHING:
-                assert isinstance(item, KeyOptItem)
-        return result
 
     def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
         """
@@ -1364,15 +1361,17 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
             )
 
-        existing_value = instance_assigned_to.assignments[assigned_name][0].value
+        old_assignment = instance_assigned_to.assignments[assigned_name][0]
+        existing_value = old_assignment.value
         if existing_value is not None and not isinstance(
-            instance_assigned_to.assignments[assigned_name][0], CumulativeAssignment
+            old_assignment, SumCumulativeAssignment
         ):
             raise errors.AtoError.from_ctx(
                 ctx,
                 f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
                 " Cumulative assignments can only be made on top of other cumulative assignments,"
-                " nothing or undefined values.",
+                " nothing or undefined values."
+                f"Previously assigned at {_src_location_str(old_assignment.src_ctx)}",
             )
 
         assignable = self.visitAssignable(ctx.cum_assignable())
@@ -1395,11 +1394,108 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             else:
                 raise ValueError("Unexpected cumulative operator")
 
-        assignment = CumulativeAssignment(
+        assignment = SumCumulativeAssignment(
             src_ctx=ctx,
             name=assigned_name,
             value=new_value,
             given_type=given_type,
+        )
+
+        instance_assigned_to.assignments[assigned_name].appendleft(assignment)
+
+        return KeyOptMap.empty()
+
+    def visitSet_assign_stmt(self, ctx: ap.Set_assign_stmtContext):
+        """
+        Set cumulative assignments can only be made on top of
+        nothing (implicitly declared) or declared, but undefined values.
+
+        Unlike assignments, they may not implicitly declare an attribute.
+        """
+
+        assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
+        assigned_name: str = assigned_ref[-1]
+
+        # Figure out what Instance object the assignment is being made to
+        instance_addr_assigned_to = address.add_instances(
+            self._instance_addr_stack.top, assigned_ref[:-1]
+        )
+        with _translate_addr_key_errors(ctx):
+            instance_assigned_to = self._output_cache[instance_addr_assigned_to]
+
+        # TODO: de-Nplicate this
+        given_type = self._get_type_info(ctx)
+
+        if assigned_name not in instance_assigned_to.assignments:
+            # Raise a warning for now. Enforce this strongly if it's a real issue.
+            raise errors.AtoError.from_ctx(
+                ctx,
+                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
+            )
+
+        old_assignment = instance_assigned_to.assignments[assigned_name][0]
+        existing_value = old_assignment.value
+        if existing_value is not None and not isinstance(
+            old_assignment, SetCumulativeAssignment
+        ):
+            raise errors.AtoError.from_ctx(
+                ctx,
+                f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
+                " Cumulative assignments can only be made on top of other set-cumulative"
+                " assignments (&= or |=), nothing or undefined values.\n"
+                f"Previously assigned at {_src_location_str(old_assignment.src_ctx)}",
+            )
+
+        assignable = self.visitAssignable(ctx.cum_assignable())
+        assert isinstance(assignable, RangedValue)
+        # TODO: check unit compatibility w/ declaration
+        if existing_value is None:
+            if ctx.AND_ASSIGN():
+                anding = assignable
+                oring = None
+            elif ctx.OR_ASSIGN():
+                anding = None
+                oring = assignable
+            else:
+                raise ValueError("Unexpected cumulative operator")
+
+        else:
+            assert isinstance(old_assignment, SetCumulativeAssignment)
+            if ctx.AND_ASSIGN():
+                if old_assignment.anding is None:
+                    anding = assignable
+                else:
+                    anding = expressions.defer_operation_factory(
+                        operator.and_, old_assignment.anding, assignable, src_ctx=ctx
+                    )
+                oring = old_assignment.oring
+            elif ctx.OR_ASSIGN():
+                anding = old_assignment.anding
+                if old_assignment.oring is None:
+                    oring = assignable
+                else:
+                    oring = expressions.defer_operation_factory(
+                        operator.or_, old_assignment.oring, assignable, src_ctx=ctx
+                    )
+            else:
+                raise ValueError("Unexpected cumulative operator")
+
+        if anding and oring:
+            new_value = expressions.defer_operation_factory(operator.and_, anding, oring, src_ctx=ctx)
+        elif anding:
+            new_value = anding
+        elif oring:
+            new_value = oring
+        else:
+            raise ValueError("Unexpected cumulative operator")
+
+        assignment = SetCumulativeAssignment(
+            src_ctx=ctx,
+            name=assigned_name,
+            value=new_value,
+            given_type=given_type,
+            anding=anding,
+            oring=oring,
         )
 
         instance_assigned_to.assignments[assigned_name].appendleft(assignment)
@@ -1492,15 +1588,58 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 continue
 
             # If they're both cumulative assignments, combine them
-            if isinstance(source_attr, CumulativeAssignment) and isinstance(
-                target_attr, CumulativeAssignment
+            if isinstance(source_attr, SumCumulativeAssignment) and isinstance(
+                target_attr, SumCumulativeAssignment
             ):
                 new_value = expressions.defer_operation_factory(operator.add, source_attr.value, target_attr.value)
-                new_attrs[attr] = deque([CumulativeAssignment(
+                new_attrs[attr] = deque([SumCumulativeAssignment(
+                    src_ctx=ctx,
+                    name=attr,
+                    value=new_value,
+                    given_type=source_attr.given_type,  # TODO: make this narrowing instead
+                )])
+                continue
+            elif isinstance(source_attr, SetCumulativeAssignment) and isinstance(
+                target_attr, SetCumulativeAssignment
+            ):
+                if source_attr.anding and target_attr.anding:
+                    anding = expressions.defer_operation_factory(
+                        operator.and_, source_attr.anding, target_attr.anding, src_ctx=ctx
+                    )
+                elif source_attr.anding:
+                    anding = source_attr.anding
+                elif target_attr.anding:
+                    anding = target_attr.anding
+                else:
+                    anding = None
+
+                if source_attr.oring and target_attr.oring:
+                    oring = expressions.defer_operation_factory(
+                        operator.or_, source_attr.oring, target_attr.oring
+                    )
+                elif source_attr.oring:
+                    oring = source_attr.oring
+                elif target_attr.oring:
+                    oring = target_attr.oring
+                else:
+                    oring = None
+
+                if anding and oring:
+                    new_value = expressions.defer_operation_factory(operator.and_, anding, oring)
+                elif anding:
+                    new_value = anding
+                elif oring:
+                    new_value = oring
+                else:
+                    raise ValueError("Unexpected cumulative operator")
+
+                new_attrs[attr] = deque([SetCumulativeAssignment(
                     src_ctx=ctx,
                     name=attr,
                     value=new_value,
                     given_type=source_attr.given_type,
+                    anding=anding,
+                    oring=oring,
                 )])
                 continue
 
@@ -1534,16 +1673,16 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         with _translate_addr_key_errors(ctx):
             return self._output_cache[addr]
 
-    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext) -> KeyOptMap:
-        """We have to be selective here to deal with the ignored children properly."""
-        # FIXME: remove this, it shouldn't be necessary anymore
-        if ctx.assign_stmt() or ctx.connect_stmt() or ctx.assert_stmt() or ctx.cum_assign_stmt() or ctx.declaration_stmt():
-            return super().visitSimple_stmt(ctx)
-
-        elif ctx.pindef_stmt() or ctx.signaldef_stmt():
-            self.visitChildren(ctx)
-
+    # The following statements are handled exclusively by Dizzy
+    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext | Any):
         return KeyOptMap.empty()
+
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext | Any):
+        return KeyOptMap.empty()
+
+    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext | Any):
+        return KeyOptMap.empty()
+    #########
 
     def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
         """Handle assertion statements."""

@@ -72,3 +72,11 @@ def test_pretty_str():
     r = RangedValue(1000, 1000, pint.Unit("Ω"))
     i = v / r
     assert i.pretty_str() == "3mA"
+
+
+def test_corner_cases():
+    a = RangedValue(-float("inf"), float("inf"))
+    b = RangedValue(1, 2)
+    assert b.within(a)
+    assert a.within(a)
+    assert not a.within(b)

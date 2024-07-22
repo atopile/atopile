@@ -15,6 +15,7 @@ simple_stmt
     | dep_import_stmt
     | assign_stmt
     | cum_assign_stmt
+    | set_assign_stmt
     | connect_stmt
     | retype_stmt
     | pindef_stmt
@@ -37,6 +38,7 @@ import_stmt: 'from' string 'import' name_or_attr (',' name_or_attr)*;
 declaration_stmt: name_or_attr type_info;
 assign_stmt: name_or_attr type_info? '=' assignable;
 cum_assign_stmt: name_or_attr type_info? cum_operator cum_assignable;
+set_assign_stmt: name_or_attr type_info? ('|=' | '&=') cum_assignable;
 cum_operator: '+=' | '-=';
 cum_assignable: literal_physical | arithmetic_expression;
 
