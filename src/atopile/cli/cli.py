@@ -1,5 +1,6 @@
 import logging
 import sys
+from pathlib import Path
 
 import click
 from rich.logging import RichHandler
@@ -31,13 +32,22 @@ def python_interpreter_path(ctx, param, value):
     ctx.exit()
 
 
+def atopile_src_path(ctx, param, value):
+    """Print the current python interpreter path."""
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(Path(__file__).parent.parent)
+    ctx.exit()
+
+
 # cli root
 @click.version_option()
 @click.group()
 @click.option("--non-interactive", is_flag=True, envvar="ATO_NON_INTERACTIVE")
 @click.option("--debug", is_flag=True)
 @click.option("-v", "--verbose", count=True)
-@click.option("--python-path", is_flag=True, callback=python_interpreter_path, expose_value=False)
+@click.option("--python-path", is_flag=True, callback=python_interpreter_path, expose_value=False, hidden=True)
+@click.option("--atopile-path", is_flag=True, callback=atopile_src_path, expose_value=False, hidden=True)
 @click.pass_context  # This decorator makes the context available to the command.
 def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
     """Base CLI group."""
