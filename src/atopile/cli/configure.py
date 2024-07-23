@@ -96,7 +96,7 @@ def do_configure(quiet: bool) -> None:
 
     if config.install_kicad_plugin:
         # FIXME: no idea what's up with this - but seem to help on Windows
-        install_kicad_plugin(False)
+        install_kicad_plugin(quiet)
 
     # final steps
     config.version = str(
