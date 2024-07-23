@@ -56,7 +56,7 @@ def configure() -> None:
     Configure the user's system for atopile development.
     """
     _load_config()
-    do_configure()
+    do_configure(False)
 
 
 def do_configure_if_needed() -> None:
@@ -83,10 +83,10 @@ def do_configure_if_needed() -> None:
         pass
 
     # Otherwise we're configured, but we might need to update
-    do_configure()
+    do_configure(True)
 
 
-def do_configure() -> None:
+def do_configure(quiet: bool) -> None:
     """Perform system configuration required for atopile."""
 
     if config.install_kicad_plugin is None:
@@ -96,7 +96,7 @@ def do_configure() -> None:
 
     if config.install_kicad_plugin:
         # FIXME: no idea what's up with this - but seem to help on Windows
-        install_kicad_plugin()
+        install_kicad_plugin(False)
 
     # final steps
     config.version = str(
@@ -105,7 +105,7 @@ def do_configure() -> None:
     _save_config()
 
 
-def install_kicad_plugin() -> None:
+def install_kicad_plugin(quiet: bool) -> None:
     """Install the kicad plugin."""
     # Find the path to kicad's plugin directory
     plugin_loader = f"""
@@ -129,8 +129,14 @@ def install_kicad_plugin() -> None:
         path.mkdir(parents=True, exist_ok=True)
 
         # Write the plugin loader
-        with (path / "atopile.py").open("w", encoding="utf-8") as f:
-            f.write(dedent(plugin_loader))
+        plugin_loader_content = dedent(plugin_loader)
+        plugin_loader_path = path / "atopile.py"
+
+        if not quiet:
+            rich.print(f"[yellow]Writing plugin loader to {plugin_loader_path}[/]")
+            print(plugin_loader_content)
+        with plugin_loader_path.open("w", encoding="utf-8") as f:
+            f.write(plugin_loader_content)
 
 
     for p in Path("~/Documents/KiCad/").expanduser().absolute().glob("*/scripting/plugins"):
