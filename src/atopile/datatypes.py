@@ -2,11 +2,13 @@
 Datatypes used in the model.
 """
 
+import collections.abc
 import logging
 from contextlib import contextmanager
 from typing import (
     Callable,
     Generic,
+    Hashable,
     Iterable,
     Iterator,
     Mapping,
@@ -160,3 +162,28 @@ class DotDict(dict):
             return self[name]
         except KeyError as ex:
             raise AttributeError(f"Attribute {name} not found", name) from ex
+
+
+class IDdSet(collections.abc.MutableSet, Generic[T]):
+    """A set that determines uniquenss by an ID function."""
+    def __init__(self, __data__: Iterable[T] | None = None, id_func: Callable[[T], Hashable] = id) -> None:
+        self.id_func = id_func
+        self.__data__ = {self.id_func(x): x for x in (__data__ or [])}
+
+    def __contains__(self, item: T) -> bool:
+        return self.id_func(item) in self.__data__
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self.__data__.values())
+
+    def __len__(self) -> int:
+        return len(self.__data__)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({list(self)})"
+
+    def add(self, item: T) -> None:
+        self.__data__[self.id_func(item)] = item
+
+    def discard(self, item: T) -> None:
+        del self.__data__[self.id_func(item)]

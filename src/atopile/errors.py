@@ -164,6 +164,12 @@ class AtoUnknownUnitError(AtoError):
     """
 
 
+class AtoIncompatibleUnitError(AtoError):
+    """
+    Raised if a unit couldn't be interpreted.
+    """
+
+
 class AtoInfraError(AtoError):
     """
     Raised when there's an issue contacting atopile

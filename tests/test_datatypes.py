@@ -1,6 +1,14 @@
 import pytest
 
-from atopile.datatypes import DotDict, KeyOptItem, KeyOptMap, Ref, StackList, Strainer
+from atopile.datatypes import (
+    DotDict,
+    IDdSet,
+    KeyOptItem,
+    KeyOptMap,
+    Ref,
+    StackList,
+    Strainer,
+)
 
 
 def test_ref_from_one():
@@ -166,3 +174,32 @@ def test_DotDict():
 
     with pytest.raises(AttributeError):
         d.c
+
+
+def test_IDdSet():
+    class SomeClass:
+        pass
+
+    a = SomeClass()
+    b = SomeClass()
+    c = SomeClass()
+
+    s = IDdSet([a, b])
+    s2 = IDdSet([a, b])
+    assert s == s2
+
+    assert a in s
+    assert b in s
+    assert c not in s
+
+    s.add(c)
+    assert c in s
+
+    s.discard(a)
+    assert a not in s
+
+    assert len(s) == 2
+
+    assert s != s2
+    assert s | s2 == IDdSet([a, b, c])
+    assert s & s2 == IDdSet([b])
