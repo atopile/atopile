@@ -89,3 +89,25 @@ So, let's get atopile to do it for us!
 atopile will automatically solve systems of constraints for you with free variables, and check that the values of attributes are within their tolerances.
 
 ![Assertion solutions](assets/images/assertion-solver.png)
+
+
+### Cumulative Operations
+
+You can also perform cumulative operations on attributes, such as addition (`+=`), subtraction (`-=`), intersection (`&=`) and union (`|=`).
+
+These operations **propagate through links**, which mean you can do things like this:
+
+```
+--8<-- "docs/ato-demos/cumulative_operators.ato"
+```
+
+This will merge all the `Power` interfaces' attributes into a set, combining the cumulative operations as we go:
+
+- The devices back-propagate their power requirements to the power supply
+- The power supply can self-configure its output voltage and current based on the devices' requirements
+- We can ensure the system provides sufficient power for all the devices
+
+There are a few rules around this as you can imagine:
+- Only a single direct assignment to an attribute is allowed
+- Cumulative operations must be of the same type
+- Unions and intersections are applied in that order. If no union is present, it's assumed the intersection of all the attributes is desired
