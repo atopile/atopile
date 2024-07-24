@@ -1573,11 +1573,14 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         # Here we're entangling the interfaces' attributes
         # TODO: we might want to do this recursively down the children. For another day
         # The easy stuff first - these aren't in conflict
-        new_attrs = {
-            attr: source_instance.assignments[attr]
-            for attr in set(source_instance.assignments)
-            - set(target_instance.assignments)
-        }
+        new_attrs = defaultdict(deque)
+        new_attrs.update(
+            {
+                attr: source_instance.assignments[attr]
+                for attr in set(source_instance.assignments)
+                - set(target_instance.assignments)
+            }
+        )
         new_attrs.update(
             {
                 attr: target_instance.assignments[attr]
