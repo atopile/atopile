@@ -28,6 +28,7 @@ def project_options(f):
     @click.option("-o", "--option", multiple=True, envvar="ATO_OPTION")
     @functools.wraps(f)
     @errors.muffle_fatalities
+    @errors.log_ato_errors
     def wrapper(
         *args,
         entry: str,
@@ -43,9 +44,9 @@ def project_options(f):
             entry = AddrStr(entry)
 
             if address.get_file(entry) is None:
-                raise click.BadParameter(
+                raise errors.AtoBadParameterError(
                     f"Invalid entry address {entry} - entry must specify a file.",
-                    param_hint="entry",
+                    title="Bad 'entry' parameter",
                 )
 
         # get the project
@@ -60,7 +61,7 @@ def project_options(f):
             project_config = atopile.config.get_project_config_from_addr(str(entry_arg_file_path))
         except FileNotFoundError as ex:
             # FIXME: this raises an exception when the entry is not in a project
-            raise click.BadParameter(
+            raise errors.AtoBadParameterError(
                 f"Could not find project from path {str(entry_arg_file_path)}. "
                 "Is this file path within a project?"
             ) from ex
@@ -91,19 +92,19 @@ def project_options(f):
                         entry_section,
                     )
                 else:
-                    raise click.BadParameter(
+                    raise errors.AtoBadParameterError(
                         "If an entry of a file is specified, you must specify"
                         " the node within it you want to build.",
-                        param_hint="entry",
+                        title="Bad 'entry' parameter",
                     )
 
             elif entry_arg_file_path.is_dir():
                 pass
 
             elif not entry_arg_file_path.exists():
-                raise click.BadParameter(
+                raise errors.AtoBadParameterError(
                     "The entry you have specified does not exist.",
-                    param_hint="entry",
+                    title="Bad 'entry' parameter",
                 )
             else:
                 raise ValueError(
