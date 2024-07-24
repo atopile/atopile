@@ -1361,35 +1361,38 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         # TODO: de-Nplicate this
         given_type = self._get_type_info(ctx)
 
-        if assigned_name not in instance_assigned_to.assignments:
-            # Raise a warning for now. Enforce this strongly if it's a real issue.
+        if assigned_name in instance_assigned_to.assignments:
+            old_assignment = instance_assigned_to.assignments[assigned_name][0]
+            existing_value = old_assignment.value
+        elif len(assigned_ref) > 1:
             raise errors.AtoError.from_ctx(
                 ctx,
                 f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
             )
-
-        old_assignment = instance_assigned_to.assignments[assigned_name][0]
-        existing_value = old_assignment.value
-        if existing_value is not None and not isinstance(
-            old_assignment, SumCumulativeAssignment
-        ):
-            raise errors.AtoError.from_ctx(
-                ctx,
-                f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
-                " Cumulative assignments can only be made on top of other cumulative assignments,"
-                " nothing or undefined values."
-                f"Previously assigned at {_src_location_str(old_assignment.src_ctx)}",
-            )
+        else:
+            old_assignment = None
+            existing_value = None
 
         assignable = self.visitAssignable(ctx.cum_assignable())
         if existing_value is None:
             if ctx.cum_operator().ADD_ASSIGN():
                 new_value = assignable
             elif ctx.cum_operator().SUB_ASSIGN():
-                new_value = -assignable
+                new_value = expressions.defer_operation_factory(
+                    operator.sub, RangedValue(0, 0, assignable.unit), assignable, src_ctx=ctx
+                )
             else:
                 raise ValueError("Unexpected cumulative operator")
         else:
+            if not isinstance(old_assignment, SumCumulativeAssignment):
+                raise errors.AtoError.from_ctx(
+                    ctx,
+                    f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
+                    " Cumulative assignments can only be made on top of other cumulative assignments,"
+                    " nothing or undefined values."
+                    f"Previously assigned at {_src_location_str(old_assignment.src_ctx)}",
+                )
+
             if ctx.cum_operator().ADD_ASSIGN():
                 new_value = expressions.defer_operation_factory(
                     operator.add, existing_value, assignable
@@ -1433,28 +1436,19 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         # TODO: de-Nplicate this
         given_type = self._get_type_info(ctx)
 
-        if assigned_name not in instance_assigned_to.assignments:
-            # Raise a warning for now. Enforce this strongly if it's a real issue.
+        if assigned_name in instance_assigned_to.assignments:
+            old_assignment = instance_assigned_to.assignments[assigned_name][0]
+            existing_value = old_assignment.value
+        elif len(assigned_ref) > 1:
             raise errors.AtoError.from_ctx(
                 ctx,
                 f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
             )
-
-        old_assignment = instance_assigned_to.assignments[assigned_name][0]
-        existing_value = old_assignment.value
-        if existing_value is not None and not isinstance(
-            old_assignment, SetCumulativeAssignment
-        ):
-            raise errors.AtoError.from_ctx(
-                ctx,
-                f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
-                " Cumulative assignments can only be made on top of other set-cumulative"
-                " assignments (&= or |=), nothing or undefined values.\n"
-                f"Previously assigned at {_src_location_str(old_assignment.src_ctx)}",
-            )
+        else:
+            old_assignment = None
+            existing_value = None
 
         assignable = self.visitAssignable(ctx.cum_assignable())
-        assert isinstance(assignable, RangedValue)
         # TODO: check unit compatibility w/ declaration
         if existing_value is None:
             if ctx.AND_ASSIGN():
@@ -1467,6 +1461,18 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 raise ValueError("Unexpected cumulative operator")
 
         else:
+            # No existing value
+            if not isinstance(
+                old_assignment, SetCumulativeAssignment
+            ):
+                raise errors.AtoError.from_ctx(
+                    ctx,
+                    f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
+                    " Cumulative assignments can only be made on top of other set-cumulative"
+                    " assignments (&= or |=), nothing or undefined values.\n"
+                    f"Previously assigned at {_src_location_str(old_assignment.src_ctx)}",
+                )
+
             assert isinstance(old_assignment, SetCumulativeAssignment)
             if ctx.AND_ASSIGN():
                 if old_assignment.anding is None:
