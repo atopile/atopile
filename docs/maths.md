@@ -111,3 +111,16 @@ There are a few rules around this as you can imagine:
 - Only a single direct assignment to an attribute is allowed
 - Cumulative operations must be of the same type
 - Unions and intersections are applied in that order. If no union is present, it's assumed the intersection of all the attributes is desired
+
+
+## All together now!
+
+The below script demos a little of how you might actually use these features in a real-world scenario.
+
+```
+--8<-- "docs/ato-demos/ldo_demo.ato"
+```
+
+Which produces:
+
+![LDO demo](assets/images/ldo-demo.png)

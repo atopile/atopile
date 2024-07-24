@@ -184,6 +184,13 @@ class AtoNotImplementedError(AtoError):
     """
 
 
+class AtoBadParameterError(AtoError):
+    """
+    Raised when a bad CLI param is given
+    """
+    title = "Bad Parameter"
+
+
 class CountingError(AtoError):
     count = None
 
