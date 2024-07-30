@@ -64,7 +64,7 @@ class {component.name}(Module):
         self.add_trait(F.has_designator_prefix_defined("{component.designator_prefix}"))
         self.add_trait(F.has_defined_footprint(F.KicadFootprint("{component.footprint_name}", {repr(get_pin_name_list(component))})))
         self.add_trait(F.can_attach_to_footprint_via_pinmap(
-            {{ 
+            {{
 {indent('\n'.join(f'self.IFs.{mif_name} : "{pin_name}",' for mif_name, pin_name in get_pin_map(component).items()), prefix=' '*4*4)} 
             }}
         ))
@@ -73,4 +73,10 @@ class {component.name}(Module):
 from black import format_str, FileMode
 for module in modules:
     print(format_str(module, mode=FileMode()))
+# %%
+_globals = {}
+_locals = {}
+for module in modules:
+    eval(module, _globals, _locals)
+
 # %%
