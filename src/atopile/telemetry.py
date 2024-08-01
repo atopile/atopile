@@ -136,8 +136,7 @@ def get_user_id() -> str:
         )
     except subprocess.CalledProcessError:
         git_email = "unknown"
-    hashed_id = hashlib.sha256(git_email.encode()).hexdigest()
-    return hashed_id
+    return git_email
 
 
 def get_current_git_hash() -> Optional[str]:
