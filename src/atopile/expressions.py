@@ -480,9 +480,10 @@ class Expression:
 
         # Create a new lambda function with the substitutions
         def _new_lambda(context):
-            assert not (
-                set(context) & set(constants)
-            ), "Constants are being overwritten"
+            if overwritten_vars := set(context) & set(constants):
+                if unequal_vars := {v for v in overwritten_vars if context[v] != constants[v]}:
+                    friendly_unequal_vars = "', '".join(unequal_vars)
+                    raise ValueError(f"Constants '{friendly_unequal_vars}' are being overwritten")
             new_context = {**context, **constants}
             for symbol, func in callables.items():
                 new_context[symbol] = func(new_context)
