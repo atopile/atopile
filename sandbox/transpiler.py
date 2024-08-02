@@ -1,9 +1,6 @@
 # %%
-%load_ext autoreload
-%autoreload
 from atopile.front_end_trasnpiler import Lofty, IRComponent
 from atopile.parse import parse_text_as_file
-
 
 # %%
 src = """
@@ -18,6 +15,7 @@ component MyComponent:
 """
 
 ast = parse_text_as_file(src)
+
 # %%
 lofty = Lofty()
 lofty.visit(ast)
@@ -77,6 +75,17 @@ for module in modules:
 _globals = {}
 _locals = {}
 for module in modules:
-    eval(module, _globals, _locals)
+    exec(module, _globals, _locals)
+
+# %%
+from faebryk.libs.examples.buildutil import (
+    apply_design_to_pcb,
+)
+print("Building app")
+# App = _locals['MyComponent']  # TODO: augment with entrypoint
+app = MyComponent()
+
+print("Export")
+apply_design_to_pcb(app)
 
 # %%
