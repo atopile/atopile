@@ -10,7 +10,7 @@ The `.ato` files are human readable and can be version controlled, so you can co
 
 1. **Install tools**: See the install section below.
 
-2. **Project Setup**: For instructions on creating a new ato project from the command line, refer to [ato create](ato-create.md). Highly recommended to use GitHub to store and version your project.
+2. **Project Setup**: For instructions on creating a new ato project from the command line, refer to [ato create](first_project.md/#with-ato-create-recommended)). Highly recommended to use GitHub to store and version your project.
 
 3. **Install Packages**: For detailed instructions on finding and installing pre-made packages for your project, refer to the [installation guide](install.md). 
 
@@ -23,7 +23,7 @@ The `.ato` files are human readable and can be version controlled, so you can co
 7. **Sync and Layout**: Import netlist into the linked kicad project. Our packages installed from packages.atopile.io have a linked layout that you can reuse verbatim or as a known good starting point for your design.
   [Layout reuse in atopile](https://www.youtube.com/watch?v=UBwlARJWZ40)
 
-8. **Finalize and Order**: Commit and merge your layout changes, then download the CI build of your design to order your custom PCB from JLCPCB.
+1. **Finalize and Order**: Commit and merge your layout changes, then download the CI build of your design to order your custom PCB from JLCPCB.
 
 ## Installation
 
