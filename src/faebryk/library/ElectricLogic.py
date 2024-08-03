@@ -109,7 +109,7 @@ class ElectricLogic(Logic):
         super().__init__()
 
         class PARAMS(Logic.PARAMS()):
-            push_pull: "TBD[ElectricLogic.PushPull]"
+            push_pull = TBD[ElectricLogic.PushPull]()
 
         self.PARAMs = PARAMS(self)
 
