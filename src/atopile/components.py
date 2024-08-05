@@ -404,7 +404,7 @@ def get_price(addr: AddrStr) -> str:
 
     try:
         return str(instance_methods.get_data(addr, "price_usd"))
-    except KeyError as ex:
+    except KeyError:
         return "0.00"
 
 
