@@ -306,13 +306,10 @@ def get_user_facing_value(addr: AddrStr) -> str:
         db_data = _get_generic_from_db(addr)
         if db_data:
             return db_data.get("description", "")
-        else:
-            return "?"
 
-    try:
-        return instance_methods.get_data(addr, "description")
-    except KeyError:
-        return "?"
+    instance = instance_methods.get_instance(addr)
+    doc_string = instance.supers[0].obj_def.doc_string
+    return doc_string.split("\n")[0] or "?"
 
 
 # FIXME: this function's requirements might cause a circular dependency
