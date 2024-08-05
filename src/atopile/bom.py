@@ -66,6 +66,18 @@ def _get_footprint(addr: address.AddrStr) -> str:
 
     return "?"
 
+def _get_price(addr: address.AddrStr) -> str:
+    """
+    Get the price of a component, in the context of a BoM.
+    """
+    if value := errors.downgrade(
+        components.get_price,
+        components.MissingData
+    )(addr):
+        return value
+
+    return "?"
+
 
 def _get_value(addr: address.AddrStr) -> str:
     value = errors.downgrade(
@@ -149,7 +161,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
         del bom[None]
 
     # JLC format: Comment (whatever might be helpful) Designator Footprint LCSC
-    COLUMNS = ["Comment", "Designator", "Footprint", "LCSC"]
+    COLUMNS = ["Comment", "Designator", "Footprint", "LCSC", "Price"]
 
     # Create tables to print to the terminal and to the disc
     console_table = Table(show_header=True, header_style="bold magenta")
@@ -163,7 +175,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
     bom_row_nb_counter = itertools.count()
 
     # Help to fill both tables
-    def _add_row(value, designator, footprint, mpn):
+    def _add_row(value, designator, footprint, mpn, price):
         row_nb = next(bom_row_nb_counter)
         writer.writerow(
             {
@@ -171,6 +183,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
                 "Designator": designator,
                 "Footprint": footprint,
                 "LCSC": mpn,
+                "Price": price,
             }
         )
         console_table.add_row(
@@ -178,6 +191,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
             designator,
             footprint,
             mpn,
+            price,
             style=dark_row if row_nb % 2 else light_row,
         )
 
@@ -197,6 +211,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
                 friendly_designators,
                 _get_footprint(component),
                 mpn,
+                _get_price(component),
             )
         else:
             # for components without an MPN, we add a row for each component

@@ -309,7 +309,10 @@ def get_user_facing_value(addr: AddrStr) -> str:
         else:
             return "?"
 
-    return get_specd_value(addr)
+    try:
+        return instance_methods.get_data(addr, "description")
+    except KeyError:
+        return "?"
 
 
 # FIXME: this function's requirements might cause a circular dependency
@@ -389,6 +392,20 @@ def get_package(addr: AddrStr) -> str:
         return instance_methods.get_data(addr, "footprint")
     except KeyError as ex:
         raise MissingData("$addr has no package", title="No Package", addr=addr) from ex
+
+@cache
+def get_price(addr: AddrStr) -> str:
+    """
+    Return the package for a component
+    """
+    if _is_generic(addr):
+        db_data = _get_generic_from_db(addr)
+        return str(db_data.get("price_usd", ""))
+
+    try:
+        return str(instance_methods.get_data(addr, "price_usd"))
+    except KeyError:
+        return "0.00"
 
 
 class DesignatorManager:
