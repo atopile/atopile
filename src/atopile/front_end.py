@@ -7,6 +7,7 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 import enum
 import logging
 import operator
+import textwrap
 from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager
 from itertools import chain
@@ -63,12 +64,13 @@ class ClassDef(Base):
     aren't relevant to the current build - instead leaving them
     to be hit in the case we're actually building that object.
     """
-
     super_ref: Optional[Ref]
     imports: Mapping[Ref, Import]
 
     local_defs: Mapping[Ref, "ClassDef"]
     replacements: Mapping[Ref, Replacement]
+
+    doc_string: str
 
     # attached immediately to the object post construction
     closure: Optional[tuple["ClassDef"]] = None  # in order of lookup
@@ -279,6 +281,7 @@ def _make_obj_layer(address: AddrStr, super: Optional[ClassLayer] = None) -> Cla
         imports={},
         local_defs={},
         replacements={},
+        doc_string="<In-built Class>",
     )
     return ClassLayer(
         obj_def=obj_def,
@@ -732,6 +735,45 @@ class Roley(HandlesPrimaries):
         raise ValueError
 
 
+class DocStringVisitor(AtopileParserVisitor):
+    """
+    This visior class is responsible for extracting doc-strings.
+
+    A doc-string is the first string stmt of the block, if the first stmt is a string stmt.
+
+    TODO: make this work on files as well
+    """
+    def _clean_doc_string(self, s: str):
+        s = s.strip()
+        if s.startswith('"""') or s.startswith("'''"):
+            s = s[3:-3]
+
+        s = s.strip(" \n\t")
+        lines = s.split('\n', 1)
+
+        if len(lines) == 1:
+            return s
+
+        first_line, other_lines = lines
+        return first_line + '\n' + textwrap.dedent(other_lines)
+
+    def get_doc_string(self, ctx: ap.BlockdefContext) -> str:
+        """Get the doc-string from a block context."""
+        assert isinstance(ctx, ap.BlockdefContext)
+        if block := ctx.block():
+            assert isinstance(block, ap.BlockContext)
+            if simple_stmts := block.simple_stmts() or (block.stmt() and block.stmt(0).simple_stmts()):
+                assert isinstance(simple_stmts, ap.Simple_stmtsContext)
+                if simple_stmt := simple_stmts.getChild(0):
+                    assert isinstance(simple_stmt, ap.Simple_stmtContext)
+                    if string_stmt := simple_stmt.string_stmt():
+                        assert isinstance(string_stmt, ap.String_stmtContext)
+                        string_text: str = string_stmt.getText()
+                        return self._clean_doc_string(string_text)
+
+            return ""
+
+
 class Scoop(HandleStmtsFunctional, HandlesPrimaries):
     """Scoop's job is to map out all the object definitions in the code."""
 
@@ -811,6 +853,7 @@ class Scoop(HandleStmtsFunctional, HandlesPrimaries):
             imports=imports,
             local_defs=local_defs,
             replacements={},
+            doc_string="",  # TODO: get this properly
         )
 
         return file_obj
@@ -846,6 +889,7 @@ class Scoop(HandleStmtsFunctional, HandlesPrimaries):
             imports=imports,
             local_defs=local_defs,
             replacements=replacements,
+            doc_string=DocStringVisitor().get_doc_string(ctx),
         )
 
         block_name = self.visit_ref_helper(ctx.name())
