@@ -309,7 +309,10 @@ def get_user_facing_value(addr: AddrStr) -> str:
         else:
             return "?"
 
-    return get_specd_value(addr)
+    try:
+        return instance_methods.get_data(addr, "description")
+    except KeyError:
+        return "?"
 
 
 # FIXME: this function's requirements might cause a circular dependency
