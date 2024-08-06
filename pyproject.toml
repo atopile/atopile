@@ -68,6 +68,7 @@ dependencies = [
     "urllib3>=2.2.1",
     "uvicorn[standard]>=0.25.0",
     "watchfiles>=0.21.0",
+    # "faebryk>=0.1.0", TODO: add atopile faebryk dependency
 ]
 dynamic = ["version"]
 

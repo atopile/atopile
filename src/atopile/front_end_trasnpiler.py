@@ -5,8 +5,7 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 """
 
 import enum
-from dataclasses import dataclass
-from dataclasses import field as dataclass_field
+from dataclasses import dataclass, field, fields
 from typing import Any, Iterable, Optional
 
 import pint
@@ -316,35 +315,50 @@ class _HandleStmtsFunctional(AtopileParserVisitor):
 
 
 @dataclass
-class IRComponent:
+class IRBlock:
     @dataclass
     class IRParam:
         name: str | None = None
         value: Any = None
 
     @dataclass
-    class IRInterfaces:
+    class IRInterface:
         name: str | None = None
-        children_ifs: list["IRComponent.IRInterfaces"] = dataclass_field(
+        children_ifs: list["IRBlock.IRInterface"] = field(
             default_factory=list
         )
-        pin_connections: list["IRComponent.IRInterfaces"] = dataclass_field(
+        pin_connections: list["IRBlock.IRInterface"] = field(
             default_factory=list
         )
-        params: list["IRComponent.IRParam"] = dataclass_field(default_factory=list)
+        params: list["IRBlock.IRParam"] = field(default_factory=list)
 
     @dataclass
-    class IRPin(IRInterfaces): ...
+    class IRPin(IRInterface): ...
 
     @dataclass
-    class IRSignal(IRInterfaces): ...
+    class IRSignal(IRInterface): ...
+
+    @dataclass
+    class IRChildBlock:
+        name: str | None = None
+        value: str | None = None
 
     name: str | None = None
+    children_ifs: list[IRInterface] = field(default_factory=list)
+    children_blocks: list[IRChildBlock] = field(default_factory=list)
+    inherits_from: list["str"] = field(default_factory=list)
+    params: list[IRParam] = field(default_factory=list)
+
+
+@dataclass
+class IRComponent(IRBlock):
     footprint_name: str | None = None
     lcsc_id: str | None = None
-    children_ifs: list[IRInterfaces] = dataclass_field(default_factory=list)
-    params: list[IRParam] = dataclass_field(default_factory=list)
     designator_prefix: str = "U"
+
+
+@dataclass
+class IRModule(IRBlock): ...
 
 
 class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
@@ -353,23 +367,38 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
     def __init__(
         self,
     ) -> None:
-        self.objs: list[IRComponent] = []
+        self.objs: list[IRBlock] = []
         super().__init__()
 
     @property
-    def current_obj(self) -> IRComponent:
+    def current_obj(self) -> IRBlock:
         return self.objs[-1]
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
         """Don't go down blockdefs, they're just for defining objects."""
-        self.objs.append(IRComponent(name=ctx.name().getText()))
+        blocktype = ctx.blocktype()
+        assert isinstance(blocktype, ap.BlocktypeContext)
+
+        if blocktype.COMPONENT():
+            self.objs.append(IRComponent())
+
+        elif blocktype.MODULE():
+            self.objs.append(IRModule())
+
+        elif blocktype.INTERFACE():
+            self.objs.append(IRBlock.IRInterface())
+
+        else:
+            raise NotImplementedError
+
+        self.current_obj.name = ctx.name().getText()
+
+        if ctx.FROM():
+            inherits_from = ctx.name_or_attr().getText()
+            self.current_obj.inherits_from.append(inherits_from)
+
         self.visitChildren(ctx)
         return NOTHING
-
-    def handle_new_assignment(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
-        """Specifically handle "something = new XYZ" assignments."""
-        raise NotImplementedError
-        return KeyOptMap.empty()
 
     def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
         """Handle declaration statements."""
@@ -389,18 +418,28 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
 
+        if len(assigned_ref) > 1:
+            # TODO: handle merges (eg. assigning over variables)
+            raise NotImplementedError
+        assigned_name: str = assigned_ref[-1]
+
         ########## Handle New Statements ##########
         if assignable_ctx.new_stmt():
-            return self.handle_new_assignment(ctx)
+            # Add a new object to the current object
+            new_stmt = assignable_ctx.new_stmt()
+            assert isinstance(new_stmt, ap.New_stmtContext)
+            new_value = new_stmt.name_or_attr().getText()
+            new_thing = IRBlock.IRChildBlock(
+                name=assigned_name,
+                value=new_value,
+            )
+            self.current_obj.children_blocks.append(new_thing)
 
         ########## Handle Actual Assignments ##########
         # Figure out what Instance object the assignment is being made to
-        if len(assigned_ref) > 1:
-            raise NotImplementedError
-
-        assigned_name: str = assigned_ref[-1]
         assignable = self.visit(assignable_ctx)
 
+        # Convert ranged values to pythonic representation
         if isinstance(assignable, RangedValue):
             si_units = [
                 "",
@@ -428,20 +467,16 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
         else:
             assignable = repr(assignable)
 
-        match (assigned_name):
-            case "footprint":
-                self.current_obj.footprint_name = assignable
-            case "lcsc_id":
-                self.current_obj.lcsc_id = assignable
-            case "designator_prefix":
-                self.current_obj.designator_prefix = assignable
-            case _:
-                self.current_obj.params.append(
-                    IRComponent.IRParam(
-                        name=assigned_name,
-                        value=assignable,
-                    )
+        # Attach params to the current object
+        if assigned_name in {f.name for f in fields(self.current_obj)}:
+            setattr(self.current_obj, assigned_name, assignable)
+        else:
+            self.current_obj.params.append(
+                IRComponent.IRParam(
+                    name=assigned_name,
+                    value=assignable,
                 )
+            )
 
         return KeyOptMap.empty()
 
@@ -494,8 +529,8 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
         rhs = self.visitConnectable(ctx.connectable(1))[0][0]
 
         def _lookup(
-            listy: list[IRComponent.IRInterfaces], name: str
-        ) -> IRComponent.IRInterfaces:
+            listy: list[IRComponent.IRInterface], name: str
+        ) -> IRComponent.IRInterface:
             for li in listy:
                 if li.name == name:
                     return li

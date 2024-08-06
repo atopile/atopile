@@ -175,3 +175,6 @@ artifacts
 .parcel-cache/
 dist/
 node_modules/
+
+# .ato directory
+.ato/
