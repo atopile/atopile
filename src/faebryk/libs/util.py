@@ -513,3 +513,10 @@ def zip_non_locked(left: Iterable[T], right: Iterable[U]):
             return tuple(self.values)
 
     return _Iter[T, U]([left, right])
+
+
+def try_or(func: Callable[..., T], default: T, catch: type[Exception] = Exception) -> T:
+    try:
+        return func()
+    except catch:
+        return default
