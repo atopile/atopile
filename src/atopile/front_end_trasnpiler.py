@@ -5,7 +5,7 @@ In building this datamodel, we check for name collisions, but we don't resolve t
 """
 
 import enum
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Any, Iterable, Optional
 
 import pint
@@ -16,6 +16,7 @@ from atopile.datatypes import KeyOptItem, KeyOptMap, Ref
 from atopile.expressions import RangedValue
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
+from pathlib import Path
 
 
 class _Sentinel(enum.Enum):
@@ -36,11 +37,7 @@ def _get_unit_from_ctx(ctx: ParserRuleContext) -> pint.Unit:
         ) from ex
 
 
-class _HandlesPrimaries(AtopileParserVisitor):
-    """
-    This class is a mixin to be used with the translator classes.
-    """
-
+class _RefHelpers:
     def visit_ref_helper(
         self,
         ctx: (
@@ -73,6 +70,11 @@ class _HandlesPrimaries(AtopileParserVisitor):
     def visitAttr(self, ctx: ap.AttrContext) -> Ref:
         return Ref(self.visitName(name) for name in ctx.name())
 
+
+class _HandlesBaseTypes(AtopileParserVisitor):
+    """
+    This class is a mixin to be used with the translator classes.
+    """
     def visitString(self, ctx: ap.StringContext) -> str:
         return ctx.getText().strip("\"'")
 
@@ -244,196 +246,211 @@ class _HandlesGetTypeInfo:
         return None
 
 
-class _HandleStmtsFunctional(AtopileParserVisitor):
-    """
-    The base translator is responsible for methods common to
-    navigating from the top of the AST including how to process
-    errors, and commonising return types.
-    """
+# class _HandleStmtsFunctional(AtopileParserVisitor):
+#     """
+#     The base translator is responsible for methods common to
+#     navigating from the top of the AST including how to process
+#     errors, and commonising return types.
+#     """
 
-    def defaultResult(self):
-        """
-        Override the default "None" return type
-        (for things that return nothing) with the Sentinel NOTHING
-        """
-        return NOTHING
+#     def defaultResult(self):
+#         """
+#         Override the default "None" return type
+#         (for things that return nothing) with the Sentinel NOTHING
+#         """
+#         return NOTHING
 
-    def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
-        """
-        Visit multiple children and return a tuple of their results,
-        discard any results that are NOTHING and flattening the children's results.
-        It is assumed the children are returning their own OptionallyNamedItems.
-        """
+#     def visit_iterable_helper(self, children: Iterable) -> KeyOptMap:
+#         """
+#         Visit multiple children and return a tuple of their results,
+#         discard any results that are NOTHING and flattening the children's results.
+#         It is assumed the children are returning their own OptionallyNamedItems.
+#         """
 
-        def __visit():
-            for err_cltr, child in errors.iter_through_errors(children):
-                with err_cltr():
-                    child_result = self.visit(child)
-                    for _ in child_result:
-                        pass
-                    if child_result is not NOTHING:
-                        yield child_result
+#         def __visit():
+#             for err_cltr, child in errors.iter_through_errors(children):
+#                 with err_cltr():
+#                     child_result = self.visit(child)
+#                     for _ in child_result:
+#                         pass
+#                     if child_result is not NOTHING:
+#                         yield child_result
 
-        chained_results = []
-        for val in __visit():
-            chained_results.extend(val)
+#         chained_results = []
+#         for val in __visit():
+#             chained_results.extend(val)
 
-        # child_results = chain.from_iterable(__visit())
-        # child_results = list(child_results)
-        child_results = list(item for item in chained_results if item is not NOTHING)
-        child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
+#         # child_results = chain.from_iterable(__visit())
+#         # child_results = list(child_results)
+#         child_results = list(item for item in chained_results if item is not NOTHING)
+#         child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
 
-        return KeyOptMap(child_results)
+#         return KeyOptMap(child_results)
 
-    def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
-        """
-        Ensure consistency of return type.
-        We choose to raise any below exceptions here, because stmts can be nested,
-        and raising exceptions serves as our collection mechanism.
-        """
-        if ctx.simple_stmts():
-            stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
-            return stmt_returns
-        elif ctx.compound_stmt():
-            item = self.visit(ctx.compound_stmt())
-            if item is NOTHING:
-                return KeyOptMap.empty()
-            assert isinstance(item, KeyOptItem)
-            return KeyOptMap.from_item(item)
+#     def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
+#         """
+#         Ensure consistency of return type.
+#         We choose to raise any below exceptions here, because stmts can be nested,
+#         and raising exceptions serves as our collection mechanism.
+#         """
+#         if ctx.simple_stmts():
+#             stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
+#             return stmt_returns
+#         elif ctx.compound_stmt():
+#             item = self.visit(ctx.compound_stmt())
+#             if item is NOTHING:
+#             assert isinstance(item, KeyOptItem)
+#             return KeyOptMap.from_item(item)
 
-        raise TypeError("Unexpected statement type")
+#         raise TypeError("Unexpected statement type")
 
-    def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
-        return self.visit_iterable_helper(ctx.simple_stmt())
+#     def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
+#         return self.visit_iterable_helper(ctx.simple_stmt())
 
-    def visitBlock(self, ctx) -> KeyOptMap:
-        if ctx.stmt():
-            return self.visit_iterable_helper(ctx.stmt())
-        if ctx.simple_stmts():
-            return self.visitSimple_stmts(ctx.simple_stmts())
-        raise ValueError  # this should be protected because it shouldn't be parseable
+#     def visitBlock(self, ctx) -> KeyOptMap:
+#         if ctx.stmt():
+#             return self.visit_iterable_helper(ctx.stmt())
+#         if ctx.simple_stmts():
+#             return self.visitSimple_stmts(ctx.simple_stmts())
+#         raise ValueError  # this should be protected because it shouldn't be parseable
 
+# TODO: handle dependencies
 
 @dataclass
 class IRBlock:
-    @dataclass
-    class IRParam:
-        name: str | None = None
-        value: Any = None
-
-    @dataclass
-    class IRInterface:
-        name: str | None = None
-        children_ifs: list["IRBlock.IRInterface"] = field(
-            default_factory=list
-        )
-        pin_connections: list["IRBlock.IRInterface"] = field(
-            default_factory=list
-        )
-        params: list["IRBlock.IRParam"] = field(default_factory=list)
-
-    @dataclass
-    class IRPin(IRInterface): ...
-
-    @dataclass
-    class IRSignal(IRInterface): ...
-
-    @dataclass
-    class IRChildBlock:
-        name: str | None = None
-        value: str | None = None
-
     name: str | None = None
-    children_ifs: list[IRInterface] = field(default_factory=list)
-    children_blocks: list[IRChildBlock] = field(default_factory=list)
-    inherits_from: list["str"] = field(default_factory=list)
-    params: list[IRParam] = field(default_factory=list)
+    inherits_from: list[str] = field(default_factory=list)
+    node_content: list[str] = field(default_factory=list)
+    interface_content: list[str] = field(default_factory=list)
+    param_content: list[str] = field(default_factory=list)
+    general_content: list[str] = field(default_factory=list)
 
 
 @dataclass
-class IRComponent(IRBlock):
-    footprint_name: str | None = None
-    lcsc_id: str | None = None
-    designator_prefix: str = "U"
+class IRFile:
+    imports: list[str] = field(default_factory=list)
+    blocks: list[IRBlock] = field(default_factory=list)
 
 
-@dataclass
-class IRModule(IRBlock): ...
+class Bob(AtopileParserVisitor):
+    """Bob's in charge. He dispatches jobs to the other builders."""
+    def __init__(self) -> None:
+        super().__init__()
+        self.reset()
 
+    def reset(self):
+        self._file: IRFile | None = None
 
-class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
-    """Lofty's job is to walk orthogonally down (or really up) the instance tree."""
+    def visitFile_input(self, ctx: ap.File_inputContext | Any):
+        self._file = IRFile()
+
+        try:
+            super().visitFile_input(ctx)
+        finally:
+            file = self._file
+            self.reset()
+        return file
+
+    def _import_helper(self, what: str, where: str) -> str:
+        assert isinstance(self._file, IRFile)
+        if not what.endswith(".ato"):
+            raise NotImplementedError
+
+        # TODO: handle file structure properly
+        where = where.rsplit("/")[-1].replace(".ato", "").replace("/", ".")
+
+        self._file.imports.append(f"from {where} import {what}")
+
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext | Any):
+        imports = [n.getText() for n in ctx.name_or_attr()]
+        from_ = imports.pop(0)
+        for imp in imports:
+            self._import_helper(imp, from_)
+
+    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext | Any):
+        raise NotImplementedError
+
+    def visitBlockdef(self, ctx: ap.BlockdefContext | Any):
+        blocktype: ap.BlocktypeContext = ctx.blocktype()
+        if blocktype.COMPONENT():
+            ir_block = Lofty().visit(ctx)
+            self._file.blocks.append(ir_block)
+            return ir_block
+        else:
+            raise NotImplementedError
+
+class Lofty(_HandlesBaseTypes, _HandlesGetTypeInfo, _RefHelpers):
+    """Lofty's handles components"""
 
     def __init__(
         self,
     ) -> None:
-        self.objs: list[IRBlock] = []
         super().__init__()
+        self.reset()
+
+    def reset(self):
+        self._current_obj: IRBlock | None = None
+        self._pin_to_signal_map: dict[str, str | None] = {}
 
     @property
-    def current_obj(self) -> IRBlock:
-        return self.objs[-1]
+    def current_obj(self) -> IRBlock | None:
+        return self._current_obj
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
-        """Don't go down blockdefs, they're just for defining objects."""
-        blocktype = ctx.blocktype()
-        assert isinstance(blocktype, ap.BlocktypeContext)
+    def visitBlockdef(self, ctx: ap.BlockdefContext):
+        if self._current_obj:
+            raise errors.AtoError.from_ctx(
+                ctx, "Can't define a block within another block"
+            )
 
-        if blocktype.COMPONENT():
-            self.objs.append(IRComponent())
-
-        elif blocktype.MODULE():
-            self.objs.append(IRModule())
-
-        elif blocktype.INTERFACE():
-            self.objs.append(IRBlock.IRInterface())
-
-        else:
-            raise NotImplementedError
+        self._current_obj = IRBlock()
 
         self.current_obj.name = ctx.name().getText()
+        self.current_obj.inherits_from += ["F.Module"]
 
         if ctx.FROM():
             inherits_from = ctx.name_or_attr().getText()
             self.current_obj.inherits_from.append(inherits_from)
 
-        self.visitChildren(ctx)
-        return NOTHING
+        try:
+            self.visitChildren(ctx)
+        finally:
+            obj = self.current_obj
+            self.reset()
+        return obj
 
-    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
+    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext):
         """Handle declaration statements."""
-        # TODO: create TBD
-        self.current_obj.params.append(
-            IRComponent.IRParam(
-                name=ctx.name().getText(),
-                value=None,  # None indicates TBD
+        name = ctx.name_or_attr().getText()
+        if "." in name:
+            raise errors.AtoError.from_ctx(
+                ctx, "Can't declare an attribute for another object"
             )
-        )
-        return KeyOptMap.empty()
 
-    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
+        # TODO: Add typing information to the param
+        self.current_obj.param_content += [f"{name} = TBD()"]
+
+    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext):
         """Assignment values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
 
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
 
-        if len(assigned_ref) > 1:
-            # TODO: handle merges (eg. assigning over variables)
-            raise NotImplementedError
         assigned_name: str = assigned_ref[-1]
 
         ########## Handle New Statements ##########
         if assignable_ctx.new_stmt():
+            if len(assigned_ref) > 1:
+                raise errors.AtoError.from_ctx(
+                    ctx,
+                    "Can't assign a new object to an attribute of another object",
+                )
             # Add a new object to the current object
             new_stmt = assignable_ctx.new_stmt()
             assert isinstance(new_stmt, ap.New_stmtContext)
             new_value = new_stmt.name_or_attr().getText()
-            new_thing = IRBlock.IRChildBlock(
-                name=assigned_name,
-                value=new_value,
-            )
-            self.current_obj.children_blocks.append(new_thing)
+            self.current_obj.node_content += [f"{assigned_name} = {new_value}()"]
+            return
 
         ########## Handle Actual Assignments ##########
         # Figure out what Instance object the assignment is being made to
@@ -468,17 +485,13 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
             assignable = repr(assignable)
 
         # Attach params to the current object
-        if assigned_name in {f.name for f in fields(self.current_obj)}:
-            setattr(self.current_obj, assigned_name, assignable)
-        else:
-            self.current_obj.params.append(
-                IRComponent.IRParam(
-                    name=assigned_name,
-                    value=assignable,
-                )
-            )
 
-        return KeyOptMap.empty()
+        ########## Handle Overrides / Merges ##########
+        if len(assigned_ref) > 1:
+            self.current_obj.general_content += [f"__merge__(self.{assigned_ref[0]}, {assignable})"]
+            return
+
+        self.current_obj.param_content += [f"{assigned_name} = {assignable}"]
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """
@@ -488,7 +501,6 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
         Unlike assignments, they may not implicitly declare an attribute.
         """
         raise NotImplementedError
-        return KeyOptMap.empty()
 
     def visitSet_assign_stmt(self, ctx: ap.Set_assign_stmtContext):
         """
@@ -498,9 +510,8 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
         Unlike assignments, they may not implicitly declare an attribute.
         """
         raise NotImplementedError
-        return KeyOptMap.empty()
 
-    def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
+    def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext):
         """TODO:"""
         if ctx.name():
             name = ctx.name().getText()
@@ -511,16 +522,18 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
         else:
             raise NotImplementedError
 
-        self.current_obj.children_ifs.append(IRComponent.IRPin(name=name))
-        return KeyOptMap.from_kv(name, name)
+        # "declare" the pin exists
+        self._pin_to_signal_map[name] = None
 
-    def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
+        return name
+
+    def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext):
         """TODO:"""
         name = ctx.name().getText()
-        self.current_obj.children_ifs.append(IRComponent.IRSignal(name=name))
-        return KeyOptMap.from_kv(name, name)
+        # TODO: handle other types of interfaces better
+        self.current_obj.interface_content += [f"{name} = F.Electrical()"]
 
-    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
+    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext):
         """
         Connect interfaces together
         """
@@ -528,21 +541,20 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
         lhs = self.visitConnectable(ctx.connectable(0))[0][0]
         rhs = self.visitConnectable(ctx.connectable(1))[0][0]
 
-        def _lookup(
-            listy: list[IRComponent.IRInterface], name: str
-        ) -> IRComponent.IRInterface:
-            for li in listy:
-                if li.name == name:
-                    return li
+        if lhs in self._pin_to_signal_map and rhs in self._pin_to_signal_map:
+            raise NotImplementedError("Cannot handle directly connecting signals to one another")
 
-        lhs_if = _lookup(self.current_obj.children_ifs, lhs)
-        rhs_if = _lookup(self.current_obj.children_ifs, rhs)
+        # Handle one of them being a pin
+        if lhs in self._pin_to_signal_map:
+            self._pin_to_signal_map[lhs] = rhs
 
-        lhs_if.pin_connections.append(rhs_if)
-        rhs_if.pin_connections.append(lhs_if)
-        return KeyOptMap.empty()
+        if rhs in self._pin_to_signal_map:
+            self._pin_to_signal_map[rhs] = lhs
 
-    def visitConnectable(self, ctx: ap.ConnectableContext) -> KeyOptMap:
+        # Handle connecting two signals
+        self.current_obj.general_content += [f"__connect__({lhs}, {rhs})"]
+
+    def visitConnectable(self, ctx: ap.ConnectableContext):
         """Return the address of the connectable object."""
         if ctx.name_or_attr():
             ref = self.visit_ref_helper(ctx.name_or_attr())
@@ -556,18 +568,15 @@ class Lofty(_HandleStmtsFunctional, _HandlesPrimaries, _HandlesGetTypeInfo):
 
     # The following statements are handled exclusively by Dizzy
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext | Any):
+        # TODO: specialisation
         raise NotImplementedError
-        return KeyOptMap.empty()
 
     def visitImport_stmt(self, ctx: ap.Import_stmtContext | Any):
-        raise NotImplementedError
-        return KeyOptMap.empty()
+        raise errors.AtoError.from_ctx(ctx, "Imports are not allowed within components")
 
     def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext | Any):
-        raise NotImplementedError
-        return KeyOptMap.empty()
+        raise errors.AtoError.from_ctx(ctx, "Imports are not allowed within components")
 
-    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
+    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext):
         """Handle assertion statements."""
         raise NotImplementedError
-        return KeyOptMap.empty()

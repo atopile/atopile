@@ -1,119 +1,92 @@
 # %%
-from atopile.front_end_trasnpiler import Lofty, IRBlock, IRComponent, IRModule
+from atopile.front_end_trasnpiler import Bob, IRBlock, IRFile
 from atopile.parse import parse_text_as_file
 
 # %%
 src = """
 component MyComponent:
-    # a = 1mV / 100kohm
+    a = 1mV / 100kohm
     signal b
-    # pin 3
-    # signal d ~ pin 5
-    # d ~ signal f
-    # # g = new Power
-    # footprint = 'SOT-23-5'
+    pin 3
+    signal d ~ pin 5
+    d ~ signal f
+    # g = new Power
+    footprint = 'SOT-23-5'
 
-module MyModule:
-    comp_1 = new MyComponent
-    comp_2 = new MyComponent
-    comp_1.b ~ comp_2.b
+# module MyModule:
+#     comp_1 = new MyComponent
+#     comp_2 = new MyComponent
+#     comp_1.b ~ comp_2.b
 """
 
 ast = parse_text_as_file(src, "test.ato")
 
 # %%
-lofty = Lofty()
-lofty.visit(ast)
+bob = Bob()
+ir_file = bob.visit(ast)
 
 # %%
-def get_pin_name_list(component: IRComponent):
-    return list({f'{mif.name}' for mif in component.children_ifs if isinstance(mif, IRComponent.IRPin)})
+def _indent(lines, prefix=""):
+    """Indent lines, but keep the first line unindented."""
+    if len(lines) == 0:
+        return ""
+    if len(lines) == 1:
+        return lines[0]
+    return "\n".join([lines[0]] + [prefix + line for line in lines[1:]])
 
-def get_pin_map(component: IRComponent):
-    pins = [mif for mif in component.children_ifs if isinstance(mif, IRComponent.IRPin)]
-    pinmap = {mif.name:pin.name for pin in pins for mif in pin.pin_connections if isinstance(mif, IRComponent.IRSignal)}
-    return pinmap
-
-
-from textwrap import indent
-
-
-def make_component(component: IRComponent):
+# %%
+def make_block(block: IRBlock):
     return f"""
-class {component.name}({', '.join(component.inherits_from) or 'Module'}):
+class {block.name}({', '.join(block.inherits_from) or 'Module'}):
+    class PARAMS(Module.PARAMS()):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            {_indent(block.param_content, prefix=' '*3*4) or 'pass'}
+
+    class IFS(Module.IFS()):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            {_indent(block.interface_content, prefix=' '*3*4) or 'pass'}
+
+    class NODES(Module.NODES()):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            {_indent(block.node_content, prefix=' '*3*4) or 'pass'}
+
     def __init__(self) -> None:
         super().__init__()
 
-        class PARAMS(Module.PARAMS()):
-{indent('\n'.join(f'{param.name} = {param.value}' for param in component.params) or 'pass', prefix=' '*4*3)}
+        self.PARAMs = self.PARAMS(self)
+        self.IFs = self.IFS(self)
+        self.NODEs = self.NODES(self)
 
-        self.PARAMs = PARAMS(self)
-
-        class _IFS(Module.IFS()):
-{indent('\n'.join(f'{mif.name} = F.Electrical()' for mif in component.children_ifs if isinstance(mif, IRComponent.IRSignal)) or 'pass', prefix=' '*4*3)}
-
-        self.IFs = _IFS(self)
-
-        class _NODES(Module.NODES()):
-{indent('\n'.join(f'{block.name} = {block.value}()' for block in component.children_blocks) or 'pass', prefix=' '*4*3)}
-
-
-        self.NODEs = _NODES(self)
-
-        self.add_trait(F.has_designator_prefix_defined("{component.designator_prefix}"))
-        self.add_trait(F.has_defined_footprint(F.KicadFootprint("{component.footprint_name}", {repr(get_pin_name_list(component))})))
-        self.add_trait(F.can_attach_to_footprint_via_pinmap(
-            {{
-{indent('\n'.join(f'self.IFs.{mif_name} : "{pin_name}",' for mif_name, pin_name in get_pin_map(component).items()), prefix=' '*4*4)}
-            }}
-        ))
+        {_indent(block.general_content, prefix=' '*2*4) or 'pass'}
 """
 
 
-def make_module(module: IRModule):
+def make_file(file: IRFile):
     return f"""
-class {module.name}({', '.join(module.inherits_from) or 'Module'}):
-    def __init__(self) -> None:
-        super().__init__()
+import faebryk.library._F as F
+from faebryk.core.core import Module
+from faebryk.core.operators import *
 
-        class PARAMS(Module.PARAMS()):
-{indent('\n'.join(f'{param.name} = {param.value}' for param in module.params) or 'pass', prefix=' '*4*3)}
+{'\n'.join(file.imports)}
 
-        self.PARAMs = PARAMS(self)
-
-        class _IFS(Module.IFS()):
-{indent('\n'.join(f'{mif.name} = F.Electrical()' for mif in module.children_ifs if isinstance(mif, IRComponent.IRSignal)) or 'pass', prefix=' '*4*3)}
-
-        self.IFs = _IFS(self)
-
-        class _NODES(Module.NODES()):
-{indent('\n'.join(f'{block.name} = {block.value}()' for block in module.children_blocks) or 'pass', prefix=' '*4*3)}
-
-
-        self.NODEs = _NODES(self)
+{'\n'.join(make_block(b) for b in file.blocks)}
 """
 
 # %%
 from pathlib import Path
 from black import format_str, FileMode
 
-all_together = """
-import faebryk.library._F as F
-from faebryk.core.core import Module
-"""
-
-for ir_obj in lofty.objs:
-    match ir_obj:
-        case IRComponent():
-            all_together += make_component(ir_obj)
-        case IRModule():
-            all_together += make_module(ir_obj)
+file_contents = make_file(ir_file)
+formatted_code = format_str(file_contents, mode=FileMode())
 
 # %%
 ato_cache = Path(".ato/ato_cache.py")
 ato_cache.parent.mkdir(parents=True, exist_ok=True)
 with ato_cache.open("w") as f:
-    f.write(all_together)
+    f.write(formatted_code)
 
 # %%
 import importlib
