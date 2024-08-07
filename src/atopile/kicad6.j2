@@ -17,6 +17,9 @@
         (field (name "{{ field.name }}") "{{ field.value }}")
       {%- endfor %})
     {%- endif %}
+    {%- for property in component.properties %}
+      (property (name "{{ property.name }}"){% if property.value is not none %} (value "{{ property.value }}"){% endif %})
+    {%- endfor %}
       (libsource (lib "{{ component.libsource.lib }}") (part "{{ component.libsource.part }}") (description "{{ component.libsource.description }}"))
       (sheetpath (names "{{ component.sheetpath.names}}") (tstamps "{{ component.sheetpath.tstamps}}"))
       (tstamps "{{ component.tstamp }}"))

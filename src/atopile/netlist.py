@@ -4,7 +4,7 @@ from typing import Optional
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from toolz import groupby
 
-from atopile import components, errors, nets, layout, config
+from atopile import components, errors, nets, layout, config, instance_methods
 from atopile.address import AddrStr, get_name, get_relative_addr_str
 from atopile.instance_methods import (
     all_descendants,
@@ -21,6 +21,7 @@ from atopile.kicad6_datamodel import (
     KicadNetlist,
     KicadNode,
     KicadPin,
+    KicadProperty,
     KicadSheetpath,
 )
 
@@ -106,14 +107,28 @@ class NetlistBuilder:
         if ":" not in footprint_with_prefix:
             footprint_with_prefix = "lib:" + footprint_with_prefix
 
+        properties = []
+        try:
+            if instance_methods.get_data(comp_addr, "do_not_populate") is True:
+                properties.append(KicadProperty(name="dnp"))
+        except errors.AtoKeyError:
+            pass
+
+        try:
+            if instance_methods.get_data(comp_addr, "exclude_from_bom") is True:
+                properties.append(KicadProperty(name="exclude_from_bom"))
+        except errors.AtoKeyError:
+            pass
+
         designator = components.get_designator(comp_addr)
         constructed_component = KicadComponent(
             ref=designator,
             value=_get_value(comp_addr),
-            footprint= footprint_with_prefix,
+            footprint=footprint_with_prefix,
             libsource=libsource,
             tstamp=tstamp,
             fields=[],
+            properties=properties,
             sheetpath=sheetpath,
             src_path=comp_addr,
         )
