@@ -12,6 +12,16 @@ class KicadField:
 
 
 @define
+class KicadProperty:
+    """
+    eg. (property (name "Sheetfile") (value "example.kicad_sch"))
+    """
+
+    name: str
+    value: Optional[str] = None
+
+
+@define
 class KicadPin:
     """
     eg. (pin (num "1") (name "") (type "passive"))
