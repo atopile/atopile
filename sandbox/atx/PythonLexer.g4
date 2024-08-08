@@ -78,6 +78,8 @@ ELIF     : 'elif';
 IF       : 'if';
 OR       : 'or';
 YIELD    : 'yield';
+WITHIN   : 'within';
+TO       : 'to';
 
 // https://docs.python.org/3.12/library/token.html#module-token
 LPAR             : '('; // OPEN_PAREN
@@ -128,6 +130,8 @@ RARROW           : '->';
 ELLIPSIS         : '...';
 COLONEQUAL       : ':=';
 EXCLAMATION      : '!';
+PLUS_OR_MINUS    : '+/-';
+PLUS_OR_MINU2    : '±';
 
 // https://docs.python.org/3.12/reference/lexical_analysis.html#identifiers
 NAME

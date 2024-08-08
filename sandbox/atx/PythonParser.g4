@@ -75,7 +75,8 @@ simple_stmt
     | 'break'
     | 'continue'
     | global_stmt
-    | nonlocal_stmt;
+    | nonlocal_stmt
+    | connect_stmt;
 
 compound_stmt
     : function_def
@@ -136,6 +137,8 @@ assert_stmt: 'assert' expression (',' expression )?;
 import_stmt
     : import_name
     | import_from;
+
+connect_stmt : expression ('~' expression)+;
 
 // Import statements
 // -----------------
@@ -357,6 +360,7 @@ closed_pattern
 // Literal patterns are used for equality and identity constraints
 literal_pattern
     : signed_number
+    | signed_dimensioned_number
     | complex_number
     | strings
     | 'None'
@@ -366,11 +370,16 @@ literal_pattern
 // Literal expressions are used to restrict permitted mapping pattern keys
 literal_expr
     : signed_number
+    | signed_dimensioned_number
     | complex_number
     | strings
     | 'None'
     | 'True'
     | 'False';
+
+signed_dimensioned_number
+    : '-'? NUMBER (NAME | STRING)
+    ;
 
 complex_number
     : signed_real_number ('+' | '-') imaginary_number
@@ -593,12 +602,14 @@ sum
     ;
 
 term
-    : term ('*' | '/' | '//' | '%' | '@') factor
-    | factor
+    : term ('*' | '/' | '//' | '%' | '@') tolerance
+    | tolerance
     ;
 
-
-
+tolerance
+    : tolerance ('to' | '+/-' | '±') factor
+    | factor
+    ;
 
 factor
     : '+' factor
@@ -640,11 +651,16 @@ atom
     | 'False'
     | 'None'
     | strings
+    | dimensioned_number
     | NUMBER
     | (tuple | group | genexp)
     | (list | listcomp)
     | (dict | set | dictcomp | setcomp)
     | '...';
+
+dimensioned_number
+    : NUMBER (NAME | STRING)
+    ;
 
 group
     : '(' (yield_expr | named_expression) ')';

@@ -119,6 +119,11 @@ class PythonParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by PythonParser#connect_stmt.
+    def visitConnect_stmt(self, ctx:PythonParser.Connect_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by PythonParser#import_name.
     def visitImport_name(self, ctx:PythonParser.Import_nameContext):
         return self.visitChildren(ctx)
@@ -371,6 +376,11 @@ class PythonParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by PythonParser#literal_expr.
     def visitLiteral_expr(self, ctx:PythonParser.Literal_exprContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by PythonParser#signed_dimensioned_number.
+    def visitSigned_dimensioned_number(self, ctx:PythonParser.Signed_dimensioned_numberContext):
         return self.visitChildren(ctx)
 
 
@@ -674,6 +684,11 @@ class PythonParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by PythonParser#tolerance.
+    def visitTolerance(self, ctx:PythonParser.ToleranceContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by PythonParser#factor.
     def visitFactor(self, ctx:PythonParser.FactorContext):
         return self.visitChildren(ctx)
@@ -706,6 +721,11 @@ class PythonParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by PythonParser#atom.
     def visitAtom(self, ctx:PythonParser.AtomContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by PythonParser#dimensioned_number.
+    def visitDimensioned_number(self, ctx:PythonParser.Dimensioned_numberContext):
         return self.visitChildren(ctx)
 
 
