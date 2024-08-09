@@ -494,6 +494,9 @@ class Node(FaebrykLibObject):
             def handle_add(self, name: str, obj: Node.NT) -> None:
                 assert isinstance(obj, t)
                 parent: Node = self.get_parent()
+                assert not (
+                    other_p := obj.get_parent()
+                ), f"{obj} already has parent: {other_p}"
                 obj.GIFs.parent.connect(
                     parent.GIFs.children, LinkNamedParent.curry(name)
                 )
