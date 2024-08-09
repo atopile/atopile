@@ -1,3 +1,6 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
 from typing import Callable, Generic, TypeVar
 
 from faebryk.core.core import (

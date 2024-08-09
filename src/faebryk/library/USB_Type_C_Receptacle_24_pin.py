@@ -72,4 +72,4 @@ class USB_Type_C_Receptacle_24_pin(Module):
             )
         )
 
-        self.add_trait(has_designator_prefix_defined("P"))
+        self.add_trait(has_designator_prefix_defined("J"))

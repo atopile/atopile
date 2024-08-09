@@ -19,4 +19,4 @@ class PJ398SM(Module):
 
         self.IFs = _IFs(self)
 
-        self.add_trait(has_designator_prefix_defined("P"))
+        self.add_trait(has_designator_prefix_defined("J"))

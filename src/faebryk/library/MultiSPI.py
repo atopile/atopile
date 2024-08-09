@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.core import ModuleInterface
-from faebryk.library.Electrical import Electrical
+from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.libs.util import times
 
 
@@ -11,9 +11,12 @@ class MultiSPI(ModuleInterface):
         super().__init__()
 
         class IFS(ModuleInterface.IFS()):
-            data = times(data_lane_count, Electrical)
-            sclk = Electrical()
-            ss_n = Electrical()
-            gnd = Electrical()
+            clk = ElectricLogic()
+            data = times(data_lane_count, ElectricLogic)
+            cs = ElectricLogic()
 
         self.IFs = IFS(self)
+
+        class PARAMS(ModuleInterface.PARAMS()): ...
+
+        self.PARAMs = PARAMS(self)
