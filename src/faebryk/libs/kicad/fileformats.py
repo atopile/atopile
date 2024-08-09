@@ -1,11 +1,11 @@
 import logging
 from dataclasses import dataclass, field
-from enum import StrEnum, auto
+from enum import IntEnum, StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional
 
 from dataclasses_json import CatchAll, Undefined, dataclass_json
-from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File, sexp_field
+from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File, SymEnum, sexp_field
 
 logger = logging.getLogger(__name__)
 
@@ -254,12 +254,7 @@ class C_kicad_project_file(JSON_File):
                 default_factory=list
             )
 
-            @dataclass_json(undefined=Undefined.INCLUDE)
-            @dataclass
-            class C_track_widths:
-                unknown: CatchAll = None
-
-            track_widths: list[C_track_widths] = field(default_factory=list)
+            track_widths: list[float] = field(default_factory=list)
 
             @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
@@ -496,13 +491,14 @@ class C_xyr:
 @dataclass
 class C_wh:
     w: float = field(**sexp_field(positional=True))
-    h: float = field(**sexp_field(positional=True))
+    h: Optional[float] = field(**sexp_field(positional=True), default=None)
 
 
 @dataclass
 class C_stroke:
-    class E_type(StrEnum):
+    class E_type(SymEnum):
         solid = auto()
+        default = auto()
 
     width: float
     type: E_type
@@ -515,16 +511,19 @@ class C_effects:
         size: C_wh
         thickness: Optional[float] = None
 
-    class E_justify(StrEnum):
+    class E_justify(SymEnum):
         center = ""
-        mirror = auto()
         left = auto()
         right = auto()
         bottom = auto()
         top = auto()
+        normal = ""
+        mirror = auto()
 
     font: C_font
-    justify: Optional[tuple[E_justify, E_justify]] = None
+    justify: Optional[tuple[E_justify, E_justify, E_justify]] = None
+    # TODO: this should be a Union as it's actually a tuple with 3 positional
+    # and optional enums: (E_justify_horizontal, E_justify_vertical, E_mirrored)
 
 
 @dataclass
@@ -538,7 +537,7 @@ class C_line:
 
 @dataclass
 class C_circle:
-    class E_fill(StrEnum):
+    class E_fill(SymEnum):
         none = auto()
 
     center: C_xy
@@ -561,7 +560,16 @@ class C_arc:
 
 @dataclass
 class C_text:
-    class E_type(StrEnum):
+    text: str = field(**sexp_field(positional=True))
+    at: C_xyr
+    layer: str
+    uuid: UUID
+    effects: C_effects
+
+
+@dataclass
+class C_fp_text:
+    class E_type(SymEnum):
         user = auto()
 
     type: E_type = field(**sexp_field(positional=True))
@@ -574,8 +582,9 @@ class C_text:
 
 @dataclass
 class C_rect:
-    class E_fill(StrEnum):
+    class E_fill(SymEnum):
         none = auto()
+        solid = auto()
 
     start: C_xy
     end: C_xy
@@ -586,46 +595,59 @@ class C_rect:
 
 
 @dataclass
+class C_poly:
+    @dataclass
+    class C_pts:
+        xys: list[C_xy] = field(**sexp_field(multidict=True))
+
+    pts: C_pts
+
+
+@dataclass(kw_only=True)
 class C_footprint:
-    class E_attr(StrEnum):
+    class E_attr(SymEnum):
         smd = auto()
         through_hole = auto()
+        exclude_from_pos_files = auto()
 
-    @dataclass
+    @dataclass(kw_only=True)
     class C_property:
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
         layer: str
+        hide: bool = False
         uuid: UUID
         effects: C_effects
-        hide: bool = False
 
-    @dataclass
+    @dataclass(kw_only=True)
     class C_pad:
-        class E_type(StrEnum):
+        class E_type(SymEnum):
             thru_hole = auto()
             smd = auto()
 
-        class E_shape(StrEnum):
+        class E_shape(SymEnum):
             circle = auto()
             rect = auto()
+            stadium = "oval"
             roundrect = auto()
+            custom = auto()
 
         @dataclass
         class C_options:
-            class E_clearance(StrEnum):
+            class E_clearance(SymEnum):
                 outline = auto()
 
-            class E_anchor(StrEnum):
+            class E_anchor(SymEnum):
                 rect = auto()
+                circle = auto()
 
             clearance: E_clearance
             anchor: E_anchor
 
         @dataclass
         class C_drill:
-            class E_shape(StrEnum):
+            class E_shape(SymEnum):
                 circle = ""
                 stadium = "oval"
 
@@ -633,16 +655,27 @@ class C_footprint:
             size_x: float = field(**sexp_field(positional=True))
             size_y: Optional[float] = field(**sexp_field(positional=True), default=None)
 
+        # TODO: replace with generic gr item
+        @dataclass(kw_only=True)
+        class C_gr:
+            @dataclass
+            class C_gr_poly(C_poly):
+                width: float
+                fill: bool
+
+            gr_poly: list[C_gr_poly] = field(**sexp_field(multidict=True))
+
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
         at: C_xyr
         size: C_wh
-        layers: list[str]
         drill: Optional[C_drill] = None
+        layers: list[str]
         remove_unused_layers: bool = False
         options: Optional[C_options] = None
-        # primitives
+        primitives: Optional[C_gr] = None
+        # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
 
     @dataclass
     class C_model:
@@ -665,7 +698,7 @@ class C_footprint:
         rotate: C_rotate
 
     name: str = field(**sexp_field(positional=True))
-    layer: str
+    layer: str = field(**sexp_field(order=-20))
     propertys: dict[str, C_property] = field(
         **sexp_field(multidict=True, key=lambda x: x.name)
     )
@@ -674,9 +707,9 @@ class C_footprint:
     fp_arcs: list[C_arc] = field(**sexp_field(multidict=True))
     fp_circles: list[C_circle] = field(**sexp_field(multidict=True))
     fp_rects: list[C_rect] = field(**sexp_field(multidict=True))
-    fp_texts: list[C_text] = field(**sexp_field(multidict=True))
+    fp_texts: list[C_fp_text] = field(**sexp_field(multidict=True))
     pads: list[C_pad] = field(**sexp_field(multidict=True))
-    model: C_model
+    model: Optional[C_model] = None
 
 
 @dataclass
@@ -690,7 +723,7 @@ class C_kicad_pcb_file(SEXP_File):
 
         @dataclass
         class C_layer:
-            class E_type(StrEnum):
+            class E_type(SymEnum):
                 signal = auto()
                 user = auto()
 
@@ -699,7 +732,7 @@ class C_kicad_pcb_file(SEXP_File):
             type: E_type = field(**sexp_field(positional=True))
             alias: Optional[str] = field(**sexp_field(positional=True), default=None)
 
-        @dataclass
+        @dataclass(kw_only=True)
         class C_setup:
             @dataclass
             class C_pcbplotparams:
@@ -739,6 +772,45 @@ class C_kicad_pcb_file(SEXP_File):
                 scaleselection: int
                 outputdirectory: str
 
+            @dataclass
+            class C_stackup:
+                @dataclass
+                class C_layer:
+                    name: str = field(**sexp_field(positional=True))
+                    type: str
+                    color: Optional[str] = None
+                    thickness: Optional[float] = None
+                    material: Optional[str] = None
+                    epsilon_r: Optional[float] = None
+                    loss_tangent: Optional[float] = None
+
+                class E_edge_connector_type(SymEnum):
+                    edge_connector_bevelled = "bevelled"
+                    edge_connector = "yes"
+
+                class E_copper_finish(StrEnum):
+                    ENIG = "ENIG"
+                    ENEPIG = auto()
+                    HAL_SNPB = "HAL SnPb"
+                    HAL_LEAD_FREE = "HAL lead-free"
+                    HARD_GOLD = "Hard Gold"
+                    IMERSION_TIN = "Immersion tin"
+                    IMERSION_SILVER = "Immersion silver"
+                    IMERSION_NICKEL = "Immersion nickel"
+                    IMERSION_GOLD = "Immersion gold"
+                    OSP = auto()
+                    HT_OSP = auto()
+                    NONE = "None"
+                    USER_DEFINED = "User defined"
+
+                layers: list[C_layer] = field(**sexp_field(multidict=True))
+                copper_finish: Optional[E_copper_finish] = None
+                dielectric_constraints: Optional[bool] = None
+                edge_connector: Optional[E_edge_connector_type] = None
+                castellated_pads: Optional[bool] = None
+                edge_plating: Optional[bool] = None
+
+            stackup: Optional[C_stackup] = None
             pad_to_mask_clearance: int
             allow_soldermask_bridges_in_footprints: bool
             pcbplotparams: C_pcbplotparams
@@ -748,15 +820,15 @@ class C_kicad_pcb_file(SEXP_File):
             number: int = field(**sexp_field(positional=True))
             name: str = field(**sexp_field(positional=True))
 
-        @dataclass
+        @dataclass(kw_only=True)
         class C_pcb_footprint(C_footprint):
             @dataclass
             class C_pad(C_footprint.C_pad):
                 net: tuple[int, str] = field(kw_only=True)
                 uuid: UUID = field(kw_only=True)
 
-            at: C_xyr
-            uuid: UUID
+            uuid: UUID = field(**sexp_field(order=-15))
+            at: C_xyr = field(**sexp_field(order=-10))
             pads: list[C_pad] = field(**sexp_field(multidict=True))
 
         @dataclass
@@ -764,15 +836,15 @@ class C_kicad_pcb_file(SEXP_File):
             at: C_xy
             size: C_wh
             drill: float
-            net: str
+            net: int
             uuid: UUID
             layers: list[str] = field(default_factory=list)
 
-        @dataclass
+        @dataclass(kw_only=True)
         class C_zone:
             @dataclass
             class C_hatch:
-                class E_mode(StrEnum):
+                class E_mode(SymEnum):
                     edge = auto()
                     full = auto()
                     none = auto()
@@ -780,69 +852,67 @@ class C_kicad_pcb_file(SEXP_File):
                 mode: E_mode = field(**sexp_field(positional=True))
                 pitch: float = field(**sexp_field(positional=True))
 
-            @dataclass
+            @dataclass(kw_only=True)
             class C_connect_pads:
-                class E_mode(StrEnum):
+                class E_mode(SymEnum):
                     none = "no"
                     solid = "yes"
                     thermal_reliefs = ""
                     thru_hole_only = "thru_hole_only"
 
-                mode: E_mode = field(**sexp_field(positional=True))
+                mode: Optional[E_mode] = field(
+                    **sexp_field(positional=True), default=None
+                )
                 clearance: float
 
-            @dataclass
+            @dataclass(kw_only=True)
             class C_fill:
-                class E_mode(StrEnum):
-                    solid = auto()
+                class E_mode(SymEnum):
                     hatch = auto()
 
-                class E_hatch_border_algorithm(StrEnum):
+                class E_hatch_border_algorithm(SymEnum):
                     hatch_thickness = auto()
 
-                class E_smoothing(StrEnum):
-                    none = ""
+                class E_smoothing(SymEnum):
                     fillet = "fillet"
                     chamfer = "chamfer"
 
-                class E_island_removal_mode(StrEnum):
-                    do_not_remove = "1"
-                    remove_all = ""
-                    below_area_limit = "2"
+                class E_island_removal_mode(IntEnum):
+                    do_not_remove = 1
+                    below_area_limit = 2
 
                 enable: bool = field(**sexp_field(positional=True))
-                mode: E_mode
-                hatch_thickness: float
-                hatch_gap: float
-                hatch_orientation: float
-                hatch_smoothing_level: float
-                hatch_smoothing_value: float
-                hatch_border_algorithm: E_hatch_border_algorithm
-                hatch_min_hole_area: float
+                mode: Optional[E_mode] = None
+                hatch_thickness: Optional[float] = None
+                hatch_gap: Optional[float] = None
+                hatch_orientation: Optional[float] = None
+                hatch_smoothing_level: Optional[float] = None
+                hatch_smoothing_value: Optional[float] = None
+                hatch_border_algorithm: Optional[E_hatch_border_algorithm] = None
+                hatch_min_hole_area: Optional[float] = None
                 thermal_gap: float
                 thermal_bridge_width: float
-                smoothing: E_smoothing
-                radius: float
-                island_removal_mode: E_island_removal_mode
-                island_area_min: float
-
-            @dataclass
-            class C_polygon:
-                pts: list[C_xy] = field(**sexp_field(multidict=True))
+                smoothing: Optional[E_smoothing] = None
+                radius: Optional[float] = None
+                island_removal_mode: Optional[E_island_removal_mode] = None
+                island_area_min: Optional[float] = None
 
             net: int
             net_name: str
-            layer: str
+            layer: Optional[str] = None
+            layers: Optional[list[str]] = None
+            # NOTE: if zones is both front and back Cu layer then layer="F&B.Cu"
+            # else layer="F.Cu" "B.Cu" "In1.Cu" ...
             uuid: UUID
             name: str
-            locked: bool
+            locked: Optional[bool] = None
             hatch: C_hatch
-            priority: int
+            priority: Optional[int] = None
             connect_pads: C_connect_pads
             min_thickness: float
             filled_areas_thickness: bool
             fill: C_fill
-            polygon: C_polygon
+            polygon: C_poly
 
         @dataclass
         class C_segment:
@@ -883,7 +953,7 @@ class C_kicad_pcb_file(SEXP_File):
 
 @dataclass
 class C_kicad_footprint_file(SEXP_File):
-    @dataclass
+    @dataclass(kw_only=True)
     class C_footprint_in_file(C_footprint):
         descr: str
         tags: list[str]

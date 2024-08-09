@@ -37,6 +37,64 @@
         (57 "User.8" user)
         (58 "User.9" user))
     (setup
+        (stackup
+            (layer "F.SilkS"
+                (type "Top Silk Screen") )
+            (layer "F.Paste"
+                (type "Top Solder Paste") )
+            (layer "F.Mask"
+                (type "Top Solder Mask")
+                (color "Green")
+                (thickness 0.01524)
+                (material "Epoxy")
+                (epsilon_r 3.8)
+                (loss_tangent 0) )
+            (layer "F.Cu"
+                (type "copper")
+                (thickness 0.035) )
+            (layer "dielectric 1"
+                (type "prepreg")
+                (color "FR4 natural")
+                (thickness 0.0994)
+                (material "FR4")
+                (epsilon_r 4.1)
+                (loss_tangent 0.02) )
+            (layer "In1.Cu"
+                (type "copper")
+                (thickness 0.0152) )
+            (layer "dielectric 2"
+                (type "core")
+                (color "FR4 natural")
+                (thickness 1.24)
+                (material "FR4")
+                (epsilon_r 4.43)
+                (loss_tangent 0.02) )
+            (layer "In2.Cu"
+                (type "copper")
+                (thickness 0.0152) )
+            (layer "dielectric 3"
+                (type "prepreg")
+                (color "FR4 natural")
+                (thickness 0.0994)
+                (material "FR4")
+                (epsilon_r 4.1)
+                (loss_tangent 0.02) )
+            (layer "B.Cu"
+                (type "copper")
+                (thickness 0.035) )
+            (layer "B.Mask"
+                (type "Bottom Solder Mask")
+                (color "Green")
+                (thickness 0.01524)
+                (material "Epoxy")
+                (epsilon_r 3.8)
+                (loss_tangent 0) )
+            (layer "B.Paste"
+                (type "Bottom Solder Paste") )
+            (layer "B.SilkS"
+                (type "Bottom Silk Screen") )
+            (copper_finish "HAL SnPb")
+            (dielectric_constraints yes))
         (pad_to_mask_clearance 0)
         (allow_soldermask_bridges_in_footprints no)
         (pcbplotparams
@@ -74,7 +132,7 @@
             (mirror no)
             (drillshape 1)
             (scaleselection 1)
-            (outputdirectory "")))
+            (outputdirectory "")) )
     (net 0 "")
     (net 1 "B1-1-R1-2")
     (net 2 "D1-1-R1-1")
@@ -543,4 +601,26 @@
             (scale
                 (xyz 1 1 1))
             (rotate
-                (xyz 0 0 0)))))
+                (xyz 0 0 0))))
+    (zone
+        (net 2)
+        (net_name "GND")
+        (layers "F.Cu" "In1.Cu" "In2.Cu" "B.Cu")
+        (uuid "c4a21b2e-27fe-4105-b061-956c4642524b")
+        (name "layer_fill_GND")
+        (hatch edge 0.5)
+        (connect_pads
+            (clearance 0.2)		)
+        (min_thickness 0.2)
+        (filled_areas_thickness no)
+        (fill yes
+            (thermal_gap 0.2)
+            (thermal_bridge_width 0.2)
+            (island_removal_mode 2)
+            (island_area_min 10)		)
+        (polygon
+            (pts
+                (xy -20 -1)
+                (xy 20 -1)
+                (xy 20 76)
+                (xy -20 76)			)		)))

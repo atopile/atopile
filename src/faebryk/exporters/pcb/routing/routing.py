@@ -176,7 +176,7 @@ class PCB_Router:
         _pads: dict[Pad, Footprint] = {}
         for mif in mifs:
             try:
-                kfp, pad = transformer.get_pad(mif)
+                kfp, pad, node = transformer.get_pad(mif)
             except Exception:
                 continue
 
@@ -228,13 +228,13 @@ class PCB_Router:
             if i > 0 and switch_point not in nodes:
                 transformer.insert_via(
                     coord=out_to_pcb(switch_point),
-                    net=pcb_net.id,
+                    net=pcb_net.name,
                     size_drill=(0.45, 0.25),
                 )
 
             # build track
             transformer.insert_track(
-                net_id=pcb_net.id,
+                net_id=pcb_net.number,
                 points=[round(c, 2).as_tuple()[:2] for c in layer_path],
                 width=0.1,
                 layer=layer_name,
