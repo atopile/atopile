@@ -54,7 +54,7 @@ def _convert(val, t):
             return [_convert(_val, args[0]) for _val in val]
         if origin is tuple:
             return tuple(_convert(_val, _t) for _val, _t in zip(val, args))
-        if origin in (Union, UnionType) and len(args) == 2 and args[1] == type(None):
+        if origin in (Union, UnionType) and len(args) == 2 and args[1] is type(None):
             return _convert(val, args[0]) if val is not None else None
 
         raise NotImplementedError(f"{origin} not supported")

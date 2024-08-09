@@ -14,5 +14,5 @@ class can_attach_to_footprint_symmetrically(can_attach_to_footprint.impl()):
         for i, j in zip(footprint.IFs.get_all(), self.get_obj().IFs.get_all()):
             assert isinstance(i, Pad)
             assert isinstance(j, Electrical)
-            assert type(i.IFs.net) == type(j)
+            assert type(i.IFs.net) is type(j)
             i.attach(j)
