@@ -169,8 +169,7 @@ class TestHierarchy(unittest.TestCase):
         self.assertTrue(bus1.is_connected_to(bus2))
 
     def test_specialize(self):
-        class Specialized(ModuleInterface):
-            ...
+        class Specialized(ModuleInterface): ...
 
         # general connection -> specialized connection
         mifs = times(3, ModuleInterface)
@@ -197,8 +196,7 @@ class TestHierarchy(unittest.TestCase):
         self.assertTrue(mifs[0].is_connected_to(mifs[2]))
 
         # test special link
-        class _Link(LinkDirectShallow(lambda link, gif: True)):
-            ...
+        class _Link(LinkDirectShallow(lambda link, gif: True)): ...
 
         mifs = times(3, ModuleInterface)
         mifs_special = times(3, Specialized)

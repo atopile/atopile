@@ -15,8 +15,7 @@ from faebryk.library.TBD import TBD
 
 class ElectricPower(Power):
     class can_be_decoupled_power(can_be_decoupled_defined):
-        def __init__(self) -> None:
-            ...
+        def __init__(self) -> None: ...
 
         def on_obj_set(self):
             super().__init__(hv=self.get_obj().IFs.hv, lv=self.get_obj().IFs.lv)
@@ -33,8 +32,7 @@ class ElectricPower(Power):
             )
 
     class can_be_surge_protected_power(can_be_surge_protected_defined):
-        def __init__(self) -> None:
-            ...
+        def __init__(self) -> None: ...
 
         def on_obj_set(self):
             super().__init__(self.get_obj().IFs.lv, self.get_obj().IFs.hv)

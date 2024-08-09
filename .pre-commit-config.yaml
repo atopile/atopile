@@ -8,7 +8,7 @@ repos:
         files: src/faebryk/library/.*.py
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.4.4
+    rev: v0.5.7
     hooks:
       - id: ruff
       - id: ruff-format

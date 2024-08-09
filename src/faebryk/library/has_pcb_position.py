@@ -16,5 +16,4 @@ class has_pcb_position(ModuleTrait):
     Point = tuple[float, float, float, layer_type]
 
     @abstractmethod
-    def get_position(self) -> Point:
-        ...
+    def get_position(self) -> Point: ...

@@ -8,5 +8,4 @@ from faebryk.core.core import ModuleTrait
 
 class has_designator_prefix(ModuleTrait):
     @abstractmethod
-    def get_prefix(self) -> str:
-        ...
+    def get_prefix(self) -> str: ...

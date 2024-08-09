@@ -13,5 +13,4 @@ logger = logging.getLogger(__name__)
 
 class is_surge_protected(Trait):
     @abstractmethod
-    def get_tvs(self) -> Sequence[TVS]:
-        ...
+    def get_tvs(self) -> Sequence[TVS]: ...

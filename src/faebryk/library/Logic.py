@@ -4,5 +4,4 @@
 from faebryk.core.core import ModuleInterface
 
 
-class Logic(ModuleInterface):
-    ...
+class Logic(ModuleInterface): ...

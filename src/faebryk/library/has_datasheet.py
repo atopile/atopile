@@ -8,5 +8,4 @@ from faebryk.core.core import ModuleTrait
 
 class has_datasheet(ModuleTrait):
     @abstractmethod
-    def get_datasheet(self) -> str:
-        ...
+    def get_datasheet(self) -> str: ...

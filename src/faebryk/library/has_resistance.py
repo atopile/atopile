@@ -8,5 +8,4 @@ from faebryk.core.core import ModuleTrait, Parameter
 
 class has_resistance(ModuleTrait):
     @abstractmethod
-    def get_resistance(self) -> Parameter:
-        ...
+    def get_resistance(self) -> Parameter: ...

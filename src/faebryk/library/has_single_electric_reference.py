@@ -10,5 +10,4 @@ from faebryk.library.ElectricPower import ElectricPower
 
 class has_single_electric_reference(NodeTrait):
     @abstractmethod
-    def get_reference(self) -> ElectricPower:
-        ...
+    def get_reference(self) -> ElectricPower: ...

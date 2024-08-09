@@ -8,5 +8,4 @@ from faebryk.core.core import ModuleTrait, Parameter
 
 class has_capacitance(ModuleTrait):
     @abstractmethod
-    def get_capacitance(self) -> Parameter:
-        ...
+    def get_capacitance(self) -> Parameter: ...

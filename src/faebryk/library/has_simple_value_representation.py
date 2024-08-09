@@ -8,5 +8,4 @@ from faebryk.core.core import ModuleTrait
 
 class has_simple_value_representation(ModuleTrait):
     @abstractmethod
-    def get_value(self) -> str:
-        ...
+    def get_value(self) -> str: ...

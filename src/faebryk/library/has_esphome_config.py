@@ -8,5 +8,4 @@ from faebryk.core.core import NodeTrait
 
 class has_esphome_config(NodeTrait):
     @abstractmethod
-    def get_config(self) -> dict:
-        ...
+    def get_config(self) -> dict: ...

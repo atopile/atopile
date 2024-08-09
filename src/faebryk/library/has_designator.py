@@ -8,5 +8,4 @@ from faebryk.core.core import ModuleTrait
 
 class has_designator(ModuleTrait):
     @abstractmethod
-    def get_designator(self) -> str:
-        ...
+    def get_designator(self) -> str: ...

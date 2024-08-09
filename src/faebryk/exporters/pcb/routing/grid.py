@@ -22,8 +22,7 @@ WEIGHTS = (10, 15, 10000)
 T = TypeVar("T", int, float)
 
 
-class GridException(Exception):
-    ...
+class GridException(Exception): ...
 
 
 class GridInvalidVertexException(GridException):
@@ -157,36 +156,29 @@ class Graph(Generic[T], ABC):
 
     @staticmethod
     @abstractmethod
-    def _lattice(dims: tuple[int, int], weight: int):
-        ...
+    def _lattice(dims: tuple[int, int], weight: int): ...
 
     @abstractmethod
-    def add_edges(self, edges: np.ndarray, weight: float):
-        ...
+    def add_edges(self, edges: np.ndarray, weight: float): ...
 
     @abstractmethod
-    def vertices(self) -> set[IntCoord]:
-        ...
+    def vertices(self) -> set[IntCoord]: ...
 
     @abstractmethod
     def subgraph(
         self,
         ex: set[IntCoord] | np.ndarray | None = None,
         inc: set[IntCoord] | np.ndarray | None = None,
-    ) -> Self:
-        ...
+    ) -> Self: ...
 
     @abstractmethod
-    def neigh(self, vs: set[IntCoord], order: int, ring: bool) -> set[IntCoord]:
-        ...
+    def neigh(self, vs: set[IntCoord], order: int, ring: bool) -> set[IntCoord]: ...
 
     @abstractmethod
-    def astar(self, start: IntCoord, end: IntCoord, h=None) -> list[IntCoord]:
-        ...
+    def astar(self, start: IntCoord, end: IntCoord, h=None) -> list[IntCoord]: ...
 
     @abstractmethod
-    def stack(self):
-        ...
+    def stack(self): ...
 
     def diagonal_edges_lattice(self):
         dims = self.steps[:2]

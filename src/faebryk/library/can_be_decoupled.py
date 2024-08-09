@@ -13,5 +13,4 @@ logger = logging.getLogger(__name__)
 # TODO better name
 class can_be_decoupled(Trait):
     @abstractmethod
-    def decouple(self) -> Capacitor:
-        ...
+    def decouple(self) -> Capacitor: ...

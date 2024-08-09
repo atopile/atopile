@@ -11,8 +11,7 @@ class is_esphome_bus(ModuleInterfaceTrait):
     ...
 
     @abstractmethod
-    def get_bus_id(self) -> str:
-        ...
+    def get_bus_id(self) -> str: ...
 
     @staticmethod
     def find_connected_bus(bus: ModuleInterface):

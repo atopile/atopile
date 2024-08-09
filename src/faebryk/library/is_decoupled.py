@@ -12,5 +12,4 @@ logger = logging.getLogger(__name__)
 
 class is_decoupled(Trait):
     @abstractmethod
-    def get_capacitor(self) -> Capacitor:
-        ...
+    def get_capacitor(self) -> Capacitor: ...

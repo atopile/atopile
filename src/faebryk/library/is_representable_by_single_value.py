@@ -8,5 +8,4 @@ from faebryk.core.core import ParameterTrait
 
 class is_representable_by_single_value(ParameterTrait):
     @abstractmethod
-    def get_single_representing_value(self):
-        ...
+    def get_single_representing_value(self): ...
