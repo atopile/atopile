@@ -24,7 +24,7 @@ homepage = "https://github.com/faebryk/faebryk"
 [tool.poetry.dependencies]
 python = "^3.12,<3.13"       # max allowed version by scipy
 networkx = "^3.1"
-numpy = "^1.24.3"
+numpy = ">=1.24.3,<3.0.0"
 scipy = "^1.11.1"
 matplotlib = "^3.7.1"
 sexpdata = "1.0.2"
