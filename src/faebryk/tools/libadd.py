@@ -8,21 +8,9 @@ from textwrap import dedent
 
 import black
 import typer
+from faebryk.libs.tools.typer import typer_callback
 
 # TODO use AST instead of string
-
-
-def typer_callback(parent: typer.Typer | None, **callback_args):
-    def wrap(func):
-        new_app = typer.Typer(rich_markup_mode="rich")
-        if parent is not None:
-            parent.add_typer(new_app)
-
-        new_app.callback(name=func.__name__, **callback_args)(func)
-
-        return new_app
-
-    return wrap
 
 
 @dataclass
@@ -53,7 +41,9 @@ def get_name(ctx: typer.Context):
 @typer_callback(None)
 def main(ctx: typer.Context, name: str, local: bool = True, overwrite: bool = False):
     """
-    Can be called like this: python -m faebryk.tools.libadd
+    Can be called like this: > faebryk libadd
+    Or python -m faebryk libadd
+    Or python -m faebryk.tools.libadd
     For help invoke command without arguments.
     """
 

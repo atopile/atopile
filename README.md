@@ -64,6 +64,17 @@ apply_design_to_pcb(App())
 
 </div>
 
+## Get stared with your own project
+```bash
+> pip install faebryk
+> faebryk project <name> local
+
+# if that doesn't work because faebryk is not in your PATH
+> python -m faebryk project <name> local
+```
+
+For more details checkout the [project template](https://github.com/faebryk/project-template).
+
 ---
 
 ## About
