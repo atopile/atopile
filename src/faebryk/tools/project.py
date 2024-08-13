@@ -17,6 +17,7 @@ class CTX:
     template_repo_url: str
     branch: str
     target_dir: Path
+    force_overwrite: bool
 
 
 @typer_callback(None)
@@ -26,6 +27,7 @@ def main(
     template_repo_url: str = TEMPLATE_REPO_URL,
     branch: str = "main",
     target_dir: Path = Path.cwd(),
+    force_overwrite: bool = False,
 ):
     """
     Can be called like this: > faebryk project
@@ -39,6 +41,7 @@ def main(
         template_repo_url,
         branch,
         target_dir,
+        force_overwrite,
     )
 
 
@@ -47,10 +50,18 @@ def main(
 
 
 @main.command()
-def local(ctx: typer.Context):
+def local(ctx: typer.Context, cache: bool = True):
     obj = ctx.obj
 
-    target = obj.target_dir / obj.name
+    target: Path = obj.target_dir / obj.name
+
+    if target.exists():
+        if obj.force_overwrite:
+            typer.echo(f"Directory {target} already exists. Overwriting.")
+            subprocess.check_output(["rm", "-rf", str(target)])
+        else:
+            typer.echo(f"Directory {target} already exists. Aborting.")
+            raise typer.Exit(code=1)
 
     # git clone
     subprocess.check_output(
@@ -66,4 +77,7 @@ def local(ctx: typer.Context):
     )
 
     # setup project
-    subprocess.check_output([target / "scripts/setup_project.py"])
+    p = subprocess.Popen(
+        [target / "scripts/setup_project.py", "--no-cache" if not cache else "--cache"]
+    )
+    p.wait()
