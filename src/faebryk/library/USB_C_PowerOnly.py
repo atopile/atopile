@@ -41,7 +41,7 @@ class USB_C_PowerOnly(ModuleInterface):
         )
 
     def connect_to_full_usb_c(self, usb_c: USB_C):
-        self.IFs.power.connect(usb_c.IFs.usb3.IFs.usb2.IFs.buspower)
+        self.IFs.power.connect(usb_c.IFs.usb3.IFs.usb3_if.IFs.usb_if.IFs.buspower)
         self.IFs.cc1.connect(usb_c.IFs.cc1)
         self.IFs.cc2.connect(usb_c.IFs.cc2)
         return self

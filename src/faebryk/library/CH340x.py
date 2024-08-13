@@ -36,17 +36,17 @@ class CH340x(Module):
 
         self.PARAMs = _PARAMs(self)
 
-        self.IFs.gpio_power.IFs.lv.connect(self.IFs.usb.IFs.buspower.IFs.lv)
+        self.IFs.gpio_power.IFs.lv.connect(self.IFs.usb.IFs.usb_if.IFs.buspower.IFs.lv)
 
         self.IFs.gpio_power.PARAMs.voltage.merge(Range(0, 5.3))
         self.IFs.gpio_power.get_trait(can_be_decoupled).decouple()
-        self.IFs.usb.IFs.buspower.PARAMs.voltage.merge(Range(4.0, 5.3))
+        self.IFs.usb.IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(Range(4.0, 5.3))
 
         self.add_trait(has_designator_prefix_defined("U"))
         self.add_trait(
             has_datasheet_defined("https://wch-ic.com/downloads/file/79.html")
         )
 
-        self.IFs.usb.IFs.buspower.get_trait(can_be_decoupled).decouple()
+        self.IFs.usb.IFs.usb_if.IFs.buspower.get_trait(can_be_decoupled).decouple()
 
-        self.IFs.gpio_power.IFs.lv.connect(self.IFs.usb.IFs.buspower.IFs.lv)
+        self.IFs.gpio_power.IFs.lv.connect(self.IFs.usb.IFs.usb_if.IFs.buspower.IFs.lv)

@@ -28,12 +28,12 @@ class USBLC6_2P6(Module):
         self.add_trait(
             can_attach_to_footprint_via_pinmap(
                 {
-                    "1": x.usb.IFs.d.IFs.p,
-                    "2": x.usb.IFs.buspower.IFs.lv,
-                    "3": x.usb.IFs.d.IFs.n,
-                    "4": x.usb.IFs.d.IFs.n,
-                    "5": x.usb.IFs.buspower.IFs.hv,
-                    "6": x.usb.IFs.d.IFs.p,
+                    "1": x.usb.IFs.usb_if.IFs.d.IFs.p,
+                    "2": x.usb.IFs.usb_if.IFs.buspower.IFs.lv,
+                    "3": x.usb.IFs.usb_if.IFs.d.IFs.n,
+                    "4": x.usb.IFs.usb_if.IFs.d.IFs.n,
+                    "5": x.usb.IFs.usb_if.IFs.buspower.IFs.hv,
+                    "6": x.usb.IFs.usb_if.IFs.d.IFs.p,
                 }
             )
         )

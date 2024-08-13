@@ -21,7 +21,7 @@ class USB3_connector(Module):
         self.NODEs = _NODEs(self)
 
         class _IFs(Module.IFS()):
-            usb = USB3()
+            usb3 = USB3()
             shield = Electrical()
 
         self.IFs = _IFs(self)
@@ -30,8 +30,12 @@ class USB3_connector(Module):
 
         self.PARAMs = _PARAMs(self)
 
-        self.IFs.usb.IFs.usb2.IFs.buspower.PARAMs.voltage.merge(Range(4.75, 5.25))
+        self.IFs.usb3.IFs.usb3_if.IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(
+            Range(4.75, 5.25)
+        )
 
-        self.IFs.usb.IFs.usb2.IFs.buspower.IFs.lv.connect(self.IFs.usb.IFs.gnd_drain)
+        self.IFs.usb3.IFs.usb3_if.IFs.usb_if.IFs.buspower.IFs.lv.connect(
+            self.IFs.usb3.IFs.usb3_if.IFs.gnd_drain
+        )
 
         self.add_trait(has_designator_prefix_defined("J"))

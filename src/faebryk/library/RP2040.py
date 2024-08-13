@@ -61,7 +61,7 @@ class RP2040(Module):
             self.IFs.core_vdd,
             self.IFs.vreg_in,
             self.IFs.vreg_out,
-            self.IFs.usb.IFs.buspower,
+            self.IFs.usb.IFs.usb_if.IFs.buspower,
         ]:
             pwrrail.IFs.lv.connect(gnd)
             pwrrail.get_trait(can_be_decoupled).decouple()

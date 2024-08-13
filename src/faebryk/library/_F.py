@@ -124,7 +124,9 @@ from faebryk.library.UART_RS485 import UART_RS485
 from faebryk.library.USB2514B import USB2514B
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB2_0_ESD_Protection import USB2_0_ESD_Protection
+from faebryk.library.USB2_0_IF import USB2_0_IF
 from faebryk.library.USB3 import USB3
+from faebryk.library.USB3_IF import USB3_IF
 from faebryk.library.USB3_connector import USB3_connector
 from faebryk.library.USBLC6_2P6 import USBLC6_2P6
 from faebryk.library.USB_C import USB_C

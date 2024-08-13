@@ -2,17 +2,16 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.core import ModuleInterface
-from faebryk.library.Range import Range
-from faebryk.library.USB2_0_IF import USB2_0_IF
+from faebryk.library.DifferentialPair import DifferentialPair
+from faebryk.library.ElectricPower import ElectricPower
 
 
-class USB2_0(ModuleInterface):
+class USB2_0_IF(ModuleInterface):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         class IFS(ModuleInterface.IFS()):
-            usb_if = USB2_0_IF()
+            d = DifferentialPair()
+            buspower = ElectricPower()
 
         self.IFs = IFS(self)
-
-        self.IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(Range.from_center(5, 0.25))

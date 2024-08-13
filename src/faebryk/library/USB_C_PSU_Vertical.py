@@ -51,21 +51,21 @@ class USB_C_PSU_Vertical(Module):
 
         # alliases
         vcon = self.NODEs.usb_connector.IFs.vbus
-        vusb = self.IFs.usb.IFs.buspower
+        vusb = self.IFs.usb.IFs.usb_if.IFs.buspower
         v5 = self.IFs.power_out
         gnd = v5.IFs.lv
 
         vcon.IFs.hv.connect_via(self.NODEs.fuse, v5.IFs.hv)
         vcon.IFs.lv.connect(gnd)
         vusb.IFs.lv.connect(gnd)
-        v5.connect(self.NODEs.esd.IFs.usb[0].IFs.buspower)
+        v5.connect(self.NODEs.esd.IFs.usb[0].IFs.usb_if.IFs.buspower)
 
         # connect usb data
         connect_all_interfaces(
             [
-                self.NODEs.usb_connector.IFs.usb.IFs.d,
-                self.IFs.usb.IFs.d,
-                self.NODEs.esd.IFs.usb[0].IFs.d,
+                self.NODEs.usb_connector.IFs.usb.IFs.usb_if.IFs.d,
+                self.IFs.usb.IFs.usb_if.IFs.d,
+                self.NODEs.esd.IFs.usb[0].IFs.usb_if.IFs.d,
             ]
         )
 

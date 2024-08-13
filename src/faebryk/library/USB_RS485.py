@@ -46,10 +46,12 @@ class USB_RS485(Module):
         self.NODEs.usb_uart.IFs.tnow.connect(self.NODEs.uart_rs485.IFs.read_enable)
         self.NODEs.usb_uart.IFs.tnow.connect(self.NODEs.uart_rs485.IFs.write_enable)
 
-        self.NODEs.usb_uart.IFs.usb.IFs.buspower.connect(
+        self.NODEs.usb_uart.IFs.usb.IFs.usb_if.IFs.buspower.connect(
             self.NODEs.uart_rs485.IFs.power
         )
-        self.IFs.usb.IFs.buspower.connect(self.NODEs.usb_uart.IFs.usb.IFs.buspower)
+        self.IFs.usb.IFs.usb_if.IFs.buspower.connect(
+            self.NODEs.usb_uart.IFs.usb.IFs.usb_if.IFs.buspower
+        )
 
         # connect termination resistor between RS485 A and B
         self.NODEs.uart_rs485.IFs.rs485.IFs.diff_pair.IFs.n.connect_via(

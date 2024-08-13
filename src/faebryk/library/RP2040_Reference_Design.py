@@ -81,7 +81,7 @@ class RP2040_Reference_Design(Module):
             self.NODEs.rp2040.IFs.io_vdd,
             self.NODEs.rp2040.IFs.adc_vdd,
             self.NODEs.rp2040.IFs.vreg_in,
-            self.NODEs.rp2040.IFs.usb.IFs.buspower,
+            self.NODEs.rp2040.IFs.usb.IFs.usb_if.IFs.buspower,
         ]:
             pwrrail.connect(main_power_rail)
 
@@ -95,13 +95,13 @@ class RP2040_Reference_Design(Module):
         self.NODEs.rp2040.IFs.gpio[25].connect_via(self.NODEs.led, gnd)
 
         # connect usb
-        self.IFs.usb.IFs.d.IFs.p.connect_via(
+        self.IFs.usb.IFs.usb_if.IFs.d.IFs.p.connect_via(
             self.NODEs.usb_current_limmit_resistor[0],
-            self.NODEs.rp2040.IFs.usb.IFs.d.IFs.p,
+            self.NODEs.rp2040.IFs.usb.IFs.usb_if.IFs.d.IFs.p,
         )
-        self.IFs.usb.IFs.d.IFs.n.connect_via(
+        self.IFs.usb.IFs.usb_if.IFs.d.IFs.n.connect_via(
             self.NODEs.usb_current_limmit_resistor[1],
-            self.NODEs.rp2040.IFs.usb.IFs.d.IFs.n,
+            self.NODEs.rp2040.IFs.usb.IFs.usb_if.IFs.d.IFs.n,
         )
 
         self.add_trait(

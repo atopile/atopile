@@ -2,13 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.core import ModuleInterface
-from faebryk.library.DifferentialPair import DifferentialPair
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.has_single_electric_reference_defined import (
-    has_single_electric_reference_defined,
-)
-from faebryk.library.USB2_0 import USB2_0
+from faebryk.library.Range import Range
+from faebryk.library.USB3_IF import USB3_IF
 
 
 class USB3(ModuleInterface):
@@ -16,17 +11,12 @@ class USB3(ModuleInterface):
         super().__init__(*args, **kwargs)
 
         class IFS(ModuleInterface.IFS()):
-            usb2 = USB2_0()
-            rx = DifferentialPair()
-            tx = DifferentialPair()
-            gnd_drain = Electrical()
+            usb3_if = USB3_IF()
 
         self.IFs = IFS(self)
 
-        self.IFs.gnd_drain.connect(self.IFs.usb2.IFs.buspower.IFs.lv)
-
-        self.add_trait(
-            has_single_electric_reference_defined(
-                ElectricLogic.connect_all_module_references(self)
-            )
+        self.IFs.usb3_if.IFs.gnd_drain.connect(
+            self.IFs.usb3_if.IFs.usb_if.IFs.buspower.IFs.lv
         )
+
+        self.IFs.usb3_if.IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(Range(4.75, 5.5))

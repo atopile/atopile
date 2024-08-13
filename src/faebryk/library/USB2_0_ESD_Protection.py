@@ -34,13 +34,19 @@ class USB2_0_ESD_Protection(Module):
 
         self.PARAMs = _PARAMs(self)
 
-        self.IFs.usb[0].IFs.buspower.PARAMs.voltage.merge(Range(4.75, 5.25))
+        self.IFs.usb[0].IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(Range(4.75, 5.25))
 
-        self.add_trait(can_bridge_defined(self.IFs.usb[0].IFs.d, self.IFs.usb[1].IFs.d))
+        self.add_trait(
+            can_bridge_defined(
+                self.IFs.usb[0].IFs.usb_if.IFs.d, self.IFs.usb[1].IFs.usb_if.IFs.d
+            )
+        )
         self.IFs.usb[0].connect(self.IFs.usb[1])
 
-        self.IFs.usb[0].IFs.buspower.connect(self.IFs.usb[1].IFs.buspower)
+        self.IFs.usb[0].IFs.usb_if.IFs.buspower.connect(
+            self.IFs.usb[1].IFs.usb_if.IFs.buspower
+        )
 
-        self.IFs.usb[0].IFs.buspower.get_trait(can_be_decoupled).decouple()
+        self.IFs.usb[0].IFs.usb_if.IFs.buspower.get_trait(can_be_decoupled).decouple()
 
         self.add_trait(has_designator_prefix_defined("U"))
