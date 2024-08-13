@@ -8,7 +8,7 @@ from faebryk.library.is_representable_by_single_value_defined import (
     is_representable_by_single_value_defined,
 )
 
-PV = TypeVar("PV", bound=SupportsAbs)
+PV = TypeVar("PV")
 
 
 class Constant(Generic[PV], Parameter[PV]):
@@ -46,6 +46,7 @@ class Constant(Generic[PV], Parameter[PV]):
         return self.value > other
 
     def __abs__(self):
+        assert isinstance(self.value, SupportsAbs)
         return Constant(abs(self.value))
 
     def __format__(self, format_spec):

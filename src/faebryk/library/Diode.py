@@ -6,6 +6,9 @@ from faebryk.core.util import as_unit
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
+from faebryk.library.has_pin_association_heuristic_lookup_table import (
+    has_pin_association_heuristic_lookup_table,
+)
 from faebryk.library.has_simple_value_representation_based_on_param import (
     has_simple_value_representation_based_on_param,
 )
@@ -43,6 +46,16 @@ class Diode(Module):
             )
         )
         self.add_trait(has_designator_prefix_defined("D"))
+        self.add_trait(
+            has_pin_association_heuristic_lookup_table(
+                mapping={
+                    self.IFs.anode: ["A", "Anode", "+"],
+                    self.IFs.cathode: ["K", "C", "Cathode", "-"],
+                },
+                accept_prefix=False,
+                case_sensitive=False,
+            )
+        )
 
     def get_needed_series_resistance_for_current_limit(
         self, input_voltage_V: Parameter[float]

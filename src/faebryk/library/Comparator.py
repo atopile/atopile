@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import IntEnum, auto
+from enum import Enum, auto
 
 from faebryk.core.core import Module
 from faebryk.core.util import as_unit
@@ -15,7 +15,7 @@ from faebryk.library.TBD import TBD
 
 
 class Comparator(Module):
-    class OutputType(IntEnum):
+    class OutputType(Enum):
         Differential = auto()
         PushPull = auto()
         OpenDrain = auto()

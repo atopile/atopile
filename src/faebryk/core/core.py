@@ -21,6 +21,7 @@ from typing import (
 from faebryk.libs.util import (
     Holder,
     NotNone,
+    TwistArgs,
     cast_assert,
     is_type_pair,
     print_stack,
@@ -667,13 +668,20 @@ class Parameter(Generic[PV], Node):
             return False
 
     def is_more_specific_than(self, other: "Parameter[PV]") -> bool:
+        from faebryk.library.ANY import ANY
         from faebryk.library.TBD import TBD
 
-        if isinstance(self, TBD):
+        s = self.get_most_narrow()
+        o = other.get_most_narrow()
+
+        if isinstance(o, ANY):
+            return True
+        if isinstance(s, TBD):
             return False
-        if isinstance(other, TBD):
+        if isinstance(o, TBD):
             return False
-        return self.is_mergeable_with(other)
+
+        return s.is_mergeable_with(o)
 
     def merge(self, other: "Parameter[PV] | PV") -> "Parameter[PV]":
         from faebryk.library.Constant import Constant
@@ -690,6 +698,21 @@ class Parameter(Generic[PV], Node):
         other_narrowed._narrowed(out)
 
         return out
+
+    def override(self, other: "Parameter[PV] | PV") -> "Parameter[PV]":
+        from faebryk.library.Constant import Constant
+
+        if not isinstance(other, Parameter):
+            other = Constant(other)
+
+        self_narrowed = self.get_most_narrow()
+        other_narrowed = other.get_most_narrow()
+
+        if not other_narrowed.is_more_specific_than(self_narrowed):
+            raise self.MergeException("override not possible")
+
+        self_narrowed._narrowed(other_narrowed)
+        return other_narrowed
 
     # TODO: replace with graph-based
     def op(self, other: "Parameter[PV] | PV", op: Callable) -> "Parameter[PV]":
@@ -710,7 +733,7 @@ class Parameter(Generic[PV], Node):
             if isinstance(op1, type1) and isinstance(op2, type2):
                 return op1, op2, op
             if isinstance(op1, type2) and isinstance(op2, type1):
-                return op2, op1, lambda p1, p2: op(p2, p1)
+                return op2, op1, TwistArgs(op)
 
             return None
 
@@ -725,10 +748,8 @@ class Parameter(Generic[PV], Node):
             return Range(sop(pair[0], pair[1].min), sop(pair[0], pair[1].max))
 
         if pair := _is_pair(Parameter, ANY):
-            # TODO
-            return ANY()
-            # sop = pair[2]
-            # return Operation(pair[:2], sop)
+            sop = pair[2]
+            return Operation(pair[:2], sop)
 
         if pair := _is_pair(Parameter, Operation):
             sop = pair[2]

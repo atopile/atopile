@@ -15,6 +15,7 @@ from faebryk.library.TBD import TBD
 class LED(Diode):
     class Color(Enum):
         RED = auto()
+        EMERALD = auto()
         GREEN = auto()
         BLUE = auto()
         YELLOW = auto()

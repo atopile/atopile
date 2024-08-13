@@ -7,7 +7,7 @@ from textwrap import indent
 from typing import Generic, TypeVar
 
 from faebryk.core.core import Parameter
-from faebryk.libs.util import try_avoid_endless_recursion
+from faebryk.libs.util import TwistArgs, find, try_avoid_endless_recursion
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,35 @@ class Operation(Generic[PV], Parameter[PV]):
 
     @try_avoid_endless_recursion
     def __repr__(self):
-        fname = self.operation.__qualname__
+        opsnames = {
+            Parameter.__truediv__: "/",
+            Parameter.__add__: "+",
+            Parameter.__sub__: "-",
+            Parameter.__mul__: "*",
+        }
+
+        op = self.operation
+        operands = self.operands
+
+        # little hack to make it look better
+        if isinstance(op, TwistArgs):
+            op = op.op
+            operands = list(reversed(operands))
+
+        fname = op.__qualname__
+
+        try:
+            fname = find(
+                opsnames.items(), lambda x: fname.startswith(x[0].__qualname__)
+            )[1]
+        except KeyError:
+            ...
+
         return (
             super().__repr__()
             + f"[{fname}]"
-            + f"(\n{'\n'.join(indent(repr(o), '  ') for o in self.operands)}\n)"
+            + f"(\n{'\n'.join(indent(repr(o), '  ') for o in operands)}\n)"
         )
-        # return f"{type(self).__name__}({self.operands!r})@{id(self):#x}"
 
     def execute(self):
         operands = [o.get_most_narrow() for o in self.operands]

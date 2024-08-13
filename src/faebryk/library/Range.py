@@ -19,6 +19,8 @@ class _SupportsRangeOps(Protocol):
 
     def __sub__(self, __value: X) -> X: ...
 
+    def __mul__(self, __value: X) -> X: ...
+
     def __le__(self, __value: X) -> bool: ...
 
     def __lt__(self, __value: X) -> bool: ...
@@ -75,6 +77,10 @@ class Range(Generic[PV], Parameter[PV]):
     @classmethod
     def from_center(cls, center: PV, delta: PV) -> "Range[PV]":
         return cls(center - delta, center + delta)
+
+    @classmethod
+    def from_center_rel(cls, center: PV, factor: PV) -> "Range[PV]":
+        return cls.from_center(center, center * factor)
 
     @classmethod
     def lower_bound(cls, lower: PV) -> "Range[PV]":

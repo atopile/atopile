@@ -31,3 +31,4 @@ class PoweredLED(Module):
         )
 
         self.add_trait(can_bridge_defined(self.IFs.power.IFs.hv, self.IFs.power.IFs.lv))
+        self.NODEs.current_limiting_resistor.allow_removal_if_zero()

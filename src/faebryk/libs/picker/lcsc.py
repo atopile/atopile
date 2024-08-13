@@ -9,14 +9,19 @@ from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
 from easyeda2kicad.easyeda.easyeda_importer import (
     Easyeda3dModelImporter,
     EasyedaFootprintImporter,
+    EasyedaSymbolImporter,
 )
 from easyeda2kicad.kicad.export_kicad_3d_model import Exporter3dModelKicad
 from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from faebryk.core.core import Module
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
+from faebryk.library.can_attach_to_footprint_via_pinmap import (
+    can_attach_to_footprint_via_pinmap,
+)
 from faebryk.library.has_defined_descriptive_properties import (
     has_defined_descriptive_properties,
 )
+from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.libs.picker.picker import (
     Part,
@@ -61,11 +66,26 @@ def _fix_3d_model_offsets(ki_footprint):
             ki_footprint.output.model_3d.translation.y *= 2.54
 
 
-def download_easyeda_info(partno: str, get_model: bool = True):
-    # easyeda api access & caching --------------------------------------------
+def cache_base_path():
+    return BUILD_FOLDER / Path("cache/easyeda")
+
+
+class LCSCException(Exception):
+    def __init__(self, partno: str, *args: object) -> None:
+        self.partno = partno
+        super().__init__(*args)
+
+
+class LCSC_NoDataException(LCSCException): ...
+
+
+class LCSC_PinmapException(LCSCException): ...
+
+
+def get_raw(partno: str):
     api = EasyedaApi()
 
-    cache_base = BUILD_FOLDER / Path("cache/easyeda")
+    cache_base = cache_base_path()
     cache_base.mkdir(parents=True, exist_ok=True)
 
     comp_path = cache_base.joinpath(partno)
@@ -79,11 +99,22 @@ def download_easyeda_info(partno: str, get_model: bool = True):
 
     # API returned no data
     if not data:
-        raise Exception(f"Failed to fetch data from EasyEDA API for part {partno}")
+        raise LCSC_NoDataException(
+            partno, f"Failed to fetch data from EasyEDA API for part {partno}"
+        )
+
+    return data
+
+
+def download_easyeda_info(partno: str, get_model: bool = True):
+    # easyeda api access & caching --------------------------------------------
+    data = get_raw(partno)
 
     easyeda_footprint = EasyedaFootprintImporter(
         easyeda_cp_cad_data=data
     ).get_footprint()
+
+    easyeda_symbol = EasyedaSymbolImporter(easyeda_cp_cad_data=data).get_symbol()
 
     # paths -------------------------------------------------------------------
     name = easyeda_footprint.info.name
@@ -138,37 +169,49 @@ def download_easyeda_info(partno: str, get_model: bool = True):
             model_3d_path=kicad_model_path,
         )
 
-    return ki_footprint, ki_model, easyeda_footprint, easyeda_model
+    return ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol
 
 
-def get_footprint(partno: str, get_model: bool = True):
-    _, _, easyeda_footprint, _ = download_easyeda_info(
-        partno=partno, get_model=get_model
+def attach(component: Module, partno: str, get_model: bool = True):
+    ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol = (
+        download_easyeda_info(partno, get_model=get_model)
     )
 
-    # add trait to component ---------------------------------------------------
+    # symbol
+    if not component.has_trait(can_attach_to_footprint):
+        if not component.has_trait(has_pin_association_heuristic):
+            raise LCSCException(
+                partno,
+                f"Need either can_attach_to_footprint or has_pin_association_heuristic"
+                f" for {component} with partno {partno}",
+            )
+
+        # TODO make this a trait
+        pins = [
+            (pin.settings.spice_pin_number, pin.name.text)
+            for pin in easyeda_symbol.pins
+        ]
+        try:
+            pinmap = component.get_trait(has_pin_association_heuristic).get_pins(pins)
+        except has_pin_association_heuristic.PinMatchException as e:
+            raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
+        component.add_trait(can_attach_to_footprint_via_pinmap(pinmap))
+
+    # footprint
     fp = KicadFootprint(
         f"lcsc:{easyeda_footprint.info.name}",
         [p.number for p in easyeda_footprint.pads],
     )
-
-    return fp
-
-
-def attach_footprint_manually(component: Module, fp: KicadFootprint, partno: str):
     has_defined_descriptive_properties.add_properties_to(component, {"LCSC": partno})
     component.get_trait(can_attach_to_footprint).attach(fp)
 
-
-def attach_footprint(component: Module, partno: str, get_model: bool = True):
-    fp = get_footprint(partno, get_model)
-    attach_footprint_manually(component, fp, partno)
+    # model done by kicad (in fp)
 
 
 class LCSC(Supplier):
     def attach(self, module: Module, part: PickerOption):
         assert isinstance(part.part, LCSC_Part)
-        attach_footprint(component=module, partno=part.part.partno)
+        attach(component=module, partno=part.part.partno)
         if part.info is not None:
             has_defined_descriptive_properties.add_properties_to(module, part.info)
 

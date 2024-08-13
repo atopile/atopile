@@ -14,10 +14,12 @@ from faebryk.library.can_attach_to_footprint_symmetrically import (
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
+from faebryk.library.has_multi_picker import has_multi_picker
 from faebryk.library.has_simple_value_representation_based_on_params import (
     has_simple_value_representation_based_on_params,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.picker.picker import PickError, has_part_picked_remove
 from faebryk.libs.util import times
 
 
@@ -34,6 +36,7 @@ class Resistor(Module):
         class PARAMS(super().PARAMS()):
             resistance = TBD[float]()
             rated_power = TBD[float]()
+            rated_voltage = TBD[float]()
 
         self.PARAMs = PARAMS(self)
 
@@ -53,6 +56,24 @@ class Resistor(Module):
             )
         )
         self.add_trait(has_designator_prefix_defined("R"))
+
+    def allow_removal_if_zero(self):
+        import faebryk.library._F as F
+
+        def replace_zero(m: Module):
+            assert m is self
+
+            r = self.PARAMs.resistance.get_most_narrow()
+            if not F.Constant(0.0).is_more_specific_than(r):
+                raise PickError("", self)
+
+            self.PARAMs.resistance.override(F.Constant(0.0))
+            self.IFs.unnamed[0].connect(self.IFs.unnamed[1])
+            self.add_trait(has_part_picked_remove())
+
+        has_multi_picker.add_to_module(
+            self, -100, has_multi_picker.FunctionPicker(replace_zero)
+        )
 
     def get_voltage_drop_by_current_resistance(self, current_A: Parameter) -> Parameter:
         return current_A * self.PARAMs.resistance

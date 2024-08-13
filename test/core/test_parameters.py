@@ -75,9 +75,9 @@ class TestParameters(unittest.TestCase):
         self.assertEqual(op2.get_most_narrow(), Constant(13))
 
         # Any
-        self.assertEqual(ONE + ANY(), ANY())
-        self.assertEqual(TBD() + ANY(), ANY())
-        self.assertEqual((TBD() + TBD()) + ANY(), ANY())
+        assertIsInstance(ONE + ANY(), Operation)
+        assertIsInstance(TBD() + ANY(), Operation)
+        assertIsInstance((TBD() + TBD()) + ANY(), Operation)
 
     def test_resolution(self):
         T = TypeVar("T")

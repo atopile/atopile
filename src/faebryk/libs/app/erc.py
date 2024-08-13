@@ -9,6 +9,7 @@ from faebryk.core.core import Module, ModuleInterface
 from faebryk.core.graph import Graph
 from faebryk.core.util import get_all_nodes_graph
 from faebryk.library.has_overriden_name import has_overriden_name
+from faebryk.libs.picker.picker import has_part_picked
 from faebryk.libs.util import groupby, print_stack
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,12 @@ def simple_erc(G: Graph):
     #            raise ERCFault([mif], "shorted symmetric footprint")
     comps = [n for n in nodes if isinstance(n, (Resistor, Capacitor, Fuse))]
     for comp in comps:
+        # TODO make prettier
+        if (
+            comp.has_trait(has_part_picked)
+            and comp.get_trait(has_part_picked).get_part().partno == "REMOVE"
+        ):
+            continue
         if comp.IFs.unnamed[0].is_connected_to(comp.IFs.unnamed[1]):
             raise ERCFaultShort(comp.IFs.unnamed, "shorted component")
 

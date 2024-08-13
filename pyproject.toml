@@ -35,6 +35,10 @@ shapely = "^2.0.1"
 freetype-py = "^2.4.0"
 kicadcliwrapper = "^1.0.0"
 dataclasses-json = "^0.6.7"
+patool = "^2.3.0"
+requests = "^2.32.3"
+tortoise-orm = "^0.21.3"
+rich = "^13.7.1"
 
 [tool.poetry.group.dev.dependencies]
 typer = { version = ">=0.9,<0.13", extras = ["all"] }

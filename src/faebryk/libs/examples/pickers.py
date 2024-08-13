@@ -13,10 +13,7 @@ from faebryk.core.util import specialize_module
 from faebryk.library._F import Constant, Range
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.picker.lcsc import LCSC_Part
-from faebryk.libs.picker.picker import (
-    PickerOption,
-    pick_module_by_params,
-)
+from faebryk.libs.picker.picker import PickerOption, pick_module_by_params
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +182,7 @@ def pick_led(module: F.LED):
             PickerOption(
                 part=LCSC_Part(partno="C72043"),
                 params={
-                    "color": Constant(F.LED.Color.GREEN),
+                    "color": Constant(F.LED.Color.EMERALD),
                     "max_brightness": Constant(285e-3),
                     "forward_voltage": Constant(3.7),
                     "max_current": Constant(100e-3),
@@ -239,6 +236,9 @@ def pick_battery(module: F.Battery):
         bcell = F.ButtonCell()
         replace_tbd_with_any(bcell, recursive=False)
         specialize_module(module, bcell)
+        F.has_multi_picker.add_to_module(
+            bcell, 0, F.has_multi_picker.FunctionPicker(pick_battery)
+        )
         return
 
     pick_module_by_params(
@@ -262,19 +262,18 @@ def pick_battery(module: F.Battery):
     )
 
 
-def pick_parts_for_examples(module: Module):
-    # switch over types
-    if isinstance(module, F.Resistor):
-        pick_resistor(module)
-    elif isinstance(module, F.LED):
-        pick_led(module)
-    elif isinstance(module, F.Fuse):
-        pick_fuse(module)
-    elif isinstance(module, F.TVS):
-        pick_tvs(module)
-    elif isinstance(module, F.MOSFET):
-        pick_mosfet(module)
-    elif isinstance(module, F.Capacitor):
-        pick_capacitor(module)
-    elif isinstance(module, F.Battery):
-        pick_battery(module)
+def add_example_pickers(module: Module):
+    lookup = {
+        F.Resistor: pick_resistor,
+        F.LED: pick_led,
+        F.Fuse: pick_fuse,
+        F.TVS: pick_tvs,
+        F.MOSFET: pick_mosfet,
+        F.Capacitor: pick_capacitor,
+        F.Battery: pick_battery,
+    }
+    F.has_multi_picker.add_pickers_by_type(
+        module,
+        lookup,
+        F.has_multi_picker.FunctionPicker,
+    )

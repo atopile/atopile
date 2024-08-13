@@ -9,6 +9,9 @@ from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import (
     has_designator_prefix_defined,
 )
+from faebryk.library.has_pin_association_heuristic_lookup_table import (
+    has_pin_association_heuristic_lookup_table,
+)
 from faebryk.library.TBD import TBD
 
 
@@ -48,3 +51,14 @@ class BJT(Module):
 
         self.add_trait(has_designator_prefix_defined("Q"))
         self.add_trait(can_bridge_defined(self.IFs.collector, self.IFs.emitter))
+        self.add_trait(
+            has_pin_association_heuristic_lookup_table(
+                mapping={
+                    self.IFs.emitter: ["E", "Emitter"],
+                    self.IFs.base: ["B", "Base"],
+                    self.IFs.collector: ["C", "Collector"],
+                },
+                accept_prefix=False,
+                case_sensitive=False,
+            )
+        )

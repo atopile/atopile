@@ -6,6 +6,9 @@ from faebryk.core.util import as_unit
 from faebryk.library.Electrical import Electrical
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
+from faebryk.library.has_pin_association_heuristic_lookup_table import (
+    has_pin_association_heuristic_lookup_table,
+)
 from faebryk.library.has_simple_value_representation_based_on_params import (
     has_simple_value_representation_based_on_params,
 )
@@ -51,6 +54,19 @@ class OpAmp(Module):
                     f"{as_unit(p[3], 'V')} Vos, {as_unit(p[4], 'Hz')} GBW, "
                     f"{as_unit(p[5], 'A')} Iout, {as_unit(p[6], 'V/s')} SR"
                 ),
+            )
+        )
+        self.add_trait(
+            has_pin_association_heuristic_lookup_table(
+                mapping={
+                    self.IFs.power.IFs.hv: ["V+", "Vcc", "Vdd"],
+                    self.IFs.power.IFs.lv: ["V-", "Vee", "Vss", "GND"],
+                    self.IFs.inverting_input: ["-", "IN-"],
+                    self.IFs.non_inverting_input: ["+", "IN+"],
+                    self.IFs.output: ["OUT"],
+                },
+                accept_prefix=False,
+                case_sensitive=False,
             )
         )
         self.add_trait(has_designator_prefix_defined("U"))

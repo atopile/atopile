@@ -55,6 +55,7 @@ from faebryk.library.GenericBusProtection import GenericBusProtection
 from faebryk.library.HLK_LD2410B_P import HLK_LD2410B_P
 from faebryk.library.Header import Header
 from faebryk.library.I2C import I2C
+from faebryk.library.Inductor import Inductor
 from faebryk.library.JTAG import JTAG
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.LDO import LDO
@@ -168,6 +169,8 @@ from faebryk.library.has_esphome_config import has_esphome_config
 from faebryk.library.has_esphome_config_defined import has_esphome_config_defined
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.has_footprint_impl import has_footprint_impl
+from faebryk.library.has_footprint_requirement import has_footprint_requirement
+from faebryk.library.has_footprint_requirement_defined import has_footprint_requirement_defined
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
 from faebryk.library.has_kicad_footprint_equal_ifs import has_kicad_footprint_equal_ifs
 from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
@@ -175,6 +178,7 @@ from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprin
 from faebryk.library.has_kicad_ref import has_kicad_ref
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
+from faebryk.library.has_multi_picker import has_multi_picker
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.has_pcb_layout import has_pcb_layout
@@ -187,6 +191,9 @@ from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
 from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
 from faebryk.library.has_pcb_routing_strategy_manual import has_pcb_routing_strategy_manual
 from faebryk.library.has_pcb_routing_strategy_via_to_layer import has_pcb_routing_strategy_via_to_layer
+from faebryk.library.has_picker import has_picker
+from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
+from faebryk.library.has_pin_association_heuristic_lookup_table import has_pin_association_heuristic_lookup_table
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_simple_value_representation_based_on_param import has_simple_value_representation_based_on_param

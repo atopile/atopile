@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
 from textwrap import indent
-from typing import Any, Callable, Iterable
+from typing import Callable, Iterable
 
 from faebryk.core.core import Module, ModuleInterface, ModuleTrait, Parameter
 from faebryk.library.ANY import ANY
@@ -15,6 +15,7 @@ from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
 )
 from faebryk.library.Electrical import Electrical
+from faebryk.library.has_picker import has_picker
 from faebryk.libs.util import NotNone, flatten
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,15 @@ class PickError(Exception):
         super().__init__(message)
         self.message = message
         self.module = module
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.module}, {self.message})"
+
+
+class PickErrorNotImplemented(PickError):
+    def __init__(self, module: Module):
+        message = f"Could not pick part for {module}: Not implemented"
+        super().__init__(message, module)
 
 
 class PickErrorChildren(PickError):
@@ -115,6 +125,23 @@ class has_part_picked_defined(has_part_picked.impl()):
         return self.part
 
 
+class has_part_picked_remove(has_part_picked.impl()):
+    class RemovePart(Part):
+        class NoSupplier(Supplier):
+            def attach(self, module: Module, part: PickerOption):
+                pass
+
+        def __init__(self):
+            super().__init__("REMOVE", self.NoSupplier())
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.part = self.RemovePart()
+
+    def get_part(self) -> Part:
+        return self.part
+
+
 def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
     if module.has_trait(has_part_picked):
         logger.debug(f"Ignoring already picked module: {module}")
@@ -151,7 +178,7 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
     for k, v in (option.params or {}).items():
         if k not in params:
             continue
-        params[k].merge(v)
+        params[k].override(v)
 
     logger.debug(f"Attached {option.part.partno} to {module}")
     return option
@@ -163,9 +190,10 @@ def _get_mif_top_level_modules(mif: ModuleInterface):
     ]
 
 
-def pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
+# TODO should be a Picker
+def pick_part_recursively(module: Module):
     try:
-        _pick_part_recursively(module, pick)
+        _pick_part_recursively(module)
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
         for m, sube in failed_parts.items():
@@ -206,7 +234,7 @@ def pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
         logger.warning(f"Part without pick {np}")
 
 
-def _pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
+def _pick_part_recursively(module: Module):
     assert isinstance(module, Module)
 
     # pick only for most specialized module
@@ -219,16 +247,25 @@ def _pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
 
     for mif in module.IFs.get_all():
         for mod in _get_mif_top_level_modules(mif):
-            _pick_part_recursively(mod, pick)
+            _pick_part_recursively(mod)
 
     # pick
-    pick(module)
+    if module.has_trait(has_picker):
+        try:
+            module.get_trait(has_picker).pick()
+        except PickError as e:
+            # if no children, raise
+            # This whole logic will be so much easier if the recursive
+            # picker is just a normal picker
+            if not module.NODEs.get_all():
+                raise e
+
     if module.has_trait(has_part_picked):
         return
 
     # if module has been specialized during pick, try again
     if module.get_most_special() != module:
-        _pick_part_recursively(module, pick)
+        _pick_part_recursively(module)
         return
 
     # go level lower
@@ -243,9 +280,11 @@ def _pick_part_recursively(module: Module, pick: Callable[[Module], Any]):
     while to_pick:
         for child in to_pick:
             try:
-                _pick_part_recursively(child, pick)
+                _pick_part_recursively(child)
             except PickError as e:
                 failed[child] = e
+
+        # no progress
         if to_pick == set(failed.keys()):
             raise PickErrorChildren(module, failed)
 

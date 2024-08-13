@@ -425,11 +425,23 @@ def repeat_set_over_base(
     )
 
 
+class ParamNotResolvedError(Exception): ...
+
+
 def e_series_intersect(
     value: Parameter, e_series: E_SERIES = E_SERIES_VALUES.E_ALL
 ) -> F.Set[F.Constant]:
-    if not isinstance(value, F.Range):
+    if isinstance(value, F.Constant):
+        value = F.Range.from_center(value.value, 0)
+    elif isinstance(value, F.Set):
         raise NotImplementedError
+    elif isinstance(value, (F.Operation, F.TBD)):
+        raise ParamNotResolvedError()
+    elif isinstance(value, F.ANY):
+        # TODO
+        raise ParamNotResolvedError()
+
+    assert isinstance(value, F.Range)
 
     e_series_values = repeat_set_over_base(
         e_series, 10, range(floor(log10(value.min)), ceil(log10(value.max)) + 1)
