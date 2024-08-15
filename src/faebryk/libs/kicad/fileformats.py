@@ -822,10 +822,10 @@ class C_kicad_pcb_file(SEXP_File):
 
         @dataclass(kw_only=True)
         class C_pcb_footprint(C_footprint):
-            @dataclass
+            @dataclass(kw_only=True)
             class C_pad(C_footprint.C_pad):
-                net: tuple[int, str] = field(kw_only=True)
-                uuid: UUID = field(kw_only=True)
+                net: Optional[tuple[int, str]] = None
+                uuid: UUID
 
             uuid: UUID = field(**sexp_field(order=-15))
             at: C_xyr = field(**sexp_field(order=-10))

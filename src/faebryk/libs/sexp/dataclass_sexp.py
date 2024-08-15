@@ -144,7 +144,8 @@ def _decode(sexp: netlist_type, t: type[T]) -> T:
         sp = sexp_field.from_field(f)
         if s_name not in key_values:
             if sp.multidict and not f.default_factory or f.default:
-                value_dict[name] = get_origin(f.type)()
+                base_type = get_origin(f.type) or f.type
+                value_dict[name] = base_type()
             # will be automatically filled by factory
             continue
 

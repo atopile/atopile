@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from contextlib import contextmanager
 import logging
 import pprint
 from abc import ABC, abstractmethod
@@ -10,6 +11,7 @@ from textwrap import indent
 from typing import Callable, Iterable
 
 from faebryk.core.core import Module, ModuleInterface, ModuleTrait, Parameter
+from faebryk.core.util import get_all_modules
 from faebryk.library.ANY import ANY
 from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
@@ -17,6 +19,7 @@ from faebryk.library.can_attach_to_footprint_via_pinmap import (
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_picker import has_picker
 from faebryk.libs.util import NotNone, flatten
+from rich.progress import Progress
 
 logger = logging.getLogger(__name__)
 
@@ -190,10 +193,32 @@ def _get_mif_top_level_modules(mif: ModuleInterface):
     ]
 
 
+class PickerProgress:
+    def __init__(self):
+        self.progress = Progress()
+        self.task = self.progress.add_task("Picking", total=1)
+
+    @classmethod
+    def from_module(cls, module: Module) -> "PickerProgress":
+        self = cls()
+        self.progress.update(self.task, total=len(get_all_modules(module)))
+        return self
+
+    def advance(self, module: Module):
+        self.progress.advance(self.task, len(get_all_modules(module)))
+
+    @contextmanager
+    def context(self):
+        with self.progress:
+            yield self
+
+
 # TODO should be a Picker
 def pick_part_recursively(module: Module):
+    pp = PickerProgress.from_module(module)
     try:
-        _pick_part_recursively(module)
+        with pp.context():
+            _pick_part_recursively(module, pp)
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
         for m, sube in failed_parts.items():
@@ -234,7 +259,7 @@ def pick_part_recursively(module: Module):
         logger.warning(f"Part without pick {np}")
 
 
-def _pick_part_recursively(module: Module):
+def _pick_part_recursively(module: Module, progress: PickerProgress | None = None):
     assert isinstance(module, Module)
 
     # pick only for most specialized module
@@ -247,7 +272,7 @@ def _pick_part_recursively(module: Module):
 
     for mif in module.IFs.get_all():
         for mod in _get_mif_top_level_modules(mif):
-            _pick_part_recursively(mod)
+            _pick_part_recursively(mod, progress)
 
     # pick
     if module.has_trait(has_picker):
@@ -261,11 +286,13 @@ def _pick_part_recursively(module: Module):
                 raise e
 
     if module.has_trait(has_part_picked):
+        if progress:
+            progress.advance(module)
         return
 
     # if module has been specialized during pick, try again
     if module.get_most_special() != module:
-        _pick_part_recursively(module)
+        _pick_part_recursively(module, progress)
         return
 
     # go level lower
@@ -280,7 +307,7 @@ def _pick_part_recursively(module: Module):
     while to_pick:
         for child in to_pick:
             try:
-                _pick_part_recursively(child)
+                _pick_part_recursively(child, progress)
             except PickError as e:
                 failed[child] = e
 

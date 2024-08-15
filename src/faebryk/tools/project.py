@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -78,6 +79,10 @@ def local(ctx: typer.Context, cache: bool = True):
 
     # setup project
     p = subprocess.Popen(
-        [target / "scripts/setup_project.py", "--no-cache" if not cache else "--cache"]
+        [
+            sys.executable,
+            target / "scripts/setup_project.py",
+            "--no-cache" if not cache else "--cache",
+        ]
     )
     p.wait()

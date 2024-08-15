@@ -210,6 +210,9 @@ def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
                 self.handle_add(name, value)
                 return
 
+            if isinstance(value, dict):
+                value = value.values()
+
             if isinstance(value, Iterable):
                 e_objs = nested_enumerate(value)
                 objs = [x[1] for x in e_objs]
@@ -247,6 +250,8 @@ def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
                     continue
                 if isinstance(value, self._type):
                     continue
+                if isinstance(value, dict):
+                    value = value.values()
                 if isinstance(value, Iterable):
                     assert set(flatten(value, -1)).issubset(set(self._list))
                     continue

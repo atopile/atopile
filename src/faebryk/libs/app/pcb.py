@@ -3,6 +3,7 @@
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -143,6 +144,33 @@ def include_footprints(pcb_path: Path):
     fptable.dumps(fplibpath)
 
 
+def find_pcbnew() -> os.PathLike:
+    """Figure out what to call for the pcbnew CLI."""
+    if sys.platform.startswith("linux"):
+        return "pcbnew"
+
+    if sys.platform.startswith("darwin"):
+        base = Path("/Applications/KiCad/")
+    elif sys.platform.startswith("win"):
+        base = Path(os.getenv("ProgramFiles")) / "KiCad"
+    else:
+        raise NotImplementedError(f"Unsupported platform: {sys.platform}")
+
+    if path := list(base.glob("**/pcbnew")):
+        # TODO: find the best version
+        return path[0]
+
+    raise FileNotFoundError("Could not find pcbnew executable")
+
+
+def open_pcb(pcb_path: os.PathLike):
+    import subprocess
+
+    pcbnew = find_pcbnew()
+    subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
+    # TODO: it'd be neat if we could wait until pcbnew was closed?
+
+
 def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool = True):
     include_footprints(pcb_path)
 
@@ -169,9 +197,10 @@ def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool 
     ]
 
     if auto_mode:
-        import subprocess
-
-        subprocess.Popen(["pcbnew", str(pcb_path)], stderr=subprocess.DEVNULL)
+        try:
+            open_pcb(pcb_path)
+        except FileNotFoundError:
+            print(f"PCB location: {pcb_path}")
     else:
         print(f"PCB location: {pcb_path}")
 

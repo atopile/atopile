@@ -95,3 +95,6 @@ ENV/
 
 _local
 .local
+
+# OS stuff
+.DS_Store
