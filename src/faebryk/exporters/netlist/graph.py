@@ -5,12 +5,11 @@ import logging
 from abc import abstractmethod
 
 import networkx as nx
-from faebryk.core.core import (
-    LinkDirect,
-    Module,
+from faebryk.core.core import Graph, Module
+from faebryk.core.util import (
+    get_all_nodes_with_trait,
+    get_connected_mifs,
 )
-from faebryk.core.graph import Graph
-from faebryk.core.util import get_all_nodes_graph, get_connected_mifs
 from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.library.Electrical import Electrical
 from faebryk.library.FootprintTrait import FootprintTrait
@@ -109,35 +108,6 @@ class can_represent_kicad_footprint_via_attached_component(
         )
 
 
-def close_electrical_graph(G: nx.Graph):
-    G_only_e = nx.Graph()
-    G_only_e.add_nodes_from(G.nodes)
-    G_only_e.add_edges_from(
-        [
-            (t0, t1, d)
-            for t0, t1, d in G.edges(data=True)
-            if isinstance(t0.node, Electrical)
-            and isinstance(t1.node, Electrical)
-            and t0.node != t1.node
-            and t0.node.GIFs.connected == t0
-            and t1.node.GIFs.connected == t1
-            and isinstance(d.get("link"), LinkDirect)
-            # TODO this does not characterize an electrical link very well
-        ]
-    )
-    G_only_e_closed = nx.transitive_closure(G_only_e)
-    for t0, t1, d in G_only_e_closed.edges(data=True):
-        if "link" in d:
-            continue
-        d["link"] = LinkDirect([t0, t1])
-        # G_only_e_closed.edges(data=True)[t1,t0]["link"] = d["link"]
-
-    Gclosed = nx.Graph(G)
-    Gclosed.add_edges_from(G_only_e_closed.edges(data=True))
-
-    return Gclosed
-
-
 def add_or_get_net(interface: Electrical):
     mifs = get_connected_mifs(interface.GIFs.connected)
     nets = {
@@ -155,19 +125,17 @@ def add_or_get_net(interface: Electrical):
 
 
 def attach_nets_and_kicad_info(g: Graph):
-    # TODO not sure if needed
-    #   as long as core is connecting to all MIFs anyway not needed
-    # Gclosed = close_electrical_graph(g.G)
-    logger.info(f"Closing graph {g.G}")
-    Gclosed = g.G
+    # g has to be closed
+
+    Gclosed = g
 
     # group comps & fps
     node_fps = {
-        n: n.get_trait(has_footprint).get_footprint()
+        n: t.get_footprint()
         # TODO maybe nicer to just look for footprints
         # and get their respective components instead
-        for n in get_all_nodes_graph(Gclosed)
-        if n.has_trait(has_footprint) and isinstance(n, Module)
+        for n, t in get_all_nodes_with_trait(Gclosed, has_footprint)
+        if isinstance(n, Module)
     }
 
     logger.info(f"Found {len(node_fps)} components with footprints")
@@ -186,5 +154,3 @@ def attach_nets_and_kicad_info(g: Graph):
             if not isinstance(mif, Pad):
                 continue
             add_or_get_net(mif.IFs.net)
-
-    g.update()

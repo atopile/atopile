@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from math import inf
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Generic, Protocol, Self, TypeVar
 
 from faebryk.core.core import Parameter
 from faebryk.library.Constant import Constant
@@ -126,3 +126,6 @@ class Range(Generic[PV], Parameter[PV]):
             f"{super().__str__()}({format(self.bounds[0], format_spec)} <-> "
             f"{format(self.bounds[1], format_spec)})"
         )
+
+    def copy(self) -> Self:
+        return type(self)(*self.bounds)

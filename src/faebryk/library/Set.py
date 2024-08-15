@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Generic, Iterable, TypeVar
+from typing import Generic, Iterable, Self, TypeVar
 
 from faebryk.core.core import Parameter
 
@@ -46,3 +46,6 @@ class Set(Generic[PV], Parameter[PV]):
 
     def __gt__(self, other) -> bool:
         return all(p > other for p in self.params)
+
+    def copy(self) -> Self:
+        return type(self)(self.params)

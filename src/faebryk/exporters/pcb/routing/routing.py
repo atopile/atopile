@@ -10,7 +10,7 @@ from itertools import groupby
 
 import networkx as nx
 from faebryk.core.util import (
-    get_all_nodes_graph,
+    get_all_nodes_of_type,
     get_net,
 )
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -130,11 +130,7 @@ class PCB_Router:
     def route_all(self):
         from faebryk.library.Net import Net as FNet
 
-        nets = {
-            n
-            for n in get_all_nodes_graph(self.transformer.graph.G)
-            if isinstance(n, FNet)
-        }
+        nets = get_all_nodes_of_type(self.transformer.graph, FNet)
 
         # TODO add net picking heuristic
         for net in nets:

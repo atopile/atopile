@@ -5,9 +5,8 @@ import logging
 from typing import Any, Callable
 
 import yaml
-from faebryk.core.core import Parameter
-from faebryk.core.graph import Graph
-from faebryk.core.util import get_all_nodes_graph
+from faebryk.core.core import Graph, Parameter
+from faebryk.core.util import get_all_nodes_with_trait
 from faebryk.library.Constant import Constant
 from faebryk.library.has_esphome_config import has_esphome_config
 
@@ -54,16 +53,9 @@ def merge_dicts(*dicts: dict) -> dict:
 
 
 def make_esphome_config(G: Graph) -> dict:
-    esphome_components = {
-        n for n in get_all_nodes_graph(G.G) if n.has_trait(has_esphome_config)
-    }
+    esphome_components = get_all_nodes_with_trait(G, has_esphome_config)
 
-    esphome_config = merge_dicts(
-        *[
-            comp.get_trait(has_esphome_config).get_config()
-            for comp in esphome_components
-        ]
-    )
+    esphome_config = merge_dicts(*[t.get_config() for _, t in esphome_components])
 
     def instantiate_param(param: Parameter | Any):
         if not isinstance(param, Parameter):

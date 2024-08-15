@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import copy
 from enum import Enum
 
 from faebryk.core.core import Parameter
@@ -48,7 +47,7 @@ class _Unit:
 
     @property
     def value(self):
-        return copy.deepcopy(self._value)
+        return self._value.copy()
 
 
 # Temporary unit classes until faebryk supports units

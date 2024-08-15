@@ -8,10 +8,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import cast
 
-from faebryk.core.graph import Graph
+from faebryk.core.core import Graph
 from faebryk.core.util import (
-    get_all_highest_parents_graph,
-    get_all_nodes_graph,
+    get_all_nodes_by_names,
+    get_all_nodes_with_trait,
 )
 from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.library.has_designator import has_designator
@@ -31,7 +31,7 @@ def attach_random_designators(graph: Graph):
     sorts nodes by path and then sequentially assigns designators
     """
 
-    nodes = {n for n in get_all_nodes_graph(graph.G) if n.has_trait(has_footprint)}
+    nodes = {n for n, _ in get_all_nodes_with_trait(graph, has_footprint)}
 
     in_use = {
         n.get_trait(has_designator).get_designator()
@@ -82,12 +82,8 @@ def attach_random_designators(graph: Graph):
 
 
 def override_names_with_designators(graph: Graph):
-    nodes = {n for n in get_all_nodes_graph(graph.G) if n.has_trait(has_designator)}
-
-    for n in nodes:
-        if not n.has_trait(has_designator):
-            continue
-        name = n.get_trait(has_designator).get_designator()
+    for n, t in get_all_nodes_with_trait(graph, has_designator):
+        name = t.get_designator()
         if n.has_trait(has_overriden_name):
             logger.warning(
                 f"Renaming: {n.get_trait(has_overriden_name).get_name()} -> {name}"
@@ -96,13 +92,8 @@ def override_names_with_designators(graph: Graph):
 
 
 def attach_hierarchical_designators(graph: Graph):
-    root_modules = get_all_highest_parents_graph(graph.G)
-
     # TODO
     raise NotImplementedError()
-
-    for m in root_modules:
-        ...
 
 
 def load_designators_from_netlist(
@@ -116,11 +107,10 @@ def load_designators_from_netlist(
 
     matched_nodes = {
         node_name: (n, designators[node_name])
-        for n in get_all_nodes_graph(graph.G)
-        if (node_name := n.get_full_name()) in designators
+        for n, node_name in get_all_nodes_by_names(graph, designators.keys())
     }
 
-    for node_name, (n, designator) in matched_nodes.items():
+    for _, (n, designator) in matched_nodes.items():
         logger.debug(f"Matched {n} to {designator}")
         n.add_trait(has_designator_defined(designator))
 
@@ -140,9 +130,8 @@ def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: P
 
     pattern = re.compile(r"^(.*)\[[^\]]*\]$")
     translation = {
-        n.get_full_name(): n.get_trait(has_overriden_name).get_name()
-        for n in get_all_nodes_graph(graph.G)
-        if n.has_trait(has_overriden_name)
+        n.get_full_name(): t.get_name()
+        for n, t in get_all_nodes_with_trait(graph, has_overriden_name)
     }
 
     for fp in pcb.kicad_pcb.footprints:

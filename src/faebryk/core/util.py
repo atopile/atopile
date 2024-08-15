@@ -9,16 +9,16 @@ from typing import (
     Iterable,
     Sequence,
     SupportsFloat,
-    Tuple,
-    TypeVar,
     cast,
 )
 
-import networkx as nx
 from faebryk.core.core import (
+    Graph,
     GraphInterface,
+    GraphInterfaceHierarchical,
     GraphInterfaceSelf,
     Link,
+    LinkNamedParent,
     Module,
     ModuleInterface,
     Node,
@@ -34,9 +34,11 @@ from faebryk.library.Range import Range
 from faebryk.library.Set import Set
 from faebryk.library.TBD import TBD
 from faebryk.libs.util import NotNone, cast_assert, round_str
+from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
-T = TypeVar("T")
+
+# Parameter ----------------------------------------------------------------------------
 
 
 def as_scientific(value: SupportsFloat, base=10):
@@ -159,50 +161,108 @@ def as_unit_with_tolerance(
     raise ValueError(f"Unsupported {param=}")
 
 
-def get_all_nodes(node: Node, order_types=None) -> list[Node]:
-    if order_types is None:
-        order_types = []
+def get_parameter_max(param: Parameter):
+    if isinstance(param, Constant):
+        return param.value
+    if isinstance(param, Range):
+        return param.max
+    if isinstance(param, Set):
+        return max(map(get_parameter_max, param.params))
+    raise ValueError(f"Can't get max for {param}")
 
-    out: list[Node] = list(node.NODEs.get_all())
-    if isinstance(node, (Module, ModuleInterface)):
-        mifs = node.IFs.get_all()
-        out.extend(mifs)
-        out.extend([i for nested in mifs for i in get_all_nodes(nested)])
-    out.extend([i for nested in out for i in get_all_nodes(nested)])
 
-    out = sorted(
-        out,
-        key=lambda x: (
-            order_types.index(type(x)) if type(x) in order_types else len(order_types)
-        ),
+# --------------------------------------------------------------------------------------
+
+# Graph Querying -----------------------------------------------------------------------
+
+
+def bfs_node(node: Node, filter: Callable[[GraphInterface], bool]):
+    return get_nodes_from_gifs(node.get_graph().bfs_visit(filter, [node.GIFs.self]))
+
+
+def get_nodes_from_gifs(gifs: Iterable[GraphInterface]):
+    return {gif.node for gif in gifs}
+    # TODO what is faster
+    # return {n.node for n in gifs if isinstance(n, GraphInterfaceSelf)}
+
+
+# Make all kinds of graph filtering functions so we can optimize them in the future
+# Avoid letting user query all graph nodes always because quickly very slow
+
+
+def node_projected_graph(g: Graph) -> set[Node]:
+    """
+    Don't call this directly, use get_all_nodes_by/of/with instead
+    """
+    return get_nodes_from_gifs(g.subgraph_type(GraphInterfaceSelf))
+
+
+@deprecated("Use get_node_children_all")
+def get_all_nodes(node: Node, include_root=False) -> list[Node]:
+    return get_node_children_all(node, include_root=include_root)
+
+
+def get_node_children_all(node: Node, include_root=True) -> list[Node]:
+    # TODO looks like get_node_tree is 2x faster
+
+    out = bfs_node(
+        node,
+        lambda x: isinstance(x, (GraphInterfaceSelf, GraphInterfaceHierarchical))
+        and x is not node.GIFs.parent,
     )
 
-    return out
+    if not include_root:
+        out.remove(node)
+
+    return list(out)
 
 
 def get_all_modules(node: Node) -> set[Module]:
     return {n for n in get_all_nodes(node) if isinstance(n, Module)}
 
 
-def get_all_nodes_graph(G: nx.Graph):
-    return {
-        n
-        for gif in G.nodes
-        if isinstance(gif, GraphInterfaceSelf) and (n := gif.node) is not None
-    }
+@deprecated("Use node_projected_graph or get_all_nodes_by/of/with")
+def get_all_nodes_graph(g: Graph):
+    return node_projected_graph(g)
 
 
-def get_all_highest_parents_graph(G: nx.Graph):
-    return {n for n in get_all_nodes_graph(G) if n.GIFs.parent.get_parent() is None}
+def get_all_nodes_with_trait[T: Trait](
+    g: Graph, trait: type[T]
+) -> list[tuple[Node, T]]:
+    return [
+        (n, n.get_trait(trait)) for n in node_projected_graph(g) if n.has_trait(trait)
+    ]
+
+
+# Waiting for python to add support for type mapping
+def get_all_nodes_with_traits[*Ts](
+    g: Graph, traits: tuple[*Ts]
+):  # -> list[tuple[Node, tuple[*Ts]]]:
+    return [
+        (n, tuple(n.get_trait(trait) for trait in traits))
+        for n in node_projected_graph(g)
+        if all(n.has_trait(trait) for trait in traits)
+    ]
+
+
+def get_all_nodes_by_names(g: Graph, names: Iterable[str]) -> list[tuple[Node, str]]:
+    return [
+        (n, node_name)
+        for n in node_projected_graph(g)
+        if (node_name := n.get_full_name()) in names
+    ]
+
+
+def get_all_nodes_of_type[T: Node](g: Graph, t: type[T]) -> set[T]:
+    return {n for n in node_projected_graph(g) if isinstance(n, t)}
+
+
+def get_all_nodes_of_types(g: Graph, t: tuple[type[Node], ...]) -> set[Node]:
+    return {n for n in node_projected_graph(g) if isinstance(n, t)}
 
 
 def get_all_connected(gif: GraphInterface) -> list[tuple[GraphInterface, Link]]:
-    return [
-        (other, link)
-        for link in gif.connections
-        for other in link.get_connections()
-        if other is not gif
-    ]
+    return list(gif.edges.items())
 
 
 def get_connected_mifs(gif: GraphInterface):
@@ -239,80 +299,40 @@ def get_net(mif: Electrical):
     return next(iter(nets))
 
 
-def get_parent(node: Node, filter_expr: Callable):
-    candidates = [p for p, _ in node.get_hierarchy() if filter_expr(p)]
-    if not candidates:
-        return None
-    return candidates[-1]
-
-
-T = TypeVar("T")
-
-
-def get_parent_of_type(node: Node, parent_type: type[T]) -> T | None:
-    return cast(parent_type, get_parent(node, lambda p: isinstance(p, parent_type)))
-
-
-def connect_interfaces_via_chain(
-    start: ModuleInterface, bridges: Iterable[Node], end: ModuleInterface
+def get_children[T: Node](
+    node: Node,
+    direct_only: bool,
+    types: type[T] | tuple[type[T], ...] = Node,
+    include_root: bool = False,
 ):
-    from faebryk.library.can_bridge import can_bridge
+    if direct_only:
+        children = get_node_direct_children_(node)
+        if include_root:
+            children.add(node)
+    else:
+        children = get_node_children_all(node, include_root=include_root)
 
-    last = start
-    for bridge in bridges:
-        last.connect(bridge.get_trait(can_bridge).get_in())
-        last = bridge.get_trait(can_bridge).get_out()
-    last.connect(end)
+    filtered = {n for n in children if isinstance(n, types)}
 
-
-MIF = TypeVar("MIF", bound=ModuleInterface)
-
-
-def connect_all_interfaces(interfaces: Iterable[MIF]):
-    interfaces = list(interfaces)
-    if not interfaces:
-        return
-    return connect_to_all_interfaces(interfaces[0], interfaces[1:])
-    # not needed with current connection implementation
-    # for i in interfaces:
-    #    for j in interfaces:
-    #        i.connect(j)
+    return filtered
 
 
-def connect_to_all_interfaces(source: MIF, targets: Iterable[MIF]):
-    for i in targets:
-        source.connect(i)
-    return source
-
-
-def zip_connect_modules(src: Iterable[Module], dst: Iterable[Module]):
-    for src_m, dst_m in zip(src, dst):
-        for src_i, dst_i in zip(src_m.IFs.get_all(), dst_m.IFs.get_all()):
-            assert isinstance(src_i, ModuleInterface)
-            assert isinstance(dst_i, ModuleInterface)
-            src_i.connect(dst_i)
-
-
-def zip_moduleinterfaces(
-    src: Iterable[ModuleInterface], dst: Iterable[ModuleInterface]
-):
-    # TODO check names?
-    # TODO check types?
-    for src_m, dst_m in zip(src, dst):
-        for src_i, dst_i in zip(src_m.IFs.get_all(), dst_m.IFs.get_all()):
-            assert isinstance(src_i, ModuleInterface)
-            assert isinstance(dst_i, ModuleInterface)
-            yield src_i, dst_i
-
-
+@deprecated("Use get_node_direct_mods_or_mifs")
 def get_node_direct_children(node: Node, include_mifs: bool = True):
-    out: list[Node] = list(node.NODEs.get_all())
+    return get_node_direct_mods_or_mifs(node, include_mifs=include_mifs)
 
-    if include_mifs and isinstance(node, (Module, ModuleInterface)):
-        mifs = node.IFs.get_all()
-        out.extend(mifs)
 
-    return out
+def get_node_direct_mods_or_mifs(node: Node, include_mifs: bool = True):
+    types = (Module, ModuleInterface) if include_mifs else Module
+    return get_children(node, direct_only=True, types=types)
+
+
+def get_node_direct_children_(node: Node):
+    return {
+        gif.node
+        for gif, link in node.get_graph().get_edges(node.GIFs.children).items()
+        if isinstance(link, LinkNamedParent)
+    }
 
 
 def get_node_tree(
@@ -320,7 +340,7 @@ def get_node_tree(
     include_mifs: bool = True,
     include_root: bool = True,
 ) -> dict[Node, dict[Node, dict]]:
-    out = get_node_direct_children(node, include_mifs=include_mifs)
+    out = get_node_direct_mods_or_mifs(node, include_mifs=include_mifs)
 
     tree = {
         n: get_node_tree(n, include_mifs=include_mifs, include_root=False) for n in out
@@ -352,9 +372,7 @@ def iter_tree_by_depth(tree: dict[Node, dict]):
 def get_mif_tree(
     obj: ModuleInterface | Module,
 ) -> dict[ModuleInterface, dict[ModuleInterface, dict]]:
-    mifs = obj.IFs.get_all()
-    assert all(isinstance(i, ModuleInterface) for i in mifs)
-    mifs = cast(list[ModuleInterface], mifs)
+    mifs = get_children(obj, direct_only=True, types=ModuleInterface)
 
     return {mif: get_mif_tree(mif) for mif in mifs}
 
@@ -376,10 +394,95 @@ def format_mif_tree(tree: dict[ModuleInterface, dict[ModuleInterface, dict]]) ->
     return json.dumps(str_tree(tree), indent=4)
 
 
-T = TypeVar("T", bound=ModuleInterface)
+# --------------------------------------------------------------------------------------
+
+# Connection utils ---------------------------------------------------------------------
 
 
-def specialize_interface(
+def connect_interfaces_via_chain(
+    start: ModuleInterface, bridges: Iterable[Node], end: ModuleInterface
+):
+    from faebryk.library.can_bridge import can_bridge
+
+    last = start
+    for bridge in bridges:
+        last.connect(bridge.get_trait(can_bridge).get_in())
+        last = bridge.get_trait(can_bridge).get_out()
+    last.connect(end)
+
+
+def connect_all_interfaces[MIF: ModuleInterface](interfaces: Iterable[MIF]):
+    interfaces = list(interfaces)
+    if not interfaces:
+        return
+    return connect_to_all_interfaces(interfaces[0], interfaces[1:])
+    # not needed with current connection implementation
+    # for i in interfaces:
+    #    for j in interfaces:
+    #        i.connect(j)
+
+
+def connect_to_all_interfaces[MIF: ModuleInterface](
+    source: MIF, targets: Iterable[MIF]
+):
+    for i in targets:
+        source.connect(i)
+    return source
+
+
+def zip_connect_modules(src: Iterable[Module] | Module, dst: Iterable[Module] | Module):
+    for src_m, dst_m in zip_moduleinterfaces(src, dst):
+        src_m.connect(dst_m)
+
+
+def zip_moduleinterfaces(
+    src: Iterable[ModuleInterface | Module] | ModuleInterface | Module,
+    dst: Iterable[ModuleInterface | Module] | ModuleInterface | Module,
+):
+    if isinstance(src, Node):
+        src = [src]
+    if isinstance(dst, Node):
+        dst = [dst]
+
+    # TODO check types?
+    for src_m, dst_m in zip(src, dst):
+        src_m_children = {
+            NotNone(n.get_parent())[1]: n
+            for n in get_children(src_m, direct_only=True, types=ModuleInterface)
+        }
+        dst_m_children = {
+            NotNone(n.get_parent())[1]: n
+            for n in get_children(dst_m, direct_only=True, types=ModuleInterface)
+        }
+        assert src_m_children.keys() == dst_m_children.keys()
+
+        for k, src_i in src_m_children.items():
+            dst_i = dst_m_children[k]
+            yield src_i, dst_i
+
+
+def reversed_bridge(bridge: Node):
+    from faebryk.library.can_bridge import can_bridge
+
+    class _reversed_bridge(Node):
+        def __init__(self) -> None:
+            super().__init__()
+
+            bridge_trait = bridge.get_trait(can_bridge)
+            if_in = bridge_trait.get_in()
+            if_out = bridge_trait.get_out()
+
+            self.add_trait(can_bridge_defined(if_out, if_in))
+
+    return _reversed_bridge()
+
+
+# --------------------------------------------------------------------------------------
+
+# Specialization -----------------------------------------------------------------------
+
+
+def specialize_interface[T: ModuleInterface](
     general: ModuleInterface,
     special: T,
 ) -> T:
@@ -394,11 +497,7 @@ def specialize_interface(
     return special
 
 
-T = TypeVar("T", bound=Module)
-U = TypeVar("U", bound=Node)
-
-
-def specialize_module(
+def specialize_module[T: Module](
     general: Module,
     special: T,
     matrix: list[tuple[ModuleInterface, ModuleInterface]] | None = None,
@@ -406,7 +505,7 @@ def specialize_module(
 ) -> T:
     logger.debug(f"Specializing Module {general} with {special}" + " " + "=" * 20)
 
-    def get_node_prop_matrix(sub_type: type[U]) -> list[tuple[U, U]]:
+    def get_node_prop_matrix[U: Node](sub_type: type[U]) -> list[tuple[U, U]]:
         def _get_with_names(module: Module) -> dict[str, U]:
             if sub_type is ModuleInterface:
                 holder = module.IFs
@@ -467,30 +566,43 @@ def specialize_module(
     return special
 
 
-def get_parameter_max(param: Parameter):
-    if isinstance(param, Constant):
-        return param.value
-    if isinstance(param, Range):
-        return param.max
-    if isinstance(param, Set):
-        return max(map(get_parameter_max, param.params))
-    raise ValueError(f"Can't get max for {param}")
+# --------------------------------------------------------------------------------------
 
 
-def reversed_bridge(bridge: Node):
-    from faebryk.library.can_bridge import can_bridge
+# Hierarchy queries --------------------------------------------------------------------
 
-    class _reversed_bridge(Node):
-        def __init__(self) -> None:
-            super().__init__()
 
-            bridge_trait = bridge.get_trait(can_bridge)
-            if_in = bridge_trait.get_in()
-            if_out = bridge_trait.get_out()
+def get_parent(node: Node, filter_expr: Callable):
+    candidates = [p for p, _ in node.get_hierarchy() if filter_expr(p)]
+    if not candidates:
+        return None
+    return candidates[-1]
 
-            self.add_trait(can_bridge_defined(if_out, if_in))
 
-    return _reversed_bridge()
+def get_parent_of_type[T: Node](node: Node, parent_type: type[T]) -> T | None:
+    return cast(parent_type, get_parent(node, lambda p: isinstance(p, parent_type)))
+
+
+def get_parent_with_trait[TR: Trait](node: Node, trait: type[TR]):
+    for parent, _ in reversed(node.get_hierarchy()):
+        if parent.has_trait(trait):
+            return parent, parent.get_trait(trait)
+    raise ValueError("No parent with trait found")
+
+
+def get_children_of_type[U: Node](node: Node, child_type: type[U]) -> list[U]:
+    return list(get_children(node, direct_only=False, types=child_type))
+
+
+def get_first_child_of_type[U: Node](node: Node, child_type: type[U]) -> U:
+    for level in iter_tree_by_depth(get_node_tree(node)):
+        for child in level:
+            if isinstance(child, child_type):
+                return child
+    raise ValueError("No child of type found")
+
+
+# --------------------------------------------------------------------------------------
 
 
 def use_interface_names_as_net_names(node: Node, name: str | None = None):
@@ -546,7 +658,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
         # performance
         resolved.update(group)
 
-    nets: dict[str, Tuple[Net, Electrical]] = {}
+    nets: dict[str, tuple[Net, Electrical]] = {}
     for el_if in to_use:
         net_name = f"{name}{el_if.get_full_name().removeprefix(name_prefix)}"
 
@@ -569,25 +681,3 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
         net.IFs.part_of.connect(el_if)
         logger.debug(f"Created {net_name} for {el_if}")
         nets[net_name] = net, el_if
-
-
-TR = TypeVar("TR", bound=Trait)
-
-
-def get_parent_with_trait(node: Node, trait: type[TR]):
-    for parent, _ in reversed(node.get_hierarchy()):
-        if parent.has_trait(trait):
-            return parent, parent.get_trait(trait)
-    raise ValueError("No parent with trait found")
-
-
-def get_children_of_type(node: Node, child_type: type[U]) -> list[U]:
-    return [child for child in get_all_nodes(node) if isinstance(child, child_type)]
-
-
-def get_first_child_of_type(node: Node, child_type: type[U]) -> U:
-    for level in iter_tree_by_depth(get_node_tree(node)):
-        for child in level:
-            if isinstance(child, child_type):
-                return child
-    raise ValueError("No child of type found")

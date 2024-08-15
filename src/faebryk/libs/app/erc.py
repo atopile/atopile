@@ -5,9 +5,11 @@ import inspect
 import logging
 from typing import Callable, Iterable, Sequence
 
-from faebryk.core.core import Module, ModuleInterface
-from faebryk.core.graph import Graph
-from faebryk.core.util import get_all_nodes_graph
+from faebryk.core.core import Graph, Module, ModuleInterface
+from faebryk.core.util import (
+    get_all_nodes_of_type,
+    get_all_nodes_of_types,
+)
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.libs.picker.picker import has_part_picked
 from faebryk.libs.util import groupby, print_stack
@@ -60,18 +62,15 @@ def simple_erc(G: Graph):
 
     logger.info("Checking graph for ERC violations")
 
-    nodes = get_all_nodes_graph(G.G)
-    logger.info(f"Checking {len(nodes)} nodes")
-
     # power short
-    electricpower = [n for n in nodes if isinstance(n, ElectricPower)]
+    electricpower = get_all_nodes_of_type(G, ElectricPower)
     logger.info(f"Checking {len(electricpower)} Power")
     for ep in electricpower:
         if ep.IFs.lv.is_connected_to(ep.IFs.hv):
             raise ERCFaultShort([ep], "shorted power")
 
     # shorted nets
-    nets = [n for n in nodes if isinstance(n, Net)]
+    nets = get_all_nodes_of_type(G, Net)
     logger.info(f"Checking {len(nets)} nets")
     for net in nets:
         collisions = {
@@ -112,8 +111,9 @@ def simple_erc(G: Graph):
     #        checked.add(mif)
     #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
     #            raise ERCFault([mif], "shorted symmetric footprint")
-    comps = [n for n in nodes if isinstance(n, (Resistor, Capacitor, Fuse))]
+    comps = get_all_nodes_of_types(G, (Resistor, Capacitor, Fuse))
     for comp in comps:
+        assert isinstance(comp, (Resistor, Capacitor, Fuse))
         # TODO make prettier
         if (
             comp.has_trait(has_part_picked)

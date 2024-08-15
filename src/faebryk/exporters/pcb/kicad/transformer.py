@@ -12,12 +12,13 @@ from typing import Any, Callable, Iterable, List, Sequence, TypeVar
 
 import numpy as np
 from faebryk.core.core import (
+    Graph,
     Module,
     ModuleInterfaceTrait,
     ModuleTrait,
     Node,
 )
-from faebryk.core.graph import Graph
+from faebryk.core.util import get_all_nodes_with_trait, get_all_nodes_with_traits
 from faebryk.library.Electrical import Electrical
 from faebryk.library.Footprint import (
     Footprint as FFootprint,
@@ -234,13 +235,10 @@ class PCB_Transformer:
             (f.propertys["Reference"].value, f.name): f for f in self.pcb.footprints
         }
 
-        for node in {gif.node for gif in self.graph.G.nodes}:
-            assert isinstance(node, Node)
+        for node, fpt in get_all_nodes_with_trait(self.graph, has_footprint):
             if not node.has_trait(has_overriden_name):
                 continue
-            if not node.has_trait(has_footprint):
-                continue
-            g_fp = node.get_trait(has_footprint).get_footprint()
+            g_fp = fpt.get_footprint()
             if not g_fp.has_trait(has_kicad_footprint):
                 continue
 
@@ -271,9 +269,10 @@ class PCB_Transformer:
                 )
 
         attached = {
-            gif.node: gif.node.get_trait(self.has_linked_kicad_footprint).get_fp()
-            for gif in self.graph.G.nodes
-            if gif.node.has_trait(self.has_linked_kicad_footprint)
+            n: t.get_fp()
+            for n, t in get_all_nodes_with_trait(
+                self.graph, self.has_linked_kicad_footprint
+            )
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
 
@@ -706,15 +705,13 @@ class PCB_Transformer:
     # Positioning ----------------------------------------------------------------------
     def move_footprints(self):
         # position modules with defined positions
-        pos_mods: set[Module] = {
-            gif.node
-            for gif in self.graph.G.nodes
-            if gif.node.has_trait(has_pcb_position)
-            and gif.node.has_trait(self.has_linked_kicad_footprint)
-        }
+        pos_mods = get_all_nodes_with_traits(
+            self.graph, (has_pcb_position, self.has_linked_kicad_footprint)
+        )
+
         logger.info(f"Positioning {len(pos_mods)} footprints")
 
-        for module in pos_mods:
+        for module, _ in pos_mods:
             fp = module.get_trait(self.has_linked_kicad_footprint).get_fp()
             coord = module.get_trait(has_pcb_position).get_position()
             layer_name = {

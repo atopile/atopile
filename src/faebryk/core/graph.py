@@ -2,69 +2,129 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import Callable, Iterable, TypeVar
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Mapping, Self
 
-import networkx as nx
-from faebryk.core.core import GraphInterface, Node
+from faebryk.libs.util import (
+    ConfigFlag,
+    LazyMixin,
+    SharedReference,
+    bfs_visit,
+    lazy_construct,
+)
+from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
+# only for typechecker
+
+if TYPE_CHECKING:
+    from faebryk.core.core import Link
+
+# TODO create GraphView base class
+
+LAZY = ConfigFlag("LAZY", False, "Use lazy construction for graphs")
 
 
-def bfs_visit(neighbours: Callable[[T], list[T]], nodes: Iterable[T]) -> set[T]:
-    """
-    Generic BFS (not depending on Graph)
-    Returns all visited nodes.
-    """
-    queue: list[T] = list(nodes)
-    visited: set[T] = set(queue)
+class Graph[T, GT](LazyMixin, SharedReference[GT]):
+    # perf counter
+    counter = 0
 
-    while queue:
-        m = queue.pop(0)
+    def __init__(self, G: GT):
+        super().__init__(G)
+        type(self).counter += 1
 
-        for neighbour in neighbours(m):
-            if neighbour not in visited:
-                visited.add(neighbour)
-                queue.append(neighbour)
+    @property
+    @deprecated("Use call")
+    def G(self):
+        return self()
 
-    return visited
+    def merge(self, other: Self) -> tuple[Self, bool]:
+        lhs, rhs = self, other
 
+        # if node not init, graph is empty / not existing
+        # thus we dont have to merge the graph, just need to setup the ref
+        if LAZY:
+            if not lhs.is_init or not rhs.is_init:
+                if not lhs.is_init:
+                    lhs, rhs = rhs, lhs
+                rhs.links = lhs.links
+                rhs.object = lhs.object
+                lhs.links.add(rhs)
+                rhs._init = True
+                return lhs, True
 
-def _get_connected_GIFs(nodes: list[Node]) -> Iterable[GraphInterface]:
-    """
-    Gets GIFs from supplied Nodes.
-    Then traces all connected GIFs from them to find the rest.
-    """
-    GIFs = {gif for n in nodes for gif in n.GIFs.get_all()}
+        if lhs() == rhs():
+            return self, False
 
-    out = bfs_visit(
-        lambda i: [
-            j for link in i.connections for j in link.get_connections() if j != i
-        ],
-        GIFs,
-    )
+        unioned = self._union(self(), other())
+        if unioned is rhs():
+            lhs, rhs = rhs, lhs
+        if unioned is not lhs():
+            lhs.set(unioned)
 
-    return GIFs | out
+        res = lhs.link(rhs)
+        if not res:
+            return self, False
 
+        # TODO remove, should not be needed
+        assert isinstance(res.representative, type(self))
 
-class Graph:
-    def __init__(self, nodes: list[Node]):
-        G = nx.Graph()
-        GIFs = _get_connected_GIFs(nodes)
-        links = {gif_link for i in GIFs for gif_link in i.connections}
+        return res.representative, True
 
-        assert all(map(lambda link: len(link.get_connections()) == 2, links))
-        edges = [tuple(link.get_connections() + [{"link": link}]) for link in links]
+    def __repr__(self) -> str:
+        G = self()
+        node_cnt = self.node_cnt
+        edge_cnt = self.edge_cnt
+        g_repr = f"{type(G).__name__}({node_cnt=},{edge_cnt=})({hex(id(G))})"
+        return f"{type(self).__name__}({g_repr})"
 
-        G.add_edges_from(edges)
-        G.add_nodes_from(GIFs)
+    @property
+    @abstractmethod
+    def node_cnt(self) -> int: ...
 
-        self.G = G
+    @property
+    @abstractmethod
+    def edge_cnt(self) -> int: ...
 
-        # TODO remove
-        self.nodes = nodes
+    @abstractmethod
+    def v(self, obj: T): ...
 
-    # TODO get rid of in future
-    def update(self):
-        self.__init__(self.nodes)
+    @abstractmethod
+    def add_edge(self, from_obj: T, to_obj: T, link: "Link"): ...
+
+    @abstractmethod
+    def is_connected(self, from_obj: T, to_obj: T) -> "Link | None": ...
+
+    @abstractmethod
+    def get_edges(self, obj: T) -> Mapping[T, "Link"]: ...
+
+    @staticmethod
+    @abstractmethod
+    def _union(rep: GT, old: GT) -> GT: ...
+
+    def bfs_visit(
+        self, filter: Callable[[T], bool], start: Iterable[T], G: GT | None = None
+    ):
+        G = G or self()
+
+        return bfs_visit(lambda n: [o for o in self.get_edges(n) if filter(o)], start)
+
+    def __str__(self) -> str:
+        return f"{type(self).__name__}(V={self.node_cnt}, E={self.edge_cnt})"
+
+    @abstractmethod
+    def __iter__(self) -> Iterator[T]: ...
+
+    # TODO subgraph should return a new GraphView
+    @abstractmethod
+    def subgraph(self, node_filter: Callable[[T], bool]) -> Iterable[T]: ...
+
+    def subgraph_type(self, *types: type[T]):
+        return self.subgraph(lambda n: isinstance(n, types))
+
+    # TODO remove boilerplate for lazy, if it becomes a bit more usable
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        if LAZY:
+            lazy_construct(cls)

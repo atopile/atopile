@@ -5,6 +5,9 @@ import inspect
 import logging
 from abc import abstractmethod
 from collections import defaultdict
+from dataclasses import dataclass
+from enum import StrEnum
+from functools import cache
 from textwrap import indent
 from typing import (
     Any,
@@ -14,6 +17,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Self,
     SupportsFloat,
     SupportsInt,
     Type,
@@ -99,7 +103,10 @@ def get_key(haystack: dict[T, U], needle: U) -> T:
 class KeyErrorNotFound(KeyError): ...
 
 
-class KeyErrorAmbiguous(KeyError): ...
+class KeyErrorAmbiguous(KeyError):
+    def __init__(self, duplicates: list, *args: object) -> None:
+        super().__init__(*args)
+        self.duplicates = duplicates
 
 
 def find(haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
@@ -107,7 +114,7 @@ def find(haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
     if not results:
         raise KeyErrorNotFound()
     if len(results) != 1:
-        raise KeyErrorAmbiguous()
+        raise KeyErrorAmbiguous(results)
     return results[0]
 
 
@@ -531,6 +538,71 @@ def try_or(
         return default
 
 
+class SharedReference[T]:
+    @dataclass
+    class Resolution[U, S]:
+        representative: S
+        object: U
+        old: U
+
+    def __init__(self, object: T):
+        self.object: T = object
+        self.links: set[Self] = set([self])
+
+    def link(self, other: Self):
+        assert type(self) is type(other), f"{type(self)=} {type(other)=}"
+        if self == other:
+            return
+
+        lhs, rhs = self, other
+        old = rhs.object
+
+        r_links = rhs.links
+        for rhs_ in r_links:
+            rhs_.object = lhs.object
+            rhs_.links = lhs.links
+
+        lhs.links.update(r_links)
+
+        return self.Resolution(lhs, lhs.object, old)
+
+    def set(self, obj: T):
+        self.object = obj
+        for link in self.links:
+            link.object = obj
+
+    def __call__(self) -> T:
+        return self.object
+
+    def __eq__(self, other: "SharedReference[T]"):
+        return self.object is other.object and self.links is other.links
+
+    def __hash__(self) -> int:
+        return hash(id(self))
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.object})"
+
+
+def bfs_visit[T](neighbours: Callable[[T], list[T]], nodes: Iterable[T]) -> set[T]:
+    """
+    Generic BFS (not depending on Graph)
+    Returns all visited nodes.
+    """
+    queue: list[T] = list(nodes)
+    visited: set[T] = set(queue)
+
+    while queue:
+        m = queue.pop(0)
+
+        for neighbour in neighbours(m):
+            if neighbour not in visited:
+                visited.add(neighbour)
+                queue.append(neighbour)
+
+    return visited
+
+
 class TwistArgs:
     def __init__(self, op: Callable) -> None:
         self.op = op
@@ -577,3 +649,108 @@ def at_exit(func: Callable):
     threading.Thread(target=wait_main).start()
 
     return f
+
+
+def lazy_construct(cls):
+    """
+    Careful: break deepcopy
+    """
+    old_init = cls.__init__
+
+    def new_init(self, *args, **kwargs):
+        self._init = False
+        self._old_init = lambda: old_init(self, *args, **kwargs)
+
+    def __getattr__(self, name: str, /):
+        assert "_init" in self.__dict__
+        if self._init:
+            raise AttributeError(name)
+        self._old_init()
+        self._init = True
+        return self.__getattribute__(name)
+
+    cls.__init__ = new_init
+    cls.__getattr__ = __getattr__
+    return cls
+
+
+# TODO figure out nicer way (with metaclass or decorator)
+class LazyMixin:
+    @property
+    def is_init(self):
+        return self.__dict__.get("_init", False)
+
+    def force_init(self):
+        if self.is_init:
+            return
+        self._old_init()
+        self._init = True
+
+
+class Lazy(LazyMixin):
+    def __init_subclass__(cls) -> None:
+        print("SUBCLASS", cls)
+        super().__init_subclass__()
+        lazy_construct(cls)
+
+
+class ConfigFlag:
+    def __init__(self, name: str, default: bool = False, descr: str = "") -> None:
+        self.name = name
+        self.default = default
+        self.descr = descr
+
+    @cache
+    def __bool__(self):
+        import os
+
+        key = f"FBRK_{self.name}"
+
+        if key not in os.environ:
+            return self.default
+
+        matches = [
+            (True, ["1", "true", "yes", "y"]),
+            (False, ["0", "false", "no", "n"]),
+        ]
+        val = os.environ[key].lower()
+
+        res = find(matches, lambda x: val in x[1])[0]
+
+        if res != self.default:
+            logger.warning(f"Config flag |{self.name}={res}|")
+
+        return res
+
+
+class ConfigFlagEnum[E: StrEnum]:
+    def __init__(self, enum: type[E], name: str, default: E, descr: str = "") -> None:
+        self.enum = enum
+        self._name = name
+        self.default = default
+        self.descr = descr
+
+        self._resolved = None
+
+    def get(self):
+        if self._resolved is not None:
+            return self._resolved
+
+        import os
+
+        key = f"FBRK_{self._name}"
+
+        if key not in os.environ:
+            return self.default
+
+        val = os.environ[key].upper()
+        res = self.enum[val]
+
+        if res != self.default:
+            logger.warning(f"Config flag |{self._name}={res}|")
+
+        self._resolved = res
+        return res
+
+    def __eq__(self, other) -> Any:
+        return self.get() == other

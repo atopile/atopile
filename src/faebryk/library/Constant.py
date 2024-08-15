@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Generic, SupportsAbs, TypeVar
+from typing import Generic, Self, SupportsAbs, TypeVar
 
 from faebryk.core.core import Parameter
 from faebryk.library.is_representable_by_single_value_defined import (
@@ -51,3 +51,6 @@ class Constant(Generic[PV], Parameter[PV]):
 
     def __format__(self, format_spec):
         return f"{super().__str__()}({format(self.value, format_spec)})"
+
+    def copy(self) -> Self:
+        return type(self)(self.value)

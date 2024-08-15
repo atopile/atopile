@@ -11,6 +11,7 @@ from typing import (
     Callable,
     Generic,
     Iterable,
+    Mapping,
     Optional,
     Sequence,
     Type,
@@ -18,7 +19,9 @@ from typing import (
     cast,
 )
 
+from faebryk.core.graph_backends.default import GraphImpl
 from faebryk.libs.util import (
+    ConfigFlag,
     Holder,
     NotNone,
     TwistArgs,
@@ -28,14 +31,16 @@ from faebryk.libs.util import (
     try_avoid_endless_recursion,
     unique_ref,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 logger = logging.getLogger(__name__)
 
-# Saves stack trace for each link for debugging
-# Can be enabled from test cases and apps, but very slow, so only for debug
-LINK_TB = False
-ID_REPR = False
+LINK_TB = ConfigFlag(
+    "LINK_TB",
+    False,
+    "Save stack trace for each link. Warning: Very slow! Just use for debug",
+)
+ID_REPR = ConfigFlag("ID_REPR", False, "Add object id to repr")
 
 # 1st order classes -----------------------------------------------------------
 T = TypeVar("T", bound="FaebrykLibObject")
@@ -266,6 +271,9 @@ class Link(FaebrykLibObject):
             f"([{', '.join(str(i) for i in self.get_connections())}])"
         )
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}()"
+
 
 class LinkSibling(Link):
     def __init__(self, interfaces: list[GraphInterface]) -> None:
@@ -311,18 +319,20 @@ class LinkNamedParent(LinkParent):
 
 
 class LinkDirect(Link):
+    class _(can_determine_partner_by_single_end.impl()):
+        def get_partner(_self, other: GraphInterface):
+            obj = _self.get_obj()
+            assert isinstance(obj, LinkDirect)
+            return [i for i in obj.interfaces if i is not other][0]
+
     def __init__(self, interfaces: list[GraphInterface]) -> None:
         super().__init__()
         assert len(set(map(type, interfaces))) == 1
         self.interfaces = interfaces
 
-        if len(interfaces) == 2:
-
-            class _(can_determine_partner_by_single_end.impl()):
-                def get_partner(_self, other: GraphInterface):
-                    return [i for i in self.interfaces if i is not other][0]
-
-            self.add_trait(_())
+        # TODO not really used, but quite heavy on the performance
+        # if len(interfaces) == 2:
+        #    self.add_trait(LinkDirect._())
 
     def get_connections(self) -> list[GraphInterface]:
         return self.interfaces
@@ -352,16 +362,20 @@ def LinkDirectShallow(if_filter: Callable[[LinkDirect, GraphInterface], bool]):
     return _LinkDirectShallow
 
 
+Graph = GraphImpl["GraphInterface"]
+
+
 class GraphInterface(FaebrykLibObject):
+    GT = Graph
+
     def __init__(self) -> None:
         super().__init__()
-        self.connections: list[Link] = []
+        self.G = self.GT()
+
         # can't put it into constructor
         # else it needs a reference when defining IFs
         self._node: Optional[Node] = None
         self.name: str = type(self).__name__
-
-        self.cache: dict[GraphInterface, Link] = {}
 
     @property
     def node(self):
@@ -371,45 +385,66 @@ class GraphInterface(FaebrykLibObject):
     def node(self, value: Node):
         self._node = value
 
+    # Graph stuff
+    @property
+    def edges(self) -> Mapping[GraphInterface, Link]:
+        return self.G.get_edges(self)
+
+    def get_links(self) -> list[Link]:
+        return list(self.edges.values())
+
+    def get_links_by_type[T: Link](self, link_type: type[T]) -> list[T]:
+        return [link for link in self.get_links() if isinstance(link, link_type)]
+
+    @property
+    @deprecated("Use get_links")
+    def connections(self):
+        return self.get_links()
+
+    def get_direct_connections(self) -> set[GraphInterface]:
+        return set(self.edges.keys())
+
+    def is_connected(self, other: GraphInterface):
+        return self.G.is_connected(self, other)
+
+    # Less graph-specific stuff
+
     # TODO make link trait to initialize from list
     def connect(self, other: Self, linkcls=None) -> Self:
-        assert self.node is not None
         assert other is not self
 
         if linkcls is None:
             linkcls = LinkDirect
         link = linkcls([other, self])
 
-        assert link not in self.connections, f"{link}"
-        assert link not in other.connections
-        self.connections.append(link)
-        other.connections.append(link)
+        _, no_path = self.G.merge(other.G)
+
+        if not no_path:
+            dup = self.is_connected(other)
+            assert (
+                not dup or type(dup) is linkcls
+            ), f"Already connected with different link type: {dup}"
+
+        self.G.add_edge(self, other, link=link)
+
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"GIF connection: {link}")
 
-        self.cache[other] = link
-        other.cache[self] = link
         return self
 
-    def get_direct_connections(self) -> set[GraphInterface]:
-        return set(self.cache.keys())
-
-    def _is_connected(self, other: GraphInterface):
-        return self is other or self.cache.get(other)
-
-    def is_connected(self, other: GraphInterface):
-        return self._is_connected(other) or other._is_connected(self)
-
-    def get_full_name(self):
-        return f"{self.node.get_full_name()}.{self.name}"
+    def get_full_name(self, types: bool = False):
+        typestr = f"|{type(self).__name__}|" if types else ""
+        return f"{self.node.get_full_name(types=types)}.{self.name}{typestr}"
 
     def __str__(self) -> str:
         return f"{str(self.node)}.{self.name}"
 
     @try_avoid_endless_recursion
     def __repr__(self) -> str:
+        id_str = f"(@{hex(id(self))})" if ID_REPR else ""
+
         return (
-            super().__repr__() + f"| {self.get_full_name()}"
+            f"{self.get_full_name(types=True)}{id_str}"
             if self._node is not None
             else "| <No None>"
         )
@@ -424,7 +459,7 @@ class GraphInterfaceHierarchical(GraphInterface):
     def get_children(self) -> list[tuple[str, Node]]:
         assert self.is_parent
 
-        hier_conns = [c for c in self.connections if isinstance(c, LinkNamedParent)]
+        hier_conns = self.get_links_by_type(LinkNamedParent)
         if len(hier_conns) == 0:
             return []
 
@@ -433,16 +468,11 @@ class GraphInterfaceHierarchical(GraphInterface):
     def get_parent(self) -> tuple[Node, str] | None:
         assert not self.is_parent
 
-        hier_conns = [c for c in self.connections if isinstance(c, LinkNamedParent)]
-        if len(hier_conns) == 0:
+        conns = self.get_links_by_type(LinkNamedParent)
+        if not conns:
             return None
-        # TODO reconsider this invariant
-        assert (
-            len(hier_conns) == 1
-        ), f"Multiple parents: {[c.get_parent().node for c in hier_conns]}"
-
-        conn = hier_conns[0]
-        assert isinstance(conn, LinkNamedParent)
+        assert len(conns) == 1
+        conn = conns[0]
         parent = conn.get_parent()
 
         return parent.node, conn.name
@@ -523,9 +553,7 @@ class Node(FaebrykLibObject):
         self.NODEs = Node.NODES()(self)
 
     def get_graph(self):
-        from faebryk.core.graph import Graph
-
-        return Graph([self])
+        return self.GIFs.self.G
 
     def get_parent(self):
         return self.GIFs.parent.get_parent()
@@ -569,10 +597,23 @@ class Parameter(Generic[PV], Node):
 
         return GIFS
 
+    @classmethod
+    def PARAMS(cls):
+        class PARAMS(Module.NodesCls(Parameter)):
+            # workaround to help pylance
+            def get_all(self) -> list[Parameter]:
+                return [cast_assert(Parameter, i) for i in super().get_all()]
+
+            def __str__(self) -> str:
+                return str({p.get_hierarchy()[-1][1]: p for p in self.get_all()})
+
+        return PARAMS
+
     def __init__(self) -> None:
         super().__init__()
 
         self.GIFs = Parameter.GIFS()(self)
+        self.PARAMs = Parameter.PARAMS()(self)
 
     T = TypeVar("T")
     U = TypeVar("U")
@@ -863,6 +904,9 @@ class Parameter(Generic[PV], Node):
         out = {gif.node for gif in self.GIFs.narrows.get_direct_connections()}
         assert all(isinstance(o, Parameter) for o in out)
         return cast(set[Parameter], out)
+
+    def copy(self) -> Self:
+        return type(self)()
 
 
 # -----------------------------------------------------------------------------

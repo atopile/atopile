@@ -4,7 +4,6 @@
 import logging
 import unittest
 
-from faebryk.core.graph import Graph
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
@@ -52,7 +51,7 @@ def _test_netlist_graph():
         )
 
     # make netlist
-    G = Graph([resistor1, resistor2])
+    G = resistor1.get_graph()
     attach_random_designators(G)
     override_names_with_designators(G)
     attach_nets_and_kicad_info(G)
