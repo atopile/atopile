@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, eq=True)
 class LayoutMatrix(Layout):
+    """
+    Distribute nodes in a matrix.
+
+    :param vector:x (spacing), y (spacing), r (rotation of the node).
+    :param distribution: x (number of rows), y (number of columns).
+    :param base: The base position to extrude from.
+    x (start), y (start), r (direction of extrusion), pcb layer.
+    """
+
     vector: tuple[float, float] | tuple[float, float, float]
     distribution: tuple[int, int]
     base: has_pcb_position.Point = has_pcb_position.Point(
@@ -37,17 +46,28 @@ class LayoutMatrix(Layout):
 
         number_of_nodes = len(node)
         number_of_distributions = self.distribution[0] * self.distribution[1]
+
         if number_of_nodes > number_of_distributions:
             raise ValueError(
                 f"Number of nodes ({number_of_nodes}) is more than we can distribute ({number_of_distributions})"  # noqa E501
             )
-        for i, n in enumerate(node):
-            vec_i = (
-                vector[0] * (i % self.distribution[0]),
-                vector[1] * (i // self.distribution[1]),
-                vector[2],
-                has_pcb_position.layer_type.NONE,
-            )
-            pos = Geometry.abs_pos(self.base, vec_i)
+        node_index = 0
+        for x in range(self.distribution[0]):
+            for y in range(self.distribution[1]):
+                if node_index >= number_of_nodes:
+                    logger.debug(
+                        f"No more nodes ({number_of_nodes}) to distribute ({number_of_distributions})"  # noqa E501
+                    )
+                    return
+                vec_i = (
+                    vector[0] * x,
+                    vector[1] * y,
+                    vector[2],
+                    has_pcb_position.layer_type.NONE,
+                )
+                pos = Geometry.abs_pos(self.base, vec_i)
 
-            n.add_trait(has_pcb_position_defined_relative_to_parent(pos))
+                node[node_index].add_trait(
+                    has_pcb_position_defined_relative_to_parent(pos)
+                )
+                node_index += 1

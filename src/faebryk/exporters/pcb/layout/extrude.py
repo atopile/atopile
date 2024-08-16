@@ -19,10 +19,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, eq=True)
 class LayoutExtrude(Layout):
+    """
+    Extrude nodes in a direction from a base position.
+
+    :param vector: x (spacing), y (spacing), r (rotation of the node).
+    :param base: The base position to extrude from.
+    x (start), y (start), r (direction of extrusion), pcb layer.
+    :param dynamic_rotation: If True, the rotation will be multiplied by the index
+    of the node, resulting in each consecutive node being rotated more.
+    """
+
     vector: tuple[float, float] | tuple[float, float, float]
     base: has_pcb_position.Point = has_pcb_position.Point(
         (0, 0, 0, has_pcb_position.layer_type.NONE)
     )
+    dynamic_rotation: bool = False
 
     def apply(self, *node: Node):
         """
@@ -38,7 +49,7 @@ class LayoutExtrude(Layout):
             vec_i = (
                 vector[0] * i,
                 vector[1] * i,
-                vector[2],
+                (vector[2] * (i if self.dynamic_rotation else 1)) % 360,
                 has_pcb_position.layer_type.NONE,
             )
             pos = Geometry.abs_pos(self.base, vec_i)
