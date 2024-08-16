@@ -38,7 +38,7 @@ from faebryk.libs.kicad.fileformats import (
     C_fp_text,
     C_kicad_pcb_file,
     C_line,
-    C_poly,
+    C_polygon,
     C_rect,
     C_stroke,
     C_text,
@@ -673,7 +673,9 @@ class PCB_Transformer:
                 layers=layers if len(layers) > 1 else None,
                 uuid=self.gen_uuid(mark=True),
                 name=f"layer_fill_{net.name}",
-                polygon=C_poly(C_poly.C_pts([point2d_to_coord(p) for p in polygon])),
+                polygon=C_polygon(
+                    C_polygon.C_pts([point2d_to_coord(p) for p in polygon])
+                ),
                 min_thickness=0.2,
                 filled_areas_thickness=False,
                 fill=Zone.C_fill(

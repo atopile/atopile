@@ -25,6 +25,19 @@ It only supports a specific subset of sexp that is used by KiCAD with following 
 
 @dataclass
 class sexp_field(dict[str, Any]):
+    """
+    Metadata for a field to be used in the sexp conversion
+
+    :param bool positional: If True, the fields position will be used instead
+    of its name
+    :param bool multidict: If True, the field will be converted to a list of
+    key-value pairs. Not compatible in combination with positional.
+    :param Callable key: Function to extract key from value in multidict
+    :param Any assert_value: Assert that the value is equal to this value
+    :param int order: Order of the field in the sexp, lower is first,
+    can be less than 0. Only used if not positional.
+    """
+
     positional: bool = False
     multidict: bool = False
     key: Callable[[Any], Any] | None = None
