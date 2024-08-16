@@ -3,7 +3,7 @@
 
 # re-exporting Quantity in-case we ever want to change it
 from pint import Quantity as _Quantity  # noqa: F401
-from pint import UnitRegistry
+from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
 from pint.util import UnitsContainer  # noqa: F401
 
 P = UnitRegistry()
