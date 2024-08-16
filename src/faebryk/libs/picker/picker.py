@@ -1,10 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from contextlib import contextmanager
 import logging
 import pprint
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from textwrap import indent
