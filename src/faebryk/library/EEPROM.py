@@ -11,6 +11,7 @@ from faebryk.library.has_single_electric_reference_defined import (
 )
 from faebryk.library.I2C import I2C
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 
@@ -35,7 +36,7 @@ class EEPROM(Module):
         #     modules, interfaces, parameters
         # ----------------------------------------
         class _PARAMs(Module.PARAMS()):
-            memory_size = TBD[int]()
+            memory_size = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

@@ -13,7 +13,7 @@ from faebryk.library.USB2_0_ESD_Protection import USB2_0_ESD_Protection
 from faebryk.library.USB_Type_C_Receptacle_14_pin_Vertical import (
     USB_Type_C_Receptacle_14_pin_Vertical,
 )
-from faebryk.libs.units import M, k
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 
@@ -41,13 +41,13 @@ class USB_C_PSU_Vertical(Module):
 
         self.NODEs = _NODEs(self)
 
-        self.NODEs.gnd_capacitor.PARAMs.capacitance.merge(100e-9)
-        self.NODEs.gnd_capacitor.PARAMs.rated_voltage.merge(16)
-        self.NODEs.gnd_resistor.PARAMs.resistance.merge(1 * M)
+        self.NODEs.gnd_capacitor.PARAMs.capacitance.merge(100 * P.nF)
+        self.NODEs.gnd_capacitor.PARAMs.rated_voltage.merge(16 * P.V)
+        self.NODEs.gnd_resistor.PARAMs.resistance.merge(1 * P.Mohm)
         for res in self.NODEs.configuration_resistors:
-            res.PARAMs.resistance.merge(5.1 * k)
+            res.PARAMs.resistance.merge(5.1 * P.kohm)
         self.NODEs.fuse.PARAMs.fuse_type.merge(Fuse.FuseType.RESETTABLE)
-        self.NODEs.fuse.PARAMs.trip_current.merge(Constant(1))
+        self.NODEs.fuse.PARAMs.trip_current.merge(Constant(1 * P.A))
 
         # alliases
         vcon = self.NODEs.usb_connector.IFs.vbus

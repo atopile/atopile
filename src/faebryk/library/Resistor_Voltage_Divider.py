@@ -8,6 +8,7 @@ from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.Electrical import Electrical
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,8 @@ class Resistor_Voltage_Divider(Module):
         self.IFs = _IFs(self)
 
         class _PARAMs(Module.PARAMS()):
-            ratio = TBD[float]()
-            max_current = TBD[float]()
+            ratio = TBD[Quantity]()
+            max_current = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

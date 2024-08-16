@@ -16,6 +16,7 @@ from faebryk.library.Resistor import Resistor
 from faebryk.library.Set import Set
 from faebryk.library.TBD import TBD
 from faebryk.library.UART_Base import UART_Base
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 core_logger.setLevel(logger.getEffectiveLevel())
@@ -23,9 +24,8 @@ core_logger.setLevel(logger.getEffectiveLevel())
 
 class TestParameters(unittest.TestCase):
     def test_operations(self):
-        T = TypeVar("T")
-
-        def assertIsInstance(obj, cls: type[T]) -> T:
+        def assertIsInstance[T: Parameter](obj: Parameter, cls: type[T]) -> T:
+            obj = obj.get_most_narrow()
             self.assertIsInstance(obj, cls)
             assert isinstance(obj, cls)
             return obj
@@ -46,6 +46,26 @@ class TestParameters(unittest.TestCase):
 
         R_TWO_THREE = Range(2, 3)
         self.assertEqual(assertIsInstance(R_ONE_TEN + R_TWO_THREE, Range), Range(3, 13))
+        self.assertEqual(assertIsInstance(R_ONE_TEN * R_TWO_THREE, Range), Range(2, 30))
+        self.assertEqual(assertIsInstance(R_ONE_TEN - R_TWO_THREE, Range), Range(-2, 8))
+        self.assertEqual(
+            assertIsInstance(R_ONE_TEN / R_TWO_THREE, Range), Range(1 / 3, 10 / 2)
+        )
+
+        # TBD Range
+        a = TBD[int]()
+        b = TBD[int]()
+        R_TBD = Range(a, b)
+        add = R_ONE_TEN + R_TBD
+        mul = R_ONE_TEN * R_TBD
+        sub = R_ONE_TEN - R_TBD
+        div = R_ONE_TEN / R_TBD
+        a.merge(Constant(2))
+        b.merge(Constant(3))
+        self.assertEqual(assertIsInstance(add, Range), Range(3, 13))
+        self.assertEqual(assertIsInstance(mul, Range), Range(2, 30))
+        self.assertEqual(assertIsInstance(sub, Range), Range(-2, 8))
+        self.assertEqual(assertIsInstance(div, Range), Range(1 / 3, 10 / 2))
 
         # Set
         S_FIVE_NINE = Set(set(Constant(x) for x in range(5, 10)))
@@ -59,6 +79,32 @@ class TestParameters(unittest.TestCase):
             assertIsInstance(S_FIVE_NINE + S_TEN_TWENTY_THIRTY, Set),
             Set(Constant(x + y) for x in range(5, 10) for y in [10, 20, 30]),
         )
+
+        # conjunctions
+        # with static values
+        R_ONE_TEN = Range(1, 10)
+        R_TWO_THREE = Range(2, 3)
+        self.assertEqual(R_ONE_TEN & R_TWO_THREE, Range(2, 3))
+        self.assertEqual(R_ONE_TEN & Range(5, 20), Range(5, 10))
+        self.assertEqual(R_ONE_TEN & 5, Constant(5))
+        self.assertEqual(R_ONE_TEN & Constant(5), Constant(5))
+        self.assertEqual(R_ONE_TEN & Set([1, 5, 8, 12]), Set([1, 5, 8]))
+        self.assertEqual(Set([1, 2, 3]) & Set([2, 3, 4]), Set([2, 3]))
+        self.assertEqual(Set([1, 2, 3]) & 3, Constant(3))
+        self.assertEqual(Constant(3) & 3, Constant(3))
+        self.assertEqual(Constant(2) & 3, Set([]))
+        self.assertEqual(R_ONE_TEN & [1, 2, 11], Set([1, 2]))
+        # with tbd
+        a = TBD[int]()
+        b = TBD[int]()
+        R_TBD = Range(a, b)
+        r_one_ten_con_tbd = R_ONE_TEN & R_TBD
+        assertIsInstance(r_one_ten_con_tbd, Operation)
+        a.merge(2)
+        b.merge(20)
+        self.assertEqual(assertIsInstance(r_one_ten_con_tbd, Range), Range(2, 10))
+
+        # TODO disjunctions
 
         # Operation
         token = TBD()
@@ -78,6 +124,12 @@ class TestParameters(unittest.TestCase):
         assertIsInstance(ONE + ANY(), Operation)
         assertIsInstance(TBD() + ANY(), Operation)
         assertIsInstance((TBD() + TBD()) + ANY(), Operation)
+
+        # Test quantities
+        self.assertEqual(Constant(1 * P.baud), 1 * P.baud)
+        self.assertEqual(Constant(1) * P.baud, 1 * P.baud)
+        self.assertEqual(Range(1, 10) * P.baud, Range(1 * P.baud, 10 * P.baud))
+        self.assertEqual(Set([1, 2]) * P.baud, Set([1 * P.baud, 2 * P.baud]))
 
     def test_resolution(self):
         T = TypeVar("T")
@@ -130,21 +182,21 @@ class TestParameters(unittest.TestCase):
 
         UART_A.connect(UART_B)
 
-        UART_A.PARAMs.baud.merge(Constant(9600))
+        UART_A.PARAMs.baud.merge(Constant(9600 * P.baud))
 
         for uart in [UART_A, UART_B]:
             self.assertEqual(
                 assertIsInstance(uart.PARAMs.baud.get_most_narrow(), Constant).value,
-                9600,
+                9600 * P.baud,
             )
 
-        UART_C.PARAMs.baud.merge(Range(1200, 115200))
+        UART_C.PARAMs.baud.merge(Range(1200 * P.baud, 115200 * P.baud))
         UART_A.connect(UART_C)
 
         for uart in [UART_A, UART_B, UART_C]:
             self.assertEqual(
                 assertIsInstance(uart.PARAMs.baud.get_most_narrow(), Constant).value,
-                9600,
+                9600 * P.baud,
             )
 
         resistor = Resistor()

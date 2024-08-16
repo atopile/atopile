@@ -5,6 +5,7 @@ from faebryk.library.can_attach_via_pinmap_equal import can_attach_via_pinmap_eq
 from faebryk.library.Footprint import Footprint
 from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
 from faebryk.library.Pad import Pad
+from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import times
 
 
@@ -13,9 +14,9 @@ class QFN(Footprint):
         self,
         pin_cnt: int,
         exposed_thermal_pad_cnt: int,
-        size_xy_mm: tuple[float, float],
-        pitch_mm: float,
-        exposed_thermal_pad_dimensions_mm: tuple[float, float],
+        size_xy: tuple[Quantity, Quantity],
+        pitch: Quantity,
+        exposed_thermal_pad_dimensions: tuple[Quantity, Quantity],
         has_thermal_vias: bool,
     ) -> None:
         super().__init__()
@@ -26,8 +27,8 @@ class QFN(Footprint):
         self.IFs = _IFs(self)
         assert exposed_thermal_pad_cnt > 0 or not has_thermal_vias
         assert (
-            exposed_thermal_pad_dimensions_mm[0] < size_xy_mm[0]
-            and exposed_thermal_pad_dimensions_mm[1] < size_xy_mm[1]
+            exposed_thermal_pad_dimensions[0] < size_xy[0]
+            and exposed_thermal_pad_dimensions[1] < size_xy[1]
         )
         from faebryk.library.has_kicad_footprint_equal_ifs import (
             has_kicad_footprint_equal_ifs,
@@ -39,11 +40,11 @@ class QFN(Footprint):
                 return "Package_DFN_QFN:QFN-{leads}-{ep}EP_{size_x}x{size_y}mm_P{pitch}mm_EP{ep_x}x{ep_y}mm{vias}".format(  # noqa: E501
                     leads=pin_cnt,
                     ep=exposed_thermal_pad_cnt,
-                    size_x=size_xy_mm[0],
-                    size_y=size_xy_mm[1],
-                    pitch=pitch_mm,
-                    ep_x=exposed_thermal_pad_dimensions_mm[0],
-                    ep_y=exposed_thermal_pad_dimensions_mm[1],
+                    size_x=size_xy[0].to(P.mm).m,
+                    size_y=size_xy[1].to(P.mm).m,
+                    pitch=pitch.to(P.mm).m,
+                    ep_x=exposed_thermal_pad_dimensions[0].to(P.mm).m,
+                    ep_y=exposed_thermal_pad_dimensions[1].to(P.mm).m,
                     vias="_ThermalVias" if has_thermal_vias else "",
                 )
 

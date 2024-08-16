@@ -6,6 +6,7 @@ from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.Range import Range
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 
@@ -17,13 +18,13 @@ class Crystal(Module):
         #     modules, interfaces, parameters
         # ----------------------------------------
         class _PARAMs(Module.PARAMS()):
-            frequency = TBD[float]()
+            frequency = TBD[Quantity]()
             frequency_tolerance = TBD[Range]()
             frequency_temperature_tolerance = TBD[Range]()
             frequency_ageing = TBD[Range]()
-            equivalent_series_resistance = TBD[float]()
-            shunt_capacitance = TBD[float]()
-            load_impedance = TBD[float]()
+            equivalent_series_resistance = TBD[Quantity]()
+            shunt_capacitance = TBD[Quantity]()
+            load_impedance = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

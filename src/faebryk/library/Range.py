@@ -2,80 +2,71 @@
 # SPDX-License-Identifier: MIT
 
 from math import inf
-from typing import Any, Generic, Protocol, Self, TypeVar
+from typing import Any, Protocol, Self
 
 from faebryk.core.core import Parameter
 from faebryk.library.Constant import Constant
-from faebryk.library.is_representable_by_single_value_defined import (
-    is_representable_by_single_value_defined,
-)
-from faebryk.libs.exceptions import FaebrykException
-
-X = TypeVar("X", bound="_SupportsRangeOps")
 
 
 class _SupportsRangeOps(Protocol):
-    def __add__(self, __value: X) -> X: ...
+    def __add__(self, __value) -> "_SupportsRangeOps": ...
+    def __sub__(self, __value) -> "_SupportsRangeOps": ...
+    def __mul__(self, __value) -> "_SupportsRangeOps": ...
 
-    def __sub__(self, __value: X) -> X: ...
-
-    def __mul__(self, __value: X) -> X: ...
-
-    def __le__(self, __value: X) -> bool: ...
-
-    def __lt__(self, __value: X) -> bool: ...
-
-    def __ge__(self, __value: X) -> bool: ...
+    def __le__(self, __value) -> bool: ...
+    def __lt__(self, __value) -> bool: ...
+    def __ge__(self, __value) -> bool: ...
 
 
-PV = TypeVar("PV", bound=_SupportsRangeOps)
+class Range[PV: _SupportsRangeOps](Parameter[PV]):
+    type PV_or_PARAM = PV | Parameter[PV]
 
+    class MinMaxError(Exception): ...
 
-class Range(Generic[PV], Parameter[PV]):
-    def __init__(self, bound1: PV, bound2: PV) -> None:
+    def __init__(self, *bounds: PV | Parameter[PV]) -> None:
         super().__init__()
 
-        # TODO this should not be here, but be dynamically resolved during comparison
-        if isinstance(bound1, Range):
-            bound1 = bound1.min
-
-        if isinstance(bound2, Range):
-            bound2 = bound2.max
-
-        self.bounds = tuple(
+        self._bounds: list[Parameter[PV]] = [
             bound if isinstance(bound, Parameter) else Constant(bound)
-            for bound in (bound1, bound2)
-        )
+            for bound in bounds
+        ]
 
-    def _get_narrowed_bounds(self) -> tuple[PV, PV]:
-        return [b.get_most_narrow() for b in self.bounds]
-
-    @property
-    def min(self) -> PV:
-        return min(self._get_narrowed_bounds())
+    def _get_narrowed_bounds(self) -> list[Parameter[PV]]:
+        return list({b.get_most_narrow() for b in self._bounds})
 
     @property
-    def max(self) -> PV:
-        return max(self._get_narrowed_bounds())
+    def min(self) -> Parameter[PV]:
+        try:
+            return min(self._get_narrowed_bounds())
+        except TypeError:
+            raise self.MinMaxError()
 
-    def pick(self, value_to_check: PV):
-        if not self.min <= value_to_check <= self.max:
-            raise FaebrykException(
-                f"Value not in range: {value_to_check} not in [{self.min},{self.max}]"
-            )
-        self.add_trait(is_representable_by_single_value_defined(value_to_check))
+    @property
+    def max(self) -> Parameter[PV]:
+        try:
+            return max(self._get_narrowed_bounds())
+        except TypeError:
+            raise self.MinMaxError()
 
-    def contains(self, value_to_check: PV) -> bool:
-        return self.min <= value_to_check <= self.max
+    @property
+    def bounds(self) -> list[Parameter[PV]]:
+        try:
+            return [self.min, self.max]
+        except self.MinMaxError:
+            return self._get_narrowed_bounds()
 
-    def as_tuple(self) -> tuple[PV, PV]:
+    def as_tuple(self) -> tuple[Parameter[PV], Parameter[PV]]:
         return (self.min, self.max)
 
-    def as_center_tuple(self) -> tuple[PV, PV]:
-        return (self.min + self.max) / 2, (self.max - self.min) / 2
+    def as_center_tuple(self, relative=False) -> tuple[Parameter[PV], Parameter[PV]]:
+        center = (self.min + self.max) / 2
+        delta = (self.max - self.min) / 2
+        if relative:
+            delta /= center
+        return center, delta
 
     @classmethod
-    def from_center(cls, center: PV, delta: PV) -> "Range[PV]":
+    def from_center(cls, center: PV_or_PARAM, delta: PV_or_PARAM) -> "Range[PV]":
         return cls(center - delta, center + delta)
 
     @classmethod
@@ -83,30 +74,39 @@ class Range(Generic[PV], Parameter[PV]):
         return cls.from_center(center, center * factor)
 
     @classmethod
-    def lower_bound(cls, lower: PV) -> "Range[PV]":
-        # TODO range should take params as bounds
-        return cls(lower, inf)
+    def _with_bound(cls, bound: PV_or_PARAM, other: float) -> "Range[PV]":
+        from faebryk.core.util import with_same_unit
+
+        try:
+            other = with_same_unit(other, bound)
+        except NotImplementedError:
+            raise NotImplementedError("Specify zero/inf manually in params")
+
+        return cls(bound, other)
 
     @classmethod
-    def upper_bound(cls, upper: PV) -> "Range[PV]":
-        # TODO range should take params as bounds
-        return cls(0, upper)
+    def lower_bound(cls, lower: PV_or_PARAM) -> "Range[PV]":
+        return cls._with_bound(lower, inf)
+
+    @classmethod
+    def upper_bound(cls, upper: PV_or_PARAM) -> "Range[PV]":
+        return cls._with_bound(upper, 0)
 
     def __str__(self) -> str:
-        bounds = self._get_narrowed_bounds()
-        return super().__str__() + f"({bounds[0]} <-> {bounds[1]})"
+        bounds = map(str, self.bounds)
+        return super().__str__() + f"({', '.join(bounds)})"
 
     def __repr__(self):
-        bounds = self._get_narrowed_bounds()
-        return super().__repr__() + f"({bounds[0]!r} <-> {bounds[1]!r})"
+        bounds = map(repr, self.bounds)
+        return super().__repr__() + f"({', '.join(bounds)})"
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Range):
             return False
-        return set(self.bounds) == set(other.bounds)
+        return self.bounds == other.bounds
 
     def __hash__(self) -> int:
-        return hash(self.bounds)
+        return sum(hash(b) for b in self._bounds)
 
     # comparison operators
     def __le__(self, other) -> bool:
@@ -122,10 +122,18 @@ class Range(Generic[PV], Parameter[PV]):
         return self.min > other
 
     def __format__(self, format_spec):
-        return (
-            f"{super().__str__()}({format(self.bounds[0], format_spec)} <-> "
-            f"{format(self.bounds[1], format_spec)})"
-        )
+        bounds = [format(b, format_spec) for b in self._get_narrowed_bounds()]
+        return f"{super().__str__()}({', '.join(bounds)})"
 
-    def copy(self) -> Self:
-        return type(self)(*self.bounds)
+    def __copy__(self) -> Self:
+        return type(self)(*self._bounds)
+
+    def get_most_narrow(self) -> Parameter[PV]:
+        # out = super().get_most_narrow()
+        ## compress into constant if possible
+        # if out is self and len(set(map(id, self.bounds))) == 1:
+        #    out.merge(self.bounds[0])
+        return super().get_most_narrow()
+
+    def __contains__(self, other: PV_or_PARAM) -> bool:
+        return self.min <= other and self.max >= other

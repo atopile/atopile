@@ -21,6 +21,7 @@ from faebryk.library.has_single_electric_reference_defined import (
 from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.TBD import TBD
 from faebryk.library.UART_Base import UART_Base
+from faebryk.libs.units import P
 
 
 class HLK_LD2410B_P(Module):
@@ -113,4 +114,4 @@ class HLK_LD2410B_P(Module):
             )
         )
 
-        self.IFs.uart.PARAMs.baud.merge(Constant(256000))
+        self.IFs.uart.PARAMs.baud.merge(Constant(256 * P.kbaud))

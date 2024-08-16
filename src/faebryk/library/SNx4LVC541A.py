@@ -3,6 +3,7 @@
 
 import faebryk.library._F as F
 from faebryk.core.core import Module
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 
@@ -46,7 +47,7 @@ class SNx4LVC541A(Module):
         # ----------------------------------------
         #                parameters
         # ----------------------------------------
-        self.IFs.vcc.PARAMs.voltage.merge(F.Range.upper_bound(3.6))
+        self.IFs.vcc.PARAMs.voltage.merge(F.Range.upper_bound(3.6 * P.V))
 
         # ----------------------------------------
         #                aliases

@@ -9,6 +9,7 @@ from faebryk.library.Battery import Battery
 from faebryk.library.Constant import Constant
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import P
 
 
 class ButtonCell(Battery):
@@ -24,13 +25,13 @@ class ButtonCell(Battery):
         @property
         def voltage(self) -> Parameter:
             return {
-                self.Alkaline: Constant(1.5),
-                self.SilverOxide: Constant(1.55),
-                self.ZincAir: Constant(1.65),
-                self.Lithium: Constant(3.0),
-                self.Mercury: Constant(1.35),
-                self.NickelCadmium: Constant(1.2),
-                self.NickelMetalHydride: Constant(1.2),
+                self.Alkaline: Constant(1.5 * P.V),
+                self.SilverOxide: Constant(1.55 * P.V),
+                self.ZincAir: Constant(1.65 * P.V),
+                self.Lithium: Constant(3.0 * P.V),
+                self.Mercury: Constant(1.35 * P.V),
+                self.NickelCadmium: Constant(1.2 * P.V),
+                self.NickelMetalHydride: Constant(1.2 * P.V),
             }[self]
 
     class Shape(StrEnum):

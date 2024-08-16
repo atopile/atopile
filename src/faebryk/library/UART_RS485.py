@@ -12,6 +12,7 @@ from faebryk.library.Range import Range
 from faebryk.library.RS485 import RS485
 from faebryk.library.TBD import TBD
 from faebryk.library.UART_Base import UART_Base
+from faebryk.libs.units import P, Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,12 @@ class UART_RS485(Module):
         self.IFs = _IFs(self)
 
         class _PARAMs(Module.PARAMS()):
-            max_data_rate = TBD[int]()
-            gpio_voltage = TBD[float]()
+            max_data_rate = TBD[Quantity]()
+            gpio_voltage = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 
-        self.IFs.power.PARAMs.voltage.merge(Range(3.3, 5.0))
+        self.IFs.power.PARAMs.voltage.merge(Range(3.3 * P.V, 5.0 * P.V))
 
         self.IFs.power.get_trait(can_be_decoupled).decouple()
 

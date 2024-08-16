@@ -12,6 +12,7 @@ from faebryk.library.has_designator_prefix_defined import has_designator_prefix_
 from faebryk.library.Range import Range
 from faebryk.library.UART import UART
 from faebryk.library.USB2_0 import USB2_0
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +39,11 @@ class CH340x(Module):
 
         self.IFs.gpio_power.IFs.lv.connect(self.IFs.usb.IFs.usb_if.IFs.buspower.IFs.lv)
 
-        self.IFs.gpio_power.PARAMs.voltage.merge(Range(0, 5.3))
+        self.IFs.gpio_power.PARAMs.voltage.merge(Range(0 * P.V, 5.3 * P.V))
         self.IFs.gpio_power.get_trait(can_be_decoupled).decouple()
-        self.IFs.usb.IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(Range(4.0, 5.3))
+        self.IFs.usb.IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(
+            Range(4 * P.V, 5.3 * P.V)
+        )
 
         self.add_trait(has_designator_prefix_defined("U"))
         self.add_trait(

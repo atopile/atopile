@@ -11,7 +11,7 @@ from textwrap import indent
 from typing import Callable, Iterable
 
 from faebryk.core.core import Module, ModuleInterface, ModuleTrait, Parameter
-from faebryk.core.util import get_all_modules
+from faebryk.core.util import get_all_modules, pretty_params
 from faebryk.library.ANY import ANY
 from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
@@ -100,15 +100,9 @@ class PickErrorParams(PickError):
         if len(self.options) > MAX:
             options_str += f"\n... and {len(self.options) - MAX} more"
 
-        params = {
-            NotNone(p.get_parent())[1]: p.get_most_narrow()
-            for p in module.PARAMs.get_all()
-        }
-        params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
-
         message = (
             f"Could not find part for {module}"
-            f"\nwith params:\n{indent(params_str, ' '*4)}"
+            f"\nwith params:\n{indent(pretty_params(module), ' '*4)}"
             f"\nin options:\n {indent(options_str, ' '*4)}"
         )
         super().__init__(message, module)

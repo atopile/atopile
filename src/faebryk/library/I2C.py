@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from enum import IntEnum
+from enum import Enum
 
 from faebryk.core.core import ModuleInterface
 from faebryk.library.ElectricLogic import ElectricLogic
@@ -10,7 +10,7 @@ from faebryk.library.has_single_electric_reference_defined import (
 )
 from faebryk.library.Range import Range
 from faebryk.library.TBD import TBD
-from faebryk.libs.units import M, k
+from faebryk.libs.units import P, Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class I2C(ModuleInterface):
         self.IFs = IFS(self)
 
         class PARAMS(ModuleInterface.PARAMS()):
-            frequency = TBD()
+            frequency = TBD[Quantity]()
 
         self.PARAMs = PARAMS(self)
 
@@ -44,11 +44,11 @@ class I2C(ModuleInterface):
 
         self.PARAMs.frequency.merge(other.PARAMs.frequency)
 
-    class SpeedMode(IntEnum):
-        low_speed = 10 * k
-        standard_speed = 100 * k
-        fast_speed = 400 * k
-        high_speed = 3.4 * M
+    class SpeedMode(Enum):
+        low_speed = 10 * P.khertz
+        standard_speed = 100 * P.khertz
+        fast_speed = 400 * P.khertz
+        high_speed = 3.4 * P.Mhertz
 
     @staticmethod
     def define_max_frequency_capability(mode: SpeedMode):

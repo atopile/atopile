@@ -75,4 +75,4 @@ class RP2040(Module):
         )
 
         # set parameters
-        # self.IFs.io_vdd.PARAMs.voltage.merge(Range(1.8, 3.63))
+        # self.IFs.io_vdd.PARAMs.voltage.merge(Range(1.8*P.V, 3.63*P.V))

@@ -8,6 +8,7 @@ from faebryk.library.Constant import Constant
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 
@@ -42,7 +43,7 @@ class Header(Module):
         self.IFs = _IFs(self)
 
         class _PARAMs(Module.PARAMS()):
-            pin_pitch = TBD[float]()
+            pin_pitch = TBD[Quantity]()
             pin_type = TBD[self.PinType]()
             pad_type = TBD[self.PadType]()
             angle = TBD[self.Angle]()

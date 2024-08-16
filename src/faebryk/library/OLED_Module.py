@@ -11,6 +11,7 @@ from faebryk.library.has_designator_prefix_defined import has_designator_prefix_
 from faebryk.library.I2C import I2C
 from faebryk.library.Range import Range
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class OLED_Module(Module):
 
         self.PARAMs = _PARAMs(self)
 
-        self.IFs.power.PARAMs.voltage.merge(Range(3.0, 5))
+        self.IFs.power.PARAMs.voltage.merge(Range(3.0 * P.V, 5 * P.V))
 
         self.IFs.power.get_trait(can_be_decoupled).decouple()
 

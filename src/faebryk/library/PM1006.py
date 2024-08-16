@@ -12,6 +12,7 @@ from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.Range import Range
 from faebryk.library.TBD import TBD
 from faebryk.library.UART_Base import UART_Base
+from faebryk.libs.units import P
 
 
 class PM1006(Module):
@@ -85,4 +86,4 @@ class PM1006(Module):
 
         self.IFs.power.PARAMs.voltage.merge(Range.from_center(5, 0.2))
 
-        self.IFs.data.PARAMs.baud.merge(Constant(9600))
+        self.IFs.data.PARAMs.baud.merge(Constant(9600 * P.baud))

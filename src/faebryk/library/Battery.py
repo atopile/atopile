@@ -5,14 +5,15 @@
 from faebryk.core.core import Module
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class Battery(Module):
     @classmethod
     def PARAMS(cls):
         class _PARAMs(super().PARAMS()):
-            voltage = TBD[float]()
-            capacity = TBD[float]()
+            voltage = TBD[Quantity]()
+            capacity = TBD[Quantity]()
 
         return _PARAMs
 

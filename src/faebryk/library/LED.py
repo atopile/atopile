@@ -10,6 +10,7 @@ from faebryk.library.Electrical import Electrical
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class LED(Diode):
@@ -24,8 +25,8 @@ class LED(Diode):
     @classmethod
     def PARAMS(cls):
         class _PARAMs(super().PARAMS()):
-            brightness = TBD[float]()
-            max_brightness = TBD[float]()
+            brightness = TBD[Quantity]()
+            max_brightness = TBD[Quantity]()
             color = TBD[cls.Color]()
 
         return _PARAMs
@@ -41,12 +42,12 @@ class LED(Diode):
             * self.PARAMs.max_current
         )
 
-    def set_intensity(self, intensity: Parameter[float]) -> None:
+    def set_intensity(self, intensity: Parameter[Quantity]) -> None:
         self.PARAMs.brightness.merge(intensity * self.PARAMs.max_brightness)
 
     def connect_via_current_limiting_resistor(
         self,
-        input_voltage: Parameter[float],
+        input_voltage: Parameter[Quantity],
         resistor: Resistor,
         target: Electrical,
         low_side: bool,

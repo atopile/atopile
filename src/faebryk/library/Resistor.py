@@ -20,6 +20,7 @@ from faebryk.library.has_simple_value_representation_based_on_params import (
 )
 from faebryk.library.TBD import TBD
 from faebryk.libs.picker.picker import PickError, has_part_picked_remove
+from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import times
 
 
@@ -34,9 +35,9 @@ class Resistor(Module):
         self.add_trait(can_bridge_defined(*self.IFs.unnamed))
 
         class PARAMS(super().PARAMS()):
-            resistance = TBD[float]()
-            rated_power = TBD[float]()
-            rated_voltage = TBD[float]()
+            resistance = TBD[Quantity]()
+            rated_power = TBD[Quantity]()
+            rated_voltage = TBD[Quantity]()
 
         self.PARAMs = PARAMS(self)
 
@@ -64,10 +65,10 @@ class Resistor(Module):
             assert m is self
 
             r = self.PARAMs.resistance.get_most_narrow()
-            if not F.Constant(0.0).is_more_specific_than(r):
+            if not F.Constant(0.0 * P.ohm).is_more_specific_than(r):
                 raise PickError("", self)
 
-            self.PARAMs.resistance.override(F.Constant(0.0))
+            self.PARAMs.resistance.override(F.Constant(0.0 * P.ohm))
             self.IFs.unnamed[0].connect(self.IFs.unnamed[1])
             self.add_trait(has_part_picked_remove())
 

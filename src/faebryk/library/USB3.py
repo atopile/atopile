@@ -4,6 +4,7 @@
 from faebryk.core.core import ModuleInterface
 from faebryk.library.Range import Range
 from faebryk.library.USB3_IF import USB3_IF
+from faebryk.libs.units import P
 
 
 class USB3(ModuleInterface):
@@ -19,4 +20,6 @@ class USB3(ModuleInterface):
             self.IFs.usb3_if.IFs.usb_if.IFs.buspower.IFs.lv
         )
 
-        self.IFs.usb3_if.IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(Range(4.75, 5.5))
+        self.IFs.usb3_if.IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(
+            Range(4.75 * P.V, 5.5 * P.V)
+        )

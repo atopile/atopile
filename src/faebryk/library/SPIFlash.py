@@ -6,6 +6,7 @@ from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.MultiSPI import MultiSPI
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class SPIFlash(Module):
@@ -19,7 +20,7 @@ class SPIFlash(Module):
         self.IFs = IFS(self)
 
         class PARAMS(ModuleInterface.PARAMS()):
-            memory_size = TBD[int]()
+            memory_size = TBD[Quantity]()
 
         self.PARAMs = PARAMS(self)
 

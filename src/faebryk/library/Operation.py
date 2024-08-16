@@ -52,8 +52,10 @@ class Operation(Generic[PV], Parameter[PV]):
         except KeyError:
             ...
 
+        n = self.get_most_narrow()
+        rep = repr(n) if n is not self else super().__repr__()
         return (
-            super().__repr__()
+            rep
             + f"[{fname}]"
             + f"(\n{'\n'.join(indent(repr(o), '  ') for o in operands)}\n)"
         )

@@ -27,6 +27,7 @@ from faebryk.libs.examples.buildutil import (
     apply_design_to_pcb,
 )
 from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ class SubArray(Module):
         self.NODEs = _NODES(self)
 
         for resistor in self.NODEs.resistors:
-            resistor.PARAMs.resistance.merge(F.Constant(1000))
+            resistor.PARAMs.resistance.merge(F.Constant(1000 * P.ohm))
             resistor.IFs.unnamed[0].connect(self.IFs.unnamed[0])
             resistor.IFs.unnamed[1].connect(self.IFs.unnamed[1])
 

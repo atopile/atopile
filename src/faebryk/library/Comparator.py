@@ -12,6 +12,7 @@ from faebryk.library.has_simple_value_representation_based_on_params import (
     has_simple_value_representation_based_on_params,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class Comparator(Module):
@@ -24,11 +25,11 @@ class Comparator(Module):
         super().__init__()
 
         class _PARAMs(self.PARAMS()):
-            common_mode_rejection_ratio = TBD[float]()
-            input_bias_current = TBD[float]()
-            input_hysteresis_voltage = TBD[float]()
-            input_offset_voltage = TBD[float]()
-            propagation_delay = TBD[float]()
+            common_mode_rejection_ratio = TBD[Quantity]()
+            input_bias_current = TBD[Quantity]()
+            input_hysteresis_voltage = TBD[Quantity]()
+            input_offset_voltage = TBD[Quantity]()
+            propagation_delay = TBD[Quantity]()
             output_type = TBD[Comparator.OutputType]()
 
         self.PARAMs = _PARAMs(self)

@@ -17,6 +17,7 @@ from faebryk.library.has_simple_value_representation_based_on_params import (
     has_simple_value_representation_based_on_params,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class LDO(Module):
@@ -31,14 +32,14 @@ class LDO(Module):
     @classmethod
     def PARAMS(cls):
         class _PARAMs(super().PARAMS()):
-            max_input_voltage = TBD[float]()
-            output_voltage = TBD[float]()
+            max_input_voltage = TBD[Quantity]()
+            output_voltage = TBD[Quantity]()
             output_polarity = TBD[LDO.OutputPolarity]()
             output_type = TBD[LDO.OutputType]()
-            output_current = TBD[float]()
-            psrr = TBD[float]()
-            dropout_voltage = TBD[float]()
-            quiescent_current = TBD[float]()
+            output_current = TBD[Quantity]()
+            psrr = TBD[Quantity]()
+            dropout_voltage = TBD[Quantity]()
+            quiescent_current = TBD[Quantity]()
 
         return _PARAMs
 

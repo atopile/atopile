@@ -10,12 +10,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import indent
-from typing import Any, Callable, Generator, Self, Sequence, TypeVar
+from typing import Any, Callable, Generator, Self, Sequence
 
 import faebryk.library._F as F
 import patoolib
 import requests
 from faebryk.core.core import Module, Parameter
+from faebryk.core.util import pretty_param_tree, pretty_params
 from faebryk.libs.e_series import (
     E_SERIES_VALUES,
     ParamNotResolvedError,
@@ -32,8 +33,8 @@ from faebryk.libs.picker.picker import (
     PickError,
     has_part_picked_defined,
 )
-from faebryk.libs.units import float_to_si_str, si_str_to_float
-from faebryk.libs.util import at_exit, try_or
+from faebryk.libs.units import P, Quantity, UndefinedUnitError, to_si_str
+from faebryk.libs.util import at_exit, cast_assert, try_or
 from rich.progress import track
 from tortoise import Tortoise
 from tortoise.expressions import Q
@@ -208,22 +209,26 @@ class Component(Model):
         assert isinstance(self.extra, dict) and "attributes" in self.extra
 
         value_field = self.extra["attributes"][attribute_name]
-        # JLCPCB uses "u" for µ
-        value_field = value_field.replace("u", "µ")
         # parse fields like "850mV@1A"
         # TODO better to actually parse this
         if ignore_at:
             value_field = value_field.split("@")[0]
 
+        value_field = value_field.replace("cd", "candela")
+
         # parse fields like "1.5V~2.5V"
         if "~" in value_field:
             values = value_field.split("~")
-            values = [si_str_to_float(v) for v in values]
             if len(values) != 2:
                 raise ValueError(f"Invalid range from value '{value_field}'")
-            return F.Range(*values)
+            return F.Range(*(P.Quantity(v) for v in values))
 
-        value = si_str_to_float(value_field)
+        # unit hacks
+
+        try:
+            value = P.Quantity(value_field)
+        except UndefinedUnitError as e:
+            raise ValueError(f"Could not parse value field '{value_field}'") from e
 
         if not use_tolerance:
             return F.Constant(value)
@@ -246,9 +251,7 @@ class Component(Model):
 
         return F.Range.from_center_rel(value, tolerance)
 
-    T = TypeVar("T")
-
-    def get_parameter(self, m: MappingParameterDB) -> Parameter[T]:
+    def get_parameter(self, m: MappingParameterDB) -> Parameter:
         """
         Transform a component attribute to a parameter
 
@@ -307,7 +310,7 @@ class Component(Model):
                 default_f=lambda e: TBD_ParseError(
                     e, f"Failed to parse {m.param_name}"
                 ),
-                catch=(LookupError, ValueError),
+                catch=(LookupError, ValueError, AssertionError),
             )
             for m in mapping
         ]
@@ -352,6 +355,12 @@ class Component(Model):
 
         module.add_trait(has_part_picked_defined(JLCPCB_Part(self.partno)))
         attach(module, self.partno)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Attached component {self.partno} to module {module}: \n"
+                f"{indent(str(params), ' '*4)}\n--->\n"
+                f"{indent(pretty_params(module), ' '*4)}"
+            )
 
 
 class ComponentQuery:
@@ -378,16 +387,24 @@ class ComponentQuery:
         return self.results
 
     def get(self) -> list[Component]:
-        return self.results or asyncio.run(self.exec())
+        if self.results is not None:
+            return self.results
+        return asyncio.run(self.exec())
 
     def filter_by_stock(self, qty: int) -> Self:
         assert self.Q
         self.Q &= Q(stock__gte=qty)
         return self
 
-    def filter_by_value(self, value: Parameter, si_unit: str) -> Self:
+    def filter_by_value(self, value: Parameter[Quantity], si_unit: str) -> Self:
         assert self.Q
         value = value.get_most_narrow()
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Filtering by value:\n{indent(pretty_param_tree(value), ' '*4)}"
+            )
+
         if isinstance(value, F.ANY):
             return self
         assert not self.results
@@ -398,9 +415,14 @@ class ComponentQuery:
             raise ComponentQuery.ParamError(
                 value, f"Could not run e_series_intersect: {e}"
             ) from e
-        for r in intersection:
-            assert isinstance(r, F.Constant)
-            si_val = float_to_si_str(r.value, si_unit).replace("µ", "u")
+        si_vals = [
+            to_si_str(cast_assert(F.Constant, r).value, si_unit)
+            .replace("µ", "u")
+            .replace("inf", "∞")
+            for r in intersection
+        ]
+        logger.debug(f"Possible values: {si_vals}")
+        for si_val in si_vals:
             value_query |= Q(description__contains=f" {si_val}")
         self.Q &= value_query
         return self

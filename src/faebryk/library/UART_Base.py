@@ -7,6 +7,7 @@ from faebryk.library.has_single_electric_reference_defined import (
     has_single_electric_reference_defined,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class UART_Base(ModuleInterface):
@@ -20,7 +21,7 @@ class UART_Base(ModuleInterface):
         self.IFs = IFS(self)
 
         class PARAMS(ModuleInterface.PARAMS()):
-            baud = TBD()
+            baud = TBD[Quantity]()
 
         self.PARAMs = PARAMS(self)
 

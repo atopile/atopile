@@ -20,6 +20,7 @@ from faebryk.library.has_simple_value_representation_based_on_params import (
     has_simple_value_representation_based_on_params,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,8 @@ class Capacitor(Module):
         self.IFs = _IFs(self)
 
         class _PARAMs(Module.PARAMS()):
-            capacitance = TBD[float]()
-            rated_voltage = TBD[float]()
+            capacitance = TBD[Quantity]()
+            rated_voltage = TBD[Quantity]()
             temperature_coefficient = TBD[Capacitor.TemperatureCoefficient]()
 
         self.PARAMs = _PARAMs(self)

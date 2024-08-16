@@ -5,11 +5,12 @@ from faebryk.library.can_attach_via_pinmap_equal import can_attach_via_pinmap_eq
 from faebryk.library.Footprint import Footprint
 from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
 from faebryk.library.Pad import Pad
+from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import times
 
 
 class DIP(Footprint):
-    def __init__(self, pin_cnt: int, spacing_mm: float, long_pads: bool) -> None:
+    def __init__(self, pin_cnt: int, spacing: Quantity, long_pads: bool) -> None:
         super().__init__()
 
         class _IFs(Footprint.IFS()):
@@ -25,7 +26,7 @@ class DIP(Footprint):
             def get_kicad_footprint() -> str:
                 return "Package_DIP:DIP-{leads}_W{spacing:.2f}mm{longpads}".format(
                     leads=pin_cnt,
-                    spacing=spacing_mm,
+                    spacing=spacing.to(P.mm).m,
                     longpads="_LongPads" if long_pads else "",
                 )
 

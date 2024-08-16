@@ -5,6 +5,7 @@ import unittest
 
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
 from faebryk.library.QFN import QFN
+from faebryk.libs.units import P
 
 
 class TestFootprints(unittest.TestCase):
@@ -13,25 +14,25 @@ class TestFootprints(unittest.TestCase):
             "Package_DFN_QFN:QFN-16-1EP_4x4mm_P0.5mm_EP2.45x2.45mm_ThermalVias": QFN(  # noqa: E501
                 pin_cnt=16,
                 exposed_thermal_pad_cnt=1,
-                size_xy_mm=(4, 4),
-                pitch_mm=0.5,
-                exposed_thermal_pad_dimensions_mm=(2.45, 2.45),
+                size_xy=(4 * P.mm, 4 * P.mm),
+                pitch=0.5 * P.mm,
+                exposed_thermal_pad_dimensions=(2.45 * P.mm, 2.45 * P.mm),
                 has_thermal_vias=True,
             ),
             "Package_DFN_QFN:QFN-12-1EP_3x3mm_P0.5mm_EP1.6x1.6mm": QFN(
                 pin_cnt=12,
                 exposed_thermal_pad_cnt=1,
-                size_xy_mm=(3, 3),
-                pitch_mm=0.5,
-                exposed_thermal_pad_dimensions_mm=(1.6, 1.6),
+                size_xy=(3 * P.mm, 3 * P.mm),
+                pitch=0.5 * P.mm,
+                exposed_thermal_pad_dimensions=(1.6 * P.mm, 1.6 * P.mm),
                 has_thermal_vias=False,
             ),
             "Package_DFN_QFN:QFN-20-1EP_3.5x3.5mm_P0.5mm_EP2x2mm": QFN(
                 pin_cnt=20,
                 exposed_thermal_pad_cnt=1,
-                size_xy_mm=(3.5, 3.5),
-                pitch_mm=0.5,
-                exposed_thermal_pad_dimensions_mm=(2, 2),
+                size_xy=(3.5 * P.mm, 3.5 * P.mm),
+                pitch=0.5 * P.mm,
+                exposed_thermal_pad_dimensions=(2 * P.mm, 2 * P.mm),
                 has_thermal_vias=False,
             ),
         }
@@ -51,9 +52,9 @@ class TestFootprints(unittest.TestCase):
             lambda: QFN(
                 pin_cnt=20,
                 exposed_thermal_pad_cnt=0,
-                size_xy_mm=(3.5, 3.5),
-                pitch_mm=0.5,
-                exposed_thermal_pad_dimensions_mm=(2.5, 2.5),
+                size_xy=(3.5 * P.mm, 3.5 * P.mm),
+                pitch=0.5 * P.mm,
+                exposed_thermal_pad_dimensions=(2.5 * P.mm, 2.5 * P.mm),
                 has_thermal_vias=True,
             ),
         )
@@ -64,9 +65,9 @@ class TestFootprints(unittest.TestCase):
             lambda: QFN(
                 pin_cnt=20,
                 exposed_thermal_pad_cnt=1,
-                size_xy_mm=(3.5, 3.5),
-                pitch_mm=0.5,
-                exposed_thermal_pad_dimensions_mm=(4.5, 2.5),
+                size_xy=(3.5 * P.mm, 3.5 * P.mm),
+                pitch=0.5 * P.mm,
+                exposed_thermal_pad_dimensions=(4.5 * P.mm, 2.5 * P.mm),
                 has_thermal_vias=False,
             ),
         )

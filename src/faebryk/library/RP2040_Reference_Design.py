@@ -14,7 +14,7 @@ from faebryk.library.RP2040 import RP2040
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.units import M
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -60,17 +60,21 @@ class RP2040_Reference_Design(Module):
         # ----------------------------------------
         #            parametrization
         # ----------------------------------------
-        self.IFs.power.PARAMs.voltage.merge(Constant(3.3))
+        self.IFs.power.PARAMs.voltage.merge(Constant(3.3 * P.V))
 
-        self.NODEs.flash.PARAMs.memory_size.merge(Constant(16 * M))
+        self.NODEs.flash.PARAMs.memory_size.merge(Constant(16 * P.Mbit))
 
         self.NODEs.led.NODEs.led.PARAMs.color.merge(LED.Color.GREEN)
         self.NODEs.led.NODEs.led.PARAMs.brightness.merge(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
         )
 
-        self.NODEs.usb_current_limmit_resistor[0].PARAMs.resistance.merge(Constant(27))
-        self.NODEs.usb_current_limmit_resistor[1].PARAMs.resistance.merge(Constant(27))
+        self.NODEs.usb_current_limmit_resistor[0].PARAMs.resistance.merge(
+            Constant(27 * P.ohm)
+        )
+        self.NODEs.usb_current_limmit_resistor[1].PARAMs.resistance.merge(
+            Constant(27 * P.ohm)
+        )
 
         # ----------------------------------------
         #              connections

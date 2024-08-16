@@ -10,6 +10,7 @@ from faebryk.library.Resistor import Resistor
 from faebryk.library.RS485 import RS485
 from faebryk.library.UART_RS485 import UART_RS485
 from faebryk.library.USB2_0 import USB2_0
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,12 @@ class USB_RS485(Module):
             self.NODEs.uart_rs485.IFs.power.IFs.lv,
         )
 
-        self.NODEs.termination.PARAMs.resistance.merge(Range.from_center(150, 1.5))
-        self.NODEs.polarization[0].PARAMs.resistance.merge(Range.from_center(680, 6.8))
-        self.NODEs.polarization[1].PARAMs.resistance.merge(Range.from_center(680, 6.8))
+        self.NODEs.termination.PARAMs.resistance.merge(
+            Range.from_center(150 * P.ohm, 1.5 * P.ohm)
+        )
+        self.NODEs.polarization[0].PARAMs.resistance.merge(
+            Range.from_center(680 * P.ohm, 6.8 * P.ohm)
+        )
+        self.NODEs.polarization[1].PARAMs.resistance.merge(
+            Range.from_center(680 * P.ohm, 6.8 * P.ohm)
+        )

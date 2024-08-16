@@ -14,6 +14,7 @@ from faebryk.library.has_designator_prefix_defined import (
     has_designator_prefix_defined,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ class Fuse(Module):
         class _PARAMs(Module.PARAMS()):
             fuse_type = TBD[Fuse.FuseType]()
             response_type = TBD[Fuse.ResponseType]()
-            trip_current = TBD[float]()
+            trip_current = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

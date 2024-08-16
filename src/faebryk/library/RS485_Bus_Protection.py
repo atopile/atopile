@@ -21,6 +21,7 @@ from faebryk.library.Range import Range
 from faebryk.library.Resistor import Resistor
 from faebryk.library.RS485 import RS485
 from faebryk.library.TVS import TVS
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -70,16 +71,18 @@ class RS485_Bus_Protection(Module):
         self.PARAMs = _PARAMs(self)
 
         if termination:
-            self.NODEs.termination_resistor.PARAMs.resistance.merge(Constant(120))
+            self.NODEs.termination_resistor.PARAMs.resistance.merge(
+                Constant(120 * P.ohm)
+            )
             self.IFs.rs485_out.IFs.diff_pair.IFs.p.connect_via(
                 self.NODEs.termination_resistor, self.IFs.rs485_out.IFs.diff_pair.IFs.n
             )
         if polarization:
             self.NODEs.polarization_resistors[0].PARAMs.resistance.merge(
-                Range(380, 420)
+                Range(380 * P.ohm, 420 * P.ohm)
             )
             self.NODEs.polarization_resistors[1].PARAMs.resistance.merge(
-                Range(380, 420)
+                Range(380 * P.ohm, 420 * P.ohm)
             )
             self.IFs.rs485_in.IFs.diff_pair.IFs.p.connect_via(
                 self.NODEs.polarization_resistors[0], self.IFs.power.IFs.hv
@@ -88,23 +91,27 @@ class RS485_Bus_Protection(Module):
                 self.NODEs.polarization_resistors[1], self.IFs.power.IFs.lv
             )
 
-        self.NODEs.current_limmiter_resistors[0].PARAMs.resistance.merge(Constant(2.7))
+        self.NODEs.current_limmiter_resistors[0].PARAMs.resistance.merge(
+            Constant(2.7 * P.ohm)
+        )
         # TODO: set power dissipation of resistor to 2W
-        self.NODEs.current_limmiter_resistors[1].PARAMs.resistance.merge(Constant(2.7))
+        self.NODEs.current_limmiter_resistors[1].PARAMs.resistance.merge(
+            Constant(2.7 * P.ohm)
+        )
         # TODO: set power dissipation of resistor to 2W
 
-        self.NODEs.gnd_couple_resistor.PARAMs.resistance.merge(Constant(1e6))
-        self.NODEs.gnd_couple_capacitor.PARAMs.capacitance.merge(Constant(1e-6))
-        self.NODEs.gnd_couple_capacitor.PARAMs.rated_voltage.merge(Constant(2e3))
+        self.NODEs.gnd_couple_resistor.PARAMs.resistance.merge(Constant(1 * P.Mohm))
+        self.NODEs.gnd_couple_capacitor.PARAMs.capacitance.merge(Constant(1 * P.uF))
+        self.NODEs.gnd_couple_capacitor.PARAMs.rated_voltage.merge(Constant(2 * P.kV))
 
-        self.NODEs.tvs.PARAMs.reverse_working_voltage.merge(Constant(8.5))
-        # self.NODEs.tvs.PARAMs.max_current.merge(Constant(41.7))
-        # self.NODEs.tvs.PARAMs.forward_voltage.merge(Range(9.44, 10.40))
+        self.NODEs.tvs.PARAMs.reverse_working_voltage.merge(Constant(8.5 * P.V))
+        # self.NODEs.tvs.PARAMs.max_current.merge(Constant(41.7*P.A))
+        # self.NODEs.tvs.PARAMs.forward_voltage.merge(Range(9.44*P.V, 10.40*P.V))
 
         for diode in self.NODEs.clamping_diodes:
-            diode.PARAMs.forward_voltage.merge(Constant(1.1))
-            diode.PARAMs.max_current.merge(Constant(1))
-            diode.PARAMs.reverse_working_voltage.merge(Constant(1e3))
+            diode.PARAMs.forward_voltage.merge(Constant(1.1 * P.V))
+            diode.PARAMs.max_current.merge(Constant(1 * P.A))
+            diode.PARAMs.reverse_working_voltage.merge(Constant(1 * P.kV))
 
         # connections
         # earth connections

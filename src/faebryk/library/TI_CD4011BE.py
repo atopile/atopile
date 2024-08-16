@@ -5,12 +5,13 @@ from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.CD4011 import CD4011
 from faebryk.library.DIP import DIP
 from faebryk.library.has_defined_footprint import has_defined_footprint
+from faebryk.libs.units import P
 
 
 class TI_CD4011BE(CD4011):
     def __init__(self):
         super().__init__()
-        fp = DIP(pin_cnt=14, spacing_mm=7.62, long_pads=False)
+        fp = DIP(pin_cnt=14, spacing=7.62 * P.mm, long_pads=False)
         self.add_trait(has_defined_footprint(fp))
         fp.get_trait(can_attach_via_pinmap).attach(
             {

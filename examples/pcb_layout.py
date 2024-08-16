@@ -16,6 +16,7 @@ from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
 from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
+from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.examples.buildutil import (
     apply_design_to_pcb,
 )
@@ -35,6 +36,12 @@ class App(Module):
         self.NODEs = _NODES(self)
 
         self.NODEs.leds.IFs.power.connect(self.NODEs.battery.IFs.power)
+
+        # Parametrize
+        self.NODEs.leds.NODEs.led.PARAMs.color.merge(F.LED.Color.YELLOW)
+        self.NODEs.leds.NODEs.led.PARAMs.brightness.merge(
+            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+        )
 
         # Layout
         Point = has_pcb_position.Point

@@ -3,6 +3,7 @@
 
 from faebryk.core.core import ModuleInterface
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class Electrical(ModuleInterface):
@@ -10,6 +11,6 @@ class Electrical(ModuleInterface):
         super().__init__()
 
         class PARAMS(ModuleInterface.PARAMS()):
-            potential = TBD()
+            potential = TBD[Quantity]()
 
         self.PARAMs = PARAMS(self)

@@ -10,6 +10,7 @@ from faebryk.library.has_designator_prefix_defined import has_designator_prefix_
 from faebryk.library.Range import Range
 from faebryk.library.TBD import TBD
 from faebryk.library.USB2_0 import USB2_0
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,9 @@ class USB2_0_ESD_Protection(Module):
 
         self.PARAMs = _PARAMs(self)
 
-        self.IFs.usb[0].IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(Range(4.75, 5.25))
+        self.IFs.usb[0].IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(
+            Range(4.75 * P.V, 5.25 * P.V)
+        )
 
         self.add_trait(
             can_bridge_defined(

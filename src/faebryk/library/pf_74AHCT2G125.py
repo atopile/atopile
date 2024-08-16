@@ -15,6 +15,7 @@ from faebryk.library.has_single_electric_reference_defined import (
     has_single_electric_reference_defined,
 )
 from faebryk.library.Range import Range
+from faebryk.libs.units import P
 
 
 class pf_74AHCT2G125(Module):
@@ -51,7 +52,7 @@ class pf_74AHCT2G125(Module):
             )
         )
 
-        self.IFs.power.PARAMs.voltage.merge(Range(4.5, 5.5))
+        self.IFs.power.PARAMs.voltage.merge(Range(4.5 * P.V, 5.5 * P.V))
 
         self.IFs.power.get_trait(can_be_decoupled).decouple()
 

@@ -10,7 +10,7 @@ from faebryk.library.has_single_electric_reference_defined import (
 )
 from faebryk.library.Resistor import Resistor
 from faebryk.library.USB_C import USB_C
-from faebryk.libs.units import k
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 
@@ -30,7 +30,7 @@ class USB_C_5V_PSU(Module):
             configuration_resistors = times(
                 2,
                 lambda: Resistor().builder(
-                    lambda r: r.PARAMs.resistance.merge(Constant(5.1 * k))
+                    lambda r: r.PARAMs.resistance.merge(Constant(5.1 * P.kohm))
                 ),
             )
 

@@ -15,6 +15,7 @@ from faebryk.library.I2C import I2C
 from faebryk.library.Range import Range
 from faebryk.library.UART_Base import UART_Base
 from faebryk.library.USB2_0 import USB2_0
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -62,12 +63,12 @@ class ESP32_C3(Module):
 
         # set power domain constraints to recommended operating conditions
         for power_domain in [self.IFs.vdd3p3_rtc, self.IFs.vdd3p3, self.IFs.vdda]:
-            power_domain.PARAMs.voltage.merge(Range.from_center(3.3, 0.3))
+            power_domain.PARAMs.voltage.merge(Range.from_center(3.3 * P.V, 0.3 * P.V))
         self.IFs.vdd3p3_cpu.PARAMs.voltage.merge(
-            Range(3.0, 3.6)
+            Range(3.0 * P.V, 3.6 * P.V)
         )  # TODO: max 3.3V when writing eFuses
         self.IFs.vdd_spi.PARAMs.voltage.merge(
-            Range.from_center(3.3, 0.3)
+            Range.from_center(3.3 * P.V, 0.3 * P.V)
         )  # TODO: when configured as input
 
         # connect all grounds to eachother and power
@@ -207,7 +208,7 @@ class ESP32_C3(Module):
         #                ]
         #            ]
         #            + [
-        #                Range(10 * k, 800 * k)
+        #                Range(10 * P.khertz, 800 * P.khertz)
         #            ],  # TODO: should be range 200k-800k, but breaks parameter merge
         #        )
         #    )

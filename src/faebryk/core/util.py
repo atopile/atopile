@@ -2,13 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import math
 from enum import Enum
+from textwrap import indent
 from typing import (
     Callable,
     Iterable,
-    Sequence,
-    SupportsFloat,
     cast,
 )
 
@@ -33,63 +31,13 @@ from faebryk.library.has_overriden_name_defined import has_overriden_name_define
 from faebryk.library.Range import Range
 from faebryk.library.Set import Set
 from faebryk.library.TBD import TBD
-from faebryk.libs.util import NotNone, cast_assert, round_str
+from faebryk.libs.units import Quantity, UnitsContainer, to_si_str
+from faebryk.libs.util import NotNone, cast_assert
 from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
 # Parameter ----------------------------------------------------------------------------
-
-
-def as_scientific(value: SupportsFloat, base=10):
-    if value == 0:
-        return 0, 0
-    exponent = math.floor(math.log(abs(value), base))
-    mantissa = value / (base**exponent)
-
-    return mantissa, exponent
-
-
-def unit_map(
-    value: SupportsFloat,
-    units: Sequence[str],
-    start: str | None = None,
-    base: int = 1000,
-    allow_out_of_bounds: bool = False,
-):
-    value = float(value)
-    start_idx = units.index(start) if start is not None else 0
-
-    mantissa, exponent = as_scientific(value, base=base)
-
-    available_exponent = max(min(exponent + start_idx, len(units) - 1), 0) - start_idx
-    exponent_difference = exponent - available_exponent
-
-    if not allow_out_of_bounds and exponent_difference:
-        raise ValueError(f"Value {value} with {exponent=} out of bounds for {units=}")
-
-    effective_mantissa = mantissa * (base**exponent_difference)
-    round_digits = round(math.log(base, 10) * (1 - exponent_difference))
-
-    idx = available_exponent + start_idx
-    rounded_mantissa = round(effective_mantissa, round_digits)
-    if rounded_mantissa == math.floor(rounded_mantissa):
-        rounded_mantissa = math.floor(rounded_mantissa)
-
-    out = f"{rounded_mantissa}{units[idx]}"
-
-    return out
-
-
-def get_unit_prefix(value: SupportsFloat, base: int = 1000):
-    if base == 1000:
-        units = ["f", "p", "n", "µ", "m", "", "k", "M", "G", "T", "P", "E"]
-    elif base == 1024:
-        units = ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"]
-    else:
-        raise NotImplementedError(f"Unsupported {base=}")
-
-    return unit_map(value, units, start="", base=base, allow_out_of_bounds=True)
 
 
 def enum_parameter_representation(param: Parameter, required: bool = False) -> str:
@@ -111,10 +59,15 @@ def enum_parameter_representation(param: Parameter, required: bool = False) -> s
 
 
 def as_unit(
-    param: Parameter, unit: str, base: int = 1000, required: bool = False
+    param: Parameter[Quantity],
+    unit: str | UnitsContainer,
+    base: int = 1000,
+    required: bool = False,
 ) -> str:
+    if base != 1000:
+        raise NotImplementedError("Only base 1000 supported")
     if isinstance(param, Constant):
-        return get_unit_prefix(param.value, base=base) + unit
+        return to_si_str(param.value, unit)
     elif isinstance(param, Range):
         return (
             as_unit(param.min, unit, base=base)
@@ -141,10 +94,10 @@ def as_unit_with_tolerance(
     if isinstance(param, Constant):
         return as_unit(param, unit, base=base)
     elif isinstance(param, Range):
-        center, delta = param.as_center_tuple()
-        delta_percent = round_str(delta / center * 100, 2)
+        center, delta = param.as_center_tuple(relative=True)
+        delta_percent_str = f"±{to_si_str(delta.value, "%", 0)}"
         return (
-            f"{as_unit(center, unit, base=base, required=required)} ±{delta_percent}%"
+            f"{as_unit(center, unit, base=base, required=required)} {delta_percent_str}"
         )
     elif isinstance(param, Set):
         return (
@@ -169,6 +122,16 @@ def get_parameter_max(param: Parameter):
     if isinstance(param, Set):
         return max(map(get_parameter_max, param.params))
     raise ValueError(f"Can't get max for {param}")
+
+
+def with_same_unit(to_convert: float | int, param: Parameter | Quantity | float | int):
+    if isinstance(param, Constant) and isinstance(param.value, Quantity):
+        return Quantity(to_convert, param.value.units)
+    if isinstance(param, Quantity):
+        return Quantity(to_convert, param.units)
+    if isinstance(param, (float, int)):
+        return to_convert
+    raise NotImplementedError(f"Unsupported {param=}")
 
 
 # --------------------------------------------------------------------------------------
@@ -394,6 +357,13 @@ def format_mif_tree(tree: dict[ModuleInterface, dict[ModuleInterface, dict]]) ->
     return json.dumps(str_tree(tree), indent=4)
 
 
+def get_param_tree(param: Parameter) -> list[tuple[Parameter, list]]:
+    out = []
+    for p in param.get_narrowed_siblings():
+        out.append((p, get_param_tree(p)))
+    return out
+
+
 # --------------------------------------------------------------------------------------
 
 # Connection utils ---------------------------------------------------------------------
@@ -600,6 +570,41 @@ def get_first_child_of_type[U: Node](node: Node, child_type: type[U]) -> U:
             if isinstance(child, child_type):
                 return child
     raise ValueError("No child of type found")
+
+
+# --------------------------------------------------------------------------------------
+
+# Printing -----------------------------------------------------------------------------
+
+
+def pretty_params(node: Module | ModuleInterface) -> str:
+    # TODO dont use get_all
+    params = {
+        NotNone(p.get_parent())[1]: p.get_most_narrow() for p in node.PARAMs.get_all()
+    }
+    params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
+
+    return params_str
+
+
+def pretty_param_tree(param: Parameter) -> str:
+    # TODO this is def broken for actual trees
+    # TODO i think the repr automatically resolves
+
+    tree = get_param_tree(param)
+    out = f"{param!r}"
+    next_levels = [tree]
+    while next_levels:
+        if any(next_levels):
+            out += indent("\n|\nv\n", " " * 12)
+        for next_level in next_levels:
+            for p, _ in next_level:
+                out += f"{p!r}"
+        next_levels = [
+            children for next_level in next_levels for _, children in next_level
+        ]
+
+    return out
 
 
 # --------------------------------------------------------------------------------------

@@ -13,17 +13,18 @@ from faebryk.library.has_simple_value_representation_based_on_param import (
     has_simple_value_representation_based_on_param,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class Diode(Module):
     @classmethod
     def PARAMS(cls):
         class _PARAMs(super().PARAMS()):
-            forward_voltage = TBD[float]()
-            max_current = TBD[float]()
-            current = TBD[float]()
-            reverse_working_voltage = TBD[float]()
-            reverse_leakage_current = TBD[float]()
+            forward_voltage = TBD[Quantity]()
+            max_current = TBD[Quantity]()
+            current = TBD[Quantity]()
+            reverse_working_voltage = TBD[Quantity]()
+            reverse_leakage_current = TBD[Quantity]()
 
         return _PARAMs
 
@@ -58,6 +59,6 @@ class Diode(Module):
         )
 
     def get_needed_series_resistance_for_current_limit(
-        self, input_voltage_V: Parameter[float]
-    ) -> Parameter[float]:
+        self, input_voltage_V: Parameter[Quantity]
+    ) -> Parameter[Quantity]:
         return (input_voltage_V - self.PARAMs.forward_voltage) / self.PARAMs.current

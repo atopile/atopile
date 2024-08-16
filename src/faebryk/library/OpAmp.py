@@ -13,6 +13,7 @@ from faebryk.library.has_simple_value_representation_based_on_params import (
     has_simple_value_representation_based_on_params,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class OpAmp(Module):
@@ -20,13 +21,13 @@ class OpAmp(Module):
         super().__init__()
 
         class _PARAMs(self.PARAMS()):
-            bandwidth = TBD[float]()
-            common_mode_rejection_ratio = TBD[float]()
-            input_bias_current = TBD[float]()
-            input_offset_voltage = TBD[float]()
-            gain_bandwidth_product = TBD[float]()
-            output_current = TBD[float]()
-            slew_rate = TBD[float]()
+            bandwidth = TBD[Quantity]()
+            common_mode_rejection_ratio = TBD[Quantity]()
+            input_bias_current = TBD[Quantity]()
+            input_offset_voltage = TBD[Quantity]()
+            gain_bandwidth_product = TBD[Quantity]()
+            output_current = TBD[Quantity]()
+            slew_rate = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

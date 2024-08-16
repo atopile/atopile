@@ -17,6 +17,7 @@ from faebryk.library.has_simple_value_representation_based_on_params import (
     has_simple_value_representation_based_on_params,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 
@@ -33,10 +34,10 @@ class Inductor(Module):
         self.add_trait(can_bridge_defined(*self.IFs.unnamed))
 
         class _PARAMs(super().PARAMS()):
-            inductance = TBD[float]()
-            self_resonant_frequency = TBD[float]()
-            rated_current = TBD[float]()
-            dc_resistance = TBD[float]()
+            inductance = TBD[Quantity]()
+            self_resonant_frequency = TBD[Quantity]()
+            rated_current = TBD[Quantity]()
+            dc_resistance = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

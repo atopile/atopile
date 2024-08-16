@@ -11,6 +11,7 @@ from faebryk.library.has_pin_association_heuristic_lookup_table import (
     has_pin_association_heuristic_lookup_table,
 )
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 
 class MOSFET(Module):
@@ -28,10 +29,10 @@ class MOSFET(Module):
         class _PARAMs(Module.PARAMS()):
             channel_type = TBD[MOSFET.ChannelType]()
             saturation_type = TBD[MOSFET.SaturationType]()
-            gate_source_threshold_voltage = TBD[float]()
-            max_drain_source_voltage = TBD[float]()
-            max_continuous_drain_current = TBD[float]()
-            on_resistance = TBD[float]()
+            gate_source_threshold_voltage = TBD[Quantity]()
+            max_drain_source_voltage = TBD[Quantity]()
+            max_continuous_drain_current = TBD[Quantity]()
+            on_resistance = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

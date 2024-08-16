@@ -21,6 +21,7 @@ from faebryk.core.util import specialize_interface, specialize_module
 from faebryk.library._F import Constant
 from faebryk.libs.examples.buildutil import apply_design_to_pcb
 from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -126,8 +127,8 @@ def App():
     ]
 
     # parametrizing
-    pull_down_resistor.PARAMs.resistance.merge(Constant(100e3))
-    power_source.IFs.power_out.PARAMs.voltage.merge(Constant(3))
+    pull_down_resistor.PARAMs.resistance.merge(Constant(100 * P.kohm))
+    power_source.IFs.power_out.PARAMs.voltage.merge(Constant(3 * P.V))
 
     # packaging
     e_switch.get_trait(F.can_attach_to_footprint).attach(

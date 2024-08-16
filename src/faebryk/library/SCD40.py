@@ -16,6 +16,7 @@ from faebryk.library.has_esphome_config import has_esphome_config
 from faebryk.library.I2C import I2C
 from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import P
 
 
 class SCD40(Module):
@@ -84,7 +85,7 @@ class SCD40(Module):
             )
         )
 
-        self.IFs.power.PARAMs.voltage.merge(Constant(3.3))
+        self.IFs.power.PARAMs.voltage.merge(Constant(3.3 * P.V))
 
         self.IFs.i2c.terminate()
         self.IFs.power.get_trait(can_be_decoupled).decouple()

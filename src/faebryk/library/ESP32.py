@@ -20,6 +20,7 @@ from faebryk.library.I2C import I2C
 from faebryk.library.JTAG import JTAG
 from faebryk.library.QFN import QFN
 from faebryk.library.UART_Base import UART_Base
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -274,10 +275,10 @@ class _ESP32_D0WD(ESP32):
             has_defined_footprint(
                 QFN(
                     pin_cnt=48,
-                    size_xy_mm=(5, 5),
-                    pitch_mm=0.350,
+                    size_xy=(5 * P.mm, 5 * P.mm),
+                    pitch=0.350 * P.mm,
                     exposed_thermal_pad_cnt=1,
-                    exposed_thermal_pad_dimensions_mm=(3.700, 3.700),
+                    exposed_thermal_pad_dimensions=(3.700 * P.mm, 3.700 * P.mm),
                     has_thermal_vias=True,
                 )
             )

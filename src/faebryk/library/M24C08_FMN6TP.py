@@ -18,6 +18,7 @@ from faebryk.library.has_single_electric_reference_defined import (
 )
 from faebryk.library.I2C import I2C
 from faebryk.library.SOIC import SOIC
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ class M24C08_FMN6TP(Module):
                     "8": x.power.IFs.hv,
                 }
             )
-        ).attach(SOIC(8, size_xy_mm=(3.9, 4.9), pitch_mm=1.27))
+        ).attach(SOIC(8, size_xy=(3.9 * P.mm, 4.9 * P.mm), pitch=1.27 * P.mm))
 
         self.add_trait(
             has_single_electric_reference_defined(

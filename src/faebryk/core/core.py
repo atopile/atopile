@@ -643,7 +643,7 @@ class Parameter(Generic[PV], Node):
             return pair[0]
 
         if pair := _is_pair(Constant, Range):
-            if not pair[1].contains(pair[0].value):
+            if pair[0] not in pair[1]:
                 raise self.MergeException("constant not in range")
             return pair[0]
 
@@ -653,7 +653,7 @@ class Parameter(Generic[PV], Node):
             max_ = min(p.max for p in pair)
             # except Exception:
             #    raise self.MergeException("range not resolvable")
-            if any(any(not p.contains(v) for p in pair) for v in (min_, max_)):
+            if any(any(v not in p for p in pair) for v in (min_, max_)):
                 raise self.MergeException("conflicting ranges")
             return Range(min_, max_)
 
@@ -756,7 +756,9 @@ class Parameter(Generic[PV], Node):
         return other_narrowed
 
     # TODO: replace with graph-based
-    def op(self, other: "Parameter[PV] | PV", op: Callable) -> "Parameter[PV]":
+    def arithmetic_op(
+        self, other: "Parameter[PV] | PV", op: Callable
+    ) -> "Parameter[PV]":
         from faebryk.library.ANY import ANY
         from faebryk.library.Constant import Constant
         from faebryk.library.Operation import Operation
@@ -765,7 +767,7 @@ class Parameter(Generic[PV], Node):
         from faebryk.library.TBD import TBD
 
         if not isinstance(other, Parameter):
-            return self.op(Constant(other), op)
+            other = Constant(other)
 
         op1 = self.get_most_narrow()
         op2 = other.get_most_narrow()
@@ -782,11 +784,29 @@ class Parameter(Generic[PV], Node):
             return Constant(op(pair[0].value, pair[1].value))
 
         if pair := _is_pair(Range, Range):
-            return Range(op(pair[0].min, pair[1].min), op(pair[0].max, pair[1].max))
+            try:
+                p0_min, p0_max = pair[0].min, pair[0].max
+                p1_min, p1_max = pair[1].min, pair[1].max
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+            return Range(
+                *(
+                    op(lhs, rhs)
+                    for lhs, rhs in [
+                        (p0_min, p1_min),
+                        (p0_max, p1_max),
+                        (p0_min, p1_max),
+                        (p0_max, p1_min),
+                    ]
+                )
+            )
 
         if pair := _is_pair(Constant, Range):
             sop = pair[2]
-            return Range(sop(pair[0], pair[1].min), sop(pair[0], pair[1].max))
+            try:
+                return Range(sop(pair[0], pair[1].min), sop(pair[0], pair[1].max))
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
 
         if pair := _is_pair(Parameter, ANY):
             sop = pair[2]
@@ -802,41 +822,88 @@ class Parameter(Generic[PV], Node):
 
         if pair := _is_pair(Parameter, Set):
             sop = pair[2]
-            return Set(nested.op(pair[0], sop) for nested in pair[1].params)
+            return Set(nested.arithmetic_op(pair[0], sop) for nested in pair[1].params)
 
         raise NotImplementedError
 
     def __add__(self, other: Parameter[PV] | PV):
-        return self.op(other, lambda a, b: a + b)
+        return self.arithmetic_op(other, lambda a, b: a + b)
 
     def __sub__(self, other: Parameter[PV] | PV):
-        return self.op(other, lambda a, b: a - b)
+        return self.arithmetic_op(other, lambda a, b: a - b)
 
-    def __mul__(self, other: Parameter[PV] | PV):
-        return self.op(other, lambda a, b: a * b)
+    def __mul__(self, other: Parameter[PV] | PV | float):
+        return self.arithmetic_op(other, lambda a, b: a * b)
 
-    def __truediv__(self, other: Parameter[PV] | PV):
-        return self.op(other, lambda a, b: a / b)
+    def __truediv__(self, other: Parameter[PV] | PV | float):
+        return self.arithmetic_op(other, lambda a, b: a / b)
 
-    def __int__(self):
+    def __and__(self, other: Parameter[PV] | PV | Iterable[PV]):
         from faebryk.library.Constant import Constant
+        from faebryk.library.Operation import Operation
+        from faebryk.library.Range import Range
+        from faebryk.library.Set import Set
 
-        p = self.get_most_narrow()
+        # TODO how much overlap does this have with merge?
 
-        if not isinstance(p, Constant):
-            raise ValueError()
+        if not isinstance(other, Parameter):
+            if isinstance(other, Iterable):
+                other = Set(other)
+            else:
+                other = Constant(other)
 
-        return int(p.value)
+        op1 = self.get_most_narrow()
+        op2 = other.get_most_narrow()
 
-    def __float__(self):
-        from faebryk.library.Constant import Constant
+        if op1 == op2:
+            return op1
 
-        p = self.get_most_narrow()
+        def _is_pair(type1: type[T], type2: type[U]) -> Optional[tuple[T, U, Callable]]:
+            if isinstance(op1, type1) and isinstance(op2, type2):
+                return op1, op2, op
+            if isinstance(op1, type2) and isinstance(op2, type1):
+                return op2, op1, TwistArgs(op)
 
-        if not isinstance(p, Constant):
-            raise ValueError()
+            return None
 
-        return float(p.value)
+        def op(a, b):
+            return a & b
+
+        # same types
+        if pair := _is_pair(Constant, Constant):
+            return Set([])
+        if pair := _is_pair(Set, Set):
+            return Set(pair[0].params.intersection(pair[1].params))
+        if pair := _is_pair(Range, Range):
+            try:
+                return Range(
+                    max(pair[0].min, pair[1].min),
+                    min(pair[0].max, pair[1].max),
+                )
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+
+        # diff types
+        if pair := _is_pair(Constant, Range):
+            try:
+                if pair[0] in pair[1]:
+                    return pair[0]
+                else:
+                    return Set([])
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+        if pair := _is_pair(Constant, Set):
+            if pair[0] in pair[1]:
+                return pair[0]
+            else:
+                return Set([])
+        if pair := _is_pair(Range, Set):
+            try:
+                return Set(i for i in pair[1].params if i in pair[0])
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+
+        return Operation((op1, op2), op)
 
     def get_most_narrow(self) -> Parameter[PV]:
         narrowers = {
@@ -863,7 +930,7 @@ class Parameter(Generic[PV], Node):
 
         params_set = list(params)
         if not params_set:
-            return TBD()
+            return TBD[PV]()
         it = iter(params_set)
         most_specific = next(it)
         for param in it:
@@ -878,13 +945,13 @@ class Parameter(Generic[PV], Node):
             return super().__str__()
         return str(narrowest)
 
-    @try_avoid_endless_recursion
-    def __repr__(self) -> str:
-        narrowest = self.get_most_narrow()
-        if narrowest is self:
-            return super().__repr__()
-        # return f"{super().__repr__()} -> {repr(narrowest)}"
-        return repr(narrowest)
+    # @try_avoid_endless_recursion
+    # def __repr__(self) -> str:
+    #    narrowest = self.get_most_narrow()
+    #    if narrowest is self:
+    #        return super().__repr__()
+    #    # return f"{super().__repr__()} -> {repr(narrowest)}"
+    #    return repr(narrowest)
 
     def get_narrowing_chain(self) -> list[Parameter]:
         out: list[Parameter] = [self]
@@ -901,12 +968,20 @@ class Parameter(Generic[PV], Node):
         return out
 
     def get_narrowed_siblings(self) -> set[Parameter]:
-        out = {gif.node for gif in self.GIFs.narrows.get_direct_connections()}
+        # TODO use more graphy way
+        out = {
+            gif.node
+            for gif in self.GIFs.narrows.get_direct_connections()
+            if gif.node is not self
+        }
         assert all(isinstance(o, Parameter) for o in out)
         return cast(set[Parameter], out)
 
-    def copy(self) -> Self:
+    def __copy__(self) -> Self:
         return type(self)()
+
+    def __deepcopy__(self, memo) -> Self:
+        return self.__copy__()
 
 
 # -----------------------------------------------------------------------------

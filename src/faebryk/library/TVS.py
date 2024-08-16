@@ -5,6 +5,7 @@ import logging
 
 from faebryk.library.Diode import Diode
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,6 @@ class TVS(Diode):
         super().__init__()
 
         class _PARAMs(Diode.PARAMS()):
-            reverse_breakdown_voltage = TBD()
+            reverse_breakdown_voltage = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)

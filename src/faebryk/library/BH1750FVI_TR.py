@@ -26,7 +26,7 @@ from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.Range import Range
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TBD import TBD
-from faebryk.libs.units import k, u
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +93,8 @@ class BH1750FVI_TR(Module):
 
         self.PARAMs = _PARAMs(self)
 
-        self.NODEs.dvi_capacitor.PARAMs.capacitance.merge(1 * u)
-        self.NODEs.dvi_resistor.PARAMs.resistance.merge(1 * k)
+        self.NODEs.dvi_capacitor.PARAMs.capacitance.merge(1 * P.uF)
+        self.NODEs.dvi_resistor.PARAMs.resistance.merge(1 * P.kohm)
 
         self.IFs.i2c.terminate()
 
@@ -125,7 +125,7 @@ class BH1750FVI_TR(Module):
         )
 
         # set constraints
-        self.IFs.power.PARAMs.voltage.merge(Range(2.4, 3.6))
+        self.IFs.power.PARAMs.voltage.merge(Range(2.4 * P.V, 3.6 * P.V))
 
         # internal connections
         ref = ElectricLogic.connect_all_module_references(self)
@@ -133,7 +133,7 @@ class BH1750FVI_TR(Module):
         ref.connect(self.IFs.power)
 
         self.IFs.power.get_trait(can_be_decoupled).decouple().PARAMs.capacitance.merge(
-            0.1 * u
+            0.1 * P.uF
         )
         # TODO: self.IFs.dvi.low_pass(self.IF.dvi_capacitor, self.IF.dvi_resistor)
 

@@ -9,6 +9,7 @@ from faebryk.library.Crystal import Crystal
 from faebryk.library.Electrical import Electrical
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Range import Range
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 
@@ -40,9 +41,11 @@ class Crystal_Oscillator(Module):
         #               parameters
         # ----------------------------------------
         # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
-        STRAY_CAPACITANCE = Range(1e-9, 5e-9)
+        STRAY_CAPACITANCE = Range(1 * P.nF, 5 * P.nF)
         load_capacitance = self.NODEs.crystal.PARAMs.load_impedance
-        capacitance = Constant(2.0) * (load_capacitance - STRAY_CAPACITANCE)
+        capacitance = Constant(2 * P.dimesionless) * (
+            load_capacitance - STRAY_CAPACITANCE
+        )
 
         for cap in self.NODEs.capacitors:
             cap.PARAMs.capacitance.merge(capacitance)

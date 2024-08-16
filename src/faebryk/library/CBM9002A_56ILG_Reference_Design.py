@@ -12,7 +12,7 @@ from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.I2C import I2C
 from faebryk.library.USB2_0 import USB2_0
-from faebryk.libs.units import M, u
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 
@@ -111,9 +111,11 @@ class CBM9002A_56ILG_Reference_Design(Module):
         # ----------------------------------------
         #               Parameters
         # ----------------------------------------
-        self.NODEs.reset_lowpass_cap.PARAMs.capacitance.merge(Constant(1 * u))
+        self.NODEs.reset_lowpass_cap.PARAMs.capacitance.merge(Constant(1 * P.uF))
 
-        self.NODEs.oscillator.NODEs.crystal.PARAMs.frequency.merge(Constant(24 * M))
+        self.NODEs.oscillator.NODEs.crystal.PARAMs.frequency.merge(
+            Constant(24 * P.Mhertz)
+        )
         self.NODEs.oscillator.NODEs.crystal.PARAMs.load_impedance.merge(
-            Constant(12e-12)
+            Constant(12 * P.pohm)
         )

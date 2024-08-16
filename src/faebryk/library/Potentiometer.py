@@ -5,6 +5,7 @@ from faebryk.core.core import Module
 from faebryk.library.Electrical import Electrical
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 
@@ -19,7 +20,7 @@ class Potentiometer(Module):
         self.IFs = _IFs(self)
 
         class _PARAMs(Module.PARAMS()):
-            total_resistance = TBD[float]()
+            total_resistance = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

@@ -14,6 +14,7 @@ from faebryk.library.has_designator_prefix_defined import (
     has_designator_prefix_defined,
 )
 from faebryk.library.Range import Range
+from faebryk.libs.units import P
 
 
 class ME6211C33M5G_N(Module):
@@ -42,7 +43,9 @@ class ME6211C33M5G_N(Module):
         self.PARAMs = _PARAMs(self)
 
         # set constraints
-        self.IFs.power_out.PARAMs.voltage.merge(Range(3.3 * 0.98, 3.3 * 1.02))
+        self.IFs.power_out.PARAMs.voltage.merge(
+            Range(3.3 * 0.98 * P.V, 3.3 * 1.02 * P.V)
+        )
 
         # connect decouple capacitor
         self.IFs.power_in.get_trait(can_be_decoupled).decouple()

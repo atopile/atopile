@@ -7,6 +7,7 @@ from faebryk.core.core import Module
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,12 @@ class Relay(Module):
         self.IFs = _IFs(self)
 
         class _PARAMs(Module.PARAMS()):
-            coil_rated_voltage = TBD[float]()
-            coil_rated_current = TBD[float]()
-            coil_resistance = TBD[float]()
-            contact_max_switching_voltage = TBD[float]()
-            contact_rated_switching_current = TBD[float]()
-            contact_max_switchng_current = TBD[float]()
+            coil_rated_voltage = TBD[Quantity]()
+            coil_rated_current = TBD[Quantity]()
+            coil_resistance = TBD[Quantity]()
+            contact_max_switching_voltage = TBD[Quantity]()
+            contact_rated_switching_current = TBD[Quantity]()
+            contact_max_switchng_current = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

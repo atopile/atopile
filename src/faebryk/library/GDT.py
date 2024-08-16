@@ -8,6 +8,7 @@ from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.TBD import TBD
+from faebryk.libs.units import Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,8 @@ class GDT(Module):
         self.IFs = _IFs(self)
 
         class _PARAMs(Module.PARAMS()):
-            dc_breakdown_voltage = TBD[float]()
-            impulse_discharge_current = TBD[float]()
+            dc_breakdown_voltage = TBD[Quantity]()
+            impulse_discharge_current = TBD[Quantity]()
 
         self.PARAMs = _PARAMs(self)
 

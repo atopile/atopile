@@ -1,71 +1,38 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-# TODO replace with pint or something
+# re-exporting Quantity in-case we ever want to change it
+from pint import Quantity as _Quantity  # noqa: F401
+from pint import UnitRegistry
+from pint.util import UnitsContainer  # noqa: F401
 
-from faebryk.libs.util import round_str
+P = UnitRegistry()
 
-k = 1000
-M = 1000_000
-G = 1000_000_000
-
-p = 0.001 * 0.001 * 0.001 * 0.001
-n = 0.001 * 0.001 * 0.001
-u = 0.001 * 0.001
-m = 0.001
-
-si_prefixes = {
-    "f": 1e-15,
-    "p": 1e-12,
-    "n": 1e-9,
-    "µ": 1e-6,
-    "m": 1e-3,
-    "%": 0.01,
-    "": 1,
-    "k": 1e3,
-    "M": 1e6,
-    "G": 1e9,
-    "T": 1e12,
-    "P": 1e15,
-}
+Quantity = P.Quantity
 
 
-def si_str_to_float(si_value: str) -> float:
-    """
-    Convert a string with SI prefix and unit to a float.
-    """
-
-    prefix = ""
-    value = si_value.replace("u", "µ")
-
-    while value[-1].isalpha():
-        prefix = value[-1]
-        value = value[:-1]
-
-    if prefix in si_prefixes:
-        return float(value) * si_prefixes[prefix]
-
-    return float(value)
-
-
-def float_to_si_str(value: float, unit: str, num_decimals: int = 2) -> str:
+def to_si_str(
+    value: Quantity | float | int,
+    unit: str | UnitsContainer,
+    num_decimals: int = 2,
+) -> str:
     """
     Convert a float to a string with SI prefix and unit.
     """
-    if value == float("inf"):
-        return "∞" + unit
-    elif value == float("-inf"):
-        return "-∞" + unit
+    from faebryk.libs.util import round_str
 
-    res_factor = 1
-    res_prefix = ""
-    for prefix, factor in si_prefixes.items():
-        if abs(value) >= factor:
-            res_prefix = prefix
-            res_factor = factor
-        else:
-            break
+    if isinstance(value, Quantity):
+        out = f"{value.to(unit).to_compact(unit):.{num_decimals}f~#P}"
+    else:
+        out = f"{round_str(value, num_decimals)} {unit}"
+    m, u = out.split(" ")
+    if "." in m:
+        int_, frac = m.split(".")
+        clean_decimals = frac.rstrip("0")
+        m = f"{int_}.{clean_decimals}" if clean_decimals else int_
 
-    value_str = round_str(value / res_factor, num_decimals)
+    return f"{m}{u}"
 
-    return value_str + res_prefix + unit
+
+def Scalar(value: float):
+    return Quantity(value)
