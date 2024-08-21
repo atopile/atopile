@@ -93,7 +93,8 @@ class TestParameters(unittest.TestCase):
         self.assertEqual(Set([1, 2, 3]) & 3, Constant(3))
         self.assertEqual(Constant(3) & 3, Constant(3))
         self.assertEqual(Constant(2) & 3, Set([]))
-        self.assertEqual(R_ONE_TEN & [1, 2, 11], Set([1, 2]))
+        self.assertEqual(R_ONE_TEN & {1, 2, 11}, Set([1, 2]))
+        self.assertEqual(R_ONE_TEN & Range(12, 13), Set([]))
         # with tbd
         a = TBD[int]()
         b = TBD[int]()
@@ -154,6 +155,99 @@ class TestParameters(unittest.TestCase):
 
         self.assertEqual(TBD(), TBD())
         self.assertEqual(ANY(), ANY())
+
+        def test_merge(
+            a: Parameter[int] | set[int] | int | tuple[int, int],
+            b: Parameter[int] | set[int] | int | tuple[int, int],
+            expected,
+        ):
+            a = Parameter[int].from_literal(a)
+            expected = Parameter[int].from_literal(expected)
+            self.assertEqual(a.merge(b), expected)
+
+        def fail_merge(a, b):
+            a = Parameter[int].from_literal(a)
+            self.assertRaises(Parameter.MergeException, lambda: a.merge(b))
+
+        # Sets ----
+
+        # Ranges
+        test_merge((0, 10), (5, 15), (5, 10))
+        test_merge((0, 10), (5, 8), (5, 8))
+        fail_merge((0, 10), (11, 15))
+        test_merge((5, 10), 5, 5)
+        fail_merge((0, 10), 11)
+        test_merge((5, 10), {5, 6, 12}, {5, 6})
+
+        # Empty set
+        fail_merge({1, 2}, set())
+        fail_merge((1, 5), set())
+        fail_merge(5, set())
+        test_merge(set(), set(), set())
+        test_merge(TBD(), set(), set())
+        test_merge(ANY(), set(), set())
+
+        test_merge({1, 2}, {2, 3}, {2})
+        fail_merge({1, 2}, {3, 4})
+        test_merge({1, 2}, 2, 2)
+
+        # TBD/ANY --
+
+        test_merge(TBD(), TBD(), TBD())
+        test_merge(ANY(), ANY(), ANY())
+        test_merge(TBD(), ANY(), ANY())
+
+    def test_specific(self):
+        def test_spec(
+            a: Parameter[int] | set[int] | int | tuple[int, int],
+            b: Parameter[int] | set[int] | int | tuple[int, int],
+            expected: bool = True,
+        ):
+            b = Parameter[int].from_literal(b)
+            if expected:
+                self.assertTrue(b.is_subset_of(a))
+            else:
+                self.assertFalse(b.is_subset_of(a))
+
+        test_spec(1, 1)
+        test_spec(1, 2, False)
+
+        test_spec((1, 2), 1)
+        test_spec(1, (1, 2), False)
+
+        test_spec({1, 2}, 1)
+        test_spec(1, {1, 2}, False)
+        test_spec(1, {1})
+
+        test_spec((1, 2), (1, 2))
+        test_spec((1, 2), (1, 3), False)
+        test_spec((1, 10), (1, 3))
+
+        test_spec(1, ANY(), False)
+        test_spec(ANY(), 1)
+        test_spec(TBD(), 1, False)
+        test_spec(ANY(), Operation((1, 2), add))
+        test_spec(ANY(), Operation((1, TBD()), add))
+
+        test_spec(Operation((1, 2), add), 3)
+        test_spec(Operation((1, TBD()), add), TBD(), False)
+
+    def test_compress(self):
+        def test_comp(
+            a: Parameter[int].LIT_OR_PARAM,
+            expected: Parameter[int].LIT_OR_PARAM,
+        ):
+            a = Parameter[int].from_literal(a)
+            expected = Parameter[int].from_literal(expected)
+            self.assertEqual(a.get_most_narrow(), expected)
+
+        test_comp(1, 1)
+        test_comp(Constant(Constant(1)), 1)
+        test_comp(Constant(Constant(Constant(1))), 1)
+        test_comp({1}, 1)
+        test_comp(Range(1), 1)
+        test_comp(Range(Range(1)), 1)
+        test_comp(Constant(Set([Range(Range(1))])), 1)
 
     def test_modules(self):
         T = TypeVar("T")

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import os
 import shutil
 from pathlib import Path
 
@@ -17,6 +16,7 @@ from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.util import ConfigFlag
 
 BUILD_DIR = Path("./build")
 GRAPH_OUT = BUILD_DIR / Path("faebryk/graph.png")
@@ -29,7 +29,7 @@ lcsc.BUILD_FOLDER = BUILD_DIR
 lcsc.LIB_FOLDER = BUILD_DIR / Path("kicad/libs")
 lcsc.MODEL_PATH = None
 
-DEV_MODE = os.environ.get("FBRK_EXP_DEV_MODE", False) in ["y", "Y", "True", "true", "1"]
+DEV_MODE = ConfigFlag("EXP_DEV_MODE", False)
 
 logger = logging.getLogger(__name__)
 

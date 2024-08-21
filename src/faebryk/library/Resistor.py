@@ -65,7 +65,7 @@ class Resistor(Module):
             assert m is self
 
             r = self.PARAMs.resistance.get_most_narrow()
-            if not F.Constant(0.0 * P.ohm).is_more_specific_than(r):
+            if not F.Constant(0.0 * P.ohm).is_subset_of(r):
                 raise PickError("", self)
 
             self.PARAMs.resistance.override(F.Constant(0.0 * P.ohm))

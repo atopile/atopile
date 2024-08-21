@@ -559,6 +559,12 @@ class Node(FaebrykLibObject):
     def get_parent(self):
         return self.GIFs.parent.get_parent()
 
+    def get_name(self):
+        p = self.get_parent()
+        if not p:
+            raise Exception("Parent required for name")
+        return p[1]
+
     def get_hierarchy(self) -> list[tuple[Node, str]]:
         parent = self.get_parent()
         if not parent:
@@ -584,11 +590,33 @@ class Node(FaebrykLibObject):
         return f"<{self.get_full_name(types=True)}>{id_str}"
 
 
-PV = TypeVar("PV")
+def _resolved[PV, O](
+    func: Callable[[Parameter[PV], Parameter[PV]], O],
+) -> Callable[
+    [
+        PV | set[PV] | tuple[PV, PV] | Parameter[PV],
+        PV | set[PV] | tuple[PV, PV] | Parameter[PV],
+    ],
+    O,
+]:
+    def wrap(*args):
+        args = [Parameter.from_literal(arg).get_most_narrow() for arg in args]
+        return func(*args)
+
+    return wrap
 
 
-class Parameter(Generic[PV], Node):
+class Parameter[PV](Node):
+    type LIT = PV | set[PV] | tuple[PV, PV]
+    type LIT_OR_PARAM = LIT | "Parameter[PV]"
+
     class MergeException(Exception): ...
+
+    class SupportsSetOps:
+        def __contains__(self, other: Parameter[PV].LIT_OR_PARAM) -> bool: ...
+
+    def try_compress(self) -> Parameter[PV]:
+        return self
 
     @classmethod
     def GIFS(cls):
@@ -616,49 +644,37 @@ class Parameter(Generic[PV], Node):
         self.GIFs = Parameter.GIFS()(self)
         self.PARAMs = Parameter.PARAMS()(self)
 
-    T = TypeVar("T")
-    U = TypeVar("U")
-
-    def _merge(self, other: "Parameter[PV] | PV") -> "Parameter[PV]":
-        from faebryk.library.ANY import ANY
+    @classmethod
+    def from_literal(cls, value: LIT_OR_PARAM) -> Parameter[PV]:
         from faebryk.library.Constant import Constant
-        from faebryk.library.Operation import Operation
         from faebryk.library.Range import Range
+        from faebryk.library.Set import Set
+
+        if isinstance(value, Parameter):
+            return value
+        elif isinstance(value, set):
+            return Set(value)
+        elif isinstance(value, tuple):
+            return Range(*value)
+        else:
+            return Constant(value)
+
+    def _merge(self, other: LIT_OR_PARAM) -> Parameter[PV]:
+        from faebryk.library.ANY import ANY
+        from faebryk.library.Operation import Operation
         from faebryk.library.Set import Set
         from faebryk.library.TBD import TBD
 
-        if not isinstance(other, Parameter):
-            return self._merge(Constant(other))
+        other = self.from_literal(other)
 
         def _is_pair(type1: type[T], type2: type[U]) -> Optional[tuple[T, U]]:
             return is_type_pair(self, other, type1, type2)
 
-        if self == other:
-            return self
-
-        # Specific pairs
-
-        if pair := _is_pair(Constant, Constant):
-            if pair[0].value != pair[1].value:
-                raise self.MergeException("conflicting constants")
-            return pair[0]
-
-        if pair := _is_pair(Constant, Range):
-            if pair[0] not in pair[1]:
-                raise self.MergeException("constant not in range")
-            return pair[0]
-
-        if pair := _is_pair(Range, Range):
-            # try:
-            min_ = max(p.min for p in pair)
-            max_ = min(p.max for p in pair)
-            # except Exception:
-            #    raise self.MergeException("range not resolvable")
-            if any(any(v not in p for p in pair) for v in (min_, max_)):
-                raise self.MergeException("conflicting ranges")
-            return Range(min_, max_)
-
-        # Generic pairs
+        try:
+            if self == other:
+                return self
+        except ValueError:
+            ...
 
         if pair := _is_pair(Parameter[PV], TBD):
             return pair[0]
@@ -673,26 +689,17 @@ class Parameter(Generic[PV], Node):
             # if it was checking mergeability
             raise self.MergeException("cant merge range with operation")
 
-        if pair := _is_pair(Parameter[PV], Set):
-            out = set()
-            for set_other in pair[1].params:
-                try:
-                    out.add(set_other.merge(pair[0]))
-                except self.MergeException as e:
-                    # TODO remove
-                    logger.warn(f"Not resolvable: {pair[0]} {set_other}: {e.args[0]}")
-                    pass
-            if len(out) == 1:
-                return next(iter(out))
-            if len(out) == 0:
-                raise self.MergeException(
-                    f"parameter |{pair[0]}| not resolvable with set |{pair[1]}|"
-                )
-            return Set(out)
+        if pair := _is_pair(Parameter[PV], Parameter[PV].SupportsSetOps):
+            out = self.intersect(*pair)
+            if isinstance(out, Operation):
+                raise self.MergeException("not resolvable")
+            if out == Set([]) and not pair[0] == pair[1] == Set([]):
+                raise self.MergeException("conflicting sets/ranges")
+            return out
 
         raise NotImplementedError
 
-    def _narrowed(self, other: "Parameter[PV]"):
+    def _narrowed(self, other: Parameter[PV]):
         if self is other:
             return
 
@@ -700,65 +707,62 @@ class Parameter(Generic[PV], Node):
             return
         self.GIFs.narrowed_by.connect(other.GIFs.narrows)
 
-    def is_mergeable_with(self, other: "Parameter[PV]") -> bool:
+    @_resolved
+    def is_mergeable_with(self: Parameter[PV], other: Parameter[PV]) -> bool:
         try:
-            self.get_most_narrow()._merge(other.get_most_narrow())
+            self._merge(other)
             return True
         except self.MergeException:
             return False
         except NotImplementedError:
             return False
 
-    def is_more_specific_than(self, other: "Parameter[PV]") -> bool:
+    @_resolved
+    def is_subset_of(self: Parameter[PV], other: Parameter[PV]) -> bool:
         from faebryk.library.ANY import ANY
+        from faebryk.library.Operation import Operation
         from faebryk.library.TBD import TBD
 
-        s = self.get_most_narrow()
-        o = other.get_most_narrow()
+        lhs = self
+        rhs = other
 
-        if isinstance(o, ANY):
+        def is_either_instance(t: type[Parameter[PV]]):
+            return isinstance(lhs, t) or isinstance(rhs, t)
+
+        # Not resolveable
+        if isinstance(rhs, ANY):
             return True
-        if isinstance(s, TBD):
+        if isinstance(lhs, ANY):
             return False
-        if isinstance(o, TBD):
+        if is_either_instance(TBD):
+            return False
+        if is_either_instance(Operation):
             return False
 
-        return s.is_mergeable_with(o)
+        # Sets
+        return lhs & rhs == lhs
 
-    def merge(self, other: "Parameter[PV] | PV") -> "Parameter[PV]":
-        from faebryk.library.Constant import Constant
+    @_resolved
+    def merge(self: Parameter[PV], other: Parameter[PV]) -> Parameter[PV]:
+        out = self._merge(other)
 
-        if not isinstance(other, Parameter):
-            other = Constant(other)
-
-        self_narrowed = self.get_most_narrow()
-        other_narrowed = other.get_most_narrow()
-
-        out = self_narrowed._merge(other_narrowed)
-
-        self_narrowed._narrowed(out)
-        other_narrowed._narrowed(out)
+        self._narrowed(out)
+        other._narrowed(out)
 
         return out
 
-    def override(self, other: "Parameter[PV] | PV") -> "Parameter[PV]":
-        from faebryk.library.Constant import Constant
-
-        if not isinstance(other, Parameter):
-            other = Constant(other)
-
-        self_narrowed = self.get_most_narrow()
-        other_narrowed = other.get_most_narrow()
-
-        if not other_narrowed.is_more_specific_than(self_narrowed):
+    @_resolved
+    def override(self: Parameter[PV], other: Parameter[PV]) -> "Parameter[PV]":
+        if not other.is_subset_of(self):
             raise self.MergeException("override not possible")
 
-        self_narrowed._narrowed(other_narrowed)
-        return other_narrowed
+        self._narrowed(other)
+        return other
 
     # TODO: replace with graph-based
+    @staticmethod
     def arithmetic_op(
-        self, other: "Parameter[PV] | PV", op: Callable
+        op1: Parameter[PV], op2: Parameter[PV], op: Callable
     ) -> "Parameter[PV]":
         from faebryk.library.ANY import ANY
         from faebryk.library.Constant import Constant
@@ -766,12 +770,6 @@ class Parameter(Generic[PV], Node):
         from faebryk.library.Range import Range
         from faebryk.library.Set import Set
         from faebryk.library.TBD import TBD
-
-        if not isinstance(other, Parameter):
-            other = Constant(other)
-
-        op1 = self.get_most_narrow()
-        op2 = other.get_most_narrow()
 
         def _is_pair(type1: type[T], type2: type[U]) -> Optional[tuple[T, U, Callable]]:
             if isinstance(op1, type1) and isinstance(op2, type2):
@@ -805,7 +803,7 @@ class Parameter(Generic[PV], Node):
         if pair := _is_pair(Constant, Range):
             sop = pair[2]
             try:
-                return Range(sop(pair[0], pair[1].min), sop(pair[0], pair[1].max))
+                return Range(*(sop(pair[0], bound) for bound in pair[1].bounds))
             except Range.MinMaxError:
                 return Operation(pair[:2], op)
 
@@ -823,38 +821,19 @@ class Parameter(Generic[PV], Node):
 
         if pair := _is_pair(Parameter, Set):
             sop = pair[2]
-            return Set(nested.arithmetic_op(pair[0], sop) for nested in pair[1].params)
+            return Set(
+                Parameter.arithmetic_op(nested, pair[0], sop)
+                for nested in pair[1].params
+            )
 
         raise NotImplementedError
 
-    def __add__(self, other: Parameter[PV] | PV):
-        return self.arithmetic_op(other, lambda a, b: a + b)
-
-    def __sub__(self, other: Parameter[PV] | PV):
-        return self.arithmetic_op(other, lambda a, b: a - b)
-
-    def __mul__(self, other: Parameter[PV] | PV | float):
-        return self.arithmetic_op(other, lambda a, b: a * b)
-
-    def __truediv__(self, other: Parameter[PV] | PV | float):
-        return self.arithmetic_op(other, lambda a, b: a / b)
-
-    def __and__(self, other: Parameter[PV] | PV | Iterable[PV]):
+    @staticmethod
+    def intersect(op1: Parameter[PV], op2: Parameter[PV]) -> Parameter[PV]:
         from faebryk.library.Constant import Constant
         from faebryk.library.Operation import Operation
         from faebryk.library.Range import Range
         from faebryk.library.Set import Set
-
-        # TODO how much overlap does this have with merge?
-
-        if not isinstance(other, Parameter):
-            if isinstance(other, Iterable):
-                other = Set(other)
-            else:
-                other = Constant(other)
-
-        op1 = self.get_most_narrow()
-        op2 = other.get_most_narrow()
 
         if op1 == op2:
             return op1
@@ -877,10 +856,13 @@ class Parameter(Generic[PV], Node):
             return Set(pair[0].params.intersection(pair[1].params))
         if pair := _is_pair(Range, Range):
             try:
-                return Range(
-                    max(pair[0].min, pair[1].min),
-                    min(pair[0].max, pair[1].max),
-                )
+                min_ = max(pair[0].min, pair[1].min)
+                max_ = min(pair[0].max, pair[1].max)
+                if min_ > max_:
+                    return Set([])
+                if min_ == max_:
+                    return Constant(min_)
+                return Range(max_, min_)
             except Range.MinMaxError:
                 return Operation(pair[:2], op)
 
@@ -906,24 +888,53 @@ class Parameter(Generic[PV], Node):
 
         return Operation((op1, op2), op)
 
+    @_resolved
+    def __add__(self: Parameter[PV], other: Parameter[PV]):
+        return self.arithmetic_op(self, other, lambda a, b: a + b)
+
+    @_resolved
+    def __sub__(self: Parameter[PV], other: Parameter[PV]):
+        return self.arithmetic_op(self, other, lambda a, b: a - b)
+
+    # TODO PV | float
+    @_resolved
+    def __mul__(self: Parameter[PV], other: Parameter[PV]):
+        return self.arithmetic_op(self, other, lambda a, b: a * b)
+
+    # TODO PV | float
+    @_resolved
+    def __truediv__(self: Parameter[PV], other: Parameter[PV]):
+        return self.arithmetic_op(self, other, lambda a, b: a / b)
+
+    @_resolved
+    def __and__(self: Parameter[PV], other: Parameter[PV]) -> Parameter[PV]:
+        return self.intersect(self, other)
+
     def get_most_narrow(self) -> Parameter[PV]:
+        out = self
         narrowers = {
             narrower
             for narrower_gif in self.GIFs.narrowed_by.get_direct_connections()
             if (narrower := narrower_gif.node) is not self
             and isinstance(narrower, Parameter)
         }
-        if not narrowers:
-            return self
+        if narrowers:
+            narrowest_next = unique_ref(
+                narrower.get_most_narrow() for narrower in narrowers
+            )
 
-        narrowest_next = unique_ref(
-            narrower.get_most_narrow() for narrower in narrowers
-        )
+            assert (
+                len(narrowest_next) == 1
+            ), "Ambiguous narrowest"  # {narrowest_next} for {self}"
+            out: Parameter[PV] = next(iter(narrowest_next))
 
-        assert (
-            len(narrowest_next) == 1
-        ), "Ambiguous narrowest"  # {narrowest_next} for {self}"
-        return next(iter(narrowest_next))
+        com = out.try_compress()
+        if com is not out:
+            com = com.get_most_narrow()
+            out._narrowed(com)
+            out = com
+
+        return out
 
     @staticmethod
     def resolve_all(params: "Sequence[Parameter[PV]]") -> Parameter[PV]:
@@ -1176,12 +1187,14 @@ class ModuleInterface(Node):
         ...
 
     def _try_connect_down(self, other: ModuleInterface, linkcls: type[Link]) -> None:
-        from faebryk.core.util import zip_moduleinterfaces
+        from faebryk.core.util import zip_children_by_name
 
         if not isinstance(other, type(self)):
             return
 
-        for src, dst in zip_moduleinterfaces([self], [other]):
+        for _, (src, dst) in zip_children_by_name(self, other, ModuleInterface).items():
+            if src is None or dst is None:
+                continue
             src.connect(dst, linkcls=linkcls)
 
     def _try_connect_up(self, other: ModuleInterface) -> None:

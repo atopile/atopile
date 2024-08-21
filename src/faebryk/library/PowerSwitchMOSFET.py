@@ -6,7 +6,6 @@ from faebryk.library.Constant import Constant
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.PowerSwitch import PowerSwitch
-from faebryk.library.Resistor import Resistor
 
 
 class PowerSwitchMOSFET(PowerSwitch):
@@ -24,7 +23,6 @@ class PowerSwitchMOSFET(PowerSwitch):
         # components
         class _NODEs(Module.NODES()):
             mosfet = MOSFET()
-            pull_resistor = Resistor()
 
         self.NODEs = _NODEs(self)
 

@@ -526,7 +526,7 @@ def e_series_ratio(
     ):
         raise NotImplementedError
 
-    if not output_input_ratio.is_more_specific_than(F.Range(0, 1)):
+    if not output_input_ratio.is_subset_of(F.Range(0, 1)):
         raise ValueError("Invalid output/input voltage ratio")
 
     rh = F.Range(RH.value, RH.value) if isinstance(RH, F.Constant) else RH

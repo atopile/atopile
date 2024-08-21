@@ -11,6 +11,7 @@ import faebryk.library._F as F
 from faebryk.core.core import Module
 from faebryk.core.util import specialize_module
 from faebryk.library._F import Constant, Range
+from faebryk.library.Switch import _TSwitch
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import PickerOption, pick_module_by_params
@@ -263,6 +264,18 @@ def pick_battery(module: F.Battery):
     )
 
 
+def pick_switch(module: _TSwitch[F.Electrical]):
+    module.add_trait(F.can_attach_to_footprint_symmetrically())
+    pick_module_by_params(
+        module,
+        [
+            PickerOption(
+                part=LCSC_Part(partno="C318884"),
+            )
+        ],
+    )
+
+
 def add_example_pickers(module: Module):
     lookup = {
         F.Resistor: pick_resistor,
@@ -272,6 +285,7 @@ def add_example_pickers(module: Module):
         F.MOSFET: pick_mosfet,
         F.Capacitor: pick_capacitor,
         F.Battery: pick_battery,
+        F.Switch(F.Electrical): pick_switch,
     }
     F.has_multi_picker.add_pickers_by_type(
         module,

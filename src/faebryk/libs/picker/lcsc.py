@@ -22,6 +22,7 @@ from faebryk.library.can_attach_to_footprint_via_pinmap import (
 from faebryk.library.has_defined_descriptive_properties import (
     has_defined_descriptive_properties,
 )
+from faebryk.library.has_footprint import has_footprint
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.libs.picker.picker import (
@@ -179,32 +180,37 @@ def attach(component: Module, partno: str, get_model: bool = True):
     )
 
     # symbol
-    if not component.has_trait(can_attach_to_footprint):
-        if not component.has_trait(has_pin_association_heuristic):
-            raise LCSCException(
-                partno,
-                f"Need either can_attach_to_footprint or has_pin_association_heuristic"
-                f" for {component} with partno {partno}",
-            )
+    if not component.has_trait(has_footprint):
+        if not component.has_trait(can_attach_to_footprint):
+            if not component.has_trait(has_pin_association_heuristic):
+                raise LCSCException(
+                    partno,
+                    f"Need either can_attach_to_footprint or "
+                    "has_pin_association_heuristic"
+                    f" for {component} with partno {partno}",
+                )
 
-        # TODO make this a trait
-        pins = [
-            (pin.settings.spice_pin_number, pin.name.text)
-            for pin in easyeda_symbol.pins
-        ]
-        try:
-            pinmap = component.get_trait(has_pin_association_heuristic).get_pins(pins)
-        except has_pin_association_heuristic.PinMatchException as e:
-            raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
-        component.add_trait(can_attach_to_footprint_via_pinmap(pinmap))
+            # TODO make this a trait
+            pins = [
+                (pin.settings.spice_pin_number, pin.name.text)
+                for pin in easyeda_symbol.pins
+            ]
+            try:
+                pinmap = component.get_trait(has_pin_association_heuristic).get_pins(
+                    pins
+                )
+            except has_pin_association_heuristic.PinMatchException as e:
+                raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
+            component.add_trait(can_attach_to_footprint_via_pinmap(pinmap))
 
-    # footprint
-    fp = KicadFootprint(
-        f"lcsc:{easyeda_footprint.info.name}",
-        [p.number for p in easyeda_footprint.pads],
-    )
+        # footprint
+        fp = KicadFootprint(
+            f"lcsc:{easyeda_footprint.info.name}",
+            [p.number for p in easyeda_footprint.pads],
+        )
+        component.get_trait(can_attach_to_footprint).attach(fp)
+
     has_defined_descriptive_properties.add_properties_to(component, {"LCSC": partno})
-    component.get_trait(can_attach_to_footprint).attach(fp)
 
     # model done by kicad (in fp)
 

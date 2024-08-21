@@ -4,26 +4,25 @@
 import logging
 import typing
 from textwrap import indent
-from typing import Generic, TypeVar
 
 from faebryk.core.core import Parameter
 from faebryk.libs.util import TwistArgs, find, try_avoid_endless_recursion
 
 logger = logging.getLogger(__name__)
 
-PV = TypeVar("PV")
 
-
-class Operation(Generic[PV], Parameter[PV]):
+class Operation[PV](Parameter[PV]):
     class OperationNotExecutable(Exception): ...
+
+    type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
 
     def __init__(
         self,
-        operands: typing.Sequence[Parameter[PV]],
+        operands: typing.Iterable[LIT_OR_PARAM],
         operation: typing.Callable[..., Parameter[PV]],
     ) -> None:
         super().__init__()
-        self.operands = operands
+        self.operands = tuple(self.from_literal(o) for o in operands)
         self.operation = operation
 
     @try_avoid_endless_recursion

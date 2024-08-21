@@ -759,3 +759,8 @@ class ConfigFlagEnum[E: StrEnum]:
 
     def __eq__(self, other) -> Any:
         return self.get() == other
+
+
+def zip_dicts_by_key(*dicts):
+    keys = {k for d in dicts for k in d}
+    return {k: tuple(d.get(k) for d in dicts) for k in keys}

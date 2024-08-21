@@ -42,6 +42,10 @@ class LED(Diode):
             * self.PARAMs.max_current
         )
 
+        # self.PARAMs.brightness.merge(
+        #    Range(0 * P.millicandela, self.PARAMs.max_brightness)
+        # )
+
     def set_intensity(self, intensity: Parameter[Quantity]) -> None:
         self.PARAMs.brightness.merge(intensity * self.PARAMs.max_brightness)
 

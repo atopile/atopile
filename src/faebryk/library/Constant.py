@@ -1,19 +1,19 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Generic, Self, SupportsAbs, TypeVar
+from typing import Self, SupportsAbs
 
-from faebryk.core.core import Parameter
+from faebryk.core.core import Parameter, _resolved
 from faebryk.library.is_representable_by_single_value_defined import (
     is_representable_by_single_value_defined,
 )
 from faebryk.libs.units import Quantity
 
-PV = TypeVar("PV")
 
+class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
+    type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
 
-class Constant(Generic[PV], Parameter[PV]):
-    def __init__(self, value: PV) -> None:
+    def __init__(self, value: LIT_OR_PARAM) -> None:
         super().__init__()
         self.value = value
         self.add_trait(is_representable_by_single_value_defined(self.value))
@@ -31,10 +31,8 @@ class Constant(Generic[PV], Parameter[PV]):
     def __repr__(self):
         return super().__repr__() + f"({self._pretty_val()})"
 
+    @_resolved
     def __eq__(self, other) -> bool:
-        if not isinstance(other, Parameter):
-            return self.value == other
-
         if not isinstance(other, Constant):
             return False
 
@@ -44,16 +42,28 @@ class Constant(Generic[PV], Parameter[PV]):
         return hash(self.value)
 
     # comparison operators
+    @_resolved
     def __le__(self, other) -> bool:
+        if isinstance(other, Constant):
+            return self.value <= other.value
         return other >= self.value
 
+    @_resolved
     def __lt__(self, other) -> bool:
+        if isinstance(other, Constant):
+            return self.value < other.value
         return other > self.value
 
+    @_resolved
     def __ge__(self, other) -> bool:
+        if isinstance(other, Constant):
+            return self.value >= other.value
         return other <= self.value
 
+    @_resolved
     def __gt__(self, other) -> bool:
+        if isinstance(other, Constant):
+            return self.value > other.value
         return other < self.value
 
     def __abs__(self):
@@ -74,3 +84,14 @@ class Constant(Generic[PV], Parameter[PV]):
 
     def __int__(self):
         return int(self.value)
+
+    @_resolved
+    def __contains__(self, other: Parameter[PV]) -> bool:
+        if not isinstance(other, Constant):
+            return False
+        return other.value == self.value
+
+    def try_compress(self) -> Parameter[PV]:
+        if isinstance(self.value, Parameter):
+            return self.value
+        return super().try_compress()

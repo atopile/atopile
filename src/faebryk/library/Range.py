@@ -5,7 +5,6 @@ from math import inf
 from typing import Any, Protocol, Self
 
 from faebryk.core.core import Parameter
-from faebryk.library.Constant import Constant
 
 
 class _SupportsRangeOps(Protocol):
@@ -18,8 +17,8 @@ class _SupportsRangeOps(Protocol):
     def __ge__(self, __value) -> bool: ...
 
 
-class Range[PV: _SupportsRangeOps](Parameter[PV]):
-    type PV_or_PARAM = PV | Parameter[PV]
+class Range[PV: _SupportsRangeOps](Parameter[PV], Parameter[PV].SupportsSetOps):
+    type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
 
     class MinMaxError(Exception): ...
 
@@ -27,8 +26,7 @@ class Range[PV: _SupportsRangeOps](Parameter[PV]):
         super().__init__()
 
         self._bounds: list[Parameter[PV]] = [
-            bound if isinstance(bound, Parameter) else Constant(bound)
-            for bound in bounds
+            Parameter[PV].from_literal(b) for b in bounds
         ]
 
     def _get_narrowed_bounds(self) -> list[Parameter[PV]]:
@@ -38,14 +36,14 @@ class Range[PV: _SupportsRangeOps](Parameter[PV]):
     def min(self) -> Parameter[PV]:
         try:
             return min(self._get_narrowed_bounds())
-        except TypeError:
+        except (TypeError, ValueError):
             raise self.MinMaxError()
 
     @property
     def max(self) -> Parameter[PV]:
         try:
             return max(self._get_narrowed_bounds())
-        except TypeError:
+        except (TypeError, ValueError):
             raise self.MinMaxError()
 
     @property
@@ -66,7 +64,7 @@ class Range[PV: _SupportsRangeOps](Parameter[PV]):
         return center, delta
 
     @classmethod
-    def from_center(cls, center: PV_or_PARAM, delta: PV_or_PARAM) -> "Range[PV]":
+    def from_center(cls, center: LIT_OR_PARAM, delta: LIT_OR_PARAM) -> "Range[PV]":
         return cls(center - delta, center + delta)
 
     @classmethod
@@ -74,7 +72,7 @@ class Range[PV: _SupportsRangeOps](Parameter[PV]):
         return cls.from_center(center, center * factor)
 
     @classmethod
-    def _with_bound(cls, bound: PV_or_PARAM, other: float) -> "Range[PV]":
+    def _with_bound(cls, bound: LIT_OR_PARAM, other: float) -> "Range[PV]":
         from faebryk.core.util import with_same_unit
 
         try:
@@ -85,11 +83,11 @@ class Range[PV: _SupportsRangeOps](Parameter[PV]):
         return cls(bound, other)
 
     @classmethod
-    def lower_bound(cls, lower: PV_or_PARAM) -> "Range[PV]":
+    def lower_bound(cls, lower: LIT_OR_PARAM) -> "Range[PV]":
         return cls._with_bound(lower, inf)
 
     @classmethod
-    def upper_bound(cls, upper: PV_or_PARAM) -> "Range[PV]":
+    def upper_bound(cls, upper: LIT_OR_PARAM) -> "Range[PV]":
         return cls._with_bound(upper, 0)
 
     def __str__(self) -> str:
@@ -128,12 +126,11 @@ class Range[PV: _SupportsRangeOps](Parameter[PV]):
     def __copy__(self) -> Self:
         return type(self)(*self._bounds)
 
-    def get_most_narrow(self) -> Parameter[PV]:
-        # out = super().get_most_narrow()
-        ## compress into constant if possible
-        # if out is self and len(set(map(id, self.bounds))) == 1:
-        #    out.merge(self.bounds[0])
-        return super().get_most_narrow()
+    def try_compress(self) -> Parameter[PV]:
+        # compress into constant if possible
+        if len(set(map(id, self.bounds))) == 1:
+            return Parameter.from_literal(self.bounds[0])
+        return super().try_compress()
 
-    def __contains__(self, other: PV_or_PARAM) -> bool:
+    def __contains__(self, other: LIT_OR_PARAM) -> bool:
         return self.min <= other and self.max >= other

@@ -13,7 +13,11 @@ from typing import Callable, Iterable
 from rich.progress import Progress
 
 from faebryk.core.core import Module, ModuleInterface, ModuleTrait, Parameter
-from faebryk.core.util import get_all_modules, pretty_params
+from faebryk.core.util import (
+    get_all_modules,
+    get_children,
+    pretty_params,
+)
 from faebryk.library.ANY import ANY
 from faebryk.library.can_attach_to_footprint_via_pinmap import (
     can_attach_to_footprint_via_pinmap,
@@ -156,7 +160,7 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
             filter(
                 lambda o: (not o.filter or o.filter(module))
                 and all(
-                    v.is_more_specific_than(params.get(k, ANY()))
+                    v.is_subset_of(params.get(k, ANY()))
                     for k, v in (o.params or {}).items()
                     if not k.startswith("_")
                 ),
@@ -291,13 +295,14 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
         return
 
     # go level lower
-    children = module.NODEs.get_all()
-
     to_pick: set[Module] = {
-        c for c in children if isinstance(c, Module) and c is not module
+        c
+        for c in get_children(module, types=Module, direct_only=True)
+        if not c.has_trait(has_part_picked)
     }
     failed: dict[Module, PickError] = {}
 
+    logger.debug(f"Try picking unpicked children of {module}: {to_pick}")
     # try repicking as long as progress is being made
     while to_pick:
         for child in to_pick:
@@ -306,8 +311,9 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
             except PickError as e:
                 failed[child] = e
 
-        # no progress
-        if to_pick == set(failed.keys()):
+        # no progress or last one failed as only
+        if to_pick == set(failed.keys()) or (len(failed) == 1 and child in failed):
+            logger.debug(f"No progress made on {module}, backtracking")
             raise PickErrorChildren(module, failed)
 
         to_pick = set(failed.keys())

@@ -34,7 +34,7 @@ from faebryk.library.Range import Range
 from faebryk.library.Set import Set
 from faebryk.library.TBD import TBD
 from faebryk.libs.units import Quantity, UnitsContainer, to_si_str
-from faebryk.libs.util import NotNone, cast_assert
+from faebryk.libs.util import NotNone, cast_assert, zip_dicts_by_key
 
 logger = logging.getLogger(__name__)
 
@@ -401,35 +401,25 @@ def connect_to_all_interfaces[MIF: ModuleInterface](
     return source
 
 
-def zip_connect_modules(src: Iterable[Module] | Module, dst: Iterable[Module] | Module):
-    for src_m, dst_m in zip_moduleinterfaces(src, dst):
-        src_m.connect(dst_m)
-
-
-def zip_moduleinterfaces(
-    src: Iterable[ModuleInterface | Module] | ModuleInterface | Module,
-    dst: Iterable[ModuleInterface | Module] | ModuleInterface | Module,
+def connect_module_mifs_by_name(
+    src: Iterable[Module] | Module,
+    dst: Iterable[Module] | Module,
+    allow_partial: bool = False,
 ):
-    if isinstance(src, Node):
+    if isinstance(src, Module):
         src = [src]
-    if isinstance(dst, Node):
+    if isinstance(dst, Module):
         dst = [dst]
 
-    # TODO check types?
-    for src_m, dst_m in zip(src, dst):
-        src_m_children = {
-            NotNone(n.get_parent())[1]: n
-            for n in get_children(src_m, direct_only=True, types=ModuleInterface)
-        }
-        dst_m_children = {
-            NotNone(n.get_parent())[1]: n
-            for n in get_children(dst_m, direct_only=True, types=ModuleInterface)
-        }
-        assert src_m_children.keys() == dst_m_children.keys()
-
-        for k, src_i in src_m_children.items():
-            dst_i = dst_m_children[k]
-            yield src_i, dst_i
+    for src_, dst_ in zip(src, dst):
+        for k, (src_m, dst_m) in zip_children_by_name(
+            src_, dst_, ModuleInterface
+        ).items():
+            if src_m is None or dst_m is None:
+                if not allow_partial:
+                    raise Exception(f"Node with name {k} mot present in both")
+                continue
+            src_m.connect(dst_m)
 
 
 def reversed_bridge(bridge: Node):
@@ -446,6 +436,19 @@ def reversed_bridge(bridge: Node):
             self.add_trait(can_bridge_defined(if_out, if_in))
 
     return _reversed_bridge()
+
+
+def zip_children_by_name[N: Node](
+    node1: Node, node2: Node, sub_type: type[N]
+) -> dict[str, tuple[N, N]]:
+    nodes = (node1, node2)
+    children = tuple(
+        with_names(
+            get_children(n, direct_only=True, include_root=False, types=sub_type)
+        )
+        for n in nodes
+    )
+    return zip_dicts_by_key(*children)
 
 
 # --------------------------------------------------------------------------------------
@@ -476,41 +479,28 @@ def specialize_module[T: Module](
 ) -> T:
     logger.debug(f"Specializing Module {general} with {special}" + " " + "=" * 20)
 
-    def get_node_prop_matrix[U: Node](sub_type: type[U]) -> list[tuple[U, U]]:
-        def _get_with_names(module: Module) -> dict[str, U]:
-            if sub_type is ModuleInterface:
-                holder = module.IFs
-            elif sub_type is Parameter:
-                holder = module.PARAMs
-            elif sub_type is Node:
-                holder = module.NODEs
-            else:
-                raise Exception()
-
-            return {NotNone(i.get_parent())[1]: i for i in holder.get_all()}
-
-        s = _get_with_names(general)
-        d = _get_with_names(special)
-
-        matrix = [
-            (src_i, dst_i)
-            for name, src_i in s.items()
-            if (dst_i := d.get(name)) is not None
-        ]
-
-        return matrix
+    def get_node_prop_matrix[N: Node](sub_type: type[N]):
+        return list(zip_children_by_name(general, special, sub_type).values())
 
     if matrix is None:
         matrix = get_node_prop_matrix(ModuleInterface)
 
-        # TODO add warning if not all src interfaces used
+    # TODO add warning if not all src interfaces used
 
     param_matrix = get_node_prop_matrix(Parameter)
 
     for src, dst in matrix:
+        if src is None:
+            continue
+        if dst is None:
+            raise Exception(f"Special module misses interface: {src.get_name()}")
         specialize_interface(src, dst)
 
     for src, dst in param_matrix:
+        if src is None:
+            continue
+        if dst is None:
+            raise Exception(f"Special module misses parameter: {src.get_name()}")
         dst.merge(src)
 
     # TODO this cant work
@@ -521,7 +511,6 @@ def specialize_module[T: Module](
     #    special.add_trait(t)
 
     general.GIFs.specialized.connect(special.GIFs.specializes)
-    logger.debug("=" * 120)
 
     # Attach to new parent
     has_parent = special.get_parent() is not None
@@ -608,6 +597,15 @@ def pretty_param_tree(param: Parameter) -> str:
     return out
 
 
+def pretty_param_tree_top(param: Parameter) -> str:
+    arrow = indent("\n|\nv", prefix=" " * 12)
+    out = (arrow + "\n").join(
+        f"{param!r}| {len(param.get_narrowed_siblings())}x"
+        for param in param.get_narrowing_chain()
+    )
+    return out
+
+
 # --------------------------------------------------------------------------------------
 
 
@@ -687,3 +685,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
         net.IFs.part_of.connect(el_if)
         logger.debug(f"Created {net_name} for {el_if}")
         nets[net_name] = net, el_if
+
+
+def with_names[N: Node](nodes: Iterable[N]) -> dict[str, N]:
+    return {n.get_name(): n for n in nodes}

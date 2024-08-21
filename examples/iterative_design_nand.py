@@ -18,8 +18,13 @@ import typer
 
 import faebryk.library._F as F
 from faebryk.core.core import Module
-from faebryk.core.util import specialize_interface, specialize_module
+from faebryk.core.util import (
+    get_all_nodes_with_trait,
+    specialize_interface,
+    specialize_module,
+)
 from faebryk.library._F import Constant
+from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.examples.buildutil import apply_design_to_pcb
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.units import P
@@ -33,7 +38,7 @@ class PowerSource(Module):
         super().__init__()
 
         class IFS(Module.IFS()):
-            power_out = F.ElectricPower()
+            power = F.ElectricPower()
 
         self.IFs = IFS(self)
 
@@ -76,8 +81,7 @@ def App():
     power_source = PowerSource()
 
     # alias
-    power = power_source.IFs.power_out
-    gnd = F.Electrical().connect(power.IFs.lv)
+    power = power_source.IFs.power
 
     # logic
     logic_in = F.Logic()
@@ -87,36 +91,42 @@ def App():
     logic_out.connect(xor.get_trait(F.LogicOps.can_logic_xor).xor(logic_in, on))
 
     # led
-    led = F.PoweredLED()
+    led = F.LEDIndicator()
+    led.IFs.power_in.connect(power)
 
     # application
     switch = F.Switch(F.Logic)()
 
     logic_in.connect_via(switch, on)
 
+    # bring logic signals into electrical domain
     e_in = specialize_interface(logic_in, F.ElectricLogic())
-    pull_down_resistor = e_in.get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
-
     e_out = specialize_interface(logic_out, F.ElectricLogic())
-    e_out.IFs.signal.connect(led.IFs.power.IFs.hv)
-    gnd.connect(led.IFs.power.IFs.lv)
+    e_on = specialize_interface(on, F.ElectricLogic())
+    e_off = specialize_interface(off, F.ElectricLogic())
+    e_in.IFs.reference.connect(power)
+    e_out.IFs.reference.connect(power)
+    e_on.IFs.reference.connect(power)
+    e_off.IFs.reference.connect(power)
+    e_in.set_weak(on=False)
+    e_on.set(on=True)
+    e_off.set(on=False)
 
-    specialize_interface(on, F.ElectricLogic()).connect_to_electric(power.IFs.hv, power)
-    specialize_interface(off, F.ElectricLogic()).connect_to_electric(
-        power.IFs.lv, power
-    )
+    e_out.connect(led.IFs.logic_in)
 
     nxor = specialize_module(xor, XOR_with_NANDS())
-
     battery = specialize_module(power_source, F.Battery())
 
     el_switch = specialize_module(switch, F.Switch(F.ElectricLogic)())
     e_switch = F.Switch(F.Electrical)()
-    # TODO make switch generic to remove the asserts
-    for e, el in zip(e_switch.IFs.unnamed, el_switch.IFs.unnamed):
-        assert isinstance(el, F.ElectricLogic)
-        assert isinstance(e, F.Electrical)
-        el.connect_to_electric(e, battery.IFs.power)
+    e_switch = specialize_module(
+        el_switch,
+        e_switch,
+        matrix=[
+            (e, el.IFs.signal)
+            for e, el in zip(e_switch.IFs.unnamed, el_switch.IFs.unnamed)
+        ],
+    )
 
     # build graph
     app = Module()
@@ -128,14 +138,12 @@ def App():
     ]
 
     # parametrizing
-    pull_down_resistor.PARAMs.resistance.merge(Constant(100 * P.kohm))
-    power_source.IFs.power_out.PARAMs.voltage.merge(Constant(3 * P.V))
-
-    # packaging
-    e_switch.get_trait(F.can_attach_to_footprint).attach(
-        F.KicadFootprint.with_simple_names(
-            "Button_Switch_SMD:Panasonic_EVQPUJ_EVQPUA", 2
-        )
+    for _, t in get_all_nodes_with_trait(app.get_graph(), F.ElectricLogic.has_pulls):
+        for pull_resistor in (r for r in t.get_pulls() if r):
+            pull_resistor.PARAMs.resistance.merge(100 * P.kohm)
+    power_source.IFs.power.PARAMs.voltage.merge(3 * P.V)
+    led.NODEs.led.NODEs.led.PARAMs.brightness.merge(
+        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
     )
 
     # packages single nands as explicit IC

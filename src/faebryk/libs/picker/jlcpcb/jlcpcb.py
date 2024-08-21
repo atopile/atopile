@@ -23,6 +23,7 @@ from tortoise.models import Model
 import faebryk.library._F as F
 from faebryk.core.core import Module, Parameter
 from faebryk.core.util import pretty_param_tree, pretty_params
+from faebryk.library.Set import Set
 from faebryk.libs.e_series import (
     E_SERIES_VALUES,
     ParamNotResolvedError,
@@ -411,7 +412,9 @@ class ComponentQuery:
         assert not self.results
         value_query = Q()
         try:
-            intersection = e_series_intersect(value, E_SERIES_VALUES.E_ALL).params
+            intersection = Set(
+                [e_series_intersect(value, E_SERIES_VALUES.E_ALL)]
+            ).params
         except ParamNotResolvedError as e:
             raise ComponentQuery.ParamError(
                 value, f"Could not run e_series_intersect: {e}"
@@ -503,7 +506,7 @@ class ComponentQuery:
 
             if not all(
                 pm := [
-                    p.is_more_specific_than(getattr(module.PARAMs, m.param_name))
+                    p.is_subset_of(getattr(module.PARAMs, m.param_name))
                     for p, m in zip(params, mapping)
                 ]
             ):
@@ -577,7 +580,7 @@ class JLCPCB_DB:
         if not JLCPCB_DB._instance:
             instance = super(JLCPCB_DB, cls).__new__(cls)
             try:
-                instance.__init__()
+                instance.init()
             except FileNotFoundError as e:
                 cls.failed = e
                 raise e
@@ -594,7 +597,7 @@ class JLCPCB_DB:
         JLCPCB_DB._instance = None
         del instance
 
-    def __init__(self) -> None:
+    def init(self) -> None:
         config = self.config
         self.db_path = config.db_path
         self.db_file = config.db_path / Path("cache.sqlite3")
@@ -723,6 +726,7 @@ class JLCPCB_DB:
 
             download_file(volume_url, volume_file)
 
+        self.db_file.unlink(missing_ok=True)
         logger.info(f"Unzipping {zip_file}")
         patoolib.extract_archive(str(zip_file), outdir=str(self.db_path))
 

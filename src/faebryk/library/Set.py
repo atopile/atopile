@@ -3,11 +3,13 @@
 
 from typing import Iterable, Self
 
-from faebryk.core.core import Parameter
+from faebryk.core.core import Parameter, _resolved
 
 
-class Set[PV](Parameter[PV]):
-    def __init__(self, params: Iterable[Parameter[PV] | PV]) -> None:
+class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
+    type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
+
+    def __init__(self, params: Iterable[Parameter[LIT_OR_PARAM]]) -> None:
         from faebryk.library.Constant import Constant
 
         super().__init__()
@@ -64,7 +66,8 @@ class Set[PV](Parameter[PV]):
     def copy(self) -> Self:
         return type(self)(self.params)
 
-    def __contains__(self, other: PV | Parameter[PV]) -> bool:
+    @_resolved
+    def __contains__(self, other: Parameter[PV]) -> bool:
         from faebryk.library.Range import Range
 
         def nested_in(p):
@@ -75,3 +78,9 @@ class Set[PV](Parameter[PV]):
             return False
 
         return any(nested_in(p) for p in self.params)
+
+    def try_compress(self) -> Parameter[PV]:
+        # compress into constant if possible
+        if len(set(map(id, self.params))) == 1:
+            return Parameter.from_literal(next(iter(self.params)))
+        return super().try_compress()

@@ -160,8 +160,12 @@ class ElectricLogic(Logic):
         self.connect_reference(other.IFs.reference, invert=invert)
 
     def set(self, on: bool):
+        super().set(on)
         r = self.IFs.reference.IFs
         self.IFs.signal.connect(r.hv if on else r.lv)
+
+    def set_weak(self, on: bool):
+        return self.get_trait(self.can_be_pulled).pull(up=on)
 
     @staticmethod
     def connect_all_references(ifs: Iterable["ElectricLogic"]) -> ElectricPower:
