@@ -5,11 +5,12 @@ import logging
 from pathlib import Path
 
 import freetype
+from shapely import Point, Polygon
+
 from faebryk.libs.geometry.basic import (
     flatten_polygons,
     transform_polygon,
 )
-from shapely import Point, Polygon
 
 logger = logging.getLogger(__name__)
 

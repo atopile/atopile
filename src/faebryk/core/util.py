@@ -10,6 +10,8 @@ from typing import (
     cast,
 )
 
+from typing_extensions import deprecated
+
 from faebryk.core.core import (
     Graph,
     GraphInterface,
@@ -33,7 +35,6 @@ from faebryk.library.Set import Set
 from faebryk.library.TBD import TBD
 from faebryk.libs.units import Quantity, UnitsContainer, to_si_str
 from faebryk.libs.util import NotNone, cast_assert
-from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 

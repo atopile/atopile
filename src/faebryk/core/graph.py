@@ -5,6 +5,8 @@ import logging
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Mapping, Self
 
+from typing_extensions import deprecated
+
 from faebryk.libs.util import (
     ConfigFlag,
     LazyMixin,
@@ -12,7 +14,6 @@ from faebryk.libs.util import (
     bfs_visit,
     lazy_construct,
 )
-from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 

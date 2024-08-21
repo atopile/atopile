@@ -13,6 +13,7 @@ from easyeda2kicad.easyeda.easyeda_importer import (
 )
 from easyeda2kicad.kicad.export_kicad_3d_model import Exporter3dModelKicad
 from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
+
 from faebryk.core.core import Module
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_to_footprint_via_pinmap import (

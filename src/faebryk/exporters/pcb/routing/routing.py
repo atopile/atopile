@@ -9,6 +9,7 @@ import logging
 from itertools import groupby
 
 import networkx as nx
+
 from faebryk.core.util import (
     get_all_nodes_of_type,
     get_net,

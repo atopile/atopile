@@ -8,6 +8,7 @@ from textwrap import dedent
 
 import black
 import typer
+
 from faebryk.libs.tools.typer import typer_callback
 
 # TODO use AST instead of string

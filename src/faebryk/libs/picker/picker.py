@@ -10,6 +10,8 @@ from enum import StrEnum
 from textwrap import indent
 from typing import Callable, Iterable
 
+from rich.progress import Progress
+
 from faebryk.core.core import Module, ModuleInterface, ModuleTrait, Parameter
 from faebryk.core.util import get_all_modules, pretty_params
 from faebryk.library.ANY import ANY
@@ -19,7 +21,6 @@ from faebryk.library.can_attach_to_footprint_via_pinmap import (
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_picker import has_picker
 from faebryk.libs.util import NotNone, flatten
-from rich.progress import Progress
 
 logger = logging.getLogger(__name__)
 

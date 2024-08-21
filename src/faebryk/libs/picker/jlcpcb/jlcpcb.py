@@ -12,9 +12,15 @@ from pathlib import Path
 from textwrap import indent
 from typing import Any, Callable, Generator, Self, Sequence
 
-import faebryk.library._F as F
 import patoolib
 import requests
+from rich.progress import track
+from tortoise import Tortoise
+from tortoise.expressions import Q
+from tortoise.fields import CharField, IntField, JSONField
+from tortoise.models import Model
+
+import faebryk.library._F as F
 from faebryk.core.core import Module, Parameter
 from faebryk.core.util import pretty_param_tree, pretty_params
 from faebryk.libs.e_series import (
@@ -35,11 +41,6 @@ from faebryk.libs.picker.picker import (
 )
 from faebryk.libs.units import P, Quantity, UndefinedUnitError, to_si_str
 from faebryk.libs.util import at_exit, cast_assert, try_or
-from rich.progress import track
-from tortoise import Tortoise
-from tortoise.expressions import Q
-from tortoise.fields import CharField, IntField, JSONField
-from tortoise.models import Model
 
 logger = logging.getLogger(__name__)
 

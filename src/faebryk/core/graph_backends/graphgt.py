@@ -6,8 +6,9 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Mapping
 
 import graph_tool as gt
-from faebryk.core.graph import Graph
 from graph_tool.generation import graph_union
+
+from faebryk.core.graph import Graph
 
 logger = logging.getLogger(__name__)
 

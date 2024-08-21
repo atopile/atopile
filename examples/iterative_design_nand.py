@@ -14,8 +14,9 @@ Netlist samples can be run directly.
 
 import logging
 
-import faebryk.library._F as F
 import typer
+
+import faebryk.library._F as F
 from faebryk.core.core import Module
 from faebryk.core.util import specialize_interface, specialize_module
 from faebryk.library._F import Constant

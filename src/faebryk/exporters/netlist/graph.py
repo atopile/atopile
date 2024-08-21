@@ -5,6 +5,7 @@ import logging
 from abc import abstractmethod
 
 import networkx as nx
+
 from faebryk.core.core import Graph, Module
 from faebryk.core.util import (
     get_all_nodes_with_trait,

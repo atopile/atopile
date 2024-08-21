@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from dataclasses_json import CatchAll, Undefined, dataclass_json
+
 from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File, SymEnum, sexp_field
 
 logger = logging.getLogger(__name__)

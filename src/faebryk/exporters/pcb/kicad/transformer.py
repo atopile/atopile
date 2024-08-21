@@ -11,6 +11,9 @@ from itertools import pairwise
 from typing import Any, Callable, Iterable, List, Sequence, TypeVar
 
 import numpy as np
+from shapely import Polygon
+from typing_extensions import deprecated
+
 from faebryk.core.core import (
     Graph,
     Module,
@@ -49,8 +52,6 @@ from faebryk.libs.kicad.fileformats import (
 )
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import cast_assert, find, get_key
-from shapely import Polygon
-from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 

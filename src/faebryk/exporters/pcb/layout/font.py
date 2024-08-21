@@ -3,6 +3,8 @@
 
 import logging
 
+from rich.progress import track
+
 from faebryk.core.core import Node
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.library.has_pcb_position import has_pcb_position
@@ -11,7 +13,6 @@ from faebryk.library.has_pcb_position_defined_relative_to_parent import (
 )
 from faebryk.libs.font import Font
 from faebryk.libs.geometry.basic import get_distributed_points_in_polygon
-from rich.progress import track
 
 logger = logging.getLogger(__name__)
 

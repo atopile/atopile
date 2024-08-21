@@ -7,8 +7,9 @@ This file contains a faebryk sample.
 
 import logging
 
-import faebryk.library._F as F
 import typer
+
+import faebryk.library._F as F
 from faebryk.core.core import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.examples.buildutil import (

@@ -5,6 +5,7 @@ import logging
 from copy import copy
 
 import networkx as nx
+
 from faebryk.core.core import (
     GraphInterface,
     GraphInterfaceHierarchical,

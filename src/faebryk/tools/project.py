@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import typer
+
 from faebryk.libs.tools.typer import typer_callback
 
 TEMPLATE_REPO_URL = "https://github.com/faebryk/project-template.git"

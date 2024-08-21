@@ -5,6 +5,7 @@ import logging
 from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Mapping
 
 import networkx as nx
+
 from faebryk.core.graph import Graph
 
 logger = logging.getLogger(__name__)

@@ -19,6 +19,8 @@ from typing import (
     cast,
 )
 
+from typing_extensions import Self, deprecated
+
 from faebryk.core.graph_backends.default import GraphImpl
 from faebryk.libs.util import (
     ConfigFlag,
@@ -31,7 +33,6 @@ from faebryk.libs.util import (
     try_avoid_endless_recursion,
     unique_ref,
 )
-from typing_extensions import Self, deprecated
 
 logger = logging.getLogger(__name__)
 

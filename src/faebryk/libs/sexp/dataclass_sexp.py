@@ -6,9 +6,10 @@ from types import UnionType
 from typing import Any, Callable, Iterator, TypeVar, Union, get_args, get_origin
 
 import sexpdata
+from sexpdata import Symbol
+
 from faebryk.libs.sexp.util import prettify_sexp_string
 from faebryk.libs.util import duplicates, groupby, zip_non_locked
-from sexpdata import Symbol
 
 logger = logging.getLogger(__name__)
 
