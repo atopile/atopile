@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import unittest
+from itertools import pairwise
 
 import faebryk.library._F as F
 from faebryk.libs.e_series import (
@@ -61,6 +62,16 @@ class TestESeries(unittest.TestCase):
             ),
             (F.Constant(9.09e3), F.Constant(115)),
         )
+
+    def test_sets(self):
+        E = E_SERIES_VALUES
+        EVs24 = [3 * 2**i for i in range(4)]
+        EVs192 = [3 * 2**i for i in range(4, 6)]
+        for EVs in [EVs24, EVs192]:
+            for i1, i2 in pairwise(EVs):
+                e1 = getattr(E, f"E{i1}")
+                e2 = getattr(E, f"E{i2}")
+                self.assertTrue(e1 < e2, f"{i1} < {i2}")
 
 
 if __name__ == "__main__":

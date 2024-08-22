@@ -18,6 +18,7 @@ from faebryk.core.core import (
     GraphInterfaceHierarchical,
     GraphInterfaceSelf,
     Link,
+    LinkDirect,
     LinkNamedParent,
     Module,
     ModuleInterface,
@@ -245,6 +246,16 @@ def get_connected_mifs_with_link(gif: GraphInterface):
         for s, link in connections
         if s.node is not gif.node
     }
+
+
+def get_direct_connected_nodes[T: Node](
+    gif: GraphInterface, ty: type[T] = Node
+) -> set[T]:
+    out = get_nodes_from_gifs(
+        g for g, t in get_all_connected(gif) if isinstance(t, LinkDirect)
+    )
+    assert all(isinstance(n, ty) for n in out)
+    return cast(set[T], out)
 
 
 def get_net(mif: Electrical):

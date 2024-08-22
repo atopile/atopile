@@ -414,7 +414,7 @@ class E_SERIES_VALUES:
         4.7,
     }
 
-    E_ALL = set(sorted(set(E3 | E6 | E12 | E24 | E48 | E96 | E192)))
+    E_ALL = set(sorted(E24 | E192))
 
 
 def repeat_set_over_base(

@@ -28,10 +28,10 @@ class Operation[PV](Parameter[PV]):
     @try_avoid_endless_recursion
     def __repr__(self):
         opsnames = {
-            Parameter.__truediv__: "/",
-            Parameter.__add__: "+",
-            Parameter.__sub__: "-",
-            Parameter.__mul__: "*",
+            "Parameter.__truediv__": "/",
+            "Parameter.__add__": "+",
+            "Parameter.__sub__": "-",
+            "Parameter.__mul__": "*",
         }
 
         op = self.operation
@@ -45,9 +45,7 @@ class Operation[PV](Parameter[PV]):
         fname = op.__qualname__
 
         try:
-            fname = find(
-                opsnames.items(), lambda x: fname.startswith(x[0].__qualname__)
-            )[1]
+            fname = find(opsnames.items(), lambda x: fname.startswith(x[0]))[1]
         except KeyError:
             ...
 
@@ -59,20 +57,16 @@ class Operation[PV](Parameter[PV]):
             + f"(\n{'\n'.join(indent(repr(o), '  ') for o in operands)}\n)"
         )
 
-    def execute(self):
+    def _execute(self):
         operands = [o.get_most_narrow() for o in self.operands]
         out = self.operation(*operands)
         if isinstance(out, Operation):
             raise Operation.OperationNotExecutable()
-        self._narrowed(out)
         logger.debug(f"{operands=} resolved to {out}")
         return out
 
-    def get_most_narrow(self) -> Parameter[PV]:
-        out = super().get_most_narrow()
-        if out is self:
-            try:
-                return self.execute()
-            except Operation.OperationNotExecutable:
-                pass
-        return out
+    def try_compress(self) -> Parameter[PV]:
+        try:
+            return self._execute()
+        except Operation.OperationNotExecutable:
+            return self

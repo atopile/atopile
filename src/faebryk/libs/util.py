@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import asyncio
 import inspect
 import logging
 from abc import abstractmethod
@@ -24,6 +25,9 @@ from typing import (
     TypeVar,
     get_origin,
 )
+
+from tortoise import Model
+from tortoise.queryset import QuerySet
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +73,7 @@ def unique(it, key):
     return out
 
 
-def unique_ref(it):
+def unique_ref[T](it: Iterable[T]) -> list[T]:
     return unique(it, id)
 
 
@@ -764,3 +768,22 @@ class ConfigFlagEnum[E: StrEnum]:
 def zip_dicts_by_key(*dicts):
     keys = {k for d in dicts for k in d}
     return {k: tuple(d.get(k) for d in dicts) for k in keys}
+
+
+def paginated_query[T: Model](page_size: int, q: QuerySet[T]) -> Iterator[T]:
+    page = 0
+
+    async def get_page(page: int):
+        offset = page * page_size
+        return await q.offset(offset).limit(page_size)
+
+    while True:
+        results = asyncio.run(get_page(page))
+
+        if not results:
+            break  # No more records to fetch, exit the loop
+
+        for r in results:
+            yield r
+
+        page += 1

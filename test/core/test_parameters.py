@@ -8,6 +8,7 @@ from typing import TypeVar
 
 from faebryk.core.core import Module, Parameter
 from faebryk.core.core import logger as core_logger
+from faebryk.core.util import specialize_module
 from faebryk.library.ANY import ANY
 from faebryk.library.Constant import Constant
 from faebryk.library.Operation import Operation
@@ -325,6 +326,53 @@ class TestParameters(unittest.TestCase):
             min(Constant(Constant(Constant(1))), Constant(Constant(2))),
             Constant(Constant(Constant(1))),
         )
+
+    def test_specialize(self):
+        import faebryk.library._F as F
+        from faebryk.libs.brightness import TypicalLuminousIntensity
+
+        for i in range(10):
+
+            class App(Module):
+                def __init__(self) -> None:
+                    super().__init__()
+
+                    class _NODES(Module.NODES()):
+                        led = F.PoweredLED()
+                        battery = F.Battery()
+
+                    self.NODEs = _NODES(self)
+
+                    self.NODEs.led.IFs.power.connect(self.NODEs.battery.IFs.power)
+
+                    # Parametrize
+                    self.NODEs.led.NODEs.led.PARAMs.color.merge(F.LED.Color.YELLOW)
+                    self.NODEs.led.NODEs.led.PARAMs.brightness.merge(
+                        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+                    )
+
+            app = App()
+
+            bcell = specialize_module(app.NODEs.battery, F.ButtonCell())
+            bcell.PARAMs.voltage.merge(3 * P.V)
+            bcell.PARAMs.capacity.merge(Range.from_center(225 * P.mAh, 50 * P.mAh))
+            bcell.PARAMs.material.merge(F.ButtonCell.Material.Lithium)
+            bcell.PARAMs.size.merge(F.ButtonCell.Size.N_2032)
+            bcell.PARAMs.shape.merge(F.ButtonCell.Shape.Round)
+
+            app.NODEs.led.NODEs.led.PARAMs.color.merge(F.LED.Color.YELLOW)
+            app.NODEs.led.NODEs.led.PARAMs.max_brightness.merge(500 * P.millicandela)
+            app.NODEs.led.NODEs.led.PARAMs.forward_voltage.merge(1.2 * P.V)
+            app.NODEs.led.NODEs.led.PARAMs.max_current.merge(20 * P.mA)
+
+            v = app.NODEs.battery.PARAMs.voltage
+            # vbcell = bcell.PARAMs.voltage
+            # print(pretty_param_tree_top(v))
+            # print(pretty_param_tree_top(vbcell))
+            self.assertEqual(v.get_most_narrow(), 3 * P.V)
+            r = app.NODEs.led.NODEs.current_limiting_resistor.PARAMs.resistance
+            r = r.get_most_narrow()
+            self.assertIsInstance(r, Range, f"{type(r)}")
 
 
 if __name__ == "__main__":

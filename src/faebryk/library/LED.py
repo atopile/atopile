@@ -42,6 +42,8 @@ class LED(Diode):
             * self.PARAMs.max_current
         )
 
+        self.inherit()
+
         # self.PARAMs.brightness.merge(
         #    Range(0 * P.millicandela, self.PARAMs.max_brightness)
         # )

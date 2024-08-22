@@ -67,4 +67,6 @@ class ButtonCell(Battery):
 
         self.add_trait(has_designator_prefix_defined("B"))
 
+        self.inherit()
+
         # TODO merge voltage with material voltage

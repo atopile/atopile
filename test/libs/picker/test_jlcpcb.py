@@ -395,4 +395,5 @@ class TestPickerJlcpcb(unittest.TestCase):
 if __name__ == "__main__":
     setup_basic_logging()
     logger.setLevel(logging.DEBUG)
+
     unittest.main()

@@ -6,6 +6,7 @@ from __future__ import annotations
 import inspect
 import logging
 from abc import ABC, abstractmethod
+from itertools import pairwise
 from typing import (
     Any,
     Callable,
@@ -16,7 +17,6 @@ from typing import (
     Sequence,
     Type,
     TypeVar,
-    cast,
 )
 
 from typing_extensions import Self, deprecated
@@ -28,6 +28,7 @@ from faebryk.libs.util import (
     NotNone,
     TwistArgs,
     cast_assert,
+    groupby,
     is_type_pair,
     print_stack,
     try_avoid_endless_recursion,
@@ -580,6 +581,23 @@ class Node(FaebrykLibObject):
         else:
             return ".".join([f"{name}" for _, name in hierarchy])
 
+    def inherit(self):
+        """
+        Has to be called if inhereting from another module after setting the holders
+        """
+        from faebryk.core.util import get_children
+
+        children = get_children(self, direct_only=True, include_root=False)
+        by_name = groupby(children, lambda n: n.get_name())
+        for _, cs in by_name.items():
+            for c1, c2 in pairwise(cs):
+                # TODO check equal top-level types (module, etc)
+                if isinstance(c1, Parameter):
+                    c1.merge(c2)
+                elif isinstance(c1, (ModuleInterface, GraphInterface)):
+                    c1.connect(c2)
+                ...
+
     @try_avoid_endless_recursion
     def __str__(self) -> str:
         return f"<{self.get_full_name(types=True)}>"
@@ -659,16 +677,17 @@ class Parameter[PV](Node):
         else:
             return Constant(value)
 
-    def _merge(self, other: LIT_OR_PARAM) -> Parameter[PV]:
+    def _merge(self, other: Parameter[PV]) -> Parameter[PV]:
         from faebryk.library.ANY import ANY
         from faebryk.library.Operation import Operation
         from faebryk.library.Set import Set
         from faebryk.library.TBD import TBD
 
-        other = self.from_literal(other)
-
         def _is_pair(type1: type[T], type2: type[U]) -> Optional[tuple[T, U]]:
             return is_type_pair(self, other, type1, type2)
+
+        if self is other:
+            return self
 
         try:
             if self == other:
@@ -911,22 +930,7 @@ class Parameter[PV](Node):
         return self.intersect(self, other)
 
     def get_most_narrow(self) -> Parameter[PV]:
-        out = self
-        narrowers = {
-            narrower
-            for narrower_gif in self.GIFs.narrowed_by.get_direct_connections()
-            if (narrower := narrower_gif.node) is not self
-            and isinstance(narrower, Parameter)
-        }
-        if narrowers:
-            narrowest_next = unique_ref(
-                narrower.get_most_narrow() for narrower in narrowers
-            )
-
-            assert (
-                len(narrowest_next) == 1
-            ), "Ambiguous narrowest"  # {narrowest_next} for {self}"
-            out: Parameter[PV] = next(iter(narrowest_next))
+        out = self.get_narrowing_chain()[-1]
 
         com = out.try_compress()
         if com is not out:
@@ -966,28 +970,20 @@ class Parameter[PV](Node):
     #    return repr(narrowest)
 
     def get_narrowing_chain(self) -> list[Parameter]:
+        from faebryk.core.util import get_direct_connected_nodes
+
         out: list[Parameter] = [self]
-        narrowers = {
-            narrower
-            for narrower_gif in self.GIFs.narrowed_by.get_direct_connections()
-            if (narrower := narrower_gif.node) is not self
-            and isinstance(narrower, Parameter)
-        }
-        if len(narrowers) > 1:
-            raise NotImplementedError()
-        for narrower in narrowers:
-            out += narrower.get_narrowing_chain()
+        narrowers = get_direct_connected_nodes(self.GIFs.narrowed_by, Parameter)
+        if narrowers:
+            assert len(narrowers) == 1, "Narrowing tree diverged"
+            out += next(iter(narrowers)).get_narrowing_chain()
+            assert id(self) not in map(id, out[1:]), "Narrowing tree cycle"
         return out
 
     def get_narrowed_siblings(self) -> set[Parameter]:
-        # TODO use more graphy way
-        out = {
-            gif.node
-            for gif in self.GIFs.narrows.get_direct_connections()
-            if gif.node is not self
-        }
-        assert all(isinstance(o, Parameter) for o in out)
-        return cast(set[Parameter], out)
+        from faebryk.core.util import get_direct_connected_nodes
+
+        return get_direct_connected_nodes(self.GIFs.narrows, Parameter)
 
     def __copy__(self) -> Self:
         return type(self)()

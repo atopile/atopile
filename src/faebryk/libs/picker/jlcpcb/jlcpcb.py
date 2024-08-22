@@ -398,7 +398,12 @@ class ComponentQuery:
         self.Q &= Q(stock__gte=qty)
         return self
 
-    def filter_by_value(self, value: Parameter[Quantity], si_unit: str) -> Self:
+    def filter_by_value(
+        self,
+        value: Parameter[Quantity],
+        si_unit: str,
+        e_series: set[float] | None = None,
+    ) -> Self:
         assert self.Q
         value = value.get_most_narrow()
 
@@ -413,7 +418,7 @@ class ComponentQuery:
         value_query = Q()
         try:
             intersection = Set(
-                [e_series_intersect(value, E_SERIES_VALUES.E_ALL)]
+                [e_series_intersect(value, e_series or E_SERIES_VALUES.E_ALL)]
             ).params
         except ParamNotResolvedError as e:
             raise ComponentQuery.ParamError(
