@@ -513,6 +513,15 @@ class C_stroke:
 
 
 @dataclass
+class C_text_layer:
+    class E_knockout(SymEnum):
+        knockout = auto()
+
+    layer: str = field(**sexp_field(positional=True))
+    knockout: Optional[E_knockout] = field(**sexp_field(positional=True), default=None)
+
+
+@dataclass
 class C_effects:
     @dataclass
     class C_font:
@@ -570,7 +579,7 @@ class C_arc:
 class C_text:
     text: str = field(**sexp_field(positional=True))
     at: C_xyr
-    layer: str
+    layer: C_text_layer
     uuid: UUID
     effects: C_effects
 
@@ -583,7 +592,7 @@ class C_fp_text:
     type: E_type = field(**sexp_field(positional=True))
     text: str = field(**sexp_field(positional=True))
     at: C_xyr
-    layer: str
+    layer: C_text_layer
     uuid: UUID
     effects: C_effects
 
@@ -626,7 +635,7 @@ class C_footprint:
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
-        layer: str
+        layer: C_text_layer
         hide: bool = False
         uuid: UUID
         effects: C_effects
@@ -636,7 +645,8 @@ class C_footprint:
         class E_type(SymEnum):
             thru_hole = auto()
             smd = auto()
-            np_thru_hole = auto()
+            none_plated_thru_hole = "np_thru_hole"
+            edge_connector = "connect"
 
         class E_shape(SymEnum):
             circle = auto()
@@ -663,9 +673,12 @@ class C_footprint:
                 circle = ""
                 stadium = "oval"
 
-            shape: E_shape = field(**sexp_field(positional=True))
-            size_x: float = field(**sexp_field(positional=True))
+            shape: E_shape = field(
+                **sexp_field(positional=True), default=E_shape.circle
+            )
+            size_x: Optional[float] = field(**sexp_field(positional=True), default=None)
             size_y: Optional[float] = field(**sexp_field(positional=True), default=None)
+            offset: Optional[C_xy] = None
 
         # TODO: replace with generic gr item
         @dataclass(kw_only=True)
@@ -687,6 +700,8 @@ class C_footprint:
         drill: Optional[C_drill] = None
         layers: list[str]
         remove_unused_layers: bool = False
+        roundrect_rratio: Optional[float] = None
+        die_length: Optional[float] = None
         options: Optional[C_options] = None
         primitives: Optional[C_gr] = None
         # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
@@ -926,7 +941,7 @@ class C_kicad_pcb_file(SEXP_File):
 
             @dataclass
             class C_keepout:
-                class E_keepout_bool(StrEnum):
+                class E_keepout_bool(SymEnum):
                     allowed = auto()
                     not_allowed = auto()
 
