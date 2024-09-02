@@ -3,6 +3,8 @@
 
 from typing import Self, SupportsAbs
 
+import numpy as np
+
 from faebryk.core.parameter import Parameter, _resolved
 from faebryk.libs.units import Quantity
 
@@ -31,6 +33,11 @@ class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
     def __eq__(self, other) -> bool:
         if not isinstance(other, Constant):
             return False
+
+        try:
+            return np.allclose(self.value, other.value)
+        except (TypeError, np.exceptions.DTypePromotionError):
+            ...
 
         return self.value == other.value
 

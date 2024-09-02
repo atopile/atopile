@@ -359,6 +359,9 @@ class TestParameters(unittest.TestCase):
             r = r.get_most_narrow()
             self.assertIsInstance(r, Range, f"{type(r)}")
 
+    def test_units(self):
+        self.assertEqual(Constant(1e-9 * P.F), 1 * P.nF)
+
 
 if __name__ == "__main__":
     unittest.main()
