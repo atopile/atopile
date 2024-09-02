@@ -40,7 +40,12 @@ class TestFileFormats(unittest.TestCase):
 
         self.assertEqual(
             [f.name for f in pcb.kicad_pcb.footprints],
-            ["lcsc:LED0603-RD-YELLOW", "lcsc:R0402", "lcsc:BAT-TH_BS-02-A1AJ010"],
+            [
+                "logos:faebryk_logo",
+                "lcsc:LED0603-RD-YELLOW",
+                "lcsc:R0402",
+                "lcsc:BAT-TH_BS-02-A1AJ010",
+            ],
         )
         self.assertFalse(pcb.kicad_pcb.setup.pcbplotparams.usegerberextensions)
 

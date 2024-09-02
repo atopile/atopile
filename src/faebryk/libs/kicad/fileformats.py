@@ -543,6 +543,11 @@ class C_effects:
     # and optional enums: (E_justify_horizontal, E_justify_vertical, E_mirrored)
 
 
+class E_fill(SymEnum):
+    none = auto()
+    solid = auto()
+
+
 @dataclass
 class C_line:
     start: C_xy
@@ -554,9 +559,6 @@ class C_line:
 
 @dataclass
 class C_circle:
-    class E_fill(SymEnum):
-        none = auto()
-
     center: C_xy
     end: C_xy
     stroke: C_stroke
@@ -599,10 +601,6 @@ class C_fp_text:
 
 @dataclass
 class C_rect:
-    class E_fill(SymEnum):
-        none = auto()
-        solid = auto()
-
     start: C_xy
     end: C_xy
     stroke: C_stroke
@@ -640,12 +638,19 @@ class C_footprint:
         uuid: UUID
         effects: C_effects
 
+    @dataclass
+    class C_footprint_polygon(C_polygon):
+        stroke: C_stroke
+        fill: E_fill
+        layer: str
+        uuid: UUID
+
     @dataclass(kw_only=True)
     class C_pad:
         class E_type(SymEnum):
             thru_hole = auto()
             smd = auto()
-            none_plated_thru_hole = "np_thru_hole"
+            non_plated_through_hole = "np_thru_hole"
             edge_connector = "connect"
 
         class E_shape(SymEnum):
@@ -741,8 +746,11 @@ class C_footprint:
     fp_texts: list[C_fp_text] = field(
         **sexp_field(multidict=True), default_factory=list
     )
+    fp_poly: list[C_footprint_polygon] = field(
+        **sexp_field(multidict=True), default_factory=list
+    )
     pads: list[C_pad] = field(**sexp_field(multidict=True), default_factory=list)
-    model: Optional[C_model] = None
+    model: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
 
 
 @dataclass
