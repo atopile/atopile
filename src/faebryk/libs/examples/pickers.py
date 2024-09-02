@@ -6,16 +6,19 @@ Example picker library. Used both for demonstration and as the dedicated example
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import faebryk.library._F as F
-from faebryk.core.core import Module
+from faebryk.core.module import Module
 from faebryk.core.util import specialize_module
 from faebryk.library._F import Constant, Range
-from faebryk.library.Switch import _TSwitch
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import PickerOption, pick_module_by_params
 from faebryk.libs.units import P
+
+if TYPE_CHECKING:
+    from faebryk.library.Switch import _TSwitch
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +49,9 @@ def pick_fuse(module: F.Fuse):
 
 def pick_mosfet(module: F.MOSFET):
     standard_pinmap = {
-        "1": module.IFs.gate,
-        "2": module.IFs.source,
-        "3": module.IFs.drain,
+        "1": module.gate,
+        "2": module.source,
+        "3": module.drain,
     }
     pick_module_by_params(
         module,
@@ -189,7 +192,7 @@ def pick_led(module: F.LED):
                     "forward_voltage": Constant(3.7 * P.volt),
                     "max_current": Constant(100 * P.mA),
                 },
-                pinmap={"1": module.IFs.cathode, "2": module.IFs.anode},
+                pinmap={"1": module.cathode, "2": module.anode},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C72041"),
@@ -199,7 +202,7 @@ def pick_led(module: F.LED):
                     "forward_voltage": Constant(3.1 * P.volt),
                     "max_current": Constant(100 * P.mA),
                 },
-                pinmap={"1": module.IFs.cathode, "2": module.IFs.anode},
+                pinmap={"1": module.cathode, "2": module.anode},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C72038"),
@@ -209,7 +212,7 @@ def pick_led(module: F.LED):
                     "forward_voltage": Constant(2.3 * P.volt),
                     "max_current": Constant(60 * P.mA),
                 },
-                pinmap={"1": module.IFs.cathode, "2": module.IFs.anode},
+                pinmap={"1": module.cathode, "2": module.anode},
             ),
         ],
     )
@@ -225,8 +228,8 @@ def pick_tvs(module: F.TVS):
                     "reverse_working_voltage": Constant(5 * P.V),
                 },
                 pinmap={
-                    "1": module.IFs.cathode,
-                    "2": module.IFs.anode,
+                    "1": module.cathode,
+                    "2": module.anode,
                 },
             ),
         ],
@@ -256,15 +259,15 @@ def pick_battery(module: F.Battery):
                     "shape": Constant(F.ButtonCell.Shape.Round),
                 },
                 pinmap={
-                    "1": module.IFs.power.IFs.lv,
-                    "2": module.IFs.power.IFs.hv,
+                    "1": module.power.lv,
+                    "2": module.power.hv,
                 },
             ),
         ],
     )
 
 
-def pick_switch(module: _TSwitch[F.Electrical]):
+def pick_switch(module: "_TSwitch[F.Electrical]"):
     module.add_trait(F.can_attach_to_footprint_symmetrically())
     pick_module_by_params(
         module,

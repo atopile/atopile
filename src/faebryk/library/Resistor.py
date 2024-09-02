@@ -3,60 +3,47 @@
 
 from math import sqrt
 
-from faebryk.core.core import Module, Parameter
-from faebryk.core.util import (
-    as_unit,
-    as_unit_with_tolerance,
-)
-from faebryk.library.can_attach_to_footprint_symmetrically import (
-    can_attach_to_footprint_symmetrically,
-)
-from faebryk.library.can_bridge_defined import can_bridge_defined
-from faebryk.library.Electrical import Electrical
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.has_multi_picker import has_multi_picker
-from faebryk.library.has_simple_value_representation_based_on_params import (
-    has_simple_value_representation_based_on_params,
-)
-from faebryk.library.TBD import TBD
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.core.parameter import Parameter
+from faebryk.libs.library import L
 from faebryk.libs.picker.picker import PickError, has_part_picked_remove
 from faebryk.libs.units import P, Quantity
-from faebryk.libs.util import times
 
 
 class Resistor(Module):
-    def __init__(self):
-        super().__init__()
+    unnamed = L.list_field(2, F.Electrical)
 
-        class _IFs(super().IFS()):
-            unnamed = times(2, Electrical)
+    resistance: F.TBD[Quantity]
+    rated_power: F.TBD[Quantity]
+    rated_voltage: F.TBD[Quantity]
 
-        self.IFs = _IFs(self)
-        self.add_trait(can_bridge_defined(*self.IFs.unnamed))
+    attach_to_footprint: F.can_attach_to_footprint_symmetrically
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("R")
 
-        class PARAMS(super().PARAMS()):
-            resistance = TBD[Quantity]()
-            rated_power = TBD[Quantity]()
-            rated_voltage = TBD[Quantity]()
+    @L.rt_field
+    def can_bridge(self):
+        return F.can_bridge_defined(*self.unnamed)
 
-        self.PARAMs = PARAMS(self)
-
-        self.add_trait(can_attach_to_footprint_symmetrically())
-        self.add_trait(
-            has_simple_value_representation_based_on_params(
-                (
-                    self.PARAMs.resistance,
-                    self.PARAMs.rated_power,
-                ),
-                lambda ps: " ".join(
-                    filter(
-                        None,
-                        [as_unit_with_tolerance(ps[0], "Ω"), as_unit(ps[1], "W")],
-                    )
-                ),
-            )
+    @L.rt_field
+    def simple_value_representation(self):
+        from faebryk.core.util import (
+            as_unit,
+            as_unit_with_tolerance,
         )
-        self.add_trait(has_designator_prefix_defined("R"))
+
+        return F.has_simple_value_representation_based_on_params(
+            (
+                self.resistance,
+                self.rated_power,
+            ),
+            lambda ps: " ".join(
+                filter(
+                    None,
+                    [as_unit_with_tolerance(ps[0], "Ω"), as_unit(ps[1], "W")],
+                )
+            ),
+        )
 
     def allow_removal_if_zero(self):
         import faebryk.library._F as F
@@ -64,23 +51,23 @@ class Resistor(Module):
         def replace_zero(m: Module):
             assert m is self
 
-            r = self.PARAMs.resistance.get_most_narrow()
+            r = self.resistance.get_most_narrow()
             if not F.Constant(0.0 * P.ohm).is_subset_of(r):
                 raise PickError("", self)
 
-            self.PARAMs.resistance.override(F.Constant(0.0 * P.ohm))
-            self.IFs.unnamed[0].connect(self.IFs.unnamed[1])
+            self.resistance.override(F.Constant(0.0 * P.ohm))
+            self.unnamed[0].connect(self.unnamed[1])
             self.add_trait(has_part_picked_remove())
 
-        has_multi_picker.add_to_module(
-            self, -100, has_multi_picker.FunctionPicker(replace_zero)
+        F.has_multi_picker.add_to_module(
+            self, -100, F.has_multi_picker.FunctionPicker(replace_zero)
         )
 
     def get_voltage_drop_by_current_resistance(self, current_A: Parameter) -> Parameter:
-        return current_A * self.PARAMs.resistance
+        return current_A * self.resistance
 
     def get_voltage_drop_by_power_resistance(self, power_W: Parameter) -> Parameter:
-        return sqrt(power_W * self.PARAMs.resistance)
+        return sqrt(power_W * self.resistance)
 
     @staticmethod
     def set_voltage_drop_by_power_current(
@@ -91,10 +78,10 @@ class Resistor(Module):
     def get_current_flow_by_voltage_resistance(
         self, voltage_drop_V: Parameter
     ) -> Parameter:
-        return voltage_drop_V / self.PARAMs.resistance
+        return voltage_drop_V / self.resistance
 
     def get_current_flow_by_power_resistance(self, power_W: Parameter) -> Parameter:
-        return sqrt(power_W / self.PARAMs.resistance)
+        return sqrt(power_W / self.resistance)
 
     @staticmethod
     def get_current_flow_by_voltage_power(
@@ -105,30 +92,30 @@ class Resistor(Module):
     def set_resistance_by_voltage_current(
         self, voltage_drop_V: Parameter, current_A: Parameter
     ) -> Parameter:
-        self.PARAMs.resistance.merge(voltage_drop_V / current_A)
-        return self.PARAMs.resistance.get_most_narrow()
+        self.resistance.merge(voltage_drop_V / current_A)
+        return self.resistance.get_most_narrow()
 
     def set_resistance_by_voltage_power(
         self, voltage_drop_V: Parameter, power_W: Parameter
     ) -> Parameter:
-        self.PARAMs.resistance.merge(pow(voltage_drop_V, 2) / power_W)
-        return self.PARAMs.resistance.get_most_narrow()
+        self.resistance.merge(pow(voltage_drop_V, 2) / power_W)
+        return self.resistance.get_most_narrow()
 
     def set_resistance_by_power_current(
         self, current_A: Parameter, power_W: Parameter
     ) -> Parameter:
-        self.PARAMs.resistance.merge(power_W / pow(current_A, 2))
-        return self.PARAMs.resistance.get_most_narrow()
+        self.resistance.merge(power_W / pow(current_A, 2))
+        return self.resistance.get_most_narrow()
 
     def get_power_dissipation_by_voltage_resistance(
         self, voltage_drop_V: Parameter
     ) -> Parameter:
-        return pow(voltage_drop_V, 2) / self.PARAMs.resistance
+        return pow(voltage_drop_V, 2) / self.resistance
 
     def get_power_dissipation_by_current_resistance(
         self, current_A: Parameter
     ) -> Parameter:
-        return pow(current_A, 2) * self.PARAMs.resistance
+        return pow(current_A, 2) * self.resistance
 
     @staticmethod
     def get_power_dissipation_by_voltage_current(
@@ -137,11 +124,11 @@ class Resistor(Module):
         return voltage_drop_V * current_A
 
     def set_rated_power_by_voltage_resistance(self, voltage_drop_V: Parameter):
-        self.PARAMs.rated_power.merge(
+        self.rated_power.merge(
             self.get_power_dissipation_by_voltage_resistance(voltage_drop_V)
         )
 
     def set_rated_power_by_current_resistance(self, current_A: Parameter):
-        self.PARAMs.rated_power.merge(
+        self.rated_power.merge(
             self.get_power_dissipation_by_current_resistance(current_A)
         )

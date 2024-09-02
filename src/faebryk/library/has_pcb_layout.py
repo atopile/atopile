@@ -3,9 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class has_pcb_layout(ModuleTrait):
+class has_pcb_layout(Module.TraitT):
     @abstractmethod
     def apply(self): ...

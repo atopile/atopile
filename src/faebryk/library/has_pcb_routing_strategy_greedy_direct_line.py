@@ -3,23 +3,18 @@
 
 import logging
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.exporters.pcb.routing.util import (
-    DEFAULT_TRACE_WIDTH,
-    Path,
-    Route,
-    get_internal_nets_of_node,
-    get_pads_pos_of_mifs,
-    group_pads_that_are_connected_already,
-)
-from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
+import faebryk.library._F as F
 from faebryk.libs.geometry.basic import Geometry
+
+if TYPE_CHECKING:
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 logger = logging.getLogger(__name__)
 
 
-class has_pcb_routing_strategy_greedy_direct_line(has_pcb_routing_strategy.impl()):
+class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.impl()):
     class Topology(Enum):
         STAR = auto()
         DIRECT = auto()
@@ -29,8 +24,17 @@ class has_pcb_routing_strategy_greedy_direct_line(has_pcb_routing_strategy.impl(
         super().__init__()
         self.topology = topology
 
-    def calculate(self, transformer: PCB_Transformer):
-        node = self.get_obj()
+    def calculate(self, transformer: "PCB_Transformer"):
+        from faebryk.exporters.pcb.routing.util import (
+            DEFAULT_TRACE_WIDTH,
+            Path,
+            Route,
+            get_internal_nets_of_node,
+            get_pads_pos_of_mifs,
+            group_pads_that_are_connected_already,
+        )
+
+        node = self.obj
         nets = get_internal_nets_of_node(node)
 
         logger.debug(f"Routing {node} {'-'*40}")

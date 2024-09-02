@@ -1,17 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from dataclasses import dataclass, field
 
-from faebryk.core.core import Module, Parameter
-from faebryk.library.Constant import Constant
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_datasheet_defined import has_datasheet_defined
-from faebryk.library.has_esphome_config import has_esphome_config
-from faebryk.library.is_esphome_bus import is_esphome_bus
-from faebryk.library.Range import Range
-from faebryk.library.TBD import TBD
-from faebryk.library.UART_Base import UART_Base
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
@@ -32,58 +25,41 @@ class PM1006(Module):
     or UART signal.
     """
 
-    @dataclass
-    class _pm1006_esphome_config(has_esphome_config.impl()):
-        update_interval_s: Parameter = field(default_factory=TBD)
-
-        def __post_init__(self) -> None:
-            super().__init__()
+    class _pm1006_esphome_config(F.has_esphome_config.impl()):
+        update_interval: F.TBD
 
         def get_config(self) -> dict:
-            assert isinstance(
-                self.update_interval_s, Constant
-            ), "No update interval set!"
+            val = self.update_interval.get_most_narrow()
+            assert isinstance(val, F.Constant), "No update interval set!"
 
-            obj = self.get_obj()
+            obj = self.obj
             assert isinstance(obj, PM1006), "This is not an PM1006!"
 
-            uart = is_esphome_bus.find_connected_bus(obj.IFs.data)
+            uart = F.is_esphome_bus.find_connected_bus(obj.data)
 
             return {
                 "sensor": [
                     {
                         "platform": "pm1006",
-                        "update_interval": f"{self.update_interval_s.value}s",
-                        "uart_id": uart.get_trait(is_esphome_bus).get_bus_id(),
+                        "update_interval": f"{val.value.to('s')}",
+                        "uart_id": uart.get_trait(F.is_esphome_bus).get_bus_id(),
                     }
                 ]
             }
 
-    def __init__(self) -> None:
-        super().__init__()
+    esphome_config: _pm1006_esphome_config
 
-        class _IFs(Module.IFS()):
-            power = ElectricPower()
-            data = UART_Base()
+    power: F.ElectricPower
+    data: F.UART_Base
 
-        self.IFs = _IFs(self)
+    # components
 
-        # components
-        class _NODEs(Module.NODES()): ...
+    # ---------------------------------------------------------------------
+    datasheet = L.f_field(F.has_datasheet_defined)(
+        "http://www.jdscompany.co.kr/download.asp?gubun=07&filename=PM1006_LED_PARTICLE_SENSOR_MODULE_SPECIFICATIONS.pdf"
+    )
+    # ---------------------------------------------------------------------
 
-        self.NODEs = _NODEs(self)
-        # ---------------------------------------------------------------------
-
-        self.add_trait(
-            has_datasheet_defined(
-                "http://www.jdscompany.co.kr/download.asp?gubun=07&filename=PM1006_F.LED_PARTICLE_SENSOR_MODULE_SPECIFICATIONS.pdf"
-            )
-        )
-
-        self.esphome = self._pm1006_esphome_config()
-        self.add_trait(self.esphome)
-        # ---------------------------------------------------------------------
-
-        self.IFs.power.PARAMs.voltage.merge(Range.from_center(5, 0.2))
-
-        self.IFs.data.PARAMs.baud.merge(Constant(9600 * P.baud))
+    def __preinit__(self):
+        self.power.voltage.merge(F.Range.from_center(5, 0.2))
+        self.data.baud.merge(F.Constant(9600 * P.baud))

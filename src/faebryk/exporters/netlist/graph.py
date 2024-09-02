@@ -6,32 +6,15 @@ from abc import abstractmethod
 
 import networkx as nx
 
-from faebryk.core.core import Graph, Module
-from faebryk.core.util import (
-    get_all_nodes_with_trait,
-    get_connected_mifs,
-)
+import faebryk.library._F as F
+from faebryk.core.graphinterface import Graph
+from faebryk.core.module import Module
 from faebryk.exporters.netlist.netlist import T2Netlist
-from faebryk.library.Electrical import Electrical
-from faebryk.library.FootprintTrait import FootprintTrait
-from faebryk.library.has_defined_descriptive_properties import (
-    has_defined_descriptive_properties,
-)
-from faebryk.library.has_descriptive_properties import has_descriptive_properties
-from faebryk.library.has_footprint import has_footprint
-from faebryk.library.has_kicad_footprint import has_kicad_footprint
-from faebryk.library.has_overriden_name import has_overriden_name
-from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
-from faebryk.library.has_simple_value_representation import (
-    has_simple_value_representation,
-)
-from faebryk.library.Net import Net
-from faebryk.library.Pad import Pad
 
 logger = logging.getLogger(__name__)
 
 
-class can_represent_kicad_footprint(FootprintTrait):
+class can_represent_kicad_footprint(F.Footprint.TraitT):
     kicad_footprint = T2Netlist.Component
 
     @abstractmethod
@@ -41,19 +24,19 @@ class can_represent_kicad_footprint(FootprintTrait):
     def get_kicad_obj(self) -> kicad_footprint: ...
 
     @abstractmethod
-    def get_pin_name(self, pin: Pad) -> str: ...
+    def get_pin_name(self, pin: F.Pad) -> str: ...
 
 
 def get_or_set_name_and_value_of_node(c: Module):
     value = (
-        c.get_trait(has_simple_value_representation).get_value()
-        if c.has_trait(has_simple_value_representation)
+        c.get_trait(F.has_simple_value_representation).get_value()
+        if c.has_trait(F.has_simple_value_representation)
         else type(c).__name__
     )
 
-    if not c.has_trait(has_overriden_name):
+    if not c.has_trait(F.has_overriden_name):
         c.add_trait(
-            has_overriden_name_defined(
+            F.has_overriden_name_defined(
                 "{}[{}:{}]".format(
                     c.get_full_name(),
                     type(c).__name__,
@@ -62,11 +45,11 @@ def get_or_set_name_and_value_of_node(c: Module):
             )
         )
 
-    has_defined_descriptive_properties.add_properties_to(
+    F.has_descriptive_properties_defined.add_properties_to(
         c, {"faebryk_name": c.get_full_name()}
     )
 
-    return c.get_trait(has_overriden_name).get_name(), value
+    return c.get_trait(F.has_overriden_name).get_name(), value
 
 
 class can_represent_kicad_footprint_via_attached_component(
@@ -84,20 +67,20 @@ class can_represent_kicad_footprint_via_attached_component(
     def get_name_and_value(self):
         return get_or_set_name_and_value_of_node(self.component)
 
-    def get_pin_name(self, pin: Pad):
-        return self.get_obj().get_trait(has_kicad_footprint).get_pin_names()[pin]
+    def get_pin_name(self, pin: F.Pad):
+        return self.obj.get_trait(F.has_kicad_footprint).get_pin_names()[pin]
 
     def get_kicad_obj(self):
-        fp = self.get_obj()
+        fp = self.get_obj(F.Footprint)
 
         properties = {
-            "footprint": fp.get_trait(has_kicad_footprint).get_kicad_footprint()
+            "footprint": fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
         }
 
         for c in [fp, self.component]:
-            if c.has_trait(has_descriptive_properties):
+            if c.has_trait(F.has_descriptive_properties):
                 properties.update(
-                    c.get_trait(has_descriptive_properties).get_properties()
+                    c.get_trait(F.has_descriptive_properties).get_properties()
                 )
 
         name, value = self.get_name_and_value()
@@ -109,16 +92,18 @@ class can_represent_kicad_footprint_via_attached_component(
         )
 
 
-def add_or_get_net(interface: Electrical):
-    mifs = get_connected_mifs(interface.GIFs.connected)
+def add_or_get_net(interface: F.Electrical):
+    from faebryk.core.util import get_connected_mifs
+
+    mifs = get_connected_mifs(interface.connected)
     nets = {
         p[0]
         for mif in mifs
-        if (p := mif.get_parent()) is not None and isinstance(p[0], Net)
+        if (p := mif.get_parent()) is not None and isinstance(p[0], F.Net)
     }
     if not nets:
-        net = Net()
-        net.IFs.part_of.connect(interface)
+        net = F.Net()
+        net.part_of.connect(interface)
         return net
     if len(nets) > 1:
         raise Exception(f"Multiple nets interconnected: {nets}")
@@ -126,6 +111,7 @@ def add_or_get_net(interface: Electrical):
 
 
 def attach_nets_and_kicad_info(g: Graph):
+    from faebryk.core.util import get_all_nodes_with_trait
     # g has to be closed
 
     Gclosed = g
@@ -135,7 +121,7 @@ def attach_nets_and_kicad_info(g: Graph):
         n: t.get_footprint()
         # TODO maybe nicer to just look for footprints
         # and get their respective components instead
-        for n, t in get_all_nodes_with_trait(Gclosed, has_footprint)
+        for n, t in get_all_nodes_with_trait(Gclosed, F.has_footprint)
         if isinstance(n, Module)
     }
 
@@ -151,7 +137,5 @@ def attach_nets_and_kicad_info(g: Graph):
 
     for fp in node_fps.values():
         # TODO use graph
-        for mif in fp.IFs.get_all():
-            if not isinstance(mif, Pad):
-                continue
-            add_or_get_net(mif.IFs.net)
+        for mif in fp.get_children(direct_only=True, types=F.Pad):
+            add_or_get_net(mif.net)

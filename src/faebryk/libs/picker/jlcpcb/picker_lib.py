@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Callable
 
 import faebryk.library._F as F
-from faebryk.core.core import Module
+from faebryk.core.module import Module
 from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.picker.jlcpcb.jlcpcb import (
     ComponentQuery,
@@ -154,7 +154,7 @@ def find_resistor(cmp: Module):
         ComponentQuery()
         .filter_by_category("Resistors", "Chip Resistor - Surface Mount")
         .filter_by_stock(qty)
-        .filter_by_value(cmp.PARAMs.resistance, "Ω", E_SERIES_VALUES.E96)
+        .filter_by_value(cmp.resistance, "Ω", E_SERIES_VALUES.E96)
         .filter_by_traits(cmp)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
@@ -192,7 +192,7 @@ def find_capacitor(cmp: Module):
         )
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
-        .filter_by_value(cmp.PARAMs.capacitance, "F", E_SERIES_VALUES.E24)
+        .filter_by_value(cmp.capacitance, "F", E_SERIES_VALUES.E24)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )
@@ -236,7 +236,7 @@ def find_inductor(cmp: Module):
         .filter_by_category("Inductors", "Inductors")
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
-        .filter_by_value(cmp.PARAMs.inductance, "H", E_SERIES_VALUES.E24)
+        .filter_by_value(cmp.inductance, "H", E_SERIES_VALUES.E24)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )

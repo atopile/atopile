@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from typing import Sequence
 
-from faebryk.core.core import Node
-from faebryk.core.util import get_parent_with_trait
+import faebryk.library._F as F
+from faebryk.core.node import Node
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import (
     Path,
@@ -12,18 +13,14 @@ from faebryk.exporters.pcb.routing.util import (
     get_internal_nets_of_node,
     get_pads_pos_of_mifs,
 )
-from faebryk.library.Electrical import Electrical
-from faebryk.library.has_pcb_position import has_pcb_position
-from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
-from faebryk.library.Net import Net
 
 logger = logging.getLogger(__name__)
 
 
-class has_pcb_routing_strategy_manual(has_pcb_routing_strategy.impl()):
+class has_pcb_routing_strategy_manual(F.has_pcb_routing_strategy.impl()):
     def __init__(
         self,
-        paths: list[tuple[Net | list[Electrical], Path]],
+        paths: Sequence[tuple[F.Net | Sequence[F.Electrical], Path]],
         relative_to: Node | None = None,
         absolute: bool = False,
     ):
@@ -34,15 +31,17 @@ class has_pcb_routing_strategy_manual(has_pcb_routing_strategy.impl()):
         self.absolute = absolute
 
     def calculate(self, transformer: PCB_Transformer):
-        node = self.get_obj()
+        from faebryk.core.util import get_parent_with_trait
+
+        node = self.obj
         nets = get_internal_nets_of_node(node)
 
-        relative_to = (
-            (self.relative_to or self.get_obj()) if not self.absolute else None
-        )
+        relative_to = (self.relative_to or self.obj) if not self.absolute else None
 
         if relative_to:
-            pos = get_parent_with_trait(relative_to, has_pcb_position)[1].get_position()
+            pos = get_parent_with_trait(relative_to, F.has_pcb_position)[
+                1
+            ].get_position()
             for _, path in self.paths_rel:
                 path.abs_pos(pos)
 
@@ -59,7 +58,9 @@ class has_pcb_routing_strategy_manual(has_pcb_routing_strategy.impl()):
             for net_or_mifs, path in self.paths_rel
             if (
                 route := get_route_for_mifs_in_net(
-                    nets[net_or_mifs] if isinstance(net_or_mifs, Net) else net_or_mifs,
+                    nets[net_or_mifs]
+                    if isinstance(net_or_mifs, F.Net)
+                    else net_or_mifs,
                     path,
                 )
             )

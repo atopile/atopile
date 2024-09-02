@@ -5,7 +5,7 @@ import logging
 import typing
 from textwrap import indent
 
-from faebryk.core.core import Parameter
+from faebryk.core.parameter import Parameter
 from faebryk.libs.util import TwistArgs, find, try_avoid_endless_recursion
 
 logger = logging.getLogger(__name__)

@@ -1,46 +1,29 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Module
-from faebryk.library.can_attach_to_footprint_via_pinmap import (
-    can_attach_to_footprint_via_pinmap,
-)
-from faebryk.library.Electrical import Electrical
-from faebryk.library.has_datasheet_defined import has_datasheet_defined
-from faebryk.library.has_designator_prefix_defined import (
-    has_designator_prefix_defined,
-)
-from faebryk.libs.util import times
+import faebryk.library._F as F
+import faebryk.libs.library.L as L
+from faebryk.core.module import Module
 
 
 class B4B_ZR_SM4_TF(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    pin = L.list_field(4, F.Electrical)
+    mount = L.list_field(2, F.Electrical)
 
-        class _IFs(Module.IFS()):
-            pin = times(4, Electrical)
-            mount = times(2, Electrical)
+    datasheet = L.f_field(F.has_datasheet_defined)(
+        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2304140030_BOOMELE-Boom-Precision-Elec-1-5-4P_C145997.pdf"
+    )
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("J")
 
-        self.IFs = _IFs(self)
-
-        x = self.IFs
-        self.add_trait(
-            can_attach_to_footprint_via_pinmap(
-                {
-                    "1": x.pin[0],
-                    "2": x.pin[1],
-                    "3": x.pin[2],
-                    "4": x.pin[3],
-                    "5": x.mount[0],
-                    "6": x.mount[1],
-                }
-            )
+    @L.rt_field
+    def can_attach_to_footprint(self):
+        return F.can_attach_to_footprint_via_pinmap(
+            {
+                "1": self.pin[0],
+                "2": self.pin[1],
+                "3": self.pin[2],
+                "4": self.pin[3],
+                "5": self.mount[0],
+                "6": self.mount[1],
+            }
         )
-
-        self.add_trait(
-            has_datasheet_defined(
-                "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2304140030_BOOMELE-Boom-Precision-Elec-1-5-4P_C145997.pdf"
-            )
-        )
-
-        self.add_trait(has_designator_prefix_defined("J"))

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # only for typechecker
 
 if TYPE_CHECKING:
-    from faebryk.core.core import Link
+    from faebryk.core.link import Link
 
 
 class GraphGT[T](Graph[T, gt.Graph]):

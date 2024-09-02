@@ -3,9 +3,10 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import InterfaceTrait, Link
+from faebryk.core.link import Link
+from faebryk.core.moduleinterface import ModuleInterface
 
 
-class has_single_connection(InterfaceTrait):
+class has_single_connection(ModuleInterface.TraitT):
     @abstractmethod
     def get_connection(self) -> Link: ...

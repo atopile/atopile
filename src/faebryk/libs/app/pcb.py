@@ -7,15 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from faebryk.core.core import Module
+import faebryk.library._F as F
 from faebryk.core.graph import Graph
+from faebryk.core.module import Module
 from faebryk.core.util import get_node_tree, iter_tree_by_depth
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
-from faebryk.library.has_pcb_layout import has_pcb_layout
-from faebryk.library.has_pcb_position import has_pcb_position
-from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
-from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
 from faebryk.libs.app.kicad_netlist import write_netlist
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
@@ -27,30 +24,30 @@ logger = logging.getLogger(__name__)
 
 
 def apply_layouts(app: Module):
-    if not app.has_trait(has_pcb_position):
+    if not app.has_trait(F.has_pcb_position):
         app.add_trait(
-            has_pcb_position_defined(
-                has_pcb_position.Point((0, 0, 0, has_pcb_position.layer_type.NONE))
+            F.has_pcb_position_defined(
+                F.has_pcb_position.Point((0, 0, 0, F.has_pcb_position.layer_type.NONE))
             )
         )
 
     tree = get_node_tree(app)
     for level in iter_tree_by_depth(tree):
         for n in level:
-            if n.has_trait(has_pcb_layout):
-                n.get_trait(has_pcb_layout).apply()
+            if n.has_trait(F.has_pcb_layout):
+                n.get_trait(F.has_pcb_layout).apply()
 
 
 def apply_routing(app: Module, transformer: PCB_Transformer):
-    strategies: list[tuple[has_pcb_routing_strategy, int]] = []
+    strategies: list[tuple[F.has_pcb_routing_strategy, int]] = []
 
     tree = get_node_tree(app)
     for i, level in enumerate(list(iter_tree_by_depth(tree))):
         for n in level:
-            if not n.has_trait(has_pcb_routing_strategy):
+            if not n.has_trait(F.has_pcb_routing_strategy):
                 continue
 
-            strategies.append((n.get_trait(has_pcb_routing_strategy), i))
+            strategies.append((n.get_trait(F.has_pcb_routing_strategy), i))
 
     logger.info("Applying routes")
 

@@ -1,10 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Module
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.TXS0102DCUR import TXS0102DCUR
-from faebryk.library.UART_Base import UART_Base
+import faebryk.library._F as F
+from faebryk.core.module import Module
 
 
 class TXS0102DCUR_UART(Module):
@@ -13,43 +11,27 @@ class TXS0102DCUR_UART(Module):
     - Output enabled by default
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    voltage_a_power: F.ElectricPower
+    voltage_b_power: F.ElectricPower
+    voltage_a_bus: F.UART_Base
+    voltage_b_bus: F.UART_Base
 
-        class _IFs(Module.IFS()):
-            voltage_a_power = ElectricPower()
-            voltage_b_power = ElectricPower()
-            voltage_a_bus = UART_Base()
-            voltage_b_bus = UART_Base()
+    buffer: F.TXS0102DCUR
 
-        self.IFs = _IFs(self)
-
-        class _NODEs(Module.NODES()):
-            buffer = TXS0102DCUR()
-
-        self.NODEs = _NODEs(self)
-
-        self.IFs.voltage_a_power.connect(self.NODEs.buffer.IFs.voltage_a_power)
-        self.IFs.voltage_b_power.connect(self.NODEs.buffer.IFs.voltage_b_power)
+    def __preinit__(self):
+        self.voltage_a_power.connect(self.buffer.voltage_a_power)
+        self.voltage_b_power.connect(self.buffer.voltage_b_power)
 
         # enable output by default
-        self.NODEs.buffer.IFs.n_oe.set(True)
+        self.buffer.n_oe.set(True)
 
         # connect UART interfaces to level shifter
-        self.IFs.voltage_a_bus.IFs.rx.connect(
-            self.NODEs.buffer.NODEs.shifters[0].IFs.io_a
-        )
-        self.IFs.voltage_a_bus.IFs.tx.connect(
-            self.NODEs.buffer.NODEs.shifters[1].IFs.io_a
-        )
-        self.IFs.voltage_b_bus.IFs.rx.connect(
-            self.NODEs.buffer.NODEs.shifters[0].IFs.io_b
-        )
-        self.IFs.voltage_b_bus.IFs.tx.connect(
-            self.NODEs.buffer.NODEs.shifters[1].IFs.io_b
-        )
+        self.voltage_a_bus.rx.connect(self.buffer.shifters[0].io_a)
+        self.voltage_a_bus.tx.connect(self.buffer.shifters[1].io_a)
+        self.voltage_b_bus.rx.connect(self.buffer.shifters[0].io_b)
+        self.voltage_b_bus.tx.connect(self.buffer.shifters[1].io_b)
 
         # TODO
         # self.add_trait(
-        #    can_bridge_defined(self.IFs.voltage_a_bus, self.IFs.voltage_b_bus)
+        #    can_bridge_defined(self.voltage_a_bus, self.voltage_b_bus)
         # )

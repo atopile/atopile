@@ -5,12 +5,14 @@ import inspect
 import logging
 from typing import Callable, Iterable, Sequence
 
-from faebryk.core.core import Graph, Module, ModuleInterface
+import faebryk.library._F as F
+from faebryk.core.graphinterface import Graph
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.util import (
     get_all_nodes_of_type,
     get_all_nodes_of_types,
 )
-from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.libs.picker.picker import has_part_picked
 from faebryk.libs.util import groupby, print_stack
 
@@ -66,7 +68,7 @@ def simple_erc(G: Graph):
     electricpower = get_all_nodes_of_type(G, ElectricPower)
     logger.info(f"Checking {len(electricpower)} Power")
     for ep in electricpower:
-        if ep.IFs.lv.is_connected_to(ep.IFs.hv):
+        if ep.lv.is_connected_to(ep.hv):
             raise ERCFaultShort([ep], "shorted power")
 
     # shorted nets
@@ -75,21 +77,21 @@ def simple_erc(G: Graph):
     for net in nets:
         collisions = {
             p[0]
-            for mif in net.IFs.part_of.get_direct_connections()
+            for mif in net.part_of.get_direct_connections()
             if (p := mif.get_parent()) and isinstance(p[0], Net)
         }
 
         if collisions:
             shorted = collisions | {net}
             raise ERCFaultShort(
-                [n.IFs.part_of for n in shorted], f"shorted nets: {shorted}"
+                [n.part_of for n in shorted], f"shorted nets: {shorted}"
             )
 
     # net name collisions
     net_name_collisions = {
         k: v
         for k, v in groupby(
-            nets, lambda n: n.get_trait(has_overriden_name).get_name()
+            nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
         ).items()
         if len(v) > 1
     }
@@ -105,7 +107,7 @@ def simple_erc(G: Graph):
     # ]
     # logger.info(f"Checking {len(sym_fps)} symmetric footprints")
     # for fp in sym_fps:
-    #    mifs = set(fp.IFs.get_all())
+    #    mifs = set(fp.get_all())
     #    checked = set()
     #    for mif in mifs:
     #        checked.add(mif)
@@ -120,14 +122,14 @@ def simple_erc(G: Graph):
             and comp.get_trait(has_part_picked).get_part().partno == "REMOVE"
         ):
             continue
-        if comp.IFs.unnamed[0].is_connected_to(comp.IFs.unnamed[1]):
-            raise ERCFaultShort(comp.IFs.unnamed, "shorted component")
+        if comp.unnamed[0].is_connected_to(comp.unnamed[1]):
+            raise ERCFaultShort(comp.unnamed, "shorted component")
 
     ## unmapped Electricals
     # fps = [n for n in nodes if isinstance(n, Footprint)]
     # logger.info(f"Checking {len(fps)} footprints")
     # for fp in fps:
-    #    for mif in fp.IFs.get_all():
+    #    for mif in fp.get_all():
     #        if not mif.get_direct_connections():
     #            raise ERCFault([mif], "no connections")
 

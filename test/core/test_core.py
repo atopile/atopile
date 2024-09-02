@@ -5,12 +5,20 @@ import unittest
 from abc import abstractmethod
 from typing import cast
 
-from faebryk.core.core import LinkDirect, LinkParent, LinkSibling, TraitImpl
+from faebryk.core.link import LinkDirect, LinkParent, LinkSibling
+from faebryk.core.node import Node, NodeAlreadyBound
+from faebryk.core.trait import (
+    Trait,
+    TraitImpl,
+    TraitNotFound,
+    TraitUnbound,
+)
+from faebryk.libs.library import L
 
 
 class TestTraits(unittest.TestCase):
     def test_equality(self):
-        from faebryk.core.core import Trait
+        from faebryk.core.trait import Trait
 
         class _trait1(Trait):
             pass
@@ -82,9 +90,7 @@ class TestTraits(unittest.TestCase):
         assertCmpTrue(impl_1_1(), impl1())
 
     def test_obj_traits(self):
-        from faebryk.core.core import FaebrykLibObject, Trait
-
-        obj = FaebrykLibObject()
+        obj = Node()
 
         class trait1(Trait):
             @abstractmethod
@@ -111,7 +117,7 @@ class TestTraits(unittest.TestCase):
 
         # Test failure on getting non existent
         self.assertFalse(obj.has_trait(trait1))
-        self.assertRaises(AssertionError, lambda: obj.get_trait(trait1))
+        self.assertRaises(TraitNotFound, lambda: obj.get_trait(trait1))
 
         trait1_inst = trait1impl()
         cfgtrait1_inst = cfgtrait1(5)
@@ -124,7 +130,7 @@ class TestTraits(unittest.TestCase):
         self.assertEqual(trait1_inst.do(), obj.get_trait(trait1).do())
 
         # Test double add
-        self.assertRaises(AssertionError, lambda: obj.add_trait(trait1_inst))
+        self.assertRaises(NodeAlreadyBound, lambda: obj.add_trait(trait1_inst))
 
         # Test replace
         obj.add_trait(cfgtrait1_inst)
@@ -140,12 +146,12 @@ class TestTraits(unittest.TestCase):
         self.assertFalse(obj.has_trait(trait1))
 
         # Test get obj
-        self.assertRaises(AssertionError, lambda: trait1_inst.get_obj())
+        self.assertRaises(TraitUnbound, lambda: trait1_inst.obj)
         obj.add_trait(trait1_inst)
         _impl: TraitImpl = cast(TraitImpl, obj.get_trait(trait1))
-        self.assertEqual(_impl.get_obj(), obj)
+        self.assertEqual(_impl.obj, obj)
         obj.del_trait(trait1)
-        self.assertRaises(AssertionError, lambda: trait1_inst.get_obj())
+        self.assertRaises(TraitUnbound, lambda: trait1_inst.obj)
 
         # Test specific override
         obj.add_trait(impl2_inst)
@@ -159,7 +165,7 @@ class TestTraits(unittest.TestCase):
 
 class TestGraph(unittest.TestCase):
     def test_gifs(self):
-        from faebryk.core.core import GraphInterface as GIF
+        from faebryk.core.graphinterface import GraphInterface as GIF
 
         gif1 = GIF()
         gif2 = GIF()
@@ -184,17 +190,17 @@ class TestGraph(unittest.TestCase):
         self.assertEqual(gif1.G, gif2.G)
 
     def test_node_gifs(self):
-        from faebryk.core.core import Node
+        from faebryk.core.node import Node
 
         n1 = Node()
 
-        self.assertIsInstance(n1.GIFs.self.is_connected(n1.GIFs.parent), LinkSibling)
-        self.assertIsInstance(n1.GIFs.self.is_connected(n1.GIFs.children), LinkSibling)
+        self.assertIsInstance(n1.self_gif.is_connected(n1.parent), LinkSibling)
+        self.assertIsInstance(n1.self_gif.is_connected(n1.children), LinkSibling)
 
         n2 = Node()
-        n1.NODEs.n2 = n2
+        n1.add(n2, name="n2")
 
-        self.assertIsInstance(n1.GIFs.children.is_connected(n2.GIFs.parent), LinkParent)
+        self.assertIsInstance(n1.children.is_connected(n2.parent), LinkParent)
 
         print(n1.get_graph())
 
@@ -203,7 +209,44 @@ class TestGraph(unittest.TestCase):
         assert p is not None
         self.assertIs(p[0], n1)
 
-        self.assertEqual(n1.GIFs.self.G, n2.GIFs.self.G)
+        self.assertEqual(n1.self_gif.G, n2.self_gif.G)
+
+    # TODO move to own file
+    def test_fab_ll_simple_hierarchy(self):
+        class N(Node):
+            SN1: Node
+            SN2: Node
+            SN3 = L.list_field(2, Node)
+
+            @L.rt_field
+            def SN4(self):
+                return Node()
+
+        n = N()
+        children = n.get_children(direct_only=True, types=Node)
+        self.assertEqual(children, {n.SN1, n.SN2, n.SN3[0], n.SN3[1], n.SN4})
+
+    def test_fab_ll_chain_names(self):
+        root = Node()
+        x = root
+        for i in range(10):
+            y = Node()
+            x.add(y, f"i{i}")
+            x = y
+
+        self.assertEqual(x.get_full_name(), "*.i0.i1.i2.i3.i4.i5.i6.i7.i8.i9")
+
+    def test_fab_ll_chain_tree(self):
+        root = Node()
+        x = root
+        for i in range(10):
+            y = Node()
+            z = Node()
+            x.add(y, f"i{i}")
+            x.add(z, f"j{i}")
+            x = y
+
+        self.assertEqual(x.get_full_name(), "*.i0.i1.i2.i3.i4.i5.i6.i7.i8.i9")
 
 
 if __name__ == "__main__":

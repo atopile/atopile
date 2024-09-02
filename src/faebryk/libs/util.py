@@ -13,7 +13,6 @@ from textwrap import indent
 from typing import (
     Any,
     Callable,
-    Generic,
     Iterable,
     Iterator,
     List,
@@ -22,7 +21,6 @@ from typing import (
     SupportsFloat,
     SupportsInt,
     Type,
-    TypeVar,
     get_origin,
 )
 
@@ -96,11 +94,7 @@ def flatten(obj: Iterable, depth=1) -> List:
     return [nested for top in obj for nested in flatten(top, depth=depth - 1)]
 
 
-T = TypeVar("T")
-U = TypeVar("U")
-
-
-def get_key(haystack: dict[T, U], needle: U) -> T:
+def get_key[T, U](haystack: dict[T, U], needle: U) -> T:
     return find(haystack.items(), lambda x: x[1] == needle)[0]
 
 
@@ -113,7 +107,7 @@ class KeyErrorAmbiguous(KeyError):
         self.duplicates = duplicates
 
 
-def find(haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
+def find[T](haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
     results = list(filter(needle, haystack))
     if not results:
         raise KeyErrorNotFound()
@@ -122,14 +116,14 @@ def find(haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
     return results[0]
 
 
-def find_or(haystack: Iterable[T], needle: Callable[[T], bool], default: T) -> T:
+def find_or[T](haystack: Iterable[T], needle: Callable[[T], bool], default: T) -> T:
     try:
         return find(haystack, needle)
     except KeyErrorNotFound:
         return default
 
 
-def groupby(it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
+def groupby[T, U](it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
     out = defaultdict(list)
     for i in it:
         out[key(i)].append(i)
@@ -164,11 +158,7 @@ class NotifiesOnPropertyChange(object):
             self._callback(__name, __value)
 
 
-T = TypeVar("T")
-P = TypeVar("P")
-
-
-class _wrapper(NotifiesOnPropertyChange, Generic[T, P]):
+class _wrapper[T, P](NotifiesOnPropertyChange):
     @abstractmethod
     def __init__(self, parent: P) -> None:
         raise NotImplementedError
@@ -190,11 +180,8 @@ class _wrapper(NotifiesOnPropertyChange, Generic[T, P]):
         raise NotImplementedError
 
 
-def Holder(_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
-    _T = TypeVar("_T")
-    _P = TypeVar("_P")
-
-    class __wrapper(_wrapper[_T, _P]):
+def Holder[T, P](_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
+    class __wrapper[_T, _P](_wrapper[_T, _P]):
         def __init__(self, parent: P) -> None:
             self._list: list[T] = []
             self._type = _type
@@ -278,24 +265,17 @@ def NotNone(x):
     return x
 
 
-T = TypeVar("T")
-
-
-def cast_assert(t: type[T], obj) -> T:
+def cast_assert[T](t: type[T], obj) -> T:
     assert isinstance(obj, t)
     return obj
 
 
-def times(cnt: SupportsInt, lamb: Callable[[], T]) -> list[T]:
+def times[T](cnt: SupportsInt, lamb: Callable[[], T]) -> list[T]:
     return [lamb() for _ in range(int(cnt))]
 
 
-T = TypeVar("T")
-U = TypeVar("U")
-
-
 @staticmethod
-def is_type_pair(
+def is_type_pair[T, U](
     param1: Any, param2: Any, type1: type[T], type2: type[U]
 ) -> Optional[tuple[T, U]]:
     o1 = get_origin(type1) or type1
@@ -484,14 +464,11 @@ def try_avoid_endless_recursion(f: Callable[..., str]):
     return _f_no_rec
 
 
-def zip_non_locked(left: Iterable[T], right: Iterable[U]):
-    TS = TypeVar("TS")
-    US = TypeVar("US")
-
+def zip_non_locked[T, U](left: Iterable[T], right: Iterable[U]):
     # Theoretically supports any amount of iters,
     #  but for type hinting limit to two for now
 
-    class _Iter(Iterator[tuple[TS, US]]):
+    class _Iter[TS, US](Iterator[tuple[TS, US]]):
         class _NONDEFAULT: ...
 
         def __init__(self, args: list[Iterable]):
@@ -533,7 +510,7 @@ def zip_non_locked(left: Iterable[T], right: Iterable[U]):
     return _Iter[T, U]([left, right])
 
 
-def try_or(
+def try_or[T](
     func: Callable[..., T],
     default: T | None = None,
     default_f: Callable[[Exception], T] | None = None,
@@ -787,3 +764,30 @@ def paginated_query[T: Model](page_size: int, q: QuerySet[T]) -> Iterator[T]:
             yield r
 
         page += 1
+
+
+def factory[T, **P](con: Callable[P, T]) -> Callable[P, Callable[[], T]]:
+    def _(*args: P.args, **kwargs: P.kwargs) -> Callable[[], T]:
+        def __() -> T:
+            return con(*args, **kwargs)
+
+        return __
+
+    return _
+
+
+def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
+    class _once:
+        def __init__(self) -> None:
+            self.cache = {}
+
+        def __call__(self, *args: P.args, **kwds: P.kwargs) -> Any:
+            lookup = (args, tuple(kwds.items()))
+            if lookup in self.cache:
+                return self.cache[lookup]
+
+            result = f(*args, **kwds)
+            self.cache[lookup] = result
+            return result
+
+    return _once()

@@ -10,23 +10,12 @@ import logging
 import typer
 
 import faebryk.library._F as F
-from faebryk.core.core import Module
+from faebryk.core.module import Module
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.exporters.pcb.routing.util import Path
-from faebryk.library.Electrical import Electrical
-from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
-from faebryk.library.has_pcb_position import has_pcb_position
-from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
-from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import (
-    has_pcb_routing_strategy_greedy_direct_line,
-)
-from faebryk.library.has_pcb_routing_strategy_manual import (
-    has_pcb_routing_strategy_manual,
-)
-from faebryk.libs.examples.buildutil import (
-    apply_design_to_pcb,
-)
+from faebryk.libs.examples.buildutil import apply_design_to_pcb
+from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.units import P
 from faebryk.libs.util import times
@@ -35,139 +24,129 @@ logger = logging.getLogger(__name__)
 
 
 class SubArray(Module):
+    unnamed = L.list_field(2, F.Electrical)
+    resistors = L.list_field(2, F.Resistor)
+
     def __init__(self, extrude_y: float):
         super().__init__()
+        self._extrude_y = extrude_y
 
-        class _IFs(Module.IFS()):
-            unnamed = times(2, Electrical)
+    def __preinit__(self):
+        for resistor in self.resistors:
+            resistor.resistance.merge(F.Constant(1000 * P.ohm))
+            resistor.unnamed[0].connect(self.unnamed[0])
+            resistor.unnamed[1].connect(self.unnamed[1])
 
-        self.IFs = _IFs(self)
-
-        class _NODES(Module.NODES()):
-            resistors = times(2, F.Resistor)
-
-        self.NODEs = _NODES(self)
-
-        for resistor in self.NODEs.resistors:
-            resistor.PARAMs.resistance.merge(F.Constant(1000 * P.ohm))
-            resistor.IFs.unnamed[0].connect(self.IFs.unnamed[0])
-            resistor.IFs.unnamed[1].connect(self.IFs.unnamed[1])
-
-        self.add_trait(
-            has_pcb_layout_defined(
-                LayoutTypeHierarchy(
-                    layouts=[
-                        LayoutTypeHierarchy.Level(
-                            mod_type=F.Resistor,
-                            layout=LayoutExtrude((0, extrude_y)),
-                        ),
-                    ]
-                )
-            )
-        )
-
-        self.add_trait(
-            has_pcb_routing_strategy_greedy_direct_line(
-                has_pcb_routing_strategy_greedy_direct_line.Topology.DIRECT
-            )
-        )
-
-        self.add_trait(
-            has_pcb_routing_strategy_manual(
-                [
-                    (
-                        [r.IFs.unnamed[1] for r in self.NODEs.resistors],
-                        Path(
-                            [
-                                Path.Track(
-                                    0.1,
-                                    "F.Cu",
-                                    [
-                                        (0, 0),
-                                        (2.5, 0),
-                                        (2.5, extrude_y),
-                                        (0, extrude_y),
-                                    ],
-                                ),
-                            ]
-                        ),
-                    ),
-                    (
-                        [r.IFs.unnamed[0] for r in self.NODEs.resistors],
-                        Path(
-                            [
-                                Path.Track(
-                                    0.1,
-                                    "F.Cu",
-                                    [
-                                        (0, 0),
-                                        (-2.5, 0),
-                                        (-2.5, extrude_y),
-                                        (0, extrude_y),
-                                    ],
-                                ),
-                            ]
-                        ),
+    @L.rt_field
+    def pcb_layout(self):
+        return F.has_pcb_layout_defined(
+            LayoutTypeHierarchy(
+                layouts=[
+                    LayoutTypeHierarchy.Level(
+                        mod_type=F.Resistor,
+                        layout=LayoutExtrude((0, self._extrude_y)),
                     ),
                 ]
             )
         )
 
+    pcb_routing_strategy = L.f_field(F.has_pcb_routing_strategy_greedy_direct_line)(
+        F.has_pcb_routing_strategy_greedy_direct_line.Topology.DIRECT
+    )
+
+    @L.rt_field
+    def pcb_routing_stategy_manual(self):
+        return F.has_pcb_routing_strategy_manual(
+            [
+                (
+                    [r.unnamed[1] for r in self.resistors],
+                    Path(
+                        [
+                            Path.Track(
+                                0.1,
+                                "F.Cu",
+                                [
+                                    (0, 0),
+                                    (2.5, 0),
+                                    (2.5, self._extrude_y),
+                                    (0, self._extrude_y),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+                (
+                    [r.unnamed[0] for r in self.resistors],
+                    Path(
+                        [
+                            Path.Track(
+                                0.1,
+                                "F.Cu",
+                                [
+                                    (0, 0),
+                                    (-2.5, 0),
+                                    (-2.5, self._extrude_y),
+                                    (0, self._extrude_y),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
+
 
 class ResistorArray(Module):
+    unnamed = L.list_field(2, F.Electrical)
+
+    @L.rt_field
+    def resistors(self):
+        return times(self._count, lambda: SubArray(self._extrude_y[1]))
+
     def __init__(self, count: int, extrude_y: tuple[float, float]):
         super().__init__()
 
-        class _IFs(Module.IFS()):
-            unnamed = times(2, Electrical)
+        self._count = count
+        self._extrude_y = extrude_y
 
-        self.IFs = _IFs(self)
+    def __preinit__(self):
+        for resistor in self.resistors:
+            resistor.unnamed[0].connect(self.unnamed[0])
+            resistor.unnamed[1].connect(self.unnamed[1])
 
-        class _NODES(Module.NODES()):
-            resistors = times(count, lambda: SubArray(extrude_y[1]))
-
-        self.NODEs = _NODES(self)
-
-        for resistor in self.NODEs.resistors:
-            resistor.IFs.unnamed[0].connect(self.IFs.unnamed[0])
-            resistor.IFs.unnamed[1].connect(self.IFs.unnamed[1])
-
-        self.add_trait(
-            has_pcb_layout_defined(
-                LayoutTypeHierarchy(
-                    layouts=[
-                        LayoutTypeHierarchy.Level(
-                            mod_type=SubArray,
-                            layout=LayoutExtrude((0, extrude_y[0])),
-                        ),
-                    ]
-                )
+    @L.rt_field
+    def pcb_layout(self):
+        return F.has_pcb_layout_defined(
+            LayoutTypeHierarchy(
+                layouts=[
+                    LayoutTypeHierarchy.Level(
+                        mod_type=SubArray,
+                        layout=LayoutExtrude((0, self._extrude_y[0])),
+                    ),
+                ]
             )
         )
 
-        self.add_trait(
-            has_pcb_routing_strategy_greedy_direct_line(
-                has_pcb_routing_strategy_greedy_direct_line.Topology.DIRECT
-            )
-        )
+    pcb_routing_strategy = L.f_field(F.has_pcb_routing_strategy_greedy_direct_line)(
+        F.has_pcb_routing_strategy_greedy_direct_line.Topology.DIRECT
+    )
 
 
 class App(Module):
+    @L.rt_field
+    def arrays(self):
+        return times(2, lambda: ResistorArray(self._count, self._extrude_y))
+
     def __init__(self, count: int, extrude_y: tuple[float, float]) -> None:
         super().__init__()
+        self._count = count
+        self._extrude_y = extrude_y
 
-        class _NODES(Module.NODES()):
-            arrays = times(2, lambda: ResistorArray(count, extrude_y))
+    def __preinit__(self):
+        self.arrays[0].unnamed[1].connect(self.arrays[1].unnamed[0])
 
-        self.NODEs = _NODES(self)
-
-        self.NODEs.arrays[0].IFs.unnamed[1].connect(self.NODEs.arrays[1].IFs.unnamed[0])
-
-        # Layout
-        Point = has_pcb_position.Point
-        L = has_pcb_position.layer_type
-
-        layout = LayoutTypeHierarchy(
+    pcb_layout = L.f_field(F.has_pcb_layout_defined)(
+        LayoutTypeHierarchy(
             layouts=[
                 LayoutTypeHierarchy.Level(
                     mod_type=ResistorArray,
@@ -175,14 +154,15 @@ class App(Module):
                 ),
             ]
         )
-        self.add_trait(has_pcb_layout_defined(layout))
-        self.add_trait(has_pcb_position_defined(Point((20, 20, 0, L.TOP_LAYER))))
+    )
 
-        self.add_trait(
-            has_pcb_routing_strategy_greedy_direct_line(
-                has_pcb_routing_strategy_greedy_direct_line.Topology.STAR
-            )
-        )
+    pcb_position = L.f_field(F.has_pcb_position_defined)(
+        F.has_pcb_position.Point((20, 20, 0, F.has_pcb_position.layer_type.TOP_LAYER))
+    )
+
+    pcb_routing_strategy = L.f_field(F.has_pcb_routing_strategy_greedy_direct_line)(
+        F.has_pcb_routing_strategy_greedy_direct_line.Topology.STAR
+    )
 
 
 # Boilerplate -----------------------------------------------------------------

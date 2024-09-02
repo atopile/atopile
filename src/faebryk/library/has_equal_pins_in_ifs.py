@@ -1,14 +1,12 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.library.has_equal_pins import has_equal_pins
-from faebryk.library.Pad import Pad
+import faebryk.library._F as F
 
 
-class has_equal_pins_in_ifs(has_equal_pins.impl()):
+class has_equal_pins_in_ifs(F.has_equal_pins.impl()):
     def get_pin_map(self):
         return {
             p: str(i + 1)
-            for i, p in enumerate(self.get_obj().IFs.get_all())
-            if isinstance(p, Pad)
+            for i, p in enumerate(self.obj.get_children(direct_only=True, types=F.Pad))
         }

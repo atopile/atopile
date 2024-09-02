@@ -1,22 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import ModuleInterface
-from faebryk.library.Range import Range
+import faebryk.library._F as F
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.library import L
 
 
 class Logic(ModuleInterface):
-    @staticmethod
-    def PARAMS():
-        class _PARAMS(ModuleInterface.PARAMS()):
-            state = Range(False, True)
-
-        return _PARAMS
-
-    def __init__(self) -> None:
-        super().__init__()
-
-        self.PARAMs = self.PARAMS()
+    state = L.f_field(F.Range)(False, True)
 
     def set(self, on: bool):
-        self.PARAMs.state.merge(on)
+        self.state.merge(on)

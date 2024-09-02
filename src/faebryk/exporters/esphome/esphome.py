@@ -6,10 +6,9 @@ from typing import Any, Callable
 
 import yaml
 
-from faebryk.core.core import Graph, Parameter
-from faebryk.core.util import get_all_nodes_with_trait
-from faebryk.library.Constant import Constant
-from faebryk.library.has_esphome_config import has_esphome_config
+import faebryk.library._F as F
+from faebryk.core.graphinterface import Graph
+from faebryk.core.parameter import Parameter
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +53,9 @@ def merge_dicts(*dicts: dict) -> dict:
 
 
 def make_esphome_config(G: Graph) -> dict:
-    esphome_components = get_all_nodes_with_trait(G, has_esphome_config)
+    from faebryk.core.util import get_all_nodes_with_trait
+
+    esphome_components = get_all_nodes_with_trait(G, F.has_esphome_config)
 
     esphome_config = merge_dicts(*[t.get_config() for _, t in esphome_components])
 
@@ -62,9 +63,9 @@ def make_esphome_config(G: Graph) -> dict:
         if not isinstance(param, Parameter):
             return param
 
-        if not isinstance(param, Constant):
+        if not isinstance(param, F.Constant):
             raise Exception(
-                f"Parameter {param} is not a Constant, but {type(param)}"
+                f"Parameter {param} is not a F.Constant, but {type(param)}"
                 f"Config: {esphome_config}"
             )
         return param.value

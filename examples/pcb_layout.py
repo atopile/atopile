@@ -10,43 +10,33 @@ import logging
 import typer
 
 import faebryk.library._F as F
-from faebryk.core.core import Module
+from faebryk.core.module import Module
 from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
-from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
-from faebryk.library.has_pcb_position import has_pcb_position
-from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.buildutil import (
-    apply_design_to_pcb,
-)
+from faebryk.libs.examples.buildutil import apply_design_to_pcb
 from faebryk.libs.logging import setup_basic_logging
 
 logger = logging.getLogger(__name__)
 
 
 class App(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    leds: F.PoweredLED
+    battery: F.Battery
 
-        class _NODES(Module.NODES()):
-            leds = F.PoweredLED()
-            battery = F.Battery()
-
-        self.NODEs = _NODES(self)
-
-        self.NODEs.leds.IFs.power.connect(self.NODEs.battery.IFs.power)
+    def __preinit__(self) -> None:
+        self.leds.power.connect(self.battery.power)
 
         # Parametrize
-        self.NODEs.leds.NODEs.led.PARAMs.color.merge(F.LED.Color.YELLOW)
-        self.NODEs.leds.NODEs.led.PARAMs.brightness.merge(
+        self.leds.led.color.merge(F.LED.Color.YELLOW)
+        self.leds.led.brightness.merge(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
         )
 
         # Layout
-        Point = has_pcb_position.Point
-        L = has_pcb_position.layer_type
+        Point = F.has_pcb_position.Point
+        L = F.has_pcb_position.layer_type
 
         layout = LayoutTypeHierarchy(
             layouts=[
@@ -68,8 +58,8 @@ class App(Module):
                 ),
             ]
         )
-        self.add_trait(has_pcb_layout_defined(layout))
-        self.add_trait(has_pcb_position_defined(Point((50, 50, 0, L.NONE))))
+        self.add_trait(F.has_pcb_layout_defined(layout))
+        self.add_trait(F.has_pcb_position_defined(Point((50, 50, 0, L.NONE))))
 
 
 # Boilerplate -----------------------------------------------------------------

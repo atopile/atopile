@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # only for typechecker
 
 if TYPE_CHECKING:
-    from faebryk.core.core import Link
+    from faebryk.core.link import Link
 
 type L = "Link"
 
@@ -39,6 +39,13 @@ class PyGraph[T](Sized, Iterable[T]):
         self._e_cache[to_obj][from_obj] = link
         self._v.add(from_obj)
         self._v.add(to_obj)
+
+    def remove_edge(self, from_obj: T, to_obj: T | None = None):
+        targets = [to_obj] if to_obj else list(self.edges(from_obj).keys())
+        for target in targets:
+            self._e.remove((from_obj, target, self._e_cache[from_obj][target]))
+            del self._e_cache[from_obj][target]
+            del self._e_cache[target][from_obj]
 
     def update(self, other: "PyGraph[T]"):
         self._v.update(other._v)
@@ -102,6 +109,9 @@ class GraphPY[T](Graph[T, PyGraph[T]]):
 
     def add_edge(self, from_obj: T, to_obj: T, link: L):
         self().add_edge(from_obj, to_obj, link=link)
+
+    def remove_edge(self, from_obj: T, to_obj: T | None = None):
+        return self().remove_edge(from_obj, to_obj)
 
     def is_connected(self, from_obj: T, to_obj: T) -> "Link | None":
         return self.get_edges(from_obj).get(to_obj)

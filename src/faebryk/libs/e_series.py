@@ -3,7 +3,7 @@ from math import ceil, floor, log10
 from typing import Tuple
 
 import faebryk.library._F as F
-from faebryk.core.core import Parameter
+from faebryk.core.parameter import Parameter
 from faebryk.libs.units import Quantity
 
 logger = logging.getLogger(__name__)

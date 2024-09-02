@@ -3,10 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.library.can_bridge import can_bridge
-from faebryk.library.ElectricLogic import ElectricLogic
+import faebryk.library._F as F
 
 
-class can_switch_power(can_bridge):
+class can_switch_power(F.can_bridge):
     @abstractmethod
-    def get_logic_in(self) -> ElectricLogic: ...
+    def get_logic_in(self) -> F.ElectricLogic: ...

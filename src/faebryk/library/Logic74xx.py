@@ -4,17 +4,9 @@
 from enum import Enum, auto
 from typing import Callable, Sequence
 
-from faebryk.core.core import Module
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricLogicGate import ElectricLogicGate
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_designator_prefix_defined import (
-    has_designator_prefix_defined,
-)
-from faebryk.library.has_single_electric_reference_defined import (
-    has_single_electric_reference_defined,
-)
-from faebryk.library.TBD import TBD
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 
 
 class Logic74xx(Module):
@@ -57,31 +49,25 @@ class Logic74xx(Module):
         TTL = auto()
         CD4000 = auto()
 
+    power: F.ElectricPower
+    logic_family: F.TBD[Family]
+
+    designator = L.f_field(F.has_designator_prefix_defined)("U")
+
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self)
+        )
+
     def __init__(
         self,
-        gates_factory: Sequence[Callable[[], ElectricLogicGate]],
+        gates_factory: Sequence[Callable[[], F.ElectricLogicGate]],
     ) -> None:
         super().__init__()
 
-        class _IFs(Module.IFS()):
-            power = ElectricPower()
+        self.gates_factory = gates_factory
 
-        self.IFs = _IFs(self)
-
-        class _NODEs(Module.NODES()):
-            gates = [g() for g in gates_factory]
-
-        self.NODEs = _NODEs(self)
-
-        class _PARAMs(Module.PARAMS()):
-            logic_family = TBD[Logic74xx.Family]()
-
-        self.PARAMs = _PARAMs(self)
-
-        self.add_trait(has_designator_prefix_defined("U"))
-
-        self.add_trait(
-            has_single_electric_reference_defined(
-                ElectricLogic.connect_all_module_references(self)
-            )
-        )
+    @L.rt_field
+    def gates(self):
+        return [g() for g in self.gates_factory]

@@ -3,24 +3,24 @@
 
 import logging
 
-from faebryk.library.has_pcb_position import has_pcb_position
+import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
 
 
-class has_pcb_position_defined_relative_to_parent(has_pcb_position.impl()):
-    def __init__(self, position_relative: has_pcb_position.Point):
+class has_pcb_position_defined_relative_to_parent(F.has_pcb_position.impl()):
+    def __init__(self, position_relative: F.has_pcb_position.Point):
         super().__init__()
         self.position_relative = position_relative
 
-    def get_position(self) -> has_pcb_position.Point:
+    def get_position(self) -> F.has_pcb_position.Point:
         from faebryk.libs.geometry.basic import Geometry
 
-        for parent, _ in reversed(self.get_obj().get_hierarchy()[:-1]):
-            if parent.has_trait(has_pcb_position):
-                pos = parent.get_trait(has_pcb_position).get_position()
+        for parent, _ in reversed(self.obj.get_hierarchy()[:-1]):
+            if parent.has_trait(F.has_pcb_position):
+                pos = parent.get_trait(F.has_pcb_position).get_position()
                 logger.debug(
-                    f"Found parent position for: {self.get_obj().get_full_name()}:"
+                    f"Found parent position for: {self.obj.get_full_name()}:"
                     f"{pos} [{parent.get_full_name()}]"
                 )
                 return Geometry.abs_pos(
@@ -28,6 +28,6 @@ class has_pcb_position_defined_relative_to_parent(has_pcb_position.impl()):
                     self.position_relative,
                 )
         raise Exception(
-            f"Component of type {type(self.get_obj())} with relative to parent position"
+            f"Component of type {type(self.obj)} with relative to parent position"
             " has no (valid) parent"
         )

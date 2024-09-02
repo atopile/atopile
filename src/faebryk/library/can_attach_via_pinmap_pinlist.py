@@ -1,17 +1,15 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
-from faebryk.library.Electrical import Electrical
-from faebryk.library.Pad import Pad
+import faebryk.library._F as F
 
 
-class can_attach_via_pinmap_pinlist(can_attach_via_pinmap.impl()):
-    def __init__(self, pin_list: dict[str, Pad]) -> None:
+class can_attach_via_pinmap_pinlist(F.can_attach_via_pinmap.impl()):
+    def __init__(self, pin_list: dict[str, F.Pad]) -> None:
         super().__init__()
         self.pin_list = pin_list
 
-    def attach(self, pinmap: dict[str, Electrical]):
+    def attach(self, pinmap: dict[str, F.Electrical]):
         for no, intf in pinmap.items():
             assert (
                 no in self.pin_list

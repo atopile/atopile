@@ -3,9 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class has_designator(ModuleTrait):
+class has_designator(Module.TraitT):
     @abstractmethod
     def get_designator(self) -> str: ...

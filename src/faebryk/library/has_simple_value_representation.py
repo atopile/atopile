@@ -3,9 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class has_simple_value_representation(ModuleTrait):
+class has_simple_value_representation(Module.TraitT):
     @abstractmethod
     def get_value(self) -> str: ...

@@ -4,15 +4,13 @@
 
 from enum import IntEnum, StrEnum
 
-from faebryk.core.core import Parameter
-from faebryk.library.Battery import Battery
-from faebryk.library.Constant import Constant
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.TBD import TBD
+import faebryk.library._F as F
+from faebryk.core.parameter import Parameter
+from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
-class ButtonCell(Battery):
+class ButtonCell(F.Battery):
     class Material(StrEnum):
         Alkaline = "L"
         SilverOxide = "S"
@@ -25,13 +23,13 @@ class ButtonCell(Battery):
         @property
         def voltage(self) -> Parameter:
             return {
-                self.Alkaline: Constant(1.5 * P.V),
-                self.SilverOxide: Constant(1.55 * P.V),
-                self.ZincAir: Constant(1.65 * P.V),
-                self.Lithium: Constant(3.0 * P.V),
-                self.Mercury: Constant(1.35 * P.V),
-                self.NickelCadmium: Constant(1.2 * P.V),
-                self.NickelMetalHydride: Constant(1.2 * P.V),
+                self.Alkaline: F.Constant(1.5 * P.V),
+                self.SilverOxide: F.Constant(1.55 * P.V),
+                self.ZincAir: F.Constant(1.65 * P.V),
+                self.Lithium: F.Constant(3.0 * P.V),
+                self.Mercury: F.Constant(1.35 * P.V),
+                self.NickelCadmium: F.Constant(1.2 * P.V),
+                self.NickelMetalHydride: F.Constant(1.2 * P.V),
             }[self]
 
     class Shape(StrEnum):
@@ -55,18 +53,10 @@ class ButtonCell(Battery):
         N_2430 = 2430
         N_2450 = 2450
 
-    def __init__(self) -> None:
-        super().__init__()
+    material: F.TBD[Material]
+    shape: F.TBD[Shape]
+    size: F.TBD[Size]
 
-        class _PARAMs(Battery.PARAMS()):
-            material = TBD[self.Material]()
-            shape = TBD[self.Shape]()
-            size = TBD[self.Size]()
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("B")
 
-        self.PARAMs = _PARAMs(self)
-
-        self.add_trait(has_designator_prefix_defined("B"))
-
-        self.inherit()
-
-        # TODO merge voltage with material voltage
+    # TODO merge voltage with material voltage

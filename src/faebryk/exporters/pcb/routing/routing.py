@@ -10,10 +10,7 @@ from itertools import groupby
 
 import networkx as nx
 
-from faebryk.core.util import (
-    get_all_nodes_of_type,
-    get_net,
-)
+import faebryk.library._F as F
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.grid import (
     Coord,
@@ -22,8 +19,6 @@ from faebryk.exporters.pcb.routing.grid import (
     GridInvalidVertexException,
     OutCoord,
 )
-from faebryk.library.has_overriden_name import has_overriden_name
-from faebryk.library.Net import Net
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.pcb import Footprint, GR_Circle, GR_Line, GR_Rect, Pad
 
@@ -129,13 +124,13 @@ class PCB_Router:
         )
 
     def route_all(self):
-        from faebryk.library.Net import Net as FNet
+        from faebryk.core.util import get_all_nodes_of_type
 
-        nets = get_all_nodes_of_type(self.transformer.graph, FNet)
+        nets = get_all_nodes_of_type(self.transformer.graph, F.Net)
 
         # TODO add net picking heuristic
         for net in nets:
-            netname = net.get_trait(has_overriden_name).get_name()
+            netname = net.get_trait(F.has_overriden_name).get_name()
             try:
                 self.route_net(net)
             except GridInvalidVertexException as e:
@@ -161,12 +156,12 @@ class PCB_Router:
 
         return [layer(p) for p in pad.pos]
 
-    def route_net(self, net: Net):
+    def route_net(self, net: F.Net):
         transformer = self.transformer
 
         assert net is not None
         pcb_net = transformer.get_net(net)
-        net_name = net.get_trait(has_overriden_name).get_name()
+        net_name = net.get_trait(F.has_overriden_name).get_name()
         mifs = net.get_connected_interfaces()
 
         # get pads
@@ -239,6 +234,8 @@ class PCB_Router:
             )
 
     def route_if_net(self, mif):
+        from faebryk.core.util import get_net
+
         net = get_net(mif)
         assert net is not None
         self.route_net(net)

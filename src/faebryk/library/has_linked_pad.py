@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 
-from faebryk.core.core import (
-    ModuleInterfaceTrait,
-)
-from faebryk.library.Pad import Pad
+from faebryk.core.moduleinterface import ModuleInterface
+
+if TYPE_CHECKING:
+    from faebryk.library.Pad import Pad
 
 
-class has_linked_pad(ModuleInterfaceTrait):
+class has_linked_pad(ModuleInterface.TraitT):
     @abstractmethod
-    def get_pad(self) -> Pad: ...
+    def get_pad(self) -> "Pad": ...

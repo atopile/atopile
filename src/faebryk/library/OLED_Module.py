@@ -4,50 +4,46 @@
 import logging
 from enum import Enum, auto
 
-from faebryk.core.core import Module
-from faebryk.library.can_be_decoupled import can_be_decoupled
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.I2C import I2C
-from faebryk.library.Range import Range
-from faebryk.library.TBD import TBD
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 class OLED_Module(Module):
-    class Resolution(Enum):
+    class DisplayResolution(Enum):
         H64xV32 = auto()
         H128xV32 = auto()
         H128xV64 = auto()
         H256xV64 = auto()
 
+    class DisplaySize(Enum):
+        INCH_0_96 = auto()
+        INCH_1_12 = auto()
+        INCH_1_27 = auto()
+        INCH_1_3 = auto()
+        INCH_1_5 = auto()
+        INCH_2_23 = auto()
+        INCH_2_3 = auto()
+        INCH_2_42 = auto()
+        INCH_2_7 = auto()
+
     class DisplayController(Enum):
         SSD1315 = auto()
         SSD1306 = auto()
+        SSD1309 = auto()
 
-    def __init__(self) -> None:
-        super().__init__()
+    power: F.ElectricPower
+    i2c: F.I2C
 
-        class _NODEs(Module.NODES()): ...
+    display_resolution: F.TBD[DisplayResolution]
+    display_controller: F.TBD[DisplayController]
+    display_size: F.TBD[DisplaySize]
 
-        self.NODEs = _NODEs(self)
+    def __preinit__(self):
+        self.power.voltage.merge(F.Range(3.0 * P.V, 5 * P.V))
+        self.power.decoupled.decouple()
 
-        class _IFs(Module.IFS()):
-            power = ElectricPower()
-            i2c = I2C()
-
-        self.IFs = _IFs(self)
-
-        class _PARAMs(Module.PARAMS()):
-            resolution = TBD[self.Resolution]()
-            display_controller = TBD[self.DisplayController]()
-
-        self.PARAMs = _PARAMs(self)
-
-        self.IFs.power.PARAMs.voltage.merge(Range(3.0 * P.V, 5 * P.V))
-
-        self.IFs.power.get_trait(can_be_decoupled).decouple()
-
-        self.add_trait(has_designator_prefix_defined("OLED"))
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("OLED")

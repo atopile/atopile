@@ -4,7 +4,7 @@
 import logging
 from pathlib import Path
 
-from faebryk.core.core import Module
+from faebryk.core.module import Module
 from faebryk.core.util import get_all_modules
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.pcb.kicad.artifacts import (

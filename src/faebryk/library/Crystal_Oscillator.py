@@ -2,53 +2,39 @@
 # SPDX-License-Identifier: MIT
 
 
-from faebryk.core.core import Module
-from faebryk.library.Capacitor import Capacitor
-from faebryk.library.Constant import Constant
-from faebryk.library.Crystal import Crystal
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.Range import Range
+from copy import copy
+
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import times
 
 
 class Crystal_Oscillator(Module):
-    def __init__(self):
-        super().__init__()
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    crystal: F.Crystal
+    capacitors = L.list_field(2, F.Capacitor)
 
-        # ----------------------------------------
-        #     modules, interfaces, parameters
-        # ----------------------------------------
-        class _NODEs(Module.NODES()):
-            crystal = Crystal()
-            capacitors = times(2, Capacitor)
+    power: F.ElectricPower
+    p: F.Electrical
+    n: F.Electrical
 
-        self.NODEs = _NODEs(self)
+    # ----------------------------------------
+    #               parameters
+    # ----------------------------------------
+    # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
+    # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
+    _STRAY_CAPACITANCE = F.Range(1 * P.pF, 5 * P.pF)
 
-        class _PARAMs(Module.PARAMS()): ...
+    @L.rt_field
+    def capacitance(self):
+        return (self.crystal.load_capacitance - copy(self._STRAY_CAPACITANCE)) * 2
 
-        self.PARAMs = _PARAMs(self)
-
-        class _IFs(Module.IFS()):
-            power = ElectricPower()
-            p = Electrical()
-            n = Electrical()
-
-        self.IFs = _IFs(self)
-
-        # ----------------------------------------
-        #               parameters
-        # ----------------------------------------
-        # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
-        STRAY_CAPACITANCE = Range(1 * P.nF, 5 * P.nF)
-        load_capacitance = self.NODEs.crystal.PARAMs.load_impedance
-        capacitance = Constant(2 * P.dimesionless) * (
-            load_capacitance - STRAY_CAPACITANCE
-        )
-
-        for cap in self.NODEs.capacitors:
-            cap.PARAMs.capacitance.merge(capacitance)
+    def __preinit__(self):
+        for cap in self.capacitors:
+            cap.capacitance.merge(self.capacitance)
 
         # ----------------------------------------
         #                traits
@@ -57,14 +43,18 @@ class Crystal_Oscillator(Module):
         # ----------------------------------------
         #                aliases
         # ----------------------------------------
-        gnd = self.IFs.power.IFs.lv
+        gnd = self.power.lv
 
         # ----------------------------------------
         #                connections
         # ----------------------------------------
-        self.NODEs.crystal.IFs.gnd.connect(gnd)
-        self.NODEs.crystal.IFs.unnamed[0].connect_via(self.NODEs.capacitors[0], gnd)
-        self.NODEs.crystal.IFs.unnamed[1].connect_via(self.NODEs.capacitors[1], gnd)
+        self.crystal.gnd.connect(gnd)
+        self.crystal.unnamed[0].connect_via(self.capacitors[0], gnd)
+        self.crystal.unnamed[1].connect_via(self.capacitors[1], gnd)
 
-        self.NODEs.crystal.IFs.unnamed[0].connect(self.IFs.n)
-        self.NODEs.crystal.IFs.unnamed[1].connect(self.IFs.p)
+        self.crystal.unnamed[0].connect(self.n)
+        self.crystal.unnamed[1].connect(self.p)
+
+    @L.rt_field
+    def can_bridge(self):
+        return F.can_bridge_defined(self.p, self.n)

@@ -2,7 +2,7 @@ import logging
 
 import faebryk.library._F as F
 import faebryk.libs.picker.jlcpcb.picker_lib as P
-from faebryk.core.core import Module
+from faebryk.core.module import Module
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB, ComponentQuery
 from faebryk.libs.picker.picker import PickError
 
@@ -24,6 +24,7 @@ class StaticJLCPCBPartPicker(F.has_multi_picker.Picker):
     Use this if you want to specify a specific part to the multi-picker
     eg. a default switch
     """
+
     def __init__(
         self,
         *,

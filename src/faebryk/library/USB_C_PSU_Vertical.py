@@ -1,82 +1,61 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Module
-from faebryk.core.util import connect_all_interfaces
-from faebryk.library.Capacitor import Capacitor
-from faebryk.library.Constant import Constant
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.Fuse import Fuse
-from faebryk.library.Resistor import Resistor
-from faebryk.library.USB2_0 import USB2_0
-from faebryk.library.USB2_0_ESD_Protection import USB2_0_ESD_Protection
-from faebryk.library.USB_Type_C_Receptacle_14_pin_Vertical import (
-    USB_Type_C_Receptacle_14_pin_Vertical,
-)
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import times
 
 
 class USB_C_PSU_Vertical(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    # interfaces
+    power_out: F.ElectricPower
+    usb: F.USB2_0
 
-        # interfaces
-        class _IFs(Module.IFS()):
-            power_out = ElectricPower()
-            usb = USB2_0()
+    # components
 
-        self.IFs = _IFs(self)
+    usb_connector: F.USB_Type_C_Receptacle_14_pin_Vertical  # TODO: make generic
+    configuration_resistors = L.list_field(2, F.Resistor)
+    gnd_resistor: F.Resistor
+    gnd_capacitor: F.Capacitor
+    esd: F.USB2_0_ESD_Protection
+    fuse: F.Fuse
 
-        # components
-        class _NODEs(Module.NODES()):
-            usb_connector = (
-                USB_Type_C_Receptacle_14_pin_Vertical()
-            )  # TODO: make generic
-            configuration_resistors = times(2, Resistor)
-            gnd_resistor = Resistor()
-            gnd_capacitor = Capacitor()
-            esd = USB2_0_ESD_Protection()
-            fuse = Fuse()
+    def __preinit__(self):
+        from faebryk.core.util import connect_all_interfaces
 
-        self.NODEs = _NODEs(self)
-
-        self.NODEs.gnd_capacitor.PARAMs.capacitance.merge(100 * P.nF)
-        self.NODEs.gnd_capacitor.PARAMs.rated_voltage.merge(16 * P.V)
-        self.NODEs.gnd_resistor.PARAMs.resistance.merge(1 * P.Mohm)
-        for res in self.NODEs.configuration_resistors:
-            res.PARAMs.resistance.merge(5.1 * P.kohm)
-        self.NODEs.fuse.PARAMs.fuse_type.merge(Fuse.FuseType.RESETTABLE)
-        self.NODEs.fuse.PARAMs.trip_current.merge(Constant(1 * P.A))
+        self.gnd_capacitor.capacitance.merge(100 * P.nF)
+        self.gnd_capacitor.rated_voltage.merge(16 * P.V)
+        self.gnd_resistor.resistance.merge(1 * P.Mohm)
+        for res in self.configuration_resistors:
+            res.resistance.merge(5.1 * P.kohm)
+        self.fuse.fuse_type.merge(F.Fuse.FuseType.RESETTABLE)
+        self.fuse.trip_current.merge(F.Constant(1 * P.A))
 
         # alliases
-        vcon = self.NODEs.usb_connector.IFs.vbus
-        vusb = self.IFs.usb.IFs.usb_if.IFs.buspower
-        v5 = self.IFs.power_out
-        gnd = v5.IFs.lv
+        vcon = self.usb_connector.vbus
+        vusb = self.usb.usb_if.buspower
+        v5 = self.power_out
+        gnd = v5.lv
 
-        vcon.IFs.hv.connect_via(self.NODEs.fuse, v5.IFs.hv)
-        vcon.IFs.lv.connect(gnd)
-        vusb.IFs.lv.connect(gnd)
-        v5.connect(self.NODEs.esd.IFs.usb[0].IFs.usb_if.IFs.buspower)
+        vcon.hv.connect_via(self.fuse, v5.hv)
+        vcon.lv.connect(gnd)
+        vusb.lv.connect(gnd)
+        v5.connect(self.esd.usb[0].usb_if.buspower)
 
         # connect usb data
         connect_all_interfaces(
             [
-                self.NODEs.usb_connector.IFs.usb.IFs.usb_if.IFs.d,
-                self.IFs.usb.IFs.usb_if.IFs.d,
-                self.NODEs.esd.IFs.usb[0].IFs.usb_if.IFs.d,
+                self.usb_connector.usb.usb_if.d,
+                self.usb.usb_if.d,
+                self.esd.usb[0].usb_if.d,
             ]
         )
 
         # configure as ufp with 5V@max3A
-        self.NODEs.usb_connector.IFs.cc1.connect_via(
-            self.NODEs.configuration_resistors[0], gnd
-        )
-        self.NODEs.usb_connector.IFs.cc2.connect_via(
-            self.NODEs.configuration_resistors[1], gnd
-        )
+        self.usb_connector.cc1.connect_via(self.configuration_resistors[0], gnd)
+        self.usb_connector.cc2.connect_via(self.configuration_resistors[1], gnd)
 
         # EMI shielding
-        self.NODEs.usb_connector.IFs.shield.connect_via(self.NODEs.gnd_resistor, gnd)
-        self.NODEs.usb_connector.IFs.shield.connect_via(self.NODEs.gnd_capacitor, gnd)
+        self.usb_connector.shield.connect_via(self.gnd_resistor, gnd)
+        self.usb_connector.shield.connect_via(self.gnd_capacitor, gnd)

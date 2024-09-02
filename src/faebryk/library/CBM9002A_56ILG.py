@@ -1,19 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Module
-from faebryk.library.can_be_decoupled import can_be_decoupled
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_datasheet_defined import has_datasheet_defined
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.has_single_electric_reference_defined import (
-    has_single_electric_reference_defined,
-)
-from faebryk.library.I2C import I2C
-from faebryk.library.USB2_0 import USB2_0
-from faebryk.libs.util import times
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.library import L
 
 
 class CBM9002A_56ILG(Module):
@@ -23,63 +14,45 @@ class CBM9002A_56ILG(Module):
     Cypress Semicon CY7C68013A-56L Clone
     """
 
-    def __init__(self):
-        super().__init__()
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    PA = L.list_field(8, F.ElectricLogic)
+    PB = L.list_field(8, F.ElectricLogic)
+    PD = L.list_field(8, F.ElectricLogic)
+    usb: F.USB2_0
+    i2c: F.I2C
 
-        # ----------------------------------------
-        #     modules, interfaces, parameters
-        # ----------------------------------------
-        class _PARAMs(Module.PARAMS()): ...
+    avcc: F.ElectricPower
+    vcc: F.ElectricPower
 
-        self.PARAMs = _PARAMs(self)
+    rdy = L.list_field(2, F.ElectricLogic)
+    ctl = L.list_field(3, F.ElectricLogic)
+    reset: F.ElectricLogic
+    wakeup: F.ElectricLogic
 
-        class _IFS(Module.IFS()):
-            PA = times(8, ElectricLogic)
-            PB = times(8, ElectricLogic)
-            PD = times(8, ElectricLogic)
-            usb = USB2_0()
-            i2c = I2C()
+    ifclk: F.ElectricLogic
+    clkout: F.ElectricLogic
+    xtalin: F.Electrical
+    xtalout: F.Electrical
 
-            avcc = ElectricPower()
-            vcc = ElectricPower()
+    # ----------------------------------------
+    #                traits
+    # ----------------------------------------
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    datasheet = L.f_field(F.has_datasheet_defined)(
+        "https://corebai.com/Data/corebai/upload/file/20240201/CBM9002A.pdf"
+    )
 
-            rdy = times(2, ElectricLogic)
-            ctl = times(3, ElectricLogic)
-            reset = ElectricLogic()
-            wakeup = ElectricLogic()
+    # ----------------------------------------
+    #                connections
+    # ----------------------------------------
+    def __preinit__(self):
+        self.avcc.decoupled.decouple()  # TODO: decouple all pins
+        self.vcc.decoupled.decouple()  # TODO: decouple all pins
 
-            ifclk = ElectricLogic()
-            clkout = ElectricLogic()
-            xtalin = Electrical()
-            xtalout = Electrical()
-
-        self.IFs = _IFS(self)
-
-        # ----------------------------------------
-        #                traits
-        # ----------------------------------------
-        self.add_trait(has_designator_prefix_defined("U"))
-        self.add_trait(
-            has_datasheet_defined(
-                "https://corebai.com/Data/corebai/upload/file/20240201/CBM9002A.pdf"
+        F.ElectricLogic.connect_all_node_references(
+            self.get_children(direct_only=True, types=ModuleInterface).difference(
+                {self.avcc}
             )
         )
-        self.add_trait(
-            has_single_electric_reference_defined(
-                ElectricLogic.connect_all_module_references(self)
-            )
-        )
-
-        # ----------------------------------------
-        #                aliases
-        # ----------------------------------------
-
-        # ----------------------------------------
-        #                connections
-        # ----------------------------------------
-        self.IFs.avcc.get_trait(can_be_decoupled).decouple()  # TODO: decouple all pins
-        self.IFs.vcc.get_trait(can_be_decoupled).decouple()  # TODO: decouple all pins
-
-        # ----------------------------------------
-        #               Parameters
-        # ----------------------------------------

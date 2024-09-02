@@ -1,22 +1,15 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Generic, TypeVar
-
-from faebryk.core.core import Parameter
-
-PV = TypeVar("PV")
+from faebryk.core.parameter import Parameter
 
 
-class ANY(Generic[PV], Parameter[PV]):
+class ANY[PV](Parameter[PV]):
     """
     Allow parameter to take any value.
     Operations with this parameter automatically resolve to ANY too.
-    Don't mistake with TBD.
+    Don't mistake with F.TBD.
     """
-
-    def __init__(self) -> None:
-        super().__init__()
 
     def __eq__(self, __value: object) -> bool:
         if isinstance(__value, ANY):

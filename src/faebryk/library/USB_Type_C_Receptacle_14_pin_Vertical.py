@@ -1,16 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Module
-from faebryk.library.can_attach_to_footprint_via_pinmap import (
-    can_attach_to_footprint_via_pinmap,
-)
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_designator_prefix_defined import (
-    has_designator_prefix_defined,
-)
-from faebryk.library.USB2_0 import USB2_0
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 
 
 class USB_Type_C_Receptacle_14_pin_Vertical(Module):
@@ -19,42 +12,37 @@ class USB_Type_C_Receptacle_14_pin_Vertical(Module):
     918-418K2022Y40000
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    # interfaces
 
-        # interfaces
-        class _IFs(Module.IFS()):
-            # TODO make arrays?
-            cc1 = Electrical()
-            cc2 = Electrical()
-            shield = Electrical()
-            # power
-            vbus = ElectricPower()
-            # diffpairs: p, n
-            usb = USB2_0()
+    # TODO make arrays?
+    cc1: F.Electrical
+    cc2: F.Electrical
+    shield: F.Electrical
+    # power
+    vbus: F.ElectricPower
+    # diffpairs: p, n
+    usb: F.USB2_0
 
-        self.IFs = _IFs(self)
-
-        self.add_trait(
-            can_attach_to_footprint_via_pinmap(
-                {
-                    "1": self.IFs.vbus.IFs.lv,
-                    "2": self.IFs.vbus.IFs.hv,
-                    "3": self.IFs.usb.IFs.usb_if.IFs.d.IFs.n,
-                    "4": self.IFs.usb.IFs.usb_if.IFs.d.IFs.p,
-                    "5": self.IFs.cc2,
-                    "6": self.IFs.vbus.IFs.hv,
-                    "7": self.IFs.vbus.IFs.lv,
-                    "8": self.IFs.vbus.IFs.lv,
-                    "9": self.IFs.vbus.IFs.hv,
-                    "10": self.IFs.usb.IFs.usb_if.IFs.d.IFs.n,
-                    "11": self.IFs.usb.IFs.usb_if.IFs.d.IFs.p,
-                    "12": self.IFs.cc1,
-                    "13": self.IFs.vbus.IFs.hv,
-                    "14": self.IFs.vbus.IFs.lv,
-                    "0": self.IFs.shield,
-                }
-            )
+    @L.rt_field
+    def attach_to_footprint(self):
+        return F.can_attach_to_footprint_via_pinmap(
+            {
+                "1": self.vbus.lv,
+                "2": self.vbus.hv,
+                "3": self.usb.usb_if.d.n,
+                "4": self.usb.usb_if.d.p,
+                "5": self.cc2,
+                "6": self.vbus.hv,
+                "7": self.vbus.lv,
+                "8": self.vbus.lv,
+                "9": self.vbus.hv,
+                "10": self.usb.usb_if.d.n,
+                "11": self.usb.usb_if.d.p,
+                "12": self.cc1,
+                "13": self.vbus.hv,
+                "14": self.vbus.lv,
+                "0": self.shield,
+            }
         )
 
-        self.add_trait(has_designator_prefix_defined("J"))
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("J")

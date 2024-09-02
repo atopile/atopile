@@ -1,30 +1,24 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-from faebryk.core.core import Module
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.PoweredLED import PoweredLED
-from faebryk.library.PowerSwitchMOSFET import PowerSwitchMOSFET
+
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 
 
 class LEDIndicator(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    # interfaces
 
-        # interfaces
-        class _IFs(Module.IFS()):
-            logic_in = ElectricLogic()
-            power_in = ElectricPower()
+    logic_in: F.ElectricLogic
+    power_in: F.ElectricPower
 
-        self.IFs = _IFs(self)
+    # components
 
-        # components
-        class _NODEs(Module.NODES()):
-            led = PoweredLED()
-            # TODO make generic
-            power_switch = PowerSwitchMOSFET(lowside=True, normally_closed=False)
+    led: F.PoweredLED
 
-        self.NODEs = _NODEs(self)
+    # TODO make generic
+    power_switch = L.f_field(F.PowerSwitchMOSFET)(lowside=True, normally_closed=False)
 
-        self.IFs.power_in.connect_via(self.NODEs.power_switch, self.NODEs.led.IFs.power)
-        self.NODEs.power_switch.IFs.logic_in.connect(self.IFs.logic_in)
+    def __preinit__(self):
+        self.power_in.connect_via(self.power_switch, self.led.power)
+        self.power_switch.logic_in.connect(self.logic_in)

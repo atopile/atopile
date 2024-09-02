@@ -3,9 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import ParameterTrait
+from faebryk.core.parameter import Parameter
 
 
-class is_representable_by_single_value(ParameterTrait):
+class is_representable_by_single_value(Parameter.TraitT):
     @abstractmethod
     def get_single_representing_value(self): ...

@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-from faebryk.core.core import Node
+from faebryk.core.node import Node
 
 
 class Layout:

@@ -3,11 +3,11 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import ModuleInterface, ModuleInterfaceTrait
+from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.util import find
 
 
-class is_esphome_bus(ModuleInterfaceTrait):
+class is_esphome_bus(ModuleInterface.TraitT):
     ...
 
     @abstractmethod

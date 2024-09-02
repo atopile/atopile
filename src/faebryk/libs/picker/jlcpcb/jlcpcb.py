@@ -21,9 +21,9 @@ from tortoise.fields import CharField, IntField, JSONField
 from tortoise.models import Model
 
 import faebryk.library._F as F
-from faebryk.core.core import Module, Parameter
+from faebryk.core.module import Module
+from faebryk.core.parameter import Parameter
 from faebryk.core.util import pretty_param_tree, pretty_params
-from faebryk.library.Set import Set
 from faebryk.libs.e_series import (
     E_SERIES_VALUES,
     ParamNotResolvedError,
@@ -337,9 +337,9 @@ class Component(Model):
             )
 
         for name, value in zip([m.param_name for m in mapping], params):
-            getattr(module.PARAMs, name).override(value)
+            getattr(module, name).override(value)
 
-        F.has_defined_descriptive_properties.add_properties_to(
+        F.has_descriptive_properties_defined.add_properties_to(
             module,
             {
                 DescriptiveProperties.partno: self.mfr,
@@ -355,8 +355,8 @@ class Component(Model):
             },
         )
 
-        module.add_trait(has_part_picked_defined(JLCPCB_Part(self.partno)))
         attach(module, self.partno)
+        module.add_trait(has_part_picked_defined(JLCPCB_Part(self.partno)))
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Attached component {self.partno} to module {module}: \n"
@@ -417,7 +417,7 @@ class ComponentQuery:
         assert not self.results
         value_query = Q()
         try:
-            intersection = Set(
+            intersection = F.Set(
                 [e_series_intersect(value, e_series or E_SERIES_VALUES.E_ALL)]
             ).params
         except ParamNotResolvedError as e:
@@ -511,7 +511,7 @@ class ComponentQuery:
 
             if not all(
                 pm := [
-                    p.is_subset_of(getattr(module.PARAMs, m.param_name))
+                    p.is_subset_of(getattr(module, m.param_name))
                     for p, m in zip(params, mapping)
                 ]
             ):
@@ -623,7 +623,7 @@ class JLCPCB_DB:
             else:
                 raise FileNotFoundError(f"No JLCPCB database found at {self.db_file}")
         elif not self.is_db_up_to_date():
-            if no_download_prompt or self.prompt_db_update(
+            if not no_download_prompt and self.prompt_db_update(
                 f"JLCPCB database at {self.db_file} is older than 7 days, update?"
             ):
                 self.download()

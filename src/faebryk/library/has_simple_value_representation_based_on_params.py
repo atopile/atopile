@@ -3,14 +3,12 @@
 
 from typing import Callable, Sequence
 
-from faebryk.core.core import Parameter
-from faebryk.library.has_simple_value_representation import (
-    has_simple_value_representation,
-)
+import faebryk.library._F as F
+from faebryk.core.parameter import Parameter
 
 
 class has_simple_value_representation_based_on_params(
-    has_simple_value_representation.impl()
+    F.has_simple_value_representation.impl()
 ):
     def __init__(
         self,

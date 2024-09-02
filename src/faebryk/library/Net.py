@@ -3,27 +3,19 @@
 
 import logging
 
-from faebryk.core.core import Module
-from faebryk.core.util import get_connected_mifs, get_parent_of_type
-from faebryk.library.Electrical import Electrical
-from faebryk.library.Footprint import Footprint
-from faebryk.library.has_overriden_name import has_overriden_name
-from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
-from faebryk.library.Pad import Pad
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
 class Net(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    part_of: F.Electrical
 
-        class _IFs(super().IFS()):
-            part_of = Electrical()
-
-        self.IFs = _IFs(self)
-
-        class _(has_overriden_name.impl()):
+    @L.rt_field
+    def overriden_name(self):
+        class _(F.has_overriden_name.impl()):
             def get_name(_self):
                 from faebryk.exporters.netlist.graph import (
                     can_represent_kicad_footprint,
@@ -47,33 +39,37 @@ class Net(Module):
 
                 return name
 
-        self.add_trait(_())
+        return _()
 
     def get_fps(self):
+        from faebryk.core.util import get_parent_of_type
+
         return {
             pad: fp
             for mif in self.get_connected_interfaces()
-            if (fp := get_parent_of_type(mif, Footprint)) is not None
-            and (pad := get_parent_of_type(mif, Pad)) is not None
+            if (fp := get_parent_of_type(mif, F.Footprint)) is not None
+            and (pad := get_parent_of_type(mif, F.Pad)) is not None
         }
 
     # TODO should this be here?
     def get_connected_interfaces(self):
+        from faebryk.core.util import get_connected_mifs
+
         return {
             mif
-            for mif in get_connected_mifs(self.IFs.part_of.GIFs.connected)
-            if isinstance(mif, type(self.IFs.part_of))
+            for mif in get_connected_mifs(self.part_of.connected)
+            if isinstance(mif, type(self.part_of))
         }
 
     def __repr__(self) -> str:
         up = super().__repr__()
-        if self.has_trait(has_overriden_name):
-            return f"{up}'{self.get_trait(has_overriden_name).get_name()}'"
+        if self.has_trait(F.has_overriden_name):
+            return f"{up}'{self.get_trait(F.has_overriden_name).get_name()}'"
         else:
             return up
 
     @classmethod
     def with_name(cls, name: str) -> "Net":
         n = cls()
-        n.add_trait(has_overriden_name_defined(name))
+        n.add_trait(F.has_overriden_name_defined(name))
         return n

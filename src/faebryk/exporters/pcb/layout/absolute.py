@@ -4,28 +4,23 @@
 import logging
 from dataclasses import dataclass
 
-from faebryk.core.core import (
-    Node,
-)
+import faebryk.library._F as F
+from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.library.has_pcb_position import has_pcb_position
-from faebryk.library.has_pcb_position_defined_relative_to_parent import (
-    has_pcb_position_defined_relative_to_parent,
-)
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, eq=True)
 class LayoutAbsolute(Layout):
-    pos: has_pcb_position.Point
+    pos: F.has_pcb_position.Point
 
     def apply(self, *node: Node):
         """
         Tip: Make sure at least one parent of node has an absolute position defined
         """
         # Remove nodes that have a position defined
-        node = tuple(n for n in node if not n.has_trait(has_pcb_position))
+        node = tuple(n for n in node if not n.has_trait(F.has_pcb_position))
 
         for n in node:
-            n.add_trait(has_pcb_position_defined_relative_to_parent(self.pos))
+            n.add_trait(F.has_pcb_position_defined_relative_to_parent(self.pos))

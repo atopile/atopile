@@ -4,16 +4,12 @@
 
 from enum import Enum, auto
 
-from faebryk.core.core import Parameter
-from faebryk.library.Diode import Diode
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.Resistor import Resistor
-from faebryk.library.TBD import TBD
+import faebryk.library._F as F
+from faebryk.core.parameter import Parameter
 from faebryk.libs.units import Quantity
 
 
-class LED(Diode):
+class LED(F.Diode):
     class Color(Enum):
         RED = auto()
         EMERALD = auto()
@@ -22,57 +18,42 @@ class LED(Diode):
         YELLOW = auto()
         WHITE = auto()
 
-    @classmethod
-    def PARAMS(cls):
-        class _PARAMs(super().PARAMS()):
-            brightness = TBD[Quantity]()
-            max_brightness = TBD[Quantity]()
-            color = TBD[cls.Color]()
+    brightness: F.TBD[Quantity]
+    max_brightness: F.TBD[Quantity]
+    color: F.TBD[Color]
 
-        return _PARAMs
+    def __preinit__(self):
+        self.current.merge(self.brightness / self.max_brightness * self.max_current)
 
-    def __init__(self) -> None:
-        super().__init__()
-
-        self.PARAMs = self.PARAMS()(self)
-
-        self.PARAMs.current.merge(
-            self.PARAMs.brightness
-            / self.PARAMs.max_brightness
-            * self.PARAMs.max_current
-        )
-
-        self.inherit()
-
-        # self.PARAMs.brightness.merge(
-        #    Range(0 * P.millicandela, self.PARAMs.max_brightness)
+        # self.brightness.merge(
+        #    F.Range(0 * P.millicandela, self.max_brightness)
         # )
 
     def set_intensity(self, intensity: Parameter[Quantity]) -> None:
-        self.PARAMs.brightness.merge(intensity * self.PARAMs.max_brightness)
+        self.brightness.merge(intensity * self.max_brightness)
 
     def connect_via_current_limiting_resistor(
         self,
         input_voltage: Parameter[Quantity],
-        resistor: Resistor,
-        target: Electrical,
+        resistor: F.Resistor,
+        target: F.Electrical,
         low_side: bool,
     ):
         if low_side:
-            self.IFs.cathode.connect_via(resistor, target)
+            self.cathode.connect_via(resistor, target)
         else:
-            self.IFs.anode.connect_via(resistor, target)
+            self.anode.connect_via(resistor, target)
 
-        resistor.PARAMs.resistance.merge(
+        resistor.resistance.merge(
             self.get_needed_series_resistance_for_current_limit(input_voltage),
         )
 
     def connect_via_current_limiting_resistor_to_power(
-        self, resistor: Resistor, power: ElectricPower, low_side: bool
+        self, resistor: F.Resistor, power: F.ElectricPower, low_side: bool
     ):
         self.connect_via_current_limiting_resistor(
-            power.PARAMs.voltage,
+            power.voltage,
             resistor,
-            power.IFs.lv if low_side else power.IFs.hv,
+            power.lv if low_side else power.hv,
             low_side,
         )

@@ -1,23 +1,16 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from functools import cache
-from typing import Generic, TypeGuard, TypeVar
+from typing import TypeGuard
 
-from faebryk.core.core import Module, ModuleInterface
-from faebryk.library.can_attach_to_footprint_symmetrically import (
-    can_attach_to_footprint_symmetrically,
-)
-from faebryk.library.can_bridge_defined import can_bridge_defined
-from faebryk.library.has_designator_prefix_defined import (
-    has_designator_prefix_defined,
-)
-from faebryk.libs.util import times
-
-T = TypeVar("T", bound=ModuleInterface)
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.library import L
+from faebryk.libs.util import once
 
 
-class _TSwitch(Generic[T], Module):
+class _TSwitch[T: ModuleInterface](Module):
     def __init__(self, t: type[T]):
         super().__init__()
         self.t = t
@@ -27,20 +20,20 @@ class _TSwitch(Generic[T], Module):
         return isinstance(obj, _TSwitch) and issubclass(obj.t, t)
 
 
-@cache  # This means we can use a normal "isinstance" to test for them
-def Switch(interface_type: type[T]):
+@once  # This means we can use a normal "isinstance" to test for them
+def Switch[T: ModuleInterface](interface_type: type[T]):
     class _Switch(_TSwitch[interface_type]):
         def __init__(self) -> None:
             super().__init__(interface_type)
 
-            self.add_trait(has_designator_prefix_defined("SW"))
-            self.add_trait(can_attach_to_footprint_symmetrically())
+        designator_prefix = L.f_field(F.has_designator_prefix_defined)("SW")
+        attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
-            class _IFs(super().IFS()):
-                unnamed = times(2, interface_type)
+        unnamed = L.list_field(2, interface_type)
 
-            self.IFs = _IFs(self)
-            self.add_trait(can_bridge_defined(*self.IFs.unnamed))
+        @L.rt_field
+        def can_bridge(self):
+            return F.can_bridge_defined(*self.unnamed)
 
         @staticmethod
         def is_instance(obj: Module) -> "TypeGuard[_Switch]":

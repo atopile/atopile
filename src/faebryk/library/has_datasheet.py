@@ -3,9 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class has_datasheet(ModuleTrait):
+class has_datasheet(Module.TraitT):
     @abstractmethod
     def get_datasheet(self) -> str: ...

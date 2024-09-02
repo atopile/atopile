@@ -3,24 +3,16 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import TYPE_CHECKING, Iterable, Sequence
 
-from faebryk.core.core import (
-    Module,
-    ModuleInterface,
-    Node,
-)
-from faebryk.core.util import (
-    get_all_nodes,
-    get_connected_mifs,
-    get_net,
-    get_parent_of_type,
-)
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.library.Electrical import Electrical
-from faebryk.library.Net import Net
-from faebryk.library.Pad import Pad
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
 from faebryk.libs.geometry.basic import Geometry
+
+if TYPE_CHECKING:
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 # logging settings
 logger = logging.getLogger(__name__)
@@ -95,36 +87,36 @@ class Path:
 
 
 class Route(Module):
+    net_: F.Electrical
+    pcb: ModuleInterface
+
     def __init__(
         self,
-        pads: Iterable[Pad],
+        pads: Iterable[F.Pad],
         path: Path | None = None,
     ):
         super().__init__()
-
         self.path = path or Path()
+        self._pads = pads
 
-        class _IFs(super().IFS()):
-            net = Electrical()
-            pcb = ModuleInterface()
-
-        self.IFs = _IFs(self)
-
-        for pad in pads:
-            self.IFs.pcb.connect(pad.IFs.pcb)
-            self.IFs.net.connect(pad.IFs.net)
+    def __preinit__(self):
+        for pad in self._pads:
+            self.pcb.connect(pad.pcb)
+            self.net_.connect(pad.net)
 
     def add(self, obj: Path.Obj):
         self.path.add(obj)
 
     @property
     def net(self):
-        net = get_net(self.IFs.net)
+        from faebryk.core.util import get_net
+
+        net = get_net(self.net_)
         assert net
         return net
 
 
-def apply_route_in_pcb(route: Route, transformer: PCB_Transformer):
+def apply_route_in_pcb(route: Route, transformer: "PCB_Transformer"):
     pcb_net = transformer.get_net(route.net)
 
     logger.debug(f"Insert tracks for net {pcb_net.name}, {pcb_net.number}, {route}")
@@ -178,25 +170,32 @@ def apply_route_in_pcb(route: Route, transformer: PCB_Transformer):
 
 def get_internal_nets_of_node(
     node: Node,
-) -> dict[Net | None, Iterable[ModuleInterface]]:
+) -> dict[F.Net | None, Iterable[ModuleInterface]]:
     """
     Returns all Nets occuring (at least partially) within Node
     and returns for each of those the corresponding mifs
     For Nets returns all connected mifs
     """
 
+    from faebryk.core.util import (
+        get_all_nodes,
+        get_connected_mifs,
+        get_net,
+    )
     from faebryk.libs.util import groupby
 
-    if isinstance(node, Net):
-        return {node: get_connected_mifs(node.IFs.part_of.GIFs.connected)}
+    if isinstance(node, F.Net):
+        return {node: get_connected_mifs(node.part_of.connected)}
 
-    mifs = {n for n in get_all_nodes(node) + [node] if isinstance(n, Electrical)}
+    mifs = {n for n in get_all_nodes(node) + [node] if isinstance(n, F.Electrical)}
     nets = groupby(mifs, lambda mif: get_net(mif))
 
     return nets
 
 
-def get_pads_pos_of_mifs(mifs: Sequence[Electrical]):
+def get_pads_pos_of_mifs(mifs: Sequence[F.Electrical]):
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
     return {
         pad_pos[0]: pad_pos[1]
         for mif in mifs
@@ -205,13 +204,13 @@ def get_pads_pos_of_mifs(mifs: Sequence[Electrical]):
 
 
 def group_pads_that_are_connected_already(
-    pads: Iterable[Pad],
-) -> list[set[Pad]]:
-    out: list[set[Pad]] = []
+    pads: Iterable[F.Pad],
+) -> list[set[F.Pad]]:
+    out: list[set[F.Pad]] = []
     for pad in pads:
         for group in out:
             # Only need to check first, because transitively connected
-            if pad.IFs.pcb.is_connected_to(next(iter(group)).IFs.pcb):
+            if pad.pcb.is_connected_to(next(iter(group)).pcb):
                 group.add(pad)
                 break
         else:
@@ -219,9 +218,11 @@ def group_pads_that_are_connected_already(
     return out
 
 
-def get_routes_of_pad(pad: Pad):
+def get_routes_of_pad(pad: F.Pad):
+    from faebryk.core.util import get_parent_of_type
+
     return {
         route
-        for mif in pad.IFs.pcb.get_direct_connections()
+        for mif in pad.pcb.get_direct_connections()
         if (route := get_parent_of_type(mif, Route))
     }

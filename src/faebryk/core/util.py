@@ -12,28 +12,18 @@ from typing import (
 
 from typing_extensions import deprecated
 
-from faebryk.core.core import (
+import faebryk.library._F as F
+from faebryk.core.graphinterface import (
     Graph,
     GraphInterface,
-    GraphInterfaceHierarchical,
     GraphInterfaceSelf,
-    Link,
-    LinkDirect,
-    LinkNamedParent,
-    Module,
-    ModuleInterface,
-    Node,
-    Parameter,
-    Trait,
 )
-from faebryk.library.ANY import ANY
-from faebryk.library.can_bridge_defined import can_bridge_defined
-from faebryk.library.Constant import Constant
-from faebryk.library.Electrical import Electrical
-from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
-from faebryk.library.Range import Range
-from faebryk.library.Set import Set
-from faebryk.library.TBD import TBD
+from faebryk.core.link import Link, LinkDirect
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
+from faebryk.core.parameter import Parameter
+from faebryk.core.trait import Trait
 from faebryk.libs.units import Quantity, UnitsContainer, to_si_str
 from faebryk.libs.util import NotNone, cast_assert, zip_dicts_by_key
 
@@ -43,18 +33,18 @@ logger = logging.getLogger(__name__)
 
 
 def enum_parameter_representation(param: Parameter, required: bool = False) -> str:
-    if isinstance(param, Constant):
+    if isinstance(param, F.Constant):
         return param.value.name if isinstance(param.value, Enum) else str(param.value)
-    elif isinstance(param, Range):
+    elif isinstance(param, F.Range):
         return (
             f"{enum_parameter_representation(param.min)} - "
             f"{enum_parameter_representation(param.max)}"
         )
-    elif isinstance(param, Set):
+    elif isinstance(param, F.Set):
         return f"Set({', '.join(map(enum_parameter_representation, param.params))})"
-    elif isinstance(param, TBD):
+    elif isinstance(param, F.TBD):
         return "TBD" if required else ""
-    elif isinstance(param, ANY):
+    elif isinstance(param, F.ANY):
         return "ANY" if required else ""
     else:
         return type(param).__name__
@@ -68,23 +58,23 @@ def as_unit(
 ) -> str:
     if base != 1000:
         raise NotImplementedError("Only base 1000 supported")
-    if isinstance(param, Constant):
+    if isinstance(param, F.Constant):
         return to_si_str(param.value, unit)
-    elif isinstance(param, Range):
+    elif isinstance(param, F.Range):
         return (
             as_unit(param.min, unit, base=base)
             + " - "
             + as_unit(param.max, unit, base=base, required=True)
         )
-    elif isinstance(param, Set):
+    elif isinstance(param, F.Set):
         return (
             "Set("
             + ", ".join(map(lambda x: as_unit(x, unit, required=True), param.params))
             + ")"
         )
-    elif isinstance(param, TBD):
+    elif isinstance(param, F.TBD):
         return "TBD" if required else ""
-    elif isinstance(param, ANY):
+    elif isinstance(param, F.ANY):
         return "ANY" if required else ""
 
     raise ValueError(f"Unsupported {param=}")
@@ -93,15 +83,15 @@ def as_unit(
 def as_unit_with_tolerance(
     param: Parameter, unit: str, base: int = 1000, required: bool = False
 ) -> str:
-    if isinstance(param, Constant):
+    if isinstance(param, F.Constant):
         return as_unit(param, unit, base=base)
-    elif isinstance(param, Range):
+    elif isinstance(param, F.Range):
         center, delta = param.as_center_tuple(relative=True)
         delta_percent_str = f"±{to_si_str(delta.value, "%", 0)}"
         return (
             f"{as_unit(center, unit, base=base, required=required)} {delta_percent_str}"
         )
-    elif isinstance(param, Set):
+    elif isinstance(param, F.Set):
         return (
             "Set("
             + ", ".join(
@@ -109,25 +99,25 @@ def as_unit_with_tolerance(
             )
             + ")"
         )
-    elif isinstance(param, TBD):
+    elif isinstance(param, F.TBD):
         return "TBD" if required else ""
-    elif isinstance(param, ANY):
+    elif isinstance(param, F.ANY):
         return "ANY" if required else ""
     raise ValueError(f"Unsupported {param=}")
 
 
 def get_parameter_max(param: Parameter):
-    if isinstance(param, Constant):
+    if isinstance(param, F.Constant):
         return param.value
-    if isinstance(param, Range):
+    if isinstance(param, F.Range):
         return param.max
-    if isinstance(param, Set):
+    if isinstance(param, F.Set):
         return max(map(get_parameter_max, param.params))
     raise ValueError(f"Can't get max for {param}")
 
 
 def with_same_unit(to_convert: float | int, param: Parameter | Quantity | float | int):
-    if isinstance(param, Constant) and isinstance(param.value, Quantity):
+    if isinstance(param, F.Constant) and isinstance(param.value, Quantity):
         return Quantity(to_convert, param.value.units)
     if isinstance(param, Quantity):
         return Quantity(to_convert, param.units)
@@ -141,16 +131,6 @@ def with_same_unit(to_convert: float | int, param: Parameter | Quantity | float 
 # Graph Querying -----------------------------------------------------------------------
 
 
-def bfs_node(node: Node, filter: Callable[[GraphInterface], bool]):
-    return get_nodes_from_gifs(node.get_graph().bfs_visit(filter, [node.GIFs.self]))
-
-
-def get_nodes_from_gifs(gifs: Iterable[GraphInterface]):
-    return {gif.node for gif in gifs}
-    # TODO what is faster
-    # return {n.node for n in gifs if isinstance(n, GraphInterfaceSelf)}
-
-
 # Make all kinds of graph filtering functions so we can optimize them in the future
 # Avoid letting user query all graph nodes always because quickly very slow
 
@@ -159,27 +139,12 @@ def node_projected_graph(g: Graph) -> set[Node]:
     """
     Don't call this directly, use get_all_nodes_by/of/with instead
     """
-    return get_nodes_from_gifs(g.subgraph_type(GraphInterfaceSelf))
+    return Node.get_nodes_from_gifs(g.subgraph_type(GraphInterfaceSelf))
 
 
 @deprecated("Use get_node_children_all")
 def get_all_nodes(node: Node, include_root=False) -> list[Node]:
-    return get_node_children_all(node, include_root=include_root)
-
-
-def get_node_children_all(node: Node, include_root=True) -> list[Node]:
-    # TODO looks like get_node_tree is 2x faster
-
-    out = bfs_node(
-        node,
-        lambda x: isinstance(x, (GraphInterfaceSelf, GraphInterfaceHierarchical))
-        and x is not node.GIFs.parent,
-    )
-
-    if not include_root:
-        out.remove(node)
-
-    return list(out)
+    return node.get_node_children_all(include_root=include_root)
 
 
 def get_all_modules(node: Node) -> set[Module]:
@@ -251,19 +216,19 @@ def get_connected_mifs_with_link(gif: GraphInterface):
 def get_direct_connected_nodes[T: Node](
     gif: GraphInterface, ty: type[T] = Node
 ) -> set[T]:
-    out = get_nodes_from_gifs(
+    out = Node.get_nodes_from_gifs(
         g for g, t in get_all_connected(gif) if isinstance(t, LinkDirect)
     )
     assert all(isinstance(n, ty) for n in out)
     return cast(set[T], out)
 
 
-def get_net(mif: Electrical):
+def get_net(mif: F.Electrical):
     from faebryk.library.Net import Net
 
     nets = {
         net
-        for mif in get_connected_mifs(mif.GIFs.connected)
+        for mif in get_connected_mifs(mif.connected)
         if (net := get_parent_of_type(mif, Net)) is not None
     }
 
@@ -274,24 +239,6 @@ def get_net(mif: Electrical):
     return next(iter(nets))
 
 
-def get_children[T: Node](
-    node: Node,
-    direct_only: bool,
-    types: type[T] | tuple[type[T], ...] = Node,
-    include_root: bool = False,
-):
-    if direct_only:
-        children = get_node_direct_children_(node)
-        if include_root:
-            children.add(node)
-    else:
-        children = get_node_children_all(node, include_root=include_root)
-
-    filtered = {n for n in children if isinstance(n, types)}
-
-    return filtered
-
-
 @deprecated("Use get_node_direct_mods_or_mifs")
 def get_node_direct_children(node: Node, include_mifs: bool = True):
     return get_node_direct_mods_or_mifs(node, include_mifs=include_mifs)
@@ -299,15 +246,7 @@ def get_node_direct_children(node: Node, include_mifs: bool = True):
 
 def get_node_direct_mods_or_mifs(node: Node, include_mifs: bool = True):
     types = (Module, ModuleInterface) if include_mifs else Module
-    return get_children(node, direct_only=True, types=types)
-
-
-def get_node_direct_children_(node: Node):
-    return {
-        gif.node
-        for gif, link in node.get_graph().get_edges(node.GIFs.children).items()
-        if isinstance(link, LinkNamedParent)
-    }
+    return node.get_children(direct_only=True, types=types)
 
 
 def get_node_tree(
@@ -347,7 +286,7 @@ def iter_tree_by_depth(tree: dict[Node, dict]):
 def get_mif_tree(
     obj: ModuleInterface | Module,
 ) -> dict[ModuleInterface, dict[ModuleInterface, dict]]:
-    mifs = get_children(obj, direct_only=True, types=ModuleInterface)
+    mifs = obj.get_children(direct_only=True, types=ModuleInterface)
 
     return {mif: get_mif_tree(mif) for mif in mifs}
 
@@ -382,22 +321,24 @@ def get_param_tree(param: Parameter) -> list[tuple[Parameter, list]]:
 
 
 def connect_interfaces_via_chain(
-    start: ModuleInterface, bridges: Iterable[Node], end: ModuleInterface
+    start: ModuleInterface, bridges: Iterable[Node], end: ModuleInterface, linkcls=None
 ):
     from faebryk.library.can_bridge import can_bridge
 
     last = start
     for bridge in bridges:
-        last.connect(bridge.get_trait(can_bridge).get_in())
+        last.connect(bridge.get_trait(can_bridge).get_in(), linkcls=linkcls)
         last = bridge.get_trait(can_bridge).get_out()
-    last.connect(end)
+    last.connect(end, linkcls=linkcls)
 
 
-def connect_all_interfaces[MIF: ModuleInterface](interfaces: Iterable[MIF]):
+def connect_all_interfaces[MIF: ModuleInterface](
+    interfaces: Iterable[MIF], linkcls=None
+):
     interfaces = list(interfaces)
     if not interfaces:
         return
-    return connect_to_all_interfaces(interfaces[0], interfaces[1:])
+    return connect_to_all_interfaces(interfaces[0], interfaces[1:], linkcls=linkcls)
     # not needed with current connection implementation
     # for i in interfaces:
     #    for j in interfaces:
@@ -405,10 +346,10 @@ def connect_all_interfaces[MIF: ModuleInterface](interfaces: Iterable[MIF]):
 
 
 def connect_to_all_interfaces[MIF: ModuleInterface](
-    source: MIF, targets: Iterable[MIF]
+    source: MIF, targets: Iterable[MIF], linkcls=None
 ):
     for i in targets:
-        source.connect(i)
+        source.connect(i, linkcls=linkcls)
     return source
 
 
@@ -428,7 +369,7 @@ def connect_module_mifs_by_name(
         ).items():
             if src_m is None or dst_m is None:
                 if not allow_partial:
-                    raise Exception(f"Node with name {k} mot present in both")
+                    raise Exception(f"Node with name {k} not present in both")
                 continue
             src_m.connect(dst_m)
 
@@ -444,7 +385,7 @@ def reversed_bridge(bridge: Node):
             if_in = bridge_trait.get_in()
             if_out = bridge_trait.get_out()
 
-            self.add_trait(can_bridge_defined(if_out, if_in))
+            self.add_trait(F.can_bridge_defined(if_out, if_in))
 
     return _reversed_bridge()
 
@@ -454,9 +395,7 @@ def zip_children_by_name[N: Node](
 ) -> dict[str, tuple[N, N]]:
     nodes = (node1, node2)
     children = tuple(
-        with_names(
-            get_children(n, direct_only=True, include_root=False, types=sub_type)
-        )
+        with_names(n.get_children(direct_only=True, include_root=False, types=sub_type))
         for n in nodes
     )
     return zip_dicts_by_key(*children)
@@ -477,7 +416,7 @@ def specialize_interface[T: ModuleInterface](
     general.connect(special)
 
     # Establish sibling relationship
-    general.GIFs.specialized.connect(special.GIFs.specializes)
+    general.specialized.connect(special.specializes)
 
     return special
 
@@ -521,18 +460,18 @@ def specialize_module[T: Module](
     #        continue
     #    special.add_trait(t)
 
-    general.GIFs.specialized.connect(special.GIFs.specializes)
+    general.specialized.connect(special.specializes)
 
     # Attach to new parent
     has_parent = special.get_parent() is not None
     assert not has_parent or attach_to is None
     if not has_parent:
         if attach_to:
-            attach_to.NODEs.extend_list("specialized", special)
+            attach_to.add(special, container=attach_to.specialized)
         else:
             gen_parent = general.get_parent()
             if gen_parent:
-                setattr(gen_parent[0].NODEs, f"{gen_parent[1]}_specialized", special)
+                gen_parent[0].add(special, name=f"{gen_parent[1]}_specialized")
 
     return special
 
@@ -562,7 +501,7 @@ def get_parent_with_trait[TR: Trait](node: Node, trait: type[TR]):
 
 
 def get_children_of_type[U: Node](node: Node, child_type: type[U]) -> list[U]:
-    return list(get_children(node, direct_only=False, types=child_type))
+    return list(node.get_children(direct_only=False, types=child_type))
 
 
 def get_first_child_of_type[U: Node](node: Node, child_type: type[U]) -> U:
@@ -579,9 +518,9 @@ def get_first_child_of_type[U: Node](node: Node, child_type: type[U]) -> U:
 
 
 def pretty_params(node: Module | ModuleInterface) -> str:
-    # TODO dont use get_all
     params = {
-        NotNone(p.get_parent())[1]: p.get_most_narrow() for p in node.PARAMs.get_all()
+        NotNone(p.get_parent())[1]: p.get_most_narrow()
+        for p in node.get_children(direct_only=True, types=Parameter)
     }
     params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
 
@@ -630,7 +569,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
 
     name_prefix = node.get_full_name()
 
-    el_ifs = {n for n in get_all_nodes(node) if isinstance(n, Electrical)}
+    el_ifs = {n for n in get_all_nodes(node) if isinstance(n, F.Electrical)}
 
     # for el_if in el_ifs:
     #    print(el_if)
@@ -640,7 +579,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
     resolved: set[ModuleInterface] = set()
 
     # get representative interfaces that determine the name of the Net
-    to_use: set[Electrical] = set()
+    to_use: set[F.Electrical] = set()
     for el_if in el_ifs:
         # performance
         if el_if in resolved:
@@ -654,7 +593,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
             for c in connections
             if (p := c.get_parent())
             and isinstance(n := p[0], Net)
-            and n.IFs.part_of in connections
+            and n.part_of in connections
         }:
             # logger.warning(f"Skipped, attached to Net: {el_if}: {matched_nets!r}")
             resolved.update(connections)
@@ -673,7 +612,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
         # performance
         resolved.update(group)
 
-    nets: dict[str, tuple[Net, Electrical]] = {}
+    nets: dict[str, tuple[Net, F.Electrical]] = {}
     for el_if in to_use:
         net_name = f"{name}{el_if.get_full_name().removeprefix(name_prefix)}"
 
@@ -688,12 +627,12 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
                 + "\n\t".join(map(str, el_if.get_direct_connections()))
                 + f"\n{'-'*80}"
                 + "\nNet Connections\n\t"
-                + "\n\t".join(map(str, net.IFs.part_of.get_direct_connections()))
+                + "\n\t".join(map(str, net.part_of.get_direct_connections()))
             )
 
         net = Net()
-        net.add_trait(has_overriden_name_defined(net_name))
-        net.IFs.part_of.connect(el_if)
+        net.add_trait(F.has_overriden_name_defined(net_name))
+        net.part_of.connect(el_if)
         logger.debug(f"Created {net_name} for {el_if}")
         nets[net_name] = net, el_if
 

@@ -6,9 +6,8 @@ import shutil
 from pathlib import Path
 
 import faebryk.libs.picker.lcsc as lcsc
-from faebryk.core.core import Module
+from faebryk.core.module import Module
 from faebryk.core.util import get_all_modules
-from faebryk.exporters.visualize.graph import render_sidebyside
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.app.pcb import apply_design
@@ -84,14 +83,4 @@ def apply_design_to_pcb(m: Module):
 
 
 def export_graph(g, show):
-    plt = render_sidebyside(g)
-
-    GRAPH_OUT.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    logging.info("Writing Experiment graph to {}".format(GRAPH_OUT.absolute()))
-    plt.savefig(GRAPH_OUT, format="png", bbox_inches="tight")
-
-    if show:
-        plt.show()
+    raise NotImplementedError()

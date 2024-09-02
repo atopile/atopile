@@ -3,20 +3,19 @@
 
 from typing import Iterable, Self
 
-from faebryk.core.core import Parameter, _resolved
+import faebryk.library._F as F
+from faebryk.core.parameter import Parameter, _resolved
 
 
 class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
     type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
 
     def __init__(self, params: Iterable[Parameter[LIT_OR_PARAM]]) -> None:
-        from faebryk.library.Constant import Constant
-
         super().__init__()
 
         # make primitves to constants
         self._params = set(
-            p if isinstance(p, Parameter) else Constant(p) for p in params
+            p if isinstance(p, Parameter) else F.Constant(p) for p in params
         )
 
     @staticmethod
@@ -68,12 +67,10 @@ class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
 
     @_resolved
     def __contains__(self, other: Parameter[PV]) -> bool:
-        from faebryk.library.Range import Range
-
         def nested_in(p):
             if other == p:
                 return True
-            if isinstance(p, Range):
+            if isinstance(p, F.Range):
                 return other in p
             return False
 

@@ -17,48 +17,37 @@ import logging
 import typer
 
 import faebryk.library._F as F
-from faebryk.core.core import Module
+from faebryk.core.module import Module
 from faebryk.core.util import (
     get_all_nodes_with_trait,
     specialize_interface,
     specialize_module,
 )
-from faebryk.library._F import Constant
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.examples.buildutil import apply_design_to_pcb
+from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.units import P
-from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
 class PowerSource(Module):
-    def __init__(self) -> None:
-        super().__init__()
-
-        class IFS(Module.IFS()):
-            power = F.ElectricPower()
-
-        self.IFs = IFS(self)
+    power: F.ElectricPower
 
 
 class XOR_with_NANDS(F.LogicGates.XOR):
-    def __init__(
-        self,
-    ):
-        super().__init__(Constant(2))
+    nands = L.list_field(4, lambda: F.LogicGates.NAND(F.Constant(2)))
 
-        class NODES(Module.NODES()):
-            nands = times(4, lambda: F.LogicGates.NAND(Constant(2)))
+    def __init__(self):
+        super().__init__(F.Constant(2))
 
-        self.NODEs = NODES(self)
+    def __preinit__(self):
+        A = self.inputs[0]
+        B = self.inputs[1]
 
-        A = self.IFs.inputs[0]
-        B = self.IFs.inputs[1]
-
-        G = self.NODEs.nands
-        Q = self.IFs.outputs[0]
+        G = self.nands
+        Q = self.outputs[0]
 
         # ~(a&b)
         q0 = G[0].get_trait(F.LogicOps.can_logic_nand).nand(A, B)
@@ -81,18 +70,18 @@ def App():
     power_source = PowerSource()
 
     # alias
-    power = power_source.IFs.power
+    power = power_source.power
 
     # logic
     logic_in = F.Logic()
     logic_out = F.Logic()
 
-    xor = F.LogicGates.XOR(Constant(2))
+    xor = F.LogicGates.XOR(F.Constant(2))
     logic_out.connect(xor.get_trait(F.LogicOps.can_logic_xor).xor(logic_in, on))
 
     # led
     led = F.LEDIndicator()
-    led.IFs.power_in.connect(power)
+    led.power_in.connect(power)
 
     # application
     switch = F.Switch(F.Logic)()
@@ -104,15 +93,15 @@ def App():
     e_out = specialize_interface(logic_out, F.ElectricLogic())
     e_on = specialize_interface(on, F.ElectricLogic())
     e_off = specialize_interface(off, F.ElectricLogic())
-    e_in.IFs.reference.connect(power)
-    e_out.IFs.reference.connect(power)
-    e_on.IFs.reference.connect(power)
-    e_off.IFs.reference.connect(power)
+    e_in.reference.connect(power)
+    e_out.reference.connect(power)
+    e_on.reference.connect(power)
+    e_off.reference.connect(power)
     e_in.set_weak(on=False)
     e_on.set(on=True)
     e_off.set(on=False)
 
-    e_out.connect(led.IFs.logic_in)
+    e_out.connect(led.logic_in)
 
     nxor = specialize_module(xor, XOR_with_NANDS())
     battery = specialize_module(power_source, F.Battery())
@@ -122,36 +111,34 @@ def App():
     e_switch = specialize_module(
         el_switch,
         e_switch,
-        matrix=[
-            (e, el.IFs.signal)
-            for e, el in zip(e_switch.IFs.unnamed, el_switch.IFs.unnamed)
-        ],
+        matrix=[(e, el.signal) for e, el in zip(e_switch.unnamed, el_switch.unnamed)],
     )
 
     # build graph
     app = Module()
-    app.NODEs.components = [
+    for c in [
         led,
         switch,
         battery,
         e_switch,
-    ]
+    ]:
+        app.add(c)
 
     # parametrizing
     for _, t in get_all_nodes_with_trait(app.get_graph(), F.ElectricLogic.has_pulls):
         for pull_resistor in (r for r in t.get_pulls() if r):
-            pull_resistor.PARAMs.resistance.merge(100 * P.kohm)
-    power_source.IFs.power.PARAMs.voltage.merge(3 * P.V)
-    led.NODEs.led.NODEs.led.PARAMs.brightness.merge(
+            pull_resistor.resistance.merge(100 * P.kohm)
+    power_source.power.voltage.merge(3 * P.V)
+    led.led.led.brightness.merge(
         TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
     )
 
     # packages single nands as explicit IC
     nand_ic = F.TI_CD4011BE()
-    for ic_nand, xor_nand in zip(nand_ic.NODEs.gates, nxor.NODEs.nands):
+    for ic_nand, xor_nand in zip(nand_ic.gates, nxor.nands):
         specialize_module(xor_nand, ic_nand)
 
-    app.NODEs.nand_ic = nand_ic
+    app.add(nand_ic)
 
     return app
 

@@ -3,14 +3,9 @@
 
 from enum import Enum, auto
 
-from faebryk.core.core import Module
-from faebryk.library.can_bridge_defined import can_bridge_defined
-from faebryk.library.Electrical import Electrical
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.has_pin_association_heuristic_lookup_table import (
-    has_pin_association_heuristic_lookup_table,
-)
-from faebryk.library.TBD import TBD
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import Quantity
 
 
@@ -23,38 +18,32 @@ class MOSFET(Module):
         ENHANCEMENT = auto()
         DEPLETION = auto()
 
-    def __init__(self):
-        super().__init__()
+    channel_type: F.TBD[ChannelType]
+    saturation_type: F.TBD[SaturationType]
+    gate_source_threshold_voltage: F.TBD[Quantity]
+    max_drain_source_voltage: F.TBD[Quantity]
+    max_continuous_drain_current: F.TBD[Quantity]
+    on_resistance: F.TBD[Quantity]
 
-        class _PARAMs(Module.PARAMS()):
-            channel_type = TBD[MOSFET.ChannelType]()
-            saturation_type = TBD[MOSFET.SaturationType]()
-            gate_source_threshold_voltage = TBD[Quantity]()
-            max_drain_source_voltage = TBD[Quantity]()
-            max_continuous_drain_current = TBD[Quantity]()
-            on_resistance = TBD[Quantity]()
+    source: F.Electrical
+    gate: F.Electrical
+    drain: F.Electrical
 
-        self.PARAMs = _PARAMs(self)
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("Q")
 
-        class _IFs(Module.IFS()):
-            source = Electrical()
-            gate = Electrical()
-            drain = Electrical()
+    # TODO pretty confusing
+    @L.rt_field
+    def can_bridge(self):
+        return F.can_bridge_defined(in_if=self.source, out_if=self.drain)
 
-        self.IFs = _IFs(self)
-
-        self.add_trait(has_designator_prefix_defined("Q"))
-        # TODO pretty confusing
-        self.add_trait(can_bridge_defined(in_if=self.IFs.source, out_if=self.IFs.drain))
-
-        self.add_trait(
-            has_pin_association_heuristic_lookup_table(
-                mapping={
-                    self.IFs.source: ["S", "Source"],
-                    self.IFs.gate: ["G", "Gate"],
-                    self.IFs.drain: ["D", "Drain"],
-                },
-                accept_prefix=False,
-                case_sensitive=False,
-            )
+    @L.rt_field
+    def pin_association_heuristic(self):
+        return F.has_pin_association_heuristic_lookup_table(
+            mapping={
+                self.source: ["S", "Source"],
+                self.gate: ["G", "Gate"],
+                self.drain: ["D", "Drain"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
         )

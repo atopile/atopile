@@ -1,65 +1,52 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Module
-from faebryk.library.can_be_decoupled import can_be_decoupled
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.has_single_electric_reference_defined import (
-    has_single_electric_reference_defined,
-)
-from faebryk.library.I2C import I2C
-from faebryk.library.TBD import TBD
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import Quantity
-from faebryk.libs.util import times
 
 
 class EEPROM(Module):
     """
-    Generic EEPROM module with I2C interface.
+    Generic EEPROM module with F.I2C interface.
     """
 
     def set_address(self, addr: int):
         """
         Configure the address of the EEPROM by setting the address pins.
         """
-        assert addr < (1 << len(self.IFs.address))
+        assert addr < (1 << len(self.address))
 
-        for i, e in enumerate(self.IFs.address):
+        for i, e in enumerate(self.address):
             e.set(addr & (1 << i) != 0)
 
-    def __init__(self):
-        super().__init__()
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
 
-        # ----------------------------------------
-        #     modules, interfaces, parameters
-        # ----------------------------------------
-        class _PARAMs(Module.PARAMS()):
-            memory_size = TBD[Quantity]()
+    memory_size: F.TBD[Quantity]
 
-        self.PARAMs = _PARAMs(self)
+    power: F.ElectricPower
+    i2c: F.I2C
+    write_protect: F.ElectricLogic
+    address = L.list_field(3, F.ElectricLogic)
 
-        class _IFs(Module.IFS()):
-            power = ElectricPower()
-            i2c = I2C()
-            write_protect = ElectricLogic()
-            address = times(3, ElectricLogic)
+    # ----------------------------------------
+    #                traits
+    # ----------------------------------------
 
-        self.IFs = _IFs(self)
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
 
-        # ----------------------------------------
-        #                traits
-        # ----------------------------------------
-        self.add_trait(has_designator_prefix_defined("U"))
-        self.add_trait(
-            has_single_electric_reference_defined(
-                ElectricLogic.connect_all_module_references(self)
-            )
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self)
         )
 
+    def __preinit__(self):
         # ----------------------------------------
         #                connections
         # ----------------------------------------
-        self.IFs.power.get_trait(can_be_decoupled).decouple()
-        self.IFs.i2c.terminate()
+        self.power.decoupled.decouple()
+        self.i2c.terminate()

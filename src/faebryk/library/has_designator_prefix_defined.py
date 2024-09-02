@@ -1,10 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.library.has_designator_prefix import has_designator_prefix
+import faebryk.library._F as F
 
 
-class has_designator_prefix_defined(has_designator_prefix.impl()):
+class has_designator_prefix_defined(F.has_designator_prefix.impl()):
     def __init__(self, prefix: str) -> None:
         super().__init__()
         self.prefix = prefix

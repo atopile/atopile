@@ -90,45 +90,35 @@ def module(ctx: typer.Context, interface: bool = False):
 
         import logging
 
-        from faebryk.core.core import {base}
+        import faebryk.library._F as F  # noqa: F401
+        from faebryk.core.{base.lower()} import {base}
+        from faebryk.libs.library import L  # noqa: F401
+        from faebryk.libs.units import P  # noqa: F401
 
         logger = logging.getLogger(__name__)
 
         class {get_name(ctx)}({base}):
-            @classmethod
-            def NODES(cls):
-                # submodules
-                class _NODES(super().NODES()):
-                    pass
+            \"\"\"
+            Docstring describing your module
+            \"\"\"
 
-                return _NODES
+            # ----------------------------------------
+            #     modules, interfaces, parameters
+            # ----------------------------------------
 
-            @classmethod
-            def PARAMS(cls):
-                # parameters
-                class _PARAMS(super().PARAMS()):
-                    pass
+            # ----------------------------------------
+            #                 traits
+            # ----------------------------------------
 
-                return _PARAMS
+            def __preinit__(self):
+                # ------------------------------------
+                #           connections
+                # ------------------------------------
 
-            @classmethod
-            def IFS(cls):
-                # interfaces
-                class _IFS(super().IFS()):
-                    pass
-
-                return _IFS
-
-            def __init__(self):
-                # boilerplate
-                super().__init__()
-                self.IFs = self.IFS()(self)
-                self.PARAMs = self.PARAMS()(self)
-                self.NODEs = self.NODES()(self)
-
-                # connections
-
-                # traits
+                # ------------------------------------
+                #          parametrization
+                # ------------------------------------
+                pass
     """)
 
     write(ctx, out)
@@ -144,13 +134,21 @@ def trait(ctx: typer.Context, defined: bool = False):
         import logging
         from abc import abstractmethod
 
-        from faebryk.core.core import Trait
+        from faebryk.core.trait import Trait
 
         logger = logging.getLogger(__name__)
 
         class {traitname}(Trait):
+            \"\"\"
+            Docstring describing your module
+            \"\"\"
+
             @abstractmethod
-            def DO_SOMETHING(self) -> None: ...
+            def DO_SOMETHING(self) -> None:
+                \"\"\"
+                Docstring describing the function
+                \"\"\"
+                pass
     """)
 
     write(ctx, out)

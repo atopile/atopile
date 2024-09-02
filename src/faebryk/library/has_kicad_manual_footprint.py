@@ -1,12 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.library.has_kicad_footprint import has_kicad_footprint
-from faebryk.library.Pad import Pad
+import faebryk.library._F as F
 
 
-class has_kicad_manual_footprint(has_kicad_footprint.impl()):
-    def __init__(self, str, pinmap: dict[Pad, str]) -> None:
+class has_kicad_manual_footprint(F.has_kicad_footprint.impl()):
+    def __init__(self, str, pinmap: dict[F.Pad, str]) -> None:
         super().__init__()
         self.str = str
         self.pinmap = pinmap

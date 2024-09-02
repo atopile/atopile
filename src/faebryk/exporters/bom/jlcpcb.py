@@ -1,3 +1,6 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
 import csv
 import logging
 import os
@@ -5,14 +8,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from faebryk.core.core import Module
-from faebryk.library.has_descriptive_properties import has_descriptive_properties
-from faebryk.library.has_designator import has_designator
-from faebryk.library.has_footprint import has_footprint
-from faebryk.library.has_kicad_footprint import has_kicad_footprint
-from faebryk.library.has_simple_value_representation import (
-    has_simple_value_representation,
-)
+import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.libs.picker.picker import DescriptiveProperties
 
 logger = logging.getLogger(__name__)
@@ -104,30 +101,30 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
 
 
 def _get_bomline(cmp: Module) -> BOMLine | None:
-    if not cmp.has_trait(has_footprint):
+    if not cmp.has_trait(F.has_footprint):
         return
 
     if not all(
         cmp.has_trait(t)
         for t in (
-            has_descriptive_properties,
-            has_designator,
+            F.has_descriptive_properties,
+            F.has_designator,
         )
     ):
         logger.warning(f"Missing fields on component {cmp}")
         return
 
-    properties = cmp.get_trait(has_descriptive_properties).get_properties()
-    footprint = cmp.get_trait(has_footprint).get_footprint()
+    properties = cmp.get_trait(F.has_descriptive_properties).get_properties()
+    footprint = cmp.get_trait(F.has_footprint).get_footprint()
 
     value = (
-        cmp.get_trait(has_simple_value_representation).get_value()
-        if cmp.has_trait(has_simple_value_representation)
+        cmp.get_trait(F.has_simple_value_representation).get_value()
+        if cmp.has_trait(F.has_simple_value_representation)
         else ""
     )
-    designator = cmp.get_trait(has_designator).get_designator()
+    designator = cmp.get_trait(F.has_designator).get_designator()
 
-    if not footprint.has_trait(has_kicad_footprint):
+    if not footprint.has_trait(F.has_kicad_footprint):
         logger.warning(f"Missing kicad footprint on component {cmp}")
         return
 
@@ -145,7 +142,9 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
         else ""
     )
 
-    footprint_name = footprint.get_trait(has_kicad_footprint).get_kicad_footprint_name()
+    footprint_name = footprint.get_trait(
+        F.has_kicad_footprint
+    ).get_kicad_footprint_name()
 
     return BOMLine(
         Designator=designator,

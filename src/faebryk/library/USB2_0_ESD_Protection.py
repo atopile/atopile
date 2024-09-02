@@ -3,53 +3,28 @@
 
 import logging
 
-from faebryk.core.core import Module
-from faebryk.library.can_be_decoupled import can_be_decoupled
-from faebryk.library.can_bridge_defined import can_bridge_defined
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.Range import Range
-from faebryk.library.TBD import TBD
-from faebryk.library.USB2_0 import USB2_0
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
 class USB2_0_ESD_Protection(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    usb = L.list_field(2, F.USB2_0)
 
-        class _NODEs(Module.NODES()): ...
+    vbus_esd_protection: F.TBD[bool]
+    data_esd_protection: F.TBD[bool]
 
-        self.NODEs = _NODEs(self)
+    def __preinit__(self):
+        self.usb[0].usb_if.buspower.voltage.merge(F.Range(4.75 * P.V, 5.25 * P.V))
+        self.usb[0].connect(self.usb[1])
+        self.usb[0].usb_if.buspower.connect(self.usb[1].usb_if.buspower)
+        self.usb[0].usb_if.buspower.decoupled.decouple()
 
-        class _IFs(Module.IFS()):
-            usb = times(2, USB2_0)
+    @L.rt_field
+    def can_bridge(self):
+        return F.can_bridge_defined(self.usb[0].usb_if.d, self.usb[1].usb_if.d)
 
-        self.IFs = _IFs(self)
-
-        class _PARAMs(Module.PARAMS()):
-            vbus_esd_protection = TBD[bool]()
-            data_esd_protection = TBD[bool]()
-
-        self.PARAMs = _PARAMs(self)
-
-        self.IFs.usb[0].IFs.usb_if.IFs.buspower.PARAMs.voltage.merge(
-            Range(4.75 * P.V, 5.25 * P.V)
-        )
-
-        self.add_trait(
-            can_bridge_defined(
-                self.IFs.usb[0].IFs.usb_if.IFs.d, self.IFs.usb[1].IFs.usb_if.IFs.d
-            )
-        )
-        self.IFs.usb[0].connect(self.IFs.usb[1])
-
-        self.IFs.usb[0].IFs.usb_if.IFs.buspower.connect(
-            self.IFs.usb[1].IFs.usb_if.IFs.buspower
-        )
-
-        self.IFs.usb[0].IFs.usb_if.IFs.buspower.get_trait(can_be_decoupled).decouple()
-
-        self.add_trait(has_designator_prefix_defined("U"))
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")

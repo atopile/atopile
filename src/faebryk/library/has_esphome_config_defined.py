@@ -1,11 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.library._F as F
 
-from faebryk.library.has_esphome_config import has_esphome_config
 
-
-class has_esphome_config_defined(has_esphome_config.impl()):
+class has_esphome_config_defined(F.has_esphome_config.impl()):
     def __init__(self, config: dict):
         super().__init__()
         self._config = config

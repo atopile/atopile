@@ -1,22 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Module
-from faebryk.library.Electrical import Electrical
-from faebryk.library.has_designator_prefix_defined import (
-    has_designator_prefix_defined,
-)
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 
 
 class PJ398SM(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    tip: F.Electrical
+    sleeve: F.Electrical
+    switch: F.Electrical
 
-        class _IFs(Module.IFS()):
-            tip = Electrical()
-            sleeve = Electrical()
-            switch = Electrical()
-
-        self.IFs = _IFs(self)
-
-        self.add_trait(has_designator_prefix_defined("J"))
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("J")

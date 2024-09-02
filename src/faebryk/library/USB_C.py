@@ -1,33 +1,22 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import ModuleInterface
-from faebryk.library.DifferentialPair import DifferentialPair
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.has_single_electric_reference_defined import (
-    has_single_electric_reference_defined,
-)
-from faebryk.library.USB3 import USB3
+import faebryk.library._F as F
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.library import L
 
 
 class USB_C(ModuleInterface):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    usb3: F.USB3
+    cc1: F.Electrical
+    cc2: F.Electrical
+    sbu1: F.Electrical
+    sbu2: F.Electrical
+    rx: F.DifferentialPair
+    tx: F.DifferentialPair
 
-        class IFS(ModuleInterface.IFS()):
-            usb3 = USB3()
-            cc1 = Electrical()
-            cc2 = Electrical()
-            sbu1 = Electrical()
-            sbu2 = Electrical()
-            rx = DifferentialPair()
-            tx = DifferentialPair()
-
-        self.IFs = IFS(self)
-
-        self.add_trait(
-            has_single_electric_reference_defined(
-                ElectricLogic.connect_all_module_references(self)
-            )
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self)
         )

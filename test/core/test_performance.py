@@ -8,8 +8,11 @@ from textwrap import indent
 from typing import Callable
 
 import faebryk.core.util as core_util
-from faebryk.core.core import GraphInterface, Module, ModuleInterface
-from faebryk.library.Resistor import Resistor
+import faebryk.library._F as F
+from faebryk.core.graphinterface import GraphInterface
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.library import L
 from faebryk.libs.util import times
 
 
@@ -44,36 +47,32 @@ class TestPerformance(unittest.TestCase):
     def test_get_all(self):
         def _factory_simple_resistors(count: int):
             class App(Module):
+                resistors = L.list_field(count, F.Resistor)
+
                 def __init__(self, timings: Times) -> None:
                     super().__init__()
+                    self._timings = timings
 
-                    class NODES(super().NODES()):
-                        resistors = times(count, Resistor)
-
-                    timings.add("NODES")
-
-                    self.NODEs = NODES(self)
-                    timings.add("set NODES")
+                def __preinit__(self):
+                    self._timings.add("setup")
 
             return App
 
         def _factory_interconnected_resistors(count: int):
             class App(Module):
+                resistors = L.list_field(count, F.Resistor)
+
                 def __init__(self, timings: Times) -> None:
                     super().__init__()
+                    self._timings = timings
 
-                    class NODES(super().NODES()):
-                        resistors = times(count, Resistor)
-
-                    timings.add("NODES")
-
-                    self.NODEs = NODES(self)
-                    timings.add("set NODES")
+                def __preinit__(self):
+                    self._timings.add("setup")
 
                     core_util.connect_all_interfaces(
-                        r.IFs.unnamed[0] for r in self.NODEs.resistors
+                        r.unnamed[0] for r in self.resistors
                     )
-                    timings.add("connect")
+                    self._timings.add("connect")
 
             return App
 
@@ -82,11 +81,11 @@ class TestPerformance(unittest.TestCase):
         ):
             timings = Times()
 
-            App = factory()
+            AppF = factory()
             timings.add("classdef")
 
             now = time.time()
-            app = App(timings)
+            app = AppF(timings)
             timings.times["instance"] = time.time() - now
 
             G = app.get_graph()
@@ -95,10 +94,10 @@ class TestPerformance(unittest.TestCase):
             core_util.node_projected_graph(G)
             timings.add("get_all_nodes_graph")
 
-            for n in [app, app.NODEs.resistors[0]]:
+            for n in [app, app.resistors[0]]:
                 name = type(n).__name__[0]
 
-                core_util.get_node_children_all(n)
+                n.get_node_children_all()
                 timings.add(f"get_node_children_all {name}")
 
                 core_util.get_node_tree(n)
@@ -110,7 +109,7 @@ class TestPerformance(unittest.TestCase):
                 core_util.get_node_direct_mods_or_mifs(n)
                 timings.add(f"get_module_direct_children {name}")
 
-                core_util.get_children(n, direct_only=True, types=ModuleInterface)
+                n.get_children(direct_only=True, types=ModuleInterface)
                 timings.add(f"get_mifs {name}")
 
             print(f"{test_name:-<80}")
@@ -177,7 +176,7 @@ class TestPerformance(unittest.TestCase):
         # self.assertLess(timings.times["connect"], 1200e-3)
         print(timings)
         print(f"----> Avg/connect: {per_connect*1e6:.2f} us")
-        from faebryk.core.core import GraphImpl
+        from faebryk.core.graphinterface import GraphImpl
 
         print("Counter", GraphImpl.counter, GraphImpl.counter - count)
 
@@ -203,7 +202,7 @@ class TestPerformance(unittest.TestCase):
         print(timings)
         print(f"----> Avg/connect: {per_connect*1e6:.2f} us")
 
-        from faebryk.core.core import GraphImpl
+        from faebryk.core.graphinterface import GraphImpl
 
         print("Counter", GraphImpl.counter, GraphImpl.counter - count)
 

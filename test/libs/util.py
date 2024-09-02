@@ -5,7 +5,7 @@ import unittest
 from itertools import combinations
 
 from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.util import SharedReference, zip_non_locked
+from faebryk.libs.util import SharedReference, once, zip_non_locked
 
 
 class TestUtil(unittest.TestCase):
@@ -53,6 +53,44 @@ class TestUtil(unittest.TestCase):
         r5.link(r1)
 
         all_equal(r1, r2, r3, r4, r5)
+
+    def test_once(self):
+        global ran
+        ran = False
+
+        @once
+        def do(val: int):
+            global ran
+            ran = True
+            return val
+
+        self.assertFalse(ran)
+
+        self.assertEqual(do(5), 5)
+        self.assertTrue(ran)
+        ran = False
+
+        self.assertEqual(do(5), 5)
+        self.assertFalse(ran)
+
+        self.assertEqual(do(6), 6)
+        self.assertTrue(ran)
+        ran = False
+
+        class A:
+            @classmethod
+            @once
+            def do(cls):
+                global ran
+                ran = True
+                return cls
+
+        self.assertEqual(A.do(), A)
+        self.assertTrue(ran)
+        ran = False
+
+        self.assertEqual(A.do(), A)
+        self.assertFalse(ran)
 
 
 if __name__ == "__main__":

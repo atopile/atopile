@@ -3,66 +3,43 @@
 
 import logging
 
-from faebryk.core.core import Module
-from faebryk.library.Diode import Diode
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.PoweredLED import PoweredLED
-from faebryk.library.PowerSwitchMOSFET import PowerSwitchMOSFET
-from faebryk.library.Relay import Relay
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
 class Powered_Relay(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    relay: F.Relay
+    indicator: F.PoweredLED
+    flyback_diode: F.Diode
+    relay_driver = L.f_field(F.PowerSwitchMOSFET)(lowside=True, normally_closed=False)
 
-        class _NODEs(Module.NODES()):
-            relay = Relay()
-            indicator = PoweredLED()
-            flyback_diode = Diode()
-            relay_driver = PowerSwitchMOSFET(lowside=True, normally_closed=False)
+    switch_a_nc: F.Electrical
+    switch_a_common: F.Electrical
+    switch_a_no: F.Electrical
+    switch_b_no: F.Electrical
+    switch_b_common: F.Electrical
+    switch_b_nc: F.Electrical
+    enable: F.ElectricLogic
+    power: F.ElectricPower
 
-        self.NODEs = _NODEs(self)
+    def __preinit__(self):
+        from faebryk.core.util import connect_module_mifs_by_name
 
-        class _IFs(Module.IFS()):
-            switch_a_nc = Electrical()
-            switch_a_common = Electrical()
-            switch_a_no = Electrical()
-            switch_b_no = Electrical()
-            switch_b_common = Electrical()
-            switch_b_nc = Electrical()
-            enable = ElectricLogic()
-            power = ElectricPower()
+        connect_module_mifs_by_name(self, self.relay, allow_partial=True)
 
-        self.IFs = _IFs(self)
+        self.relay_driver.power_in.connect(self.power)
+        self.relay_driver.logic_in.connect(self.enable)
+        self.relay_driver.switched_power_out.lv.connect(self.relay.coil_n)
+        self.relay_driver.switched_power_out.hv.connect(self.relay.coil_p)
 
-        class _PARAMs(Module.PARAMS()): ...
+        self.relay.coil_n.connect_via(self.flyback_diode, self.relay.coil_p)
+        self.indicator.power.connect(self.relay_driver.switched_power_out)
 
-        self.PARAMs = _PARAMs(self)
-
-        self.NODEs.relay.IFs.switch_a_common.connect(self.IFs.switch_a_common)
-        self.NODEs.relay.IFs.switch_a_nc.connect(self.IFs.switch_a_nc)
-        self.NODEs.relay.IFs.switch_a_no.connect(self.IFs.switch_a_no)
-        self.NODEs.relay.IFs.switch_b_common.connect(self.IFs.switch_b_common)
-        self.NODEs.relay.IFs.switch_b_nc.connect(self.IFs.switch_b_nc)
-        self.NODEs.relay.IFs.switch_b_no.connect(self.IFs.switch_b_no)
-
-        self.NODEs.relay_driver.IFs.power_in.connect(self.IFs.power)
-        self.NODEs.relay_driver.IFs.logic_in.connect(self.IFs.enable)
-        self.NODEs.relay_driver.IFs.switched_power_out.IFs.lv.connect(
-            self.NODEs.relay.IFs.coil_n
-        )
-        self.NODEs.relay_driver.IFs.switched_power_out.IFs.hv.connect(
-            self.NODEs.relay.IFs.coil_p
-        )
-
-        self.NODEs.relay.IFs.coil_n.connect_via(
-            self.NODEs.flyback_diode, self.NODEs.relay.IFs.coil_p
-        )
-
-        self.NODEs.indicator.IFs.power.connect(
-            self.NODEs.relay_driver.IFs.switched_power_out
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         )

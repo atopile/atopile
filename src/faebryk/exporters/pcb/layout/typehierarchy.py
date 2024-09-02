@@ -4,13 +4,11 @@
 import logging
 from dataclasses import dataclass
 
-from faebryk.core.core import (
-    Module,
-    Node,
-)
-from faebryk.core.util import get_node_direct_children
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.libs.util import NotNone, find_or, flatten, groupby
+from faebryk.libs.util import NotNone, find_or, groupby
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +28,7 @@ class LayoutTypeHierarchy(Layout):
         Tip: Make sure at least one parent of node has an absolute position defined
         """
 
-        # Find the layout for each node and group by matched level
+        # Find the layout for each node (isinstance mod_type) and group by matched level
         levels = groupby(
             {
                 n: find_or(
@@ -48,12 +46,19 @@ class LayoutTypeHierarchy(Layout):
         for level, nodes_tuple in levels.items():
             nodes = [n for n, _ in nodes_tuple]
 
-            direct_children = flatten(get_node_direct_children(n) for n in nodes)
+            direct_children = {
+                c
+                for n in nodes
+                for c in n.get_children(
+                    direct_only=True, types=(Module, ModuleInterface)
+                )
+            }
             logger.debug(
                 f"Level: {level.mod_type if level else None},"
                 f" Children: {direct_children}"
             )
 
+            # No type match, search for children instead
             if level is None:
                 self.apply(*direct_children)
                 continue

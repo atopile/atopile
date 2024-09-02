@@ -8,18 +8,13 @@ from collections import defaultdict
 from pathlib import Path
 from typing import cast
 
-from faebryk.core.core import Graph
+import faebryk.library._F as F
+from faebryk.core.graphinterface import Graph
 from faebryk.core.util import (
     get_all_nodes_by_names,
     get_all_nodes_with_trait,
 )
 from faebryk.exporters.netlist.netlist import T2Netlist
-from faebryk.library.has_designator import has_designator
-from faebryk.library.has_designator_defined import has_designator_defined
-from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.library.has_footprint import has_footprint
-from faebryk.library.has_overriden_name import has_overriden_name
-from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 from faebryk.libs.util import duplicates, get_key, groupby
 
@@ -31,12 +26,12 @@ def attach_random_designators(graph: Graph):
     sorts nodes by path and then sequentially assigns designators
     """
 
-    nodes = {n for n, _ in get_all_nodes_with_trait(graph, has_footprint)}
+    nodes = {n for n, _ in get_all_nodes_with_trait(graph, F.has_footprint)}
 
     in_use = {
-        n.get_trait(has_designator).get_designator()
+        n.get_trait(F.has_designator).get_designator()
         for n in nodes
-        if n.has_trait(has_designator)
+        if n.has_trait(F.has_designator)
     }
     pattern = re.compile(r"([A-Z]+)([0-9]+)")
 
@@ -60,35 +55,35 @@ def attach_random_designators(graph: Graph):
     nodes_sorted = sorted(nodes, key=lambda x: x.get_full_name())
 
     for n in nodes_sorted:
-        if n.has_trait(has_designator):
+        if n.has_trait(F.has_designator):
             continue
-        if not n.has_trait(has_designator_prefix):
+        if not n.has_trait(F.has_designator_prefix):
             prefix = type(n).__name__
             logger.warning(f"Node {prefix} has no designator prefix")
 
-        prefix = n.get_trait(has_designator_prefix).get_prefix()
+        prefix = n.get_trait(F.has_designator_prefix).get_prefix()
 
         next_num = _get_first_hole(assigned[prefix])
         designator = f"{prefix}{next_num}"
-        n.add_trait(has_designator_defined(designator))
+        n.add_trait(F.has_designator_defined(designator))
 
         assigned[prefix].append(next_num)
 
-    no_designator = {n for n in nodes if not n.has_trait(has_designator)}
+    no_designator = {n for n in nodes if not n.has_trait(F.has_designator)}
     assert not no_designator
 
-    dupes = duplicates(nodes, lambda n: n.get_trait(has_designator).get_designator())
+    dupes = duplicates(nodes, lambda n: n.get_trait(F.has_designator).get_designator())
     assert not dupes, f"Duplcicate designators: {dupes}"
 
 
 def override_names_with_designators(graph: Graph):
-    for n, t in get_all_nodes_with_trait(graph, has_designator):
+    for n, t in get_all_nodes_with_trait(graph, F.has_designator):
         name = t.get_designator()
-        if n.has_trait(has_overriden_name):
+        if n.has_trait(F.has_overriden_name):
             logger.warning(
-                f"Renaming: {n.get_trait(has_overriden_name).get_name()} -> {name}"
+                f"Renaming: {n.get_trait(F.has_overriden_name).get_name()} -> {name}"
             )
-        n.add_trait(has_overriden_name_defined(name))
+        n.add_trait(F.has_overriden_name_defined(name))
 
 
 def attach_hierarchical_designators(graph: Graph):
@@ -112,7 +107,7 @@ def load_designators_from_netlist(
 
     for _, (n, designator) in matched_nodes.items():
         logger.debug(f"Matched {n} to {designator}")
-        n.add_trait(has_designator_defined(designator))
+        n.add_trait(F.has_designator_defined(designator))
 
     logger.info(f"Matched {len(matched_nodes)}/{len(designators)} designators")
     nomatch = {
@@ -131,7 +126,7 @@ def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: P
     pattern = re.compile(r"^(.*)\[[^\]]*\]$")
     translation = {
         n.get_full_name(): t.get_name()
-        for n, t in get_all_nodes_with_trait(graph, has_overriden_name)
+        for n, t in get_all_nodes_with_trait(graph, F.has_overriden_name)
     }
 
     for fp in pcb.kicad_pcb.footprints:

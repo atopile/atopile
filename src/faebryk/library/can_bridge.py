@@ -4,10 +4,10 @@
 from abc import abstractmethod
 from typing import Any
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class can_bridge(ModuleTrait):
+class can_bridge(Module.TraitT):
     def bridge(self, _in, out):
         _in.connect(self.get_in())
         out.connect(self.get_out())

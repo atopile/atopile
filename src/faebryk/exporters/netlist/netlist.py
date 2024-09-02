@@ -4,10 +4,8 @@
 import logging
 from dataclasses import dataclass
 
-from faebryk.core.core import Graph
-from faebryk.core.util import get_all_nodes_of_type, get_all_nodes_with_trait
-from faebryk.library.has_footprint import has_footprint
-from faebryk.library.has_overriden_name import has_overriden_name
+import faebryk.library._F as F
+from faebryk.core.graphinterface import Graph
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +36,7 @@ class T2Netlist:
 
 
 def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
+    from faebryk.core.util import get_all_nodes_of_type, get_all_nodes_with_trait
     from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
     from faebryk.library.Net import Net as FNet
 
@@ -45,7 +44,7 @@ def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
 
     t2_nets = [
         T2Netlist.Net(
-            properties={"name": net.get_trait(has_overriden_name).get_name()},
+            properties={"name": net.get_trait(F.has_overriden_name).get_name()},
             vertices=sorted(
                 [
                     T2Netlist.Net.Vertex(
@@ -63,7 +62,7 @@ def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
 
     comps = {
         t.get_footprint().get_trait(can_represent_kicad_footprint).get_kicad_obj()
-        for _, t in get_all_nodes_with_trait(G, has_footprint)
+        for _, t in get_all_nodes_with_trait(G, F.has_footprint)
     }
 
     not_found = [

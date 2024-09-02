@@ -1,47 +1,33 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import ModuleInterface
-from faebryk.library.can_be_surge_protected_defined import (
-    can_be_surge_protected_defined,
-)
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_single_electric_reference_defined import (
-    has_single_electric_reference_defined,
-)
-from faebryk.library.USB_C import USB_C
+import faebryk.library._F as F
+from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.library import L
 
 
 class USB_C_PowerOnly(ModuleInterface):
-    def __init__(self) -> None:
-        super().__init__()
+    power: F.ElectricPower
+    cc1: F.Electrical
+    cc2: F.Electrical
 
-        class IFS(ModuleInterface.IFS()):
-            power = ElectricPower()
-            cc1 = Electrical()
-            cc2 = Electrical()
-
-        self.IFs = IFS(self)
-
-        self.add_trait(
-            can_be_surge_protected_defined(
-                self.IFs.power.IFs.lv,
-                self.IFs.power.IFs.hv,
-                self.IFs.cc1,
-                self.IFs.cc2,
-            )
+    @L.rt_field
+    def surge_protected(self):
+        return F.can_be_surge_protected_defined(
+            self.power.lv,
+            self.power.hv,
+            self.cc1,
+            self.cc2,
         )
 
-        self.add_trait(
-            has_single_electric_reference_defined(
-                ElectricLogic.connect_all_module_references(self)
-            )
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self)
         )
 
-    def connect_to_full_usb_c(self, usb_c: USB_C):
-        self.IFs.power.connect(usb_c.IFs.usb3.IFs.usb3_if.IFs.usb_if.IFs.buspower)
-        self.IFs.cc1.connect(usb_c.IFs.cc1)
-        self.IFs.cc2.connect(usb_c.IFs.cc2)
+    def connect_to_full_usb_c(self, usb_c: F.USB_C):
+        self.power.connect(usb_c.usb3.usb3_if.usb_if.buspower)
+        self.cc1.connect(usb_c.cc1)
+        self.cc2.connect(usb_c.cc2)
         return self

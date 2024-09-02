@@ -4,10 +4,10 @@
 from abc import abstractmethod
 from enum import IntEnum
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class has_pcb_position(ModuleTrait):
+class has_pcb_position(Module.TraitT):
     class layer_type(IntEnum):
         NONE = 0
         TOP_LAYER = -1

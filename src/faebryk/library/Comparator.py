@@ -3,15 +3,9 @@
 
 from enum import Enum, auto
 
-from faebryk.core.core import Module
-from faebryk.core.util import as_unit
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.has_simple_value_representation_based_on_params import (
-    has_simple_value_representation_based_on_params,
-)
-from faebryk.library.TBD import TBD
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import Quantity
 
 
@@ -21,40 +15,34 @@ class Comparator(Module):
         PushPull = auto()
         OpenDrain = auto()
 
-    def __init__(self):
-        super().__init__()
+    common_mode_rejection_ratio: F.TBD[Quantity]
+    input_bias_current: F.TBD[Quantity]
+    input_hysteresis_voltage: F.TBD[Quantity]
+    input_offset_voltage: F.TBD[Quantity]
+    propagation_delay: F.TBD[Quantity]
+    output_type: F.TBD[OutputType]
 
-        class _PARAMs(self.PARAMS()):
-            common_mode_rejection_ratio = TBD[Quantity]()
-            input_bias_current = TBD[Quantity]()
-            input_hysteresis_voltage = TBD[Quantity]()
-            input_offset_voltage = TBD[Quantity]()
-            propagation_delay = TBD[Quantity]()
-            output_type = TBD[Comparator.OutputType]()
+    power: F.ElectricPower
+    inverting_input: F.Electrical
+    non_inverting_input: F.Electrical
+    output: F.Electrical
 
-        self.PARAMs = _PARAMs(self)
+    @L.rt_field
+    def simple_value_representation(self):
+        from faebryk.core.util import as_unit
 
-        class _IFs(super().IFS()):
-            power = ElectricPower()
-            inverting_input = Electrical()
-            non_inverting_input = Electrical()
-            output = Electrical()
-
-        self.IFs = _IFs(self)
-
-        self.add_trait(
-            has_simple_value_representation_based_on_params(
-                [
-                    self.PARAMs.common_mode_rejection_ratio,
-                    self.PARAMs.input_bias_current,
-                    self.PARAMs.input_hysteresis_voltage,
-                    self.PARAMs.input_offset_voltage,
-                    self.PARAMs.propagation_delay,
-                ],
-                lambda p: (
-                    f"{p[0]} CMRR, {as_unit(p[1], 'A')} Ib, {as_unit(p[2], 'V')} Vhys, "
-                    f"{as_unit(p[3], 'V')} Vos, {as_unit(p[4], 's')} tpd"
-                ),
-            )
+        return F.has_simple_value_representation_based_on_params(
+            [
+                self.common_mode_rejection_ratio,
+                self.input_bias_current,
+                self.input_hysteresis_voltage,
+                self.input_offset_voltage,
+                self.propagation_delay,
+            ],
+            lambda p: (
+                f"{p[0]} CMRR, {as_unit(p[1], 'A')} Ib, {as_unit(p[2], 'V')} Vhys, "
+                f"{as_unit(p[3], 'V')} Vos, {as_unit(p[4], 's')} tpd"
+            ),
         )
-        self.add_trait(has_designator_prefix_defined("U"))
+
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")

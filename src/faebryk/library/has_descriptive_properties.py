@@ -1,10 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class has_descriptive_properties(ModuleTrait):
+class has_descriptive_properties(Module.TraitT):
     def get_properties(self) -> dict[str, str]:
         raise NotImplementedError()
 

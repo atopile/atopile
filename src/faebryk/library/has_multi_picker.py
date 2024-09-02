@@ -6,16 +6,16 @@ import logging
 from abc import abstractmethod
 from typing import Callable, Mapping
 
-from faebryk.core.core import Module
-from faebryk.library.has_picker import has_picker
+import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.libs.picker.picker import PickError
 
 logger = logging.getLogger(__name__)
 
 
-class has_multi_picker(has_picker.impl()):
+class has_multi_picker(F.has_picker.impl()):
     def pick(self):
-        module = self.get_obj()
+        module = self.get_obj(Module)
         es = []
         for _, picker in self.pickers:
             logger.debug(f"Trying picker for {module}: {picker}")
@@ -32,9 +32,7 @@ class has_multi_picker(has_picker.impl()):
         @abstractmethod
         def pick(self, module: Module): ...
 
-    def __init__(self) -> None:
-        super().__init__()
-
+    def __preinit__(self):
         self.pickers: list[tuple[int, has_multi_picker.Picker]] = []
 
     def add_picker(self, prio: int, picker: Picker):
@@ -43,10 +41,10 @@ class has_multi_picker(has_picker.impl()):
 
     @classmethod
     def add_to_module(cls, module: Module, prio: int, picker: Picker):
-        if not module.has_trait(has_picker):
+        if not module.has_trait(F.has_picker):
             module.add_trait(cls())
 
-        t = module.get_trait(has_picker)
+        t = module.get_trait(F.has_picker)
         assert isinstance(t, has_multi_picker)
         t.add_picker(prio, picker)
 

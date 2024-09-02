@@ -6,7 +6,7 @@ import logging
 import math
 import re
 from abc import ABC, abstractmethod
-from typing import Generic, Self, TypeVar
+from typing import Self
 
 import graph_tool.all as gt
 import networkx as nx
@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 RESOLUTION = 0.1  # mm
 DIAGONALS = True
 WEIGHTS = (10, 15, 10000)
-
-T = TypeVar("T", int, float)
 
 
 class GridException(Exception): ...
@@ -35,7 +33,7 @@ class GridInvalidVertexException(GridException):
         return grid._project_out(self.vertex_index)
 
 
-class Coord(Generic[T], np.ndarray):
+class Coord[T: int, float](np.ndarray):
     EPS = 0.05
 
     def __new__(cls, x: T, y: T, z: T):
@@ -130,10 +128,7 @@ def eq(c1: intCoord, c2: intCoord):
     return all([_c1 == _c2 for _c1, _c2 in zip(c1, c2)])
 
 
-T = TypeVar("T")
-
-
-class Graph(Generic[T], ABC):
+class Graph[T](ABC):
     def __init__(self, G: T, steps):
         self.G = G
         self.steps = steps

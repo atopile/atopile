@@ -1,13 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.library.has_pcb_position import has_pcb_position
+import faebryk.library._F as F
 
 
-class has_pcb_position_defined(has_pcb_position.impl()):
-    def __init__(self, position: has_pcb_position.Point) -> None:
+class has_pcb_position_defined(F.has_pcb_position.impl()):
+    def __init__(self, position: F.has_pcb_position.Point) -> None:
         super().__init__()
         self.position = position
 
-    def get_position(self) -> has_pcb_position.Point:
+    def get_position(self) -> F.has_pcb_position.Point:
         return self.position

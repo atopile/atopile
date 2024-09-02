@@ -3,9 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class has_picker(ModuleTrait):
+class has_picker(Module.TraitT):
     @abstractmethod
     def pick(self) -> None: ...

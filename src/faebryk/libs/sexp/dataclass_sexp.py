@@ -3,7 +3,7 @@ from dataclasses import Field, dataclass, fields, is_dataclass
 from enum import Enum, IntEnum, StrEnum
 from pathlib import Path
 from types import UnionType
-from typing import Any, Callable, Iterator, TypeVar, Union, get_args, get_origin
+from typing import Any, Callable, Iterator, Union, get_args, get_origin
 
 import sexpdata
 from sexpdata import Symbol
@@ -61,9 +61,6 @@ class sexp_field(dict[str, Any]):
 class SymEnum(StrEnum): ...
 
 
-T = TypeVar("T")
-
-
 def _convert(val, t):
     # Recurse (GenericAlias e.g list[])
     if (origin := get_origin(t)) is not None:
@@ -100,7 +97,7 @@ netlist_obj = str | Symbol | int | float | bool | list
 netlist_type = list[netlist_obj]
 
 
-def _decode(sexp: netlist_type, t: type[T]) -> T:
+def _decode[T](sexp: netlist_type, t: type[T]) -> T:
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"parse into: {t.__name__} {'-'*40}")
         logger.debug(f"sexp: {sexp}")
@@ -310,7 +307,7 @@ def _encode(t) -> netlist_type:
     return sexp
 
 
-def loads(s: str | Path | list, t: type[T]) -> T:
+def loads[T](s: str | Path | list, t: type[T]) -> T:
     text = s
     sexp = s
     if isinstance(s, Path):
@@ -342,7 +339,7 @@ class SEXP_File:
 # TODO move
 class JSON_File:
     @classmethod
-    def loads(cls: type[T], path: Path | str) -> T:
+    def loads[T](cls: type[T], path: Path | str) -> T:
         text = path
         if isinstance(path, Path):
             text = path.read_text()

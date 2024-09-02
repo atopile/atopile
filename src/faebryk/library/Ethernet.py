@@ -1,16 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.core import Module, ModuleInterface
-from faebryk.library.DifferentialPair import DifferentialPair
+import faebryk.library._F as F
+from faebryk.core.moduleinterface import ModuleInterface
 
 
 class Ethernet(ModuleInterface):
-    def __init__(self) -> None:
-        super().__init__()
-
-        class IFS(Module.IFS()):
-            tx = DifferentialPair()
-            rx = DifferentialPair()
-
-        self.IFs = IFS(self)
+    tx: F.DifferentialPair
+    rx: F.DifferentialPair

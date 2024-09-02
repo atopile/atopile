@@ -3,9 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.core.core import NodeTrait
+from faebryk.core.trait import Trait
 
 
-class has_esphome_config(NodeTrait):
+class has_esphome_config(Trait):
     @abstractmethod
     def get_config(self) -> dict: ...

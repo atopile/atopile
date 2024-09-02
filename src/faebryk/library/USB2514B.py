@@ -4,17 +4,10 @@
 import logging
 from enum import Enum, auto
 
-from faebryk.core.core import Module
-from faebryk.library.can_be_decoupled import can_be_decoupled
-from faebryk.library.DifferentialPair import DifferentialPair
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_datasheet_defined import has_datasheet_defined
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.I2C import I2C
-from faebryk.library.TBD import TBD
-from faebryk.libs.util import times
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -26,100 +19,110 @@ class USB2514B(Module):
         BUS_POWERED = auto()
         EEPROM = auto()
 
-    def __init__(self) -> None:
-        super().__init__()
+    class NonRemovablePortConfiguration(Enum):
+        ALL_PORTS_REMOVABLE = auto()
+        PORT_1_NOT_REMOVABLE = auto()
+        PORT_1_2_NOT_REMOVABLE = auto()
+        PORT_1_2_3_NOT_REMOVABLE = auto()
 
-        class _NODEs(Module.NODES()): ...
+    VDD33: F.ElectricPower
+    VDDA33: F.ElectricPower
 
-        self.NODEs = _NODEs(self)
+    PLLFILT: F.ElectricPower
+    CRFILT: F.ElectricPower
 
-        class _IFs(Module.IFS()):
-            VDD33 = ElectricPower()
-            VDDA33 = ElectricPower()
+    VBUS_DET: F.Electrical
 
-            PLLFILT = ElectricPower()
-            CRFILT = ElectricPower()
+    usb_downstream = L.list_field(4, F.DifferentialPair)
+    usb_upstream = F.DifferentialPair
 
-            VBUS_DET = Electrical()
+    XTALIN: F.Electrical
+    XTALOUT: F.Electrical
 
-            usb_downstream = times(4, DifferentialPair)
-            usb_upstream = DifferentialPair()
+    TEST: F.Electrical
+    SUSP_IND: F.ElectricLogic
+    RESET_N: F.Electrical
+    RBIAS: F.Electrical
+    NON_REM = L.list_field(2, F.ElectricLogic)
+    LOCAL_PWR: F.Electrical
+    CLKIN: F.Electrical
+    CFG_SEL = L.list_field(2, F.ElectricLogic)
 
-            XTALIN = Electrical()
-            XTALOUT = Electrical()
+    HS_IND: F.ElectricLogic
 
-            TEST = Electrical()
-            SUSP_IND = ElectricLogic()
-            RESET_N = Electrical()
-            RBIAS = Electrical()
-            NON_REM = times(2, ElectricLogic)
-            LOCAL_PWR = Electrical()
-            CLKIN = Electrical()
-            CFG_SEL = times(2, ElectricLogic)
+    PRTPWR = L.list_field(4, F.ElectricLogic)
+    PRT_DIS_P = L.list_field(4, F.ElectricLogic)
+    PRT_DIS_M = L.list_field(4, F.ElectricLogic)
+    OCS_N = L.list_field(4, F.ElectricLogic)
+    BC_EN = L.list_field(4, F.ElectricLogic)
 
-            HS_IND = ElectricLogic()
+    i2c: F.I2C
+    gnd: F.Electrical
 
-            PRTPWR = times(4, ElectricLogic)
-            PRT_DIS_P = times(4, ElectricLogic)
-            PRT_DIS_M = times(4, ElectricLogic)
-            OCS_N = times(4, ElectricLogic)
-            BC_EN = times(4, ElectricLogic)
+    interface_configuration: F.TBD[InterfaceConfiguration]
+    non_removable_port_configuration: F.TBD[NonRemovablePortConfiguration]
 
-            i2c = I2C()
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
 
-        self.IFs = _IFs(self)
-
-        class _PARAMs(Module.PARAMS()):
-            interface_configuration = TBD[USB2514B.InterfaceConfiguration]()
-
-        self.PARAMs = _PARAMs(self)
-
-        self.add_trait(has_designator_prefix_defined("U"))
-
-        if (
-            self.PARAMs.interface_configuration
-            == USB2514B.InterfaceConfiguration.DEFAULT
-        ):
-            self.IFs.CFG_SEL[0].get_trait(ElectricLogic.can_be_pulled).pull(up=False)
-            self.IFs.CFG_SEL[1].get_trait(ElectricLogic.can_be_pulled).pull(up=False)
+    def __preinit__(self):
+        if self.interface_configuration == USB2514B.InterfaceConfiguration.DEFAULT:
+            self.CFG_SEL[0].pulled.pull(up=False)
+            self.CFG_SEL[1].pulled.pull(up=False)
+        elif self.interface_configuration == USB2514B.InterfaceConfiguration.SMBUS:
+            self.CFG_SEL[0].pulled.pull(up=True)
+            self.CFG_SEL[1].pulled.pull(up=False)
         elif (
-            self.PARAMs.interface_configuration == USB2514B.InterfaceConfiguration.SMBUS
+            self.interface_configuration == USB2514B.InterfaceConfiguration.BUS_POWERED
         ):
-            self.IFs.CFG_SEL[0].get_trait(ElectricLogic.can_be_pulled).pull(up=True)
-            self.IFs.CFG_SEL[1].get_trait(ElectricLogic.can_be_pulled).pull(up=False)
-        elif (
-            self.PARAMs.interface_configuration
-            == USB2514B.InterfaceConfiguration.BUS_POWERED
-        ):
-            self.IFs.CFG_SEL[0].get_trait(ElectricLogic.can_be_pulled).pull(up=False)
-            self.IFs.CFG_SEL[1].get_trait(ElectricLogic.can_be_pulled).pull(up=True)
-        elif (
-            self.PARAMs.interface_configuration
-            == USB2514B.InterfaceConfiguration.EEPROM
-        ):
-            self.IFs.CFG_SEL[0].get_trait(ElectricLogic.can_be_pulled).pull(up=True)
-            self.IFs.CFG_SEL[1].get_trait(ElectricLogic.can_be_pulled).pull(up=True)
-
-        gnd = Electrical()
+            self.CFG_SEL[0].pulled.pull(up=False)
+            self.CFG_SEL[1].pulled.pull(up=True)
+        elif self.interface_configuration == USB2514B.InterfaceConfiguration.EEPROM:
+            self.CFG_SEL[0].pulled.pull(up=True)
+            self.CFG_SEL[1].pulled.pull(up=True)
 
         # Add decoupling capacitors to power pins and connect all lv to gnd
         # TODO: decouple with 1.0uF and 0.1uF and maybe 4.7uF
-        for g in self.IFs.get_all():
-            if isinstance(g, ElectricPower):
-                g.get_trait(can_be_decoupled).decouple()
-                g.IFs.lv.connect(gnd)
+        for g in self.get_children(direct_only=True, types=F.ElectricPower):
+            g.decoupled.decouple()
+            g.lv.connect(self.gnd)
 
-        x = self.IFs
+        x = self
 
-        x.CFG_SEL[0].connect(x.i2c.IFs.scl)
+        x.CFG_SEL[0].connect(x.i2c.scl)
         x.CFG_SEL[1].connect(x.HS_IND)
         x.NON_REM[0].connect(x.SUSP_IND)
-        x.NON_REM[1].connect(x.i2c.IFs.sda)
+        x.NON_REM[1].connect(x.i2c.sda)
 
-        x.RESET_N.connect(gnd)
+        x.RESET_N.connect(self.gnd)
 
-        self.add_trait(
-            has_datasheet_defined(
-                "https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/00001692C.pdf"
-            )
-        )
+        self.PLLFILT.voltage.merge(1.8 * P.V)
+        self.CRFILT.voltage.merge(1.8 * P.V)
+
+        if (
+            self.non_removable_port_configuration
+            == USB2514B.NonRemovablePortConfiguration.ALL_PORTS_REMOVABLE
+        ):
+            self.NON_REM[0].get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
+            self.NON_REM[1].get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
+        elif (
+            self.non_removable_port_configuration
+            == USB2514B.NonRemovablePortConfiguration.PORT_1_NOT_REMOVABLE
+        ):
+            self.NON_REM[0].get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
+            self.NON_REM[1].get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
+        elif (
+            self.non_removable_port_configuration
+            == USB2514B.NonRemovablePortConfiguration.PORT_1_2_NOT_REMOVABLE
+        ):
+            self.NON_REM[0].get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
+            self.NON_REM[1].get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
+        elif (
+            self.non_removable_port_configuration
+            == USB2514B.NonRemovablePortConfiguration.PORT_1_2_3_NOT_REMOVABLE
+        ):
+            self.NON_REM[0].get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
+            self.NON_REM[1].get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
+
+    datasheet = L.f_field(F.has_datasheet_defined)(
+        "https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"
+    )

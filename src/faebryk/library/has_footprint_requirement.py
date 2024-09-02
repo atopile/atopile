@@ -4,10 +4,10 @@
 from abc import abstractmethod
 from typing import Sequence
 
-from faebryk.core.core import ModuleTrait
+from faebryk.core.module import Module
 
 
-class has_footprint_requirement(ModuleTrait):
+class has_footprint_requirement(Module.TraitT):
     @abstractmethod
     def get_footprint_requirement(self) -> Sequence[tuple[str, int]]:
         """

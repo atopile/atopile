@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 
-from faebryk.core.core import Module
-from faebryk.library.has_descriptive_properties import has_descriptive_properties
+import faebryk.library._F as F
+from faebryk.core.module import Module
 
 
-class has_defined_descriptive_properties(has_descriptive_properties.impl()):
+class has_descriptive_properties_defined(F.has_descriptive_properties.impl()):
     def __init__(self, properties: dict[str, str]) -> None:
         super().__init__()
         self.properties = properties
@@ -19,7 +19,7 @@ class has_defined_descriptive_properties(has_descriptive_properties.impl()):
 
     @classmethod
     def add_properties_to(cls, module: Module, properties: dict[str, str]):
-        if not module.has_trait(has_descriptive_properties):
+        if not module.has_trait(F.has_descriptive_properties):
             module.add_trait(cls(properties))
         else:
-            module.get_trait(has_descriptive_properties).add_properties(properties)
+            module.get_trait(F.has_descriptive_properties).add_properties(properties)

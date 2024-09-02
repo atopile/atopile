@@ -3,11 +3,14 @@
 
 
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 
-from faebryk.core.core import NodeTrait
-from faebryk.library.ElectricPower import ElectricPower
+from faebryk.core.trait import Trait
+
+if TYPE_CHECKING:
+    from faebryk.library.ElectricPower import ElectricPower
 
 
-class has_single_electric_reference(NodeTrait):
+class has_single_electric_reference(Trait):
     @abstractmethod
-    def get_reference(self) -> ElectricPower: ...
+    def get_reference(self) -> "ElectricPower": ...

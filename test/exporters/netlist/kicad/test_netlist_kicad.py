@@ -4,49 +4,45 @@
 import logging
 import unittest
 
+import faebryk.library._F as F
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
-from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_designator_defined import has_designator_defined
-from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.library.Net import Net
 from faebryk.libs.app.designators import (
     attach_random_designators,
     override_names_with_designators,
 )
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 # Netlists --------------------------------------------------------------------
 def _test_netlist_graph():
-    from faebryk.library.Resistor import Resistor
-    from faebryk.library.SMDTwoPin import SMDTwoPin
-
-    resistor1 = Resistor().builder(lambda r: r.PARAMs.resistance.merge(100))
-    resistor2 = Resistor().builder(lambda r: r.PARAMs.resistance.merge(200))
-    power = ElectricPower()
+    resistor1 = F.Resistor().builder(lambda r: r.resistance.merge(100 * P.ohm))
+    resistor2 = F.Resistor().builder(lambda r: r.resistance.merge(200 * P.ohm))
+    power = F.ElectricPower()
 
     # net labels
-    vcc = Net.with_name("+3V3")
-    gnd = Net.with_name("GND")
-    power.IFs.hv.connect(vcc.IFs.part_of)
-    power.IFs.lv.connect(gnd.IFs.part_of)
+    vcc = F.Net.with_name("+3V3")
+    gnd = F.Net.with_name("GND")
+    power.hv.connect(vcc.part_of)
+    power.lv.connect(gnd.part_of)
 
     # connect
-    resistor1.IFs.unnamed[0].connect(power.IFs.hv)
-    resistor1.IFs.unnamed[1].connect(power.IFs.lv)
-    resistor2.IFs.unnamed[0].connect(resistor1.IFs.unnamed[0])
-    resistor2.IFs.unnamed[1].connect(resistor1.IFs.unnamed[1])
+    resistor1.unnamed[0].connect(power.hv)
+    resistor1.unnamed[1].connect(power.lv)
+    resistor2.unnamed[0].connect(resistor1.unnamed[0])
+    resistor2.unnamed[1].connect(resistor1.unnamed[1])
 
     # attach footprint & designator
     for i, r in enumerate([resistor1, resistor2]):
-        r.get_trait(can_attach_to_footprint).attach(SMDTwoPin(SMDTwoPin.Type._0805))
+        r.get_trait(F.can_attach_to_footprint).attach(
+            F.SMDTwoPin(F.SMDTwoPin.Type._0805)
+        )
         r.add_trait(
-            has_designator_defined(
-                resistor1.get_trait(has_designator_prefix).get_prefix() + str(i + 1)
+            F.has_designator_defined(
+                resistor1.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
             )
         )
 
@@ -67,7 +63,7 @@ def _test_netlist_graph():
     if not success:
         logger.error("Graph != T2")
         logger.error("T2: %s", kicad_netlist_t2)
-        logger.error("Graph: %s", netlist)
+        logger.error("Gr: %s", netlist)
 
     return success, netlist
 

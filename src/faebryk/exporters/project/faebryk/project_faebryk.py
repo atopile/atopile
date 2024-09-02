@@ -91,7 +91,7 @@ comp_template = """
                 unnamed = {unnamed_ifs}
                 {named_if_expr}
 
-            self.IFs = _IFs(self)
+            self = _IFs(self)
 
             {trait_expr}
 
@@ -145,7 +145,7 @@ def from_t1_netlist(t1_netlist):
         name = get_comp_name(component)
 
         pinmap = {
-            pin: (f"{{name}}.IFs.P{pin}", f"P{pin}")
+            pin: (f"{{name}}.P{pin}", f"P{pin}")
             for pin in component["neighbors"].keys()
         }
 

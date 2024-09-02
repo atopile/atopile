@@ -3,45 +3,26 @@
 
 import logging
 
-from faebryk.core.core import Module
-from faebryk.library.can_be_decoupled import can_be_decoupled
-from faebryk.library.Electrical import Electrical
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.Range import Range
-from faebryk.library.RS485 import RS485
-from faebryk.library.TBD import TBD
-from faebryk.library.UART_Base import UART_Base
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import P, Quantity
 
 logger = logging.getLogger(__name__)
 
 
 class UART_RS485(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    power: F.ElectricPower
+    uart: F.UART_Base
+    rs485: F.RS485
+    read_enable: F.ElectricLogic
+    write_enable: F.ElectricLogic
 
-        class _NODEs(Module.NODES()): ...
+    max_data_rate: F.TBD[Quantity]
+    gpio_voltage: F.TBD[Quantity]
 
-        self.NODEs = _NODEs(self)
+    def __preinit__(self):
+        self.power.voltage.merge(F.Range(3.3 * P.V, 5.0 * P.V))
+        self.power.decoupled.decouple()
 
-        class _IFs(Module.IFS()):
-            power = ElectricPower()
-            uart = UART_Base()
-            rs485 = RS485()
-            read_enable = Electrical()
-            write_enable = Electrical()
-
-        self.IFs = _IFs(self)
-
-        class _PARAMs(Module.PARAMS()):
-            max_data_rate = TBD[Quantity]()
-            gpio_voltage = TBD[Quantity]()
-
-        self.PARAMs = _PARAMs(self)
-
-        self.IFs.power.PARAMs.voltage.merge(Range(3.3 * P.V, 5.0 * P.V))
-
-        self.IFs.power.get_trait(can_be_decoupled).decouple()
-
-        self.add_trait(has_designator_prefix_defined("U"))
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")

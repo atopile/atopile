@@ -4,7 +4,7 @@
 from math import inf
 from typing import Any, Protocol, Self
 
-from faebryk.core.core import Parameter
+from faebryk.core.parameter import Parameter
 
 
 class _SupportsRangeOps(Protocol):

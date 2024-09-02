@@ -4,10 +4,11 @@
 This file generates faebryk/src/faebryk/library/__init__.py
 """
 
-import glob
 import logging
-import os
+import re
+from graphlib import TopologicalSorter
 from pathlib import Path
+from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -15,19 +16,72 @@ DIR = Path(__file__).parent.parent.parent / "src" / "faebryk" / "library"
 OUT = DIR / "_F.py"
 
 
+def try_(stmt: str, exc: str | type[Exception] | Iterable[type[Exception]]):
+    if isinstance(exc, type):
+        exc = exc.__name__
+    if not isinstance(exc, str):
+        exc = f'({", ".join(e.__name__ for e in exc)})'
+
+    return (
+        f"try:\n    {stmt}\nexcept {exc} as e:\n    print('{stmt.split(' ')[-1]}', e)"
+    )
+
+
+def topo_sort(modules_out: dict[str, tuple[Path, str]]):
+    def find_deps(module_path: Path) -> set[str]:
+        f = module_path.read_text()
+        p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
+        return set(p.findall(f))
+
+    if True:
+        # TODO careful collisions
+        all_modules = [
+            (p.stem, p)
+            for p in DIR.parent.parent.rglob("*.py")
+            if not p.stem.startswith("_")
+        ]
+    else:
+        all_modules = [
+            (module_name, module_path)
+            for module_name, (module_path, _) in modules_out.items()
+        ]
+
+    topo_graph = {
+        module_name: find_deps(module_path) for module_name, module_path in all_modules
+    }
+    topo_graph = {
+        k: list(sorted(v))
+        for k, v in sorted(topo_graph.items(), key=lambda item: item[0])
+    }
+    order = list(TopologicalSorter(topo_graph).static_order())
+
+    # TEST
+    seen = set()
+    for m in order:
+        if m not in topo_graph:
+            continue
+        for sub in topo_graph[m]:
+            if sub not in seen and sub in topo_graph:
+                raise Exception(f"Collision: {sub} after {m}")
+        seen.add(m)
+
+    return [
+        (module_name, modules_out[module_name][1])
+        for module_name in order
+        if module_name in modules_out
+    ]
+
+
 def main():
     assert DIR.exists()
 
     logger.info(f"Scanning {DIR} for modules")
 
-    module_files = glob.glob(str(DIR / "*.py"))
-    module_files = [
-        os.path.basename(f)[:-3] for f in module_files if os.path.basename(f) != "_F.py"
-    ]
+    module_files = [p for p in DIR.glob("*.py") if not p.name.startswith("_")]
 
     logger.info(f"Found {len(module_files)} modules")
 
-    modules_out: dict[str, str] = {}
+    modules_out: dict[str, tuple[Path, str]] = {}
 
     # Import each module and add its class to the current namespace
     # for module_name in module_files:
@@ -39,7 +93,13 @@ def main():
     #        # globals()[class_name] = getattr(module, class_name)
     #        modules_out[module_name] = class_name
 
-    modules_out = {module_name: module_name for module_name in module_files}
+    # assuming class name is equal to file stem
+    modules_out = {
+        module_path.stem: (module_path, module_path.stem)
+        for module_path in module_files
+    }
+
+    modules_ordered = topo_sort(modules_out)
 
     logger.info(f"Found {len(modules_out)} classes")
 
@@ -62,8 +122,11 @@ def main():
         "# flake8: noqa: E501\n"
         "\n"
         + "\n".join(
+            # try_(
             f"from faebryk.library.{module} import {class_}"
-            for module, class_ in sorted(modules_out.items(), key=lambda x: x[0])
+            #    (AttributeError,),
+            # )
+            for module, class_ in modules_ordered
         )
         + "\n"
     )

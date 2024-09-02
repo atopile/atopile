@@ -5,12 +5,9 @@ import logging
 
 from rich.progress import track
 
-from faebryk.core.core import Node
+import faebryk.library._F as F
+from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.library.has_pcb_position import has_pcb_position
-from faebryk.library.has_pcb_position_defined_relative_to_parent import (
-    has_pcb_position_defined_relative_to_parent,
-)
 from faebryk.libs.font import Font
 from faebryk.libs.geometry.basic import get_distributed_points_in_polygon
 
@@ -74,11 +71,11 @@ class FontLayout(Layout):
 
         for coord, node in zip(self.coords, nodes_to_distribute):
             node.add_trait(
-                has_pcb_position_defined_relative_to_parent(
+                F.has_pcb_position_defined_relative_to_parent(
                     (
                         *coord,
                         0,
-                        has_pcb_position.layer_type.NONE,
+                        F.has_pcb_position.layer_type.NONE,
                     )
                 )
             )

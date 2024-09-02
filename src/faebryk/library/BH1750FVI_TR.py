@@ -2,52 +2,27 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from dataclasses import dataclass, field
 
-from faebryk.core.core import Module, Parameter
-from faebryk.library.can_attach_to_footprint_via_pinmap import (
-    can_attach_to_footprint_via_pinmap,
-)
-from faebryk.library.can_be_decoupled import can_be_decoupled
-from faebryk.library.Capacitor import Capacitor
-from faebryk.library.Constant import Constant
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricPower import ElectricPower
-from faebryk.library.has_datasheet_defined import has_datasheet_defined
-from faebryk.library.has_designator_prefix_defined import (
-    has_designator_prefix_defined,
-)
-from faebryk.library.has_esphome_config import has_esphome_config
-from faebryk.library.has_single_electric_reference_defined import (
-    has_single_electric_reference_defined,
-)
-from faebryk.library.I2C import I2C
-from faebryk.library.is_esphome_bus import is_esphome_bus
-from faebryk.library.Range import Range
-from faebryk.library.Resistor import Resistor
-from faebryk.library.TBD import TBD
-from faebryk.libs.units import P
+import faebryk.library._F as F
+from faebryk.core.module import Module
+from faebryk.libs.library import L
+from faebryk.libs.units import P, Quantity
 
 logger = logging.getLogger(__name__)
 
 
 class BH1750FVI_TR(Module):
-    @dataclass
-    class _bh1750_esphome_config(has_esphome_config.impl()):
-        update_interval_s: Parameter = field(default_factory=TBD)
-
-        def __post_init__(self) -> None:
-            super().__init__()
+    class _bh1750_esphome_config(F.has_esphome_config.impl()):
+        update_interval: F.TBD[Quantity]
 
         def get_config(self) -> dict:
-            assert isinstance(
-                self.update_interval_s, Constant
-            ), "No update interval set!"
+            val = self.update_interval.get_most_narrow()
+            assert isinstance(val, F.Constant), "No update interval set!"
 
-            obj = self.get_obj()
+            obj = self.obj
             assert isinstance(obj, BH1750FVI_TR)
 
-            i2c = is_esphome_bus.find_connected_bus(obj.IFs.i2c)
+            i2c = F.is_esphome_bus.find_connected_bus(obj.i2c)
 
             return {
                 "sensor": [
@@ -55,88 +30,74 @@ class BH1750FVI_TR(Module):
                         "platform": "bh1750",
                         "name": "BH1750 Illuminance",
                         "address": "0x23",
-                        "i2c_id": i2c.get_trait(is_esphome_bus).get_bus_id(),
-                        "update_interval": f"{self.update_interval_s.value}s",
+                        "i2c_id": i2c.get_trait(F.is_esphome_bus).get_bus_id(),
+                        "update_interval": f"{val.value.to('s')}",
                     }
                 ]
             }
 
+    dvi_capacitor: F.Capacitor
+    dvi_resistor: F.Resistor
+
+    power: F.ElectricPower
+    addr: F.ElectricLogic
+    dvi: F.ElectricLogic
+    ep: F.ElectricLogic
+    i2c: F.I2C
+
     def set_address(self, addr: int):
         raise NotImplementedError()
+        # TODO: Implement set_address
         # ADDR = ‘H’ ( ADDR ≧ 0.7VCC ) “1011100“
         # ADDR = 'L' ( ADDR ≦ 0.3VCC ) “0100011“
         ...
-        # assert addr < (1 << len(self.IFs.e))
+        # assert addr < (1 << len(self.e))
 
-        # for i, e in enumerate(self.IFs.e):
+        # for i, e in enumerate(self.e):
         #    e.set(addr & (1 << i) != 0)
 
-    def __init__(self) -> None:
-        super().__init__()
+    esphome_config: _bh1750_esphome_config
 
-        class _NODEs(Module.NODES()):
-            dvi_capacitor = Capacitor()
-            dvi_resistor = Resistor()
+    def __preinit__(self):
+        self.dvi_capacitor.capacitance.merge(1 * P.uF)
+        self.dvi_resistor.resistance.merge(1 * P.kohm)
 
-        self.NODEs = _NODEs(self)
+        self.i2c.terminate()
 
-        class _IFs(Module.IFS()):
-            power = ElectricPower()
-            addr = ElectricLogic()
-            dvi = ElectricLogic()
-            ep = ElectricLogic()
-            i2c = I2C()
-
-        self.IFs = _IFs(self)
-
-        class _PARAMs(Module.PARAMS()): ...
-
-        self.PARAMs = _PARAMs(self)
-
-        self.NODEs.dvi_capacitor.PARAMs.capacitance.merge(1 * P.uF)
-        self.NODEs.dvi_resistor.PARAMs.resistance.merge(1 * P.kohm)
-
-        self.IFs.i2c.terminate()
-
-        self.IFs.i2c.PARAMs.frequency.merge(
-            I2C.define_max_frequency_capability(I2C.SpeedMode.fast_speed)
-        )
-
-        self.add_trait(has_designator_prefix_defined("U"))
-
-        self.add_trait(
-            can_attach_to_footprint_via_pinmap(
-                {
-                    "1": self.IFs.power.IFs.hv,
-                    "2": self.IFs.addr.IFs.signal,
-                    "3": self.IFs.power.IFs.lv,
-                    "4": self.IFs.i2c.IFs.sda.IFs.signal,
-                    "5": self.IFs.dvi.IFs.signal,
-                    "6": self.IFs.i2c.IFs.scl.IFs.signal,
-                    "7": self.IFs.ep.IFs.signal,
-                }
-            )
-        )
-
-        self.add_trait(
-            has_datasheet_defined(
-                "https://datasheet.lcsc.com/lcsc/1811081611_ROHM-Semicon-BH1750FVI-TR_C78960.pdf"
-            )
+        self.i2c.frequency.merge(
+            F.I2C.define_max_frequency_capability(F.I2C.SpeedMode.fast_speed)
         )
 
         # set constraints
-        self.IFs.power.PARAMs.voltage.merge(Range(2.4 * P.V, 3.6 * P.V))
+        self.power.voltage.merge(F.Range(2.4 * P.V, 3.6 * P.V))
 
-        # internal connections
-        ref = ElectricLogic.connect_all_module_references(self)
-        self.add_trait(has_single_electric_reference_defined(ref))
-        ref.connect(self.IFs.power)
+        self.power.decoupled.decouple().capacitance.merge(100 * P.nF)
+        # TODO: self.dvi.low_pass(self.dvi_capacitor, self.dvi_resistor)
+        self.dvi.signal.connect_via(self.dvi_capacitor, self.power.lv)
+        self.dvi.signal.connect_via(self.dvi_resistor, self.power.hv)
 
-        self.IFs.power.get_trait(can_be_decoupled).decouple().PARAMs.capacitance.merge(
-            0.1 * P.uF
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self)
         )
-        # TODO: self.IFs.dvi.low_pass(self.IF.dvi_capacitor, self.IF.dvi_resistor)
 
-        # self.IFs.i2c.add_trait(is_esphome_bus.impl()())
-        self.esphome = self._bh1750_esphome_config()
-        self.add_trait(self.esphome)
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+
+    @L.rt_field
+    def attach_to_footprint(self):
+        return F.can_attach_to_footprint_via_pinmap(
+            {
+                "1": self.power.hv,
+                "2": self.addr.signal,
+                "3": self.power.lv,
+                "4": self.i2c.sda.signal,
+                "5": self.dvi.signal,
+                "6": self.i2c.scl.signal,
+                "7": self.ep.signal,
+            }
+        )
+
+    datasheet = L.f_field(F.has_datasheet_defined)(
+        "https://datasheet.lcsc.com/lcsc/1811081611_ROHM-Semicon-BH1750FVI-TR_C78960.pdf"
+    )

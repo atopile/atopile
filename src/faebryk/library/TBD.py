@@ -2,17 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 from textwrap import indent
-from typing import Generic, TypeVar
 
-from faebryk.core.core import Parameter
-
-PV = TypeVar("PV")
+from faebryk.core.parameter import Parameter
 
 
-class TBD(Generic[PV], Parameter[PV]):
-    def __init__(self) -> None:
-        super().__init__()
-
+class TBD[PV](Parameter[PV]):
     def __eq__(self, __value: object) -> bool:
         if isinstance(__value, TBD):
             return True

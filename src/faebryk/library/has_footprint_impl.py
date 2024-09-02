@@ -1,25 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from abc import abstractmethod
-
-from faebryk.core.core import LinkNamedParent
-from faebryk.library.Footprint import Footprint
-from faebryk.library.has_footprint import has_footprint
+import faebryk.library._F as F
 
 
-class has_footprint_impl(has_footprint.impl()):
-    @abstractmethod
-    def __init__(self) -> None:
-        super().__init__()
+class has_footprint_impl(F.has_footprint.impl()):
+    def set_footprint(self, fp: F.Footprint):
+        self.obj.add(fp, name="footprint")
 
-    def set_footprint(self, fp: Footprint):
-        self.get_obj().GIFs.children.connect(
-            fp.GIFs.parent, LinkNamedParent.curry("footprint")
-        )
-
-    def get_footprint(self) -> Footprint:
-        children = self.get_obj().GIFs.children.get_children()
-        fps = [c for _, c in children if isinstance(c, Footprint)]
-        assert len(fps) == 1, f"candidates: {fps}"
-        return fps[0]
+    def get_footprint(self) -> F.Footprint:
+        fps = self.obj.get_children(direct_only=True, types=F.Footprint)
+        assert len(fps) == 1, f"In obj: {self.obj}: candidates: {fps}"
+        return next(iter(fps))

@@ -3,30 +3,25 @@
 
 import logging
 
-from faebryk.library.can_be_decoupled import can_be_decoupled
-from faebryk.library.Capacitor import Capacitor
-from faebryk.library.Electrical import Electrical
-from faebryk.library.is_decoupled import is_decoupled
-from faebryk.library.is_decoupled_nodes import is_decoupled_nodes
+import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
 
 
-class can_be_decoupled_defined(can_be_decoupled.impl()):
-    def __init__(self, hv: Electrical, lv: Electrical) -> None:
+class can_be_decoupled_defined(F.can_be_decoupled.impl()):
+    def __init__(self, hv: F.Electrical, lv: F.Electrical) -> None:
         super().__init__()
         self.hv = hv
         self.lv = lv
 
     def decouple(self):
-        obj = self.get_obj()
+        obj = self.obj
 
-        capacitor = Capacitor()
-        obj.NODEs.capacitor = capacitor
+        capacitor = obj.add(F.Capacitor(), "capacitor")
         self.hv.connect_via(capacitor, self.lv)
 
-        obj.add_trait(is_decoupled_nodes())
+        obj.add_trait(F.is_decoupled_nodes())
         return capacitor
 
     def is_implemented(self):
-        return not self.get_obj().has_trait(is_decoupled)
+        return not self.obj.has_trait(F.is_decoupled)
