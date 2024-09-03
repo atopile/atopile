@@ -224,12 +224,10 @@ def get_direct_connected_nodes[T: Node](
 
 
 def get_net(mif: F.Electrical):
-    from faebryk.library.Net import Net
-
     nets = {
         net
         for mif in get_connected_mifs(mif.connected)
-        if (net := get_parent_of_type(mif, Net)) is not None
+        if (net := get_parent_of_type(mif, F.Net)) is not None
     }
 
     if not nets:
@@ -323,12 +321,10 @@ def get_param_tree(param: Parameter) -> list[tuple[Parameter, list]]:
 def connect_interfaces_via_chain(
     start: ModuleInterface, bridges: Iterable[Node], end: ModuleInterface, linkcls=None
 ):
-    from faebryk.library.can_bridge import can_bridge
-
     last = start
     for bridge in bridges:
-        last.connect(bridge.get_trait(can_bridge).get_in(), linkcls=linkcls)
-        last = bridge.get_trait(can_bridge).get_out()
+        last.connect(bridge.get_trait(F.can_bridge).get_in(), linkcls=linkcls)
+        last = bridge.get_trait(F.can_bridge).get_out()
     last.connect(end, linkcls=linkcls)
 
 
@@ -375,13 +371,11 @@ def connect_module_mifs_by_name(
 
 
 def reversed_bridge(bridge: Node):
-    from faebryk.library.can_bridge import can_bridge
-
     class _reversed_bridge(Node):
         def __init__(self) -> None:
             super().__init__()
 
-            bridge_trait = bridge.get_trait(can_bridge)
+            bridge_trait = bridge.get_trait(F.can_bridge)
             if_in = bridge_trait.get_in()
             if_out = bridge_trait.get_out()
 
@@ -565,8 +559,6 @@ def pretty_param_tree_top(param: Parameter) -> str:
 
 
 def use_interface_names_as_net_names(node: Node, name: str | None = None):
-    from faebryk.library.Net import Net
-
     if not name:
         p = node.get_parent()
         assert p
@@ -597,7 +589,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
             n
             for c in connections
             if (p := c.get_parent())
-            and isinstance(n := p[0], Net)
+            and isinstance(n := p[0], F.Net)
             and n.part_of in connections
         }:
             # logger.warning(f"Skipped, attached to Net: {el_if}: {matched_nets!r}")
@@ -617,7 +609,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
         # performance
         resolved.update(group)
 
-    nets: dict[str, tuple[Net, F.Electrical]] = {}
+    nets: dict[str, tuple[F.Net, F.Electrical]] = {}
     for el_if in to_use:
         net_name = f"{name}{el_if.get_full_name().removeprefix(name_prefix)}"
 
@@ -635,7 +627,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
                 + "\n\t".join(map(str, net.part_of.get_direct_connections()))
             )
 
-        net = Net()
+        net = F.Net()
         net.add_trait(F.has_overriden_name_defined(net_name))
         net.part_of.connect(el_if)
         logger.debug(f"Created {net_name} for {el_if}")

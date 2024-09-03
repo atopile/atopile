@@ -5,18 +5,11 @@ import logging
 import unittest
 from operator import add
 
+import faebryk.library._F as F
 from faebryk.core.core import logger as core_logger
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.util import specialize_module
-from faebryk.library.ANY import ANY
-from faebryk.library.Constant import Constant
-from faebryk.library.Operation import Operation
-from faebryk.library.Range import Range
-from faebryk.library.Resistor import Resistor
-from faebryk.library.Set import Set
-from faebryk.library.TBD import TBD
-from faebryk.library.UART_Base import UART_Base
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -32,106 +25,112 @@ class TestParameters(unittest.TestCase):
             return obj
 
         # Constant
-        ONE = Constant(1)
+        ONE = F.Constant(1)
         self.assertEqual(ONE.value, 1)
 
-        TWO = Constant(2)
-        self.assertEqual(assertIsInstance(ONE + TWO, Constant).value, 3)
-        self.assertEqual(assertIsInstance(ONE - TWO, Constant).value, -1)
+        TWO = F.Constant(2)
+        self.assertEqual(assertIsInstance(ONE + TWO, F.Constant).value, 3)
+        self.assertEqual(assertIsInstance(ONE - TWO, F.Constant).value, -1)
 
-        self.assertEqual(assertIsInstance((ONE / TWO) / TWO, Constant).value, 1 / 4)
+        self.assertEqual(assertIsInstance((ONE / TWO) / TWO, F.Constant).value, 1 / 4)
 
         # Range
-        R_ONE_TEN = Range(1, 10)
-        self.assertEqual(assertIsInstance(R_ONE_TEN + TWO, Range), Range(3, 12))
+        R_ONE_TEN = F.Range(1, 10)
+        self.assertEqual(assertIsInstance(R_ONE_TEN + TWO, F.Range), F.Range(3, 12))
 
-        R_TWO_THREE = Range(2, 3)
-        self.assertEqual(assertIsInstance(R_ONE_TEN + R_TWO_THREE, Range), Range(3, 13))
-        self.assertEqual(assertIsInstance(R_ONE_TEN * R_TWO_THREE, Range), Range(2, 30))
-        self.assertEqual(assertIsInstance(R_ONE_TEN - R_TWO_THREE, Range), Range(-2, 8))
+        R_TWO_THREE = F.Range(2, 3)
         self.assertEqual(
-            assertIsInstance(R_ONE_TEN / R_TWO_THREE, Range), Range(1 / 3, 10 / 2)
+            assertIsInstance(R_ONE_TEN + R_TWO_THREE, F.Range), F.Range(3, 13)
+        )
+        self.assertEqual(
+            assertIsInstance(R_ONE_TEN * R_TWO_THREE, F.Range), F.Range(2, 30)
+        )
+        self.assertEqual(
+            assertIsInstance(R_ONE_TEN - R_TWO_THREE, F.Range), F.Range(-2, 8)
+        )
+        self.assertEqual(
+            assertIsInstance(R_ONE_TEN / R_TWO_THREE, F.Range), F.Range(1 / 3, 10 / 2)
         )
 
         # TBD Range
-        a = TBD[int]()
-        b = TBD[int]()
-        R_TBD = Range(a, b)
+        a = F.TBD[int]()
+        b = F.TBD[int]()
+        R_TBD = F.Range(a, b)
         add = R_ONE_TEN + R_TBD
         mul = R_ONE_TEN * R_TBD
         sub = R_ONE_TEN - R_TBD
         div = R_ONE_TEN / R_TBD
-        a.merge(Constant(2))
-        b.merge(Constant(3))
-        self.assertEqual(assertIsInstance(add, Range), Range(3, 13))
-        self.assertEqual(assertIsInstance(mul, Range), Range(2, 30))
-        self.assertEqual(assertIsInstance(sub, Range), Range(-2, 8))
-        self.assertEqual(assertIsInstance(div, Range), Range(1 / 3, 10 / 2))
+        a.merge(F.Constant(2))
+        b.merge(F.Constant(3))
+        self.assertEqual(assertIsInstance(add, F.Range), F.Range(3, 13))
+        self.assertEqual(assertIsInstance(mul, F.Range), F.Range(2, 30))
+        self.assertEqual(assertIsInstance(sub, F.Range), F.Range(-2, 8))
+        self.assertEqual(assertIsInstance(div, F.Range), F.Range(1 / 3, 10 / 2))
 
         # Set
-        S_FIVE_NINE = Set(set(Constant(x) for x in range(5, 10)))
+        S_FIVE_NINE = F.Set(set(F.Constant(x) for x in range(5, 10)))
         self.assertEqual(
-            assertIsInstance(S_FIVE_NINE + ONE, Set).params,
-            set(Constant(x) for x in range(6, 11)),
+            assertIsInstance(S_FIVE_NINE + ONE, F.Set).params,
+            set(F.Constant(x) for x in range(6, 11)),
         )
 
-        S_TEN_TWENTY_THIRTY = Set(set(Constant(x) for x in [10, 20, 30]))
+        S_TEN_TWENTY_THIRTY = F.Set(set(F.Constant(x) for x in [10, 20, 30]))
         self.assertEqual(
-            assertIsInstance(S_FIVE_NINE + S_TEN_TWENTY_THIRTY, Set),
-            Set(Constant(x + y) for x in range(5, 10) for y in [10, 20, 30]),
+            assertIsInstance(S_FIVE_NINE + S_TEN_TWENTY_THIRTY, F.Set),
+            F.Set(F.Constant(x + y) for x in range(5, 10) for y in [10, 20, 30]),
         )
 
         # conjunctions
         # with static values
-        R_ONE_TEN = Range(1, 10)
-        R_TWO_THREE = Range(2, 3)
-        self.assertEqual(R_ONE_TEN & R_TWO_THREE, Range(2, 3))
-        self.assertEqual(R_ONE_TEN & Range(5, 20), Range(5, 10))
-        self.assertEqual(R_ONE_TEN & 5, Constant(5))
-        self.assertEqual(R_ONE_TEN & Constant(5), Constant(5))
-        self.assertEqual(R_ONE_TEN & Set([1, 5, 8, 12]), Set([1, 5, 8]))
-        self.assertEqual(Set([1, 2, 3]) & Set([2, 3, 4]), Set([2, 3]))
-        self.assertEqual(Set([1, 2, 3]) & 3, Constant(3))
-        self.assertEqual(Constant(3) & 3, Constant(3))
-        self.assertEqual(Constant(2) & 3, Set([]))
-        self.assertEqual(R_ONE_TEN & {1, 2, 11}, Set([1, 2]))
-        self.assertEqual(R_ONE_TEN & Range(12, 13), Set([]))
+        R_ONE_TEN = F.Range(1, 10)
+        R_TWO_THREE = F.Range(2, 3)
+        self.assertEqual(R_ONE_TEN & R_TWO_THREE, F.Range(2, 3))
+        self.assertEqual(R_ONE_TEN & F.Range(5, 20), F.Range(5, 10))
+        self.assertEqual(R_ONE_TEN & 5, F.Constant(5))
+        self.assertEqual(R_ONE_TEN & F.Constant(5), F.Constant(5))
+        self.assertEqual(R_ONE_TEN & F.Set([1, 5, 8, 12]), F.Set([1, 5, 8]))
+        self.assertEqual(F.Set([1, 2, 3]) & F.Set([2, 3, 4]), F.Set([2, 3]))
+        self.assertEqual(F.Set([1, 2, 3]) & 3, F.Constant(3))
+        self.assertEqual(F.Constant(3) & 3, F.Constant(3))
+        self.assertEqual(F.Constant(2) & 3, F.Set([]))
+        self.assertEqual(R_ONE_TEN & {1, 2, 11}, F.Set([1, 2]))
+        self.assertEqual(R_ONE_TEN & F.Range(12, 13), F.Set([]))
         # with tbd
-        a = TBD[int]()
-        b = TBD[int]()
-        R_TBD = Range(a, b)
-        r_one_ten_con_tbd = R_ONE_TEN & R_TBD
-        assertIsInstance(r_one_ten_con_tbd, Operation)
+        a = F.TBD[int]()
+        b = F.TBD[int]()
+        RTBD = F.Range(a, b)
+        r_one_ten_con_tbd = R_ONE_TEN & RTBD
+        assertIsInstance(r_one_ten_con_tbd, F.Operation)
         a.merge(2)
         b.merge(20)
-        self.assertEqual(assertIsInstance(r_one_ten_con_tbd, Range), Range(2, 10))
+        self.assertEqual(assertIsInstance(r_one_ten_con_tbd, F.Range), F.Range(2, 10))
 
         # TODO disjunctions
 
-        # Operation
-        token = TBD()
-        op = assertIsInstance(ONE + token, Operation)
-        op2 = assertIsInstance(op + 10, Operation)
+        # F.Operation
+        token = F.TBD()
+        op = assertIsInstance(ONE + token, F.Operation)
+        op2 = assertIsInstance(op + 10, F.Operation)
 
-        self.assertEqual(op.operands, (ONE, TBD()))
+        self.assertEqual(op.operands, (ONE, F.TBD()))
         self.assertEqual(op.operation(1, 2), 3)
 
-        token.merge(Constant(2))
-        self.assertEqual(op.get_most_narrow(), Constant(3))
+        token.merge(F.Constant(2))
+        self.assertEqual(op.get_most_narrow(), F.Constant(3))
 
-        self.assertEqual(op + 5, Constant(8))
-        self.assertEqual(op2.get_most_narrow(), Constant(13))
+        self.assertEqual(op + 5, F.Constant(8))
+        self.assertEqual(op2.get_most_narrow(), F.Constant(13))
 
         # Any
-        assertIsInstance(ONE + ANY(), Operation)
-        assertIsInstance(TBD() + ANY(), Operation)
-        assertIsInstance((TBD() + TBD()) + ANY(), Operation)
+        assertIsInstance(ONE + F.ANY(), F.Operation)
+        assertIsInstance(F.TBD() + F.ANY(), F.Operation)
+        assertIsInstance((F.TBD() + F.TBD()) + F.ANY(), F.Operation)
 
         # Test quantities
-        self.assertEqual(Constant(1 * P.baud), 1 * P.baud)
-        self.assertEqual(Constant(1) * P.baud, 1 * P.baud)
-        self.assertEqual(Range(1, 10) * P.baud, Range(1 * P.baud, 10 * P.baud))
-        self.assertEqual(Set([1, 2]) * P.baud, Set([1 * P.baud, 2 * P.baud]))
+        self.assertEqual(F.Constant(1 * P.baud), 1 * P.baud)
+        self.assertEqual(F.Constant(1) * P.baud, 1 * P.baud)
+        self.assertEqual(F.Range(1, 10) * P.baud, F.Range(1 * P.baud, 10 * P.baud))
+        self.assertEqual(F.Set([1, 2]) * P.baud, F.Set([1 * P.baud, 2 * P.baud]))
 
     def test_resolution(self):
         def assertIsInstance[T](obj, cls: type[T]) -> T:
@@ -139,21 +138,21 @@ class TestParameters(unittest.TestCase):
             assert isinstance(obj, cls)
             return obj
 
-        ONE = Constant(1)
+        ONE = F.Constant(1)
         self.assertEqual(
-            assertIsInstance(Parameter.resolve_all([ONE, ONE]), Constant).value, 1
+            assertIsInstance(Parameter.resolve_all([ONE, ONE]), F.Constant).value, 1
         )
 
-        TWO = Constant(2)
+        TWO = F.Constant(2)
         self.assertEqual(
             assertIsInstance(
-                Parameter.resolve_all([Operation([ONE, ONE], add), TWO]), Constant
+                Parameter.resolve_all([F.Operation([ONE, ONE], add), TWO]), F.Constant
             ).value,
             2,
         )
 
-        self.assertEqual(TBD(), TBD())
-        self.assertEqual(ANY(), ANY())
+        self.assertEqual(F.TBD(), F.TBD())
+        self.assertEqual(F.ANY(), F.ANY())
 
         def test_merge(
             a: Parameter[int] | set[int] | int | tuple[int, int],
@@ -168,9 +167,9 @@ class TestParameters(unittest.TestCase):
             a = Parameter[int].from_literal(a)
             self.assertRaises(Parameter.MergeException, lambda: a.merge(b))
 
-        # Sets ----
+        # F.Sets ----
 
-        # Ranges
+        # F.Ranges
         test_merge((0, 10), (5, 15), (5, 10))
         test_merge((0, 10), (5, 8), (5, 8))
         fail_merge((0, 10), (11, 15))
@@ -183,18 +182,18 @@ class TestParameters(unittest.TestCase):
         fail_merge((1, 5), set())
         fail_merge(5, set())
         test_merge(set(), set(), set())
-        test_merge(TBD(), set(), set())
-        test_merge(ANY(), set(), set())
+        test_merge(F.TBD(), set(), set())
+        test_merge(F.ANY(), set(), set())
 
         test_merge({1, 2}, {2, 3}, {2})
         fail_merge({1, 2}, {3, 4})
         test_merge({1, 2}, 2, 2)
 
-        # TBD/ANY --
+        # F.TBD/F.ANY --
 
-        test_merge(TBD(), TBD(), TBD())
-        test_merge(ANY(), ANY(), ANY())
-        test_merge(TBD(), ANY(), ANY())
+        test_merge(F.TBD(), F.TBD(), F.TBD())
+        test_merge(F.ANY(), F.ANY(), F.ANY())
+        test_merge(F.TBD(), F.ANY(), F.ANY())
 
     def test_specific(self):
         def test_spec(
@@ -222,14 +221,14 @@ class TestParameters(unittest.TestCase):
         test_spec((1, 2), (1, 3), False)
         test_spec((1, 10), (1, 3))
 
-        test_spec(1, ANY(), False)
-        test_spec(ANY(), 1)
-        test_spec(TBD(), 1, False)
-        test_spec(ANY(), Operation((1, 2), add))
-        test_spec(ANY(), Operation((1, TBD()), add))
+        test_spec(1, F.ANY(), False)
+        test_spec(F.ANY(), 1)
+        test_spec(F.TBD(), 1, False)
+        test_spec(F.ANY(), F.Operation((1, 2), add))
+        test_spec(F.ANY(), F.Operation((1, F.TBD()), add))
 
-        test_spec(Operation((1, 2), add), 3)
-        test_spec(Operation((1, TBD()), add), TBD(), False)
+        test_spec(F.Operation((1, 2), add), 3)
+        test_spec(F.Operation((1, F.TBD()), add), F.TBD(), False)
 
     def test_compress(self):
         def test_comp(
@@ -241,12 +240,12 @@ class TestParameters(unittest.TestCase):
             self.assertEqual(a.get_most_narrow(), expected)
 
         test_comp(1, 1)
-        test_comp(Constant(Constant(1)), 1)
-        test_comp(Constant(Constant(Constant(1))), 1)
+        test_comp(F.Constant(F.Constant(1)), 1)
+        test_comp(F.Constant(F.Constant(F.Constant(1))), 1)
         test_comp({1}, 1)
-        test_comp(Range(1), 1)
-        test_comp(Range(Range(1)), 1)
-        test_comp(Constant(Set([Range(Range(1))])), 1)
+        test_comp(F.Range(1), 1)
+        test_comp(F.Range(F.Range(1)), 1)
+        test_comp(F.Constant(F.Set([F.Range(F.Range(1))])), 1)
 
     def test_modules(self):
         def assertIsInstance[T](obj, cls: type[T]) -> T:
@@ -255,9 +254,9 @@ class TestParameters(unittest.TestCase):
             return obj
 
         class Modules(Module):
-            UART_A: UART_Base
-            UART_B: UART_Base
-            UART_C: UART_Base
+            UART_A: F.UART_Base
+            UART_B: F.UART_Base
+            UART_C: F.UART_Base
 
         m = Modules()
 
@@ -267,54 +266,59 @@ class TestParameters(unittest.TestCase):
 
         UART_A.connect(UART_B)
 
-        UART_A.baud.merge(Constant(9600 * P.baud))
+        UART_A.baud.merge(F.Constant(9600 * P.baud))
 
         for uart in [UART_A, UART_B]:
             self.assertEqual(
-                assertIsInstance(uart.baud.get_most_narrow(), Constant).value,
+                assertIsInstance(uart.baud.get_most_narrow(), F.Constant).value,
                 9600 * P.baud,
             )
 
-        UART_C.baud.merge(Range(1200 * P.baud, 115200 * P.baud))
+        UART_C.baud.merge(F.Range(1200 * P.baud, 115200 * P.baud))
         UART_A.connect(UART_C)
 
         for uart in [UART_A, UART_B, UART_C]:
             self.assertEqual(
-                assertIsInstance(uart.baud.get_most_narrow(), Constant).value,
+                assertIsInstance(uart.baud.get_most_narrow(), F.Constant).value,
                 9600 * P.baud,
             )
 
-        resistor = Resistor()
+        resistor = F.Resistor()
 
         assertIsInstance(
-            resistor.get_current_flow_by_voltage_resistance(Constant(0.5)), Operation
+            resistor.get_current_flow_by_voltage_resistance(F.Constant(0.5)),
+            F.Operation,
         )
 
     def test_comparisons(self):
         # same type
-        self.assertGreater(Constant(2), Constant(1))
-        self.assertLess(Constant(1), Constant(2))
-        self.assertLessEqual(Constant(2), Constant(2))
-        self.assertGreaterEqual(Constant(2), Constant(2))
-        self.assertLess(Range(1, 2), Range(3, 4))
-        self.assertEqual(min(Range(1, 2), Range(3, 4), Range(5, 6)), Range(1, 2))
+        self.assertGreater(F.Constant(2), F.Constant(1))
+        self.assertLess(F.Constant(1), F.Constant(2))
+        self.assertLessEqual(F.Constant(2), F.Constant(2))
+        self.assertGreaterEqual(F.Constant(2), F.Constant(2))
+        self.assertLess(F.Range(1, 2), F.Range(3, 4))
+        self.assertEqual(
+            min(F.Range(1, 2), F.Range(3, 4), F.Range(5, 6)), F.Range(1, 2)
+        )
 
         # mixed
-        self.assertLess(Constant(1), Range(2, 3))
-        self.assertGreater(Constant(4), Range(2, 3))
-        self.assertFalse(Constant(3) < Range(2, 4))
-        self.assertFalse(Constant(3) > Range(2, 4))
-        self.assertFalse(Constant(3) == Range(2, 4))
-        self.assertEqual(min(Constant(3), Range(5, 6), Constant(4)), Constant(3))
+        self.assertLess(F.Constant(1), F.Range(2, 3))
+        self.assertGreater(F.Constant(4), F.Range(2, 3))
+        self.assertFalse(F.Constant(3) < F.Range(2, 4))
+        self.assertFalse(F.Constant(3) > F.Range(2, 4))
+        self.assertFalse(F.Constant(3) == F.Range(2, 4))
+        self.assertEqual(
+            min(F.Constant(3), F.Range(5, 6), F.Constant(4)), F.Constant(3)
+        )
 
         # nested
-        self.assertLess(Constant(1), Set([Constant(2), Constant(3)]))
-        self.assertLess(Range(1, 2), Range(Constant(3), Constant(4)))
-        self.assertLess(Range(1, 2), Set([Constant(4), Constant(3)]))
-        self.assertLess(Constant(Constant(Constant(1))), 2)
+        self.assertLess(F.Constant(1), F.Set([F.Constant(2), F.Constant(3)]))
+        self.assertLess(F.Range(1, 2), F.Range(F.Constant(3), F.Constant(4)))
+        self.assertLess(F.Range(1, 2), F.Set([F.Constant(4), F.Constant(3)]))
+        self.assertLess(F.Constant(F.Constant(F.Constant(1))), 2)
         self.assertEqual(
-            min(Constant(Constant(Constant(1))), Constant(Constant(2))),
-            Constant(Constant(Constant(1))),
+            min(F.Constant(F.Constant(F.Constant(1))), F.Constant(F.Constant(2))),
+            F.Constant(F.Constant(F.Constant(1))),
         )
 
     def test_specialize(self):
@@ -340,7 +344,7 @@ class TestParameters(unittest.TestCase):
 
             bcell = specialize_module(app.battery, F.ButtonCell())
             bcell.voltage.merge(3 * P.V)
-            bcell.capacity.merge(Range.from_center(225 * P.mAh, 50 * P.mAh))
+            bcell.capacity.merge(F.Range.from_center(225 * P.mAh, 50 * P.mAh))
             bcell.material.merge(F.ButtonCell.Material.Lithium)
             bcell.size.merge(F.ButtonCell.Size.N_2032)
             bcell.shape.merge(F.ButtonCell.Shape.Round)
@@ -357,10 +361,10 @@ class TestParameters(unittest.TestCase):
             self.assertEqual(v.get_most_narrow(), 3 * P.V)
             r = app.led.current_limiting_resistor.resistance
             r = r.get_most_narrow()
-            self.assertIsInstance(r, Range, f"{type(r)}")
+            self.assertIsInstance(r, F.Range, f"{type(r)}")
 
     def test_units(self):
-        self.assertEqual(Constant(1e-9 * P.F), 1 * P.nF)
+        self.assertEqual(F.Constant(1e-9 * P.F), 1 * P.nF)
 
 
 if __name__ == "__main__":

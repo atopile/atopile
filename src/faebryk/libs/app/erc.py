@@ -56,29 +56,23 @@ def simple_erc(G: Graph):
 
     Returns:
     """
-    from faebryk.library.Capacitor import Capacitor
-    from faebryk.library.ElectricPower import ElectricPower
-    from faebryk.library.Fuse import Fuse
-    from faebryk.library.Net import Net
-    from faebryk.library.Resistor import Resistor
-
     logger.info("Checking graph for ERC violations")
 
     # power short
-    electricpower = get_all_nodes_of_type(G, ElectricPower)
+    electricpower = get_all_nodes_of_type(G, F.ElectricPower)
     logger.info(f"Checking {len(electricpower)} Power")
     for ep in electricpower:
         if ep.lv.is_connected_to(ep.hv):
             raise ERCFaultShort([ep], "shorted power")
 
     # shorted nets
-    nets = get_all_nodes_of_type(G, Net)
+    nets = get_all_nodes_of_type(G, F.Net)
     logger.info(f"Checking {len(nets)} nets")
     for net in nets:
         collisions = {
             p[0]
             for mif in net.part_of.get_direct_connections()
-            if (p := mif.get_parent()) and isinstance(p[0], Net)
+            if (p := mif.get_parent()) and isinstance(p[0], F.Net)
         }
 
         if collisions:
@@ -113,9 +107,9 @@ def simple_erc(G: Graph):
     #        checked.add(mif)
     #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
     #            raise ERCFault([mif], "shorted symmetric footprint")
-    comps = get_all_nodes_of_types(G, (Resistor, Capacitor, Fuse))
+    comps = get_all_nodes_of_types(G, (F.Resistor, F.Capacitor, F.Fuse))
     for comp in comps:
-        assert isinstance(comp, (Resistor, Capacitor, Fuse))
+        assert isinstance(comp, (F.Resistor, F.Capacitor, F.Fuse))
         # TODO make prettier
         if (
             comp.has_trait(has_part_picked)

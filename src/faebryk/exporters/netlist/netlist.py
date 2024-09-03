@@ -38,9 +38,8 @@ class T2Netlist:
 def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
     from faebryk.core.util import get_all_nodes_of_type, get_all_nodes_with_trait
     from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
-    from faebryk.library.Net import Net as FNet
 
-    nets = get_all_nodes_of_type(G, FNet)
+    nets = get_all_nodes_of_type(G, F.Net)
 
     t2_nets = [
         T2Netlist.Net(
