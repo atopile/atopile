@@ -16,7 +16,7 @@ class has_descriptive_properties_defined(F.has_descriptive_properties.impl()):
         return self.properties
 
     def handle_duplicate(self, other: TraitImpl, node: Node) -> bool:
-        if not isinstance(other, F.has_descriptive_properties_defined):
+        if not isinstance(other, has_descriptive_properties_defined):
             self.properties.update(other.get_properties())
             return super().handle_duplicate(other, node)
 

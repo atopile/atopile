@@ -14,7 +14,7 @@ from faebryk.core.node import Node
 from faebryk.libs.library import L
 
 
-class ElectricLogic(F.Logic):
+class ElectricLogic(F.SignalElectrical, F.Logic):
     class has_pulls(F.Logic.TraitT):
         @abstractmethod
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...
@@ -98,8 +98,6 @@ class ElectricLogic(F.Logic):
         OPEN_SOURCE = auto()
 
     push_pull: F.TBD[PushPull]
-    reference: F.ElectricPower
-    signal: F.Electrical
 
     @L.rt_field
     def single_electric_reference(self):

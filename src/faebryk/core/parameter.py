@@ -306,13 +306,25 @@ class Parameter[PV](Node):
         return self.arithmetic_op(self, other, lambda a, b: a + b)
 
     @_resolved
+    def __radd__(self: "Parameter[PV]", other: "Parameter[PV]"):
+        return self.arithmetic_op(self, other, lambda a, b: b + a)
+
+    @_resolved
     def __sub__(self: "Parameter[PV]", other: "Parameter[PV]"):
         return self.arithmetic_op(self, other, lambda a, b: a - b)
+
+    @_resolved
+    def __rsub__(self: "Parameter[PV]", other: "Parameter[PV]"):
+        return self.arithmetic_op(self, other, lambda a, b: b - a)
 
     # TODO PV | float
     @_resolved
     def __mul__(self: "Parameter[PV]", other: "Parameter[PV]"):
         return self.arithmetic_op(self, other, lambda a, b: a * b)
+
+    @_resolved
+    def __rmul__(self: "Parameter[PV]", other: "Parameter[PV]"):
+        return self.arithmetic_op(self, other, lambda a, b: b * a)
 
     # TODO PV | float
     @_resolved
@@ -320,8 +332,24 @@ class Parameter[PV](Node):
         return self.arithmetic_op(self, other, lambda a, b: a / b)
 
     @_resolved
+    def __rtruediv__(self: "Parameter[PV]", other: "Parameter[PV]"):
+        return self.arithmetic_op(self, other, lambda a, b: b / a)
+
+    @_resolved
+    def __pow__(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+        return self.arithmetic_op(self, other, lambda a, b: a**b)
+
+    @_resolved
+    def __rpow__(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+        return self.arithmetic_op(self, other, lambda a, b: b**a)
+
+    @_resolved
     def __and__(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
         return self.intersect(self, other)
+
+    @_resolved
+    def __rand__(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+        return self.intersect(other, self)
 
     def get_most_narrow(self) -> "Parameter[PV]":
         out = self.get_narrowing_chain()[-1]
