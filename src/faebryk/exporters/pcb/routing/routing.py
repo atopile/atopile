@@ -220,7 +220,7 @@ class PCB_Router:
             if i > 0 and switch_point not in nodes:
                 transformer.insert_via(
                     coord=out_to_pcb(switch_point),
-                    net=pcb_net.name,
+                    net=pcb_net.number,
                     size_drill=(0.45, 0.25),
                 )
 

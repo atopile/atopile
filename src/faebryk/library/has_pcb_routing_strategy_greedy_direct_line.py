@@ -3,9 +3,10 @@
 
 import logging
 from enum import Enum, auto
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 import faebryk.library._F as F
+from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.geometry.basic import Geometry
 
 if TYPE_CHECKING:
@@ -20,9 +21,16 @@ class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.imp
         DIRECT = auto()
         # CHAIN = auto()
 
-    def __init__(self, topology: Topology = Topology.DIRECT, priority: float = 0.0):
+    def __init__(
+        self,
+        topology: Topology = Topology.DIRECT,
+        extra_mifs: Sequence[ModuleInterface] | None = None,
+        extra_pads: Sequence[F.Pad] | None = None,
+    ) -> None:
         super().__init__()
         self.topology = topology
+        self.extra_mifs = extra_mifs or []
+        self.extra_pads = extra_pads or []
 
     def calculate(self, transformer: "PCB_Transformer"):
         from faebryk.exporters.pcb.routing.util import (
@@ -42,7 +50,9 @@ class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.imp
         # might make this very complex though
 
         def get_route_for_mifs_in_net(mifs) -> Route | None:
-            pads = get_pads_pos_of_mifs(mifs)
+            pads = get_pads_pos_of_mifs(mifs + self.extra_mifs, self.extra_pads)
+
+            layers = {pos[3] for pos in pads.values()}
 
             layers = {pos[3] for pos in pads.values()}
             if len(layers) > 1:

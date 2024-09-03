@@ -25,6 +25,7 @@ from faebryk.libs.kicad.fileformats import (
     C_arc,
     C_circle,
     C_effects,
+    C_footprint,
     C_fp_text,
     C_kicad_pcb_file,
     C_line,
@@ -32,6 +33,7 @@ from faebryk.libs.kicad.fileformats import (
     C_rect,
     C_stroke,
     C_text,
+    C_text_layer,
     C_wh,
     C_xy,
     C_xyr,
@@ -420,7 +422,7 @@ class PCB_Transformer:
             # intf has no parent with footprint
             return []
 
-        return [PCB_Transformer._get_pad_pos(fpad) for fpad in fpads]
+        return [PCB_Transformer.get_fpad_pos(fpad) for fpad in fpads]
 
     @staticmethod
     def get_pad_pos(intf: F.Electrical) -> tuple[FPad, Point] | None:
@@ -429,10 +431,10 @@ class PCB_Transformer:
         except ValueError:
             return None
 
-        return PCB_Transformer._get_pad_pos(fpad)
+        return PCB_Transformer.get_fpad_pos(fpad)
 
     @staticmethod
-    def _get_pad_pos(fpad: FPad):
+    def get_fpad_pos(fpad: FPad):
         fp, pad = fpad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()
         if len(pad) > 1:
             raise NotImplementedError(
@@ -530,7 +532,7 @@ class PCB_Transformer:
         self._get_pcb_list_field(obj, prefix=prefix).remove(obj)
 
     def insert_via(
-        self, coord: tuple[float, float], net: str, size_drill: tuple[float, float]
+        self, coord: tuple[float, float], net: int, size_drill: tuple[float, float]
     ):
         self.pcb.vias.append(
             Via(
@@ -548,7 +550,7 @@ class PCB_Transformer:
             GR_Text(
                 text=text,
                 at=at,
-                layer=f"{'F' if front else 'B'}.SilkS",
+                layer=C_text_layer(f"{'F' if front else 'B'}.SilkS"),
                 effects=C_effects(
                     font=font,
                     justify=(
@@ -725,12 +727,13 @@ class PCB_Transformer:
 
         if rot_angle:
             # Rotation vector in kicad footprint objs not relative to footprint rotation
-            # TODO: remove pad rotation, KiCad will do the rotating for us?
+            #  or is it?
             for obj in fp.pads:
-                obj.at.r = (obj.at.r) % 360
+                obj.at.r = (obj.at.r + rot_angle) % 360
             # For some reason text rotates in the opposite direction
+            #  or maybe not?
             for obj in fp.fp_texts + list(fp.propertys.values()):
-                obj.at.r = (obj.at.r - rot_angle) % 360
+                obj.at.r = (obj.at.r + rot_angle) % 360
 
         fp.at = coord
 
@@ -739,17 +742,21 @@ class PCB_Transformer:
 
         if flip:
 
-            def _flip(x):
+            def _flip(x: str):
                 return x.replace("F.", "<F>.").replace("B.", "F.").replace("<F>.", "B.")
 
             fp.layer = _flip(fp.layer)
 
             # TODO: sometimes pads are being rotated by kicad ?!??
-            # for obj in fp.pads:
-            #    obj.layers = [_flip(x) for x in obj.layers]
+            for obj in fp.pads:
+                obj.layers = [_flip(x) for x in obj.layers]
 
-            # for obj in get_all_geos(fp) + fp.fp_texts + list(fp.propertys.values()):
-            #    obj.layer = _flip(obj.layer)
+            for obj in get_all_geos(fp) + fp.fp_texts + list(fp.propertys.values()):
+                if isinstance(obj, C_footprint.C_property):
+                    obj = obj.layer
+                if isinstance(obj, C_fp_text):
+                    obj = obj.layer
+                obj.layer = _flip(obj.layer)
 
         # Label
         if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
@@ -760,7 +767,7 @@ class PCB_Transformer:
                     at=C_xyr(0, 0, rot_angle),
                     effects=C_effects(self.font),
                     uuid=self.gen_uuid(mark=True),
-                    layer="User.5",
+                    layer=C_text_layer("User.5"),
                 )
             )
 

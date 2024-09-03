@@ -61,7 +61,7 @@ class GraphInterface(FaebrykLibObject):
         return set(self.edges.keys())
 
     def is_connected(self, other: "GraphInterface"):
-        return self.G.is_connected(self, other)
+        return self is other or self.G.is_connected(self, other)
 
     # Less graph-specific stuff
 

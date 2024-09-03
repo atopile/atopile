@@ -493,8 +493,13 @@ def get_parent_of_type[T: Node](node: Node, parent_type: type[T]) -> T | None:
     return cast(parent_type, get_parent(node, lambda p: isinstance(p, parent_type)))
 
 
-def get_parent_with_trait[TR: Trait](node: Node, trait: type[TR]):
-    for parent, _ in reversed(node.get_hierarchy()):
+def get_parent_with_trait[TR: Trait](
+    node: Node, trait: type[TR], include_self: bool = True
+):
+    hierarchy = node.get_hierarchy()
+    if not include_self:
+        hierarchy = hierarchy[:-1]
+    for parent, _ in reversed(hierarchy):
         if parent.has_trait(trait):
             return parent, parent.get_trait(trait)
     raise ValueError("No parent with trait found")

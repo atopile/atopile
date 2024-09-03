@@ -67,7 +67,6 @@ from faebryk.library.has_datasheet_defined import has_datasheet_defined
 from faebryk.library.has_footprint_requirement_defined import has_footprint_requirement_defined
 from faebryk.library.has_multi_picker import has_multi_picker
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
-from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
 from faebryk.library.has_single_connection_impl import has_single_connection_impl
 from faebryk.library.is_representable_by_single_value_defined import is_representable_by_single_value_defined
 from faebryk.library.DifferentialPair import DifferentialPair
@@ -96,6 +95,7 @@ from faebryk.library.Net import Net
 from faebryk.library.can_attach_via_pinmap_pinlist import can_attach_via_pinmap_pinlist
 from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
+from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
 from faebryk.library.BJT import BJT
 from faebryk.library.Diode import Diode
 from faebryk.library.MOSFET import MOSFET

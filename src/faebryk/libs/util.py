@@ -101,8 +101,8 @@ def get_key[T, U](haystack: dict[T, U], needle: U) -> T:
 class KeyErrorNotFound(KeyError): ...
 
 
-class KeyErrorAmbiguous(KeyError):
-    def __init__(self, duplicates: list, *args: object) -> None:
+class KeyErrorAmbiguous[T](KeyError):
+    def __init__(self, duplicates: list[T], *args: object) -> None:
         super().__init__(*args)
         self.duplicates = duplicates
 

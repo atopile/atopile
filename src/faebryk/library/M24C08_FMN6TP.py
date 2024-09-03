@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,17 @@ class M24C08_FMN6TP(Module):
         )
 
         self.data.terminate()
-        self.power.decoupled.decouple()
+        self.power.decoupled.decouple().capacitance.merge(
+            F.Range(10 * P.nF, 100 * P.nF)
+        )
+
+        F.has_descriptive_properties_defined.add_properties_to(
+            self,
+            {
+                DescriptiveProperties.manufacturer: "STMicroelectronics",
+                DescriptiveProperties.partno: "M24C08-FMN6TP",
+            },
+        )
 
     @L.rt_field
     def single_electric_reference(self):
@@ -55,3 +66,7 @@ class M24C08_FMN6TP(Module):
 
         for i, e in enumerate(self.e):
             e.set(addr & (1 << i) != 0)
+
+    datasheet = L.f_field(F.has_datasheet_defined)(
+        "https://eu.mouser.com/datasheet/2/389/m24c08_r-1849629.pdf"
+    )
