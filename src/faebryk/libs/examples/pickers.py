@@ -240,8 +240,8 @@ def pick_battery(module: F.Battery):
         bcell = F.ButtonCell()
         replace_tbd_with_any(bcell, recursive=False)
         specialize_module(module, bcell)
-        F.has_multi_picker.add_to_module(
-            bcell, 0, F.has_multi_picker.FunctionPicker(pick_battery)
+        bcell.add(
+            F.has_multi_picker(0, F.has_multi_picker.FunctionPicker(pick_battery))
         )
         return
 
@@ -267,7 +267,7 @@ def pick_battery(module: F.Battery):
 
 
 def pick_switch(module: "_TSwitch[F.Electrical]"):
-    module.add_trait(F.can_attach_to_footprint_symmetrically())
+    module.add(F.can_attach_to_footprint_symmetrically())
     pick_module_by_params(
         module,
         [

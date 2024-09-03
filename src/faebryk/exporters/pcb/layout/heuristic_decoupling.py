@@ -174,7 +174,7 @@ def place_next_to_pad(
 
     pos = _next_to_pad(kfp, kpad, nkfp, nkpad, params)
 
-    module.add_trait(
+    module.add(
         F.has_pcb_position_defined_relative_to_parent(
             (
                 *pos,
@@ -208,9 +208,7 @@ def place_next_to(
     place_next_to_pad(child, parent_pad, params)
 
     if route:
-        intf.add_trait(
-            F.has_pcb_routing_strategy_greedy_direct_line(extra_pads=[parent_pad])
-        )
+        intf.add(F.has_pcb_routing_strategy_greedy_direct_line(extra_pads=[parent_pad]))
 
 
 class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
@@ -250,4 +248,4 @@ class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
     def add_to_all_suitable_modules(cls, node: Node, params: Params | None = None):
         layout = cls(params)
         for c in cls.find_module_candidates(node):
-            c.add_trait(F.has_pcb_layout_defined(layout))
+            c.add(F.has_pcb_layout_defined(layout))

@@ -65,7 +65,7 @@ def attach_random_designators(graph: Graph):
 
         next_num = _get_first_hole(assigned[prefix])
         designator = f"{prefix}{next_num}"
-        n.add_trait(F.has_designator_defined(designator))
+        n.add(F.has_designator_defined(designator))
 
         assigned[prefix].append(next_num)
 
@@ -83,7 +83,7 @@ def override_names_with_designators(graph: Graph):
             logger.warning(
                 f"Renaming: {n.get_trait(F.has_overriden_name).get_name()} -> {name}"
             )
-        n.add_trait(F.has_overriden_name_defined(name))
+        n.add(F.has_overriden_name_defined(name))
 
 
 def attach_hierarchical_designators(graph: Graph):
@@ -107,7 +107,7 @@ def load_designators_from_netlist(
 
     for _, (n, designator) in matched_nodes.items():
         logger.debug(f"Matched {n} to {designator}")
-        n.add_trait(F.has_designator_defined(designator))
+        n.add(F.has_designator_defined(designator))
 
     logger.info(f"Matched {len(matched_nodes)}/{len(designators)} designators")
     nomatch = {

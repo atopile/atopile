@@ -192,7 +192,7 @@ def attach(component: Module, partno: str, get_model: bool = True):
                 )
             except F.has_pin_association_heuristic.PinMatchException as e:
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
-            component.add_trait(F.can_attach_to_footprint_via_pinmap(pinmap))
+            component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
 
         # footprint
         fp = F.KicadFootprint(
@@ -201,7 +201,7 @@ def attach(component: Module, partno: str, get_model: bool = True):
         )
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
-    F.has_descriptive_properties_defined.add_properties_to(component, {"LCSC": partno})
+    component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
 
     # model done by kicad (in fp)
 
@@ -211,7 +211,7 @@ class LCSC(Supplier):
         assert isinstance(part.part, LCSC_Part)
         attach(component=module, partno=part.part.partno)
         if part.info is not None:
-            F.has_descriptive_properties_defined.add_properties_to(module, part.info)
+            module.add(F.has_descriptive_properties_defined(part.info))
 
 
 class LCSC_Part(Part):

@@ -20,7 +20,7 @@ class can_be_decoupled_defined(F.can_be_decoupled.impl()):
         capacitor = obj.add(F.Capacitor(), "capacitor")
         self.hv.connect_via(capacitor, self.lv)
 
-        obj.add_trait(F.is_decoupled_nodes())
+        obj.add(F.is_decoupled_nodes())
         return capacitor
 
     def is_implemented(self):

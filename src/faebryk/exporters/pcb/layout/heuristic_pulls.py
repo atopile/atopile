@@ -49,4 +49,4 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
     def add_to_all_suitable_modules(cls, node: Node, params: Params | None = None):
         layout = cls(params)
         for c in cls.find_module_candidates(node):
-            c.add_trait(F.has_pcb_layout_defined(layout))
+            c.add(F.has_pcb_layout_defined(layout))

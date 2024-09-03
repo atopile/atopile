@@ -8,6 +8,8 @@ from typing import Callable, Mapping
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.node import Node
+from faebryk.core.trait import TraitImpl
 from faebryk.libs.picker.picker import PickError
 
 logger = logging.getLogger(__name__)
@@ -32,21 +34,11 @@ class has_multi_picker(F.has_picker.impl()):
         @abstractmethod
         def pick(self, module: Module): ...
 
-    def __preinit__(self):
-        self.pickers: list[tuple[int, has_multi_picker.Picker]] = []
+    def __init__(self, prio: int, picker: Picker):
+        super().__init__()
+        self.pickers: list[tuple[int, has_multi_picker.Picker]] = [(prio, picker)]
 
-    def add_picker(self, prio: int, picker: Picker):
-        self.pickers.append((prio, picker))
-        self.pickers = sorted(self.pickers, key=lambda x: x[0])
-
-    @classmethod
-    def add_to_module(cls, module: Module, prio: int, picker: Picker):
-        if not module.has_trait(F.has_picker):
-            module.add_trait(cls())
-
-        t = module.get_trait(F.has_picker)
-        assert isinstance(t, has_multi_picker)
-        t.add_picker(prio, picker)
+    def __preinit__(self): ...
 
     class FunctionPicker(Picker):
         def __init__(self, picker: Callable[[Module], None]):
@@ -77,9 +69,18 @@ class has_multi_picker(F.has_picker.impl()):
 
         for i, k in enumerate(picker_types):
             v = lookup[k]
-            cls.add_to_module(
-                module,
-                # most specific first
-                prio + i,
-                picker_factory(v),
+            module.add(
+                F.has_multi_picker(
+                    # most specific first
+                    prio + i,
+                    picker_factory(v),
+                )
             )
+
+    def handle_duplicate(self, other: TraitImpl, node: Node) -> bool:
+        if not isinstance(other, has_multi_picker):
+            return super().handle_duplicate(other, node)
+
+        other.pickers.extend(self.pickers)
+        other.pickers.sort(key=lambda x: x[0])
+        return False

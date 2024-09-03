@@ -156,7 +156,7 @@ def from_t1_netlist(t1_netlist):
         # Traits --------------------------------------------------
         trait_template = "".join(
             [
-                "self.add_trait({trait_name}(",
+                "self.add({trait_name}(",
                 "    {trait_args}",
                 "))",
             ]
@@ -164,18 +164,18 @@ def from_t1_netlist(t1_netlist):
 
         traits = []
 
-        def add_trait(name, args):
+        def add(name, args):
             traits.append(trait_template.format(trait_name=name, trait_args=args))
 
-        add_trait(
+        add(
             "has_defined_footprint_pinmap",
             dict_to_str({k: v[0].format(name="self") for k, v in pinmap.items()}),
         )
 
         if component["real"]:
-            add_trait("has_defined_type_description", str_to_str(component["value"]))
+            add("has_defined_type_description", str_to_str(component["value"]))
 
-            add_trait(
+            add(
                 "has_defined_footprint",
                 "KicadFootprint({})".format(
                     str_to_str(component["properties"]["footprint"])

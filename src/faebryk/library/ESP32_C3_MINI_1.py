@@ -53,12 +53,13 @@ class ESP32_C3_MINI_1(Module):
         self.chip_enable.connect(e.enable)
         self.chip_enable.pulled.pull(up=True)
 
-        F.has_descriptive_properties_defined.add_properties_to(
-            self,
-            {
-                DescriptiveProperties.manufacturer: "Espressif Systems",
-                DescriptiveProperties.partno: "ESP32-C3-MINI-1U-H4",
-            },
+        self.add(
+            F.has_descriptive_properties_defined(
+                {
+                    DescriptiveProperties.manufacturer: "Espressif Systems",
+                    DescriptiveProperties.partno: "ESP32-C3-MINI-1U-H4",
+                },
+            )
         )
 
     @L.rt_field

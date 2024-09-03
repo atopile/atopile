@@ -47,7 +47,7 @@ class ESP32_C3(Module):
         # connect all logic references
         # TODO: set correctly for each power domain
         # ref = F.ElectricLogic.connect_all_module_references(self)
-        # self.add_trait(F.has_single_electric_reference_defined(ref))
+        # self.add(F.has_single_electric_reference_defined(ref))
 
         # set power domain constraints to recommended operating conditions
         for power_domain in [self.vdd3p3_rtc, self.vdd3p3, self.vdda]:
@@ -155,16 +155,16 @@ class ESP32_C3(Module):
     #            return config
 
     #    for serial in self.serial:
-    #        serial.add_trait(
+    #        serial.add(
     #            is_esphome_bus_defined(f"uart_{self.serial.index(serial)}")
     #        )
-    #        serial.add_trait(_uart_esphome_config())
+    #        serial.add(_uart_esphome_config())
 
     #    for i, gpio in enumerate(self.gpio):
-    #        gpio.add_trait(is_esphome_bus_defined(f"GPIO{i}"))
+    #        gpio.add(is_esphome_bus_defined(f"GPIO{i}"))
 
-    #    self.i2c.add_trait(is_esphome_bus_defined("i2c_0"))
-    #    self.i2c.add_trait(_i2c_esphome_config())
+    #    self.i2c.add(is_esphome_bus_defined("i2c_0"))
+    #    self.i2c.add(_i2c_esphome_config())
     #    self.i2c.frequency.merge(
     #        Set(
     #            [
@@ -180,7 +180,7 @@ class ESP32_C3(Module):
     #        )
     #    )
 
-    #    self.add_trait(
+    #    self.add(
     #        has_esphome_config_defined(
     #            {
     #                "esp32": {

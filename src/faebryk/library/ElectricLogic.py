@@ -60,7 +60,7 @@ class ElectricLogic(F.Logic):
 
             self.signal.connect_via(resistor, self.ref.hv if up else self.ref.lv)
 
-            obj.add_trait(ElectricLogic.has_pulls_defined(up_r, down_r))
+            obj.add(ElectricLogic.has_pulls_defined(up_r, down_r))
             return resistor
 
     class LinkIsolatedReference(_TLinkDirectShallow):

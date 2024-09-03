@@ -45,12 +45,13 @@ class M24C08_FMN6TP(Module):
             F.Range(10 * P.nF, 100 * P.nF)
         )
 
-        F.has_descriptive_properties_defined.add_properties_to(
-            self,
-            {
-                DescriptiveProperties.manufacturer: "STMicroelectronics",
-                DescriptiveProperties.partno: "M24C08-FMN6TP",
-            },
+        self.add(
+            F.has_descriptive_properties_defined(
+                {
+                    DescriptiveProperties.manufacturer: "STMicroelectronics",
+                    DescriptiveProperties.partno: "M24C08-FMN6TP",
+                },
+            )
         )
 
     @L.rt_field

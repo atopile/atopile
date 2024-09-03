@@ -55,7 +55,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                     F.has_descriptive_properties
                 ).get_properties()[DescriptiveProperties.partno]
 
-            requirement.add_trait(F.has_footprint_requirement_defined(footprint))
+            requirement.add(F.has_footprint_requirement_defined(footprint))
 
             self.test()
 
@@ -170,7 +170,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 r.slew_rate.merge(F.Range.upper_bound(1 * P.MV / P.us)),
             )
         )
-        requirement.add_trait(
+        requirement.add(
             F.has_descriptive_properties_defined(
                 {
                     DescriptiveProperties.partno: "LMV321IDBVR",
@@ -198,7 +198,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 r.slew_rate.merge(F.Range.upper_bound(1 * P.MV / P.us)),
             )
         )
-        requirement.add_trait(
+        requirement.add(
             F.has_descriptive_properties_defined(
                 {
                     "LCSC": "C7972",

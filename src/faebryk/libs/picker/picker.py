@@ -166,10 +166,10 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
         raise PickErrorParams(module, options)
 
     if option.pinmap:
-        module.add_trait(F.can_attach_to_footprint_via_pinmap(option.pinmap))
+        module.add(F.can_attach_to_footprint_via_pinmap(option.pinmap))
 
     option.part.supplier.attach(module, option)
-    module.add_trait(has_part_picked_defined(option.part))
+    module.add(has_part_picked_defined(option.part))
 
     # Merge params from footprint option
     for k, v in (option.params or {}).items():

@@ -44,14 +44,10 @@ class TXS0102DCUR(Module):
         for shifter in self.shifters:
             side_a = shifter.io_a
             # side_a.reference.connect(self.voltage_a_power)
-            side_a.add_trait(
-                F.has_single_electric_reference_defined(self.voltage_a_power)
-            )
+            side_a.add(F.has_single_electric_reference_defined(self.voltage_a_power))
             side_b = shifter.io_b
             # side_b.reference.connect(self.voltage_b_power)
-            side_b.add_trait(
-                F.has_single_electric_reference_defined(self.voltage_b_power)
-            )
+            side_b.add(F.has_single_electric_reference_defined(self.voltage_b_power))
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
     datasheet = L.f_field(F.has_datasheet_defined)(

@@ -23,4 +23,4 @@ class LayoutAbsolute(Layout):
         node = tuple(n for n in node if not n.has_trait(F.has_pcb_position))
 
         for n in node:
-            n.add_trait(F.has_pcb_position_defined_relative_to_parent(self.pos))
+            n.add(F.has_pcb_position_defined_relative_to_parent(self.pos))

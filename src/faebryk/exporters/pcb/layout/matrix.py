@@ -62,7 +62,5 @@ class LayoutMatrix(Layout):
                 )
                 pos = Geometry.abs_pos(self.base, vec_i)
 
-                node[node_index].add_trait(
-                    F.has_pcb_position_defined_relative_to_parent(pos)
-                )
+                node[node_index].add(F.has_pcb_position_defined_relative_to_parent(pos))
                 node_index += 1

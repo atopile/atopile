@@ -40,6 +40,12 @@ class Trait(Node):
 
         return _Impl
 
+    def __new__(cls, *args, **kwargs):
+        if not issubclass(cls, TraitImpl):
+            raise TypeError("Don't instantiate Trait use Trait.impl instead")
+
+        return super().__new__(cls)
+
 
 class TraitImpl(Node):
     _trait: type[Trait]

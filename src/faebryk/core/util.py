@@ -379,7 +379,7 @@ def reversed_bridge(bridge: Node):
             if_in = bridge_trait.get_in()
             if_out = bridge_trait.get_out()
 
-            self.add_trait(F.can_bridge_defined(if_out, if_in))
+            self.add(F.can_bridge_defined(if_out, if_in))
 
     return _reversed_bridge()
 
@@ -452,7 +452,7 @@ def specialize_module[T: Module](
     #    # TODO needed?
     #    if special.has_trait(t.trait):
     #        continue
-    #    special.add_trait(t)
+    #    special.add(t)
 
     general.specialized.connect(special.specializes)
 
@@ -628,7 +628,7 @@ def use_interface_names_as_net_names(node: Node, name: str | None = None):
             )
 
         net = F.Net()
-        net.add_trait(F.has_overriden_name_defined(net_name))
+        net.add(F.has_overriden_name_defined(net_name))
         net.part_of.connect(el_if)
         logger.debug(f"Created {net_name} for {el_if}")
         nets[net_name] = net, el_if

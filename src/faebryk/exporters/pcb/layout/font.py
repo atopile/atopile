@@ -70,7 +70,7 @@ class FontLayout(Layout):
             )
 
         for coord, node in zip(self.coords, nodes_to_distribute):
-            node.add_trait(
+            node.add(
                 F.has_pcb_position_defined_relative_to_parent(
                     (
                         *coord,

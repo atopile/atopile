@@ -3,7 +3,8 @@
 
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+from faebryk.core.node import Node
+from faebryk.core.trait import TraitImpl
 
 
 class has_descriptive_properties_defined(F.has_descriptive_properties.impl()):
@@ -11,15 +12,13 @@ class has_descriptive_properties_defined(F.has_descriptive_properties.impl()):
         super().__init__()
         self.properties = properties
 
-    def add_properties(self, properties: dict[str, str]):
-        self.properties.update(properties)
-
     def get_properties(self) -> dict[str, str]:
         return self.properties
 
-    @classmethod
-    def add_properties_to(cls, module: Module, properties: dict[str, str]):
-        if not module.has_trait(F.has_descriptive_properties):
-            module.add_trait(cls(properties))
-        else:
-            module.get_trait(F.has_descriptive_properties).add_properties(properties)
+    def handle_duplicate(self, other: TraitImpl, node: Node) -> bool:
+        if not isinstance(other, F.has_descriptive_properties_defined):
+            self.properties.update(other.get_properties())
+            return super().handle_duplicate(other, node)
+
+        other.properties.update(self.properties)
+        return False

@@ -71,5 +71,5 @@ class Net(Module):
     @classmethod
     def with_name(cls, name: str) -> "Net":
         n = cls()
-        n.add_trait(F.has_overriden_name_defined(name))
+        n.add(F.has_overriden_name_defined(name))
         return n

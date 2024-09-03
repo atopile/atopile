@@ -25,6 +25,7 @@ class TestBasicLibrary(unittest.TestCase):
 
     def test_imports(self):
         import faebryk.library._F as F
+        from faebryk.core.trait import Trait, TraitImpl
 
         # get all symbols in F
         symbols = {
@@ -35,6 +36,8 @@ class TestBasicLibrary(unittest.TestCase):
             and issubclass(v, Node)
             # check if constructor has no args
             and v.__init__.__code__.co_argcount == 1
+            # no trait base
+            and (not issubclass(v, Trait) or issubclass(v, TraitImpl))
         }
 
         for k, v in symbols.items():

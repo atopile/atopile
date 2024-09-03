@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def apply_layouts(app: Module):
     if not app.has_trait(F.has_pcb_position):
-        app.add_trait(
+        app.add(
             F.has_pcb_position_defined(
                 F.has_pcb_position.Point((0, 0, 0, F.has_pcb_position.layer_type.NONE))
             )

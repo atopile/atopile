@@ -123,14 +123,14 @@ class RS485_Bus_Protection(Module):
         # PCB layout
         Point = F.has_pcb_position.Point
         L = F.has_pcb_position.layer_type
-        self.gnd_couple_resistor.add_trait(
+        self.gnd_couple_resistor.add(
             F.has_pcb_layout_defined(
                 LayoutAbsolute(
                     Point((-10, 0, 90, L.NONE)),
                 )
             )
         )
-        self.add_trait(
+        self.add(
             F.has_pcb_layout_defined(
                 LayoutTypeHierarchy(
                     layouts=[

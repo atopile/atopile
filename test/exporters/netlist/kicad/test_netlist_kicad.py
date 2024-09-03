@@ -40,7 +40,7 @@ def _test_netlist_graph():
         r.get_trait(F.can_attach_to_footprint).attach(
             F.SMDTwoPin(F.SMDTwoPin.Type._0805)
         )
-        r.add_trait(
+        r.add(
             F.has_designator_defined(
                 resistor1.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
             )

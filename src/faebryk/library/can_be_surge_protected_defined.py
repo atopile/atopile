@@ -26,7 +26,7 @@ class can_be_surge_protected_defined(F.can_be_surge_protected.impl()):
                 protect_if.connect_via(tvs, self.low_potential)
                 tvss.append(tvs)
 
-        obj.add_trait(F.is_surge_protected_defined(tvss))
+        obj.add(F.is_surge_protected_defined(tvss))
         return tvss
 
     def is_implemented(self):

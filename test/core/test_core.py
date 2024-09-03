@@ -124,19 +124,19 @@ class TestTraits(unittest.TestCase):
         impl2_inst = impl2()
 
         # Test getting trait
-        obj.add_trait(trait1_inst)
+        obj.add(trait1_inst)
         self.assertTrue(obj.has_trait(trait1))
         self.assertEqual(trait1_inst, obj.get_trait(trait1))
         self.assertEqual(trait1_inst.do(), obj.get_trait(trait1).do())
 
         # Test double add
-        self.assertRaises(NodeAlreadyBound, lambda: obj.add_trait(trait1_inst))
+        self.assertRaises(NodeAlreadyBound, lambda: obj.add(trait1_inst))
 
         # Test replace
-        obj.add_trait(cfgtrait1_inst)
+        obj.add(cfgtrait1_inst)
         self.assertEqual(cfgtrait1_inst, obj.get_trait(trait1))
         self.assertEqual(cfgtrait1_inst.do(), obj.get_trait(trait1).do())
-        obj.add_trait(trait1_inst)
+        obj.add(trait1_inst)
         self.assertEqual(trait1_inst, obj.get_trait(trait1))
 
         # Test remove
@@ -147,15 +147,15 @@ class TestTraits(unittest.TestCase):
 
         # Test get obj
         self.assertRaises(TraitUnbound, lambda: trait1_inst.obj)
-        obj.add_trait(trait1_inst)
+        obj.add(trait1_inst)
         _impl: TraitImpl = cast(TraitImpl, obj.get_trait(trait1))
         self.assertEqual(_impl.obj, obj)
         obj.del_trait(trait1)
         self.assertRaises(TraitUnbound, lambda: trait1_inst.obj)
 
         # Test specific override
-        obj.add_trait(impl2_inst)
-        obj.add_trait(trait1_inst)
+        obj.add(impl2_inst)
+        obj.add(trait1_inst)
         self.assertEqual(impl2_inst, obj.get_trait(trait1))
 
         # Test child delete

@@ -32,6 +32,6 @@ class TXS0102DCUR_UART(Module):
         self.voltage_b_bus.tx.connect(self.buffer.shifters[1].io_b)
 
         # TODO
-        # self.add_trait(
+        # self.add(
         #    can_bridge_defined(self.voltage_a_bus, self.voltage_b_bus)
         # )

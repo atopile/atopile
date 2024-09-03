@@ -434,17 +434,9 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
 
     # Trait stuff ----------------------------------------------------------------------
 
-    # TODO type checking InterfaceTrait -> Interface
     @deprecated("Just use add")
     def add_trait[_TImpl: "TraitImpl"](self, trait: _TImpl) -> _TImpl:
-        from faebryk.core.trait import Trait, TraitImpl
-
-        assert isinstance(trait, TraitImpl), ("not a traitimpl:", trait)
-        assert isinstance(trait, Trait)
-
-        self.add(trait)
-
-        return trait
+        return self.add(trait)
 
     def _find[V: "Trait"](self, trait: type[V], only_implemented: bool) -> V | None:
         from faebryk.core.trait import TraitImpl

@@ -57,10 +57,10 @@ class Resistor(Module):
 
             self.resistance.override(F.Constant(0.0 * P.ohm))
             self.unnamed[0].connect(self.unnamed[1])
-            self.add_trait(has_part_picked_remove())
+            self.add(has_part_picked_remove())
 
-        F.has_multi_picker.add_to_module(
-            self, -100, F.has_multi_picker.FunctionPicker(replace_zero)
+        self.add(
+            F.has_multi_picker(-100, F.has_multi_picker.FunctionPicker(replace_zero))
         )
 
     def get_voltage_drop_by_current_resistance(self, current_A: Parameter) -> Parameter:

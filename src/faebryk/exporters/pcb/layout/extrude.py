@@ -49,4 +49,4 @@ class LayoutExtrude(Layout):
             )
             pos = Geometry.abs_pos(self.base, vec_i)
 
-            n.add_trait(F.has_pcb_position_defined_relative_to_parent(pos))
+            n.add(F.has_pcb_position_defined_relative_to_parent(pos))

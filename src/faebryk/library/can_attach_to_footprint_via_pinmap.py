@@ -10,5 +10,5 @@ class can_attach_to_footprint_via_pinmap(F.can_attach_to_footprint.impl()):
         self.pinmap = pinmap
 
     def attach(self, footprint: F.Footprint):
-        self.obj.add_trait(F.has_footprint_defined(footprint))
+        self.obj.add(F.has_footprint_defined(footprint))
         footprint.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)

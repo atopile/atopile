@@ -245,8 +245,8 @@ class PCB_Transformer:
             )
             fp = footprints[(fp_ref, fp_name)]
 
-            g_fp.add_trait(self.has_linked_kicad_footprint_defined(fp, self))
-            node.add_trait(self.has_linked_kicad_footprint_defined(fp, self))
+            g_fp.add(self.has_linked_kicad_footprint_defined(fp, self))
+            node.add(self.has_linked_kicad_footprint_defined(fp, self))
 
             pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
             for fpad in g_fp.get_children(direct_only=True, types=ModuleInterface):
@@ -255,9 +255,7 @@ class PCB_Transformer:
                     for pad in fp.pads
                     if pad.name == pin_names[cast_assert(FPad, fpad)]
                 ]
-                fpad.add_trait(
-                    PCB_Transformer.has_linked_kicad_pad_defined(fp, pads, self)
-                )
+                fpad.add(PCB_Transformer.has_linked_kicad_pad_defined(fp, pads, self))
 
         attached = {
             n: t.get_fp()

@@ -73,8 +73,8 @@ class App(Module):
                 ),
             ]
         )
-        self.add_trait(F.has_pcb_layout_defined(layout))
-        self.add_trait(F.has_pcb_position_defined(Point((50, 50, 0, L.NONE))))
+        self.add(F.has_pcb_layout_defined(layout))
+        self.add(F.has_pcb_position_defined(Point((50, 50, 0, L.NONE))))
 
         LayoutHeuristicElectricalClosenessDecouplingCaps.add_to_all_suitable_modules(
             self

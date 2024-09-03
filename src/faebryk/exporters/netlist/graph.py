@@ -35,7 +35,7 @@ def get_or_set_name_and_value_of_node(c: Module):
     )
 
     if not c.has_trait(F.has_overriden_name):
-        c.add_trait(
+        c.add(
             F.has_overriden_name_defined(
                 "{}[{}:{}]".format(
                     c.get_full_name(),
@@ -45,9 +45,7 @@ def get_or_set_name_and_value_of_node(c: Module):
             )
         )
 
-    F.has_descriptive_properties_defined.add_properties_to(
-        c, {"faebryk_name": c.get_full_name()}
-    )
+    c.add(F.has_descriptive_properties_defined({"faebryk_name": c.get_full_name()}))
 
     return c.get_trait(F.has_overriden_name).get_name(), value
 
@@ -133,7 +131,7 @@ def attach_nets_and_kicad_info(g: Graph):
     for n, fp in node_fps.items():
         if fp.has_trait(can_represent_kicad_footprint):
             continue
-        fp.add_trait(can_represent_kicad_footprint_via_attached_component(n, Gclosed))
+        fp.add(can_represent_kicad_footprint_via_attached_component(n, Gclosed))
 
     for fp in node_fps.values():
         # TODO use graph
