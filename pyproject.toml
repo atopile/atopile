@@ -3,12 +3,12 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.urls]
-"Bug Tracker" = "https://github.com/faebryk/faebryk/issues "
+"Bug Tracker" = "https://github.com/atopile/faebryk/issues "
 
 
 [tool.poetry]
 name = "faebryk"
-version = "4.0.0"
+version = "4.0.1"
 authors = ["ioannis_iteng <ioannis@iteng.nl>"]
 readme = ["README.md", "LICENSE"]
 license = "MIT"
@@ -18,8 +18,8 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-repository = "https://github.com/faebryk/faebryk"
-homepage = "https://github.com/faebryk/faebryk"
+repository = "https://github.com/atopile/faebryk"
+homepage = "https://github.com/atopile/faebryk"
 
 [tool.poetry.scripts]
 faebryk = "faebryk.tools.main:__main__"

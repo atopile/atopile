@@ -4,15 +4,15 @@
 
 ### \[fˈɛbɹɪk\]
 
-<a href="https://github.com/faebryk/faebryk">
+<a href="https://github.com/atopile/faebryk">
 <img height=300 width=300 src="./faebryk_logo.png"/>
 </a>
 <br/>
 
 Open-source software-defined EDA tool
 
-[![Version](https://img.shields.io/github/v/tag/faebryk/faebryk)](https://github.com/faebryk/faebryk/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/faebryk/faebryk/blob/main/LICENSE) [![Pull requests open](https://img.shields.io/github/issues-pr/faebryk/faebryk)](https://github.com/faebryk/faebryk/pulls) [![Issues open](https://img.shields.io/github/issues/faebryk/faebryk)](https://github.com/faebryk/faebryk/issues)
-[![Discord](https://img.shields.io/discord/907675333350809600?label=Discord)](https://discord.com/channels/907675333350809600) [![PyPI - Downloads](https://img.shields.io/pypi/dm/faebryk?label=PyPi%20Downloads)](https://pypi.org/project/faebryk/) [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/faebryk/faebryk)](https://github.com/faebryk/faebryk/commits/main)
+[![Version](https://img.shields.io/github/v/tag/atopile/faebryk)](https://github.com/atopile/faebryk/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/atopile/faebryk/blob/main/LICENSE) [![Pull requests open](https://img.shields.io/github/issues-pr/atopile/faebryk)](https://github.com/atopile/faebryk/pulls) [![Issues open](https://img.shields.io/github/issues/atopile/faebryk)](https://github.com/atopile/faebryk/issues)
+[![Discord](https://img.shields.io/discord/1022538123915300865?label=Discord)](https://discord.com/channels/1022538123915300865) [![PyPI - Downloads](https://img.shields.io/pypi/dm/faebryk?label=PyPi%20Downloads)](https://pypi.org/project/faebryk/) [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/atopile/faebryk)](https://github.com/atopile/faebryk/commits/main)
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -108,8 +108,8 @@ The strength of the community can really shine with the development of importers
 ### Where \[do we develop faebryk\]
 
 faebryk is being developed completely in the open on Github.
-All the information you need to start using and contributing to faebryk will be in or linked to from [this repository](https://github.com/faebryk/faebryk).
-If you have any questions you can ask them on our [Discord](https://discord.gg/95jYuPmnUW).
+All the information you need to start using and contributing to faebryk will be in or linked to from [this repository](https://github.com/atopile/faebryk).
+If you have any questions you can ask them on our [Discord](https://discord.gg/nr5V3QRUd3).
 For pull requests and bug-reports, see our [contributing guidelines](docs/CONTRIBUTING.md).
 
 ---
@@ -120,7 +120,7 @@ For pull requests and bug-reports, see our [contributing guidelines](docs/CONTRI
 Setup
 
 ```bash
-> git clone https://github.com/faebryk/faebryk.git
+> git clone https://github.com/atopile/faebryk.git
 > cd faebryk
 >
 > poetry install
@@ -135,7 +135,7 @@ Running examples
 
 ### Versioning
 
-faebryk uses [semantic versioning](https://semver.org/) in the [releases](https://github.com/faebryk/faebryk/releases).
+faebryk uses [semantic versioning](https://semver.org/) in the [releases](https://github.com/atopile/faebryk/releases).
 
 As feabryk is still in the early stages of development new releases will have a lot of (breaking) changes in them.
 Our [roadmap](#versioning)(TODO) will show you where the project is going to and what you can expect in future releases.
@@ -166,6 +166,6 @@ Community support is provided via Discord; see the Resources below for details.
 
 ### Resources
 
-- Source Code: <https://github.com/faebryk/faebryk>
-- Chat: Real-time chat happens in faebryk's Discord Server. Use this Discord [Invite](https://discord.gg/95jYuPmnUW) to register
-- Issues: <https://github.com/faebryk/faebryk/issues>
+- Source Code: <https://github.com/atopile/faebryk>
+- Chat: Real-time chat happens in atopile's Discord Server. Use this Discord [Invite](https://discord.gg/nr5V3QRUd3) to register
+- Issues: <https://github.com/atopile/faebryk/issues>
