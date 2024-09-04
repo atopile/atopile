@@ -7,11 +7,11 @@ from itertools import pairwise
 from textwrap import indent
 from typing import Callable
 
-import faebryk.core.util as core_util
 import faebryk.library._F as F
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
 from faebryk.libs.library import L
 from faebryk.libs.util import times
 
@@ -69,9 +69,7 @@ class TestPerformance(unittest.TestCase):
                 def __preinit__(self):
                     self._timings.add("setup")
 
-                    core_util.connect_all_interfaces(
-                        r.unnamed[0] for r in self.resistors
-                    )
+                    F.Electrical.connect(*(r.unnamed[0] for r in self.resistors))
                     self._timings.add("connect")
 
             return App
@@ -91,22 +89,23 @@ class TestPerformance(unittest.TestCase):
             G = app.get_graph()
             timings.add("graph")
 
-            core_util.node_projected_graph(G)
+            G.node_projection()
             timings.add("get_all_nodes_graph")
 
             for n in [app, app.resistors[0]]:
+                assert isinstance(n, Module)
                 name = type(n).__name__[0]
 
-                n.get_node_children_all()
+                n.get_children(direct_only=False, types=Node)
                 timings.add(f"get_node_children_all {name}")
 
-                core_util.get_node_tree(n)
+                n.get_tree(types=Node)
                 timings.add(f"get_node_tree {name}")
 
-                core_util.get_mif_tree(n)
+                n.get_tree(types=ModuleInterface)
                 timings.add(f"get_mif_tree {name}")
 
-                core_util.get_node_direct_mods_or_mifs(n)
+                n.get_children(direct_only=True, types=Node)
                 timings.add(f"get_module_direct_children {name}")
 
                 n.get_children(direct_only=True, types=ModuleInterface)

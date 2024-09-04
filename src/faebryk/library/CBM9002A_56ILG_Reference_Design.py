@@ -48,9 +48,7 @@ class CBM9002A_56ILG_Reference_Design(Module):
     # ----------------------------------------
     def __preinit__(self):
         gnd = self.vcc.lv
-        from faebryk.core.util import connect_module_mifs_by_name
-
-        connect_module_mifs_by_name(self, self.mcu, allow_partial=True)
+        self.connect_interfaces_by_name(self.mcu, allow_partial=True)
 
         self.reset.signal.connect_via(
             self.reset_lowpass_cap, gnd

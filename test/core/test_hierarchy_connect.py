@@ -10,7 +10,6 @@ from faebryk.core.core import logger as core_logger
 from faebryk.core.link import LinkDirect, LinkDirectShallow, _TLinkDirectShallow
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.util import specialize_interface
 from faebryk.libs.library import L
 from faebryk.libs.util import print_stack, times
 
@@ -200,8 +199,8 @@ class TestHierarchy(unittest.TestCase):
         mifs[0].connect(mifs[1])
         mifs[1].connect(mifs[2])
 
-        specialize_interface(mifs[0], mifs_special[0])
-        specialize_interface(mifs[2], mifs_special[2])
+        mifs[0].specialize(mifs_special[0])
+        mifs[2].specialize(mifs_special[2])
 
         self.assertTrue(mifs_special[0].is_connected_to(mifs_special[2]))
 
@@ -212,8 +211,8 @@ class TestHierarchy(unittest.TestCase):
         mifs_special[0].connect(mifs_special[1])
         mifs_special[1].connect(mifs_special[2])
 
-        specialize_interface(mifs[0], mifs_special[0])
-        specialize_interface(mifs[2], mifs_special[2])
+        mifs[0].specialize(mifs_special[0])
+        mifs[2].specialize(mifs_special[2])
 
         self.assertTrue(mifs[0].is_connected_to(mifs[2]))
 
@@ -226,8 +225,8 @@ class TestHierarchy(unittest.TestCase):
         mifs[0].connect(mifs[1], linkcls=_Link)
         mifs[1].connect(mifs[2])
 
-        specialize_interface(mifs[0], mifs_special[0])
-        specialize_interface(mifs[2], mifs_special[2])
+        mifs[0].specialize(mifs_special[0])
+        mifs[2].specialize(mifs_special[2])
 
         self.assertIsInstance(mifs_special[0].is_connected_to(mifs_special[2]), _Link)
 

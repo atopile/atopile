@@ -1,12 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from enum import Enum
 from typing import Self, SupportsAbs
 
 import numpy as np
 
 from faebryk.core.parameter import Parameter, _resolved
-from faebryk.libs.units import Quantity
+from faebryk.libs.units import Quantity, UnitsContainer, to_si_str
 
 
 class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
@@ -98,3 +99,12 @@ class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
         if isinstance(self.value, Parameter):
             return self.value
         return super().try_compress()
+
+    def _max(self):
+        return self.value
+
+    def _as_unit(self, unit: UnitsContainer, base: int, required: bool) -> str:
+        return to_si_str(self.value, unit)
+
+    def _enum_parameter_representation(self, required: bool) -> str:
+        return self.value.name if isinstance(self.value, Enum) else str(self.value)

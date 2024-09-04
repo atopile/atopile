@@ -12,14 +12,10 @@ logger = logging.getLogger(__name__)
 
 def export_parameters_to_file(module: Module, path: Path):
     """Write all parameters of the given module to a file."""
-    from faebryk.core.util import get_all_modules
-
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
     parameters = dict[str, list[dict[str, Parameter]]]()
 
-    for m in {
-        _m.get_most_special() for _m in get_all_modules(module.get_most_special())
-    }:
+    for m in module.get_children_modules():
         parameters[m.get_full_name(types=True).split(".", maxsplit=1)[-1]] = [
             {param.get_full_name().split(".")[-1]: param}
             for param in m.get_children(direct_only=True, types=Parameter)

@@ -9,7 +9,6 @@ import faebryk.library._F as F
 from faebryk.core.core import logger as core_logger
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
-from faebryk.core.util import specialize_module
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -342,7 +341,7 @@ class TestParameters(unittest.TestCase):
 
             app = App()
 
-            bcell = specialize_module(app.battery, F.ButtonCell())
+            bcell = app.battery.specialize(F.ButtonCell())
             bcell.voltage.merge(3 * P.V)
             bcell.capacity.merge(F.Range.from_center(225 * P.mAh, 50 * P.mAh))
             bcell.material.merge(F.ButtonCell.Material.Lithium)

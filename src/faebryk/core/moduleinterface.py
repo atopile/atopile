@@ -22,7 +22,7 @@ from faebryk.core.link import (
 )
 from faebryk.core.node import Node
 from faebryk.core.trait import Trait
-from faebryk.libs.util import once, print_stack
+from faebryk.libs.util import cast_assert, once, print_stack
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +137,32 @@ class ModuleInterface(Node):
 
     def __preinit__(self) -> None: ...
 
+    @staticmethod
+    def _get_connected(gif: GraphInterface):
+        assert isinstance(gif.node, ModuleInterface)
+        connections = gif.edges.items()
+
+        # check if ambiguous links between mifs
+        assert len(connections) == len({c[0] for c in connections})
+
+        return {
+            cast_assert(ModuleInterface, s.node): link
+            for s, link in connections
+            if s.node is not gif.node
+        }
+
+    def get_connected(self):
+        return self._get_connected(self.connected)
+
+    def get_specialized(self):
+        return self._get_connected(self.specialized)
+
+    def get_specializes(self):
+        return self._get_connected(self.specializes)
+
     def _connect_siblings_and_connections(
         self, other: "ModuleInterface", linkcls: type[Link]
     ) -> Self:
-        from faebryk.core.util import get_connected_mifs_with_link
-
         if other is self:
             return self
 
@@ -158,15 +179,19 @@ class ModuleInterface(Node):
             logger.debug(f"MIF connection: {self} to {other}")
 
         def cross_connect(
-            s_group: dict[ModuleInterface, type[Link]],
-            d_group: dict[ModuleInterface, type[Link]],
+            s_group: dict[ModuleInterface, type[Link] | Link],
+            d_group: dict[ModuleInterface, type[Link] | Link],
             hint=None,
         ):
             if logger.isEnabledFor(logging.DEBUG) and hint is not None:
                 logger.debug(f"Connect {hint} {s_group} -> {d_group}")
 
             for s, slink in s_group.items():
+                if isinstance(slink, Link):
+                    slink = type(slink)
                 for d, dlink in d_group.items():
+                    if isinstance(dlink, Link):
+                        dlink = type(dlink)
                     # can happen while connection trees are resolving
                     if s is d:
                         continue
@@ -174,25 +199,14 @@ class ModuleInterface(Node):
 
                     s._connect_across_hierarchies(d, linkcls=link)
 
-        def _get_connected_mifs(gif: GraphInterface):
-            return {k: type(v) for k, v in get_connected_mifs_with_link(gif).items()}
-
         # Connect to all connections
-        s_con = _get_connected_mifs(self.connected) | {self: linkcls}
-        d_con = _get_connected_mifs(other.connected) | {other: linkcls}
+        s_con = self.get_connected() | {self: linkcls}
+        d_con = other.get_connected() | {other: linkcls}
         cross_connect(s_con, d_con, "connections")
 
         # Connect to all siblings
-        s_sib = (
-            _get_connected_mifs(self.specialized)
-            | _get_connected_mifs(self.specializes)
-            | {self: linkcls}
-        )
-        d_sib = (
-            _get_connected_mifs(other.specialized)
-            | _get_connected_mifs(other.specializes)
-            | {other: linkcls}
-        )
+        s_sib = self.get_specialized() | self.get_specializes() | {self: linkcls}
+        d_sib = other.get_specialized() | other.get_specializes() | {other: linkcls}
         cross_connect(s_sib, d_sib, "siblings")
 
         return self
@@ -202,12 +216,12 @@ class ModuleInterface(Node):
         ...
 
     def _try_connect_down(self, other: "ModuleInterface", linkcls: type[Link]) -> None:
-        from faebryk.core.util import zip_children_by_name
-
         if not isinstance(other, type(self)):
             return
 
-        for _, (src, dst) in zip_children_by_name(self, other, ModuleInterface).items():
+        for _, (src, dst) in self.zip_children_by_name_with(
+            other, ModuleInterface
+        ).items():
             if src is None or dst is None:
                 continue
             src.connect(dst, linkcls=linkcls)
@@ -233,12 +247,10 @@ class ModuleInterface(Node):
             assert isinstance(b, ModuleInterface)
             return a.is_connected_to(b)
 
-        from faebryk.core.util import zip_children_by_name
-
         connection_map = [
             (src_i, dst_i, _is_connected(src_i, dst_i))
-            for src_i, dst_i in zip_children_by_name(
-                src_m, dst_m, sub_type=ModuleInterface
+            for src_i, dst_i in src_m.zip_children_by_name_with(
+                dst_m, sub_type=ModuleInterface
             ).values()
         ]
 
@@ -311,12 +323,15 @@ class ModuleInterface(Node):
             if isinstance(gif.node, ModuleInterface) and gif.node is not self
         }
 
-    def connect(self, other: Self, linkcls=None) -> Self:
+    def connect(self: Self, *other: Self, linkcls=None) -> Self:
         # TODO consider some type of check at the end within the graph instead
         # assert type(other) is type(self)
         if linkcls is None:
             linkcls = LinkDirect
-        return self._connect_siblings_and_connections(other, linkcls=linkcls)
+
+        for o in other:
+            self._connect_siblings_and_connections(o, linkcls=linkcls)
+        return other[-1] if other else self
 
     def connect_via(
         self, bridge: Node | Sequence[Node], other: Self | None = None, linkcls=None
@@ -338,3 +353,16 @@ class ModuleInterface(Node):
 
     def is_connected_to(self, other: "ModuleInterface"):
         return self.connected.is_connected(other.connected)
+
+    def specialize[T: ModuleInterface](self, special: T) -> T:
+        logger.debug(f"Specializing MIF {self} with {special}")
+
+        assert isinstance(special, type(self))
+
+        # This is doing the heavy lifting
+        self.connect(special)
+
+        # Establish sibling relationship
+        self.specialized.connect(special.specializes)
+
+        return special

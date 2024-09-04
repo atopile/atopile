@@ -124,9 +124,7 @@ class PCB_Router:
         )
 
     def route_all(self):
-        from faebryk.core.util import get_all_nodes_of_type
-
-        nets = get_all_nodes_of_type(self.transformer.graph, F.Net)
+        nets = self.transformer.graph.nodes_of_type(F.Net)
 
         # TODO add net picking heuristic
         for net in nets:
@@ -233,10 +231,8 @@ class PCB_Router:
                 arc=False,
             )
 
-    def route_if_net(self, mif):
-        from faebryk.core.util import get_net
-
-        net = get_net(mif)
+    def route_if_net(self, mif: F.Electrical):
+        net = mif.get_net()
         assert net is not None
         self.route_net(net)
 

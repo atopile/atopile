@@ -11,7 +11,6 @@ import typer
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.util import specialize_module
 from faebryk.libs.examples.buildutil import apply_design_to_pcb
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.units import P
@@ -30,7 +29,7 @@ class App(Module):
         self.lowpass.response.merge(F.Filter.Response.LOWPASS)
 
         # Specialize
-        special = specialize_module(self.lowpass, F.FilterElectricalLC())
+        special = self.lowpass.specialize(F.FilterElectricalLC())
 
         # Construct
         special.get_trait(F.has_construction_dependency).construct()

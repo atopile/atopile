@@ -9,6 +9,7 @@ from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import PickError, has_part_picked_remove
 from faebryk.libs.units import P, Quantity
+from faebryk.libs.util import join_if_non_empty
 
 
 class Resistor(Module):
@@ -27,21 +28,15 @@ class Resistor(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        from faebryk.core.util import (
-            as_unit,
-            as_unit_with_tolerance,
-        )
-
         return F.has_simple_value_representation_based_on_params(
             (
                 self.resistance,
                 self.rated_power,
             ),
-            lambda ps: " ".join(
-                filter(
-                    None,
-                    [as_unit_with_tolerance(ps[0], "Ω"), as_unit(ps[1], "W")],
-                )
+            lambda resistance, rated_power: join_if_non_empty(
+                " ",
+                resistance.as_unit_with_tolerance("Ω"),
+                rated_power.as_unit("W"),
             ),
         )
 

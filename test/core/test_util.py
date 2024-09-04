@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 import unittest
+from typing import Sequence
 
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
-from faebryk.core.util import get_node_tree, iter_tree_by_depth
 from faebryk.libs.library import L
 
 
@@ -29,13 +29,13 @@ class TestUtil(unittest.TestCase):
         level_count = 5
         n = N(level_count)
 
-        def assertEqual(n1: list[Node], n2: list[Node]):
+        def assertEqual(n1: Sequence[Node], n2: Sequence[Node]):
             n1s = list(sorted(n1, key=id))
             n2s = list(sorted(n2, key=id))
             self.assertEqual(n1s, n2s)
 
-        tree = get_node_tree(n)
-        levels = list(iter_tree_by_depth(tree))
+        tree = n.get_tree(types=(Module, ModuleInterface))
+        levels = list(tree.iter_by_depth())
         print(tree)
         for i, le in enumerate(levels):
             print(i, le)

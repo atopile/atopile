@@ -3,6 +3,7 @@
 import logging
 from typing import (
     Callable,
+    Concatenate,
     Optional,
     Sequence,
 )
@@ -12,7 +13,8 @@ from typing_extensions import Self
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.node import Node
 from faebryk.core.trait import Trait
-from faebryk.libs.util import TwistArgs, is_type_pair, try_avoid_endless_recursion
+from faebryk.libs.units import Quantity, UnitsContainer
+from faebryk.libs.util import Tree, TwistArgs, is_type_pair, try_avoid_endless_recursion
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,19 @@ def _resolved[PV, O](
     def wrap(*args):
         args = [Parameter.from_literal(arg).get_most_narrow() for arg in args]
         return func(*args)
+
+    return wrap
+
+
+def _resolved_self[PV, O, **P](
+    func: Callable[Concatenate["Parameter[PV]", P], O],
+) -> Callable[Concatenate["PV | set[PV] | tuple[PV, PV] | Parameter[PV]", P], O]:
+    def wrap(
+        p: "PV | set[PV] | tuple[PV, PV] | Parameter[PV]",
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ):
+        return func(Parameter.from_literal(p).get_most_narrow(), *args, **kwargs)
 
     return wrap
 
@@ -392,10 +407,8 @@ class Parameter[PV](Node):
     #    return repr(narrowest)
 
     def get_narrowing_chain(self) -> list["Parameter"]:
-        from faebryk.core.util import get_direct_connected_nodes
-
         out: list[Parameter] = [self]
-        narrowers = get_direct_connected_nodes(self.narrowed_by, Parameter)
+        narrowers = self.narrowed_by.get_connected_nodes(Parameter)
         if narrowers:
             assert len(narrowers) == 1, "Narrowing tree diverged"
             out += next(iter(narrowers)).get_narrowing_chain()
@@ -403,12 +416,78 @@ class Parameter[PV](Node):
         return out
 
     def get_narrowed_siblings(self) -> set["Parameter"]:
-        from faebryk.core.util import get_direct_connected_nodes
-
-        return get_direct_connected_nodes(self.narrows, Parameter)
+        return self.narrows.get_connected_nodes(Parameter)
 
     def __copy__(self) -> Self:
         return type(self)()
 
     def __deepcopy__(self, memo) -> Self:
         return self.__copy__()
+
+    def get_tree_param(self, include_root: bool = True) -> Tree["Parameter"]:
+        out = Tree[Parameter](
+            {p: p.get_tree_param() for p in self.get_narrowed_siblings()}
+        )
+        if include_root:
+            out = Tree[Parameter]({self: out})
+        return out
+
+    # util functions -------------------------------------------------------------------
+    @_resolved_self
+    def enum_parameter_representation(
+        self: "Parameter[PV]", required: bool = False
+    ) -> str:
+        return self._enum_parameter_representation(required=required)
+
+    def _enum_parameter_representation(self, required: bool = False) -> str:
+        return self.as_unit("", required=required)
+
+    @_resolved_self
+    def as_unit(
+        self: "Parameter[PV]",
+        unit: UnitsContainer,
+        base: int = 1000,
+        required: bool = False,
+    ) -> str:
+        if base != 1000:
+            raise NotImplementedError("Only base 1000 supported")
+
+        return self._as_unit(unit, base=base, required=required)
+
+    def _as_unit(self, unit: UnitsContainer, base: int, required: bool) -> str:
+        raise ValueError(f"Unsupported {self}")
+
+    @_resolved_self
+    def as_unit_with_tolerance(
+        self: "Parameter[PV]",
+        unit: UnitsContainer,
+        base: int = 1000,
+        required: bool = False,
+    ) -> str:
+        return self._as_unit_with_tolerance(unit, base=base, required=required)
+
+    def _as_unit_with_tolerance(
+        self, unit: UnitsContainer, base: int, required: bool
+    ) -> str:
+        return self._as_unit(unit, base=base, required=required)
+
+    @_resolved_self
+    def get_max(self: "Parameter[PV]") -> PV:
+        return self._max()
+
+    def _max(self):
+        raise ValueError(f"Can't get max for {self}")
+
+    def with_same_unit(
+        self: "Quantity | float | int | LIT_OR_PARAM",
+        to_convert: float | int,
+    ):
+        from faebryk.library.Constant import Constant
+
+        if isinstance(self, Constant) and isinstance(self.value, Quantity):
+            return Quantity(to_convert, self.value.units)
+        if isinstance(self, Quantity):
+            return Quantity(to_convert, self.units)
+        if isinstance(self, (float, int)):
+            return to_convert
+        raise NotImplementedError(f"Unsupported {self=}")

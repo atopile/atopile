@@ -19,14 +19,12 @@ class ElectricLogicGate(F.LogicGate):
         super().__init__(input_cnt, output_cnt, *functions)
 
     def __preinit__(self):
-        from faebryk.core.util import specialize_interface
-
         self_logic = self
 
         for in_if_l, in_if_el in zip(self_logic.inputs, self.inputs):
-            specialize_interface(in_if_l, in_if_el)
+            in_if_l.specialize(in_if_el)
         for out_if_l, out_if_el in zip(self_logic.outputs, self.outputs):
-            specialize_interface(out_if_l, out_if_el)
+            out_if_l.specialize(out_if_el)
 
     @L.rt_field
     def inputs(self):

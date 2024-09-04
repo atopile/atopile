@@ -23,7 +23,6 @@ from tortoise.models import Model
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
-from faebryk.core.util import pretty_param_tree, pretty_params
 from faebryk.libs.e_series import (
     E_SERIES_VALUES,
     ParamNotResolvedError,
@@ -362,7 +361,7 @@ class Component(Model):
             logger.debug(
                 f"Attached component {self.partno} to module {module}: \n"
                 f"{indent(str(params), ' '*4)}\n--->\n"
-                f"{indent(pretty_params(module), ' '*4)}"
+                f"{indent(module.pretty_params(), ' '*4)}"
             )
 
 
@@ -410,7 +409,7 @@ class ComponentQuery:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"Filtering by value:\n{indent(pretty_param_tree(value), ' '*4)}"
+                f"Filtering by value:\n{indent(value.get_tree_param().pretty(), ' '*4)}"
             )
 
         if isinstance(value, F.ANY):

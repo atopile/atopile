@@ -29,19 +29,24 @@ class Comparator(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        from faebryk.core.util import as_unit
-
         return F.has_simple_value_representation_based_on_params(
-            [
+            (
                 self.common_mode_rejection_ratio,
                 self.input_bias_current,
                 self.input_hysteresis_voltage,
                 self.input_offset_voltage,
                 self.propagation_delay,
-            ],
-            lambda p: (
-                f"{p[0]} CMRR, {as_unit(p[1], 'A')} Ib, {as_unit(p[2], 'V')} Vhys, "
-                f"{as_unit(p[3], 'V')} Vos, {as_unit(p[4], 's')} tpd"
+            ),
+            lambda cmrr, ib, vhys, vos, tpd: (
+                ", ".join(
+                    [
+                        f"{cmrr} CMRR",
+                        f"{ib.as_unit('A')} Ib",
+                        f"{vhys.as_unit('V')} Vhys",
+                        f"{vos.as_unit('V')} Vos",
+                        f"{tpd.as_unit('s')} tpd",
+                    ]
+                )
             ),
         )
 

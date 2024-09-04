@@ -6,6 +6,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import Quantity
+from faebryk.libs.util import join_if_non_empty
 
 
 class Inductor(Module):
@@ -24,11 +25,6 @@ class Inductor(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        from faebryk.core.util import (
-            as_unit,
-            as_unit_with_tolerance,
-        )
-
         return F.has_simple_value_representation_based_on_params(
             (
                 self.inductance,
@@ -36,16 +32,15 @@ class Inductor(Module):
                 self.rated_current,
                 self.dc_resistance,
             ),
-            lambda ps: " ".join(
-                filter(
-                    None,
-                    [
-                        as_unit_with_tolerance(ps[0], "H"),
-                        as_unit(ps[1], "Hz"),
-                        as_unit(ps[2], "A"),
-                        as_unit(ps[3], "Ω"),
-                    ],
-                )
+            lambda inductance,
+            self_resonant_frequency,
+            rated_current,
+            dc_resistance: join_if_non_empty(
+                " ",
+                inductance.as_unit_with_tolerance("H"),
+                self_resonant_frequency.as_unit("Hz"),
+                rated_current.as_unit("A"),
+                dc_resistance.as_unit("Ω"),
             ),
         )
 

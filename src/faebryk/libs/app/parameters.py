@@ -17,8 +17,6 @@ def replace_tbd_with_any(module: Module, recursive: bool, loglvl: int | None = N
     :param module: The module to replace F.TBD instances in.
     :param recursive: If True, replace F.TBD instances in submodules as well.
     """
-    from faebryk.core.util import get_all_modules
-
     lvl = logger.getEffectiveLevel()
     if loglvl is not None:
         logger.setLevel(loglvl)
@@ -33,5 +31,5 @@ def replace_tbd_with_any(module: Module, recursive: bool, loglvl: int | None = N
     logger.setLevel(lvl)
 
     if recursive:
-        for m in {_m.get_most_special() for _m in get_all_modules(module)}:
+        for m in module.get_children_modules():
             replace_tbd_with_any(m, recursive=False, loglvl=loglvl)

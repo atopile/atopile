@@ -36,8 +36,6 @@ class ESP32_C3(Module):
     )
 
     def __preinit__(self):
-        from faebryk.core.util import connect_to_all_interfaces
-
         x = self
 
         # https://www.espressif.com/sites/default/files/documentation/esp32-c3_technical_reference_manual_en.pdf#uart
@@ -60,14 +58,11 @@ class ESP32_C3(Module):
         )  # TODO: when configured as input
 
         # connect all grounds to eachother and power
-        connect_to_all_interfaces(
-            self.vdd3p3.lv,
-            [
-                self.vdd3p3_cpu.lv,
-                self.vdd3p3_rtc.lv,
-                self.vdda.lv,
-                self.vdd_spi.lv,
-            ],
+        self.vdd3p3.lv.connect(
+            self.vdd3p3_cpu.lv,
+            self.vdd3p3_rtc.lv,
+            self.vdda.lv,
+            self.vdd_spi.lv,
         )
 
         # connect decoupling caps to power domains

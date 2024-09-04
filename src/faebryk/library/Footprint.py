@@ -16,7 +16,5 @@ class Footprint(Module):
     def get_footprint_of_parent(
         intf: ModuleInterface,
     ) -> "tuple[Node, Footprint]":
-        from faebryk.core.util import get_parent_with_trait
-
-        parent, trait = get_parent_with_trait(intf, F.has_footprint)
+        parent, trait = intf.get_parent_with_trait(F.has_footprint)
         return parent, trait.get_footprint()

@@ -42,22 +42,18 @@ class Net(Module):
         return _()
 
     def get_fps(self):
-        from faebryk.core.util import get_parent_of_type
-
         return {
             pad: fp
             for mif in self.get_connected_interfaces()
-            if (fp := get_parent_of_type(mif, F.Footprint)) is not None
-            and (pad := get_parent_of_type(mif, F.Pad)) is not None
+            if (fp := mif.get_parent_of_type(F.Footprint)) is not None
+            and (pad := mif.get_parent_of_type(F.Pad)) is not None
         }
 
     # TODO should this be here?
     def get_connected_interfaces(self):
-        from faebryk.core.util import get_connected_mifs
-
         return {
             mif
-            for mif in get_connected_mifs(self.part_of.connected)
+            for mif in self.part_of.get_connected()
             if isinstance(mif, type(self.part_of))
         }
 

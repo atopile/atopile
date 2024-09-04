@@ -7,7 +7,6 @@ from pathlib import Path
 
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
-from faebryk.core.util import get_all_modules
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.app.pcb import apply_design
@@ -52,7 +51,7 @@ def apply_design_to_pcb(m: Module):
 
     # TODO this can be prettier
     # picking ----------------------------------------------------------------
-    modules = {n.get_most_special() for n in get_all_modules(m)}
+    modules = m.get_children_modules()
     try:
         JLCPCB_DB()
         for n in modules:

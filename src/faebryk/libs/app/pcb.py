@@ -10,7 +10,7 @@ from typing import Any, Callable
 import faebryk.library._F as F
 from faebryk.core.graph import Graph
 from faebryk.core.module import Module
-from faebryk.core.util import get_node_tree, iter_tree_by_depth
+from faebryk.core.node import Node
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.app.kicad_netlist import write_netlist
@@ -31,8 +31,7 @@ def apply_layouts(app: Module):
             )
         )
 
-    tree = get_node_tree(app)
-    for level in iter_tree_by_depth(tree):
+    for level in app.get_tree(types=Node).iter_by_depth():
         for n in level:
             if n.has_trait(F.has_pcb_layout):
                 n.get_trait(F.has_pcb_layout).apply()
@@ -41,8 +40,7 @@ def apply_layouts(app: Module):
 def apply_routing(app: Module, transformer: PCB_Transformer):
     strategies: list[tuple[F.has_pcb_routing_strategy, int]] = []
 
-    tree = get_node_tree(app)
-    for i, level in enumerate(list(iter_tree_by_depth(tree))):
+    for i, level in enumerate(app.get_tree(types=Node).iter_by_depth()):
         for n in level:
             if not n.has_trait(F.has_pcb_routing_strategy):
                 continue

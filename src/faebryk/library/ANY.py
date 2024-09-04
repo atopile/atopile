@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from faebryk.core.parameter import Parameter
+from faebryk.libs.units import UnitsContainer
 
 
 class ANY[PV](Parameter[PV]):
@@ -19,3 +20,6 @@ class ANY[PV](Parameter[PV]):
 
     def __hash__(self) -> int:
         return super().__hash__()
+
+    def _as_unit(self, unit: UnitsContainer, base: int, required: bool) -> str:
+        return "ANY" if required else ""

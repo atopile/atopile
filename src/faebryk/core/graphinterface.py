@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import TYPE_CHECKING, Mapping, Optional
+from typing import TYPE_CHECKING, Iterable, Mapping, Optional
 
 from typing_extensions import Self, deprecated
 
@@ -15,10 +15,49 @@ from faebryk.libs.util import (
 
 if TYPE_CHECKING:
     from faebryk.core.node import Node
+    from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
 
-Graph = GraphImpl["GraphInterface"]
+
+class Graph(GraphImpl["GraphInterface"]):
+    # Make all kinds of graph filtering functions so we can optimize them in the future
+    # Avoid letting user query all graph nodes always because quickly very slow
+
+    def node_projection(self) -> set["Node"]:
+        from faebryk.core.node import Node
+
+        return Node.get_nodes_from_gifs(self.subgraph_type(GraphInterfaceSelf))
+
+    def nodes_with_trait[T: "Trait"](self, trait: type[T]) -> list[tuple["Node", T]]:
+        return [
+            (n, n.get_trait(trait))
+            for n in self.node_projection()
+            if n.has_trait(trait)
+        ]
+
+    # Waiting for python to add support for type mapping
+    def nodes_with_traits[*Ts](
+        self, traits: tuple[*Ts]
+    ):  # -> list[tuple[Node, tuple[*Ts]]]:
+        return [
+            (n, tuple(n.get_trait(trait) for trait in traits))
+            for n in self.node_projection()
+            if all(n.has_trait(trait) for trait in traits)
+        ]
+
+    def nodes_by_names(self, names: Iterable[str]) -> list[tuple["Node", str]]:
+        return [
+            (n, node_name)
+            for n in self.node_projection()
+            if (node_name := n.get_full_name()) in names
+        ]
+
+    def nodes_of_type[T: "Node"](self, t: type[T]) -> set[T]:
+        return {n for n in self.node_projection() if isinstance(n, t)}
+
+    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]:
+        return {n for n in self.node_projection() if isinstance(n, t)}
 
 
 class GraphInterface(FaebrykLibObject):
@@ -104,6 +143,18 @@ class GraphInterface(FaebrykLibObject):
             if self._node is not None
             else "| <No None>"
         )
+
+    def get_connected_nodes[T: "Node"](self, types: type[T]) -> set[T]:
+        from faebryk.core.link import LinkDirect
+        from faebryk.core.node import Node
+
+        return {
+            n
+            for n in Node.get_nodes_from_gifs(
+                g for g, t in self.edges.items() if isinstance(t, LinkDirect)
+            )
+            if isinstance(n, types)
+        }
 
 
 class GraphInterfaceHierarchical(GraphInterface):

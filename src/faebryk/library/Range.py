@@ -5,6 +5,7 @@ from math import inf
 from typing import Any, Protocol, Self
 
 from faebryk.core.parameter import Parameter
+from faebryk.libs.units import UnitsContainer, to_si_str
 
 
 class _SupportsRangeOps(Protocol):
@@ -73,14 +74,12 @@ class Range[PV: _SupportsRangeOps](Parameter[PV], Parameter[PV].SupportsSetOps):
 
     @classmethod
     def _with_bound(cls, bound: LIT_OR_PARAM, other: float) -> "Range[PV]":
-        from faebryk.core.util import with_same_unit
-
         try:
-            other = with_same_unit(other, bound)
+            other_with_unit = Parameter.with_same_unit(bound, other)
         except NotImplementedError:
             raise NotImplementedError("Specify zero/inf manually in params")
 
-        return cls(bound, other)
+        return cls(bound, other_with_unit)
 
     @classmethod
     def lower_bound(cls, lower: LIT_OR_PARAM) -> "Range[PV]":
@@ -134,3 +133,28 @@ class Range[PV: _SupportsRangeOps](Parameter[PV], Parameter[PV].SupportsSetOps):
 
     def __contains__(self, other: LIT_OR_PARAM) -> bool:
         return self.min <= other and self.max >= other
+
+    def _max(self):
+        return max(p.get_max() for p in self._get_narrowed_bounds())
+
+    def _as_unit(self, unit: UnitsContainer, base: int, required: bool) -> str:
+        return (
+            self.min.as_unit(unit, base=base)
+            + " - "
+            + self.max.as_unit(unit, base=base, required=True)
+        )
+
+    def _as_unit_with_tolerance(
+        self, unit: UnitsContainer, base: int, required: bool
+    ) -> str:
+        center, delta = self.as_center_tuple(relative=True)
+        delta_percent_str = f"±{to_si_str(delta.value, "%", 0)}"
+        return (
+            f"{center.as_unit(unit, base=base, required=required)} {delta_percent_str}"
+        )
+
+    def _enum_parameter_representation(self, required: bool) -> str:
+        return (
+            f"{self.min.enum_parameter_representation(required)} - "
+            f"{self.max.enum_parameter_representation(required)}"
+        )

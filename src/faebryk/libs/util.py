@@ -18,6 +18,7 @@ from typing import (
     List,
     Optional,
     Self,
+    Sequence,
     SupportsFloat,
     SupportsInt,
     Type,
@@ -302,8 +303,8 @@ def round_str(value: SupportsFloat, n=8):
     return str(f).rstrip("0").rstrip(".")
 
 
-def _print_stack(stack):
-    from colorama import Fore
+def _print_stack(stack) -> Iterable[str]:
+    from rich.text import Text
 
     for frame_info in stack:
         frame = frame_info[0]
@@ -313,29 +314,41 @@ def _print_stack(stack):
             continue
         # if frame_info.function not in ["_connect_across_hierarchies"]:
         #    continue
-        yield (
-            f"{Fore.RED} Frame in {frame_info.filename} at line {frame_info.lineno}:"
-            f"{Fore.BLUE} {frame_info.function} {Fore.RESET}"
+        yield str(
+            Text.assemble(
+                (
+                    f" Frame in {frame_info.filename} at line {frame_info.lineno}:",
+                    "red",
+                ),
+                (f" {frame_info.function} ", "blue"),
+            )
         )
 
         def pretty_val(value):
             if isinstance(value, dict):
                 import pprint
 
-                return (
-                    ("\n" if len(value) > 1 else "")
-                    + pprint.pformat(
-                        {pretty_val(k): pretty_val(v) for k, v in value.items()},
-                        indent=2,
-                        width=120,
-                    )
-                ).replace("\n", f"\n    {Fore.RESET}")
+                formatted = pprint.pformat(
+                    {pretty_val(k): pretty_val(v) for k, v in value.items()},
+                    indent=2,
+                    width=120,
+                )
+                return ("\n" if len(value) > 1 else "") + indent(
+                    str(Text(formatted)), " " * 4
+                )
             elif isinstance(value, type):
                 return f"<class {value.__name__}>"
-            return value
+            return str(value)
 
         for name, value in frame.f_locals.items():
-            yield f"  {Fore.GREEN}{name}{Fore.RESET} = {pretty_val(value)}"
+            yield str(
+                Text.assemble(
+                    ("  ", ""),
+                    (f"{name}", "green"),
+                    (" = ", ""),
+                    (pretty_val(value), ""),
+                )
+            )
 
 
 def print_stack(stack):
@@ -791,3 +804,53 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
             return result
 
     return _once()
+
+
+class PostInitCaller(type):
+    def __call__(cls, *args, **kwargs):
+        obj = type.__call__(cls, *args, **kwargs)
+        obj.__post_init__(*args, **kwargs)
+        return obj
+
+
+class Tree[T](dict[T, "Tree[T]"]):
+    def iter_by_depth(self) -> Iterable[Sequence[T]]:
+        yield list(self.keys())
+
+        for level in zip_exhaust(*[v.iter_by_depth() for v in self.values()]):
+            # merge lists of parallel subtrees
+            yield [n for subtree in level for n in subtree]
+
+    def pretty(self) -> str:
+        # TODO this is def broken for actual trees
+
+        out = ""
+        next_levels = [self]
+        while next_levels:
+            if any(next_levels):
+                out += indent("\n|\nv\n", " " * 12)
+            for next_level in next_levels:
+                for p, _ in next_level.items():
+                    out += f"{p!r}"
+            next_levels = [
+                children
+                for next_level in next_levels
+                for _, children in next_level.items()
+            ]
+
+        return out
+
+
+# zip iterators, but if one iterators stops producing, the rest continue
+def zip_exhaust(*args):
+    while True:
+        out = [next(a, None) for a in args]
+        out = [a for a in out if a]
+        if not out:
+            return
+
+        yield out
+
+
+def join_if_non_empty(sep: str, *args):
+    return sep.join(s for arg in args if (s := str(arg)))

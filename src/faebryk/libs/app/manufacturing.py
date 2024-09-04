@@ -5,7 +5,6 @@ import logging
 from pathlib import Path
 
 from faebryk.core.module import Module
-from faebryk.core.util import get_all_modules
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.pcb.kicad.artifacts import (
     export_dxf,
@@ -27,7 +26,7 @@ def export_pcba_artifacts(out: Path, pcb_path: Path, app: Module):
 
     logger.info("Exporting PCBA artifacts")
 
-    write_bom_jlcpcb(get_all_modules(app), out.joinpath("jlcpcb_bom.csv"))
+    write_bom_jlcpcb(app.get_children_modules(), out.joinpath("jlcpcb_bom.csv"))
     export_step(pcb_path, step_file=cad_path.joinpath("pcba.step"))
     export_glb(pcb_path, glb_file=cad_path.joinpath("pcba.glb"))
     export_dxf(pcb_path, dxf_file=cad_path.joinpath("pcba.dxf"))

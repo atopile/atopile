@@ -20,8 +20,6 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
         self._params = params or Params()
 
     def apply(self, *node: Node):
-        from faebryk.core.util import get_parent_of_type
-
         # Remove nodes that have a position defined
         node = tuple(
             n
@@ -31,18 +29,16 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
 
         for n in node:
             assert isinstance(n, F.Resistor)
-            logic = NotNone(get_parent_of_type(n, F.ElectricLogic))
+            logic = NotNone(n.get_parent_of_type(F.ElectricLogic))
 
             place_next_to(logic.signal, n, route=True, params=self._params)
 
     @staticmethod
     def find_module_candidates(node: Node):
-        from faebryk.core.util import get_parent_of_type
-
         return node.get_children(
             direct_only=False,
             types=F.Resistor,
-            f_filter=lambda c: get_parent_of_type(c, F.ElectricLogic) is not None,
+            f_filter=lambda c: c.get_parent_of_type(F.ElectricLogic) is not None,
         )
 
     @classmethod

@@ -109,9 +109,7 @@ class Route(Module):
 
     @property
     def net(self):
-        from faebryk.core.util import get_net
-
-        net = get_net(self.net_)
+        net = self.net_.get_net()
         assert net
         return net
 
@@ -177,18 +175,13 @@ def get_internal_nets_of_node(
     For Nets returns all connected mifs
     """
 
-    from faebryk.core.util import (
-        get_all_nodes,
-        get_connected_mifs,
-        get_net,
-    )
     from faebryk.libs.util import groupby
 
     if isinstance(node, F.Net):
-        return {node: get_connected_mifs(node.part_of.connected)}
+        return {node: node.part_of.get_connected()}
 
-    mifs = {n for n in get_all_nodes(node) + [node] if isinstance(n, F.Electrical)}
-    nets = groupby(mifs, lambda mif: get_net(mif))
+    mifs = node.get_children(include_root=True, direct_only=False, types=F.Electrical)
+    nets = groupby(mifs, lambda mif: mif.get_net())
 
     return nets
 
@@ -224,10 +217,8 @@ def group_pads_that_are_connected_already(
 
 
 def get_routes_of_pad(pad: F.Pad):
-    from faebryk.core.util import get_parent_of_type
-
     return {
         route
         for mif in pad.pcb.get_direct_connections()
-        if (route := get_parent_of_type(mif, Route))
+        if (route := mif.get_parent_of_type(Route))
     }

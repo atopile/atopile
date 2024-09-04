@@ -22,8 +22,6 @@ class USB_C_PSU_Vertical(Module):
     fuse: F.Fuse
 
     def __preinit__(self):
-        from faebryk.core.util import connect_all_interfaces
-
         self.gnd_capacitor.capacitance.merge(100 * P.nF)
         self.gnd_capacitor.rated_voltage.merge(16 * P.V)
         self.gnd_resistor.resistance.merge(1 * P.Mohm)
@@ -44,12 +42,9 @@ class USB_C_PSU_Vertical(Module):
         v5.connect(self.esd.usb[0].usb_if.buspower)
 
         # connect usb data
-        connect_all_interfaces(
-            [
-                self.usb_connector.usb.usb_if.d,
-                self.usb.usb_if.d,
-                self.esd.usb[0].usb_if.d,
-            ]
+        self.usb.usb_if.d.connect(
+            self.usb_connector.usb.usb_if.d,
+            self.esd.usb[0].usb_if.d,
         )
 
         # configure as ufp with 5V@max3A

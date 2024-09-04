@@ -23,10 +23,8 @@ class OpAmp(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        from faebryk.core.util import as_unit
-
         return F.has_simple_value_representation_based_on_params(
-            [
+            (
                 self.bandwidth,
                 self.common_mode_rejection_ratio,
                 self.input_bias_current,
@@ -34,11 +32,23 @@ class OpAmp(Module):
                 self.gain_bandwidth_product,
                 self.output_current,
                 self.slew_rate,
-            ],
-            lambda p: (
-                f"{as_unit(p[0], 'Hz')} BW, {p[1]} CMRR, {as_unit(p[2], 'A')} Ib, "
-                f"{as_unit(p[3], 'V')} Vos, {as_unit(p[4], 'Hz')} GBW, "
-                f"{as_unit(p[5], 'A')} Iout, {as_unit(p[6], 'V/s')} SR"
+            ),
+            lambda bandwidth,
+            common_mode_rejection_ratio,
+            input_bias_current,
+            input_offset_voltage,
+            gain_bandwidth_product,
+            output_current,
+            slew_rate: ", ".join(
+                [
+                    f"{bandwidth.as_unit("Hz")} BW",
+                    f"{common_mode_rejection_ratio} CMRR",
+                    f"{input_bias_current.as_unit("A")} Ib",
+                    f"{input_offset_voltage.as_unit("V")} Vos",
+                    f"{gain_bandwidth_product.as_unit("Hz")} GBW",
+                    f"{output_current.as_unit("A")} Iout",
+                    f"{slew_rate.as_unit("V/s")} SR",
+                ]
             ),
         )
 

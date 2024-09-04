@@ -7,6 +7,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import Quantity
+from faebryk.libs.util import join_if_non_empty
 
 
 class LDO(Module):
@@ -56,8 +57,6 @@ class LDO(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        from faebryk.core.util import as_unit, as_unit_with_tolerance
-
         return F.has_simple_value_representation_based_on_params(
             (
                 self.output_polarity,
@@ -69,16 +68,22 @@ class LDO(Module):
                 self.max_input_voltage,
                 self.quiescent_current,
             ),
-            lambda ps: "LDO "
-            + " ".join(
-                [
-                    as_unit_with_tolerance(ps[2], "V"),
-                    as_unit(ps[3], "A"),
-                    as_unit(ps[4], "dB"),
-                    as_unit(ps[5], "V"),
-                    f"Vin max {as_unit(ps[6], 'V')}",
-                    f"Iq {as_unit(ps[7], 'A')}",
-                ]
+            lambda output_polarity,
+            output_type,
+            output_voltage,
+            output_current,
+            psrr,
+            dropout_voltage,
+            max_input_voltage,
+            quiescent_current: "LDO "
+            + join_if_non_empty(
+                " ",
+                output_voltage.as_unit_with_tolerance("V"),
+                output_current.as_unit("A"),
+                psrr.as_unit("dB"),
+                dropout_voltage.as_unit("V"),
+                f"Vin max {max_input_voltage.as_unit("V")}",
+                f"Iq {quiescent_current.as_unit("A")}",
             ),
         )
 

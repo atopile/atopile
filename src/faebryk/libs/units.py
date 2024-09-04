@@ -4,16 +4,17 @@
 # re-exporting Quantity in-case we ever want to change it
 from pint import Quantity as _Quantity  # noqa: F401
 from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
-from pint.util import UnitsContainer  # noqa: F401
+from pint.util import UnitsContainer as _UnitsContainer
 
 P = UnitRegistry()
 
+UnitsContainer = _UnitsContainer | str
 Quantity = P.Quantity
 
 
 def to_si_str(
     value: Quantity | float | int,
-    unit: str | UnitsContainer,
+    unit: UnitsContainer,
     num_decimals: int = 2,
 ) -> str:
     """

@@ -24,11 +24,9 @@ class Diode(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        from faebryk.core.util import as_unit
-
-        return F.has_simple_value_representation_based_on_param(
-            self.forward_voltage,
-            lambda p: as_unit(p, "V"),
+        return F.has_simple_value_representation_based_on_params(
+            (self.forward_voltage,),
+            lambda p: p.as_unit("V"),
         )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)("D")

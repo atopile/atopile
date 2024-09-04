@@ -5,6 +5,7 @@ from typing import Iterable, Self
 
 import faebryk.library._F as F
 from faebryk.core.parameter import Parameter, _resolved
+from faebryk.libs.units import UnitsContainer
 
 
 class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
@@ -81,3 +82,31 @@ class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
         if len(set(map(id, self.params))) == 1:
             return Parameter.from_literal(next(iter(self.params)))
         return super().try_compress()
+
+    def _max(self):
+        return max(p.get_max() for p in self.params)
+
+    def _as_unit(self, unit: UnitsContainer, base: int, required: bool) -> str:
+        return (
+            "Set("
+            + ", ".join(x.as_unit(unit, required=True) for x in self.params)
+            + ")"
+        )
+
+    def _as_unit_with_tolerance(
+        self, unit: UnitsContainer, base: int, required: bool
+    ) -> str:
+        return (
+            "Set("
+            + ", ".join(
+                x.as_unit_with_tolerance(unit, base, required) for x in self.params
+            )
+            + ")"
+        )
+
+    def _enum_parameter_representation(self, required: bool) -> str:
+        return (
+            "Set("
+            + ", ".join(p.enum_parameter_representation(required) for p in self.params)
+            + ")"
+        )

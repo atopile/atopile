@@ -53,9 +53,7 @@ def merge_dicts(*dicts: dict) -> dict:
 
 
 def make_esphome_config(G: Graph) -> dict:
-    from faebryk.core.util import get_all_nodes_with_trait
-
-    esphome_components = get_all_nodes_with_trait(G, F.has_esphome_config)
+    esphome_components = G.nodes_with_trait(F.has_esphome_config)
 
     esphome_config = merge_dicts(*[t.get_config() for _, t in esphome_components])
 

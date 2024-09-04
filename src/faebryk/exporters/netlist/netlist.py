@@ -36,10 +36,9 @@ class T2Netlist:
 
 
 def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
-    from faebryk.core.util import get_all_nodes_of_type, get_all_nodes_with_trait
     from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
 
-    nets = get_all_nodes_of_type(G, F.Net)
+    nets = G.nodes_of_type(F.Net)
 
     t2_nets = [
         T2Netlist.Net(
@@ -61,7 +60,7 @@ def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
 
     comps = {
         t.get_footprint().get_trait(can_represent_kicad_footprint).get_kicad_obj()
-        for _, t in get_all_nodes_with_trait(G, F.has_footprint)
+        for _, t in G.nodes_with_trait(F.has_footprint)
     }
 
     not_found = [

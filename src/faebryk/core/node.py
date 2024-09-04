@@ -2,7 +2,16 @@
 # SPDX-License-Identifier: MIT
 import logging
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Type, get_args, get_origin
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Type,
+    cast,
+    get_args,
+    get_origin,
+)
 
 from deprecated import deprecated
 from more_itertools import partition
@@ -17,10 +26,14 @@ from faebryk.core.link import LinkNamedParent, LinkSibling
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.util import (
     KeyErrorNotFound,
+    NotNone,
+    PostInitCaller,
+    Tree,
     cast_assert,
     find,
     times,
     try_avoid_endless_recursion,
+    zip_dicts_by_key,
 )
 
 if TYPE_CHECKING:
@@ -91,14 +104,6 @@ def f_field[T, **P](con: Callable[P, T]) -> Callable[P, T]:
     return _
 
 
-# -----------------------------------------------------------------------------
-class PostInitCaller(type):
-    def __call__(cls, *args, **kwargs):
-        obj = type.__call__(cls, *args, **kwargs)
-        obj.__post_init__(*args, **kwargs)
-        return obj
-
-
 class NodeException(FaebrykException):
     def __init__(self, node: "Node", *args: object) -> None:
         super().__init__(*args)
@@ -116,6 +121,9 @@ class NodeAlreadyBound(NodeException):
 
 
 class NodeNoParent(NodeException): ...
+
+
+# -----------------------------------------------------------------------------
 
 
 class Node(FaebrykLibObject, metaclass=PostInitCaller):
@@ -423,6 +431,8 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
         else:
             return ".".join([f"{name}" for _, name in hierarchy])
 
+    # printing -------------------------------------------------------------------------
+
     @try_avoid_endless_recursion
     def __str__(self) -> str:
         return f"<{self.get_full_name(types=True)}>"
@@ -431,6 +441,17 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
     def __repr__(self) -> str:
         id_str = f"(@{hex(id(self))})" if ID_REPR else ""
         return f"<{self.get_full_name(types=True)}>{id_str}"
+
+    def pretty_params(self) -> str:
+        from faebryk.core.parameter import Parameter
+
+        params = {
+            NotNone(p.get_parent())[1]: p.get_most_narrow()
+            for p in self.get_children(direct_only=True, types=Parameter)
+        }
+        params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
+
+        return params_str
 
     # Trait stuff ----------------------------------------------------------------------
 
@@ -477,36 +498,14 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
 
     # Graph stuff ----------------------------------------------------------------------
 
-    def get_node_direct_children_(self):
+    def _get_children_direct(self):
         return {
             gif.node
             for gif, link in self.get_graph().get_edges(self.children).items()
             if isinstance(link, LinkNamedParent)
         }
 
-    def get_children[T: Node](
-        self,
-        direct_only: bool,
-        types: type[T] | tuple[type[T], ...],
-        include_root: bool = False,
-        f_filter: Callable[[T], bool] | None = None,
-        sort: bool = True,
-    ):
-        if direct_only:
-            out = self.get_node_direct_children_()
-            if include_root:
-                out.add(self)
-        else:
-            out = self.get_node_children_all(include_root=include_root)
-
-        out = {n for n in out if isinstance(n, types) and (not f_filter or f_filter(n))}
-
-        if sort:
-            out = set(sorted(out, key=lambda n: n.get_name()))
-
-        return out
-
-    def get_node_children_all(self, include_root=True) -> list["Node"]:
+    def _get_children_all(self, include_root: bool):
         # TODO looks like get_node_tree is 2x faster
 
         out = self.bfs_node(
@@ -517,7 +516,67 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
         if not include_root:
             out.remove(self)
 
-        return list(out)
+        return set(out)
+
+    def get_children[T: Node](
+        self,
+        direct_only: bool,
+        types: type[T] | tuple[type[T], ...],
+        include_root: bool = False,
+        f_filter: Callable[[T], bool] | None = None,
+        sort: bool = True,
+    ) -> set[T]:
+        if direct_only:
+            out = self._get_children_direct()
+            if include_root:
+                out.add(self)
+        else:
+            out = self._get_children_all(include_root=include_root)
+
+        if types is not Node or f_filter:
+            out = {
+                n for n in out if isinstance(n, types) and (not f_filter or f_filter(n))
+            }
+
+        out = cast(set[T], out)
+
+        if sort:
+            out = set(sorted(out, key=lambda n: n.get_name()))
+
+        return out
+
+    def get_tree[T: Node](
+        self,
+        types: type[T] | tuple[type[T], ...],
+        include_root: bool = True,
+        f_filter: Callable[[T], bool] | None = None,
+        sort: bool = True,
+    ) -> Tree[T]:
+        out = self.get_children(
+            direct_only=True,
+            types=types,
+            f_filter=f_filter,
+            sort=sort,
+        )
+
+        tree = Tree[T](
+            {
+                n: n.get_tree(
+                    types=types,
+                    include_root=False,
+                    f_filter=f_filter,
+                    sort=sort,
+                )
+                for n in out
+            }
+        )
+
+        if include_root:
+            if isinstance(self, types):
+                if not f_filter or f_filter(self):
+                    tree = Tree[T]({self: tree})
+
+        return tree
 
     def bfs_node(self, filter: Callable[[GraphInterface], bool]):
         return Node.get_nodes_from_gifs(
@@ -530,3 +589,51 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
         return {gif.node for gif in gifs}
         # TODO what is faster
         # return {n.node for n in gifs if isinstance(n, GraphInterfaceSelf)}
+
+    # Hierarchy queries ----------------------------------------------------------------
+
+    def get_parent_f(self, filter_expr: Callable[["Node"], bool]):
+        candidates = [p for p, _ in self.get_hierarchy() if filter_expr(p)]
+        if not candidates:
+            return None
+        return candidates[-1]
+
+    def get_parent_of_type[T: Node](self, parent_type: type[T]) -> T | None:
+        return cast(
+            parent_type, self.get_parent_f(lambda p: isinstance(p, parent_type))
+        )
+
+    def get_parent_with_trait[TR: Trait](
+        self, trait: type[TR], include_self: bool = True
+    ):
+        hierarchy = self.get_hierarchy()
+        if not include_self:
+            hierarchy = hierarchy[:-1]
+        for parent, _ in reversed(hierarchy):
+            if parent.has_trait(trait):
+                return parent, parent.get_trait(trait)
+        raise KeyErrorNotFound(f"No parent with trait {trait} found")
+
+    def get_first_child_of_type[U: Node](self, child_type: type[U]) -> U:
+        for level in self.get_tree(types=Node).iter_by_depth():
+            for child in level:
+                if isinstance(child, child_type):
+                    return child
+        raise KeyErrorNotFound(f"No child of type {child_type} found")
+
+    # ----------------------------------------------------------------------------------
+    def zip_children_by_name_with[N: Node](
+        self, other: "Node", sub_type: type[N]
+    ) -> dict[str, tuple[N, N]]:
+        nodes = self, other
+        children = tuple(
+            Node.with_names(
+                n.get_children(direct_only=True, include_root=False, types=sub_type)
+            )
+            for n in nodes
+        )
+        return zip_dicts_by_key(*children)
+
+    @staticmethod
+    def with_names[N: Node](nodes: Iterable[N]) -> dict[str, N]:
+        return {n.get_name(): n for n in nodes}

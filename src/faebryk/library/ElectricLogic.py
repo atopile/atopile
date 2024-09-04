@@ -150,17 +150,12 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
 
     @staticmethod
     def connect_all_references(ifs: Iterable["ElectricLogic"]) -> F.ElectricPower:
-        from faebryk.core.util import connect_all_interfaces
-
-        out = connect_all_interfaces([x.reference for x in ifs])
-        assert out
-        return out
+        return F.ElectricPower.connect(*[x.reference for x in ifs])
 
     @staticmethod
     def connect_all_node_references(
         nodes: Iterable[Node], gnd_only=False
     ) -> F.ElectricPower:
-        from faebryk.core.util import connect_all_interfaces
         # TODO check if any child contains ElectricLogic which is not connected
         # e.g find them in graph and check if any has parent without "single reference"
 
@@ -172,10 +167,10 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
         assert refs
 
         if gnd_only:
-            connect_all_interfaces({r.lv for r in refs})
+            F.Electrical.connect(*{r.lv for r in refs})
             return next(iter(refs))
 
-        connect_all_interfaces(refs)
+        F.ElectricPower.connect(*refs)
         return next(iter(refs))
 
     @classmethod

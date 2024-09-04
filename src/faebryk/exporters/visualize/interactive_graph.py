@@ -4,9 +4,10 @@
 import rich
 import rich.text
 
-from faebryk.core.core import GraphInterface, Link, Node
 from faebryk.core.graph import Graph
-from faebryk.core.util import get_all_connected
+from faebryk.core.graphinterface import GraphInterface
+from faebryk.core.link import Link
+from faebryk.core.node import Node
 from faebryk.exporters.visualize.util import IDSet, generate_pastel_palette
 
 
@@ -72,7 +73,7 @@ def interactive_graph(G: Graph):
         *(
             filter(
                 _not_none,
-                (_link(link) for gif in G for _, link in get_all_connected(gif)),
+                (_link(link) for gif in G for link in gif.get_links()),
             )
         ),
         *(

@@ -87,8 +87,6 @@ class PickErrorChildren(PickError):
 
 class PickErrorParams(PickError):
     def __init__(self, module: Module, options: list[PickerOption]):
-        from faebryk.core.util import pretty_params
-
         self.options = options
 
         MAX = 5
@@ -101,7 +99,7 @@ class PickErrorParams(PickError):
 
         message = (
             f"Could not find part for {module}"
-            f"\nwith params:\n{indent(pretty_params(module), ' '*4)}"
+            f"\nwith params:\n{indent(module.pretty_params(), ' '*4)}"
             f"\nin options:\n {indent(options_str, ' '*4)}"
         )
         super().__init__(message, module)
@@ -182,7 +180,7 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
 
 
 def _get_mif_top_level_modules(mif: ModuleInterface) -> set[Module]:
-    return mif.get_children(direct_only=True, types=Module) | {
+    return Module.get_children_modules(mif, direct_only=True) | {
         m
         for nmif in mif.get_children(direct_only=True, types=ModuleInterface)
         for m in _get_mif_top_level_modules(nmif)
@@ -194,18 +192,18 @@ class PickerProgress:
         self.progress = Progress()
         self.task = self.progress.add_task("Picking", total=1)
 
+    @staticmethod
+    def _get_total(module: Module):
+        return len(module.get_children_modules())
+
     @classmethod
     def from_module(cls, module: Module) -> "PickerProgress":
         self = cls()
-        from faebryk.core.util import get_all_modules
-
-        self.progress.update(self.task, total=len(get_all_modules(module)))
+        self.progress.update(self.task, total=cls._get_total(module))
         return self
 
     def advance(self, module: Module):
-        from faebryk.core.util import get_all_modules
-
-        self.progress.advance(self.task, len(get_all_modules(module)))
+        self.progress.advance(self.task, self._get_total(module))
 
     @contextmanager
     def context(self):
@@ -248,7 +246,7 @@ def pick_part_recursively(module: Module):
         if m.has_trait(has_part_picked):
             return out
 
-        children = m.get_children(direct_only=True, types=Module)
+        children = m.get_children_modules(direct_only=True)
         if not children:
             return out + [m]
 
@@ -282,7 +280,7 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
             # if no children, raise
             # This whole logic will be so much easier if the recursive
             # picker is just a normal picker
-            if not module.get_children(direct_only=True, types=Module):
+            if not module.get_children_modules(direct_only=True):
                 raise e
 
     if module.has_trait(has_part_picked):

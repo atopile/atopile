@@ -40,7 +40,7 @@ from faebryk.libs.kicad.fileformats import (
     C_xyz,
 )
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
-from faebryk.libs.util import cast_assert, find, get_key
+from faebryk.libs.util import KeyErrorNotFound, cast_assert, find, get_key
 
 logger = logging.getLogger(__name__)
 
@@ -224,9 +224,7 @@ class PCB_Transformer:
         footprints = {
             (f.propertys["Reference"].value, f.name): f for f in self.pcb.footprints
         }
-        from faebryk.core.util import get_all_nodes_with_trait
-
-        for node, fpt in get_all_nodes_with_trait(self.graph, F.has_footprint):
+        for node, fpt in self.graph.nodes_with_trait(F.has_footprint):
             if not node.has_trait(F.has_overriden_name):
                 continue
             g_fp = fpt.get_footprint()
@@ -259,8 +257,8 @@ class PCB_Transformer:
 
         attached = {
             n: t.get_fp()
-            for n, t in get_all_nodes_with_trait(
-                self.graph, self.has_linked_kicad_footprint
+            for n, t in self.graph.nodes_with_trait(
+                PCB_Transformer.has_linked_kicad_footprint
             )
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
@@ -416,7 +414,7 @@ class PCB_Transformer:
     def get_pad_pos_any(intf: F.Electrical) -> list[tuple[FPad, Point]]:
         try:
             fpads = FPad.find_pad_for_intf_with_parent_that_has_footprint(intf)
-        except ValueError:
+        except KeyErrorNotFound:
             # intf has no parent with footprint
             return []
 
@@ -692,11 +690,9 @@ class PCB_Transformer:
 
     # Positioning ----------------------------------------------------------------------
     def move_footprints(self):
-        from faebryk.core.util import get_all_nodes_with_traits
-
         # position modules with defined positions
-        pos_mods = get_all_nodes_with_traits(
-            self.graph, (F.has_pcb_position, self.has_linked_kicad_footprint)
+        pos_mods = self.graph.nodes_with_traits(
+            (F.has_pcb_position, self.has_linked_kicad_footprint)
         )
 
         logger.info(f"Positioning {len(pos_mods)} footprints")

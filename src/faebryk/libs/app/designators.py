@@ -10,10 +10,6 @@ from typing import cast
 
 import faebryk.library._F as F
 from faebryk.core.graphinterface import Graph
-from faebryk.core.util import (
-    get_all_nodes_by_names,
-    get_all_nodes_with_trait,
-)
 from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 from faebryk.libs.util import duplicates, get_key, groupby
@@ -26,7 +22,7 @@ def attach_random_designators(graph: Graph):
     sorts nodes by path and then sequentially assigns designators
     """
 
-    nodes = {n for n, _ in get_all_nodes_with_trait(graph, F.has_footprint)}
+    nodes = {n for n, _ in graph.nodes_with_trait(F.has_footprint)}
 
     in_use = {
         n.get_trait(F.has_designator).get_designator()
@@ -77,7 +73,7 @@ def attach_random_designators(graph: Graph):
 
 
 def override_names_with_designators(graph: Graph):
-    for n, t in get_all_nodes_with_trait(graph, F.has_designator):
+    for n, t in graph.nodes_with_trait(F.has_designator):
         name = t.get_designator()
         if n.has_trait(F.has_overriden_name):
             logger.warning(
@@ -102,7 +98,7 @@ def load_designators_from_netlist(
 
     matched_nodes = {
         node_name: (n, designators[node_name])
-        for n, node_name in get_all_nodes_by_names(graph, designators.keys())
+        for n, node_name in graph.nodes_by_names(designators.keys())
     }
 
     for _, (n, designator) in matched_nodes.items():
@@ -126,7 +122,7 @@ def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: P
     pattern = re.compile(r"^(.*)\[[^\]]*\]$")
     translation = {
         n.get_full_name(): t.get_name()
-        for n, t in get_all_nodes_with_trait(graph, F.has_overriden_name)
+        for n, t in graph.nodes_with_trait(F.has_overriden_name)
     }
 
     for fp in pcb.kicad_pcb.footprints:

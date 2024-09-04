@@ -4,6 +4,7 @@
 from textwrap import indent
 
 from faebryk.core.parameter import Parameter
+from faebryk.libs.units import UnitsContainer
 
 
 class TBD[PV](Parameter[PV]):
@@ -29,3 +30,6 @@ class TBD[PV](Parameter[PV]):
                 out += or_
 
             return out
+
+    def _as_unit(self, unit: UnitsContainer, base: int, required: bool) -> str:
+        return "TBD" if required else ""

@@ -91,12 +91,9 @@ class can_represent_kicad_footprint_via_attached_component(
 
 
 def add_or_get_net(interface: F.Electrical):
-    from faebryk.core.util import get_connected_mifs
-
-    mifs = get_connected_mifs(interface.connected)
     nets = {
         p[0]
-        for mif in mifs
+        for mif in interface.get_connected()
         if (p := mif.get_parent()) is not None and isinstance(p[0], F.Net)
     }
     if not nets:
@@ -109,7 +106,6 @@ def add_or_get_net(interface: F.Electrical):
 
 
 def attach_nets_and_kicad_info(g: Graph):
-    from faebryk.core.util import get_all_nodes_with_trait
     # g has to be closed
 
     Gclosed = g
@@ -119,7 +115,7 @@ def attach_nets_and_kicad_info(g: Graph):
         n: t.get_footprint()
         # TODO maybe nicer to just look for footprints
         # and get their respective components instead
-        for n, t in get_all_nodes_with_trait(Gclosed, F.has_footprint)
+        for n, t in Gclosed.nodes_with_trait(F.has_footprint)
         if isinstance(n, Module)
     }
 
