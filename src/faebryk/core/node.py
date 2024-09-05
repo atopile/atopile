@@ -42,6 +42,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# TODO: should this be a FaebrykException?
+# TODO: should this include node and field information?
 class FieldError(Exception):
     pass
 
@@ -108,6 +110,13 @@ class NodeException(FaebrykException):
     def __init__(self, node: "Node", *args: object) -> None:
         super().__init__(*args)
         self.node = node
+
+
+class FieldConstructionError(FaebrykException):
+    def __init__(self, node: "Node", field: str, *args: object) -> None:
+        super().__init__(*args)
+        self.node = node
+        self.field = field
 
 
 class NodeAlreadyBound(NodeException):
@@ -291,7 +300,7 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
 
             return inst
 
-        def setup_field(name, obj):
+        def _setup_field(name, obj):
             def setup_gen_alias(name, obj):
                 origin = get_origin(obj)
                 assert origin
@@ -320,6 +329,16 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
                 return
 
             raise NotImplementedError()
+
+        def setup_field(name, obj):
+            try:
+                _setup_field(name, obj)
+            except Exception as e:
+                raise FieldConstructionError(
+                    self,
+                    name,
+                    f"An exception occurred while constructing field \"{name}\"",
+                ) from e
 
         nonrt, rt = partition(lambda x: isinstance(x[1], rt_field), clsfields.items())
         for name, obj in nonrt:
