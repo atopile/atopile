@@ -670,8 +670,8 @@ class JLCPCB_DB:
         )
 
     def prompt_db_update(self, prompt: str = "Update JLCPCB database?") -> bool:
-        ans = input(prompt + " [Y/n]:").lower()
-        return ans == "y" or ans == ""
+        ans = input(prompt + " [y/N]:").lower()
+        return ans == "y"
 
     def download(
         self,

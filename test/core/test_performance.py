@@ -4,7 +4,6 @@
 import time
 import unittest
 from itertools import pairwise
-from textwrap import indent
 from typing import Callable
 
 import faebryk.library._F as F
@@ -13,34 +12,8 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.library import L
+from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
-
-
-class Times:
-    def __init__(self) -> None:
-        self.times = {}
-        self.last_time = time.time()
-
-    def add(self, name: str):
-        now = time.time()
-        if name not in self.times:
-            self.times[name] = now - self.last_time
-        self.last_time = now
-
-    def _format_val(self, val: float):
-        return f"{val * 1000:.2f}ms"
-
-    def __repr__(self):
-        formatted = {
-            k: self._format_val(v)
-            for k, v in self.times.items()
-            if not k.startswith("_")
-        }
-        longest_name = max(len(k) for k in formatted)
-        return "Timings: \n" + indent(
-            "\n".join(f"{k:>{longest_name}}: {v:<10}" for k, v in formatted.items()),
-            " " * 4,
-        )
 
 
 class TestPerformance(unittest.TestCase):

@@ -13,6 +13,7 @@ from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.picker import DescriptiveProperties, has_part_picked
+from faebryk.libs.test.times import Times
 from faebryk.libs.units import P, Quantity
 
 logger = logging.getLogger(__name__)
@@ -358,6 +359,86 @@ class TestPickerJlcpcb(unittest.TestCase):
     def tearDown(self):
         # in test atexit not triggered, thus need to close DB manually
         JLCPCB_DB.get().close()
+
+
+@unittest.skipIf(not JLCPCB_DB.config.db_path.exists(), reason="Requires large db")
+class TestPickerPerformanceJLCPCB(unittest.TestCase):
+    def test_simple_full(self):
+        # conclusions
+        # - first pick overall is slow, need to load sqlite into buffer cache
+        # - first pick of component type is slower than subsequent picks
+        #   (even with different parameters)
+        # - component type order has no influence
+        # - component type speed differs a lot (res = 500ms, cap = 100ms)
+        #   (even though both value based)
+        #   e-series speed (query or count), if resistor with E24, 200ms
+        #   still 2x though, maybe total count?
+        # - e-series intersect 20% execution time
+        #   => optimized with cache
+
+        timings = Times()
+
+        def r_builder(resistance_kohm: float):
+            return F.Resistor().builder(
+                lambda r: (
+                    r.resistance.merge(
+                        F.Range.from_center_rel(resistance_kohm * P.kohm, 0.1)
+                    ),
+                    r.rated_power.merge(F.ANY()),
+                    r.rated_voltage.merge(F.ANY()),
+                )
+            )
+
+        def c_builder(capacitance_pf: float):
+            return F.Capacitor().builder(
+                lambda c: (
+                    c.capacitance.merge(
+                        F.Range.from_center_rel(capacitance_pf * P.pF, 0.1)
+                    ),
+                    c.rated_voltage.merge(F.ANY()),
+                    c.temperature_coefficient.merge(F.ANY()),
+                )
+            )
+
+        resistors = [r_builder(5 * (i + 1)) for i in range(5)] + [
+            r_builder(5 * (i + 1)) for i in reversed(range(5))
+        ]
+        caps = [c_builder(10 * (i + 1)) for i in range(5)] + [
+            c_builder(10 * (i + 1)) for i in reversed(range(5))
+        ]
+        resistors_10k = [r_builder(10) for _ in range(10)]
+
+        mods = resistors + caps + resistors_10k
+
+        for mod in mods:
+            add_jlcpcb_pickers(mod)
+
+        with timings.context("resistors"):
+            for i, r in enumerate(resistors):
+                r.get_trait(F.has_picker).pick()
+                timings.add(
+                    f"full pick value pick (resistor {i}:"
+                    f" {r.resistance.as_unit_with_tolerance('ohm')})"
+                )
+
+        # cache is warm now, but also for non resistors?
+        with timings.context("capacitors"):
+            for i, c in enumerate(caps):
+                c.get_trait(F.has_picker).pick()
+                timings.add(
+                    f"full pick value pick (capacitor {i}:"
+                    f" {c.capacitance.as_unit_with_tolerance('F')})"
+                )
+
+        with timings.context("resistors_10k"):
+            for i, r in enumerate(resistors_10k):
+                r.get_trait(F.has_picker).pick()
+                timings.add(
+                    f"full pick value pick (resistor {i}:"
+                    f" {r.resistance.as_unit_with_tolerance('ohm')})"
+                )
+
+        print(timings)
 
 
 if __name__ == "__main__":

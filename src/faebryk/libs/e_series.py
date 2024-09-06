@@ -1,3 +1,4 @@
+import copy
 import logging
 from math import ceil, floor, log10
 from typing import Tuple
@@ -429,12 +430,19 @@ def repeat_set_over_base(
 class ParamNotResolvedError(Exception): ...
 
 
+_e_series_cache: list[tuple[Parameter, int, set]] = []
+
+
 def e_series_intersect[T: float | Quantity](
     value: Parameter[T], e_series: E_SERIES = E_SERIES_VALUES.E_ALL
 ) -> F.Set[T]:
     # TODO this got really uglu, need to clean up
 
     value = value.get_most_narrow()
+
+    for k, i, v in _e_series_cache:
+        if k == value and i == id(e_series):
+            return F.Set(v)
 
     if isinstance(value, F.Constant):
         value = F.Range(value)
@@ -476,7 +484,9 @@ def e_series_intersect[T: float | Quantity](
     e_series_values = repeat_set_over_base(
         e_series, 10, range(floor(log10(min_val)), ceil(log10(max_val)) + 1)
     )
-    return value & {e * unit for e in e_series_values}
+    out = value & {e * unit for e in e_series_values}
+    _e_series_cache.append((copy.copy(value), id(e_series), out.params))
+    return out
 
 
 def e_series_discretize_to_nearest(
