@@ -3,11 +3,17 @@
 
 import logging
 import re
+import subprocess
+from pathlib import Path
+from textwrap import dedent
+from typing import Callable, Iterable
+
+import black
 
 logger = logging.getLogger(__name__)
 
 
-def sanitize_name(raw):
+def sanitize_name(raw, expect_arithmetic: bool = False):
     sanitized = raw
     # braces
     sanitized = sanitized.replace("(", "")
@@ -18,6 +24,9 @@ def sanitize_name(raw):
     sanitized = sanitized.replace(".", "_")
     sanitized = sanitized.replace(",", "_")
     sanitized = sanitized.replace("/", "_")
+    if not expect_arithmetic:
+        sanitized = sanitized.replace("-", "_")
+
     # special symbols
     sanitized = sanitized.replace("'", "")
     sanitized = sanitized.replace("*", "")
@@ -62,3 +71,45 @@ def sanitize_name(raw):
         return None, to_escape
 
     return sanitized
+
+
+def gen_repeated_block[T](
+    generator: Iterable[T],
+    func: Callable[[T], str] = dedent,
+    requires_pass: bool = False,
+) -> str:
+    lines = list(map(func, generator))
+
+    if not lines and requires_pass:
+        lines = ["pass"]
+
+    return gen_block("\n".join(lines))
+
+
+def gen_block(payload: str):
+    return f"#__MARK_BLOCK_BEGIN\n{payload}\n#__MARK_BLOCK_END"
+
+
+def fix_indent(text: str) -> str:
+    indent_stack = [""]
+
+    out_lines = []
+    for line in text.splitlines():
+        if "#__MARK_BLOCK_BEGIN" in line:
+            indent_stack.append(line.removesuffix("#__MARK_BLOCK_BEGIN"))
+        elif "#__MARK_BLOCK_END" in line:
+            indent_stack.pop()
+        else:
+            out_lines.append(indent_stack[-1] + line)
+
+    return dedent("\n".join(out_lines))
+
+
+def format_and_write(code: str, path: Path):
+    code = code.strip()
+    code = black.format_file_contents(code, fast=True, mode=black.FileMode())
+    path.write_text(code)
+
+    print("Ruff----")
+    subprocess.run(["ruff", "check", "--fix", path], check=True)
+    print("--------")

@@ -2,14 +2,30 @@
 # SPDX-License-Identifier: MIT
 
 import glob
+import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 
-import black
 import typer
+from more_itertools import partition
 
+from faebryk.libs.picker.jlcpcb.jlcpcb import Component
+from faebryk.libs.picker.jlcpcb.picker_lib import (
+    find_component_by_lcsc_id,
+    find_component_by_mfr,
+)
+from faebryk.libs.picker.lcsc import download_easyeda_info
+from faebryk.libs.pycodegen import (
+    fix_indent,
+    format_and_write,
+    gen_block,
+    gen_repeated_block,
+    sanitize_name,
+)
 from faebryk.libs.tools.typer import typer_callback
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, find
 
 # TODO use AST instead of string
 
@@ -18,6 +34,7 @@ from faebryk.libs.tools.typer import typer_callback
 class CTX:
     path: Path
     pypath: str
+    overwrite: bool
 
 
 def get_ctx(ctx: typer.Context) -> "CTX":
@@ -28,9 +45,11 @@ def write(ctx: typer.Context, contents: str, filename=""):
     path: Path = get_ctx(ctx).path
     if filename:
         path = path.with_stem(filename)
-    contents = contents.strip()
-    contents = black.format_file_contents(contents, fast=True, mode=black.FileMode())
-    path.write_text(contents)
+
+    if path.exists() and not get_ctx(ctx).overwrite:
+        raise FileExistsError(f"File {path} already exists")
+
+    format_and_write(contents, path)
 
     typer.echo(f"File {path} created")
 
@@ -72,43 +91,158 @@ def main(ctx: typer.Context, name: str, local: bool = True, overwrite: bool = Fa
             f"Library folder {libfolder} not found, are you in the right directory?"
         )
 
-    path = (libfolder / name).with_suffix(".py")
+    path = libfolder / (name + ".py")
 
-    if path.exists() and not overwrite:
-        raise FileExistsError(f"File {path} already exists")
-
-    ctx.obj = CTX(path=path, pypath=pypath)
+    ctx.obj = CTX(path=path, pypath=pypath, overwrite=overwrite)
 
 
 @main.command()
-def module(ctx: typer.Context, interface: bool = False):
+def module(
+    ctx: typer.Context, interface: bool = False, mfr: bool = False, lcsc: bool = False
+):
+    name = get_name(ctx)
+
+    docstring = "TODO: Docstring describing your module"
     base = "Module" if not interface else "ModuleInterface"
 
-    out = dedent(f"""
+    part: Component | None = None
+    traits = []
+    nodes = []
+
+    imports = [
+        "import faebryk.library._F as F  # noqa: F401",
+        f"from faebryk.core.{base.lower()} import {base}",
+        "from faebryk.libs.library import L  # noqa: F401",
+        "from faebryk.libs.units import P  # noqa: F401",
+    ]
+
+    if mfr and lcsc:
+        raise ValueError("Cannot use both mfr and lcsc")
+    if mfr or lcsc:
+        import faebryk.libs.picker.lcsc as lcsc_
+
+        BUILD_DIR = Path("./build")
+        lcsc_.BUILD_FOLDER = BUILD_DIR
+        lcsc_.LIB_FOLDER = BUILD_DIR / Path("kicad/libs")
+        lcsc_.MODEL_PATH = None
+
+    if lcsc:
+        part = find_component_by_lcsc_id(name)
+        traits.append(
+            "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
+            f"({{'LCSC': '{name}'}})"
+        )
+    elif mfr:
+        if "," in name:
+            mfr_, mfr_pn = name.split(",", maxsplit=1)
+        else:
+            mfr_, mfr_pn = "", name
+        try:
+            part = find_component_by_mfr(mfr_, mfr_pn)
+        except KeyErrorAmbiguous as e:
+            # try find exact match
+            try:
+                part = find(e.duplicates, lambda x: x.mfr == mfr_pn)
+            except KeyErrorNotFound:
+                print(
+                    f"Error: Ambiguous mfr_pn({mfr_pn}):"
+                    f" {[x.mfr for x in e.duplicates]}"
+                )
+                print("Tip: Specify the full mfr_pn of your choice")
+                sys.exit(1)
+
+    if part:
+        name = sanitize_name(f"{part.mfr_name}_{part.mfr}")
+        assert isinstance(name, str)
+        ki_footprint, _, easyeda_footprint, _, easyeda_symbol = download_easyeda_info(
+            part.partno, get_model=False
+        )
+
+        designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
+        traits.append(
+            f"designator_prefix = L.f_field(F.has_designator_prefix_defined)"
+            f"('{designator_prefix}')"
+        )
+
+        imports.append("from faebryk.libs.picker.picker import DescriptiveProperties")
+        traits.append(
+            f"descriptive_properties = L.f_field(F.has_descriptive_properties_defined)"
+            f"({{DescriptiveProperties.manufacturer: '{part.mfr_name}', "
+            f"DescriptiveProperties.partno: '{part.mfr}'}})"
+        )
+
+        if part.datasheet:
+            traits.append(
+                f"datasheet = L.f_field(F.has_datasheet_defined)('{part.datasheet}')"
+            )
+
+        partdoc = part.description.replace("  ", "\n")
+        docstring = f"{docstring}\n\n{partdoc}"
+
+        # pins --------------------------------
+        pins = [
+            (pin.settings.spice_pin_number, pin.name.text)
+            for pin in easyeda_symbol.pins
+        ]
+        pins, noname = partition(lambda x: re.match(r"[0-9]+", x[1]), pins)
+        pins = sorted(pins, key=lambda x: x[0])
+        noname = list(noname)
+        assert all(k == v for k, v in noname)
+        noname = [k for k, v in sorted(noname, key=lambda x: int(x[0]))]
+        noname = {pin_num: i for i, pin_num in enumerate(noname)}
+
+        interface_names = {
+            pin_name: sanitize_name(pin_name)
+            for _, pin_name in sorted(pins, key=lambda x: x[1])
+        }
+
+        nodes.append(
+            "#TODO: Change auto-generated interface types to actual high level types"
+        )
+        nodes += [f"{pin_name}: F.Electrical" for pin_name in interface_names.values()]
+        if noname:
+            nodes.append(f"unnamed = L.list_field({len(noname)}, F.Electrical)")
+
+        traits.append(f"""
+            @L.rt_field
+            def pin_association_heuristic(self):
+                return F.has_pin_association_heuristic_lookup_table(
+                    mapping={{
+                        {", ".join([f"self.{interface_names[pin_name]}: ['{pin_name}']"
+                                    for _,pin_name in pins] + [
+                                        f"self.unnamed[{i}]: ['{pin_num}']"
+                                        for pin_num, i in noname.items()
+                                    ])}
+                    }},
+                    accept_prefix=False,
+                    case_sensitive=False,
+                )
+        """)
+
+    out = fix_indent(f"""
         # This file is part of the faebryk project
         # SPDX-License-Identifier: MIT
 
         import logging
 
-        import faebryk.library._F as F  # noqa: F401
-        from faebryk.core.{base.lower()} import {base}
-        from faebryk.libs.library import L  # noqa: F401
-        from faebryk.libs.units import P  # noqa: F401
+        {gen_repeated_block(imports)}
 
         logger = logging.getLogger(__name__)
 
-        class {get_name(ctx)}({base}):
+        class {name}({base}):
             \"\"\"
-            Docstring describing your module
+            {gen_block(docstring)}
             \"\"\"
 
             # ----------------------------------------
             #     modules, interfaces, parameters
             # ----------------------------------------
+            {gen_repeated_block(nodes)}
 
             # ----------------------------------------
             #                 traits
             # ----------------------------------------
+            {gen_repeated_block(traits)}
 
             def __preinit__(self):
                 # ------------------------------------
@@ -121,7 +255,7 @@ def module(ctx: typer.Context, interface: bool = False):
                 pass
     """)
 
-    write(ctx, out)
+    write(ctx, out, filename=name)
 
 
 @main.command()

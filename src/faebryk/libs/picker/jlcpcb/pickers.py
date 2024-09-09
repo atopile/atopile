@@ -86,8 +86,8 @@ def add_jlcpcb_pickers(module: Module, base_prio: int = 0) -> None:
 
     # Generic pickers
     prio = base_prio
-    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_lcsc_part)))
-    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_manufacturer_part)))
+    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_lcsc_id)))
+    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_mfr)))
 
     # Type specific pickers
     prio = base_prio + 1

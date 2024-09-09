@@ -6,6 +6,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.picker.jlcpcb.jlcpcb import (
+    Component,
     ComponentQuery,
     MappingParameterDB,
 )
@@ -13,6 +14,7 @@ from faebryk.libs.picker.picker import (
     DescriptiveProperties,
     PickError,
 )
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,21 @@ def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], F.Constant[T]]:
     return f
 
 
-def find_lcsc_part(module: Module):
+def find_component_by_lcsc_id(lcsc_id: str) -> Component:
+    parts = ComponentQuery().filter_by_lcsc_pn(lcsc_id).get()
+
+    if len(parts) < 1:
+        raise KeyErrorNotFound(f"Could not find part with LCSC part number {lcsc_id}")
+
+    if len(parts) > 1:
+        raise KeyErrorAmbiguous(
+            parts, f"Found multiple parts with LCSC part number {lcsc_id}"
+        )
+
+    return next(iter(parts))
+
+
+def find_and_attach_by_lcsc_id(module: Module):
     """
     Find a part in the JLCPCB database by its LCSC part number
     """
@@ -56,23 +72,47 @@ def find_lcsc_part(module: Module):
 
     lcsc_pn = module.get_trait(F.has_descriptive_properties).get_properties()["LCSC"]
 
-    parts = ComponentQuery().filter_by_lcsc_pn(lcsc_pn).get()
-
-    if len(parts) < 1:
-        raise PickError(f"Could not find part with LCSC part number {lcsc_pn}", module)
-
-    if len(parts) > 1:
+    try:
+        part = find_component_by_lcsc_id(lcsc_pn)
+    except KeyErrorNotFound as e:
+        raise PickError(
+            f"Could not find part with LCSC part number {lcsc_pn}", module
+        ) from e
+    except KeyErrorAmbiguous:
         raise PickError(f"Found no exact match for LCSC part number {lcsc_pn}", module)
 
-    if parts[0].stock < qty:
+    if part.stock < qty:
         raise PickError(
             f"Part with LCSC part number {lcsc_pn} has insufficient stock", module
         )
 
-    parts[0].attach(module, [])
+    part.attach(module, [])
 
 
-def find_manufacturer_part(module: Module):
+def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
+    parts = (
+        ComponentQuery()
+        .filter_by_manufacturer_pn(mfr_pn)
+        .filter_by_manufacturer(mfr)
+        .filter_by_stock(qty)
+        .sort_by_price()
+        .get()
+    )
+
+    if len(parts) < 1:
+        raise KeyErrorNotFound(
+            f"Could not find part with manufacturer part number {mfr_pn}"
+        )
+
+    if len(parts) > 1:
+        raise KeyErrorAmbiguous(
+            parts, f"Found multiple parts with manufacturer part number {mfr_pn}"
+        )
+
+    return next(iter(parts))
+
+
+def find_and_attach_by_mfr(module: Module):
     """
     Find a part in the JLCPCB database by its manufacturer part number
     """
@@ -97,19 +137,14 @@ def find_manufacturer_part(module: Module):
         DescriptiveProperties.manufacturer
     ]
 
-    parts = (
-        ComponentQuery()
-        .filter_by_manufacturer_pn(mfr_pn)
-        .filter_by_manufacturer(mfr)
-        .filter_by_stock(qty)
-        .sort_by_price()
-        .get()
-    )
-
-    if len(parts) < 1:
+    try:
+        parts = [find_component_by_mfr(mfr, mfr_pn)]
+    except KeyErrorNotFound as e:
         raise PickError(
             f"Could not find part with manufacturer part number {mfr_pn}", module
-        )
+        ) from e
+    except KeyErrorAmbiguous as e:
+        parts = e.duplicates
 
     for part in parts:
         try:

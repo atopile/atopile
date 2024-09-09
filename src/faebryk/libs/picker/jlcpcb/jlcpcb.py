@@ -364,6 +364,10 @@ class Component(Model):
                 f"{indent(module.pretty_params(), ' '*4)}"
             )
 
+    @property
+    def mfr_name(self) -> str:
+        return asyncio.run(Manufacturers().get_from_id(self.manufacturer_id))
+
 
 class ComponentQuery:
     class Error(Exception): ...
@@ -482,6 +486,8 @@ class ComponentQuery:
 
     def filter_by_manufacturer(self, manufacturer: str) -> Self:
         assert self.Q
+        if not manufacturer:
+            return self
         manufacturer_ids = asyncio.run(Manufacturers().get_ids(manufacturer))
         self.Q &= Q(manufacturer_id__in=manufacturer_ids)
         return self
