@@ -622,6 +622,7 @@ class C_polygon:
 class C_footprint:
     class E_attr(SymEnum):
         smd = auto()
+        dnp = auto()
         board_only = auto()
         through_hole = auto()
         exclude_from_pos_files = auto()
@@ -884,7 +885,7 @@ class C_kicad_pcb_file(SEXP_File):
         @dataclass
         class C_via:
             at: C_xy
-            size: C_wh
+            size: float
             drill: float
             net: int
             uuid: UUID
@@ -962,6 +963,9 @@ class C_kicad_pcb_file(SEXP_File):
             @dataclass(kw_only=True)
             class C_filled_polygon:
                 layer: str
+                island: Optional[bool] = field(
+                    **sexp_field(positional=True), default=None
+                )
                 pts: C_polygon.C_pts
 
             net: int

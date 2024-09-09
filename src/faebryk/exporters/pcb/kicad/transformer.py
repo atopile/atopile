@@ -533,7 +533,7 @@ class PCB_Transformer:
         self.pcb.vias.append(
             Via(
                 at=C_xy(*coord),
-                size=C_wh(size_drill[0], size_drill[0]),
+                size=size_drill[0],
                 drill=size_drill[1],
                 layers=["F.Cu", "B.Cu"],
                 net=net,
