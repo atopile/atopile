@@ -337,7 +337,7 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
                 raise FieldConstructionError(
                     self,
                     name,
-                    f"An exception occurred while constructing field \"{name}\"",
+                    f'An exception occurred while constructing field "{name}"',
                 ) from e
 
         nonrt, rt = partition(lambda x: isinstance(x[1], rt_field), clsfields.items())
