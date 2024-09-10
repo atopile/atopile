@@ -364,6 +364,9 @@ def get_footprint(addr: AddrStr) -> str:
             # strip .kicad_mod from the end of the footprint if it's there
             if footprint.endswith(".kicad_mod"):
                 footprint = footprint.removesuffix(".kicad_mod")
+
+            if len(footprint) == 1:
+                footprint = footprint + db_data.get("package", "")
         except KeyError as ex:
             raise errors.AtoInfraError(
                 "db component for $addr has no footprint",
