@@ -91,10 +91,20 @@ def sync_drawing(
     source_board.Remove(new_drawing)
     return new_drawing
 
-#TODO: There must be a better way to update net of fill
-def update_zone_net(source_zone: pcbnew.ZONE, source_board: pcbnew.BOARD, target_zone: pcbnew.ZONE, target_board:pcbnew.BOARD, uuid_map: dict[str, str]):
-    '''Finds a pin connected to original zone, pulls pin net name from new board net'''
+
+# TODO: There must be a better way to update net of fill
+def update_zone_net(
+    source_zone: pcbnew.ZONE,
+    source_board: pcbnew.BOARD,
+    target_zone: pcbnew.ZONE,
+    target_board: pcbnew.BOARD,
+    uuid_map: dict[str, str],
+):
+    """Finds a pin connected to original zone, pulls pin net name from new board net"""
     source_netname = source_zone.GetNetname()
+    log.info(
+        f"update_zone_net source_zone={source_zone} target_zone={target_zone} source_netname={source_netname}"
+    )
     matched_fp = None
     matched_pad_index = None
     for fp in source_board.GetFootprints():
@@ -102,13 +112,17 @@ def update_zone_net(source_zone: pcbnew.ZONE, source_board: pcbnew.BOARD, target
             if pad.GetNetname() == source_netname:
                 matched_fp = fp
                 matched_pad_index = index
+                break
 
-    if matched_fp and matched_pad_index:
+        if matched_fp and matched_pad_index != None:
+            break
+
+    if matched_fp and matched_pad_index != None:
         matched_fp_uuid = get_footprint_uuid(matched_fp)
-        target_fp_uuid = uuid_map.get(matched_fp_uuid,None)
+        target_fp_uuid = uuid_map.get(matched_fp_uuid, None)
         if target_fp_uuid:
             target_uuids = footprints_by_uuid(target_board)
-            target_fp = target_uuids.get(target_fp_uuid,None)
+            target_fp = target_uuids.get(target_fp_uuid, None)
             if target_fp:
                 new_netinfo = target_fp.Pads()[matched_pad_index].GetNet()
                 target_zone.SetNet(new_netinfo)
@@ -123,6 +137,7 @@ def sync_zone(zone: pcbnew.ZONE, target: pcbnew.BOARD) -> pcbnew.ZONE:
     new_zone: pcbnew.ZONE = zone.Duplicate().Cast()
     new_zone.SetParent(target)
     layer = zone.GetLayer()
+    new_zone.SetNet(target.FindNet(zone.GetNetname()))
     if layer != -1:
         new_zone.SetLayer(zone.GetLayer())
     target.Add(new_zone)
@@ -147,11 +162,20 @@ def sync_footprints(
         target_fp.SetPosition(source_fp.GetPosition())
         target_fp.SetOrientation(source_fp.GetOrientation())
         target_fp.SetLayer(source_fp.GetLayer())
+        target_fp.SetLayerSet(source_fp.GetLayerSet())
         # Ref Designators
         target_fp.Reference().SetAttributes(source_fp.Reference().GetAttributes())
         target_ref: pcbnew.FP_TEXT = target_fp.Reference()
         source_ref: pcbnew.FP_TEXT = source_fp.Reference()
         target_ref.SetPosition(source_ref.GetPosition())
+
+        # Pads
+        for target_pad in target_fp.Pads():
+            source_pad = source_fp.FindPadByNumber(target_pad.GetNumber())
+            target_pad.SetPosition(source_pad.GetPosition())
+            target_pad.SetOrientation(source_pad.GetOrientation())
+            target_pad.SetLayer(source_pad.GetLayer())
+            target_pad.SetLayerSet(source_pad.GetLayerSet())
 
     return missing_uuids
 
@@ -164,7 +188,9 @@ def find_anchor_footprint(fps: Iterable[pcbnew.FOOTPRINT]) -> pcbnew.FOOTPRINT:
     max_area = 0
     anchor_fp = None
     for fp in fps:
-        if fp.GetPadCount() > max_padcount or (fp.GetPadCount()==max_padcount and fp.GetArea()>max_area):
+        if fp.GetPadCount() > max_padcount or (
+            fp.GetPadCount() == max_padcount and fp.GetArea() > max_area
+        ):
             anchor_fp = fp
             max_padcount = fp.GetPadCount()
             max_area = fp.GetArea()
