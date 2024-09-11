@@ -11,12 +11,9 @@ class XL_3528RGBW_WS2812B(Module):
         update_interval: F.TBD
 
         def get_config(self) -> dict:
-            assert isinstance(
-                self.update_interval, F.Constant
-            ), "No update interval set!"
+            assert isinstance(self.update_interval, F.Constant)
 
-            obj = self.obj
-            assert isinstance(obj, XL_3528RGBW_WS2812B), "This is not a WS2812B RGBW!"
+            obj = self.get_obj(XL_3528RGBW_WS2812B)
 
             data_pin = F.is_esphome_bus.find_connected_bus(obj.di.signal)
 
@@ -34,6 +31,12 @@ class XL_3528RGBW_WS2812B(Module):
                     }
                 ]
             }
+
+        def is_implemented(self):
+            return (
+                isinstance(self.update_interval.get_most_narrow(), F.Constant)
+                and super().is_implemented()
+            )
 
     # interfaces
 

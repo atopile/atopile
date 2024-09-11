@@ -19,7 +19,7 @@ class QWIIC(Module):
 
     def __preinit__(self):
         # set constraints
-        self.power.voltage.merge(F.Constant(3.3 * P.V))
+        self.power.voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
         # TODO: self.power.source_current.merge(F.Constant(226 * P.mA))
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)("J")

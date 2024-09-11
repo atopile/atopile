@@ -12,13 +12,31 @@ class CBM9002A_56ILG_Reference_Design(Module):
     Minimal working example for the CBM9002A_56ILG
     """
 
+    class ResetCircuit(Module):
+        """low-pass and protection for reset"""
+
+        diode: F.Diode
+        cap: F.Capacitor
+        logic: F.ElectricLogic
+
+        def __preinit__(self):
+            self.logic.signal.connect_via(self.diode, self.logic.reference.hv)
+            self.logic.pulled.pull(up=True)
+            self.logic.signal.connect_via(self.cap, self.logic.reference.lv)
+
+            self.cap.capacitance.merge(F.Range.from_center_rel(1 * P.uF, 0.05))
+
+            self.diode.forward_voltage.merge(F.Range(715 * P.mV, 1.5 * P.V))
+            self.diode.reverse_leakage_current.merge(F.Range.upper_bound(1 * P.uA))
+            self.diode.current.merge(F.Range.from_center_rel(300 * P.mA, 0.05))
+            self.diode.max_current.merge(F.Range.lower_bound(1 * P.A))
+
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
     mcu: F.CBM9002A_56ILG
-    reset_diode: F.Diode
-    reset_lowpass_cap: F.Capacitor
     oscillator: F.Crystal_Oscillator
+    reset_circuit: ResetCircuit
 
     PA = L.list_field(8, F.ElectricLogic)
     PB = L.list_field(8, F.ElectricLogic)
@@ -47,32 +65,22 @@ class CBM9002A_56ILG_Reference_Design(Module):
     #                connections
     # ----------------------------------------
     def __preinit__(self):
-        gnd = self.vcc.lv
         self.connect_interfaces_by_name(self.mcu, allow_partial=True)
-
-        self.reset.signal.connect_via(
-            self.reset_lowpass_cap, gnd
-        )  # TODO: should come from a low pass for electric logic
-        self.reset.pulled.pull(up=True)
-        self.reset.signal.connect_via(self.reset_diode, self.vcc.hv)
 
         # crystal oscillator
         self.oscillator.power.connect(self.vcc)
         self.oscillator.n.connect(self.xtalin)
         self.oscillator.p.connect(self.xtalout)
 
+        self.reset_circuit.logic.connect(self.mcu.reset)
+
         # ----------------------------------------
         #               Parameters
         # ----------------------------------------
-        self.reset_lowpass_cap.capacitance.merge(F.Constant(1 * P.uF))
 
-        self.oscillator.crystal.frequency.merge(F.Constant(24 * P.Mhertz))
+        self.oscillator.crystal.frequency.merge(
+            F.Range.from_center_rel(24 * P.Mhertz, 0.05)
+        )
         self.oscillator.crystal.frequency_tolerance.merge(
             F.Range.upper_bound(20 * P.ppm)
         )
-
-        # TODO: just set to a 1N4148
-        self.reset_diode.forward_voltage.merge(715 * P.mV)
-        self.reset_diode.reverse_leakage_current.merge(1 * P.uA)
-        self.reset_diode.current.merge(300 * P.mA)
-        self.reset_diode.max_current.merge(1 * P.A)

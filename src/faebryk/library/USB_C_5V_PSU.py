@@ -16,7 +16,7 @@ class USB_C_5V_PSU(Module):
     configuration_resistors = L.list_field(
         2,
         lambda: F.Resistor().builder(
-            lambda r: r.resistance.merge(F.Constant(5.1 * P.kohm))
+            lambda r: r.resistance.merge(F.Range.from_center_rel(5.1 * P.kohm, 0.05))
         ),
     )
 

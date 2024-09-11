@@ -18,10 +18,9 @@ class SCD40(Module):
 
         def get_config(self) -> dict:
             val = self.update_interval.get_most_narrow()
-            assert isinstance(val, F.Constant), "No update interval set!"
+            assert isinstance(val, F.Constant)
 
-            obj = self.obj
-            assert isinstance(obj, SCD40)
+            obj = self.get_obj(SCD40)
 
             i2c = F.is_esphome_bus.find_connected_bus(obj.i2c)
 
@@ -45,6 +44,12 @@ class SCD40(Module):
                 ]
             }
 
+        def is_implemented(self):
+            return (
+                isinstance(self.update_interval.get_most_narrow(), F.Constant)
+                and super().is_implemented()
+            )
+
     esphome_config: _scd4x_esphome_config
 
     # interfaces
@@ -66,7 +71,7 @@ class SCD40(Module):
         )
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Constant(3.3 * P.V))
+        self.power.voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
         self.i2c.terminate()
         self.power.decoupled.decouple()
         self.i2c.frequency.merge(

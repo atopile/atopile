@@ -28,7 +28,7 @@ class USB_C_PSU_Vertical(Module):
         for res in self.configuration_resistors:
             res.resistance.merge(5.1 * P.kohm)
         self.fuse.fuse_type.merge(F.Fuse.FuseType.RESETTABLE)
-        self.fuse.trip_current.merge(F.Constant(1 * P.A))
+        self.fuse.trip_current.merge(F.Range.from_center_rel(1 * P.A, 0.05))
 
         # alliases
         vcon = self.usb_connector.vbus
