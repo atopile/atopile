@@ -2,32 +2,46 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from enum import StrEnum, auto
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.libs.iso_metric_screw_thread import Iso262_MetricScrewThreadSizes
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
 
 logger = logging.getLogger(__name__)
 
 
 class Mounting_Hole(Module):
-    diameter: F.TBD[Quantity]
+    class PadType(StrEnum):
+        NoPad = ""
+        Pad = auto()
+        Pad_TopBottom = auto()
+        Pad_TopOnly = auto()
+        Pad_Via = auto()
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix_defined)("H")
 
-    def __preinit__(self):
-        # Only 3.2mm supported for now
-        self.diameter.merge(F.Constant(3.2 * P.mm))
+    def __init__(self, diameter: Iso262_MetricScrewThreadSizes, pad_type: PadType):
+        super().__init__()
+        self._diameter = diameter
+        self._pad_type = pad_type
 
-    # footprint = L.f_field(F.has_footprint_defined)(
-    #    F.KicadFootprint("MountingHole:MountingHole_3.2mm_M3_Pad", pin_names=[])
-    # )
-
-    # TODO make back to f_field, rt_field because of imports
     @L.rt_field
     def footprint(self):
+        size_mm = f"{self._diameter.value:.1f}mm"
+        size_name = self._diameter.name.replace("_", ".")
+        padtype = self._pad_type
+
+        if size_name:
+            size_name = f"_{size_name}"
+        if padtype:
+            padtype = f"_{padtype}"
+
         return F.has_footprint_defined(
-            F.KicadFootprint("MountingHole:MountingHole_3.2mm_M3_Pad", pin_names=[])
+            F.KicadFootprint(
+                f"MountingHole:MountingHole_{size_mm}{size_name}{padtype}",
+                pin_names=[],
+            )
         )
