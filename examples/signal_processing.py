@@ -31,6 +31,12 @@ class App(Module):
         # Specialize
         special = self.lowpass.specialize(F.FilterElectricalLC())
 
+        # set reference voltage
+        # TODO: this will be automatically set by the power supply
+        # once this example is more complete
+        special.in_.reference.voltage.merge(3 * P.V)
+        special.out.reference.voltage.merge(3 * P.V)
+
         # Construct
         special.get_trait(F.has_construction_dependency).construct()
 

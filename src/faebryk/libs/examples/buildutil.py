@@ -49,6 +49,9 @@ def apply_design_to_pcb(m: Module):
         m, recursive=True, loglvl=logging.DEBUG if DEV_MODE else logging.INFO
     )
 
+    G = m.get_graph()
+    run_checks(m, G)
+
     # TODO this can be prettier
     # picking ----------------------------------------------------------------
     modules = m.get_children_modules()
@@ -63,9 +66,6 @@ def apply_design_to_pcb(m: Module):
         add_example_pickers(n)
     pick_part_recursively(m)
     # -------------------------------------------------------------------------
-
-    G = m.get_graph()
-    run_checks(m, G)
 
     example_prj = Path(__file__).parent / Path("resources/example")
 

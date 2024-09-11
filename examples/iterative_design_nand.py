@@ -132,6 +132,9 @@ def App():
     for ic_nand, xor_nand in zip(nand_ic.gates, nxor.nands):
         xor_nand.specialize(ic_nand)
 
+    # connect power to IC
+    nand_ic.power.connect(power_source.power)
+
     app.add(nand_ic)
 
     return app
