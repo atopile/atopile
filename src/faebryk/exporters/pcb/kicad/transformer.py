@@ -4,6 +4,7 @@
 import logging
 import pprint
 import re
+import subprocess
 from abc import abstractmethod
 from dataclasses import fields
 from enum import Enum, auto
@@ -1099,6 +1100,7 @@ class PCB_Transformer:
 
         # find bounding box
 
+    # Silkscreen -----------------------------------------------------------------------
     class Side(Enum):
         TOP = auto()
         BOTTOM = auto()
@@ -1159,3 +1161,43 @@ class PCB_Transformer:
                 reference.at = C_xyr(
                     max_coord.x + offset + displacement.x, displacement.y, rot
                 )
+
+    def add_git_version(
+        self,
+        center_at: C_xyr,
+        layer: str = "F.SilkS",
+        font: Font = Font(size=C_wh(1, 1), thickness=0.2),
+        knockout: bool = True,
+        alignment: tuple[
+            C_effects.E_justify, C_effects.E_justify, C_effects.E_justify
+        ] = (
+            C_effects.E_justify.center,
+            C_effects.E_justify.center,
+            C_effects.E_justify.normal,
+        ),
+    ):
+        # check if gitcli is available
+        try:
+            subprocess.check_output(["git", "--version"])
+        except subprocess.CalledProcessError:
+            logger.warning("git is not installed")
+            git_human_version = "git is not installed"
+
+        try:
+            git_human_version = (
+                subprocess.check_output(["git", "describe", "--always"])
+                .strip()
+                .decode("utf-8")
+            )
+        except subprocess.CalledProcessError:
+            logger.warning("Cannot get git project version")
+            git_human_version = "Cannot get git project version"
+
+        self.insert_text(
+            text=git_human_version,
+            at=center_at,
+            layer=layer,
+            font=font,
+            alignment=alignment,
+            knockout=knockout,
+        )
