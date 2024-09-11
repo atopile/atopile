@@ -29,6 +29,7 @@ class LayoutExtrude(Layout):
         (0, 0, 0, F.has_pcb_position.layer_type.NONE)
     )
     dynamic_rotation: bool = False
+    reverse_order: bool = False
 
     def apply(self, *node: Node):
         """
@@ -40,7 +41,15 @@ class LayoutExtrude(Layout):
 
         vector = self.vector if len(self.vector) == 3 else (*self.vector, 0)
 
-        for i, n in enumerate(node):
+        for i, n in enumerate(
+            sorted(
+                node,
+                key=lambda n: n.get_trait(F.has_designator).get_designator()
+                if n.has_trait(F.has_designator)
+                else n.get_full_name(),
+                reverse=self.reverse_order,
+            )
+        ):
             vec_i = (
                 vector[0] * i,
                 vector[1] * i,
