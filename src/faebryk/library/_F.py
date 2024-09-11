@@ -212,5 +212,5 @@ from faebryk.library.PowerSwitchStatic import PowerSwitchStatic
 from faebryk.library.ESP32_C3_MINI_1_Reference_Design import ESP32_C3_MINI_1_Reference_Design
 from faebryk.library.USB_C_5V_PSU import USB_C_5V_PSU
 from faebryk.library.USB_C_PowerOnly import USB_C_PowerOnly
-from faebryk.library.LEDIndicator import LEDIndicator
 from faebryk.library.Powered_Relay import Powered_Relay
+from faebryk.library.LEDIndicator import LEDIndicator

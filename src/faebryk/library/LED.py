@@ -69,10 +69,16 @@ class LED(F.Diode):
         resistor.resistance.merge(
             self.get_needed_series_resistance_for_current_limit(input_voltage),
         )
+        resistor.allow_removal_if_zero()
 
     def connect_via_current_limiting_resistor_to_power(
         self, resistor: F.Resistor, power: F.ElectricPower, low_side: bool
     ):
+        if low_side:
+            self.anode.connect(power.hv)
+        else:
+            self.cathode.connect(power.lv)
+
         self.connect_via_current_limiting_resistor(
             power.voltage,
             resistor,
