@@ -11,12 +11,34 @@ from faebryk.libs.units import Quantity
 
 class LED(F.Diode):
     class Color(Enum):
+        # Primary Colors
         RED = auto()
-        EMERALD = auto()
         GREEN = auto()
         BLUE = auto()
+
+        # Secondary and Mixed Colors
         YELLOW = auto()
+        ORANGE = auto()
+        PURPLE = auto()
+        CYAN = auto()
+        MAGENTA = auto()
+
+        # Shades of White
         WHITE = auto()
+        WARM_WHITE = auto()
+        COLD_WHITE = auto()
+        NATURAL_WHITE = auto()
+
+        # Other Colors
+        EMERALD = auto()
+        AMBER = auto()
+        PINK = auto()
+        LIME = auto()
+        VIOLET = auto()
+
+        # Specific LED Colors
+        ULTRA_VIOLET = auto()
+        INFRA_RED = auto()
 
     brightness: F.TBD[Quantity]
     max_brightness: F.TBD[Quantity]
