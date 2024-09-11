@@ -1,5 +1,6 @@
 import copy
 import logging
+import math
 from math import ceil, floor, log10
 from typing import Tuple
 
@@ -480,6 +481,10 @@ def e_series_intersect[T: float | Quantity](
         max_val: float = max_val_q.magnitude
 
     assert isinstance(min_val, (float, int)) and isinstance(max_val, (float, int))
+
+    # TODO ugly
+    if max_val == math.inf:
+        max_val = min_val * 10e3
 
     e_series_values = repeat_set_over_base(
         e_series, 10, range(floor(log10(min_val)), ceil(log10(max_val)) + 1)

@@ -352,8 +352,10 @@ def find_diode(cmp: Module):
 
     (
         ComponentQuery()
-        .filter_by_category("", "Diodes")
+        .filter_by_category("Diodes", "")
         .filter_by_stock(qty)
+        .filter_by_value(cmp.max_current, "A", E_SERIES_VALUES.E3)
+        .filter_by_value(cmp.reverse_working_voltage, "V", E_SERIES_VALUES.E3)
         .filter_by_traits(cmp)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)

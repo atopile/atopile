@@ -402,6 +402,17 @@ class ComponentQuery:
         self.Q &= Q(stock__gte=qty)
         return self
 
+    def filter_by_description(self, *keywords: str) -> Self:
+        assert self.Q
+
+        logger.debug(f"Possible keywords: {keywords}")
+        description_query = Q()
+        for keyword in keywords:
+            description_query |= Q(description__contains=keyword)
+        self.Q &= description_query
+
+        return self
+
     def filter_by_value(
         self,
         value: Parameter[Quantity],
@@ -419,7 +430,6 @@ class ComponentQuery:
         if isinstance(value, F.ANY):
             return self
         assert not self.results
-        value_query = Q()
         try:
             intersection = F.Set(
                 [e_series_intersect(value, e_series or E_SERIES_VALUES.E_ALL)]
@@ -434,11 +444,7 @@ class ComponentQuery:
             .replace("inf", "∞")
             for r in intersection
         ]
-        logger.debug(f"Possible values: {si_vals}")
-        for si_val in si_vals:
-            value_query |= Q(description__contains=f" {si_val}")
-        self.Q &= value_query
-        return self
+        return self.filter_by_description(*si_vals)
 
     def filter_by_category(self, category: str, subcategory: str) -> Self:
         assert self.Q
