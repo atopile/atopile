@@ -121,7 +121,7 @@ def App():
     # parametrizing
     for _, t in app.get_graph().nodes_with_trait(F.ElectricLogic.has_pulls):
         for pull_resistor in (r for r in t.get_pulls() if r):
-            pull_resistor.resistance.merge(100 * P.kohm)
+            pull_resistor.resistance.merge(F.Range.from_center_rel(100 * P.kohm, 0.05))
     power_source.power.voltage.merge(3 * P.V)
     led.led.led.brightness.merge(
         TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value

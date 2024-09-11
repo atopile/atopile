@@ -6,7 +6,7 @@ import inspect
 import logging
 from abc import abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import StrEnum
 from functools import cache
 from textwrap import indent
@@ -854,3 +854,7 @@ def zip_exhaust(*args):
 
 def join_if_non_empty(sep: str, *args):
     return sep.join(s for arg in args if (s := str(arg)))
+
+
+def dataclass_as_kwargs(obj: Any) -> dict[str, Any]:
+    return {f.name: getattr(obj, f.name) for f in fields(obj)}

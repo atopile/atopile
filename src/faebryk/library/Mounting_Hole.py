@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import StrEnum, auto
+from enum import StrEnum
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 class Mounting_Hole(Module):
     class PadType(StrEnum):
         NoPad = ""
-        Pad = auto()
-        Pad_TopBottom = auto()
-        Pad_TopOnly = auto()
-        Pad_Via = auto()
+        Pad = "Pad"
+        Pad_TopBottom = "Pad_TopBottom"
+        Pad_TopOnly = "Pad_TopOnly"
+        Pad_Via = "Pad_Via"
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix_defined)("H")

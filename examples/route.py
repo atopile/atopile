@@ -33,7 +33,7 @@ class SubArray(Module):
 
     def __preinit__(self):
         for resistor in self.resistors:
-            resistor.resistance.merge(F.Constant(1000 * P.ohm))
+            resistor.resistance.merge(F.Range.from_center_rel(1000 * P.ohm, 0.05))
             resistor.unnamed[0].connect(self.unnamed[0])
             resistor.unnamed[1].connect(self.unnamed[1])
 

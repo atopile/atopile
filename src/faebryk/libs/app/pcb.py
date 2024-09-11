@@ -7,8 +7,10 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+import psutil
+
 import faebryk.library._F as F
-from faebryk.core.graph import Graph
+from faebryk.core.graphinterface import Graph
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -19,8 +21,13 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_pcb_file,
     C_kicad_project_file,
 )
+from faebryk.libs.util import ConfigFlag
 
 logger = logging.getLogger(__name__)
+
+PCBNEW_AUTO = ConfigFlag(
+    "PCBNEW_AUTO", default=True, descr="Automatically open pcbnew when applying netlist"
+)
 
 
 def apply_layouts(app: Module):
@@ -89,6 +96,15 @@ def apply_design(
     pcb.dumps(pcb_path)
 
     print("Reopen PCB in kicad")
+    if PCBNEW_AUTO:
+        try:
+            open_pcb(pcb_path)
+        except FileNotFoundError:
+            print(f"PCB location: {pcb_path}")
+        except RuntimeError as e:
+            print(f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter")
+    else:
+        print(f"PCB location: {pcb_path}")
 
 
 def include_footprints(pcb_path: Path):
@@ -162,11 +178,19 @@ def open_pcb(pcb_path: os.PathLike):
     import subprocess
 
     pcbnew = find_pcbnew()
+
+    # Check if pcbnew is already running with this pcb
+    for process in psutil.process_iter(["name", "cmdline"]):
+        if process.info["name"] and "pcbnew" in process.info["name"].lower():
+            if process.info["cmdline"] and str(pcb_path) in process.info["cmdline"]:
+                raise RuntimeError(f"PCBnew is already running with {pcb_path}")
+
     subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
-    # TODO: it'd be neat if we could wait until pcbnew was closed?
 
 
 def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool = True):
+    from faebryk.exporters.pcb.kicad.pcb import PCB
+
     include_footprints(pcb_path)
 
     # Set netlist path in gui menu
@@ -181,25 +205,5 @@ def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool 
     project.dumps(prj_path)
 
     # Import netlist into pcb
-    if not netlist_has_changed:
-        return
-
-    print("Importing netlist manually...")
-
-    auto_mode = os.environ.get("FBRK_NETLIST_PCBNEW_AUTO", "y").lower() in [
-        "y",
-        "1",
-    ]
-
-    if auto_mode:
-        try:
-            open_pcb(pcb_path)
-        except FileNotFoundError:
-            print(f"PCB location: {pcb_path}")
-    else:
-        print(f"PCB location: {pcb_path}")
-
-    input(
-        "Load the netlist in File->Import->Netlist: Update PCB\n"
-        "Then press ENTER to continue..."
-    )
+    logger.info(f"Apply netlist to {pcb_path}")
+    PCB.apply_netlist(pcb_path, netlist_path)

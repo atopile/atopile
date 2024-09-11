@@ -4,7 +4,6 @@
 import logging
 import pprint
 import re
-import uuid
 from abc import abstractmethod
 from dataclasses import fields
 from enum import Enum, auto
@@ -41,6 +40,9 @@ from faebryk.libs.kicad.fileformats import (
     C_xyz,
     E_fill,
 )
+from faebryk.libs.kicad.fileformats import (
+    gen_uuid as _gen_uuid,
+)
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import KeyErrorNotFound, cast_assert, find, get_key
 
@@ -72,18 +74,7 @@ Point2D = Geometry.Point2D
 
 
 def gen_uuid(mark: str = "") -> UUID:
-    # format: d864cebe-263c-4d3f-bbd6-bb51c6d2a608
-    value = uuid.uuid4().hex
-
-    suffix = mark.encode().hex()
-    value = value[: -len(suffix)] + suffix
-
-    DASH_IDX = [8, 12, 16, 20]
-    formatted = value
-    for i, idx in enumerate(DASH_IDX):
-        formatted = formatted[: idx + i] + "-" + formatted[idx + i :]
-
-    return UUID(formatted)
+    return _gen_uuid(mark)
 
 
 def is_marked(uuid: UUID, mark: str):
