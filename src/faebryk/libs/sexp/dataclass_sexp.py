@@ -148,15 +148,20 @@ def _decode[T](
     }
 
     # Values
+    unprocessed_indices = set()
+    ungrouped_key_values = []
+    # I'd prefer to do this through a filter/comprehension, but I don't see a good way
+    for i, val in enumerate(sexp):
+        if isinstance(val, list):
+            if len(val):
+                if isinstance(key := val[0], Symbol):
+                    if str(key) + "s" in key_fields or str(key) in key_fields:
+                        ungrouped_key_values.append(val)
+                        continue
+        unprocessed_indices.add(i)
+
     key_values = groupby(
-        (
-            val
-            for val in sexp
-            if isinstance(val, list)
-            and len(val)
-            and isinstance(key := val[0], Symbol)
-            and (str(key) + "s" in key_fields or str(key) in key_fields)
-        ),
+        ungrouped_key_values,
         lambda val: (
             str(val[0]) + "s" if str(val[0]) + "s" in key_fields else str(val[0])
         ),
@@ -169,6 +174,7 @@ def _decode[T](
         # and i in positional_fields
         # and positional_fields[i].name not in value_dict
     }
+    unprocessed_indices = unprocessed_indices - set(pos_values.keys())
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"key_fields: {list(key_fields.keys())}")
@@ -177,6 +183,12 @@ def _decode[T](
         )
         logger.debug(f"key_values: {list(key_values.keys())}")
         logger.debug(f"pos_values: {pos_values}")
+
+    if len(unprocessed_indices):
+        unprocessed_values = [sexp[i] for i in unprocessed_indices]
+        # This is separate from the above loop to make it easier to debug during dev
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Unprocessed values: {unprocessed_values}")
 
     # Parse --------------------------------------------------------------
 
