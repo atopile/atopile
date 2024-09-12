@@ -49,9 +49,11 @@ class TestLCSC(unittest.TestCase):
         lcsc.EXPORT_NON_EXISTING_MODELS = True
 
         for part, expected in test_parts.items():
-            ki_footprint, ki_model, ee_footprint, ee_model = lcsc.download_easyeda_info(
-                part,
-                get_model=INTERACTIVE_TESTING,
+            ki_footprint, ki_model, ee_footprint, ee_model, ee_symbol = (
+                lcsc.download_easyeda_info(
+                    part,
+                    get_model=INTERACTIVE_TESTING,
+                )
             )
 
             translation = ki_footprint.output.model_3d.translation

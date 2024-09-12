@@ -361,7 +361,11 @@ class TestPickerJlcpcb(unittest.TestCase):
         JLCPCB_DB.get().close()
 
 
-@unittest.skipIf(not JLCPCB_DB.config.db_path.exists(), reason="Requires large db")
+def is_db_available():
+    return JLCPCB_DB.config.db_path.exists()
+
+
+@unittest.skipIf(not is_db_available(), reason="Requires large db")
 class TestPickerPerformanceJLCPCB(unittest.TestCase):
     def test_simple_full(self):
         # conclusions
