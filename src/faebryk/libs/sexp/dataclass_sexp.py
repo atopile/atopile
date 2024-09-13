@@ -1,6 +1,7 @@
 import logging
 from dataclasses import Field, dataclass, fields, is_dataclass
 from enum import Enum, IntEnum, StrEnum
+from os import PathLike
 from pathlib import Path
 from types import UnionType
 from typing import Any, Callable, Iterator, Union, get_args, get_origin
@@ -65,6 +66,12 @@ class DecodeError(Exception):
     """Error during decoding"""
 
 
+def _prettify_stack(stack: list[tuple[str, type]] | None) -> str:
+    if stack is None:
+        return "<top-level>"
+    return ".".join(s[0] for s in stack)
+
+
 def _convert(
     val,
     t,
@@ -107,8 +114,23 @@ def _convert(
             val = val[0]
 
         if issubclass(t, bool):
-            assert val in [Symbol("yes"), Symbol("no")]
-            return val == Symbol("yes")
+            # See parseMaybeAbsentBool in kicad
+            # Default: (hide) hide None
+            # True: (hide yes)
+            # False: (hide no)
+
+            # hide, None -> automatically filtered
+
+            # (hide yes) (hide no)
+            if val in [Symbol("yes"), Symbol("no")]:
+                return val == Symbol("yes")
+
+            # (hide)
+            if val == []:
+                return None
+
+            assert False, f"Invalid value for bool: {val}"
+
         if isinstance(val, Symbol):
             return t(str(val))
 
@@ -116,8 +138,9 @@ def _convert(
     except DecodeError:
         raise
     except Exception as e:
-        pretty_stack = ".".join(s[0] for s in substack)
-        raise DecodeError(f"Failed to decode {pretty_stack} ({t}) with {val} ") from e
+        raise DecodeError(
+            f"Failed to decode {_prettify_stack(substack)} ({t}) with {val} "
+        ) from e
 
 
 netlist_obj = str | Symbol | int | float | bool | list
@@ -177,6 +200,7 @@ def _decode[T](
     unprocessed_indices = unprocessed_indices - set(pos_values.keys())
 
     if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"processing: {_prettify_stack(stack)}")
         logger.debug(f"key_fields: {list(key_fields.keys())}")
         logger.debug(
             f"positional_fields: {list(f.name for f in positional_fields.values())}"
@@ -188,7 +212,7 @@ def _decode[T](
         unprocessed_values = [sexp[i] for i in unprocessed_indices]
         # This is separate from the above loop to make it easier to debug during dev
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Unprocessed values: {unprocessed_values}")
+            logger.debug(f"unprocessed values: {unprocessed_values}")
 
     # Parse --------------------------------------------------------------
 
@@ -236,7 +260,10 @@ def _decode[T](
                 )
         else:
             assert len(values) == 1, f"Duplicate key: {name}"
-            value_dict[name] = _convert(values[0][1:], f.type, stack, name)
+            out = _convert(values[0][1:], f.type, stack, name)
+            # if val is None, use default
+            if out is not None:
+                value_dict[name] = out
 
     # Positional
     for f, v in (it := zip_non_locked(positional_fields.values(), pos_values.values())):
@@ -392,7 +419,8 @@ def loads[T](s: str | Path | list, t: type[T]) -> T:
     return _decode([sexp], t)
 
 
-def dumps(obj, path: Path | None = None) -> str:
+def dumps(obj, path: PathLike | None = None) -> str:
+    path = Path(path) if path else None
     sexp = _encode(obj)[0]
     text = sexpdata.dumps(sexp)
     text = prettify_sexp_string(text)
@@ -416,7 +444,7 @@ class SEXP_File:
     def loads(cls, path_or_string_or_data: Path | str | list):
         return loads(path_or_string_or_data, cls)
 
-    def dumps(self, path: Path | None = None):
+    def dumps(self, path: PathLike | None = None):
         return dumps(self, path)
 
 
@@ -434,7 +462,8 @@ class JSON_File:
             text = path.read_text()
         return cls.from_json(text)
 
-    def dumps(self, path: Path | None = None):
+    def dumps(self, path: PathLike | None = None):
+        path = Path(path) if path else None
         text = self.to_json(indent=4)
         if path:
             path.write_text(text)

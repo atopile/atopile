@@ -14,8 +14,13 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_pcb_file,
     C_kicad_project_file,
 )
+from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
 from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File, dataclass_dfs
+from faebryk.libs.sexp.dataclass_sexp import (
+    JSON_File,
+    SEXP_File,
+    dataclass_dfs,
+)
 from faebryk.libs.util import ConfigFlag, NotNone, find
 
 logger = logging.getLogger(__name__)
@@ -30,7 +35,7 @@ PCBFILE = TEST_FILES / "test.kicad_pcb"
 FPFILE = TEST_FILES / "test.kicad_mod"
 NETFILE = TEST_FILES / "test_e.net"
 FPLIBFILE = TEST_FILES / "fp-lib-table"
-
+SCHFILE = TEST_FILES / "test.kicad_sch"
 
 DUMP = ConfigFlag("DUMP", descr="dump load->save into /tmp")
 
@@ -41,16 +46,15 @@ class TestFileFormats(unittest.TestCase):
         fp = C_kicad_footprint_file.loads(FPFILE)
         netlist = C_kicad_netlist_file.loads(NETFILE)
         pro = C_kicad_project_file.loads(PRJFILE)
+        sch = C_kicad_sch_file.loads(SCHFILE)
 
-        self.assertEqual(
-            [f.name for f in pcb.kicad_pcb.footprints],
-            [
-                "logos:faebryk_logo",
-                "lcsc:LED0603-RD-YELLOW",
-                "lcsc:R0402",
-                "lcsc:BAT-TH_BS-02-A1AJ010",
-            ],
-        )
+        assert [f.name for f in pcb.kicad_pcb.footprints] == [
+            "logos:faebryk_logo",
+            "lcsc:LED0603-RD-YELLOW",
+            "lcsc:R0402",
+            "lcsc:BAT-TH_BS-02-A1AJ010",
+        ]
+
         self.assertFalse(pcb.kicad_pcb.setup.pcbplotparams.usegerberextensions)
 
         padtype = pcb.C_kicad_pcb.C_pcb_footprint.C_pad.E_type
@@ -110,6 +114,16 @@ class TestFileFormats(unittest.TestCase):
         )
 
         self.assertEqual(pro.pcbnew.last_paths.netlist, "../../faebryk/faebryk.net")
+
+        self.assertEqual(
+            sch.kicad_sch.lib_symbols.symbol["Amplifier_Audio:LM4990ITL"]
+            .propertys[3]
+            .value,
+            "http://www.ti.com/lit/ds/symlink/lm4990.pdf",
+        )
+
+        self.assertIsNotNone(sch.kicad_sch.lib_symbols.symbol["power:GND"].power)
+        self.assertIsNone(sch.kicad_sch.lib_symbols.symbol["Device:R"].power)
 
     def test_write(self):
         pcb = C_kicad_pcb_file.loads(PCBFILE)
@@ -187,6 +201,7 @@ class TestFileFormats(unittest.TestCase):
             (C_kicad_netlist_file, NETFILE),
             (C_kicad_project_file, PRJFILE),
             (C_kicad_fp_lib_table_file, FPLIBFILE),
+            (C_kicad_sch_file, SCHFILE),
         ]:
             test_reload(file, parser)
 

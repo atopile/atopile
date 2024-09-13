@@ -10,6 +10,7 @@ from faebryk.core.graph_backends.default import GraphImpl
 from faebryk.core.link import Link, LinkDirect, LinkNamedParent
 from faebryk.libs.util import (
     NotNone,
+    exceptions_to_log,
     try_avoid_endless_recursion,
 )
 
@@ -123,7 +124,8 @@ class GraphInterface(FaebrykLibObject):
         self.G.add_edge(self, other, link=link)
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"GIF connection: {link}")
+            with exceptions_to_log():
+                logger.debug(f"GIF connection: {link}")
 
         return self
 
