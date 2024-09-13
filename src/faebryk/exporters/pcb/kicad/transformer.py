@@ -73,6 +73,10 @@ Geom = C_line | C_arc | C_rect | C_circle
 Point = Geometry.Point
 Point2D = Geometry.Point2D
 
+Justify = C_effects.C_justify.E_justify
+Alignment = tuple[Justify, Justify, Justify]
+Alignment_Default = (Justify.center_horizontal, Justify.center_vertical, Justify.normal)
+
 
 def gen_uuid(mark: str = "") -> UUID:
     return _gen_uuid(mark)
@@ -580,9 +584,19 @@ class PCB_Transformer:
         at: C_xyr,
         font: Font,
         layer: str = "F.SilkS",
-        alignment=None,
+        alignment: Alignment | None = None,
         knockout: bool = False,
     ):
+        if not alignment:
+            if layer.startswith("F."):
+                alignment = Alignment_Default
+            else:
+                alignment = (
+                    Justify.center_horizontal,
+                    Justify.center_vertical,
+                    Justify.mirror,
+                )
+
         self.pcb.gr_texts.append(
             GR_Text(
                 text=text,
@@ -592,21 +606,7 @@ class PCB_Transformer:
                 else C_text_layer(layer),
                 effects=C_effects(
                     font=font,
-                    justify=(
-                        (
-                            C_effects.E_justify.center,
-                            C_effects.E_justify.center,
-                            C_effects.E_justify.mirror,
-                        )
-                        if not layer.startswith("F.")
-                        else (
-                            C_effects.E_justify.center,
-                            C_effects.E_justify.center,
-                            C_effects.E_justify.normal,
-                        )
-                    )
-                    if alignment is None
-                    else alignment,
+                    justify=alignment,
                 ),
                 uuid=self.gen_uuid(mark=True),
             )
@@ -1116,9 +1116,7 @@ class PCB_Transformer:
         layer: Optional[C_text_layer] = None,
         font: Optional[Font] = None,
         knockout: Optional[C_text_layer.E_knockout] = None,
-        justify: Optional[
-            tuple[C_effects.E_justify, C_effects.E_justify, C_effects.E_justify]
-        ] = None,
+        justify: Alignment | None = None,
     ):
         for mod, fp in self.get_all_footprints():
             reference = fp.propertys["Reference"]
@@ -1129,14 +1127,13 @@ class PCB_Transformer:
                     layer="F.SilkS" if fp.layer.startswith("F") else "B.SilkS"
                 )
             )
-            reference.layer.knockout = (
-                knockout if knockout else reference.layer.knockout
-            )
-            reference.effects.font = font if font else reference.effects.font
+            if knockout:
+                reference.layer.knockout = knockout
+            if font:
+                reference.effects.font = font
+            if justify:
+                reference.effects.justifys = [C_effects.C_justify(justify)]
 
-            reference.effects.justify = (
-                justify if justify else reference.effects.justify
-            )
             rot = rotation if rotation else reference.at.r
 
             footprint_bbox = self.get_footprint_silkscreen_bbox(mod)
@@ -1168,13 +1165,7 @@ class PCB_Transformer:
         layer: str = "F.SilkS",
         font: Font = Font(size=C_wh(1, 1), thickness=0.2),
         knockout: bool = True,
-        alignment: tuple[
-            C_effects.E_justify, C_effects.E_justify, C_effects.E_justify
-        ] = (
-            C_effects.E_justify.center,
-            C_effects.E_justify.center,
-            C_effects.E_justify.normal,
-        ),
+        alignment: Alignment = Alignment_Default,
     ):
         # check if gitcli is available
         try:

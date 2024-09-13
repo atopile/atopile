@@ -187,13 +187,15 @@
 		(property "Footprint" "logos:faebryk_logo"
 			(at 0 0 0)
 			(layer "F.Fab")
-			(hide yes)
+			(hide no)
 			(uuid "17374849-fed2-4a32-a7bf-154b6ae74f94")
 			(effects
 				(font
 					(size 1.27 1.27)
 					(thickness 0.15)
 				)
+				(justify mirror right)
+				(justify bottom)
 			)
 		)
 		(property "Datasheet" ""

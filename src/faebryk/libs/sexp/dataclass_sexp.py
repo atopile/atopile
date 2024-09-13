@@ -250,7 +250,20 @@ def _decode[T](
                     raise ValueError(f"Unexpected symbol {v}")
                 continue
 
-        value_dict[f.name] = _convert(v, f.type, stack, f.name)
+        # positional list = var args
+        origin = get_origin(f.type)
+        if origin is list:
+            vs = []
+            next_val = v
+            # consume all values
+            while next_val is not None:
+                vs.append(next_val)
+                next_val = it.next(1, None)
+            out = _convert(vs, f.type, stack, f.name)
+        else:
+            out = _convert(v, f.type, stack, f.name)
+
+        value_dict[f.name] = out
 
     # Check assertions ----------------------------------------------------
     for f in fs:
@@ -329,11 +342,11 @@ def _encode(t) -> netlist_type:
         val = getattr(t, name)
 
         if sp.positional:
-            converted = _convert2(val)
-            # TODO only if Optional?
-            if converted is None:
+            if isinstance(val, list):
+                for v in val:
+                    _append(_convert2(v))
                 continue
-            _append(converted)
+            _append(_convert2(val))
             continue
 
         def _append_kv(name, v):

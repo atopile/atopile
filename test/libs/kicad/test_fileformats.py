@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from faebryk.libs.kicad.fileformats import (
+    C_effects,
     C_footprint,
     C_kicad_footprint_file,
     C_kicad_fp_lib_table_file,
@@ -15,7 +16,7 @@ from faebryk.libs.kicad.fileformats import (
 )
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File, dataclass_dfs
-from faebryk.libs.util import NotNone, find
+from faebryk.libs.util import ConfigFlag, NotNone, find
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,9 @@ PCBFILE = TEST_FILES / "test.kicad_pcb"
 FPFILE = TEST_FILES / "test.kicad_mod"
 NETFILE = TEST_FILES / "test_e.net"
 FPLIBFILE = TEST_FILES / "fp-lib-table"
+
+
+DUMP = ConfigFlag("DUMP", descr="dump load->save into /tmp")
 
 
 class TestFileFormats(unittest.TestCase):
@@ -76,6 +80,35 @@ class TestFileFormats(unittest.TestCase):
             ],
         )
 
+        # Var args parser
+        effects = (
+            find(pcb.kicad_pcb.footprints, lambda f: f.name == "logos:faebryk_logo")
+            .propertys["Footprint"]
+            .effects
+        )
+        self.assertEqual(
+            effects.justifys[0].justifys,
+            [
+                C_effects.C_justify.E_justify.mirror,
+                C_effects.C_justify.E_justify.right,
+            ],
+        )
+        self.assertEqual(
+            effects.justifys[1].justifys,
+            [
+                C_effects.C_justify.E_justify.bottom,
+            ],
+        )
+
+        self.assertEqual(
+            effects.get_justifys(),
+            [
+                C_effects.C_justify.E_justify.mirror,
+                C_effects.C_justify.E_justify.right,
+                C_effects.C_justify.E_justify.bottom,
+            ],
+        )
+
         self.assertEqual(pro.pcbnew.last_paths.netlist, "../../faebryk/faebryk.net")
 
     def test_write(self):
@@ -109,6 +142,21 @@ class TestFileFormats(unittest.TestCase):
         _b1_p1(pcb).drill = C_footprint.C_pad.C_drill(
             C_footprint.C_pad.C_drill.E_shape.stadium, 0.5, 0.4
         )
+
+        def _effects(pcb: C_kicad_pcb_file):
+            return (
+                find(pcb.kicad_pcb.footprints, lambda f: f.name == "logos:faebryk_logo")
+                .propertys["Datasheet"]
+                .effects
+            )
+
+        _effects(pcb).justifys.append(
+            C_effects.C_justify([C_effects.C_justify.E_justify.center_horizontal])
+        )
+        _effects(pcb).justifys.append(
+            C_effects.C_justify([C_effects.C_justify.E_justify.top])
+        )
+
         pcb_reload = C_kicad_pcb_file.loads(pcb.dumps())
 
         self.assertEqual(
@@ -116,10 +164,19 @@ class TestFileFormats(unittest.TestCase):
             C_footprint.C_pad.C_drill.E_shape.stadium,
         )
 
+        # empty center string ignored
+        self.assertEqual(
+            _effects(pcb).get_justifys(),
+            [
+                C_effects.C_justify.E_justify.center_horizontal,
+                C_effects.C_justify.E_justify.top,
+            ],
+        )
+
     def test_dump_load_equality(self):
         def test_reload(path: Path, parser: type[SEXP_File | JSON_File]):
             loaded = parser.loads(path)
-            dump = loaded.dumps()
+            dump = loaded.dumps(Path("/tmp") / path.name if DUMP else None)
             loaded_dump = parser.loads(dump)
             dump2 = loaded_dump.dumps()
             self.assertEqual(dump, dump2, f"{parser.__name__}")

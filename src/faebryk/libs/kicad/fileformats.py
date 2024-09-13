@@ -8,6 +8,7 @@ from typing import Any, Optional
 from dataclasses_json import CatchAll, Undefined, dataclass_json
 
 from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File, SymEnum, sexp_field
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
@@ -573,19 +574,47 @@ class C_effects:
         size: C_wh
         thickness: Optional[float] = None
 
-    class E_justify(SymEnum):
-        center = ""
-        left = auto()
-        right = auto()
-        bottom = auto()
-        top = auto()
-        normal = ""
-        mirror = auto()
+    @dataclass
+    class C_justify:
+        class E_justify(SymEnum):
+            center_horizontal = ""
+            left = auto()
+            right = auto()
+            center_vertical = ""
+            bottom = auto()
+            top = auto()
+            normal = ""
+            mirror = auto()
+
+        justifys: list[E_justify] = field(
+            **sexp_field(positional=True), default_factory=list
+        )
 
     font: C_font
-    justify: Optional[tuple[E_justify, E_justify, E_justify]] = None
-    # TODO: this should be a Union as it's actually a tuple with 3 positional
-    # and optional enums: (E_justify_horizontal, E_justify_vertical, E_mirrored)
+
+    # Legal:
+    # (justify mirror right)
+    # (justify bottom)
+    justifys: list[C_justify] = field(
+        **sexp_field(multidict=True), default_factory=list
+    )
+
+    def get_justifys(self) -> list[C_justify.E_justify]:
+        return [j_ for j in self.justifys for j_ in j.justifys]
+
+    def __post_init__(self):
+        justifys = set(self.get_justifys())
+
+        J = C_effects.C_justify.E_justify
+
+        def _only_one_of(lst: list[J]):
+            dups = [j for j in justifys if j in lst]
+            if len(dups) > 1:
+                raise KeyErrorAmbiguous(dups)
+
+        _only_one_of([J.mirror, J.normal])
+        _only_one_of([J.left, J.right, J.center_horizontal])
+        _only_one_of([J.top, J.bottom, J.center_vertical])
 
 
 class E_fill(SymEnum):
