@@ -54,7 +54,7 @@ def apply_design_to_pcb(m: Module):
 
     # TODO this can be prettier
     # picking ----------------------------------------------------------------
-    modules = m.get_children_modules()
+    modules = m.get_children_modules(types=Module)
     try:
         JLCPCB_DB()
         for n in modules:

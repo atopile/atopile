@@ -1,10 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable
 
-from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.node import Node
+from faebryk.core.moduleinterface import GraphInterfaceModuleSibling
+from faebryk.core.node import Node, f_field
 from faebryk.core.trait import Trait
 from faebryk.libs.util import unique_ref
 
@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class Module(Node):
     class TraitT(Trait): ...
 
-    specializes: GraphInterface
-    specialized: GraphInterface
+    specializes = f_field(GraphInterfaceModuleSibling)(is_parent=False)
+    specialized = f_field(GraphInterfaceModuleSibling)(is_parent=True)
 
     def get_most_special(self) -> "Module":
         specialers = {
@@ -39,12 +39,28 @@ class Module(Node):
         ), f"Ambiguous specialest {specialest_next} for {self}"
         return next(iter(specialest_next))
 
-    def get_children_modules(
-        self: Node, most_special: bool = True, direct_only: bool = False
-    ):
-        out = self.get_children(direct_only=direct_only, types=Module)
+    def get_children_modules[T: Module](
+        self: Node,
+        types: type[T] | tuple[type[T], ...],
+        most_special: bool = True,
+        direct_only: bool = False,
+        include_root: bool = False,
+        f_filter: Callable[[T], bool] | None = None,
+        sort: bool = True,
+        special_filter: bool = True,
+    ) -> set[T]:
+        out = self.get_children(
+            direct_only=direct_only,
+            types=types,
+            include_root=include_root,
+            f_filter=f_filter,
+            sort=sort,
+        )
         if most_special:
             out = {n.get_most_special() for n in out}
+            if special_filter and f_filter:
+                out = {n for n in out if f_filter(n)}
+
         return out
 
     def specialize[T: Module](

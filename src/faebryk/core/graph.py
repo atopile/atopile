@@ -109,11 +109,19 @@ class Graph[T, GT](LazyMixin, SharedReference[GT]):
     def _union(rep: GT, old: GT) -> GT: ...
 
     def bfs_visit(
-        self, filter: Callable[[T], bool], start: Iterable[T], G: GT | None = None
+        self,
+        filter: Callable[[list[T], "Link"], bool],
+        start: Iterable[T],
+        G: GT | None = None,
     ):
         G = G or self()
 
-        return bfs_visit(lambda n: [o for o in self.get_edges(n) if filter(o)], start)
+        return bfs_visit(
+            lambda n: [
+                o for o, link in self.get_edges(n[-1]).items() if filter(n + [o], link)
+            ],
+            start,
+        )
 
     def __str__(self) -> str:
         return f"{type(self).__name__}(V={self.node_cnt}, E={self.edge_cnt})"

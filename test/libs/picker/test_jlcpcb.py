@@ -340,7 +340,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 lambda u: (
                     u.output_voltage.merge(F.Range.from_center(3.3 * P.V, 0.1 * P.V)),
                     u.output_current.merge(F.Range.lower_bound(0.1 * P.A)),
-                    u.max_input_voltage.merge(F.Range.lower_bound(5 * P.V)),
+                    u.power_in.voltage.merge(5 * P.V),
                     u.dropout_voltage.merge(F.Range.upper_bound(1 * P.V)),
                     u.output_polarity.merge(F.Constant(F.LDO.OutputPolarity.POSITIVE)),
                     u.output_type.merge(F.Constant(F.LDO.OutputType.FIXED)),

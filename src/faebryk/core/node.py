@@ -22,7 +22,7 @@ from faebryk.core.graphinterface import (
     GraphInterfaceHierarchical,
     GraphInterfaceSelf,
 )
-from faebryk.core.link import LinkNamedParent, LinkSibling
+from faebryk.core.link import Link, LinkNamedParent, LinkSibling
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.util import (
     KeyErrorNotFound,
@@ -33,6 +33,7 @@ from faebryk.libs.util import (
     find,
     times,
     try_avoid_endless_recursion,
+    try_or,
     zip_dicts_by_key,
 )
 
@@ -106,6 +107,18 @@ def f_field[T, **P](con: Callable[P, T]) -> Callable[P, T]:
     return _
 
 
+def list_f_field[T, **P](n: int, con: Callable[P, T]) -> Callable[P, list[T]]:
+    assert isinstance(con, type)
+
+    def _(*args: P.args, **kwargs: P.kwargs) -> Callable[[], list[T]]:
+        def __() -> list[T]:
+            return [con(*args, **kwargs) for _ in range(n)]
+
+        return _d_field(__)
+
+    return _
+
+
 class NodeException(FaebrykException):
     def __init__(self, node: "Node", *args: object) -> None:
         super().__init__(*args)
@@ -141,11 +154,11 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
     specialized: list["Node"]
 
     self_gif: GraphInterfaceSelf
-    children: GraphInterfaceHierarchical = d_field(
-        lambda: GraphInterfaceHierarchical(is_parent=True)
+    children: GraphInterfaceHierarchical = f_field(GraphInterfaceHierarchical)(
+        is_parent=True
     )
-    parent: GraphInterfaceHierarchical = d_field(
-        lambda: GraphInterfaceHierarchical(is_parent=False)
+    parent: GraphInterfaceHierarchical = f_field(GraphInterfaceHierarchical)(
+        is_parent=False
     )
 
     _init: bool = False
@@ -527,10 +540,28 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
     def _get_children_all(self, include_root: bool):
         # TODO looks like get_node_tree is 2x faster
 
-        out = self.bfs_node(
-            lambda x: isinstance(x, (GraphInterfaceSelf, GraphInterfaceHierarchical))
-            and x is not self.parent,
-        )
+        def _filter(path, link):
+            next_node = path[-1]
+            prev_node = path[-2] if len(path) >= 2 else None
+
+            # Only look at hierarchy
+            if not isinstance(
+                next_node, (GraphInterfaceSelf, GraphInterfaceHierarchical)
+            ):
+                return False
+
+            # Only children
+            if (
+                isinstance(prev_node, GraphInterfaceHierarchical)
+                and isinstance(next_node, GraphInterfaceHierarchical)
+                and not prev_node.is_parent
+                and next_node.is_parent
+            ):
+                return False
+
+            return True
+
+        out = self.bfs_node(_filter)
 
         if not include_root:
             out.remove(self)
@@ -560,7 +591,12 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
         out = cast(set[T], out)
 
         if sort:
-            out = set(sorted(out, key=lambda n: n.get_name()))
+            out = set(
+                sorted(
+                    out,
+                    key=lambda n: try_or(n.get_name, default="", catch=NodeNoParent),
+                )
+            )
 
         return out
 
@@ -597,7 +633,7 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
 
         return tree
 
-    def bfs_node(self, filter: Callable[[GraphInterface], bool]):
+    def bfs_node(self, filter: Callable[[list[GraphInterface], Link], bool]):
         return Node.get_nodes_from_gifs(
             self.get_graph().bfs_visit(filter, [self.self_gif])
         )
@@ -611,15 +647,32 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
 
     # Hierarchy queries ----------------------------------------------------------------
 
-    def get_parent_f(self, filter_expr: Callable[["Node"], bool]):
-        candidates = [p for p, _ in self.get_hierarchy() if filter_expr(p)]
-        if not candidates:
-            return None
-        return candidates[-1]
+    def get_parent_f(
+        self,
+        filter_expr: Callable[["Node"], bool],
+        direct_only: bool = False,
+        include_root: bool = True,
+    ):
+        parents = [p for p, _ in self.get_hierarchy()]
+        if not include_root:
+            parents = parents[:-1]
+        if direct_only:
+            parents = parents[-1:]
+        for p in reversed(parents):
+            if filter_expr(p):
+                return p
+        return None
 
-    def get_parent_of_type[T: Node](self, parent_type: type[T]) -> T | None:
+    def get_parent_of_type[T: Node](
+        self, parent_type: type[T], direct_only: bool = False, include_root: bool = True
+    ) -> T | None:
         return cast(
-            parent_type, self.get_parent_f(lambda p: isinstance(p, parent_type))
+            parent_type | None,
+            self.get_parent_f(
+                lambda p: isinstance(p, parent_type),
+                direct_only=direct_only,
+                include_root=include_root,
+            ),
         )
 
     def get_parent_with_trait[TR: Trait](

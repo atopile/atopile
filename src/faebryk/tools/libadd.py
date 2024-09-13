@@ -146,7 +146,7 @@ def module(
             except KeyErrorNotFound:
                 print(
                     f"Error: Ambiguous mfr_pn({mfr_pn}):"
-                    f" {[x.mfr for x in e.duplicates]}"
+                    f" {[(x.mfr_name, x.mfr) for x in e.duplicates]}"
                 )
                 print("Tip: Specify the full mfr_pn of your choice")
                 sys.exit(1)

@@ -1,12 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import math
 from enum import Enum, auto
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
+from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import join_if_non_empty
 
 
@@ -33,11 +34,8 @@ class LDO(Module):
     power_out = L.d_field(lambda: F.ElectricPower().make_source())
 
     def __preinit__(self):
-        self.power_in.voltage.merge(self.max_input_voltage)
+        self.max_input_voltage.merge(F.Range(self.power_in.voltage, math.inf * P.V))
         self.power_out.voltage.merge(self.output_voltage)
-
-        self.power_in.decoupled.decouple()
-        self.power_out.decoupled.decouple()
 
         self.enable.reference.connect(self.power_in)
         # TODO: should be implemented differently (see below)

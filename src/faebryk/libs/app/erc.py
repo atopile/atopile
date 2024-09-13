@@ -37,8 +37,12 @@ class ERCFaultShort(ERCFault):
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
-    def __init__(self, faulting_EP: F.ElectricPower, *args: object) -> None:
-        super().__init__([faulting_EP], *args)
+    def __init__(self, faulting_EP: list[F.ElectricPower], *args: object) -> None:
+        faulting_EP = list(sorted(faulting_EP, key=lambda ep: ep.get_name()))
+        msg = "ElectricPower(s) with undefined or unsolved voltage: " + ",\n ".join(
+            f"{ep}: {ep.voltage}" for ep in faulting_EP
+        )
+        super().__init__(faulting_EP, msg, *args)
 
 
 def simple_erc(G: Graph):
@@ -66,11 +70,15 @@ def simple_erc(G: Graph):
     for ep in electricpower:
         if ep.lv.is_connected_to(ep.hv):
             raise ERCFaultShort([ep], "shorted power")
-        if isinstance(ep.voltage.get_most_narrow(), (F.TBD, Operation)):
-            raise ERCFaultElectricPowerUndefinedVoltage(
-                ep,
-                f"ElectricPower with undefined or unsolved voltage: {ep.voltage}",
-            )
+
+    unresolved_voltage = [
+        ep
+        for ep in electricpower
+        if isinstance(ep.voltage.get_most_narrow(), (F.TBD, Operation))
+    ]
+
+    if unresolved_voltage:
+        raise ERCFaultElectricPowerUndefinedVoltage(unresolved_voltage)
 
     # shorted nets
     nets = G.nodes_of_type(F.Net)

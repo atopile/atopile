@@ -16,10 +16,10 @@ class Crystal_Oscillator(Module):
     # ----------------------------------------
     crystal: F.Crystal
     capacitors = L.list_field(2, F.Capacitor)
+    current_limiting_resistor: F.Resistor
 
-    power: F.ElectricPower
-    p: F.Electrical
-    n: F.Electrical
+    xtal_if: F.XtalIF
+    gnd: F.Electrical
 
     # ----------------------------------------
     #               parameters
@@ -43,18 +43,53 @@ class Crystal_Oscillator(Module):
         # ----------------------------------------
         #                aliases
         # ----------------------------------------
-        gnd = self.power.lv
 
         # ----------------------------------------
         #                connections
         # ----------------------------------------
-        self.crystal.gnd.connect(gnd)
-        self.crystal.unnamed[0].connect_via(self.capacitors[0], gnd)
-        self.crystal.unnamed[1].connect_via(self.capacitors[1], gnd)
+        self.crystal.gnd.connect(self.gnd)
+        self.crystal.unnamed[0].connect_via(self.capacitors[0], self.gnd)
+        self.crystal.unnamed[1].connect_via(self.capacitors[1], self.gnd)
 
-        self.crystal.unnamed[0].connect(self.n)
-        self.crystal.unnamed[1].connect(self.p)
+        self.crystal.unnamed[0].connect_via(
+            self.current_limiting_resistor, self.xtal_if.xout
+        )
+        self.crystal.unnamed[1].connect(self.xtal_if.xin)
+
+    @L.rt_field
+    def pcb_layout(self):
+        from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
+        from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
+        from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
+
+        Point = F.has_pcb_position.Point
+        L = F.has_pcb_position.layer_type
+
+        return F.has_pcb_layout_defined(
+            LayoutTypeHierarchy(
+                layouts=[
+                    LayoutTypeHierarchy.Level(
+                        mod_type=F.Crystal,
+                        layout=LayoutAbsolute(
+                            Point((0, 0, 0, L.NONE)),
+                        ),
+                    ),
+                    LayoutTypeHierarchy.Level(
+                        mod_type=F.Capacitor,
+                        layout=LayoutExtrude(
+                            base=Point((-3, 0, 0, L.NONE)),
+                            vector=(0, 6, 180),
+                            dynamic_rotation=True,
+                        ),
+                    ),
+                    LayoutTypeHierarchy.Level(
+                        mod_type=F.Resistor,
+                        layout=LayoutAbsolute(Point((-3, -3, 0, L.NONE))),
+                    ),
+                ]
+            ),
+        )
 
     @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(self.p, self.n)
+        return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)

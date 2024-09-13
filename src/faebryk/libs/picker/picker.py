@@ -180,7 +180,7 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
 
 
 def _get_mif_top_level_modules(mif: ModuleInterface) -> set[Module]:
-    return Module.get_children_modules(mif, direct_only=True) | {
+    return Module.get_children_modules(mif, types=Module, direct_only=True) | {
         m
         for nmif in mif.get_children(direct_only=True, types=ModuleInterface)
         for m in _get_mif_top_level_modules(nmif)
@@ -194,7 +194,7 @@ class PickerProgress:
 
     @staticmethod
     def _get_total(module: Module):
-        return len(module.get_children_modules())
+        return len(module.get_children_modules(types=Module))
 
     @classmethod
     def from_module(cls, module: Module) -> "PickerProgress":
@@ -246,7 +246,7 @@ def pick_part_recursively(module: Module):
         if m.has_trait(has_part_picked):
             return out
 
-        children = m.get_children_modules(direct_only=True)
+        children = m.get_children_modules(types=Module, direct_only=True)
         if not children:
             return out + [m]
 
@@ -280,7 +280,7 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
             # if no children, raise
             # This whole logic will be so much easier if the recursive
             # picker is just a normal picker
-            if not module.get_children_modules(direct_only=True):
+            if not module.get_children_modules(types=Module, direct_only=True):
                 raise e
 
     if module.has_trait(has_part_picked):

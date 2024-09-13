@@ -39,7 +39,7 @@ class TXS0102DCUR(Module):
         self.voltage_b_power.decoupled.decouple()
 
         # eo is referenced to voltage_a_power (active high)
-        self.n_oe.connect_reference(self.voltage_a_power)
+        self.n_oe.reference.connect(self.voltage_a_power)
 
         for shifter in self.shifters:
             side_a = shifter.io_a

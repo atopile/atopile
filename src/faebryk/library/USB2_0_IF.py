@@ -7,7 +7,10 @@ from faebryk.libs.library import L
 
 
 class USB2_0_IF(ModuleInterface):
-    d: F.DifferentialPair
+    class Data(F.DifferentialPair):
+        pass
+
+    d: Data
     buspower: F.ElectricPower
 
     @L.rt_field

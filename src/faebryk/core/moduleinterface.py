@@ -131,8 +131,6 @@ class ModuleInterface(Node):
             LinkDirectShallow(lambda link, gif: test(gif.node))
         ): ...
 
-        print("Make shallow for", cls)
-
         return _LinkDirectShallowMif
 
     def __preinit__(self) -> None: ...
@@ -333,9 +331,7 @@ class ModuleInterface(Node):
             self._connect_siblings_and_connections(o, linkcls=linkcls)
         return other[-1] if other else self
 
-    def connect_via(
-        self, bridge: Node | Sequence[Node], other: Self | None = None, linkcls=None
-    ):
+    def connect_via(self, bridge: Node | Sequence[Node], *other: Self, linkcls=None):
         from faebryk.library.can_bridge import can_bridge
 
         bridges = [bridge] if isinstance(bridge, Node) else bridge
@@ -345,8 +341,7 @@ class ModuleInterface(Node):
             intf.connect(t.get_in(), linkcls=linkcls)
             intf = t.get_out()
 
-        if other:
-            intf.connect(other, linkcls=linkcls)
+        intf.connect(*other, linkcls=linkcls)
 
     def connect_shallow(self, other: Self) -> Self:
         return self.connect(other, linkcls=type(self).LinkDirectShallow())

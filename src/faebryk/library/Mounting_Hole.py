@@ -8,6 +8,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.iso_metric_screw_thread import Iso262_MetricScrewThreadSizes
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import has_part_picked_remove
 
 logger = logging.getLogger(__name__)
 
@@ -45,3 +46,5 @@ class Mounting_Hole(Module):
                 pin_names=[],
             )
         )
+
+    no_part: has_part_picked_remove

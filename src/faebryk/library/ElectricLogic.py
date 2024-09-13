@@ -3,14 +3,9 @@
 
 from abc import abstractmethod
 from enum import Enum, auto
-from typing import Iterable, Self
+from typing import Self
 
 import faebryk.library._F as F
-from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.link import LinkFilteredException, _TLinkDirectShallow
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
 from faebryk.libs.library import L
 
 
@@ -63,12 +58,6 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
             obj.add(ElectricLogic.has_pulls_defined(up_r, down_r))
             return resistor
 
-    class LinkIsolatedReference(_TLinkDirectShallow):
-        def __init__(self, interfaces: list[GraphInterface]) -> None:
-            if any(isinstance(gif.node, F.ElectricPower) for gif in interfaces):
-                raise LinkFilteredException("All nodes are ElectricPower")
-            super().__init__(interfaces)
-
     # class can_be_buffered(Trait):
     #    @abstractmethod
     #    def buffer(self):
@@ -97,49 +86,21 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
         OPEN_DRAIN = auto()
         OPEN_SOURCE = auto()
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     push_pull: F.TBD[PushPull]
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.reference)
-
-    @L.rt_field
-    def surge_protected(self):
-        class _can_be_surge_protected_defined(F.can_be_surge_protected_defined):
-            def protect(_self):
-                return [
-                    tvs.builder(
-                        lambda t: t.reverse_working_voltage.merge(
-                            self.reference.voltage
-                        )
-                    )
-                    for tvs in super().protect()
-                ]
-
-        return _can_be_surge_protected_defined(self.reference.lv, self.signal)
-
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
     @L.rt_field
     def pulled(self):
         return ElectricLogic.can_be_pulled_defined(self.signal, self.reference)
 
-    def connect_to_electric(self, signal: F.Electrical, reference: F.ElectricPower):
-        self.reference.connect(reference)
-        self.signal.connect(signal)
-        return self
-
-    def connect_reference(self, reference: F.ElectricPower, invert: bool = False):
-        if invert:
-            # TODO
-            raise NotImplementedError()
-        #    inverted : F.ElectricPower
-        #    inverted.lv.connect(reference.hv)
-        #    inverted.hv.connect(reference.lv)
-        #    reference = inverted
-        self.reference.connect(reference)
-
-    def connect_references(self, other: "ElectricLogic", invert: bool = False):
-        self.connect_reference(other.reference, invert=invert)
-
+    # ----------------------------------------
+    #                functions
+    # ----------------------------------------
     def set(self, on: bool):
         super().set(on)
         r = self.reference
@@ -148,54 +109,6 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
     def set_weak(self, on: bool):
         return self.get_trait(self.can_be_pulled).pull(up=on)
 
-    @staticmethod
-    def connect_all_references(ifs: Iterable["ElectricLogic"]) -> F.ElectricPower:
-        return F.ElectricPower.connect(*[x.reference for x in ifs])
-
-    @staticmethod
-    def connect_all_node_references(
-        nodes: Iterable[Node], gnd_only=False
-    ) -> F.ElectricPower:
-        # TODO check if any child contains ElectricLogic which is not connected
-        # e.g find them in graph and check if any has parent without "single reference"
-
-        refs = {
-            x.get_trait(F.has_single_electric_reference).get_reference()
-            for x in nodes
-            if x.has_trait(F.has_single_electric_reference)
-        } | {x for x in nodes if isinstance(x, F.ElectricPower)}
-        assert refs
-
-        if gnd_only:
-            F.Electrical.connect(*{r.lv for r in refs})
-            return next(iter(refs))
-
-        F.ElectricPower.connect(*refs)
-        return next(iter(refs))
-
-    @classmethod
-    def connect_all_module_references(
-        cls, node: Module | ModuleInterface, gnd_only=False
-    ) -> F.ElectricPower:
-        return cls.connect_all_node_references(
-            node.get_children(direct_only=True, types=(Module, ModuleInterface)),
-            gnd_only=gnd_only,
-        )
-
-    # def connect_shallow(self, other: "ElectricLogic"):
-    #    self.connect(
-    #        other,
-    #        linkcls=self.LinkDirectShallowLogic,
-    #    )
-
-    def connect_via_bridge(
-        self, bridge: Module, up: bool, bridge_ref_to_signal: bool = False
-    ):
-        target = self.reference.hv if up else self.reference.lv
-        if bridge_ref_to_signal:
-            return target.connect_via(bridge, self.signal)
-        return self.signal.connect_via(bridge, target)
-
     def connect_shallow(
         self,
         other: Self,
@@ -203,6 +116,7 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
         reference: bool = False,
         lv: bool = False,
     ) -> Self:
+        # TODO this should actually use shallow links
         assert not (signal and reference)
         assert not (lv and reference)
 

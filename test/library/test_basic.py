@@ -5,6 +5,7 @@ import unittest
 
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node
+from faebryk.libs.library import L
 
 
 class TestBasicLibrary(unittest.TestCase):
@@ -34,8 +35,11 @@ class TestBasicLibrary(unittest.TestCase):
             if not k.startswith("_")
             and isinstance(v, type)
             and issubclass(v, Node)
-            # check if constructor has no args
-            and v.__init__.__code__.co_argcount == 1
+            # check if constructor has no args & no varargs
+            and (
+                v.__init__.__code__.co_argcount == 1
+                and not v.__init__.__code__.co_flags & 0x04
+            )
             # no trait base
             and (not issubclass(v, Trait) or issubclass(v, TraitImpl))
         }
@@ -43,6 +47,8 @@ class TestBasicLibrary(unittest.TestCase):
         for k, v in symbols.items():
             try:
                 v()
+            except L.AbstractclassError:
+                pass
             except Exception as e:
                 self.fail(f"Failed to instantiate {k}: {e}")
 

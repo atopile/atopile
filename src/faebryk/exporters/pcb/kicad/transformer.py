@@ -309,19 +309,79 @@ class PCB_Transformer:
         return nets[net.get_trait(F.has_overriden_name).get_name()]
 
     # TODO: make universal fp bbox getter (also take into account pads)
-    def get_footprint_silkscreen_bbox(
-        self, cmp: Node
-    ) -> None | tuple[Point2D, Point2D]:
-        fp = self.get_fp(cmp)
+    @staticmethod
+    def get_footprint_silkscreen_bbox(fp: Footprint) -> None | tuple[Point2D, Point2D]:
         silk_outline = [
             geo
             for geo in get_all_geos(fp)
             if geo.layer == ("F.SilkS" if fp.layer.startswith("F") else "B.SilkS")
         ]
 
+        if not silk_outline:
+            logger.warn(
+                f"fp:{fp.name}|{fp.propertys['Reference'].value} has no silk outline"
+            )
+            return None
+
+        return PCB_Transformer.get_bbox_from_geos(silk_outline)
+
+    @staticmethod
+    def get_pad_bbox(pad: Pad) -> tuple[Point2D, Point2D]:
+        # TODO does this work for all shapes?
+        rect_size = (pad.size.w, pad.size.h or pad.size.w)
+        if pad.at.r in (90, 270):
+            rect_size = (rect_size[1], rect_size[0])
+
+        rect = (
+            (pad.at.x - rect_size[0] / 2, pad.at.y - rect_size[1] / 2),
+            (pad.at.x + rect_size[0] / 2, pad.at.y + rect_size[1] / 2),
+        )
+
+        return rect
+
+    @staticmethod
+    def get_geo_bbox(geo: Geom) -> tuple[Point2D, Point2D]:
+        vecs = []
+        if isinstance(geo, C_line):
+            vecs = [geo.start, geo.end]
+        elif isinstance(geo, C_arc):
+            vecs = [geo.start, geo.mid, geo.end]
+        elif isinstance(geo, C_rect):
+            vecs = [geo.start, geo.end]
+        elif isinstance(geo, C_circle):
+            radius = geo.end - geo.center
+            normal_radius = geo.end.rotate(geo.center, -90) - geo.center
+            vecs = [
+                geo.center - normal_radius - radius,
+                geo.center - normal_radius + radius,
+                geo.center + normal_radius - radius,
+                geo.center + normal_radius + radius,
+            ]
+        else:
+            raise NotImplementedError(f"Unsupported type {type(geo)}: {geo}")
+
+        return Geometry.bbox([coord_to_point2d(vec) for vec in vecs])
+
+    @staticmethod
+    def get_footprint_pads_bbox(
+        fp: Footprint, fp_coords: bool = True
+    ) -> None | tuple[Point2D, Point2D]:
+        pads = fp.pads
+        rects = [PCB_Transformer.get_pad_bbox(pad) for pad in pads]
+
+        if not fp_coords:
+            raise NotImplementedError("fp_coords must be true")
+        #    rects = [
+        #        (abs_pos(fp.at, rect[0]), abs_pos(fp.at, rect[1])) for rect in rects
+        #    ]
+
+        return Geometry.bbox([point for rect in rects for point in rect])
+
+    @staticmethod
+    def get_bbox_from_geos(geos: list[Geom]) -> tuple[Point2D, Point2D] | None:
         extremes = list[C_xy]()
 
-        for geo in silk_outline:
+        for geo in geos:
             if isinstance(geo, C_line):
                 extremes.extend([geo.start, geo.end])
             elif isinstance(geo, C_arc):
@@ -332,10 +392,6 @@ class PCB_Transformer:
             elif isinstance(geo, C_circle):
                 # TODO: calculate extremes.extend([geo.center, geo.end])
                 ...
-
-        if not extremes:
-            logger.warn(f"{cmp} with fp:{fp.name} has no silk outline")
-            return None
 
         return Geometry.bbox([Point2D((point.x, point.y)) for point in extremes])
 

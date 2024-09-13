@@ -4,6 +4,7 @@
 import asyncio
 import inspect
 import logging
+import sys
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
@@ -118,11 +119,20 @@ def find[T](haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
     return results[0]
 
 
-def find_or[T](haystack: Iterable[T], needle: Callable[[T], bool], default: T) -> T:
+def find_or[T](
+    haystack: Iterable[T],
+    needle: Callable[[T], bool],
+    default: T,
+    default_multi: Callable[[list[T]], T] | None = None,
+) -> T:
     try:
         return find(haystack, needle)
     except KeyErrorNotFound:
         return default
+    except KeyErrorAmbiguous as e:
+        if default_multi is not None:
+            return default_multi(e.duplicates)
+        raise
 
 
 def groupby[T, U](it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
@@ -584,21 +594,24 @@ class SharedReference[T]:
         return f"{type(self).__name__}({self.object})"
 
 
-def bfs_visit[T](neighbours: Callable[[T], list[T]], nodes: Iterable[T]) -> set[T]:
+def bfs_visit[T](
+    neighbours: Callable[[list[T]], list[T]], roots: Iterable[T]
+) -> set[T]:
     """
     Generic BFS (not depending on Graph)
     Returns all visited nodes.
     """
-    queue: list[T] = list(nodes)
-    visited: set[T] = set(queue)
+    open_path_queue: list[list[T]] = [[root] for root in roots]
+    visited: set[T] = set(roots)
 
-    while queue:
-        m = queue.pop(0)
+    while open_path_queue:
+        open_path = open_path_queue.pop(0)
 
-        for neighbour in neighbours(m):
+        for neighbour in neighbours(open_path):
             if neighbour not in visited:
+                new_path = open_path + [neighbour]
                 visited.add(neighbour)
-                queue.append(neighbour)
+                open_path_queue.append(new_path)
 
     return visited
 
@@ -859,6 +872,19 @@ def join_if_non_empty(sep: str, *args):
 
 def dataclass_as_kwargs(obj: Any) -> dict[str, Any]:
     return {f.name: getattr(obj, f.name) for f in fields(obj)}
+
+
+class RecursionGuard:
+    def __init__(self, limit: int = 10000):
+        self.limit = limit
+
+    # TODO remove this workaround when we have lazy mifs
+    def __enter__(self):
+        self.recursion_depth = sys.getrecursionlimit()
+        sys.setrecursionlimit(self.limit)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.setrecursionlimit(self.recursion_depth)
 
 
 @contextmanager

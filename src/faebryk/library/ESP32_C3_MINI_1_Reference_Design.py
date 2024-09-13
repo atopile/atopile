@@ -39,9 +39,13 @@ class ESP32_C3_MINI_1_Reference_Design(Module):
         self.esp32_c3_mini_1.gpio[9].signal.connect_via(self.reset_switch, gnd)
 
         # connect low speed crystal oscillator
-        self.low_speed_crystal_clock.n.connect(self.esp32_c3_mini_1.gpio[0].signal)
-        self.low_speed_crystal_clock.p.connect(self.esp32_c3_mini_1.gpio[1].signal)
-        self.low_speed_crystal_clock.power.connect(self.vdd3v3)
+        self.low_speed_crystal_clock.xtal_if.xin.connect(
+            self.esp32_c3_mini_1.gpio[0].signal
+        )
+        self.low_speed_crystal_clock.xtal_if.xout.connect(
+            self.esp32_c3_mini_1.gpio[1].signal
+        )
+        self.low_speed_crystal_clock.xtal_if.gnd.connect(self.vdd3v3.lv)
 
         # TODO: set the following in the pinmux
         # jtag gpio 4,5,6,7

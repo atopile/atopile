@@ -15,7 +15,7 @@ def export_parameters_to_file(module: Module, path: Path):
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
     parameters = dict[str, list[dict[str, Parameter]]]()
 
-    for m in module.get_children_modules():
+    for m in module.get_children_modules(types=Module):
         parameters[m.get_full_name(types=True).split(".", maxsplit=1)[-1]] = [
             {param.get_full_name().split(".")[-1]: param}
             for param in m.get_children(direct_only=True, types=Parameter)

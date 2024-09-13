@@ -13,3 +13,9 @@ class SPIFlash(Module):
 
     memory_size: F.TBD[Quantity]
     designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+
+    @L.rt_field
+    def single_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self)
+        )

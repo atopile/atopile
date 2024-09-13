@@ -8,8 +8,13 @@ from faebryk.core.node import (  # noqa: F401
     Node,
     d_field,
     f_field,
+    list_f_field,
     list_field,
     rt_field,
 )
+
+
+class AbstractclassError(Exception): ...
+
 
 logger = logging.getLogger(__name__)

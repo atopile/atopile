@@ -31,5 +31,5 @@ def replace_tbd_with_any(module: Module, recursive: bool, loglvl: int | None = N
     logger.setLevel(lvl)
 
     if recursive:
-        for m in module.get_children_modules():
+        for m in module.get_children_modules(types=Module):
             replace_tbd_with_any(m, recursive=False, loglvl=loglvl)

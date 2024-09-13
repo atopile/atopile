@@ -14,6 +14,7 @@ from typing import Any, Callable, Generator, Self, Sequence
 
 import patoolib
 import requests
+from pint import DimensionalityError
 from rich.progress import track
 from tortoise import Tortoise
 from tortoise.expressions import Q
@@ -523,7 +524,11 @@ class ComponentQuery:
 
             if not all(
                 pm := [
-                    p.is_subset_of(getattr(module, m.param_name))
+                    try_or(
+                        lambda: p.is_subset_of(getattr(module, m.param_name)),
+                        default=False,
+                        catch=DimensionalityError,
+                    )
                     for p, m in zip(params, mapping)
                 ]
             ):

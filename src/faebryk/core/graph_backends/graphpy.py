@@ -119,9 +119,6 @@ class GraphPY[T](Graph[T, PyGraph[T]]):
     def get_edges(self, obj: T) -> Mapping[T, L]:
         return self().edges(obj)
 
-    def bfs_visit(self, filter: Callable[[T], bool], start: Iterable[T], G=None):
-        return super().bfs_visit(filter, start, G)
-
     @staticmethod
     def _union(rep: GI, old: GI):
         # merge big into small

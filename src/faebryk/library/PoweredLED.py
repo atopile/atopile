@@ -24,3 +24,7 @@ class PoweredLED(Module):
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.power.hv, self.power.lv)
+
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(self.power)

@@ -6,11 +6,13 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import has_part_picked_remove
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
+# TODO this seems like it should be doing more
 class USB2_0_ESD_Protection(Module):
     usb = L.list_field(2, F.USB2_0)
 
@@ -22,6 +24,8 @@ class USB2_0_ESD_Protection(Module):
         self.usb[0].connect(self.usb[1])
         self.usb[0].usb_if.buspower.connect(self.usb[1].usb_if.buspower)
         self.usb[0].usb_if.buspower.decoupled.decouple()
+
+    no_pick: has_part_picked_remove
 
     @L.rt_field
     def can_bridge(self):

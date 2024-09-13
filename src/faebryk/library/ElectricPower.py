@@ -3,11 +3,13 @@
 
 
 import math
+from typing import Self
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
 from faebryk.libs.units import P, Quantity
+from faebryk.libs.util import RecursionGuard
 
 
 class ElectricPower(F.Power):
@@ -69,3 +71,8 @@ class ElectricPower(F.Power):
             return
 
         self.voltage.merge(other.voltage)
+
+    # TODO remove with lazy mifs
+    def connect(self: Self, *other: Self, linkcls=None) -> Self:
+        with RecursionGuard():
+            return super().connect(*other, linkcls=linkcls)
