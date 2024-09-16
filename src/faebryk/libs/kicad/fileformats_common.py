@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import auto
 from typing import Optional
 
-from faebryk.libs.sexp.dataclass_sexp import SymEnum, sexp_field
+from faebryk.libs.sexp.dataclass_sexp import Symbol, SymEnum, netlist_type, sexp_field
 from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,14 @@ class C_effects:
         )
 
     font: C_font
+
+    @staticmethod
+    def preprocess_shitty_hide(c_effects: netlist_type):
+        if isinstance(c_effects, list) and c_effects[-1] == Symbol("hide"):
+            c_effects[-1] = [Symbol("hide"), Symbol("yes")]
+        return c_effects
+
+    hide: bool = False
 
     # Legal:
     # (justify mirror right)

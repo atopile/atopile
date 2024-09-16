@@ -38,6 +38,7 @@ class sexp_field(dict[str, Any]):
     :param Any assert_value: Assert that the value is equal to this value
     :param int order: Order of the field in the sexp, lower is first,
     can be less than 0. Only used if not positional.
+    :param Callable[[Any], Any] | None preprocessor: Run before conversion
     """
 
     positional: bool = False
@@ -45,6 +46,7 @@ class sexp_field(dict[str, Any]):
     key: Callable[[Any], Any] | None = None
     assert_value: Any | None = None
     order: int = 0
+    preprocessor: Callable[[Any], Any] | None = None
 
     def __post_init__(self):
         super().__init__({"metadata": {"sexp": self}})
@@ -77,6 +79,7 @@ def _convert(
     t,
     stack: list[tuple[str, type]] | None = None,
     name: str | None = None,
+    sp: sexp_field | None = None,
 ):
     if name is None:
         name = "<" + t.__name__ + ">"
@@ -85,6 +88,10 @@ def _convert(
     substack = stack + [(name, t)]
 
     try:
+        # Run preprocessor, if it exists
+        if sp and sp.preprocessor:
+            val = sp.preprocessor(val)
+
         # Recurse (GenericAlias e.g list[])
         if (origin := get_origin(t)) is not None:
             args = get_args(t)
@@ -129,7 +136,7 @@ def _convert(
             if val == []:
                 return None
 
-            assert False, f"Invalid value for bool: {val}"
+            raise ValueError(f"Invalid value for bool: {val}")
 
         if isinstance(val, Symbol):
             return t(str(val))
@@ -181,6 +188,7 @@ def _decode[T](
                     if str(key) + "s" in key_fields or str(key) in key_fields:
                         ungrouped_key_values.append(val)
                         continue
+
         unprocessed_indices.add(i)
 
     key_values = groupby(
@@ -234,7 +242,7 @@ def _decode[T](
             if origin is list:
                 val_t = args[0]
                 value_dict[name] = [
-                    _convert(_val[1:], val_t, stack, name) for _val in values
+                    _convert(_val[1:], val_t, stack, name, sp) for _val in values
                 ]
             elif origin is dict:
                 if not sp.key:
@@ -242,7 +250,7 @@ def _decode[T](
                 key_t = args[0]
                 val_t = args[1]
                 converted_values = [
-                    _convert(_val[1:], val_t, stack, name) for _val in values
+                    _convert(_val[1:], val_t, stack, name, sp) for _val in values
                 ]
                 values_with_key = [(sp.key(_val), _val) for _val in converted_values]
 
@@ -260,17 +268,18 @@ def _decode[T](
                 )
         else:
             assert len(values) == 1, f"Duplicate key: {name}"
-            out = _convert(values[0][1:], f.type, stack, name)
+            out = _convert(values[0][1:], f.type, stack, name, sp)
             # if val is None, use default
             if out is not None:
                 value_dict[name] = out
 
     # Positional
     for f, v in (it := zip_non_locked(positional_fields.values(), pos_values.values())):
+        sp = sexp_field.from_field(f)
         # special case for missing positional empty StrEnum fields
         if isinstance(f.type, type) and issubclass(f.type, StrEnum):
             if "" in f.type and not isinstance(v, Symbol):
-                value_dict[f.name] = _convert(Symbol(""), f.type, stack, f.name)
+                value_dict[f.name] = _convert(Symbol(""), f.type, stack, f.name, sp)
                 # only advance field iterator
                 # if no more positional fields, there shouldn't be any more values
                 if it.next(0) is None:
@@ -286,9 +295,9 @@ def _decode[T](
             while next_val is not None:
                 vs.append(next_val)
                 next_val = it.next(1, None)
-            out = _convert(vs, f.type, stack, f.name)
+            out = _convert(vs, f.type, stack, f.name, sp)
         else:
-            out = _convert(v, f.type, stack, f.name)
+            out = _convert(v, f.type, stack, f.name, sp)
 
         value_dict[f.name] = out
 
