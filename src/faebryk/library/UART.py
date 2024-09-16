@@ -11,3 +11,5 @@ class UART(ModuleInterface):
     cts: F.ElectricLogic
     dtr: F.ElectricLogic
     dsr: F.ElectricLogic
+    dcd: F.ElectricLogic
+    ri: F.ElectricLogic

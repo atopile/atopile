@@ -44,6 +44,8 @@ class OLED_Module(Module):
 
     def __preinit__(self):
         self.power.voltage.merge(F.Range(3.0 * P.V, 5 * P.V))
-        self.power.decoupled.decouple()
+        self.power.decoupled.decouple().capacitance.merge(
+            F.Range(100 * P.uF, 220 * P.uF)
+        )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)("OLED")

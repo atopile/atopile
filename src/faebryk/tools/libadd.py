@@ -199,7 +199,9 @@ def module(
         nodes.append(
             "#TODO: Change auto-generated interface types to actual high level types"
         )
-        nodes += [f"{pin_name}: F.Electrical" for pin_name in interface_names.values()]
+        nodes += [
+            f"{pin_name}: F.Electrical" for pin_name in set(interface_names.values())
+        ]
         if noname:
             nodes.append(f"unnamed = L.list_field({len(noname)}, F.Electrical)")
 
@@ -209,7 +211,9 @@ def module(
                 return F.has_pin_association_heuristic_lookup_table(
                     mapping={{
                         {", ".join([f"self.{interface_names[pin_name]}: ['{pin_name}']"
-                                    for _,pin_name in pins] + [
+                                    for pin_name in sorted(
+                                        {pin_name for _, pin_name in pins})]
+                                    + [
                                         f"self.unnamed[{i}]: ['{pin_num}']"
                                         for pin_num, i in noname.items()
                                     ])}

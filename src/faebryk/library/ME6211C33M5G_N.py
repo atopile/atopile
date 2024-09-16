@@ -32,7 +32,7 @@ class ME6211C33M5G_N(F.LDO):
             {
                 "1": self.power_in.hv,
                 "2": self.power_in.lv,
-                "3": self.enable,
+                "3": self.enable.signal,
                 "5": self.power_out.hv,
             }
         )

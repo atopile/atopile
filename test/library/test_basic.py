@@ -20,7 +20,8 @@ class TestBasicLibrary(unittest.TestCase):
             for k, v in vars(F).items()
             if not k.startswith("_")
             and (not isinstance(v, type) or not issubclass(v, (Node, Namespace)))
-            and not type(v).__name__ == "_once"
+            # allow once wrappers for type generators
+            and not getattr(v, "_is_once_wrapper", False)
         }
         self.assertFalse(symbols, f"Found unexpected symbols: {symbols}")
 

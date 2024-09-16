@@ -7,6 +7,7 @@ from typing import Self
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
 from faebryk.libs.library import L
 from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import RecursionGuard
@@ -50,6 +51,11 @@ class ElectricPower(F.Power):
     lv: F.Electrical
 
     voltage: F.TBD[Quantity]
+    max_current: F.TBD[Quantity]
+    """
+    Only for this particular power interface
+    Does not propagate to connections
+    """
 
     surge_protected: can_be_surge_protected_power
     decoupled: can_be_decoupled_power
@@ -57,6 +63,23 @@ class ElectricPower(F.Power):
     @L.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self)
+
+    def fused(self, attach_to: Node | None = None):
+        fused_power = type(self)()
+        fuse = fused_power.add(F.Fuse())
+
+        fused_power.hv.connect_via(fuse, self.hv)
+        fused_power.lv.connect(self.lv)
+
+        self.connect_shallow(fused_power)
+
+        fuse.trip_current.merge(F.Range(0 * P.A, self.max_current))
+        # fused_power.max_current.merge(F.Range(0 * P.A, fuse.trip_current))
+
+        if attach_to is not None:
+            attach_to.add(fused_power)
+
+        return fused_power
 
     def __preinit__(self) -> None:
         ...

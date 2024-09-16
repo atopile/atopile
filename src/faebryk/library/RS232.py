@@ -9,6 +9,12 @@ from faebryk.libs.library import L
 class RS232(ModuleInterface):
     tx: F.ElectricLogic
     rx: F.ElectricLogic
+    dtr: F.ElectricLogic
+    dcd: F.ElectricLogic
+    dsr: F.ElectricLogic
+    ri: F.ElectricLogic
+    rts: F.ElectricLogic
+    cts: F.ElectricLogic
 
     @L.rt_field
     def single_electric_reference(self):

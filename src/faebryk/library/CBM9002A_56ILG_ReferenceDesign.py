@@ -7,7 +7,7 @@ from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
-class CBM9002A_56ILG_Reference_Design(Module):
+class CBM9002A_56ILG_ReferenceDesign(Module):
     """
     Minimal working example for the CBM9002A_56ILG
     """
@@ -82,5 +82,5 @@ class CBM9002A_56ILG_Reference_Design(Module):
             F.Range.from_center_rel(24 * P.Mhertz, 0.05)
         )
         self.oscillator.crystal.frequency_tolerance.merge(
-            F.Range.upper_bound(20 * P.ppm)
+            F.Range(0 * P.ppm, 20 * P.ppm)
         )

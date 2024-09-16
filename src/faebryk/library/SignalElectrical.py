@@ -61,10 +61,15 @@ class SignalElectrical(F.Signal):
 
     @classmethod
     def connect_all_module_references(
-        cls, node: Module | ModuleInterface, gnd_only=False
+        cls,
+        node: Module | ModuleInterface,
+        gnd_only=False,
+        exclude: Iterable[Node] = (),
     ) -> F.ElectricPower:
         return cls.connect_all_node_references(
-            node.get_children(direct_only=True, types=(Module, ModuleInterface)),
+            node.get_children(
+                direct_only=True, types=(Module, ModuleInterface)
+            ).difference(set(exclude)),
             gnd_only=gnd_only,
         )
 

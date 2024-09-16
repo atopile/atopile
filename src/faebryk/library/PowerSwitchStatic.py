@@ -11,6 +11,8 @@ class PowerSwitchStatic(F.PowerSwitch):
     This is useful when transforming an F.ElectricLogic to an F.ElectricPower
     """
 
+    picked: has_part_picked_remove
+
     def __init__(self) -> None:
         super().__init__(normally_closed=False)
 

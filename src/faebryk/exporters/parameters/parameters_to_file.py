@@ -22,39 +22,37 @@ def export_parameters_to_file(module: Module, path: Path):
         ]
 
     logger.info(f"Writing parameters to {path}")
+    out = ""
     if path.suffix == ".txt":
-        with open(path, "w") as f:
-            for module_name, paras in sorted(parameters.items()):
-                if paras:
-                    f.write(f"{module_name}\n")
-                    f.writelines(
-                        [
-                            f"    {par_name}: {par_value}\n"
-                            for par_dict in paras
-                            for par_name, par_value in par_dict.items()
-                        ]
-                    )
-                    f.write("\n")
-            f.close()
+        for module_name, paras in sorted(parameters.items()):
+            if paras:
+                out += f"{module_name}\n"
+                out += "\n".join(
+                    [
+                        f"    {par_name}: {par_value}\n"
+                        for par_dict in paras
+                        for par_name, par_value in par_dict.items()
+                    ]
+                )
+                out += "\n"
     elif path.suffix == ".md":
-        with open(path, "w") as f:
-            f.write("# Module Parameters\n")
-            for module_name, paras in sorted(parameters.items()):
-                if paras:
-                    f.write(f"**{module_name.replace("|","&#124;")}**\n")
-                    f.write("| Parameter Name | Parameter Value |\n")
-                    f.write("| --- | --- |\n")
-                    f.writelines(
-                        [
-                            f"| {par_name.replace("|","&#124;")} | {str(par_value).replace("|","&#124;")} |\n"  # noqa E501
-                            for par_dict in paras
-                            for par_name, par_value in par_dict.items()
-                        ]
-                    )
-                    f.write("\n")
-            f.write("\n")
-            f.close()
+        out += "# Module Parameters\n"
+        for module_name, paras in sorted(parameters.items()):
+            if paras:
+                out += f"**{module_name.replace("|","&#124;")}**\n"
+                out += "| Parameter Name | Parameter Value |\n"
+                out += "| --- | --- |\n"
+                out += "\n".join(
+                    [
+                        f"| {par_name.replace("|","&#124;")} | {str(par_value).replace("|","&#124;")} |\n"  # noqa E501
+                        for par_dict in paras
+                        for par_name, par_value in par_dict.items()
+                    ]
+                )
+                out += "\n"
     else:
         AssertionError(
             f"Export to file extension [{path.suffix}] not supported in {path}"
         )
+
+    path.write_text(out)

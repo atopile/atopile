@@ -7,122 +7,273 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
+from faebryk.libs.util import assert_once
 
 logger = logging.getLogger(__name__)
 
 
 class USB2514B(Module):
-    class InterfaceConfiguration(Enum):
+    class ConfigurableUSB(Module):
+        """
+        USB port wrapper with configuration pins and power enable pin.
+        """
+
+        usb: F.USB2_0_IF.Data
+        usb_power_enable: F.ElectricLogic
+        usb_port_disable_p: F.ElectricLogic
+        usb_port_disable_n: F.ElectricLogic
+        over_current_sense: F.ElectricLogic
+        battery_charging_enable: F.ElectricLogic
+
+        @assert_once
+        def configure_usb_port(
+            self,
+            enable_usb: bool = True,
+            enable_battery_charging: bool = True,
+        ):
+            """
+            Configure the specified USB port.
+            """
+            # enable/disable usb port
+            if not enable_usb:
+                self.usb_port_disable_p.set_weak(on=True)
+                self.usb_port_disable_n.set_weak(on=True)
+
+            # enable/disable battery charging
+            if not enable_battery_charging:
+                self.battery_charging_enable.set_weak(on=False)
+
+    class ConfigurationSource(Enum):
         DEFAULT = auto()
-        SMBUS = auto()
+        """
+        - Strap options enabled
+        - Self-powered operation enabled
+        - Individual power switching
+        - Individual over-current sensing
+        """
         BUS_POWERED = auto()
+        """
+        Default configuration with the following overrides:
+        - Bus-powered operation
+        """
+        SMBUS = auto()
+        """"
+        The hub is configured externally over SMBus (as an SMBus slave device):
+        - Strap options disabled
+        - All registers configured over SMBus
+        """
         EEPROM = auto()
+        """
+        The hub is configured over 2-wire I2C EEPROM:
+        - Strap options disabled
+        - All registers configured by I2C EEPROM
+        """
+
+    @assert_once
+    def set_configuration_source(
+        self,
+        configuration_source: ConfigurationSource = ConfigurationSource.DEFAULT,
+    ):
+        """
+        Set the source of configuration settings for the USB2514B.
+        """
+        if configuration_source == USB2514B.ConfigurationSource.DEFAULT:
+            self.configuration_source_input[0].pulled.pull(up=False)
+            self.configuration_source_input[1].pulled.pull(up=False)
+        elif configuration_source == USB2514B.ConfigurationSource.BUS_POWERED:
+            self.configuration_source_input[0].pulled.pull(up=False)
+            self.configuration_source_input[1].pulled.pull(up=True)
+        elif configuration_source == USB2514B.ConfigurationSource.SMBUS:
+            self.configuration_source_input[0].pulled.pull(up=True)
+            self.configuration_source_input[1].pulled.pull(up=False)
+        elif configuration_source == USB2514B.ConfigurationSource.EEPROM:
+            self.configuration_source_input[0].pulled.pull(up=True)
+            self.configuration_source_input[1].pulled.pull(up=True)
 
     class NonRemovablePortConfiguration(Enum):
         ALL_PORTS_REMOVABLE = auto()
-        PORT_1_NOT_REMOVABLE = auto()
-        PORT_1_2_NOT_REMOVABLE = auto()
-        PORT_1_2_3_NOT_REMOVABLE = auto()
+        PORT_0_NOT_REMOVABLE = auto()
+        PORT_0_1_NOT_REMOVABLE = auto()
+        PORT_0_1_2_NOT_REMOVABLE = auto()
 
-    VDD33: F.ElectricPower
-    VDDA33: F.ElectricPower
-
-    PLLFILT: F.ElectricPower
-    CRFILT: F.ElectricPower
-
-    VBUS_DET: F.Electrical
-
-    usb_downstream = L.list_field(4, F.DifferentialPair)
-    usb_upstream = F.DifferentialPair
-
-    XTALIN: F.Electrical
-    XTALOUT: F.Electrical
-
-    TEST: F.Electrical
-    SUSP_IND: F.ElectricLogic
-    RESET_N: F.Electrical
-    RBIAS: F.Electrical
-    NON_REM = L.list_field(2, F.ElectricLogic)
-    LOCAL_PWR: F.Electrical
-    CLKIN: F.Electrical
-    CFG_SEL = L.list_field(2, F.ElectricLogic)
-
-    HS_IND: F.ElectricLogic
-
-    PRTPWR = L.list_field(4, F.ElectricLogic)
-    PRT_DIS_P = L.list_field(4, F.ElectricLogic)
-    PRT_DIS_M = L.list_field(4, F.ElectricLogic)
-    OCS_N = L.list_field(4, F.ElectricLogic)
-    BC_EN = L.list_field(4, F.ElectricLogic)
-
-    i2c: F.I2C
-    gnd: F.Electrical
-
-    interface_configuration: F.TBD[InterfaceConfiguration]
-    non_removable_port_configuration: F.TBD[NonRemovablePortConfiguration]
-
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
-
-    def __preinit__(self):
-        if self.interface_configuration == USB2514B.InterfaceConfiguration.DEFAULT:
-            self.CFG_SEL[0].pulled.pull(up=False)
-            self.CFG_SEL[1].pulled.pull(up=False)
-        elif self.interface_configuration == USB2514B.InterfaceConfiguration.SMBUS:
-            self.CFG_SEL[0].pulled.pull(up=True)
-            self.CFG_SEL[1].pulled.pull(up=False)
-        elif (
-            self.interface_configuration == USB2514B.InterfaceConfiguration.BUS_POWERED
-        ):
-            self.CFG_SEL[0].pulled.pull(up=False)
-            self.CFG_SEL[1].pulled.pull(up=True)
-        elif self.interface_configuration == USB2514B.InterfaceConfiguration.EEPROM:
-            self.CFG_SEL[0].pulled.pull(up=True)
-            self.CFG_SEL[1].pulled.pull(up=True)
-
-        # Add decoupling capacitors to power pins and connect all lv to gnd
-        # TODO: decouple with 1.0uF and 0.1uF and maybe 4.7uF
-        for g in self.get_children(direct_only=True, types=F.ElectricPower):
-            g.decoupled.decouple()
-            g.lv.connect(self.gnd)
-
-        x = self
-
-        x.CFG_SEL[0].connect(x.i2c.scl)
-        x.CFG_SEL[1].connect(x.HS_IND)
-        x.NON_REM[0].connect(x.SUSP_IND)
-        x.NON_REM[1].connect(x.i2c.sda)
-
-        x.RESET_N.connect(self.gnd)
-
-        self.PLLFILT.voltage.merge(1.8 * P.V)
-        self.CRFILT.voltage.merge(1.8 * P.V)
-
+    @assert_once
+    def set_non_removable_ports(
+        self,
+        non_removable_port_configuration: NonRemovablePortConfiguration,
+    ):
+        """
+        Set the non-removable port configuration of the USB2514.
+        """
         if (
-            self.non_removable_port_configuration
+            non_removable_port_configuration
             == USB2514B.NonRemovablePortConfiguration.ALL_PORTS_REMOVABLE
         ):
-            self.NON_REM[0].get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
-            self.NON_REM[1].get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
+            self.usb_removability_configuration_intput[0].set_weak(on=False)
+            self.usb_removability_configuration_intput[1].set_weak(on=False)
         elif (
-            self.non_removable_port_configuration
-            == USB2514B.NonRemovablePortConfiguration.PORT_1_NOT_REMOVABLE
+            non_removable_port_configuration
+            == USB2514B.NonRemovablePortConfiguration.PORT_0_NOT_REMOVABLE
         ):
-            self.NON_REM[0].get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
-            self.NON_REM[1].get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
+            self.usb_removability_configuration_intput[0].set_weak(on=True)
+            self.usb_removability_configuration_intput[1].set_weak(on=False)
         elif (
-            self.non_removable_port_configuration
-            == USB2514B.NonRemovablePortConfiguration.PORT_1_2_NOT_REMOVABLE
+            non_removable_port_configuration
+            == USB2514B.NonRemovablePortConfiguration.PORT_0_1_NOT_REMOVABLE
         ):
-            self.NON_REM[0].get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
-            self.NON_REM[1].get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
+            self.usb_removability_configuration_intput[0].set_weak(on=False)
+            self.usb_removability_configuration_intput[1].set_weak(on=True)
         elif (
-            self.non_removable_port_configuration
-            == USB2514B.NonRemovablePortConfiguration.PORT_1_2_3_NOT_REMOVABLE
+            non_removable_port_configuration
+            == USB2514B.NonRemovablePortConfiguration.PORT_0_1_2_NOT_REMOVABLE
         ):
-            self.NON_REM[0].get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
-            self.NON_REM[1].get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
+            self.usb_removability_configuration_intput[0].set_weak(on=True)
+            self.usb_removability_configuration_intput[1].set_weak(on=True)
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    power_3v3: F.ElectricPower
+    power_3v3_analog: F.ElectricPower
+    power_pll: F.ElectricPower
+    power_core: F.ElectricPower
+
+    usb_upstream: F.USB2_0_IF.Data
+
+    xtal_if: F.XtalIF
+    external_clock_input: F.ElectricLogic
+
+    usb_bias_resistor_input: F.SignalElectrical
+    vbus_detect: F.SignalElectrical
+
+    test: F.Electrical
+    reset: F.ElectricLogic
+    local_power_detection: F.SignalElectrical
+
+    usb_removability_configuration_intput = L.list_field(2, F.ElectricLogic)
+    configuration_source_input = L.list_field(2, F.ElectricLogic)
+
+    suspense_indicator: F.ElectricLogic
+    high_speed_upstream_indicator: F.ElectricLogic
+
+    configurable_downstream_usb = L.list_field(4, ConfigurableUSB)
+
+    i2c: F.I2C
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
+    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "Microchip Tech",
+            DescriptiveProperties.partno: "USB2514B-AEZC-TR",
+        }
+    )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"
     )
+
+    @L.rt_field
+    def pin_association_heuristic(self):
+        return F.has_pin_association_heuristic_lookup_table(
+            mapping={
+                self.power_core.hv: ["CRFILT"],
+                self.power_core.lv: ["EP"],
+                self.configuration_source_input[1].signal: ["HS_IND/CFG_SEL1"],
+                self.configurable_downstream_usb[0].over_current_sense.signal: [
+                    "OCS_N1"
+                ],
+                self.configurable_downstream_usb[1].over_current_sense.signal: [
+                    "OCS_N2"
+                ],
+                self.configurable_downstream_usb[2].over_current_sense.signal: [
+                    "OCS_N3"
+                ],
+                self.configurable_downstream_usb[3].over_current_sense.signal: [
+                    "OCS_N4"
+                ],
+                self.power_pll.hv: ["PLLFILT"],
+                self.configurable_downstream_usb[0].battery_charging_enable.signal: [
+                    "PRTPWR1/BC_EN1"
+                ],
+                self.configurable_downstream_usb[1].battery_charging_enable.signal: [
+                    "PRTPWR2/BC_EN2"
+                ],
+                self.configurable_downstream_usb[2].battery_charging_enable.signal: [
+                    "PRTPWR3/BC_EN3"
+                ],
+                self.configurable_downstream_usb[3].battery_charging_enable.signal: [
+                    "PRTPWR4/BC_EN4"
+                ],
+                self.usb_bias_resistor_input.signal: ["RBIAS"],
+                self.reset.signal: ["RESET_N"],
+                self.configuration_source_input[0].signal: ["SCL/SMBCLK/CFG_SEL0"],
+                self.usb_removability_configuration_intput[1].signal: [
+                    "SDA/SMBDATA/NON_REM1"
+                ],
+                self.usb_removability_configuration_intput[0].signal: [
+                    "SUSP_IND/LOCAL_PWR/NON_REM0"
+                ],
+                self.test: ["TEST"],
+                self.configurable_downstream_usb[0].usb.n: ["USBDM_DN1/PRT_DIS_M1"],
+                self.configurable_downstream_usb[1].usb.n: ["USBDM_DN2/PRT_DIS_M2"],
+                self.configurable_downstream_usb[2].usb.n: ["USBDM_DN3/PRT_DOS_M3"],
+                self.configurable_downstream_usb[3].usb.n: ["USBDM_DN4/PRT_DIS_M4"],
+                self.usb_upstream.p: ["USBDM_UP"],
+                self.configurable_downstream_usb[0].usb.n: ["USBDP_DN1/PRT_DIS_P1"],
+                self.configurable_downstream_usb[1].usb.n: ["USBDP_DN2/PRT_DIS_P2"],
+                self.configurable_downstream_usb[2].usb.n: ["USBDP_DN3/PRT_DIS_P3"],
+                self.configurable_downstream_usb[3].usb.n: ["USBDP_DN4/PRT_DIS_P4"],
+                self.usb_upstream.p: ["USBDP_UP"],
+                self.vbus_detect.signal: ["VBUS_DET"],
+                self.power_3v3.hv: ["VDD33"],
+                self.power_3v3_analog.hv: ["VDDA33"],
+                self.xtal_if.xin: ["XTALIN/CLKIN"],
+                self.xtal_if.xout: ["XTALOUT"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
+        )
+
+    def __preinit__(self):
+        # ----------------------------------------
+        #              connections
+        # ----------------------------------------
+        self.configuration_source_input[0].connect(self.i2c.scl)
+        self.configuration_source_input[1].connect(self.high_speed_upstream_indicator)
+        self.usb_removability_configuration_intput[0].signal.connect(
+            self.suspense_indicator.signal,
+            self.local_power_detection.signal,
+        )
+        self.usb_removability_configuration_intput[1].connect(self.i2c.sda)
+        for usb_port in self.configurable_downstream_usb:
+            usb_port.usb.p.connect(usb_port.usb_port_disable_p.signal)
+            usb_port.usb.n.connect(usb_port.usb_port_disable_n.signal)
+            usb_port.usb_power_enable.connect(usb_port.battery_charging_enable)
+        self.test.connect(self.power_core.lv)
+
+        F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
+        F.ElectricLogic.connect_all_module_references(
+            self,
+            exclude={
+                self.power_3v3_analog,
+                self.power_pll,
+                self.power_core,
+            },
+        )
+
+        # ----------------------------------------
+        #              parametrization
+        # ----------------------------------------
+        self.power_pll.voltage.merge(
+            F.Range.from_center_rel(1.8 * P.V, 0.05)
+        )  # datasheet does not specify a voltage range
+        self.power_core.voltage.merge(
+            F.Range.from_center_rel(1.8 * P.V, 0.05)
+        )  # datasheet does not specify a voltage range
+        self.power_3v3.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
+        self.power_3v3_analog.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
