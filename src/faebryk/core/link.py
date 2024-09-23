@@ -5,11 +5,16 @@ import logging
 from typing import TYPE_CHECKING, Callable
 
 from faebryk.core.core import LINK_TB, FaebrykLibObject
+from faebryk.libs.util import is_type_pair
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from faebryk.core.graphinterface import GraphInterface, GraphInterfaceHierarchical
+    from faebryk.core.graphinterface import (
+        GraphInterface,
+        GraphInterfaceHierarchical,
+        GraphInterfaceSelf,
+    )
 
 
 class Link(FaebrykLibObject):
@@ -38,13 +43,31 @@ class Link(FaebrykLibObject):
         return f"{type(self).__name__}()"
 
 
-class LinkSibling(Link):
-    def __init__(self, interfaces: list["GraphInterface"]) -> None:
+class LinkPointer(Link):
+    """A Link that points towards a self-gif"""
+
+    def __init__(
+        self,
+        interfaces: list["GraphInterfaceSelf | GraphInterface"],
+    ) -> None:
+        from faebryk.core.graphinterface import GraphInterface, GraphInterfaceSelf
+
         super().__init__()
-        self.interfaces = interfaces
+        assert len(interfaces) == 2
+
+        pair = is_type_pair(
+            interfaces[0], interfaces[1], GraphInterfaceSelf, GraphInterface
+        )
+        if not pair:
+            raise TypeError("Interfaces must be one self-gif and one other-gif")
+        self.pointee, self.pointer = pair
 
     def get_connections(self) -> list["GraphInterface"]:
-        return self.interfaces
+        return [self.pointee, self.pointer]
+
+
+class LinkSibling(LinkPointer):
+    """A link represents a connection between a self-gif and a gif in the same node"""
 
 
 class LinkParent(Link):
@@ -83,9 +106,13 @@ class LinkNamedParent(LinkParent):
 
 
 class LinkDirect(Link):
+    """Represents a symmetrical link between two interfaces of the same type"""
+
     def __init__(self, interfaces: list["GraphInterface"]) -> None:
         super().__init__()
-        assert len(set(map(type, interfaces))) == 1
+        assert (
+            len(set(map(type, interfaces))) == 1
+        ), "Interfaces must be of the same type"
         self.interfaces = interfaces
 
     def get_connections(self) -> list["GraphInterface"]:

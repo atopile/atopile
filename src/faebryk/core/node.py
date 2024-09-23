@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
+from abc import abstractmethod
+from dataclasses import InitVar as dataclass_InitVar
 from itertools import chain
 from typing import (
     TYPE_CHECKING,
@@ -29,6 +31,7 @@ from faebryk.libs.util import (
     PostInitCaller,
     Tree,
     cast_assert,
+    debugging,
     find,
     not_none,
     times,
@@ -65,13 +68,34 @@ class fab_field:
     pass
 
 
-class rt_field[T, O](property, fab_field):
+class constructed_field[T: "Node", O: "Node"](property, fab_field):
+    """
+    Field which is constructed after the node is created.
+    The constructor gets one argument: the node instance.
+
+    The constructor should return the constructed faebryk object or None.
+    If a faebryk object is returned, it will be added to the node.
+    """
+
+    @abstractmethod
+    def __construct__(self, obj: T) -> O | None:
+        pass
+
+
+class rt_field[T, O](constructed_field):
+    """
+    rt_fields (runtime_fields) are the last fields excecuted before the
+    __preinit__ and __postinit__ functions are called.
+    It gives the function passed to it access to the node instance.
+    This is useful to do construction that depends on parameters passed by __init__.
+    """
+
     def __init__(self, fget: Callable[[T], O]) -> None:
         super().__init__()
         self.func = fget
         self.lookup: dict[T, O] = {}
 
-    def _construct(self, obj: T):
+    def __construct__(self, obj: T):
         constructed = self.func(obj)
         # TODO find a better way for this
         # in python 3.13 name support
@@ -145,6 +169,14 @@ class NodeAlreadyBound(NodeException):
 class NodeNoParent(NodeException): ...
 
 
+class InitVar(dataclass_InitVar):
+    """
+    This is a type-marker which instructs the Node constructor to ignore the field.
+
+    Inspired by dataclasses.InitVar, which it inherits from.
+    """
+
+
 # -----------------------------------------------------------------------------
 
 
@@ -167,7 +199,7 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
         # TODO proper hash
         return hash(id(self))
 
-    def add[T: Node](
+    def add[T: Node | GraphInterface](
         self,
         obj: T,
         name: str | None = None,
@@ -176,9 +208,10 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
         assert obj is not None
 
         if container is None:
-            container = self.runtime_anon
             if name:
                 container = self.runtime
+            else:
+                container = self.runtime_anon
 
         try:
             container_name = find(vars(self).items(), lambda x: x[1] is container)[0]
@@ -197,7 +230,11 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
             container.append(obj)
             name = f"{container_name}[{len(container) - 1}]"
 
-        self._handle_add_node(name, obj)
+        if isinstance(obj, GraphInterface):
+            self._handle_add_gif(name, obj)
+        else:
+            self._handle_add_node(name, obj)
+
         return obj
 
     def add_to_container[T: Node](
@@ -230,8 +267,64 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
 
         LL_Types = (Node, GraphInterface)
 
-        annos = all_anno(cls)
-        vars_ = all_vars(cls)
+        vars_ = {
+            name: obj
+            for name, obj in all_vars(cls).items()
+            # private fields are always ignored
+            if not name.startswith("_")
+            # only consider fab_fields
+            and isinstance(obj, fab_field)
+        }
+        annos = {
+            name: obj
+            for name, obj in all_anno(cls).items()
+            # private fields are always ignored
+            if not name.startswith("_")
+            # explicitly ignore InitVars
+            and not isinstance(obj, InitVar)
+            # variables take precedence over annos
+            and name not in vars_
+        }
+
+        # ensure no field annotations are a property
+        # If properties are constructed as instance fields, their
+        # getters and setters aren't called when assigning to them.
+        #
+        # This means we won't actually construct the underlying graph properly.
+        # It's pretty insidious because it's completely non-obvious that we're
+        # missing these graph connections.
+        # TODO: make this an exception group instead
+        for name, obj in annos.items():
+            if (origin := get_origin(obj)) is not None:
+                # you can't truly subclass properties because they're a descriptor
+                # type, so instead we check if the origin is a property via our fields
+                if issubclass(origin, constructed_field):
+                    raise FieldError(
+                        f"{name} is a property, which cannot be created from a field "
+                        "annotation. Please instantiate the field directly."
+                    )
+
+        # FIXME: something's fucked up in the new version of this,
+        # but I can't for the life of me figure out what
+        clsfields_unf_new = dict(chain(annos.items(), vars_.items()))
+        clsfields_unf_old = {
+            name: obj
+            for name, obj in chain(
+                (
+                    (name, obj)
+                    for name, obj in all_anno(cls).items()
+                    if not isinstance(obj, InitVar)
+                ),
+                (
+                    (name, f)
+                    for name, f in all_vars(cls).items()
+                    if isinstance(f, fab_field)
+                ),
+            )
+            if not name.startswith("_")
+        }
+        assert clsfields_unf_old == clsfields_unf_new
+        clsfields_unf = clsfields_unf_old
 
         def is_node_field(obj):
             def is_genalias_node(obj):
@@ -260,19 +353,10 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
             if get_origin(obj):
                 return is_genalias_node(obj)
 
-            if isinstance(obj, rt_field):
+            if isinstance(obj, constructed_field):
                 return True
 
             return False
-
-        clsfields_unf = {
-            name: obj
-            for name, obj in chain(
-                [(name, f) for name, f in annos.items()],
-                [(name, f) for name, f in vars_.items() if isinstance(f, fab_field)],
-            )
-            if not name.startswith("_")
-        }
 
         nonfabfields, fabfields = partition(
             lambda x: is_node_field(x[1]), clsfields_unf.items()
@@ -305,7 +389,9 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
             elif isinstance(obj, Node):
                 self._handle_add_node(name, obj)
             else:
-                assert False
+                raise TypeError(
+                    f"Cannot handle adding field {name=} of type {type(obj)}"
+                )
 
         def append(name, inst):
             if isinstance(inst, LL_Types):
@@ -321,20 +407,14 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
             return inst
 
         def _setup_field(name, obj):
-            def setup_gen_alias(name, obj):
-                origin = get_origin(obj)
-                assert origin
+            if isinstance(obj, str):
+                raise NotImplementedError()
+
+            if (origin := get_origin(obj)) is not None:
                 if isinstance(origin, type):
                     setattr(self, name, append(name, origin()))
                     return
                 raise NotImplementedError(origin)
-
-            if isinstance(obj, str):
-                raise NotImplementedError()
-
-            if get_origin(obj):
-                setup_gen_alias(name, obj)
-                return
 
             if isinstance(obj, _d_field):
                 setattr(self, name, append(name, obj.default_factory()))
@@ -344,8 +424,9 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
                 setattr(self, name, append(name, obj()))
                 return
 
-            if isinstance(obj, rt_field):
-                append(name, obj._construct(self))
+            if isinstance(obj, constructed_field):
+                if (constructed := obj.__construct__(self)) is not None:
+                    append(name, constructed)
                 return
 
             raise NotImplementedError()
@@ -354,13 +435,19 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
             try:
                 _setup_field(name, obj)
             except Exception as e:
+                # this is a bit of a hack to provide complete context to debuggers
+                # for underlying field construction errors
+                if debugging():
+                    raise
                 raise FieldConstructionError(
                     self,
                     name,
                     f'An exception occurred while constructing field "{name}"',
                 ) from e
 
-        nonrt, rt = partition(lambda x: isinstance(x[1], rt_field), clsfields.items())
+        nonrt, rt = partition(
+            lambda x: isinstance(x[1], constructed_field), clsfields.items()
+        )
         for name, obj in nonrt:
             setup_field(name, obj)
 

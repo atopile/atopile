@@ -940,3 +940,14 @@ def exceptions_to_log(
             )
         if not mute:
             raise
+
+
+def debugging() -> bool:
+    """
+    Check if a debugger is connected.
+    """
+    try:
+        import debugpy
+    except (ImportError, ModuleNotFoundError):
+        return False
+    return debugpy.is_client_connected()

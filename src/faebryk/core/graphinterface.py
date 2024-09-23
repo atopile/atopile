@@ -7,9 +7,17 @@ from typing_extensions import Self, deprecated
 
 from faebryk.core.core import ID_REPR, FaebrykLibObject
 from faebryk.core.graph_backends.default import GraphImpl
-from faebryk.core.link import Link, LinkDirect, LinkNamedParent
+from faebryk.core.link import (
+    Link,
+    LinkDirect,
+    LinkNamedParent,
+    LinkPointer,
+    LinkSibling,
+)
 from faebryk.libs.util import (
+    KeyErrorNotFound,
     exceptions_to_log,
+    find,
     not_none,
     try_avoid_endless_recursion,
 )
@@ -106,7 +114,7 @@ class GraphInterface(FaebrykLibObject):
     # Less graph-specific stuff
 
     # TODO make link trait to initialize from list
-    def connect(self, other: Self, linkcls=None) -> Self:
+    def connect(self, other: "GraphInterface", linkcls=None) -> Self:
         assert other is not self
 
         if linkcls is None:
@@ -191,3 +199,22 @@ class GraphInterfaceHierarchical(GraphInterface):
 
 
 class GraphInterfaceSelf(GraphInterface): ...
+
+
+class GraphInterfaceReference[T: "Node"](GraphInterface):
+    """Represents a reference to a node object"""
+
+    class UnboundError(Exception):
+        """Cannot resolve unbound reference"""
+
+    def get_referenced_gif(self) -> GraphInterfaceSelf:
+        try:
+            return find(
+                self.get_links_by_type(LinkPointer),
+                lambda link: not isinstance(link, LinkSibling),
+            ).pointee
+        except KeyErrorNotFound as ex:
+            raise GraphInterfaceReference.UnboundError from ex
+
+    def get_reference(self) -> T:
+        return self.get_referenced_gif().node
