@@ -49,9 +49,6 @@ from faebryk.libs.util import KeyErrorNotFound, cast_assert, find, get_key
 
 logger = logging.getLogger(__name__)
 
-FPad = F.Pad
-FNet = F.Net
-FFootprint = F.Footprint
 
 PCB = C_kicad_pcb_file.C_kicad_pcb
 Footprint = PCB.C_pcb_footprint
@@ -242,6 +239,8 @@ class PCB_Transformer:
             fp = footprints[(fp_ref, fp_name)]
 
             g_fp.add(self.has_linked_kicad_footprint_defined(fp, self))
+
+            # TODO: should this be removed?
             node.add(self.has_linked_kicad_footprint_defined(fp, self))
 
             pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
@@ -249,7 +248,7 @@ class PCB_Transformer:
                 pads = [
                     pad
                     for pad in fp.pads
-                    if pad.name == pin_names[cast_assert(FPad, fpad)]
+                    if pad.name == pin_names[cast_assert(F.Pad, fpad)]
                 ]
                 fpad.add(PCB_Transformer.has_linked_kicad_pad_defined(fp, pads, self))
 
@@ -304,26 +303,37 @@ class PCB_Transformer:
             )
         ]
 
-    def get_net(self, net: FNet) -> Net:
+    def get_net(self, net: F.Net) -> Net:
         nets = {pcb_net.name: pcb_net for pcb_net in self.pcb.nets}
         return nets[net.get_trait(F.has_overriden_name).get_name()]
 
-    # TODO: make universal fp bbox getter (also take into account pads)
     @staticmethod
     def get_footprint_silkscreen_bbox(fp: Footprint) -> None | tuple[Point2D, Point2D]:
-        silk_outline = [
-            geo
-            for geo in get_all_geos(fp)
-            if geo.layer == ("F.SilkS" if fp.layer.startswith("F") else "B.SilkS")
-        ]
+        return PCB_Transformer.get_bounding_box(fp, {"F.SilkS", "B.SilkS"})
 
-        if not silk_outline:
+    @staticmethod
+    def get_bounding_box(
+        fp: Footprint,
+        layers: str | set[str] | None = None,
+    ) -> None | tuple[Point2D, Point2D]:
+        if isinstance(layers, str):
+            layers = {layers}
+        else:
+            layers = set(layers)
+
+        # TODO: make it properly generic
+        if layers != {"F.SilkS", "B.SilkS"}:
+            raise NotImplementedError(f"Unsupported layers: {layers}")
+
+        content = [geo for geo in get_all_geos(fp) if geo.layer in layers]
+
+        if not content:
             logger.warn(
                 f"fp:{fp.name}|{fp.propertys['Reference'].value} has no silk outline"
             )
             return None
 
-        return PCB_Transformer.get_bbox_from_geos(silk_outline)
+        return PCB_Transformer.get_bbox_from_geos(content)
 
     @staticmethod
     def get_pad_bbox(pad: Pad) -> tuple[Point2D, Point2D]:
@@ -484,7 +494,7 @@ class PCB_Transformer:
         return list(poly.exterior.coords)
 
     @staticmethod
-    def _get_pad(ffp: FFootprint, intf: F.Electrical):
+    def _get_pad(ffp: F.Footprint, intf: F.Electrical):
         pin_map = ffp.get_trait(F.has_kicad_footprint).get_pin_names()
         pin_name = find(
             pin_map.items(),
@@ -498,15 +508,15 @@ class PCB_Transformer:
 
     @staticmethod
     def get_pad(intf: F.Electrical) -> tuple[Footprint, Pad, Node]:
-        obj, ffp = FFootprint.get_footprint_of_parent(intf)
+        obj, ffp = F.Footprint.get_footprint_of_parent(intf)
         fp, pad = PCB_Transformer._get_pad(ffp, intf)
 
         return fp, pad, obj
 
     @staticmethod
-    def get_pad_pos_any(intf: F.Electrical) -> list[tuple[FPad, Point]]:
+    def get_pad_pos_any(intf: F.Electrical) -> list[tuple[F.Pad, Point]]:
         try:
-            fpads = FPad.find_pad_for_intf_with_parent_that_has_footprint(intf)
+            fpads = F.Pad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         except KeyErrorNotFound:
             # intf has no parent with footprint
             return []
@@ -514,16 +524,16 @@ class PCB_Transformer:
         return [PCB_Transformer.get_fpad_pos(fpad) for fpad in fpads]
 
     @staticmethod
-    def get_pad_pos(intf: F.Electrical) -> tuple[FPad, Point] | None:
+    def get_pad_pos(intf: F.Electrical) -> tuple[F.Pad, Point] | None:
         try:
-            fpad = FPad.find_pad_for_intf_with_parent_that_has_footprint_unique(intf)
+            fpad = F.Pad.find_pad_for_intf_with_parent_that_has_footprint_unique(intf)
         except ValueError:
             return None
 
         return PCB_Transformer.get_fpad_pos(fpad)
 
     @staticmethod
-    def get_fpad_pos(fpad: FPad):
+    def get_fpad_pos(fpad: F.Pad):
         fp, pad = fpad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()
         if len(pad) > 1:
             raise NotImplementedError(
@@ -1192,7 +1202,7 @@ class PCB_Transformer:
 
             rot = rotation if rotation else reference.at.r
 
-            footprint_bbox = self.get_footprint_silkscreen_bbox(mod)
+            footprint_bbox = self.get_bounding_box(mod, {"F.SilkS", "B.SilkS"})
             if not footprint_bbox:
                 continue
             max_coord = C_xy(*footprint_bbox[1])
