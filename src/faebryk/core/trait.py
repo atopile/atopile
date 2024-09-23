@@ -16,9 +16,19 @@ class TraitNotFound(NodeException):
         self.trait = trait
 
 
+class TraitImplementationConfusedWithTrait(NodeException):
+    def __init__(self, node: Node, trait: type["Trait"], *args: object) -> None:
+        super().__init__(
+            node,
+            *args,
+            "Implementation or trait was used where the other was expected.",
+        )
+        self.trait = trait
+
+
 class TraitAlreadyExists(NodeException):
     def __init__(self, node: Node, trait: "TraitImpl", *args: object) -> None:
-        trait_type = trait._trait
+        trait_type = trait.__trait__
         super().__init__(
             node,
             *args,
@@ -34,9 +44,15 @@ class TraitUnbound(NodeException):
 
 
 class Trait(Node):
+    __decless_trait__: bool = False
+
     @classmethod
     def impl[T: "Trait"](cls: type[T]):
         class _Impl(TraitImpl, cls): ...
+
+        # this should be outside the class def to prevent
+        # __init_subclass__ from overwriting it
+        _Impl.__trait__ = cls
 
         return _Impl
 
@@ -46,30 +62,17 @@ class Trait(Node):
 
         return super().__new__(cls)
 
+    @classmethod
+    def decless(cls):
+        class _Trait(cls): ...
+
+        _Trait.__decless_trait__ = True
+
+        return _Trait.impl()
+
 
 class TraitImpl(Node):
-    _trait: type[Trait]
-
-    def __preinit__(self) -> None:
-        found = False
-        bases = type(self).__bases__
-        while not found:
-            for base in bases:
-                if not issubclass(base, TraitImpl) and issubclass(base, Trait):
-                    self._trait = base
-                    found = True
-                    break
-            bases = [
-                new_base
-                for base in bases
-                if issubclass(base, TraitImpl)
-                for new_base in base.__bases__
-            ]
-            assert len(bases) > 0
-
-        assert isinstance(self._trait, type)
-        assert issubclass(self._trait, Trait)
-        assert self._trait is not TraitImpl
+    __trait__: type[Trait] = None
 
     @property
     def obj(self) -> Node:
@@ -85,19 +88,19 @@ class TraitImpl(Node):
         assert type(other), TraitImpl
 
         # If other same or more specific
-        if other.implements(self._trait):
+        if other.implements(self.__trait__):
             return True, other
 
         # If we are more specific
-        if self.implements(other._trait):
+        if self.implements(other.__trait__):
             return True, self
 
         return False, self
 
-    def implements(self, trait: type):
+    def implements(self, trait: type[Trait]):
         assert issubclass(trait, Trait)
 
-        return issubclass(self._trait, trait)
+        return issubclass(self.__trait__, trait)
 
     # Overwriteable --------------------------------------------------------------------
 
@@ -112,7 +115,7 @@ class TraitImpl(Node):
         if candidate is not self:
             return False
 
-        node.del_trait(other._trait)
+        node.del_trait(other.__trait__)
         return True
 
         # raise TraitAlreadyExists(node, self)

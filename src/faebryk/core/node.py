@@ -215,7 +215,8 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
         super().__init_subclass__()
         cls._init = init
 
-    def _setup_fields(self, cls):
+    @classmethod
+    def __faebryk_fields__(cls) -> tuple[dict[str, Any], dict[str, Any]]:
         def all_vars(cls):
             return {k: v for c in reversed(cls.__mro__) for k, v in vars(c).items()}
 
@@ -273,9 +274,15 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
             if not name.startswith("_")
         }
 
-        clsfields = {
-            name: obj for name, obj in clsfields_unf.items() if is_node_field(obj)
-        }
+        nonfabfields, fabfields = partition(
+            lambda x: is_node_field(x[1]), clsfields_unf.items()
+        )
+
+        return dict(fabfields), dict(nonfabfields)
+
+    def _setup_fields(self, cls):
+        clsfields, _ = self.__faebryk_fields__()
+        LL_Types = (Node, GraphInterface)
 
         # for name, obj in clsfields_unf.items():
         #    if isinstance(obj, _d_field):
@@ -422,9 +429,9 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
         from faebryk.core.trait import TraitImpl
 
         if isinstance(node, TraitImpl):
-            if self.has_trait(node._trait):
+            if self.has_trait(node.__trait__):
                 if not node.handle_duplicate(
-                    cast_assert(TraitImpl, self.get_trait(node._trait)), self
+                    cast_assert(TraitImpl, self.get_trait(node.__trait__)), self
                 ):
                     return
 
@@ -491,8 +498,15 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
     def add_trait[_TImpl: "TraitImpl"](self, trait: _TImpl) -> _TImpl:
         return self.add(trait)
 
-    def _find[V: "Trait"](self, trait: type[V], only_implemented: bool) -> V | None:
-        from faebryk.core.trait import TraitImpl
+    def _find_trait_impl[V: "Trait | TraitImpl"](
+        self, trait: type[V], only_implemented: bool
+    ) -> V | None:
+        from faebryk.core.trait import TraitImpl, TraitImplementationConfusedWithTrait
+
+        if issubclass(trait, TraitImpl):
+            if not trait.__trait__.__decless_trait__:
+                raise TraitImplementationConfusedWithTrait(self, trait)
+            trait = trait.__trait__
 
         out = self.get_children(
             direct_only=True,
@@ -500,29 +514,26 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
             f_filter=lambda impl: impl.implements(trait)
             and (impl.is_implemented() or not only_implemented),
         )
+
         assert len(out) <= 1
         return cast_assert(trait, next(iter(out))) if out else None
 
     def del_trait(self, trait: type["Trait"]):
-        impl = self._find(trait, only_implemented=False)
+        impl = self._find_trait_impl(trait, only_implemented=False)
         if not impl:
             return
         self._remove_child(impl)
 
-    def try_get_trait[V: "Trait"](self, trait: Type[V]) -> V | None:
-        return self._find(trait, only_implemented=True)
+    def try_get_trait[V: "Trait | TraitImpl"](self, trait: Type[V]) -> V | None:
+        return self._find_trait_impl(trait, only_implemented=True)
 
-    def has_trait(self, trait: type["Trait"]) -> bool:
+    def has_trait(self, trait: type["Trait | TraitImpl"]) -> bool:
         return self.try_get_trait(trait) is not None
 
-    def get_trait[V: "Trait"](self, trait: Type[V]) -> V:
-        from faebryk.core.trait import TraitImpl, TraitNotFound
+    def get_trait[V: "Trait | TraitImpl"](self, trait: Type[V]) -> V:
+        from faebryk.core.trait import TraitNotFound
 
-        assert not issubclass(
-            trait, TraitImpl
-        ), "You need to specify the trait, not an impl"
-
-        impl = self._find(trait, only_implemented=True)
+        impl = self.try_get_trait(trait)
         if not impl:
             raise TraitNotFound(self, trait)
 
