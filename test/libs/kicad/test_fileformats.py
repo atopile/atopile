@@ -21,7 +21,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SEXP_File,
     dataclass_dfs,
 )
-from faebryk.libs.util import ConfigFlag, NotNone, find
+from faebryk.libs.util import ConfigFlag, find, not_none
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ def test_empty_enum_positional():
     pcb_reload = C_kicad_pcb_file.loads(pcb.dumps())
 
     assert (
-        NotNone(_b1_p1(pcb_reload).drill).shape
+        not_none(_b1_p1(pcb_reload).drill).shape
         == C_footprint.C_pad.C_drill.E_shape.stadium
     )
 

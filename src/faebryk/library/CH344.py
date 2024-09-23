@@ -7,7 +7,7 @@ import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.units import P
-from faebryk.libs.util import NotNone  # noqa: F401
+from faebryk.libs.util import not_none  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class CH344(Module):
     @L.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
-            NotNone(F.ElectricLogic.connect_all_module_references(self))
+            not_none(F.ElectricLogic.connect_all_module_references(self))
         )
 
     datasheet = L.f_field(F.has_datasheet_defined)(

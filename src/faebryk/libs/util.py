@@ -273,7 +273,7 @@ def Holder[T, P](_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
     return __wrapper[T, P]
 
 
-def NotNone(x):
+def not_none(x):
     assert x is not None
     return x
 

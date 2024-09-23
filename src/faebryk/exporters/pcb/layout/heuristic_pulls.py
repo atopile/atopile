@@ -8,7 +8,7 @@ from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.heuristic_decoupling import Params, place_next_to
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.libs.util import NotNone
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
 
         for n in node:
             assert isinstance(n, F.Resistor)
-            logic = NotNone(n.get_parent_of_type(F.ElectricLogic))
+            logic = not_none(n.get_parent_of_type(F.ElectricLogic))
 
             place_next_to(logic.signal, n, route=True, params=self._params)
 

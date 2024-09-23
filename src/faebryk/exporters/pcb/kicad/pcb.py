@@ -15,10 +15,10 @@ from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.sexp.dataclass_sexp import get_parent
 from faebryk.libs.util import (
     KeyErrorNotFound,
-    NotNone,
     dataclass_as_kwargs,
     find,
     find_or,
+    not_none,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ class PCB:
             if (
                 pcb_net_name := find_or(
                     nets_removed,
-                    lambda x: _nets_same(pcb_nets[NotNone(x)], nl_nets[nl_net_name]),
+                    lambda x: _nets_same(pcb_nets[not_none(x)], nl_nets[nl_net_name]),
                     default=None,
                 )
             )

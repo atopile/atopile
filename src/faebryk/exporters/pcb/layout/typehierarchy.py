@@ -8,7 +8,7 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.libs.util import NotNone, find_or, groupby
+from faebryk.libs.util import find_or, groupby, not_none
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class LayoutTypeHierarchy(Layout):
             {
                 n: find_or(
                     self.layouts,
-                    lambda layout: isinstance(n, NotNone(layout).mod_type),
+                    lambda layout: isinstance(n, not_none(layout).mod_type),
                     default=None,
                 )
                 for n in node

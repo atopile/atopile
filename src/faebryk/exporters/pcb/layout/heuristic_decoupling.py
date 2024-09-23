@@ -13,7 +13,7 @@ from faebryk.core.trait import TraitNotFound
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.libs.kicad.fileformats import C_kicad_pcb_file, C_wh
-from faebryk.libs.util import KeyErrorNotFound, NotNone, find
+from faebryk.libs.util import KeyErrorNotFound, find, not_none
 
 logger = logging.getLogger(__name__)
 
@@ -274,7 +274,7 @@ class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
 
         for n in node:
             assert isinstance(n, F.Capacitor)
-            power = NotNone(n.get_parent_of_type(F.ElectricPower))
+            power = not_none(n.get_parent_of_type(F.ElectricPower))
 
             place_next_to(power.hv, n, route=True, params=self._params)
 

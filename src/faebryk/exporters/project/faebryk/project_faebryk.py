@@ -11,7 +11,7 @@ import re
 import black
 
 from faebryk.libs.pycodegen import sanitize_name
-from faebryk.libs.util import NotNone
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ def from_t1_netlist(t1_netlist):
     def comp_to_faebryk(component):
         def get_comp_name(component):
             if component["name"].startswith("COMP["):
-                class_name = NotNone(
+                class_name = not_none(
                     re.search(r"\[(.*):.*\]", component["name"])
                 ).group(1)
             else:

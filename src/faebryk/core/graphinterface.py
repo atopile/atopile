@@ -9,8 +9,8 @@ from faebryk.core.core import ID_REPR, FaebrykLibObject
 from faebryk.core.graph_backends.default import GraphImpl
 from faebryk.core.link import Link, LinkDirect, LinkNamedParent
 from faebryk.libs.util import (
-    NotNone,
     exceptions_to_log,
+    not_none,
     try_avoid_endless_recursion,
 )
 
@@ -75,7 +75,7 @@ class GraphInterface(FaebrykLibObject):
 
     @property
     def node(self):
-        return NotNone(self._node)
+        return not_none(self._node)
 
     @node.setter
     def node(self, value: "Node"):

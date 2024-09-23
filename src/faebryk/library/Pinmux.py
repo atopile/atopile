@@ -10,8 +10,8 @@ from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.util import (  # noqa: F401
     KeyErrorAmbiguous,
     KeyErrorNotFound,
-    NotNone,
     find,
+    not_none,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class Pinmux(Module):
         if isinstance(pin, int):
             pin = self._ios[pin]
         if isinstance(function, int):
-            function = NotNone(self._function_matrix[pin][function])
+            function = not_none(self._function_matrix[pin][function])
 
         if pin in self.configured:
             if self.configured[pin].is_connected_to(function):

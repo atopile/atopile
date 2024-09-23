@@ -4,7 +4,7 @@
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.util import NotNone
+from faebryk.libs.util import not_none
 
 
 class Pad(ModuleInterface):
@@ -43,4 +43,4 @@ class Pad(ModuleInterface):
         return pads
 
     def get_fp(self) -> F.Footprint:
-        return NotNone(self.get_parent_of_type(F.Footprint))
+        return not_none(self.get_parent_of_type(F.Footprint))

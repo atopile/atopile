@@ -16,7 +16,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import Parameter
-from faebryk.libs.util import NotNone, flatten
+from faebryk.libs.util import flatten, not_none
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
         return
 
     params = {
-        NotNone(p.get_parent())[1]: p.get_most_narrow()
+        not_none(p.get_parent())[1]: p.get_most_narrow()
         for p in module.get_children(direct_only=True, types=Parameter)
     }
 
