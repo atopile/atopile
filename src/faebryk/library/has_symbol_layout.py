@@ -4,5 +4,5 @@
 import faebryk.library._F as F
 
 
-class has_symbol_layout(F.Symbol.TraitT):
+class has_symbol_layout(F.Symbol.TraitT.decless()):
     translations: str
