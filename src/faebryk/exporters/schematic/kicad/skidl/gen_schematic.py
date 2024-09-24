@@ -1,3 +1,4 @@
+# ruff: noqa: E501  imported from another project
 """
 Functions for generating a KiCad EESCHEMA schematic.
 """
@@ -20,7 +21,7 @@ from .net_terminal import NetTerminal
 from .shims import get_script_name, rmv_attr
 
 
-def bbox_to_eeschema(bbox, tx, name=None):
+def bbox_to_eeschema(bbox: BBox, tx: Tx, name=None):
     """Create a bounding box using EESCHEMA graphic lines."""
 
     # Make sure the box corners are integers.
@@ -289,7 +290,7 @@ A_sizes_list = [
 A_sizes = OrderedDict(A_sizes_list)
 
 
-def get_A_size(bbox):
+def get_A_size(bbox: BBox) -> str:
     """Return the A-size page needed to fit the given bounding box."""
 
     width = bbox.w
@@ -339,7 +340,6 @@ def calc_pin_dir(pin):
     }[pin_vector]
 
 
-@export_to_all
 def pin_label_to_eeschema(pin, tx):
     """Create EESCHEMA text of net label attached to a pin."""
 
@@ -692,11 +692,9 @@ def gen_schematic(
         options (dict, optional): Dict of options and values, usually for drawing/debugging.
     """
 
-    from skidl import KICAD
-    from skidl.schematics.node import Node
-    from skidl.schematics.place import PlacementFailure
-    from skidl.schematics.route import RoutingFailure
-    from skidl.tools import tool_modules
+    from .node import SchNode
+    from .place import PlacementFailure
+    from .route import RoutingFailure
 
     # Part placement options that should always be turned on.
     options["use_push_pull"] = True
@@ -711,7 +709,7 @@ def gen_schematic(
     for _ in range(retries):
         preprocess_circuit(circuit, **options)
 
-        node = Node(circuit, tool_modules[KICAD], filepath, top_name, title, flatness)
+        node = SchNode(circuit, filepath, top_name, title, flatness)
 
         try:
             # Place parts.

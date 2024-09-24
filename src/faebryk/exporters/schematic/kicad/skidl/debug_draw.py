@@ -1,3 +1,4 @@
+# ruff: noqa: E501  imported from another project
 # -*- coding: utf-8 -*-
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
@@ -7,8 +8,6 @@ Drawing routines used for debugging place & route.
 """
 from collections import defaultdict
 from random import randint
-
-import pygame
 
 from .geometry import BBox, Point, Segment, Tx, Vector
 
@@ -27,6 +26,7 @@ def draw_box(bbox, scr, tx, color=(192, 255, 192), thickness=0):
     Returns:
         None.
     """
+    import pygame
 
     bbox = bbox * tx
     corners = (
@@ -47,6 +47,7 @@ def draw_endpoint(pt, scr, tx, color=(100, 100, 100), dot_radius=10):
         color (tuple, optional): Segment color. Defaults to (192, 255, 192).
         dot_Radius (int, optional): Endpoint dot radius. Defaults to 3.
     """
+    import pygame
 
     pt = pt * tx  # Convert to drawing coords.
 
@@ -75,6 +76,7 @@ def draw_seg(seg, scr, tx, color=(100, 100, 100), thickness=5, dot_radius=10):
         seg_thickness (int, optional): Segment line thickness. Defaults to 5.
         dot_Radius (int, optional): Endpoint dot radius. Defaults to 3.
     """
+    import pygame
 
     # Use net color if object has a net. Otherwise use input color.
     try:
@@ -106,7 +108,6 @@ def draw_text(txt, pt, scr, tx, font, color=(100, 100, 100), real=True):
         color (tuple, optional): Segment color. Defaults to (100,100,100).
         real (Boolean): If true, transform real pt to screen coords. Otherwise, pt is screen coords.
     """
-
     # Transform real text starting point to screen coords.
     if real:
         pt = pt * tx
@@ -254,6 +255,7 @@ def draw_start(bbox):
         tx: Matrix to transform from real coords to screen coords.
         font: PyGame font for rendering text.
     """
+    import pygame
 
     # Screen drawing area.
     scr_bbox = BBox(Point(0, 0), Point(2000, 1500))
@@ -294,10 +296,12 @@ def draw_start(bbox):
 
 def draw_redraw():
     """Redraw the PyGame display."""
+    import pygame
     pygame.display.flip()
 
 def draw_pause():
     """Pause drawing and then resume after button press."""
+    import pygame
 
     # Display drawing.
     draw_redraw()
@@ -311,6 +315,6 @@ def draw_pause():
 
 def draw_end():
     """Display drawing and wait for user to close PyGame window."""
-
+    import pygame
     draw_pause()
     pygame.quit()

@@ -1,3 +1,4 @@
+# ruff: noqa: E501  imported from another project
 # -*- coding: utf-8 -*-
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
@@ -8,7 +9,6 @@ Autorouter for generating wiring between symbols in a schematic.
 
 import copy
 import random
-import sys
 from collections import Counter, defaultdict
 from enum import Enum
 from itertools import chain, zip_longest
@@ -28,6 +28,7 @@ from .shims import Net, Options, Part, Pin, rmv_attr
 
 if TYPE_CHECKING:
     from pygame import Surface  # skidl calls this Screen
+
     from .node import SchNode
 
 ###################################################################

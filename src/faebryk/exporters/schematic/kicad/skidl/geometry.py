@@ -1,3 +1,4 @@
+# ruff: noqa: E501  imported from another project
 # -*- coding: utf-8 -*-
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
