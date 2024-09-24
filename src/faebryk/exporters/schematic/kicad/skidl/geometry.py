@@ -29,7 +29,7 @@ def to_mms(mils):
 
 
 class Tx:
-    def __init__(self, a=1, b=0, c=0, d=1, dx=0, dy=0):
+    def __init__(self, a: float = 1, b: float = 0, c: float = 0, d: float = 1, dx: float = 0, dy: float = 0):
         """Create a transformation matrix.
         tx = [
                a  b  0
@@ -47,7 +47,7 @@ class Tx:
         self.dy = dy
 
     @classmethod
-    def from_symtx(cls, symtx):
+    def from_symtx(cls, symtx: str) -> "Tx":
         """Return a Tx() object that implements the "HVLR" geometric operation sequence.
 
         Args:
@@ -68,17 +68,17 @@ class Tx:
             tx *= op_dict[op]
         return tx
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "{self.__class__}({self.a}, {self.b}, {self.c}, {self.d}, {self.dx}, {self.dy})".format(
             self=self
         )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "[{self.a}, {self.b}, {self.c}, {self.d}, {self.dx}, {self.dy}]".format(
             self=self
         )
 
-    def __mul__(self, m):
+    def __mul__(self, m: "Tx | float") -> "Tx":
         """Return the product of two transformation matrices."""
         if isinstance(m, Tx):
             tx = m
@@ -95,7 +95,7 @@ class Tx:
         )
 
     @property
-    def origin(self):
+    def origin(self) -> Point:
         """Return the (dx, dy) translation as a Point."""
         return Point(self.dx, self.dy)
 
@@ -106,32 +106,32 @@ class Tx:
     #     self.dx, self.dy = pt.x, pt.y
 
     @property
-    def scale(self):
+    def scale(self) -> float:
         """Return the scaling factor."""
         return (Point(1, 0) * self - Point(0, 0) * self).magnitude
 
-    def move(self, vec):
+    def move(self, vec: Point) -> "Tx":
         """Return Tx with movement vector applied."""
         return self * Tx(dx=vec.x, dy=vec.y)
 
-    def rot_90cw(self):
+    def rot_90cw(self) -> "Tx":
         """Return Tx with 90-deg clock-wise rotation around (0, 0)."""
         return self * Tx(a=0, b=1, c=-1, d=0)
 
-    def rot(self, degs):
+    def rot(self, degs: float) -> "Tx":
         """Return Tx rotated by the given angle (in degrees)."""
         rads = radians(degs)
         return self * Tx(a=cos(rads), b=sin(rads), c=-sin(rads), d=cos(rads))
 
-    def flip_x(self):
+    def flip_x(self) -> "Tx":
         """Return Tx with X coords flipped around (0, 0)."""
         return self * Tx(a=-1)
 
-    def flip_y(self):
+    def flip_y(self) -> "Tx":
         """Return Tx with Y coords flipped around (0, 0)."""
         return self * Tx(d=-1)
 
-    def no_translate(self):
+    def no_translate(self) -> "Tx":
         """Return Tx with translation set to (0,0)."""
         return Tx(a=self.a, b=self.b, c=self.c, d=self.d)
 
@@ -148,40 +148,40 @@ tx_flip_y = Tx(a=1, b=0, c=0, d=-1)
 
 
 class Point:
-    def __init__(self, x, y):
+    def __init__(self, x: float, y: float):
         """Create a Point with coords x,y."""
         self.x = x
         self.y = y
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         """Return hash of X,Y tuple."""
         return hash((self.x, self.y))
 
-    def __eq__(self, other):
+    def __eq__(self, other: "Point") -> bool:
         """Return true if (x,y) tuples of self and other are the same."""
         return (self.x, self.y) == (other.x, other.y)
 
-    def __lt__(self, other):
+    def __lt__(self, other: "Point") -> bool:
         """Return true if (x,y) tuple of self compares as less than (x,y) tuple of other."""
         return (self.x, self.y) < (other.x, other.y)
 
-    def __ne__(self, other):
+    def __ne__(self, other: "Point") -> bool:
         """Return true if (x,y) tuples of self and other differ."""
         return not (self == other)
 
-    def __add__(self, pt):
+    def __add__(self, pt: "Point | float") -> "Point":
         """Add the x,y coords of pt to self and return the resulting Point."""
         if not isinstance(pt, Point):
             pt = Point(pt, pt)
         return Point(self.x + pt.x, self.y + pt.y)
 
-    def __sub__(self, pt):
+    def __sub__(self, pt: "Point | float") -> "Point":
         """Subtract the x,y coords of pt from self and return the resulting Point."""
         if not isinstance(pt, Point):
             pt = Point(pt, pt)
         return Point(self.x - pt.x, self.y - pt.y)
 
-    def __mul__(self, m):
+    def __mul__(self, m: "Tx | Point") -> "Point":
         """Apply transformation matrix or scale factor to a point and return a point."""
         if isinstance(m, Tx):
             return Point(
@@ -192,72 +192,72 @@ class Point:
         else:
             return Point(m * self.x, m * self.y)
 
-    def __rmul__(self, m):
+    def __rmul__(self, m: "Tx | Point") -> "Point":
         if isinstance(m, Tx):
             raise ValueError
         else:
             return self * m
 
-    def xprod(self, pt):
+    def xprod(self, pt: "Point") -> float:
         """Cross-product of two 2D vectors returns scalar in Z coord."""
         return self.x * pt.y - self.y * pt.x
 
-    def mask(self, msk):
+    def mask(self, msk: list[float]) -> "Point":
         """Multiply the X & Y coords by the elements of msk."""
         return Point(self.x * msk[0], self.y * msk[1])
 
-    def __neg__(self):
+    def __neg__(self) -> "Point":
         """Negate both coords."""
         return Point(-self.x, -self.y)
 
-    def __truediv__(self, d):
+    def __truediv__(self, d: float) -> "Point":
         """Divide the x,y coords by d."""
         return Point(self.x / d, self.y / d)
 
-    def __div__(self, d):
+    def __div__(self, d: float) -> "Point":
         """Divide the x,y coords by d."""
         return Point(self.x / d, self.y / d)
 
-    def round(self):
+    def round(self) -> "Point":
         return Point(int(round(self.x)), int(round(self.y)))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "{} {}".format(self.x, self.y)
 
-    def snap(self, grid_spacing):
+    def snap(self, grid_spacing: float) -> "Point":
         """Snap point x,y coords to the given grid spacing."""
         snap_func = lambda x: int(grid_spacing * round(x / grid_spacing))
         return Point(snap_func(self.x), snap_func(self.y))
 
-    def min(self, pt):
+    def min(self, pt: "Point") -> "Point":
         """Return a Point with coords that are the min x,y of both points."""
         return Point(min(self.x, pt.x), min(self.y, pt.y))
 
-    def max(self, pt):
+    def max(self, pt: "Point") -> "Point":
         """Return a Point with coords that are the max x,y of both points."""
         return Point(max(self.x, pt.x), max(self.y, pt.y))
 
     @property
-    def magnitude(self):
+    def magnitude(self) -> float:
         """Get the distance of the point from the origin."""
         return sqrt(self.x**2 + self.y**2)
 
     @property
-    def norm(self):
+    def norm(self) -> "Point":
         """Return a unit vector pointing from the origin to the point."""
         try:
             return self / self.magnitude
         except ZeroDivisionError:
             return Point(0, 0)
 
-    def flip_xy(self):
+    def flip_xy(self) -> None:
         """Flip X-Y coordinates of point."""
         self.x, self.y = self.y, self.x
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "{self.__class__}({self.x}, {self.y})".format(self=self)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "({}, {})".format(self.x, self.y)
 
 
@@ -265,14 +265,14 @@ Vector = Point
 
 
 class BBox:
-    def __init__(self, *pts):
+    def __init__(self, *pts: Point):
         """Create a bounding box surrounding the given points."""
         inf = float("inf")
         self.min = Point(inf, inf)
         self.max = Point(-inf, -inf)
         self.add(*pts)
 
-    def __add__(self, obj):
+    def __add__(self, obj: "Point | BBox") -> "BBox":
         """Return the merged BBox of two BBoxes or a BBox and a Point."""
         sum_ = BBox()
         if isinstance(obj, Point):
@@ -285,30 +285,30 @@ class BBox:
             raise NotImplementedError
         return sum_
 
-    def __iadd__(self, obj):
+    def __iadd__(self, obj: "Point | BBox") -> "BBox":
         """Update BBox bt adding another Point or BBox"""
         sum_ = self + obj
         self.min = sum_.min
         self.max = sum_.max
         return self
 
-    def add(self, *objs):
+    def add(self, *objs: "Point | BBox") -> "BBox":
         """Update the bounding box size by adding Point/BBox objects."""
         for obj in objs:
             self += obj
         return self
 
-    def __mul__(self, m):
+    def __mul__(self, m: "Tx") -> "BBox":
         return BBox(self.min * m, self.max * m)
 
-    def round(self):
+    def round(self) -> "BBox":
         return BBox(self.min.round(), self.max.round())
 
-    def is_inside(self, pt):
+    def is_inside(self, pt: "Point") -> bool:
         """Return True if point is inside bounding box."""
         return (self.min.x <= pt.x <= self.max.x) and (self.min.y <= pt.y <= self.max.y)
 
-    def intersects(self, bbox):
+    def intersects(self, bbox: "BBox") -> bool:
         """Return True if the two bounding boxes intersect."""
         return (
             (self.min.x < bbox.max.x)
@@ -317,7 +317,7 @@ class BBox:
             and (self.max.y > bbox.min.y)
         )
 
-    def intersection(self, bbox):
+    def intersection(self, bbox: "BBox") -> "BBox | None":
         """Return the bounding box of the intersection between the two bounding boxes."""
         if not self.intersects(bbox):
             return None
@@ -325,11 +325,11 @@ class BBox:
         corner2 = self.max.min(bbox.max)
         return BBox(corner1, corner2)
 
-    def resize(self, vector):
+    def resize(self, vector: "Point") -> "BBox":
         """Expand/contract the bounding box by applying vector to its corner points."""
         return BBox(self.min - vector, self.max + vector)
 
-    def snap_resize(self, grid_spacing):
+    def snap_resize(self, grid_spacing: float) -> "BBox":
         """Resize bbox so max and min points are on grid.
 
         Args:
@@ -341,42 +341,42 @@ class BBox:
         return bbox
 
     @property
-    def area(self):
+    def area(self) -> float:
         """Return area of bounding box."""
         return self.w * self.h
 
     @property
-    def w(self):
+    def w(self) -> float:
         """Return the bounding box width."""
         return abs(self.max.x - self.min.x)
 
     @property
-    def h(self):
+    def h(self) -> float:
         """Return the bounding box height."""
         return abs(self.max.y - self.min.y)
 
     @property
-    def ctr(self):
+    def ctr(self) -> Point:
         """Return center point of bounding box."""
         return (self.max + self.min) / 2
 
     @property
-    def ll(self):
+    def ll(self) -> Point:
         """Return lower-left point of bounding box."""
         return Point(self.min.x, self.min.y)
 
     @property
-    def lr(self):
+    def lr(self) -> Point:
         """Return lower-right point of bounding box."""
         return Point(self.max.x, self.min.y)
 
     @property
-    def ul(self):
+    def ul(self) -> Point:
         """Return upper-left point of bounding box."""
         return Point(self.min.x, self.max.y)
 
     @property
-    def ur(self):
+    def ur(self) -> Point:
         """Return upper-right point of bounding box."""
         return Point(self.max.x, self.max.y)
 
@@ -395,22 +395,22 @@ class Segment:
         self.p1 = copy(p1)
         self.p2 = copy(p2)
 
-    def __mul__(self, m):
+    def __mul__(self, m: "Tx") -> "Segment":
         """Apply transformation matrix to a segment and return a segment."""
         return Segment(self.p1 * m, self.p2 * m)
 
-    def round(self):
+    def round(self) -> "Segment":
         return Segment(self.p1.round(), self.p2.round())
 
     def __str__(self):
         return "{} {}".format(str(self.p1), str(self.p2))
 
-    def flip_xy(self):
+    def flip_xy(self) -> None:
         """Flip the X-Y coordinates of the segment."""
         self.p1.flip_xy()
         self.p2.flip_xy()
 
-    def intersects(self, other):
+    def intersects(self, other: "Segment") -> bool:
         """Return true if the segments intersect."""
 
         # FIXME: This fails if the segments are parallel!
@@ -441,7 +441,7 @@ class Segment:
 
         return (0 <= t1 <= 1) and (0 <= t2 <= 1)
 
-    def shadows(self, other):
+    def shadows(self, other: "Segment") -> bool:
         """Return true if two segments overlap each other even if they aren't on the same horiz or vertical track."""
 
         if self.p1.x == self.p2.x and other.p1.x == other.p2.x:
