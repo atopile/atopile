@@ -206,8 +206,13 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
                 for component in components_in_group
             )
 
+            # if we don't have a useful comment, just use the MPN
+            value = _get_value(component)
+            if not value or value == "?":
+                value = mpn
+
             _add_row(
-                _get_value(component),
+                value,
                 friendly_designators,
                 _get_footprint(component),
                 mpn,
