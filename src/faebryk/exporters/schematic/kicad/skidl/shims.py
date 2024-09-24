@@ -1,8 +1,11 @@
 """Replace common skidl functions with our own"""
 
-from typing import Any, Iterator, TypedDict
+from typing import TYPE_CHECKING, Any, Iterator, TypedDict
 
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
+
+if TYPE_CHECKING:
+    from .route import GlobalTrack
 
 
 def get_script_name():
@@ -51,6 +54,10 @@ class Part:
     original_tx: Tx  # internal use
     force: Vector  # used for debugging
     mv: Vector  # internal use
+    left_track: "GlobalTrack"
+    right_track: "GlobalTrack"
+    top_track: "GlobalTrack"
+    bottom_track: "GlobalTrack"
 
     def __iter__(self) -> Iterator["Pin"]:
         # TODO:
@@ -89,8 +96,9 @@ class Net:
     pins: list[Pin]
     parts: set[Part]
 
-    def __iter__(self) -> Iterator[Pin]:
+    def __iter__(self) -> Iterator[Pin | Part]:
         yield from self.pins
+        yield from self.parts
 
 
 class Options(TypedDict):
