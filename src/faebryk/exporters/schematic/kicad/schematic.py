@@ -3,6 +3,7 @@
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
 
+from dataclasses import dataclass
 import datetime
 import os.path
 import re
@@ -26,12 +27,36 @@ from .net_terminal import NetTerminal
 
 # from skidl.utilities import rmv_attr
 
-
-__all__ = []
-
 """
 Functions for generating a KiCad EESCHEMA schematic.
 """
+
+
+@dataclass
+class Options:
+    allow_routing_failure: bool = False
+    compress_before_place: bool = False
+    dont_rotate_pin_count: int = 10000
+    draw_assigned_terminals: bool = False
+    draw_font: str = "Arial"
+    draw_global_routing: bool = False
+    draw_placement: bool = False
+    draw_routing_channels: bool = False
+    draw_routing: bool = False
+    draw_scr: bool = True
+    draw_switchbox_boundary: bool = False
+    draw_switchbox_routing: bool = False
+    draw_tx: Tx = Tx()
+    expansion_factor: float = 1.0
+    graphics_only: bool = False
+    net_normalize: bool = False
+    pin_normalize: bool = False
+    pt_to_pt_mult: float = 1.0
+    rotate_parts: bool = False
+    seed: int = 0
+    show_capacities: bool = False
+    terminal_evolution: str = "all_at_once"
+    use_push_pull: bool = True
 
 
 def bbox_to_eeschema(bbox, tx, name=None):
