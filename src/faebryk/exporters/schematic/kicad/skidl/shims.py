@@ -3,7 +3,7 @@
 from typing import Any, Iterator
 
 from faebryk.core.trait import Trait
-from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx
+from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
 
 
 def get_script_name():
@@ -30,8 +30,8 @@ def rmv_attr(objs, attrs):
                 pass
 
 
-class Part(Trait):
-    pins: list["Pin"]  # TODO:
+class Part:
+    pins: list["Pin"]  # TODO: source
     place_bbox: BBox  # TODO:
     lbl_bbox: BBox  # TODO:
     tx: Tx  # transformation matrix of the part's position
@@ -45,12 +45,16 @@ class Part(Trait):
     delta_cost_tx: Tx  # transformation matrix associated with delta_cost
     orientation_locked: bool  # whether the part's orientation is locked
 
+    # attr assigned, eg. I don't need to care about it
+    original_tx: Tx  # internal use
+    force: Vector  # used for debugging
+
     def __iter__(self) -> Iterator["Pin"]:
         # TODO:
         raise NotImplementedError
 
 
-class Pin(Trait):
+class Pin:
     part: Part  # TODO:
     place_pt: Point  # TODO:
     pt: Point  # TODO:
@@ -65,7 +69,7 @@ class Pin(Trait):
         raise NotImplementedError
 
 
-class Net(Trait):
+class Net:
     pins: list[Pin]  # TODO:
     parts: set[Part]  # TODO:
 

@@ -13,7 +13,7 @@ import random
 import sys
 from collections import defaultdict
 from copy import copy
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Callable, Protocol
 
 from .constants import GRID
 from .debug_draw import (
@@ -394,7 +394,7 @@ def adjust_orientations(parts: list[Part], **options) -> bool | None:
     return iter_cnt > 0
 
 
-def net_tension_dist(part, **options):
+def net_tension_dist(part: Part, **options) -> float:
     """Calculate the tension of the nets trying to rotate/flip the part.
 
     Args:
@@ -431,7 +431,7 @@ def net_tension_dist(part, **options):
     return tension
 
 
-def net_torque_dist(part, **options):
+def net_torque_dist(part: Part, **options) -> float:
     """Calculate the torque of the nets trying to rotate/flip the part.
 
     Args:
@@ -482,8 +482,7 @@ net_tension = net_tension_dist
 # net_tension = net_torque_dist
 
 
-@export_to_all
-def net_force_dist(part, **options):
+def net_force_dist(part: Part, **options) -> Vector:
     """Compute attractive force on a part from all the other parts connected to it.
 
     Args:
@@ -564,8 +563,7 @@ def net_force_dist(part, **options):
 attractive_force = net_force_dist
 
 
-@export_to_all
-def overlap_force(part, parts, **options):
+def overlap_force(part: Part, parts: list[Part], **options) -> Vector:
     """Compute the repulsive force on a part from overlapping other parts.
 
     Args:
@@ -590,10 +588,10 @@ def overlap_force(part, parts, **options):
             # Compute the movement needed to separate the bboxes in left/right/up/down directions.
             # Add some small random offset to break symmetry when parts exactly overlay each other.
             # Move right edge of part to the left of other part's left edge, etc...
-            moves = []
+            moves: list[list[float, Vector]] = []
             rnd = Vector(random.random()-0.5, random.random()-0.5)
             for edges, dir in ((("ll", "lr"), Vector(1,0)), (("ul", "ll"), Vector(0,1))):
-                move = (getattr(other_part_bbox, edges[0]) - getattr(part_bbox, edges[1]) - rnd) * dir
+                move: Vector = (getattr(other_part_bbox, edges[0]) - getattr(part_bbox, edges[1]) - rnd) * dir
                 moves.append([move.magnitude, move])
                 # Flip edges...
                 move = (getattr(other_part_bbox, edges[1]) - getattr(part_bbox, edges[0]) - rnd) * dir
@@ -604,12 +602,11 @@ def overlap_force(part, parts, **options):
 
             # Add the move to the total force on the part.
             total_force += move[1]
-                
+
     return total_force
 
 
-@export_to_all
-def overlap_force_rand(part, parts, **options):
+def overlap_force_rand(part: Part, parts: list[Part], **options) -> Vector:
     """Compute the repulsive force on a part from overlapping other parts.
 
     Args:
@@ -636,9 +633,13 @@ def overlap_force_rand(part, parts, **options):
             # Move right edge of part to the left of other part's left edge.
             moves = []
             rnd = Vector(random.random()-0.5, random.random()-0.5)
-            for edges, dir in ((("ll", "lr"), Vector(1,0)), (("lr", "ll"), Vector(1,0)),
-                          (("ul", "ll"), Vector(0,1)), (("ll", "ul"), Vector(0,1))):
-                move = (getattr(other_part_bbox, edges[0]) - getattr(part_bbox, edges[1]) - rnd) * dir
+            for edges, dir in (
+                (("ll", "lr"), Vector(1, 0)),
+                (("lr", "ll"), Vector(1, 0)),
+                (("ul", "ll"), Vector(0, 1)),
+                (("ll", "ul"), Vector(0, 1)),
+            ):
+                move: Vector = (getattr(other_part_bbox, edges[0]) - getattr(part_bbox, edges[1]) - rnd) * dir
                 moves.append([move.magnitude, move])
             accum = 0
             for move in moves:
@@ -654,7 +655,7 @@ def overlap_force_rand(part, parts, **options):
                 if move[0] >= select:
                     total_force += move[1]
                     break
-                
+
     return total_force
 
 
@@ -663,7 +664,9 @@ repulsive_force = overlap_force
 # repulsive_force = overlap_force_rand
 
 
-def scale_attractive_repulsive_forces(parts, force_func, **options):
+def scale_attractive_repulsive_forces(
+    parts: list[Part], force_func: Callable[[Part, list[Part], ...], Vector], **options
+) -> float:
     """Set scaling between attractive net forces and repulsive part overlap forces."""
 
     # Store original part placement.
@@ -695,7 +698,9 @@ def scale_attractive_repulsive_forces(parts, force_func, **options):
         return 1
 
 
-def total_part_force(part, parts, scale, alpha, **options):
+def total_part_force(
+    part: Part, parts: list[Part], scale: float, alpha: float, **options
+) -> Vector:
     """Compute the total of the attractive net and repulsive overlap forces on a part.
 
     Args:
@@ -715,7 +720,9 @@ def total_part_force(part, parts, scale, alpha, **options):
     return force
 
 
-def similarity_force(part, parts, similarity, **options):
+def similarity_force(
+    part: Part, parts: list[Part], similarity: dict, **options
+) -> Vector:
     """Compute attractive force on a part from all the other parts connected to it.
 
     Args:
@@ -740,7 +747,9 @@ def similarity_force(part, parts, similarity, **options):
     return total_force
 
 
-def total_similarity_force(part, parts, similarity, scale, alpha, **options):
+def total_similarity_force(
+    part: Part, parts: list[Part], similarity: dict, scale: float, alpha: float, **options
+) -> Vector:
     """Compute the total of the attractive similarity and repulsive overlap forces on a part.
 
     Args:
@@ -761,7 +770,7 @@ def total_similarity_force(part, parts, similarity, scale, alpha, **options):
     return force
 
 
-def define_placement_bbox(parts, **options):
+def define_placement_bbox(parts: list[Part], **options) -> BBox:
     """Return a bounding box big enough to hold the parts being placed."""
 
     # Compute appropriate size to hold the parts based on their areas.
@@ -772,7 +781,7 @@ def define_placement_bbox(parts, **options):
     return BBox(Point(0, 0), Point(side, side))
 
 
-def central_placement(parts, **options):
+def central_placement(parts: list[Part], **options):
     """Cluster all part centroids onto a common point.
 
     Args:
@@ -793,7 +802,7 @@ def central_placement(parts, **options):
         part.tx *= Tx(dx=mv.x, dy=mv.y)
 
 
-def random_placement(parts, **options):
+def random_placement(parts: list[Part], **options):
     """Randomly place parts within an appropriately-sized area.
 
     Args:
@@ -809,7 +818,13 @@ def random_placement(parts, **options):
         part.tx = part.tx.move(pt)
 
 
-def push_and_pull(anchored_parts, mobile_parts, nets, force_func, **options):
+def push_and_pull(
+    anchored_parts: list[Part],
+    mobile_parts: list[Part],
+    nets: list[Net],
+    force_func: Callable[[Part, list[Part], ...], Vector],
+    **options
+):
     """Move parts under influence of attractive nets and repulsive part overlaps.
 
     Args:
@@ -828,7 +843,7 @@ def push_and_pull(anchored_parts, mobile_parts, nets, force_func, **options):
         # No need to do placement if there's nothing to move.
         return
 
-    def cost(parts, alpha):
+    def cost(parts: list[Part], alpha: float) -> float:
         """Cost function for use in debugging. Should decrease as parts move."""
         for part in parts:
             part.force = force_func(part, parts, scale=scale, alpha=alpha, **options)
@@ -877,7 +892,8 @@ def push_and_pull(anchored_parts, mobile_parts, nets, force_func, **options):
     for speed, alpha, stability_coef, align_parts, force_mask in force_schedule:
         if align_parts:
             # Align parts by only using forces between the closest anchor/pull pins.
-            retain_closest_anchor_pull_pins(mobile_parts)
+            # retain_closest_anchor_pull_pins(mobile_parts)
+            raise NotImplementedError
         else:
             # For general placement, use forces between all anchor/pull pins.
             restore_anchor_pull_pins(mobile_parts)
