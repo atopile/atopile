@@ -1,6 +1,6 @@
 """Replace common skidl functions with our own"""
 
-from typing import Any, Iterator
+from typing import Any, Iterator, TypedDict
 
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
 
@@ -86,10 +86,34 @@ class Net:
     # We need to assign these
     name: str
     netio: str  # whether input or output
-
-    # TODO: where are these expected to be assigned?
-    pins: list[Pin]  # TODO:
-    parts: set[Part]  # TODO:
+    pins: list[Pin]
+    parts: set[Part]
 
     def __iter__(self) -> Iterator[Pin]:
         yield from self.pins
+
+
+class Options(TypedDict):
+    allow_routing_failure: bool
+    compress_before_place: bool
+    dont_rotate_pin_count: int
+    draw_assigned_terminals: bool
+    draw_font: str
+    draw_global_routing: bool
+    draw_placement: bool
+    draw_routing_channels: bool
+    draw_routing: bool
+    draw_scr: bool
+    draw_switchbox_boundary: bool
+    draw_switchbox_routing: bool
+    draw_tx: Tx
+    expansion_factor: float
+    graphics_only: bool
+    net_normalize: bool
+    pin_normalize: bool
+    pt_to_pt_mult: float
+    rotate_parts: bool
+    seed: int
+    show_capacities: bool
+    terminal_evolution: str
+    use_push_pull: bool
