@@ -14,7 +14,7 @@ Net_Terminal class for handling net labels.
 class NetTerminal(Part):
     pull_pins: dict[Net, list[Pin]]
 
-    def __init__(self, net: Net, tool_module):
+    def __init__(self, net: Net):
         """Specialized Part with a single pin attached to a net.
 
         This is intended for attaching to nets to label them, typically when

@@ -35,6 +35,8 @@ def rmv_attr(objs, attrs):
 class Part:
     # We need to assign these
     ref: str
+    hierarchy: str  # dot-separated string of part names
+    unit: dict[str, "Part"]  # units within the part, empty is this is all it is
 
     # TODO: where are these expected to be assigned?
     pins: list["Pin"]  # TODO: source
@@ -75,12 +77,12 @@ class Pin:
     num: str
     name: str
     net: "Net"
+    stub: bool  # whether to stub the pin or not
 
     # TODO: where are these expected to be assigned?
     part: Part  # TODO:
     place_pt: Point  # TODO:
     pt: Point  # TODO:
-    stub: bool  # whether to stub the pin or not
     orientation: str  # TODO:
     route_pt: Point  # TODO:
     place_pt: Point  # TODO:
@@ -107,6 +109,7 @@ class Net:
     netio: str  # whether input or output
     pins: list[Pin]
     parts: set[Part]
+    stub: bool  # whether to stub the pin or not
 
     def __bool__(self) -> bool:
         """TODO: does this need to be false if no parts or pins?"""
@@ -115,6 +118,16 @@ class Net:
     def __iter__(self) -> Iterator[Pin | Part]:
         yield from self.pins
         yield from self.parts
+
+    def is_implicit(self) -> bool:
+        # TODO:
+        # Hint; The net has a user-assigned name, so add a terminal to it below.
+        raise NotImplementedError
+
+
+class Circuit:
+    parts: list[Part]
+    nets: list[Net]
 
 
 class Options(TypedDict):

@@ -5,15 +5,18 @@
 import re
 from collections import defaultdict
 from itertools import chain
+from typing import Unpack
 
 from .geometry import BBox, Point, Segment, Tx, Vector
 from .place import Placer
 from .route import Router
-from .shims import Net, Part, Pin
+from .shims import Circuit, Net, Options, Part, Pin
 
 """
 Node class for storing circuit hierarchy.
 """
+
+HIER_SEP = "."
 
 
 class SchNode(Placer, Router):
@@ -25,7 +28,6 @@ class SchNode(Placer, Router):
     def __init__(
         self,
         circuit=None,
-        tool_module=None,
         filepath=".",
         top_name="",
         title="",
@@ -33,7 +35,7 @@ class SchNode(Placer, Router):
     ):
         self.parent = None
         self.children = defaultdict(
-            lambda: SchNode(None, tool_module, filepath, top_name, title, flatness)
+            lambda: SchNode(None, filepath, top_name, title, flatness)
         )
         self.filepath = filepath
         self.top_name = top_name
@@ -42,7 +44,6 @@ class SchNode(Placer, Router):
         self.title = title
         self.flatness = flatness
         self.flattened = False
-        self.tool_module = tool_module  # Backend tool.
         self.parts: list["Part"] = []
         self.wires: dict[Net, list[Segment]] = defaultdict(list)
         self.junctions = defaultdict(list)
@@ -52,7 +53,7 @@ class SchNode(Placer, Router):
         if circuit:
             self.add_circuit(circuit)
 
-    def find_node_with_part(self, part):
+    def find_node_with_part(self, part: Part):
         """Find the node that contains the part based on its hierarchy.
 
         Args:
@@ -61,9 +62,6 @@ class SchNode(Placer, Router):
         Returns:
             Node: The Node object containing the part.
         """
-
-        from skidl.circuit import HIER_SEP
-
         level_names = part.hierarchy.split(HIER_SEP)
         node = self
         for lvl_nm in level_names[1:]:
@@ -71,7 +69,8 @@ class SchNode(Placer, Router):
         assert part in node.parts
         return node
 
-    def add_circuit(self, circuit):
+    # TODO: what's a circuit to us?
+    def add_circuit(self, circuit: Circuit):
         """Add parts in circuit to node and its children.
 
         Args:
@@ -127,16 +126,13 @@ class SchNode(Placer, Router):
         # Flatten the hierarchy as specified by the flatness parameter.
         self.flatten(self.flatness)
 
-    def add_part(self, part, level=0):
+    def add_part(self, part: Part, level: int = 0):
         """Add a part to the node at the appropriate level of the hierarchy.
 
         Args:
             part (Part): Part to be added to this node or one of its children.
             level (int, optional): The current level (depth) of the node in the hierarchy. Defaults to 0.
         """
-
-        from skidl.circuit import HIER_SEP
-
         # Get list of names of hierarchical levels (in order) leading to this part.
         level_names = part.hierarchy.split(HIER_SEP)
 
@@ -172,21 +168,18 @@ class SchNode(Placer, Router):
             # Add part to the child node (or one of its children).
             child_node.add_part(part, level + 1)
 
-    def add_terminal(self, net):
+    def add_terminal(self, net: Net):
         """Add a terminal for this net to the node.
 
         Args:
             net (Net): The net to be added to this node.
         """
-
-        from skidl.circuit import HIER_SEP
-
         from .net_terminal import NetTerminal
 
-        nt = NetTerminal(net, self.tool_module)
+        nt = NetTerminal(net)
         self.parts.append(nt)
 
-    def external_bbox(self):
+    def external_bbox(self) -> BBox:
         """Return the bounding box of a hierarchical sheet as seen by its parent node."""
         bbox = BBox(Point(0, 0), Point(500, 500))
         bbox.add(Point(len("File: " + self.sheet_filename) * self.filename_sz, 0))
@@ -197,7 +190,7 @@ class SchNode(Placer, Router):
 
         return bbox
 
-    def internal_bbox(self):
+    def internal_bbox(self) -> BBox:
         """Return the bounding box for the circuitry contained within this node."""
 
         # The bounding box is determined by the arrangement of the node's parts and child nodes.
@@ -211,7 +204,7 @@ class SchNode(Placer, Router):
 
         return bbox
 
-    def calc_bbox(self):
+    def calc_bbox(self) -> BBox:
         """Compute the bounding box for the node in the circuit hierarchy."""
 
         if self.flattened:
@@ -222,7 +215,7 @@ class SchNode(Placer, Router):
 
         return self.bbox
 
-    def flatten(self, flatness=0.0):
+    def flatten(self, flatness: float = 0.0) -> None:
         """Flatten node hierarchy according to flatness parameter.
 
         Args:
@@ -251,17 +244,17 @@ class SchNode(Placer, Router):
         slack = child_complexity * flatness
 
         # Group the children according to what types of modules they are by removing trailing instance ids.
-        child_types = defaultdict(list)
+        child_types: dict[str, list[SchNode]] = defaultdict(list)
         for child_id, child in self.children.items():
             child_types[re.sub(r"\d+$", "", child_id)].append(child)
 
         # Compute the total size of each type of children.
-        child_type_sizes = dict()
+        child_type_sizes: dict[str, int] = {}
         for child_type, children in child_types.items():
             child_type_sizes[child_type] = sum((child.complexity for child in children))
 
         # Sort the groups from smallest total size to largest.
-        sorted_child_type_sizes = sorted(
+        sorted_child_type_sizes: list[tuple[str, int]] = sorted(
             child_type_sizes.items(), key=lambda item: item[1]
         )
 
@@ -329,10 +322,10 @@ class SchNode(Placer, Router):
 
         return [pin for pin in net.pins if pin.stub is False and pin.part in self.parts]
 
-    def collect_stats(self, **options):
+    def collect_stats(self, **options: Unpack[Options]) -> str:
         """Return comma-separated string with place & route statistics of a schematic."""
 
-        def get_wire_length(node):
+        def get_wire_length(node: SchNode) -> int:
             """Return the sum of the wire segment lengths between parts in a routed node."""
 
             wire_length = 0
