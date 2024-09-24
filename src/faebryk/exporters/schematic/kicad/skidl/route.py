@@ -12,6 +12,7 @@ import sys
 from collections import Counter, defaultdict
 from enum import Enum
 from itertools import chain, zip_longest
+from typing import TYPE_CHECKING, Unpack
 
 from .constants import DRAWING_BOX_RESIZE, GRID
 from .debug_draw import (
@@ -22,8 +23,11 @@ from .debug_draw import (
     draw_start,
     draw_text,
 )
-from .geometry import BBox, Point, Segment, Vector
-from .shims import Part, rmv_attr
+from .geometry import BBox, Point, Segment, Tx, Vector
+from .shims import Net, Options, Part, Pin, rmv_attr
+
+if TYPE_CHECKING:
+    from pygame import Surface  # skidl calls this Screen
 
 ###################################################################
 #
@@ -132,11 +136,11 @@ class Boundary:
 boundary = Boundary()
 
 # Absolute coords of all part pins. Used when trimming stub nets.
-pin_pts = []
+pin_pts: list[Point] = []
 
 
 class Terminal:
-    def __init__(self, net, face, coord):
+    def __init__(self, net: Net, face: "Face", coord: float):
         """Terminal on a Face from which a net is routed within a SwitchBox.
 
         Args:
@@ -164,7 +168,7 @@ class Terminal:
         else:
             return Point(track.coord, self.coord)
 
-    def get_next_terminal(self, next_face):
+    def get_next_terminal(self, next_face: "Face"):
         """Get the terminal on the next face that lies on the same net as this terminal.
 
         This method assumes the terminal's face and the next face are faces of the
@@ -230,7 +234,7 @@ class Terminal:
         # Well, something went wrong. Should have found *something*!
         raise GlobalRoutingFailure
 
-    def draw(self, scr, tx, **options):
+    def draw(self, scr: "Surface", tx: Tx, **options: Unpack[Options]):
         """Draw a Terminal for debugging purposes.
 
         Args:
@@ -246,7 +250,7 @@ class Terminal:
 
 
 class Interval(object):
-    def __init__(self, beg, end):
+    def __init__(self, beg: "GlobalTrack", end: "GlobalTrack"):
         """Define an interval with a beginning and an end.
 
         Args:
@@ -280,7 +284,7 @@ class Interval(object):
         """Return True if the intervals overlap (even if only at one point)."""
         return not ((self.beg > other.end) or (self.end < other.beg))
 
-    def interval_intersection(self, other):
+    def interval_intersection(self, other: "Interval") -> "Interval | None":
         """Return intersection of two intervals as an interval, otherwise None."""
         if self.intersects(other):
             beg = max(self.beg, other.beg)
@@ -290,7 +294,7 @@ class Interval(object):
                 return Interval(beg, end)
         return None
 
-    def merge(self, other):
+    def merge(self, other: "Interval") -> "Interval | None":
         """Return a merged interval if the given intervals intersect, otherwise return None."""
         if Interval.intersects(self, other):
             return Interval(min(self.beg, other.beg), max(self.end, other.end))
@@ -298,7 +302,7 @@ class Interval(object):
 
 
 class NetInterval(Interval):
-    def __init__(self, net, beg, end):
+    def __init__(self, net: Net, beg: "GlobalTrack", end: "GlobalTrack"):
         """Define an Interval with an associated net (useful for wire traces in a switchbox).
 
         Args:
@@ -309,11 +313,11 @@ class NetInterval(Interval):
         super().__init__(beg, end)
         self.net = net
 
-    def obstructs(self, other):
+    def obstructs(self, other: "NetInterval") -> bool:
         """Return True if the intervals intersect and have different nets."""
         return super().intersects(other) and (self.net is not other.net)
 
-    def merge(self, other):
+    def merge(self, other: "NetInterval") -> "NetInterval | None":
         """Return a merged interval if the given intervals intersect and are on the same net, otherwise return None."""
         if self.net is other.net:
             merged_intvl = super().merge(other)
@@ -356,7 +360,13 @@ class Adjacency:
 class Face(Interval):
     """A side of a rectangle bounding a routing switchbox."""
 
-    def __init__(self, part, track, beg, end):
+    def __init__(
+        self,
+        part: set[Part | Boundary] | Part | Boundary,
+        track: "GlobalTrack",
+        beg: "GlobalTrack",
+        end: "GlobalTrack",
+    ):
         """One side of a routing switchbox.
 
         Args:
@@ -375,20 +385,20 @@ class Face(Interval):
         super().__init__(beg, end)
 
         # Store Part/Boundary the Face is part of, if any.
-        self.part = set()
+        self.part: set[Part | Boundary] = set()
         if isinstance(part, set):
             self.part.update(part)
         elif part is not None:
             self.part.add(part)
 
         # Storage for any part pins that lie along this Face.
-        self.pins = []
+        self.pins: list[Pin] = []
 
         # Storage for routing terminals along this face.
-        self.terminals = []
+        self.terminals: list[Terminal] = []
 
         # Set of Faces adjacent to this one. (Starts empty.)
-        self.adjacent = set()
+        self.adjacent: set[Face] = set()
 
         # Add this new face to the track it belongs to so it isn't lost.
         self.track = track
@@ -677,7 +687,7 @@ class Face(Interval):
         return Segment(p1, p2)
 
     def draw(
-        self, scr, tx, font, color=(128, 128, 128), thickness=2, dot_radius=0, **options
+        self, scr, tx, font, color=(128, 128, 128), thickness=2, dot_radius=0, **options: Unpack[Options]
     ):
         """Draw a Face in the drawing area.
 
@@ -698,7 +708,7 @@ class Face(Interval):
 
         # Draw the terminals on the Face.
         for terminal in self.terminals:
-            terminal.draw(scr, tx, **options)
+            terminal.draw(scr, tx, **options: Unpack[Options])
 
         if options.get("show_capacities"):
             # Show the wiring capacity at the midpoint of the Face.
@@ -761,7 +771,7 @@ class GlobalWire(list):
                 # be the current element on the next iteration.
                 self[i + 1] = self[i].get_next_terminal(self[i + 1])
 
-    def draw(self, scr, tx, color=(0, 0, 0), thickness=1, dot_radius=10, **options):
+    def draw(self, scr, tx, color=(0, 0, 0), thickness=1, dot_radius=10, **options: Unpack[Options]):
         """Draw a global wire from Face-to-Face in the drawing area.
 
         Args:
@@ -815,7 +825,7 @@ class GlobalRoute(list):
             wire.cvt_faces_to_terminals()
 
     def draw(
-        self, scr, tx, font, color=(0, 0, 0), thickness=1, dot_radius=10, **options
+        self, scr, tx, font, color=(0, 0, 0), thickness=1, dot_radius=10, **options: Unpack[Options]
     ):
         """Draw the GlobalWires of this route in the drawing area.
 
@@ -833,7 +843,7 @@ class GlobalRoute(list):
         """
 
         for wire in self:
-            wire.draw(scr, tx, color, thickness, dot_radius, **options)
+            wire.draw(scr, tx, color, thickness, dot_radius, **options: Unpack[Options])
 
 
 class GlobalTrack(list):
@@ -974,7 +984,7 @@ class GlobalTrack(list):
                 if first_face.has_overlap(second_face):
                     raise AssertionError
 
-    def draw(self, scr, tx, font, **options):
+    def draw(self, scr, tx, font, **options: Unpack[Options]):
         """Draw the Faces in a track.
 
         Args:
@@ -984,7 +994,7 @@ class GlobalTrack(list):
             options (dict, optional): Dictionary of options and values. Defaults to {}.
         """
         for face in self:
-            face.draw(scr, tx, font, **options)
+            face.draw(scr, tx, font, **options: Unpack[Options])
 
 
 class Target:
@@ -1380,7 +1390,7 @@ class SwitchBox:
             or self.right_face.has_nets()
         )
 
-    def route(self, **options):
+    def route(self, **options: Unpack[Options]):
         """Route wires between terminals on the switchbox faces.
 
         Args:
@@ -1943,7 +1953,7 @@ class SwitchBox:
         return self.segments
 
     def draw(
-        self, scr=None, tx=None, font=None, color=(128, 0, 128), thickness=2, **options
+        self, scr=None, tx=None, font=None, color=(128, 0, 128), thickness=2, **options: Unpack[Options]
     ):
         """Draw a switchbox and its routing for debugging purposes.
 
@@ -1968,10 +1978,10 @@ class SwitchBox:
 
         if options.get("draw_switchbox_boundary"):
             # Draw switchbox boundary.
-            self.top_face.draw(scr, tx, font, color, thickness, **options)
-            self.bottom_face.draw(scr, tx, font, color, thickness, **options)
-            self.left_face.draw(scr, tx, font, color, thickness, **options)
-            self.right_face.draw(scr, tx, font, color, thickness, **options)
+            self.top_face.draw(scr, tx, font, color, thickness, **options: Unpack[Options])
+            self.bottom_face.draw(scr, tx, font, color, thickness, **options: Unpack[Options])
+            self.left_face.draw(scr, tx, font, color, thickness, **options: Unpack[Options])
+            self.right_face.draw(scr, tx, font, color, thickness, **options: Unpack[Options])
 
         if options.get("draw_switchbox_routing"):
             # Draw routed wire segments.
@@ -2356,7 +2366,7 @@ class Router:
 
         return global_routes
 
-    def create_switchboxes(node, h_tracks, v_tracks, **options):
+    def create_switchboxes(node, h_tracks, v_tracks, **options: Unpack[Options]):
         """Create routing switchboxes from the faces in the horz/vert tracks.
 
         Args:
@@ -2406,7 +2416,7 @@ class Router:
 
         return switchboxes
 
-    def switchbox_router(node, switchboxes, **options):
+    def switchbox_router(node, switchboxes, **options: Unpack[Options]):
         """Create detailed wiring between the terminals along the sides of each switchbox.
 
         Args:
@@ -2422,13 +2432,13 @@ class Router:
         for swbx in switchboxes:
             try:
                 # Try routing switchbox from left-to-right.
-                swbx.route(**options)
+                swbx.route(**options: Unpack[Options])
 
             except RoutingFailure:
                 # Routing failed, so try routing top-to-bottom instead.
                 swbx.flip_xy()
                 # If this fails, then a routing exception will terminate the whole routing process.
-                swbx.route(**options)
+                swbx.route(**options: Unpack[Options])
                 swbx.flip_xy()
 
             # Add switchbox routes to existing node wiring.
@@ -3103,7 +3113,7 @@ class Router:
         for part in node.parts:
             rmv_attr(part.pins, ("route_pt", "face"))
 
-    def route(node, tool=None, **options):
+    def route(node, tool=None, **options: Unpack[Options]):
         """Route the wires between part pins in this node and its children.
 
         Steps:
@@ -3135,7 +3145,7 @@ class Router:
         # First, recursively route any children of this node.
         # TODO: Child nodes are independent so could they be processed in parallel?
         for child in node.children.values():
-            child.route(tool=tool, **options)
+            child.route(tool=tool, **options: Unpack[Options])
 
         # Exit if no parts to route in this node.
         if not node.parts:
@@ -3167,7 +3177,7 @@ class Router:
             # Draw part outlines, routing tracks and terminals.
             if options.get("draw_routing_channels"):
                 draw_routing(
-                    node, routing_bbox, node.parts, h_tracks, v_tracks, **options
+                    node, routing_bbox, node.parts, h_tracks, v_tracks, **options: Unpack[Options]
                 )
 
             # Do global routing of nets internal to the node.
@@ -3186,7 +3196,7 @@ class Router:
                     h_tracks,
                     v_tracks,
                     global_routes,
-                    **options
+                    **options: Unpack[Options]
                 )
 
             # Create detailed wiring using switchbox routing for the global routes.
@@ -3200,10 +3210,10 @@ class Router:
                     node.parts,
                     switchboxes,
                     global_routes,
-                    **options
+                    **options: Unpack[Options]
                 )
 
-            node.switchbox_router(switchboxes, **options)
+            node.switchbox_router(switchboxes, **options: Unpack[Options])
 
             # If enabled, draw the global and detailed routing for debug purposes.
             if options.get("draw_switchbox_routing"):
@@ -3213,7 +3223,7 @@ class Router:
                     node.parts,
                     global_routes,
                     switchboxes,
-                    **options
+                    **options: Unpack[Options]
                 )
 
             # Now clean-up the wires and add junctions.
@@ -3222,7 +3232,7 @@ class Router:
 
             # If enabled, draw the global and detailed routing for debug purposes.
             if options.get("draw_switchbox_routing"):
-                draw_routing(node, routing_bbox, node.parts, **options)
+                draw_routing(node, routing_bbox, node.parts, **options: Unpack[Options])
 
             # Remove any stuff leftover from this place & route run.
             node.rmv_routing_stuff()
