@@ -1,10 +1,10 @@
-name: Run pytest
+name: pytest
 
 on:
     push:
 
 jobs:
-    test:
+    pytest:
         runs-on: ubuntu-latest
         steps:
         - name: Checkout code

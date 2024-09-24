@@ -31,6 +31,7 @@ from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.Operation import Operation
 from faebryk.library.has_linked_pad import has_linked_pad
+from faebryk.library.has_reference import has_reference
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
@@ -42,7 +43,6 @@ from faebryk.library.has_kicad_ref import has_kicad_ref
 from faebryk.library.has_picker import has_picker
 from faebryk.library.has_pcb_layout import has_pcb_layout
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
-from faebryk.library.has_reference import has_reference
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
@@ -72,6 +72,7 @@ from faebryk.library.has_multi_picker import has_multi_picker
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
 from faebryk.library.has_single_connection_impl import has_single_connection_impl
 from faebryk.library.is_representable_by_single_value_defined import is_representable_by_single_value_defined
+from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
@@ -87,6 +88,7 @@ from faebryk.library.has_kicad_footprint import has_kicad_footprint
 from faebryk.library.Pad import Pad
 from faebryk.library.Button import Button
 from faebryk.library.GDT import GDT
+from faebryk.library.has_symbol_layout import has_symbol_layout
 from faebryk.library.has_pin_association_heuristic_lookup_table import has_pin_association_heuristic_lookup_table
 from faebryk.library.LogicGate import LogicGate
 from faebryk.library.has_footprint_defined import has_footprint_defined
@@ -95,6 +97,7 @@ from faebryk.library.can_attach_via_pinmap_pinlist import can_attach_via_pinmap_
 from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
 from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
+from faebryk.library.has_symbol_layout_defined import has_symbol_layout_defined
 from faebryk.library.BJT import BJT
 from faebryk.library.Diode import Diode
 from faebryk.library.MOSFET import MOSFET

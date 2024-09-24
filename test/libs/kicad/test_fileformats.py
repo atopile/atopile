@@ -15,7 +15,7 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_pcb_file,
     C_kicad_project_file,
 )
-from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
+from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file, C_kicad_sym_file
 from faebryk.libs.sexp.dataclass_sexp import (
     JSON_File,
     SEXP_File,
@@ -36,6 +36,7 @@ FPFILE = TEST_FILES / "test.kicad_mod"
 NETFILE = TEST_FILES / "test_e.net"
 FPLIBFILE = TEST_FILES / "fp-lib-table"
 SCHFILE = TEST_FILES / "test.kicad_sch"
+SYMFILE = TEST_FILES / "test.kicad_sym"
 
 DUMP = ConfigFlag("DUMP", descr="dump load->save into /tmp")
 
@@ -46,6 +47,7 @@ def test_parser():
     netlist = C_kicad_netlist_file.loads(NETFILE)
     pro = C_kicad_project_file.loads(PRJFILE)
     sch = C_kicad_sch_file.loads(SCHFILE)
+    sym = C_kicad_sym_file.loads(SYMFILE)
 
     assert [f.name for f in pcb.kicad_pcb.footprints] == [
         "logos:faebryk_logo",
@@ -100,14 +102,19 @@ def test_parser():
     assert pro.pcbnew.last_paths.netlist == "../../faebryk/faebryk.net"
 
     assert (
-        sch.kicad_sch.lib_symbols.symbol["Amplifier_Audio:LM4990ITL"]
+        sch.kicad_sch.lib_symbols.symbols["Amplifier_Audio:LM4990ITL"]
         .propertys["Datasheet"]
         .value
         == "http://www.ti.com/lit/ds/symlink/lm4990.pdf"
     )
 
-    assert sch.kicad_sch.lib_symbols.symbol["power:GND"].power is not None
-    assert sch.kicad_sch.lib_symbols.symbol["Device:R"].power is None
+    assert sch.kicad_sch.lib_symbols.symbols["power:GND"].power is not None
+    assert sch.kicad_sch.lib_symbols.symbols["Device:R"].power is None
+
+    assert (
+        sym.kicad_symbol_lib.symbols["AudioJack-CUI-SJ-3523-SMT"].name
+        == "AudioJack-CUI-SJ-3523-SMT"
+    )
 
 
 def test_write():
@@ -180,6 +187,7 @@ def test_empty_enum_positional():
         (C_kicad_project_file, PRJFILE),
         (C_kicad_fp_lib_table_file, FPLIBFILE),
         (C_kicad_sch_file, SCHFILE),
+        (C_kicad_sym_file, SYMFILE),
     ],
 )
 def test_dump_load_equality(parser: type[SEXP_File | JSON_File], path: Path):

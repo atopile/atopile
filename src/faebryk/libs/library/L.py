@@ -13,6 +13,7 @@ from faebryk.core.node import (  # noqa: F401
     list_field,
     rt_field,
 )
+from faebryk.core.reference import reference  # noqa: F401
 
 
 class AbstractclassError(Exception): ...

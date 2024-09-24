@@ -1,8 +1,17 @@
+"""
+This module contains a dataclass representation of the KiCad file formats
+for schematic files (.kicad_sch).
+
+Rules:
+- Defaults are only allowed only with the values KiCAD itself defaults to
+"""
+
 import logging
 from dataclasses import dataclass, field
 from enum import auto
 from typing import Optional
 
+from faebryk.exporters.pcb.kicad.transformer import gen_uuid
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
     C_effects,
@@ -15,6 +24,10 @@ from faebryk.libs.sexp.dataclass_sexp import SEXP_File, SymEnum, sexp_field
 logger = logging.getLogger(__name__)
 
 # TODO find complete examples of the fileformats, maybe in the kicad repo
+
+
+def uuid_field():
+    return field(default_factory=gen_uuid)
 
 
 @dataclass
@@ -33,19 +46,24 @@ class C_fill:
     class E_type(SymEnum):
         background = "background"
         none = "none"
+        outline = "outline"
 
     type: E_type = field(default=E_type.background)
 
 
 @dataclass
 class C_stroke:
+    """
+    KiCAD default: (stroke (width 0) (type default) (color 0 0 0 0))
+    """
+
     class E_type(SymEnum):
         solid = auto()
         default = auto()
 
-    width: float
-    type: E_type
-    color: tuple[int, int, int, int]
+    width: float = 0
+    type: E_type = E_type.default
+    color: tuple[int, int, int, int] = (0, 0, 0, 0)
 
 
 @dataclass(kw_only=True)
@@ -185,28 +203,34 @@ class C_kicad_sch_file(SEXP_File):
                 pin_names: Optional[C_pin_names] = None
                 in_bom: Optional[bool] = None
                 on_board: Optional[bool] = None
-                symbols: list[C_symbol] = field(
-                    **sexp_field(multidict=True), default_factory=list
+                symbols: dict[str, C_symbol] = field(
+                    **sexp_field(multidict=True, key=lambda x: x.name),
+                    default_factory=dict,
                 )
                 convert: Optional[int] = None
 
-            symbol: dict[str, C_symbol] = field(
+            symbols: dict[str, C_symbol] = field(
                 **sexp_field(multidict=True, key=lambda x: x.name), default_factory=dict
             )
 
         @dataclass
         class C_symbol_instance:
+            """
+            TODO: Confusingly name, this isn't the class of
+            "symbol_instances" at the top-level of the .kicad_sch file
+            """
+
             @dataclass
             class C_pin:
-                uuid: UUID
-                pin: str = field(**sexp_field(positional=True))
+                name: str = field(**sexp_field(positional=True))
+                uuid: UUID = uuid_field()
 
             lib_id: str
-            uuid: UUID
             at: C_xyr
             unit: int
-            in_bom: bool
-            on_board: bool
+            in_bom: bool = False
+            on_board: bool = False
+            uuid: UUID = uuid_field()
             fields_autoplaced: bool = True
             propertys: dict[str, C_property] = field(
                 **sexp_field(multidict=True, key=lambda x: x.name),
@@ -222,20 +246,20 @@ class C_kicad_sch_file(SEXP_File):
             at: C_xy
             diameter: float
             color: tuple[int, int, int, int]
-            uuid: UUID
+            uuid: UUID = uuid_field()
 
         @dataclass
         class C_wire:
             pts: C_pts
             stroke: C_stroke
-            uuid: UUID
+            uuid: UUID = uuid_field()
 
         @dataclass
         class C_text:
             at: C_xyr
             effects: C_effects
-            uuid: UUID
             text: str = field(**sexp_field(positional=True))
+            uuid: UUID = uuid_field()
 
         @dataclass
         class C_sheet:
@@ -251,15 +275,15 @@ class C_kicad_sch_file(SEXP_File):
 
                 at: C_xyr
                 effects: C_effects
-                uuid: UUID
                 name: str = field(**sexp_field(positional=True))
                 type: E_type = field(**sexp_field(positional=True))
+                uuid: UUID = uuid_field()
 
             at: C_xy
             size: C_xy
             stroke: C_stroke
             fill: C_fill
-            uuid: UUID
+            uuid: UUID = uuid_field()
             fields_autoplaced: bool = True
             propertys: dict[str, C_property] = field(
                 **sexp_field(multidict=True, key=lambda x: x.name),
@@ -286,8 +310,8 @@ class C_kicad_sch_file(SEXP_File):
             shape: E_shape
             at: C_xyr
             effects: C_effects
-            uuid: UUID
             text: str = field(**sexp_field(positional=True))
+            uuid: UUID = uuid_field()
             fields_autoplaced: bool = True
             propertys: dict[str, C_property] = field(
                 **sexp_field(multidict=True, key=lambda x: x.name),
@@ -305,26 +329,26 @@ class C_kicad_sch_file(SEXP_File):
         class C_label:
             at: C_xyr
             effects: C_effects
-            uuid: UUID
             text: str = field(**sexp_field(positional=True))
+            uuid: UUID = uuid_field()
 
         @dataclass
         class C_bus:
             pts: C_pts
             stroke: C_stroke
-            uuid: UUID
+            uuid: UUID = uuid_field()
 
         @dataclass
         class C_bus_entry:
             at: C_xy
             size: C_xy
             stroke: C_stroke
-            uuid: UUID
+            uuid: UUID = uuid_field()
 
         version: int = field(**sexp_field(assert_value=20211123))
         generator: str
-        uuid: UUID
         paper: str
+        uuid: UUID = uuid_field()
         lib_symbols: C_lib_symbols = field(default_factory=C_lib_symbols)
         title_block: C_title_block = field(default_factory=C_title_block)
 
@@ -354,4 +378,25 @@ class C_kicad_sch_file(SEXP_File):
             **sexp_field(multidict=True), default_factory=list
         )
 
+        # TODO: "symbol_instances" may or may not be required?
+        # It appears to be a list of all symbols used in the schematic
+        # But it also appears to be a translation of "symbols"
+
     kicad_sch: C_kicad_sch
+
+
+@dataclass
+class C_kicad_sym_file(SEXP_File):
+    """
+    When in doubt check: kicad/eeschema/sch_io/kicad_sexpr/sch_io_kicad_sexpr_parser.cpp
+    """
+
+    @dataclass
+    class C_kicad_symbol_lib:
+        version: int
+        generator: str
+        symbols: dict[str, C_kicad_sch_file.C_kicad_sch.C_lib_symbols.C_symbol] = field(
+            **sexp_field(multidict=True, key=lambda x: x.name), default_factory=dict
+        )
+
+    kicad_symbol_lib: C_kicad_symbol_lib

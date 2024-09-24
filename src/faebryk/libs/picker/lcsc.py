@@ -13,6 +13,7 @@ from easyeda2kicad.easyeda.easyeda_importer import (
 )
 from easyeda2kicad.kicad.export_kicad_3d_model import Exporter3dModelKicad
 from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
+from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -112,17 +113,21 @@ def download_easyeda_info(partno: str, get_model: bool = True):
     # paths -------------------------------------------------------------------
     name = easyeda_footprint.info.name
     out_base_path = LIB_FOLDER
-    fp_base_path = out_base_path.joinpath("footprints/lcsc.pretty")
+    fp_base_path = out_base_path / "footprints" / "lcsc.pretty"
+    sym_base_path = out_base_path / "lcsc.kicad_sym"
     fp_base_path.mkdir(exist_ok=True, parents=True)
     footprint_filename = f"{name}.kicad_mod"
     footprint_filepath = fp_base_path.joinpath(footprint_filename)
 
-    model_base_path = out_base_path.joinpath("3dmodels/lcsc")
-    model_base_path_full = Path(model_base_path.as_posix() + ".3dshapes")
+    # The base_path has to be split from the full path, because the exporter
+    # will append .3dshapes to it
+    model_base_path = out_base_path / "3dmodels" / "lcsc"
+    model_base_path_full = model_base_path.with_suffix(".3dshapes")
     model_base_path_full.mkdir(exist_ok=True, parents=True)
 
     # export to kicad ---------------------------------------------------------
     ki_footprint = ExporterFootprintKicad(easyeda_footprint)
+    ki_symbol = ExporterSymbolKicad(easyeda_symbol, KicadVersion.v6)
 
     _fix_3d_model_offsets(ki_footprint)
 
@@ -135,7 +140,7 @@ def download_easyeda_info(partno: str, get_model: bool = True):
         ki_model = Exporter3dModelKicad(easyeda_model)
 
     if easyeda_model is not None:
-        model_path = model_base_path_full.joinpath(f"{easyeda_model.name}.wrl")
+        model_path = model_base_path_full / f"{easyeda_model.name}.wrl"
         if get_model and not model_path.exists():
             logger.debug(f"Downloading & Exporting 3dmodel {model_path}")
             easyeda_model = Easyeda3dModelImporter(
@@ -161,6 +166,10 @@ def download_easyeda_info(partno: str, get_model: bool = True):
             footprint_full_path=str(footprint_filepath),
             model_3d_path=kicad_model_path,
         )
+
+    if not sym_base_path.exists():
+        logger.debug(f"Exporting symbol {sym_base_path}")
+        ki_symbol.export(str(sym_base_path))
 
     return ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol
 
@@ -193,6 +202,9 @@ def attach(component: Module, partno: str, get_model: bool = True):
             except F.has_pin_association_heuristic.PinMatchException as e:
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
             component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
+
+        sym = F.Symbol.with_component(component, pinmap)
+        sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_footprint.info.name}"))
 
         # footprint
         fp = F.KicadFootprint(
