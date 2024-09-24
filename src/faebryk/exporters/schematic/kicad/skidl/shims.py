@@ -13,3 +13,7 @@ def rmv_attr():
 
 class Part(Trait):
     pass
+
+
+class Pin(Trait):
+    pass

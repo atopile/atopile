@@ -15,7 +15,7 @@ Node class for storing circuit hierarchy.
 """
 
 
-class Node(Placer, Router):
+class SchNode(Placer, Router):
     """Data structure for holding information about a node in the circuit hierarchy."""
 
     filename_sz = 20
@@ -32,7 +32,7 @@ class Node(Placer, Router):
     ):
         self.parent = None
         self.children = defaultdict(
-            lambda: Node(None, tool_module, filepath, top_name, title, flatness)
+            lambda: SchNode(None, tool_module, filepath, top_name, title, flatness)
         )
         self.filepath = filepath
         self.top_name = top_name

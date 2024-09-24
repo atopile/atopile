@@ -14,19 +14,15 @@ import sys
 from collections import defaultdict
 from copy import copy
 
-from skidl import Pin
-
 from .debug_draw import (
-    draw_end,
     draw_pause,
     draw_placement,
     draw_redraw,
     draw_start,
     draw_text,
 )
-from .geometry import BBox, Point, Segment, Tx, Vector
-from .shims import rmv_attr
-
+from .geometry import BBox, Point, Tx, Vector
+from .shims import Pin, rmv_attr
 
 ###################################################################
 #
@@ -66,12 +62,15 @@ class PlacementFailure(Exception):
 
 
 # Small functions for summing Points and Vectors.
-pt_sum = lambda pts: sum(pts, Point(0, 0))
-force_sum = lambda forces: sum(forces, Vector(0, 0))
+def pt_sum(pts):
+    return sum(pts, Point(0, 0))
+
+def force_sum(forces):
+    return sum(forces, Vector(0, 0))
 
 
 def is_net_terminal(part):
-    from skidl.schematics.net_terminal import NetTerminal
+    from .net_terminal import NetTerminal
 
     return isinstance(part, NetTerminal)
 
