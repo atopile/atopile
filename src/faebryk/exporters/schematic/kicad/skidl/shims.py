@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Iterator, TypedDict
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
 
 if TYPE_CHECKING:
-    from .route import GlobalTrack
+    from .route import Face, GlobalTrack
 
 
 def get_script_name():
@@ -84,6 +84,10 @@ class Pin:
     x: float
     y: float
 
+    # internal use
+    route_pt: Point
+    face: "Face"
+
     def is_connected(self) -> bool:
         # TODO:
         raise NotImplementedError
@@ -95,6 +99,10 @@ class Net:
     netio: str  # whether input or output
     pins: list[Pin]
     parts: set[Part]
+
+    def __bool__(self) -> bool:
+        """TODO: does this need to be false if no parts or pins?"""
+        raise NotImplementedError
 
     def __iter__(self) -> Iterator[Pin | Part]:
         yield from self.pins
