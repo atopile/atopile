@@ -9,6 +9,7 @@ from itertools import chain
 from .geometry import BBox, Point, Tx, Vector
 from .place import Placer
 from .route import Router
+from .shims import Net, Part
 
 """
 Node class for storing circuit hierarchy.
@@ -42,7 +43,7 @@ class SchNode(Placer, Router):
         self.flatness = flatness
         self.flattened = False
         self.tool_module = tool_module  # Backend tool.
-        self.parts = []
+        self.parts: list["Part"] = []
         self.wires = defaultdict(list)
         self.junctions = defaultdict(list)
         self.tx = Tx()
@@ -277,7 +278,7 @@ class SchNode(Placer, Router):
                 for child in child_types[child_type]:
                     child.flattened = False
 
-    def get_internal_nets(self):
+    def get_internal_nets(self) -> list[Net]:
         """Return a list of nets that have at least one pin on a part in this node."""
 
         processed_nets = []

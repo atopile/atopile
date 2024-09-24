@@ -10,12 +10,11 @@ import functools
 import itertools
 import math
 import random
-import sys
 from collections import defaultdict
 from copy import copy
-from typing import TYPE_CHECKING, Callable, Protocol
+from typing import TYPE_CHECKING, Callable
 
-from .constants import GRID
+from .constants import BLK_EXT_PAD, BLK_INT_PAD, GRID
 from .debug_draw import (
     draw_pause,
     draw_placement,
@@ -27,8 +26,8 @@ from .geometry import BBox, Point, Tx, Vector
 from .shims import Net, Part, Pin, rmv_attr
 
 if TYPE_CHECKING:
-    from .node import SchNode
     from .net_terminal import NetTerminal
+    from .node import SchNode
 
 ###################################################################
 #
@@ -82,7 +81,16 @@ def is_net_terminal(part):
 
 # Class for movable groups of parts/child nodes.
 class PartBlock:
-    def __init__(self, src, bbox, anchor_pt, snap_pt, tag, block_pull_pins):
+
+    def __init__(
+        self,
+        src: list[Part | "SchNode"] | Part | "SchNode",
+        bbox: BBox,
+        anchor_pt: Point,
+        snap_pt: Point,
+        tag: str,
+        block_pull_pins: dict[str, list[Pin]],
+    ):
         self.src = src  # Source for this block.
         self.place_bbox = bbox  # FIXME: Is this needed if place_bbox includes room for routing?
 
@@ -1035,7 +1043,7 @@ def place_net_terminals(
                 # Retain only the pulling pin closest to an edge of the bounding box (i.e., minimum inset).
                 terminal.pull_pins[net] = [min(insets, key=lambda off: off[0])[1]]
 
-    def orient(terminals, bbox):
+    def orient(terminals: list["NetTerminal"], bbox: BBox):
         """Set orientation of NetTerminals to point away from closest bounding box edge.
 
         Args:
@@ -1063,7 +1071,7 @@ def place_net_terminals(
             # Apply the Tx() for the side the terminal is closest to.
             terminal.tx = min(insets, key=lambda inset: inset[0])[1]
 
-    def move_to_pull_pin(terminals):
+    def move_to_pull_pin(terminals: list["NetTerminal"]):
         """Move NetTerminals immediately to their pulling pins."""
         for terminal in terminals:
             anchor_pin = list(terminal.anchor_pins.values())[0][0]
@@ -1072,7 +1080,7 @@ def place_net_terminals(
             pull_pt = pull_pin.place_pt * pull_pin.part.tx
             terminal.tx = terminal.tx.move(pull_pt - anchor_pt)
 
-    def evolution(net_terminals, placed_parts, bbox):
+    def evolution(net_terminals: list["NetTerminal"], placed_parts: list[Part], bbox: BBox):
         """Evolve placement of NetTerminals starting from outermost from center to innermost."""
 
         evolution_type = options.get("terminal_evolution", "all_at_once")
@@ -1087,7 +1095,7 @@ def place_net_terminals(
             anchored_parts = copy(placed_parts)
 
             # Sort terminals from outermost to innermost w.r.t. the center.
-            def dist_to_bbox_edge(term):
+            def dist_to_bbox_edge(term: "NetTerminal"):
                 pt = term.pins[0].place_pt * term.tx
                 return min((
                     abs(pt.x - bbox.ll.x),
@@ -1141,11 +1149,10 @@ def place_net_terminals(
     restore_anchor_pull_pins(net_terminals)
 
 
-@export_to_all
 class Placer:
     """Mixin to add place function to Node class."""
 
-    def group_parts(node, **options):
+    def group_parts(node: "SchNode", **options):
         """Group parts in the Node that are connected by internal nets
 
         Args:
@@ -1193,7 +1200,7 @@ class Placer:
 
         return connected_parts, internal_nets, floating_parts
 
-    def place_connected_parts(node, parts, nets, **options):
+    def place_connected_parts(node: "SchNode", parts: list[Part], nets: list[Net], **options):
         """Place individual parts.
 
         Args:
@@ -1251,7 +1258,7 @@ class Placer:
             # Pause to look at placement for debugging purposes.
             draw_pause()
 
-    def place_floating_parts(node, parts, **options):
+    def place_floating_parts(node: "SchNode", parts: list[Part], **options):
         """Place individual parts.
 
         Args:
@@ -1312,7 +1319,13 @@ class Placer:
             # Pause to look at placement for debugging purposes.
             draw_pause()
 
-    def place_blocks(node, connected_parts, floating_parts, children, **options):
+    def place_blocks(
+        node: "SchNode",
+        connected_parts: list[list[Part]],
+        floating_parts: list[Part],
+        children: list["SchNode"],
+        **options
+    ):
         """Place blocks of parts and hierarchical sheets.
 
         Args:
@@ -1329,7 +1342,7 @@ class Placer:
         block_pull_pins = defaultdict(list)
 
         # Create a list of blocks from the groups of interconnected parts and the group of floating parts.
-        part_blocks = []
+        part_blocks: list[PartBlock] = []
         for part_list in connected_parts + [floating_parts]:
             if not part_list:
                 # No parts in this list for some reason...
@@ -1439,10 +1452,11 @@ class Placer:
             except AttributeError:
                 # The source doesn't have a Tx so it must be a collection of parts.
                 # Apply the block placement to the Tx of each part.
+                assert isinstance(blk.src, list)
                 for part in blk.src:
                     part.tx *= blk.tx
 
-    def get_attrs(node):
+    def get_attrs(node: "SchNode"):
         """Return dict of attribute sets for the parts, pins, and nets in a node."""
         attrs = {"parts": set(), "pins": set(), "nets": set()}
         for part in node.parts:
@@ -1453,7 +1467,7 @@ class Placer:
             attrs["nets"].update(set(dir(net)))
         return attrs
 
-    def show_added_attrs(node):
+    def show_added_attrs(node: "SchNode"):
         """Show attributes that were added to parts, pins, and nets in a node."""
         current_attrs = node.get_attrs()
         for key in current_attrs.keys():
@@ -1461,7 +1475,7 @@ class Placer:
                 "added {} attrs: {}".format(key, current_attrs[key] - node.attrs[key])
             )
 
-    def rmv_placement_stuff(node):
+    def rmv_placement_stuff(node: "SchNode"):
         """Remove attributes added to parts, pins, and nets of a node during the placement phase."""
 
         for part in node.parts:
@@ -1472,7 +1486,7 @@ class Placer:
         )
         rmv_attr(node.get_internal_nets(), ("parts",))
 
-    def place(node, tool=None, **options):
+    def place(node: "SchNode", **options):
         """Place the parts and children in this node.
 
         Args:
@@ -1480,15 +1494,6 @@ class Placer:
             tool (str): Backend tool for schematics.
             options (dict): Dictionary of options and values to control placement.
         """
-
-        # Inject the constants for the backend tool into this module.
-        import skidl
-        from skidl.tools import tool_modules
-
-        tool = tool or skidl.config.tool
-        this_module = sys.modules[__name__]
-        this_module.__dict__.update(tool_modules[tool].constants.__dict__)
-
         random.seed(options.get("seed"))
 
         # Store the starting attributes of the node's parts, pins, and nets.
@@ -1498,7 +1503,7 @@ class Placer:
             # First, recursively place children of this node.
             # TODO: Child nodes are independent, so can they be processed in parallel?
             for child in node.children.values():
-                child.place(tool=tool, **options)
+                child.place(**options)
 
             # Group parts into those that are connected by explicit nets and
             # those that float freely connected only by stub nets.

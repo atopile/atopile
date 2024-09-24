@@ -2,7 +2,6 @@
 
 from typing import Any, Iterator
 
-from faebryk.core.trait import Trait
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
 
 
