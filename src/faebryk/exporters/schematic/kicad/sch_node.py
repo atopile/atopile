@@ -1,3 +1,6 @@
+"""
+Node class for storing circuit hierarchy.
+"""
 # -*- coding: utf-8 -*-
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
@@ -6,19 +9,17 @@ import re
 from collections import defaultdict
 from itertools import chain
 
-from skidl.utilities import export_to_all, rmv_attr
+from faebryk.core.module import Module
+import faebryk.library._F as F
+from faebryk.core.graphinterface import Graph
+from faebryk.core.node import Node
+
 from .geometry import BBox, Point, Tx, Vector
 from .place import Placer
 from .route import Router
 
 
-"""
-Node class for storing circuit hierarchy.
-"""
-
-
-@export_to_all
-class Node(Placer, Router):
+class SchNode(Placer, Router, Node):
     """Data structure for holding information about a node in the circuit hierarchy."""
 
     filename_sz = 20
@@ -26,8 +27,7 @@ class Node(Placer, Router):
 
     def __init__(
         self,
-        circuit=None,
-        tool_module=None,
+        circuit: Graph | None = None,
         filepath=".",
         top_name="",
         title="",
@@ -35,16 +35,14 @@ class Node(Placer, Router):
     ):
         self.parent = None
         self.children = defaultdict(
-            lambda: Node(None, tool_module, filepath, top_name, title, flatness)
+            lambda: SchNode(None, top_name, title, flatness)
         )
-        self.filepath = filepath
         self.top_name = top_name
         self.sheet_name = None
         self.sheet_filename = None
         self.title = title
         self.flatness = flatness
         self.flattened = False
-        self.tool_module = tool_module  # Backend tool.
         self.parts = []
         self.wires = defaultdict(list)
         self.junctions = defaultdict(list)
@@ -54,41 +52,26 @@ class Node(Placer, Router):
         if circuit:
             self.add_circuit(circuit)
 
-    def find_node_with_part(self, part):
-        """Find the node that contains the part based on its hierarchy.
+    class _HasSchNode(Module.TraitT.decless(())):
+        def __init__(self, node: "SchNode"):
+            self.node = node
 
-        Args:
-            part (Part): The part being searched for in the node hierarchy.
+    def find_node_with_part(self, part: F.Symbol) -> "SchNode":
+        return part.get_trait(self._HasSchNode).node
 
-        Returns:
-            Node: The Node object containing the part.
-        """
-
-        from skidl.circuit import HIER_SEP
-
-        level_names = part.hierarchy.split(HIER_SEP)
-        node = self
-        for lvl_nm in level_names[1:]:
-            node = node.children[lvl_nm]
-        assert part in node.parts
-        return node
-
-    def add_circuit(self, circuit):
-        """Add parts in circuit to node and its children.
-
-        Args:
-            circuit (Circuit): Circuit object.
-        """
+    def add_circuit(self, circuit: Graph):
+        """Add parts in circuit to node and its children."""
 
         # Build the circuit node hierarchy by adding the parts.
-        for part in circuit.parts:
+        for part, trait in circuit.nodes_with_trait(F.Symbol.has_symbol):
             self.add_part(part)
 
         # Add terminals to nodes in the hierarchy for nets that span across nodes.
         for net in circuit.nets:
+            # TODO:
             # Skip nets that are stubbed since there will be no wire to attach to the NetTerminal.
-            if getattr(net, "stub", False):
-                continue
+            # if getattr(net, "stub", False):
+            #     continue
 
             # Search for pins in different nodes.
             for pin1, pin2 in zip(net.pins[:-1], net.pins[1:]):
@@ -130,14 +113,8 @@ class Node(Placer, Router):
         self.flatten(self.flatness)
 
     def add_part(self, part, level=0):
-        """Add a part to the node at the appropriate level of the hierarchy.
+        """Add a part to the node at the appropriate level of the hierarchy."""
 
-        Args:
-            part (Part): Part to be added to this node or one of its children.
-            level (int, optional): The current level (depth) of the node in the hierarchy. Defaults to 0.
-        """
-
-        from skidl.circuit import HIER_SEP
 
         # Get list of names of hierarchical levels (in order) leading to this part.
         level_names = part.hierarchy.split(HIER_SEP)
@@ -180,8 +157,6 @@ class Node(Placer, Router):
         Args:
             net (Net): The net to be added to this node.
         """
-
-        from skidl.circuit import HIER_SEP
         from .net_terminal import NetTerminal
 
         nt = NetTerminal(net, self.tool_module)

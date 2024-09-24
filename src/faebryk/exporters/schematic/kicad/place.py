@@ -14,8 +14,6 @@ import sys
 from collections import defaultdict
 from copy import copy
 
-from skidl import Pin, rmv_attr
-
 import faebryk.library._F as F
 
 from .debug_draw import (
@@ -65,8 +63,6 @@ __all__ = [
 
 class PlacementFailure(Exception):
     """Exception raised when parts or blocks could not be placed."""
-
-    pass
 
 
 # Small functions for summing Points and Vectors.
