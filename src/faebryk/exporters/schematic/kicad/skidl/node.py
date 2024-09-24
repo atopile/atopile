@@ -6,10 +6,10 @@ import re
 from collections import defaultdict
 from itertools import chain
 
-from .geometry import BBox, Point, Tx, Vector
+from .geometry import BBox, Point, Segment, Tx, Vector
 from .place import Placer
 from .route import Router
-from .shims import Net, Part
+from .shims import Net, Part, Pin
 
 """
 Node class for storing circuit hierarchy.
@@ -44,7 +44,7 @@ class SchNode(Placer, Router):
         self.flattened = False
         self.tool_module = tool_module  # Backend tool.
         self.parts: list["Part"] = []
-        self.wires = defaultdict(list)
+        self.wires: dict[Net, list[Segment]] = defaultdict(list)
         self.junctions = defaultdict(list)
         self.tx = Tx()
         self.bbox = BBox()
@@ -313,7 +313,7 @@ class SchNode(Placer, Router):
 
         return internal_nets
 
-    def get_internal_pins(self, net):
+    def get_internal_pins(self, net: Net) -> list[Pin]:
         """Return the pins on the net that are on parts in the node.
 
         Args:

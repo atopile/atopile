@@ -23,7 +23,7 @@ from .debug_draw import (
     draw_text,
 )
 from .geometry import BBox, Point, Tx, Vector
-from .shims import Net, Part, Pin, rmv_attr, Options
+from .shims import Net, Options, Part, Pin, rmv_attr
 
 if TYPE_CHECKING:
     from .net_terminal import NetTerminal
@@ -326,12 +326,12 @@ def adjust_orientations(parts: list[Part], **options: Unpack[Options]) -> bool |
 
                 if calc_starting_cost:
                     # Calculate the cost of the starting orientation before any changes in orientation.
-                    starting_cost = net_tension(part, **options: Unpack[Options])
+                    starting_cost = net_tension(part, **options)
                     # Skip the starting orientation but set flag to process the others.
                     calc_starting_cost = False
                 else:
                     # Calculate the cost of the current orientation.
-                    delta_cost = net_tension(part, **options: Unpack[Options]) - starting_cost
+                    delta_cost = net_tension(part, **options) - starting_cost
                     if delta_cost < best_delta_cost:
                         # Save the largest decrease in cost and the associated orientation.
                         best_delta_cost = delta_cost
@@ -683,15 +683,15 @@ def scale_attractive_repulsive_forces(
         part.original_tx = copy(part.tx)
 
     # Find attractive forces when they are maximized by random part placement.
-    random_placement(parts, **options: Unpack[Options])
+    random_placement(parts, **options)
     attractive_forces_sum = sum(
-        force_func(p, parts, alpha=0, scale=1, **options: Unpack[Options]).magnitude for p in parts
+        force_func(p, parts, alpha=0, scale=1, **options).magnitude for p in parts
     )
 
     # Find repulsive forces when they are maximized by compacted part placement.
-    central_placement(parts, **options: Unpack[Options])
+    central_placement(parts, **options)
     repulsive_forces_sum = sum(
-        force_func(p, parts, alpha=1, scale=1, **options: Unpack[Options]).magnitude for p in parts
+        force_func(p, parts, alpha=1, scale=1, **options).magnitude for p in parts
     )
 
     # Restore original part placement.
@@ -723,8 +723,8 @@ def total_part_force(
         Vector: Weighted total of net attractive and overlap repulsion forces.
     """
     force = scale * (1 - alpha) * attractive_force(
-        part, **options: Unpack[Options]
-    ) + alpha * repulsive_force(part, parts, **options: Unpack[Options])
+        part, **options
+    ) + alpha * repulsive_force(part, parts, **options)
     part.force = force  # For debug drawing.
     return force
 
@@ -773,8 +773,8 @@ def total_similarity_force(
         Vector: Weighted total of net attractive and overlap repulsion forces.
     """
     force = scale * (1 - alpha) * similarity_force(
-        part, parts, similarity, **options: Unpack[Options]
-    ) + alpha * repulsive_force(part, parts, **options: Unpack[Options])
+        part, parts, similarity, **options
+    ) + alpha * repulsive_force(part, parts, **options)
     part.force = force  # For debug drawing.
     return force
 
@@ -819,7 +819,7 @@ def random_placement(parts: list[Part], **options: Unpack[Options]):
     """
 
     # Compute appropriate size to hold the parts based on their areas.
-    bbox = define_placement_bbox(parts, **options: Unpack[Options])
+    bbox = define_placement_bbox(parts, **options)
 
     # Place parts randomly within area.
     for part in parts:
@@ -855,7 +855,7 @@ def push_and_pull(
     def cost(parts: list[Part], alpha: float) -> float:
         """Cost function for use in debugging. Should decrease as parts move."""
         for part in parts:
-            part.force = force_func(part, parts, scale=scale, alpha=alpha, **options: Unpack[Options])
+            part.force = force_func(part, parts, scale=scale, alpha=alpha, **options)
         return sum((part.force.magnitude for part in parts))
 
     # Get PyGame screen, real-to-screen coord Tx matrix, font for debug drawing.
@@ -874,7 +874,7 @@ def push_and_pull(
     rmv_drift = not anchored_parts
 
     # Set scale factor between attractive net forces and repulsive part overlap forces.
-    scale = scale_attractive_repulsive_forces(parts, force_func, **options: Unpack[Options])
+    scale = scale_attractive_repulsive_forces(parts, force_func, **options)
 
     # Setup the schedule for adjusting the alpha coefficient that weights the
     # combination of the attractive net forces and the repulsive part overlap forces.
@@ -918,7 +918,7 @@ def push_and_pull(
             sum_of_forces = 0
             for part in mobile_parts:
                 part.force = force_func(
-                    part, parts, scale=scale, alpha=alpha, **options: Unpack[Options]
+                    part, parts, scale=scale, alpha=alpha, **options
                 )
                 # Mask X or Y component of force during part alignment.
                 part.force = part.force.mask(force_mask)
@@ -989,7 +989,7 @@ def evolve_placement(
     parts = anchored_parts + mobile_parts
 
     # Force-directed placement.
-    push_and_pull(anchored_parts, mobile_parts, nets, force_func, **options: Unpack[Options])
+    push_and_pull(anchored_parts, mobile_parts, nets, force_func, **options)
 
     # Snap parts to grid.
     for part in parts:
@@ -1087,7 +1087,7 @@ def place_net_terminals(
 
         if evolution_type == "all_at_once":
             evolve_placement(
-                placed_parts, net_terminals, nets, total_part_force, **options: Unpack[Options]
+                placed_parts, net_terminals, nets, total_part_force, **options
             )
 
         elif evolution_type == "outer_to_inner":
@@ -1126,7 +1126,7 @@ def place_net_terminals(
                             mobile_terminals[:-1],
                             nets,
                             force_func,
-                            **options: Unpack[Options]
+                            **options
                         )
                         # Anchor the mobile terminals after their placement is done.
                         anchored_parts.extend(mobile_terminals[:-1])
@@ -1137,7 +1137,7 @@ def place_net_terminals(
             if mobile_terminals:
                 # Evolve placement of any remaining terminals.
                 evolve_placement(
-                    anchored_parts, mobile_terminals, nets, total_part_force, **options: Unpack[Options]
+                    anchored_parts, mobile_terminals, nets, total_part_force, **options
                 )
 
     bbox = get_enclosing_bbox(placed_parts)
@@ -1200,7 +1200,7 @@ class Placer:
 
         return connected_parts, internal_nets, floating_parts
 
-    def place_connected_parts(node: "SchNode", parts: list[Part], nets: list[Net], **options: Unpack[Options]):
+    def place_connected_parts(node: "SchNode", parts: list[Part], nets: list[Net], **options):
         """Place individual parts.
 
         Args:
@@ -1215,10 +1215,10 @@ class Placer:
             return
 
         # Add bboxes with surrounding area so parts are not butted against each other.
-        add_placement_bboxes(parts, **options: Unpack[Options])
+        add_placement_bboxes(parts, **options)
 
         # Set anchor and pull pins that determine attractive forces between parts.
-        add_anchor_pull_pins(parts, nets, **options: Unpack[Options])
+        add_anchor_pull_pins(parts, nets, **options)
 
         # Randomly place connected parts.
         random_placement(parts)
@@ -1232,7 +1232,7 @@ class Placer:
             )
 
         if options.get("compress_before_place"):
-            central_placement(parts, **options: Unpack[Options])
+            central_placement(parts, **options)
 
         # Do force-directed placement of the parts in the parts.
 
@@ -1241,17 +1241,17 @@ class Placer:
         real_parts = [part for part in parts if not is_net_terminal(part)]
 
         # Do the first trial placement.
-        evolve_placement([], real_parts, nets, total_part_force, **options: Unpack[Options])
+        evolve_placement([], real_parts, nets, total_part_force, **options)
 
         if options.get("rotate_parts"):
             # Adjust part orientations after first trial placement is done.
-            if adjust_orientations(real_parts, **options: Unpack[Options]):
+            if adjust_orientations(real_parts, **options):
                 # Some part orientations were changed, so re-do placement.
-                evolve_placement([], real_parts, nets, total_part_force, **options: Unpack[Options])
+                evolve_placement([], real_parts, nets, total_part_force, **options)
 
         # Place NetTerminals after all the other parts.
         place_net_terminals(
-            net_terminals, real_parts, nets, total_part_force, **options: Unpack[Options]
+            net_terminals, real_parts, nets, total_part_force, **options
         )
 
         if options.get("draw_placement"):
@@ -1275,7 +1275,7 @@ class Placer:
         add_placement_bboxes(parts)
 
         # Set anchor and pull pins that determine attractive forces between similar parts.
-        add_anchor_pull_pins(parts, [], **options: Unpack[Options])
+        add_anchor_pull_pins(parts, [], **options)
 
         # Randomly place the floating parts.
         random_placement(parts)
@@ -1310,10 +1310,10 @@ class Placer:
 
         if options.get("compress_before_place"):
             # Compress all floating parts together.
-            central_placement(parts, **options: Unpack[Options])
+            central_placement(parts, **options)
 
         # Do force-directed placement of the parts in the group.
-        evolve_placement([], parts, [], force_func, **options: Unpack[Options])
+        evolve_placement([], parts, [], force_func, **options)
 
         if options.get("draw_placement"):
             # Pause to look at placement for debugging purposes.
@@ -1438,7 +1438,7 @@ class Placer:
 
         # Arrange the part blocks with similarity force-directed placement.
         force_func = functools.partial(total_similarity_force, similarity=blk_attr)
-        evolve_placement([], part_blocks, [], force_func, **options: Unpack[Options])
+        evolve_placement([], part_blocks, [], force_func, **options)
 
         if options.get("draw_placement"):
             # Pause to look at placement for debugging purposes.
@@ -1503,22 +1503,22 @@ class Placer:
             # First, recursively place children of this node.
             # TODO: Child nodes are independent, so can they be processed in parallel?
             for child in node.children.values():
-                child.place(**options: Unpack[Options])
+                child.place(**options)
 
             # Group parts into those that are connected by explicit nets and
             # those that float freely connected only by stub nets.
-            connected_parts, internal_nets, floating_parts = node.group_parts(**options: Unpack[Options])
+            connected_parts, internal_nets, floating_parts = node.group_parts(**options)
 
             # Place each group of connected parts.
             for group in connected_parts:
-                node.place_connected_parts(list(group), internal_nets, **options: Unpack[Options])
+                node.place_connected_parts(list(group), internal_nets, **options)
 
             # Place the floating parts that have no connections to anything else.
-            node.place_floating_parts(list(floating_parts), **options: Unpack[Options])
+            node.place_floating_parts(list(floating_parts), **options)
 
             # Now arrange all the blocks of placed parts and the child nodes within this node.
             node.place_blocks(
-                connected_parts, floating_parts, node.children.values(), **options: Unpack[Options]
+                connected_parts, floating_parts, node.children.values(), **options
             )
 
             # Remove any stuff leftover from this place & route run.

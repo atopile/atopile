@@ -390,7 +390,7 @@ class BBox:
 
 
 class Segment:
-    def __init__(self, p1, p2):
+    def __init__(self, p1: Point, p2: Point):
         "Create a line segment between two points."
         self.p1 = copy(p1)
         self.p2 = copy(p2)

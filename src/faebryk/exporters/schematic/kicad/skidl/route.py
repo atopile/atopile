@@ -12,7 +12,7 @@ import sys
 from collections import Counter, defaultdict
 from enum import Enum
 from itertools import chain, zip_longest
-from typing import TYPE_CHECKING, Unpack
+from typing import TYPE_CHECKING, Iterator, Unpack
 
 from .constants import DRAWING_BOX_RESIZE, GRID
 from .debug_draw import (
@@ -403,7 +403,7 @@ class Face(Interval):
         self.terminals: list[Terminal] = []
 
         # Set of Faces adjacent to this one. (Starts empty.)
-        self.adjacent: set[Face] = set()
+        self.adjacent: set[Adjacency] = set()
 
         # Add this new face to the track it belongs to so it isn't lost.
         self.track = track
@@ -2099,14 +2099,14 @@ class SwitchBox:
 class Router:
     """Mixin to add routing function to Node class."""
 
-    def add_routing_points(node, nets):
+    def add_routing_points(node: "SchNode", nets: list[Net]):
         """Add routing points by extending wires from pins out to the edge of the part bounding box.
 
         Args:
             nets (list): List of nets to be routed.
         """
 
-        def add_routing_pt(pin):
+        def add_routing_pt(pin: Pin) -> None:
             """Add the point for a pin on the boundary of a part."""
 
             bbox = pin.part.lbl_bbox
@@ -2143,7 +2143,9 @@ class Router:
                     seg = Segment(pin.pt, pin.route_pt) * pin.part.tx
                     node.wires[pin.net].append(seg)
 
-    def create_routing_tracks(node, routing_bbox):
+    def create_routing_tracks(
+        node: "SchNode", routing_bbox: BBox
+    ) -> tuple[list[GlobalTrack], list[GlobalTrack]]:
         """Create horizontal & vertical global routing tracks."""
 
         # Find the coords of the horiz/vert tracks that will hold the H/V faces of the routing switchboxes.
@@ -2222,7 +2224,12 @@ class Router:
 
         return h_tracks, v_tracks
 
-    def create_terminals(node, internal_nets, h_tracks, v_tracks):
+    def create_terminals(
+        node: "SchNode",
+        internal_nets: list[Net],
+        h_tracks: list[GlobalTrack],
+        v_tracks: list[GlobalTrack],
+    ) -> None:
         """Create terminals on the faces in the routing tracks."""
 
         # Add terminals to all non-part/non-boundary faces.
@@ -2274,7 +2281,7 @@ class Router:
             for face in track:
                 face.set_capacity()
 
-    def global_router(node, nets):
+    def global_router(node: "SchNode", nets: list[Net]) -> list[GlobalRoute]:
         """Globally route a list of nets from face to face.
 
         Args:
@@ -2303,7 +2310,9 @@ class Router:
         #        d. Add the faces on the new route to the stop_faces list.
 
         # Core routing function.
-        def rt_srch(start_face, stop_faces):
+        def rt_srch(
+            start_face: Face, stop_faces: list[Face]
+        ) -> GlobalWire:
             """Return a minimal-distance path from the start face to one of the stop faces.
 
             Args:
@@ -2373,9 +2382,7 @@ class Router:
                 if not closest_face:
                     # Exception raised if couldn't find a path from start to stop faces.
                     raise GlobalRoutingFailure(
-                        "Global routing failure: {net.name} {net} {start_face.pins}".format(
-                            **locals()
-                        )
+                        f"Global routing failure: {net.name} {net} {start_face.pins}"
                     )
 
                 # Add the closest adjacent face to the list of visited faces.
@@ -2400,7 +2407,7 @@ class Router:
                     return GlobalWire(net, reversed(face_path))
 
         # Key function for setting the order in which nets will be globally routed.
-        def rank_net(net):
+        def rank_net(net: Net) -> tuple[float, int]:
             """Rank net based on W/H of bounding box of pins and the # of pins."""
 
             # Nets with a small bounding box probably have fewer routing resources
@@ -2415,7 +2422,7 @@ class Router:
         nets.sort(key=rank_net)
 
         # Globally route each net.
-        global_routes = []
+        global_routes: list[GlobalRoute] = []
 
         for net in nets:
             # List for storing GlobalWires connecting pins on net.
@@ -2448,7 +2455,12 @@ class Router:
 
         return global_routes
 
-    def create_switchboxes(node, h_tracks, v_tracks, **options: Unpack[Options]):
+    def create_switchboxes(
+        node: "SchNode",
+        h_tracks: list[GlobalTrack],
+        v_tracks: list[GlobalTrack],
+        **options: Unpack[Options],
+    ) -> list[SwitchBox]:
         """Create routing switchboxes from the faces in the horz/vert tracks.
 
         Args:
@@ -2466,7 +2478,7 @@ class Router:
                 face.switchboxes.clear()
 
         # For each horizontal Face, create a switchbox where it is the top face of the box.
-        switchboxes = []
+        switchboxes: list[SwitchBox] = []
         for h_track in h_tracks[1:]:
             for face in h_track:
                 try:
@@ -2498,7 +2510,11 @@ class Router:
 
         return switchboxes
 
-    def switchbox_router(node, switchboxes, **options: Unpack[Options]):
+    def switchbox_router(
+        node: "SchNode",
+        switchboxes: list[SwitchBox],
+        **options: Unpack[Options],
+    ):
         """Create detailed wiring between the terminals along the sides of each switchbox.
 
         Args:
@@ -2527,28 +2543,28 @@ class Router:
             for net, segments in swbx.segments.items():
                 node.wires[net].extend(segments)
 
-    def cleanup_wires(node):
+    def cleanup_wires(node: "SchNode"):
         """Try to make wire segments look prettier."""
 
-        def order_seg_points(segments):
+        def order_seg_points(segments: list[Segment]):
             """Order endpoints in a horizontal or vertical segment."""
             for seg in segments:
                 if seg.p2 < seg.p1:
                     seg.p1, seg.p2 = seg.p2, seg.p1
 
-        def segments_bbox(segments):
+        def segments_bbox(segments: list[Segment]):
             """Return bounding box containing the given list of segments."""
             seg_pts = list(chain(*((s.p1, s.p2) for s in segments)))
             return BBox(*seg_pts)
 
-        def extract_horz_vert_segs(segments):
+        def extract_horz_vert_segs(segments: list[Segment]):
             """Separate segments and return lists of horizontal & vertical segments."""
             horz_segs = [seg for seg in segments if seg.p1.y == seg.p2.y]
             vert_segs = [seg for seg in segments if seg.p1.x == seg.p2.x]
             assert len(horz_segs) + len(vert_segs) == len(segments)
             return horz_segs, vert_segs
 
-        def split_segments(segments, net_pin_pts):
+        def split_segments(segments: list[Segment], net_pin_pts: list[Point]):
             """Return list of net segments split into the smallest intervals without intersections with other segments."""
 
             # Check each horizontal segment against each vertical segment and split each one if they intersect.
@@ -2602,16 +2618,16 @@ class Router:
 
             return horz_segs + vert_segs
 
-        def merge_segments(segments):
+        def merge_segments(segments: list[Segment]) -> list[Segment]:
             """Return segments after merging those that run the same direction and overlap."""
 
             # Preprocess the segments.
             horz_segs, vert_segs = extract_horz_vert_segs(segments)
 
-            merged_segs = []
+            merged_segs: list[Segment] = []
 
             # Separate horizontal segments having the same Y coord.
-            horz_segs_v = defaultdict(list)
+            horz_segs_v: defaultdict[float, list[Segment]] = defaultdict(list)
             for seg in horz_segs:
                 horz_segs_v[seg.p1.y].append(seg)
 
@@ -2632,7 +2648,7 @@ class Router:
                         merged_segs.append(seg)
 
             # Separate vertical segments having the same X coord.
-            vert_segs_h = defaultdict(list)
+            vert_segs_h: defaultdict[float, list[Segment]] = defaultdict(list)
             for seg in vert_segs:
                 vert_segs_h[seg.p1.x].append(seg)
 
@@ -2654,18 +2670,18 @@ class Router:
 
             return merged_segs
 
-        def break_cycles(segments):
+        def break_cycles(segments: list[Segment]) -> list[Segment]:
             """Remove segments to break any cycles of a net's segments."""
 
             # Create a dict storing set of segments adjacent to each endpoint.
-            adj_segs = defaultdict(set)
+            adj_segs: defaultdict[Point, set[Segment]] = defaultdict(set)
             for seg in segments:
                 # Add segment to set for each endpoint.
                 adj_segs[seg.p1].add(seg)
                 adj_segs[seg.p2].add(seg)
 
             # Create a dict storing the list of endpoints adjacent to each endpoint.
-            adj_pts = dict()
+            adj_pts: dict[Point, list[Point]] = {}
             for pt, segs in adj_segs.items():
                 # Store endpoints of all segments adjacent to endpoint, then remove the endpoint.
                 adj_pts[pt] = list({p for seg in segs for p in (seg.p1, seg.p2)})
@@ -2673,7 +2689,7 @@ class Router:
 
             # Start at any endpoint and visit adjacent endpoints until all have been visited.
             # If an endpoint is seen more than once, then a cycle exists. Remove the segment forming the cycle.
-            visited_pts = []  # List of visited endpoints.
+            visited_pts: list[Point] = []  # List of visited endpoints.
             frontier_pts = list(adj_pts.keys())[:1]  # Arbitrary starting point.
             while frontier_pts:
                 # Visit a point on the frontier.
@@ -2699,18 +2715,18 @@ class Router:
 
             return segments
 
-        def is_pin_pt(pt):
+        def is_pin_pt(pt: Point) -> bool:
             """Return True if the point is on one of the part pins."""
             return pt in pin_pts
 
-        def contains_pt(seg, pt):
+        def contains_pt(seg: Segment, pt: Point) -> bool:
             """Return True if the point is contained within the horz/vert segment."""
             return seg.p1.x <= pt.x <= seg.p2.x and seg.p1.y <= pt.y <= seg.p2.y
 
-        def trim_stubs(segments):
+        def trim_stubs(segments: list[Segment]) -> list[Segment]:
             """Return segments after removing stubs that have an unconnected endpoint."""
 
-            def get_stubs(segments):
+            def get_stubs(segments: list[Segment]) -> set[Segment]:
                 """Return set of stub segments."""
 
                 # For end point, the dict entry contains a list of the segments that meet there.
@@ -2737,7 +2753,13 @@ class Router:
                 stubs = get_stubs(trimmed_segments)
             return list(trimmed_segments)
 
-        def remove_jogs_old(net, segments, wires, net_bboxes, part_bboxes):
+        def remove_jogs_old(
+            net: Net,
+            segments: list[Segment],
+            wires: dict[Net, list[Segment]],
+            net_bboxes: dict[Net, BBox],
+            part_bboxes: list[BBox],
+        ) -> tuple[list[Segment], bool]:
             """Remove jogs in wiring segments.
 
             Args:
@@ -2748,7 +2770,7 @@ class Router:
                 part_bboxes (list): List of BBoxes for the placed parts.
             """
 
-            def get_touching_segs(seg, ortho_segs):
+            def get_touching_segs(seg: Segment, ortho_segs: list[Segment]) -> list[Segment]:
                 """Return list of orthogonal segments that touch the given segment."""
                 touch_segs = set()
                 for oseg in ortho_segs:
@@ -2760,7 +2782,7 @@ class Router:
                         touch_segs.add(oseg)
                 return list(touch_segs)  # Convert to list with no dups.
 
-            def get_overlap(*segs):
+            def get_overlap(*segs: Segment) -> tuple[float, float]:
                 """Find extent of overlap of parallel horz/vert segments and return as (min, max) tuple."""
                 ov1 = float("-inf")
                 ov2 = float("inf")
@@ -2776,7 +2798,7 @@ class Router:
                 # assert ov1 <= ov2
                 return ov1, ov2
 
-            def obstructed(segment):
+            def obstructed(segment: Segment) -> bool:
                 """Return true if segment obstructed by parts or segments of other nets."""
 
                 # Obstructed if segment bbox intersects one of the part bboxes.
@@ -2902,7 +2924,13 @@ class Router:
             # Return updated segments. If no segments for this net were updated, then stop is True.
             return segments, stop
 
-        def remove_jogs(net, segments, wires, net_bboxes, part_bboxes):
+        def remove_jogs(
+            net: Net,
+            segments: list[Segment],
+            wires: dict[Net, list[Segment]],
+            net_bboxes: dict[Net, BBox],
+            part_bboxes: list[BBox],
+        ) -> tuple[list[Segment], bool]:
             """Remove jogs and staircases in wiring segments.
 
             Args:
@@ -2913,7 +2941,7 @@ class Router:
                 part_bboxes (list): List of BBoxes for the placed parts.
             """
 
-            def obstructed(segment):
+            def obstructed(segment: Segment) -> bool:
                 """Return true if segment obstructed by parts or segments of other nets."""
 
                 # Obstructed if segment bbox intersects one of the part bboxes.
@@ -2955,7 +2983,7 @@ class Router:
                 # No obstructions found, so return False.
                 return False
 
-            def get_corners(segments):
+            def get_corners(segments: list[Segment]) -> dict[Point, list[Segment]]:
                 """Return dictionary of right-angle corner points and lists of associated segments."""
 
                 # For each corner point, the dict entry contains a list of the segments that meet there.
@@ -2980,7 +3008,7 @@ class Router:
                 }
                 return corners
 
-            def get_jogs(segments):
+            def get_jogs(segments: list[Segment]) -> Iterator[tuple[list[Segment], list[Point]]]:
                 """Yield the three segments and starting and end points of a staircase or tophat jog."""
 
                 # Get dict of right-angle corners formed by segments.
@@ -2991,14 +3019,14 @@ class Router:
                 for segment in segments:
                     if segment.p1 in corners and segment.p2 in corners:
                         # Get the three segments in the jog.
-                        jog_segs = set()
+                        jog_segs: set[Segment] = set()
                         jog_segs.add(corners[segment.p1][0])
                         jog_segs.add(corners[segment.p1][1])
                         jog_segs.add(corners[segment.p2][0])
                         jog_segs.add(corners[segment.p2][1])
 
                         # Get the points where the three-segment jog starts and stops.
-                        start_stop_pts = set()
+                        start_stop_pts: set[Point] = set()
                         for seg in jog_segs:
                             start_stop_pts.add(seg.p1)
                             start_stop_pts.add(seg.p2)
@@ -3140,10 +3168,10 @@ class Router:
                 # Update the node net's wire with the cleaned version.
                 node.wires[net] = segments
 
-    def add_junctions(node):
+    def add_junctions(node: SchNode):
         """Add X & T-junctions where wire segments in the same net meet."""
 
-        def find_junctions(route):
+        def find_junctions(route: list[Segment]) -> list[Point]:
             """Find junctions where segments of a net intersect.
 
             Args:
@@ -3188,14 +3216,14 @@ class Router:
             junctions = find_junctions(segments)
             node.junctions[net].extend(junctions)
 
-    def rmv_routing_stuff(node):
+    def rmv_routing_stuff(node: SchNode):
         """Remove attributes added to parts/pins during routing."""
 
         rmv_attr(node.parts, ("left_track", "right_track", "top_track", "bottom_track"))
         for part in node.parts:
             rmv_attr(part.pins, ("route_pt", "face"))
 
-    def route(node, tool=None, **options: Unpack[Options]):
+    def route(node: SchNode, **options: Unpack[Options]):
         """Route the wires between part pins in this node and its children.
 
         Steps:
@@ -3210,15 +3238,6 @@ class Router:
                 "allow_routing_failure", "draw", "draw_all_terminals", "show_capacities",
                 "draw_switchbox", "draw_routing", "draw_channels"
         """
-
-        # Inject the constants for the backend tool into this module.
-        import skidl
-        from skidl.tools import tool_modules
-
-        tool = tool or skidl.config.tool
-        this_module = sys.modules[__name__]
-        this_module.__dict__.update(tool_modules[tool].constants.__dict__)
-
         random.seed(options.get("seed"))
 
         # Remove any stuff leftover from a previous place & route run.
@@ -3227,7 +3246,7 @@ class Router:
         # First, recursively route any children of this node.
         # TODO: Child nodes are independent so could they be processed in parallel?
         for child in node.children.values():
-            child.route(tool=tool, **options)
+            child.route(**options)
 
         # Exit if no parts to route in this node.
         if not node.parts:

@@ -68,6 +68,7 @@ class Pin:
     # We need to assign these
     num: str
     name: str
+    net: "Net"
 
     # TODO: where are these expected to be assigned?
     part: Part  # TODO:
@@ -78,6 +79,7 @@ class Pin:
     route_pt: Point  # TODO:
     place_pt: Point  # TODO:
     orientation: str  # TODO:
+    bbox: BBox  # TODO:
 
     # Assigned in NetTerminal, but it's unclear
     # whether this is typically something that comes from the user
