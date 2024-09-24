@@ -24,7 +24,7 @@ from .debug_draw import (
     draw_text,
 )
 from .geometry import BBox, Point, Tx, Vector
-from .shims import Part, Pin, rmv_attr
+from .shims import Net, Part, Pin, rmv_attr
 
 if TYPE_CHECKING:
     from .node import SchNode
@@ -187,7 +187,7 @@ def get_enclosing_bbox(parts: list[Part]) -> BBox:
     return BBox().add(*(part.place_bbox * part.tx for part in parts))
 
 
-def add_anchor_pull_pins(parts, nets, **options):
+def add_anchor_pull_pins(parts: list[Part], nets: list[Net], **options):
     """Add positions of anchor and pull pins for attractive net forces between parts.
 
     Args:
@@ -196,7 +196,7 @@ def add_anchor_pull_pins(parts, nets, **options):
         options (dict): Dict of options and values that enable/disable functions.
     """
 
-    def add_place_pt(part, pin):
+    def add_place_pt(part: Part, pin: Pin):
         """Add the point for a pin on the placement boundary of a part."""
 
         pin.route_pt = pin.pt  # For drawing of nets during debugging.
@@ -268,14 +268,14 @@ def add_anchor_pull_pins(parts, nets, **options):
             all_pull_pins.append(anchor_pull_pin)
 
 
-def save_anchor_pull_pins(parts):
+def save_anchor_pull_pins(parts: list[Part]) -> None:
     """Save anchor/pull pins for each part before they are changed."""
     for part in parts:
         part.saved_anchor_pins = copy(part.anchor_pins)
         part.saved_pull_pins = copy(part.pull_pins)
 
 
-def restore_anchor_pull_pins(parts):
+def restore_anchor_pull_pins(parts: list[Part]) -> None:
     """Restore the original anchor/pull pin lists for each Part."""
 
     for part in parts:
@@ -288,7 +288,7 @@ def restore_anchor_pull_pins(parts):
     rmv_attr(parts, ("saved_anchor_pins", "saved_pull_pins"))
 
 
-def adjust_orientations(parts, **options):
+def adjust_orientations(parts: list[Part], **options) -> bool | None:
     """Adjust orientation of parts.
 
     Args:
@@ -299,7 +299,7 @@ def adjust_orientations(parts, **options):
         bool: True if one or more part orientations were changed. Otherwise, False.
     """
 
-    def find_best_orientation(part):
+    def find_best_orientation(part: Part) -> None:
         """Each part has 8 possible orientations. Find the best of the 7 alternatives from the starting one."""
 
         # Store starting orientation.
@@ -354,8 +354,8 @@ def adjust_orientations(parts, **options):
     # Hence the ad-hoc loop limit.
     for iter_cnt in range(10):
         # Find the best part to move and move it until there are no more parts to move.
-        moved_parts = []
-        unmoved_parts = movable_parts[:]
+        moved_parts: list[Part] = []
+        unmoved_parts: list[Part] = movable_parts[:]
         while unmoved_parts:
             # Find the best current orientation for each unmoved part.
             for part in unmoved_parts:
@@ -376,13 +376,7 @@ def adjust_orientations(parts, **options):
         # Start with cost change of zero before any parts are moved.
         delta_costs = [0,]
         delta_costs.extend((part.delta_cost for part in moved_parts))
-        try:
-            cost_seq = list(itertools.accumulate(delta_costs))
-        except AttributeError:
-            # Python 2.7 doesn't have itertools.accumulate().
-            cost_seq = list(delta_costs)
-            for i in range(1, len(cost_seq)):
-                cost_seq[i] = cost_seq[i - 1] + cost_seq[i]
+        cost_seq = list(itertools.accumulate(delta_costs))
         min_cost = min(cost_seq)
         min_index = cost_seq.index(min_cost)
 
