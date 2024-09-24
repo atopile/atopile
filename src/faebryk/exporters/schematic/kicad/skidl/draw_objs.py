@@ -5,36 +5,124 @@
 """
 KiCad 5 drawing objects.
 """
+from dataclasses import dataclass
 
-from collections import namedtuple
 
-DrawDef = namedtuple(
-    "DrawDef",
-    "name ref zero name_offset show_nums show_names num_units lock_units power_symbol",
-)
+@dataclass
+class DrawDef:
+    name: str
+    ref: str
+    zero: str
+    name_offset: int
+    show_nums: bool
+    show_names: bool
+    num_units: int
+    lock_units: bool
+    power_symbol: bool
 
-DrawF0 = namedtuple("DrawF0", "ref x y size orientation visibility halign valign")
 
-DrawF1 = namedtuple(
-    "DrawF1", "name x y size orientation visibility halign valign fieldname"
-)
+@dataclass
+class DrawF0:
+    ref: str
+    x: float
+    y: float
+    size: float
+    orientation: str
+    visibility: str
+    halign: str
+    valign: str
 
-DrawArc = namedtuple(
-    "DrawArc",
-    "cx cy radius start_angle end_angle unit dmg thickness fill startx starty endx endy",
-)
 
-DrawCircle = namedtuple("DrawCircle", "cx cy radius unit dmg thickness fill")
+@dataclass
+class DrawF1:
+    name: str
+    x: float
+    y: float
+    size: float
+    orientation: str
+    visibility: str
+    halign: str
+    valign: str
+    fieldname: str
 
-DrawPoly = namedtuple("DrawPoly", "point_count unit dmg thickness points fill")
 
-DrawRect = namedtuple("DrawRect", "x1 y1 x2 y2 unit dmg thickness fill")
+@dataclass
+class DrawArc:
+    cx: float
+    cy: float
+    radius: float
+    start_angle: float
+    end_angle: float
+    unit: int
+    dmg: int
+    thickness: float
+    fill: str
+    startx: float
+    starty: float
+    endx: float
+    endy: float
 
-DrawText = namedtuple(
-    "DrawText", "angle x y size hidden unit dmg text italic bold halign valign"
-)
 
-DrawPin = namedtuple(
-    "DrawPin",
-    "name num x y length orientation num_size name_size unit dmg electrical_type shape",
-)
+@dataclass
+class DrawCircle:
+    cx: float
+    cy: float
+    radius: float
+    unit: int
+    dmg: int
+    thickness: float
+    fill: str
+
+
+@dataclass
+class DrawPoly:
+    point_count: int
+    unit: int
+    dmg: int
+    thickness: float
+    points: list
+    fill: str
+
+
+@dataclass
+class DrawRect:
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    unit: int
+    dmg: int
+    thickness: float
+    fill: str
+
+
+@dataclass
+class DrawText:
+    angle: float
+    x: float
+    y: float
+    size: float
+    hidden: bool
+    unit: int
+    dmg: int
+    text: str
+    italic: bool
+    bold: bool
+    halign: str
+    valign: str
+
+
+@dataclass
+class DrawPin:
+    name: str
+    num: str
+    x: float
+    y: float
+    length: float
+    orientation: str
+    num_size: float
+    name_size: float
+    unit: int
+    dmg: int
+    electrical_type: str
+    shape: str

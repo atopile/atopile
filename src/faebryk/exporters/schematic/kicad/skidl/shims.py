@@ -34,6 +34,7 @@ def rmv_attr(objs, attrs):
 
 class Part:
     # We need to assign these
+    ref: str
 
     # TODO: where are these expected to be assigned?
     pins: list["Pin"]  # TODO: source
@@ -60,6 +61,11 @@ class Part:
     bottom_track: "GlobalTrack"
 
     def __iter__(self) -> Iterator["Pin"]:
+        # TODO:
+        raise NotImplementedError
+
+    @property
+    def draw(self):
         # TODO:
         raise NotImplementedError
 

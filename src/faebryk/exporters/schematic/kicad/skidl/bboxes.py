@@ -7,7 +7,8 @@ Calculate bounding boxes for part symbols and hierarchical sheets.
 """
 
 import logging
-from collections import namedtuple
+from dataclasses import dataclass
+from typing import Literal, Unpack
 
 from .constants import HIER_TERM_SIZE, PIN_LABEL_FONT_SIZE
 from .draw_objs import (
@@ -25,17 +26,37 @@ from .geometry import (
     BBox,
     Point,
     Tx,
-    Vector,
     tx_rot_0,
     tx_rot_90,
     tx_rot_180,
     tx_rot_270,
 )
+from .shims import Options, Part
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class PinDir:
+    """Stores information about pins in each of four directions"""
+    # direction: The direction the pin line is drawn from start to end.
+    direction: Point
+    # side: The side of the symbol the pin is on. (Opposite of the direction.)
+    side: Literal["bottom", "top", "right", "left"]
+    # angle: The angle of the name/number text for the pin (usually 0, -90.).
+    angle: int
+    # num_justify: Text justification of the pin number.
+    num_justify: Literal["end", "start"]
+    # name_justify: Text justification of the pin name.
+    name_justify: Literal["start", "end"]
+    # num_offset: (x,y) offset of the pin number w.r.t. the end of the pin.
+    num_offset: Point
+    # name_offset: (x,y) offset of the pin name w.r.t. the end of the pin.
+    name_offset: Point
+    # fuck knows what this is
+    net_offset: Point
 
-def calc_symbol_bbox(part, **options):
+
+def calc_symbol_bbox(part: Part, **options: Unpack[Options]):
     """
     Return the bounding box of the part symbol.
 
@@ -51,25 +72,12 @@ def calc_symbol_bbox(part, **options):
 
     # Named tuples for part KiCad V5 DRAW primitives.
 
-    def make_pin_dir_tbl(abs_xoff=20):
+    def make_pin_dir_tbl(abs_xoff: int = 20) -> dict[str, "PinDir"]:
 
         # abs_xoff is the absolute distance of name/num from the end of the pin.
         rel_yoff_num = -0.15  # Relative distance of number above pin line.
         rel_yoff_name = (
             0.2  # Relative distance that places name midline even with pin line.
-        )
-
-        # Tuple for storing information about pins in each of four directions:
-        #     direction: The direction the pin line is drawn from start to end.
-        #     side: The side of the symbol the pin is on. (Opposite of the direction.)
-        #     angle: The angle of the name/number text for the pin (usually 0, -90.).
-        #     num_justify: Text justification of the pin number.
-        #     name_justify: Text justification of the pin name.
-        #     num_offset: (x,y) offset of the pin number w.r.t. the end of the pin.
-        #     name_offset: (x,y) offset of the pin name w.r.t. the end of the pin.
-        PinDir = namedtuple(
-            "PinDir",
-            "direction side angle num_justify name_justify num_offset name_offset net_offset",
         )
 
         return {
