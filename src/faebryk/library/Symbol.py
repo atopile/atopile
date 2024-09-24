@@ -7,8 +7,7 @@ from faebryk.core.trait import Trait
 
 class Symbol(Module):
     """
-    Symbols represent a symbol instance and are bi-directionally
-    linked with the module they represent via the `has_linked` trait.
+    A symbolic representation of a component.
     """
 
     class Pin(ModuleInterface):

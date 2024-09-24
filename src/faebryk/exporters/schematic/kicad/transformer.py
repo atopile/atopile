@@ -77,18 +77,13 @@ class _HasUUID(Protocol):
 
 # TODO: consider common transformer base
 class SchTransformer:
-    class has_linked_sch_symbol(Module.TraitT):
-        symbol: SCH.C_symbol_instance
 
-    class has_linked_sch_symbol_defined(has_linked_sch_symbol.impl()):
+    class has_linked_sch_symbol(Module.TraitT.decless()):
         def __init__(self, symbol: SCH.C_symbol_instance) -> None:
             super().__init__()
             self.symbol = symbol
 
-    class has_linked_pins(F.Symbol.Pin.TraitT):
-        pins: list[SCH.C_symbol_instance.C_pin]
-
-    class has_linked_pins_defined(has_linked_pins.impl()):
+    class has_linked_sch_pins(F.Symbol.Pin.TraitT.decless()):
         def __init__(
             self,
             pins: list[SCH.C_symbol_instance.C_pin],
@@ -104,7 +99,7 @@ class SchTransformer:
         self.app = app
         self._symbol_files_index: dict[str, Path] = {}
 
-        self.missing_lib_symbols: list[SCH.C_lib_symbols.C_symbol] = []
+        self.missing_symbols: list[SCH.C_lib_symbols.C_symbol] = []
 
         self.dimensions = None
 
@@ -126,8 +121,6 @@ class SchTransformer:
             (f.propertys["Reference"].value, f.lib_id): f for f in self.sch.symbols
         }
         for node, sym_trait in self.graph.nodes_with_trait(F.Symbol.has_symbol):
-            # FIXME: I believe this trait is used as a proxy for being a component
-            # since, names are replaced with designators during typical pipelines
             if not node.has_trait(F.has_overriden_name):
                 continue
 
@@ -139,14 +132,11 @@ class SchTransformer:
             sym_ref = node.get_trait(F.has_overriden_name).get_name()
             sym_name = symbol.get_trait(F.Symbol.has_kicad_symbol).symbol_name
 
-            try:
-                sym = symbols[(sym_ref, sym_name)]
-            except KeyError:
-                # TODO: add diag
-                self.missing_lib_symbols.append(symbol)
+            if (sym_ref, sym_name) not in symbols:
+                self.missing_symbols.append(symbol)
                 continue
 
-            self.attach_symbol(node, sym)
+            self.attach_symbol(node, symbols[(sym_ref, sym_name)])
 
         # Log what we were able to attach
         attached = {
@@ -157,25 +147,23 @@ class SchTransformer:
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
 
-        if self.missing_lib_symbols:
+        if self.missing_symbols:
             # TODO: just go look for the symbols instead
             raise ExceptionGroup(
                 "Missing lib symbols",
                 [
                     f"Symbol {sym.name} not found in symbols dictionary"
-                    for sym in self.missing_lib_symbols
+                    for sym in self.missing_symbols
                 ],
             )
 
-    def attach_symbol(self, node: Node, symbol: SCH.C_symbol_instance):
+    def attach_symbol(self, f_symbol: F.Symbol, sch_symbol: SCH.C_symbol_instance):
         """Bind the module and symbol together on the graph"""
-        graph_sym = node.get_trait(F.Symbol.has_symbol).reference
-
-        graph_sym.add(self.has_linked_sch_symbol_defined(symbol))
+        f_symbol.add(self.has_linked_sch_symbol(sch_symbol))
 
         # Attach the pins on the symbol to the module interface
-        for pin_name, pins in groupby(symbol.pins, key=lambda p: p.name):
-            graph_sym.pins[pin_name].add(SchTransformer.has_linked_pins_defined(pins))
+        for pin_name, pins in groupby(sch_symbol.pins, key=lambda p: p.name):
+            f_symbol.pins[pin_name].add(SchTransformer.has_linked_sch_pins(pins))
 
     def cleanup(self):
         """Delete faebryk-created objects in schematic."""
@@ -297,7 +285,7 @@ class SchTransformer:
 
         def _name_filter(sch_pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin):
             return sch_pin.name in {
-                p.name for p in pin.get_trait(self.has_linked_pins).pins
+                p.name for p in pin.get_trait(self.has_linked_sch_pins).pins
             }
 
         lib_pin = find(
@@ -402,6 +390,13 @@ class SchTransformer:
         lib_sym = self._ensure_lib_symbol(lib_id)
 
         # insert all units
+        if len(self.get_related_lib_sym_units(lib_sym) > 1):
+            # problems today:
+            # - F.Symbol -> Module mapping
+            # - has_linked_sch_symbol mapping is currently 1:1
+            # - has_kicad_symbol mapping is currently 1:1
+            raise NotImplementedError("Multiple units not implemented")
+
         for unit_key, unit_objs in self.get_related_lib_sym_units(lib_sym).items():
             pins = []
 
@@ -434,7 +429,7 @@ class SchTransformer:
                 # TODO: handle not having an overriden name better
                 raise Exception(f"Module {module} has no overriden name")
 
-            self.attach_symbol(module, unit_instance)
+            self.attach_symbol(symbol, unit_instance)
 
             self.sch.symbols.append(unit_instance)
 
