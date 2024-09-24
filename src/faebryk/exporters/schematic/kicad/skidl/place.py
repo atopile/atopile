@@ -13,7 +13,9 @@ import random
 import sys
 from collections import defaultdict
 from copy import copy
+from typing import TYPE_CHECKING, Protocol
 
+from .constants import GRID
 from .debug_draw import (
     draw_pause,
     draw_placement,
@@ -22,7 +24,10 @@ from .debug_draw import (
     draw_text,
 )
 from .geometry import BBox, Point, Tx, Vector
-from .shims import Pin, rmv_attr
+from .shims import Part, Pin, rmv_attr
+
+if TYPE_CHECKING:
+    from .node import SchNode
 
 ###################################################################
 #
@@ -74,8 +79,35 @@ def is_net_terminal(part):
 
     return isinstance(part, NetTerminal)
 
+# Class for movable groups of parts/child nodes.
+class PartBlock:
+    def __init__(self, src, bbox, anchor_pt, snap_pt, tag, block_pull_pins):
+        self.src = src  # Source for this block.
+        self.place_bbox = bbox  # FIXME: Is this needed if place_bbox includes room for routing?
 
-def get_snap_pt(part_or_blk):
+        # Create anchor pin to which forces are applied to this block.
+        anchor_pin = Pin()
+        anchor_pin.part = self
+        anchor_pin.place_pt = anchor_pt
+
+        # This block has only a single anchor pin, but it needs to be in a list
+        # in a dict so it can be processed by the part placement functions.
+        self.anchor_pins = dict()
+        self.anchor_pins["similarity"] = [anchor_pin]
+
+        # Anchor pin for this block is also a pulling pin for all other blocks.
+        block_pull_pins["similarity"].append(anchor_pin)
+
+        # All blocks have the same set of pulling pins because they all pull each other.
+        self.pull_pins = block_pull_pins
+
+        self.snap_pt = snap_pt  # For snapping to grid.
+        self.tx = Tx()  # For placement.
+        self.ref = "REF"  # Name for block in debug drawing.
+        self.tag = tag  # FIXME: what is this for?
+
+
+def get_snap_pt(part_or_blk: Part | PartBlock) -> Point | None:
     """Get the point for snapping the Part or PartBlock to the grid.
 
     Args:
@@ -93,7 +125,7 @@ def get_snap_pt(part_or_blk):
             return None
 
 
-def snap_to_grid(part_or_blk):
+def snap_to_grid(part_or_blk: Part | PartBlock):
     """Snap Part or PartBlock to grid.
 
     Args:
@@ -114,9 +146,9 @@ def snap_to_grid(part_or_blk):
     part_or_blk.tx *= snap_tx
 
 
-def add_placement_bboxes(parts, **options):
+def add_placement_bboxes(parts: list[Part], **options):
     """Expand part bounding boxes to include space for subsequent routing."""
-    from skidl.schematics.net_terminal import NetTerminal
+    from .net_terminal import NetTerminal
 
     for part in parts:
         # Placement bbox starts off with the part bbox (including any net labels).
@@ -150,7 +182,7 @@ def add_placement_bboxes(parts, **options):
         )
 
 
-def get_enclosing_bbox(parts):
+def get_enclosing_bbox(parts: list[Part]) -> BBox:
     """Return bounding box that encloses all the parts."""
     return BBox().add(*(part.place_bbox * part.tx for part in parts))
 
@@ -1273,33 +1305,6 @@ class Placer:
         # Global dict of pull pins for all blocks as they each pull on each other the same way.
         block_pull_pins = defaultdict(list)
 
-        # Class for movable groups of parts/child nodes.
-        class PartBlock:
-            def __init__(self, src, bbox, anchor_pt, snap_pt, tag):
-                self.src = src  # Source for this block.
-                self.place_bbox = bbox  # FIXME: Is this needed if place_bbox includes room for routing?
-
-                # Create anchor pin to which forces are applied to this block.
-                anchor_pin = Pin()
-                anchor_pin.part = self
-                anchor_pin.place_pt = anchor_pt
-
-                # This block has only a single anchor pin, but it needs to be in a list
-                # in a dict so it can be processed by the part placement functions.
-                self.anchor_pins = dict()
-                self.anchor_pins["similarity"] = [anchor_pin]
-
-                # Anchor pin for this block is also a pulling pin for all other blocks.
-                block_pull_pins["similarity"].append(anchor_pin)
-
-                # All blocks have the same set of pulling pins because they all pull each other.
-                self.pull_pins = block_pull_pins
-
-                self.snap_pt = snap_pt  # For snapping to grid.
-                self.tx = Tx()  # For placement.
-                self.ref = "REF"  # Name for block in debug drawing.
-                self.tag = tag  # FIXME: what is this for?
-
         # Create a list of blocks from the groups of interconnected parts and the group of floating parts.
         part_blocks = []
         for part_list in connected_parts + [floating_parts]:
@@ -1324,7 +1329,7 @@ class Placer:
             bbox = bbox.resize(Vector(pad, pad))
 
             # Create the part block and place it on the list.
-            part_blocks.append(PartBlock(part_list, bbox, bbox.ctr, snap_pt, tag))
+            part_blocks.append(PartBlock(part_list, bbox, bbox.ctr, snap_pt, tag, block_pull_pins))
 
         # Add part blocks for child nodes.
         for child in children:
@@ -1353,7 +1358,7 @@ class Placer:
                 tag = 4  # A child node with no snapping point.
 
             # Create the child block and place it on the list.
-            part_blocks.append(PartBlock(child, bbox, bbox.ctr, snap_pt, tag))
+            part_blocks.append(PartBlock(child, bbox, bbox.ctr, snap_pt, tag, block_pull_pins))
 
         # Get ordered list of all block tags. Use this list to tell if tags are
         # adjacent since there may be missing tags if a particular type of block
