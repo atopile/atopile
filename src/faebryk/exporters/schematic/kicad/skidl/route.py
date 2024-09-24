@@ -13,12 +13,7 @@ from collections import Counter, defaultdict
 from enum import Enum
 from itertools import chain, zip_longest
 
-from .constants import GRID, DRAWING_BOX_RESIZE
-
-
-class Part:
-    pass
-
+from .constants import DRAWING_BOX_RESIZE, GRID
 from .debug_draw import (
     draw_end,
     draw_endpoint,
@@ -28,7 +23,7 @@ from .debug_draw import (
     draw_text,
 )
 from .geometry import BBox, Point, Segment, Vector
-from .shims import rmv_attr
+from .shims import Part, rmv_attr
 
 ###################################################################
 #
