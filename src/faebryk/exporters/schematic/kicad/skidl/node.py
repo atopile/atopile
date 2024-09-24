@@ -6,18 +6,15 @@ import re
 from collections import defaultdict
 from itertools import chain
 
-from skidl.utilities import export_to_all, rmv_attr
 from .geometry import BBox, Point, Tx, Vector
 from .place import Placer
 from .route import Router
-
 
 """
 Node class for storing circuit hierarchy.
 """
 
 
-@export_to_all
 class Node(Placer, Router):
     """Data structure for holding information about a node in the circuit hierarchy."""
 
@@ -182,6 +179,7 @@ class Node(Placer, Router):
         """
 
         from skidl.circuit import HIER_SEP
+
         from .net_terminal import NetTerminal
 
         nt = NetTerminal(net, self.tool_module)

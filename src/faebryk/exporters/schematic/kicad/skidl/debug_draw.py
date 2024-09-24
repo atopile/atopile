@@ -5,19 +5,16 @@
 """
 Drawing routines used for debugging place & route.
 """
-
 from collections import defaultdict
 from random import randint
 
-from skidl.utilities import export_to_all
-from .geometry import BBox, Point, Segment, Tx, Vector
+import pygame
 
+from .geometry import BBox, Point, Segment, Tx, Vector
 
 # Dictionary for storing colors to visually distinguish routed nets.
 net_colors = defaultdict(lambda: (randint(0, 200), randint(0, 200), randint(0, 200)))
 
-
-@export_to_all
 def draw_box(bbox, scr, tx, color=(192, 255, 192), thickness=0):
     """Draw a box in the drawing area.
 
@@ -40,8 +37,6 @@ def draw_box(bbox, scr, tx, color=(192, 255, 192), thickness=0):
     )
     pygame.draw.polygon(scr, color, corners, thickness)
 
-
-@export_to_all
 def draw_endpoint(pt, scr, tx, color=(100, 100, 100), dot_radius=10):
     """Draw a line segment endpoint in the drawing area.
 
@@ -69,8 +64,6 @@ def draw_endpoint(pt, scr, tx, color=(100, 100, 100), dot_radius=10):
     radius = dot_radius * tx.a
     pygame.draw.circle(scr, color, (pt.x, pt.y), radius)
 
-
-@export_to_all
 def draw_seg(seg, scr, tx, color=(100, 100, 100), thickness=5, dot_radius=10):
     """Draw a line segment in the drawing area.
 
@@ -101,8 +94,6 @@ def draw_seg(seg, scr, tx, color=(100, 100, 100), thickness=5, dot_radius=10):
         scr, color, (seg.p1.x, seg.p1.y), (seg.p2.x, seg.p2.y), width=thickness
     )
 
-
-@export_to_all
 def draw_text(txt, pt, scr, tx, font, color=(100, 100, 100), real=True):
     """Render text in drawing area.
 
@@ -123,8 +114,6 @@ def draw_text(txt, pt, scr, tx, font, color=(100, 100, 100), real=True):
     # Render text.
     font.render_to(scr, (pt.x, pt.y), txt, color)
 
-
-@export_to_all
 def draw_part(part, scr, tx, font):
     """Draw part bounding box.
 
@@ -149,8 +138,6 @@ def draw_part(part, scr, tx, font):
         # Probably trying to draw a block of parts which has no pins and can't iterate thru them.
         pass
 
-
-@export_to_all
 def draw_net(net, parts, scr, tx, font, color=(0, 0, 0), thickness=2, dot_radius=5):
     """Draw net and connected terminals.
 
@@ -180,8 +167,6 @@ def draw_net(net, parts, scr, tx, font, color=(0, 0, 0), thickness=2, dot_radius
             dot_radius=dot_radius,
         )
 
-
-@export_to_all
 def draw_force(part, force, scr, tx, font, color=(128, 0, 0)):
     """Draw force vector affecting a part.
 
@@ -199,8 +184,6 @@ def draw_force(part, force, scr, tx, font, color=(128, 0, 0)):
         Segment(anchor, anchor + force), scr, tx, color=color, thickness=5, dot_radius=5
     )
 
-
-@export_to_all
 def draw_placement(parts, nets, scr, tx, font):
     """Draw placement of parts and interconnecting nets.
 
@@ -219,8 +202,6 @@ def draw_placement(parts, nets, scr, tx, font):
         draw_net(net, parts, scr, tx, font)
     draw_redraw()
 
-
-@export_to_all
 def draw_routing(node, bbox, parts, *other_stuff, **options):
     """Draw routing for debugging purposes.
 
@@ -252,8 +233,6 @@ def draw_routing(node, bbox, parts, *other_stuff, **options):
 
     draw_end()
 
-
-@export_to_all
 def draw_clear(scr, color=(255, 255, 255)):
     """Clear drawing area.
 
@@ -263,8 +242,6 @@ def draw_clear(scr, color=(255, 255, 255)):
     """
     scr.fill(color)
 
-
-@export_to_all
 def draw_start(bbox):
     """
     Initialize PyGame drawing area.
@@ -322,14 +299,10 @@ def draw_start(bbox):
     # Return drawing screen, transformation matrix, and font.
     return scr, tx, font
 
-
-@export_to_all
 def draw_redraw():
     """Redraw the PyGame display."""
     pygame.display.flip()
 
-
-@export_to_all
 def draw_pause():
     """Pause drawing and then resume after button press."""
 
@@ -343,8 +316,6 @@ def draw_pause():
             if event.type in (pygame.KEYDOWN, pygame.QUIT):
                 running = False
 
-
-@export_to_all
 def draw_end():
     """Display drawing and wait for user to close PyGame window."""
 

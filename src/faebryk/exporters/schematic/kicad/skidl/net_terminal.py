@@ -3,7 +3,6 @@
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
 from skidl import Part, Pin
-from skidl.utilities import export_to_all
 from .geometry import Point, Tx, Vector
 
 
@@ -12,7 +11,6 @@ Net_Terminal class for handling net labels.
 """
 
 
-@export_to_all
 class NetTerminal(Part):
     def __init__(self, net, tool_module):
         """Specialized Part with a single pin attached to a net.

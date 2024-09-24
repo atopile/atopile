@@ -2,23 +2,8 @@
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
-from math import sqrt, sin, cos, radians
 from copy import copy
-
-from ..utilities import export_to_all
-
-__all__ = [
-    "mms_per_mil",
-    "mils_per_mm",
-    "Vector",
-    "tx_rot_0",
-    "tx_rot_90",
-    "tx_rot_180",
-    "tx_rot_270",
-    "tx_flip_x",
-    "tx_flip_y",
-]
-
+from math import cos, radians, sin, sqrt
 
 """
 Stuff for handling geometry:
@@ -33,19 +18,16 @@ mils_per_mm = 39.37008
 mms_per_mil = 0.0254
 
 
-@export_to_all
 def to_mils(mm):
     """Convert millimeters to thousandths-of-inch and return."""
     return mm * mils_per_mm
 
 
-@export_to_all
 def to_mms(mils):
     """Convert thousandths-of-inch to millimeters and return."""
     return mils * mms_per_mil
 
 
-@export_to_all
 class Tx:
     def __init__(self, a=1, b=0, c=0, d=1, dx=0, dy=0):
         """Create a transformation matrix.
@@ -165,7 +147,6 @@ tx_flip_x = Tx(a=-1, b=0, c=0, d=1)
 tx_flip_y = Tx(a=1, b=0, c=0, d=-1)
 
 
-@export_to_all
 class Point:
     def __init__(self, x, y):
         """Create a Point with coords x,y."""
@@ -283,7 +264,6 @@ class Point:
 Vector = Point
 
 
-@export_to_all
 class BBox:
     def __init__(self, *pts):
         """Create a bounding box surrounding the given points."""
@@ -409,7 +389,6 @@ class BBox:
         return "[{}, {}]".format(self.min, self.max)
 
 
-@export_to_all
 class Segment:
     def __init__(self, p1, p2):
         "Create a line segment between two points."

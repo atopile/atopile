@@ -6,26 +6,35 @@
 Calculate bounding boxes for part symbols and hierarchical sheets.
 """
 
+import logging
 from collections import namedtuple
 
-from skidl.logger import active_logger
-from skidl.schematics.geometry import (
-    Tx,
+from .constants import HIER_TERM_SIZE, PIN_LABEL_FONT_SIZE
+from .draw_objs import (
+    DrawArc,
+    DrawCircle,
+    DrawDef,
+    DrawF0,
+    DrawF1,
+    DrawPin,
+    DrawPoly,
+    DrawRect,
+    DrawText,
+)
+from .geometry import (
     BBox,
     Point,
+    Tx,
     Vector,
     tx_rot_0,
     tx_rot_90,
     tx_rot_180,
     tx_rot_270,
 )
-from skidl.utilities import export_to_all
-from .constants import HIER_TERM_SIZE, PIN_LABEL_FONT_SIZE
-from skidl.schematics.geometry import BBox, Point, Tx, Vector
-from .draw_objs import *
+
+logger = logging.getLogger(__name__)
 
 
-@export_to_all
 def calc_symbol_bbox(part, **options):
     """
     Return the bounding box of the part symbol.
@@ -272,7 +281,7 @@ def calc_symbol_bbox(part, **options):
                 obj_bbox.add(end)
 
         else:
-            active_logger.error(
+            logger.error(
                 "Unknown graphical object {} in part symbol {}.".format(
                     type(obj), part.name
                 )
@@ -295,7 +304,6 @@ def calc_symbol_bbox(part, **options):
     return unit_bboxes
 
 
-@export_to_all
 def calc_hier_label_bbox(label, dir):
     """Calculate the bounding box for a hierarchical label.
 

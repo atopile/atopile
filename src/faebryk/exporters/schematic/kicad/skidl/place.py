@@ -15,7 +15,7 @@ from collections import defaultdict
 from copy import copy
 
 from skidl import Pin
-from skidl.utilities import export_to_all, rmv_attr, sgn
+
 from .debug_draw import (
     draw_end,
     draw_pause,
@@ -25,11 +25,7 @@ from .debug_draw import (
     draw_text,
 )
 from .geometry import BBox, Point, Segment, Tx, Vector
-
-
-__all__ = [
-    "PlacementFailure",
-]
+from .shims import rmv_attr
 
 
 ###################################################################

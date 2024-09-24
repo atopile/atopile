@@ -8,7 +8,6 @@ KiCad 5 drawing objects.
 
 from collections import namedtuple
 
-
 DrawDef = namedtuple(
     "DrawDef",
     "name ref zero name_offset show_nums show_names num_units lock_units power_symbol",
