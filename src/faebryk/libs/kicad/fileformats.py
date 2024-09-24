@@ -949,6 +949,13 @@ class C_kicad_pcb_file(SEXP_File):
         class C_arc_segment(C_segment):
             mid: C_xy
 
+        @dataclass(kw_only=True)
+        class C_group:
+            name: Optional[str] = field(**sexp_field(positional=True), default=None)
+            uuid: UUID
+            locked: Optional[bool] = None
+            members: list[UUID]
+
         version: int = field(**sexp_field(assert_value=20240108))
         generator: str
         generator_version: str
@@ -1146,6 +1153,9 @@ class C_kicad_pcb_file(SEXP_File):
         gr_texts: list[C_text] = field(
             **sexp_field(multidict=True), default_factory=list
         )
+        groups: list[C_group] = field(
+            **sexp_field(multidict=True), default_factory=list
+        )
 
     kicad_pcb: C_kicad_pcb
 
@@ -1154,8 +1164,8 @@ class C_kicad_pcb_file(SEXP_File):
 class C_kicad_footprint_file(SEXP_File):
     @dataclass(kw_only=True)
     class C_footprint_in_file(C_footprint):
-        descr: str
-        tags: list[str]
+        descr: Optional[str] = None
+        tags: Optional[list[str]] = None
         version: int = field(**sexp_field(assert_value=20240108), default=20240108)
         generator: str
         generator_version: str
