@@ -3,21 +3,20 @@
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
 
+from dataclasses import dataclass
 import datetime
 import os.path
 import re
 import time
 from collections import Counter, OrderedDict
-from dataclasses import dataclass
-from typing import TypedDict, Unpack
 
-from faebryk.exporters.schematic.kicad.sch_node import SchNode
 import faebryk.library._F as F
 from faebryk.core.graphinterface import Graph
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.core.trait import Trait
-from faebryk.exporters.schematic.kicad.transformer import SCH, SchTransformer
+from faebryk.exporters.schematic.kicad.transformer import SchTransformer
+from faebryk.libs.util import cast_assert
 
 from .bboxes import calc_hier_label_bbox, calc_symbol_bbox
 from .constants import BLK_INT_PAD, BOX_LABEL_FONT_SIZE, GRID, PIN_LABEL_FONT_SIZE
@@ -34,7 +33,7 @@ Functions for generating a KiCad EESCHEMA schematic.
 
 
 @dataclass
-class Options(TypedDict):
+class Options:
     allow_routing_failure: bool = False
     compress_before_place: bool = False
     dont_rotate_pin_count: int = 10000
@@ -60,260 +59,260 @@ class Options(TypedDict):
     use_push_pull: bool = True
 
 
-# def bbox_to_eeschema(bbox, tx, name=None):
-#     """Create a bounding box using EESCHEMA graphic lines."""
+def bbox_to_eeschema(bbox, tx, name=None):
+    """Create a bounding box using EESCHEMA graphic lines."""
 
-#     # Make sure the box corners are integers.
-#     bbox = (bbox * tx).round()
+    # Make sure the box corners are integers.
+    bbox = (bbox * tx).round()
 
-#     graphic_box = []
+    graphic_box = []
 
-#     if name:
-#         # Place name at the lower-left corner of the box.
-#         name_pt = bbox.ul
-#         graphic_box.append(
-#             "Text Notes {} {} 0    {}  ~ 20\n{}".format(
-#                 name_pt.x, name_pt.y, BOX_LABEL_FONT_SIZE, name
-#             )
-#         )
+    if name:
+        # Place name at the lower-left corner of the box.
+        name_pt = bbox.ul
+        graphic_box.append(
+            "Text Notes {} {} 0    {}  ~ 20\n{}".format(
+                name_pt.x, name_pt.y, BOX_LABEL_FONT_SIZE, name
+            )
+        )
 
-#     graphic_box.append("Wire Notes Line")
-#     graphic_box.append(
-#         "	{} {} {} {}".format(bbox.ll.x, bbox.ll.y, bbox.lr.x, bbox.lr.y)
-#     )
-#     graphic_box.append("Wire Notes Line")
-#     graphic_box.append(
-#         "	{} {} {} {}".format(bbox.lr.x, bbox.lr.y, bbox.ur.x, bbox.ur.y)
-#     )
-#     graphic_box.append("Wire Notes Line")
-#     graphic_box.append(
-#         "	{} {} {} {}".format(bbox.ur.x, bbox.ur.y, bbox.ul.x, bbox.ul.y)
-#     )
-#     graphic_box.append("Wire Notes Line")
-#     graphic_box.append(
-#         "	{} {} {} {}".format(bbox.ul.x, bbox.ul.y, bbox.ll.x, bbox.ll.y)
-#     )
-#     graphic_box.append("")  # For blank line at end.
+    graphic_box.append("Wire Notes Line")
+    graphic_box.append(
+        "	{} {} {} {}".format(bbox.ll.x, bbox.ll.y, bbox.lr.x, bbox.lr.y)
+    )
+    graphic_box.append("Wire Notes Line")
+    graphic_box.append(
+        "	{} {} {} {}".format(bbox.lr.x, bbox.lr.y, bbox.ur.x, bbox.ur.y)
+    )
+    graphic_box.append("Wire Notes Line")
+    graphic_box.append(
+        "	{} {} {} {}".format(bbox.ur.x, bbox.ur.y, bbox.ul.x, bbox.ul.y)
+    )
+    graphic_box.append("Wire Notes Line")
+    graphic_box.append(
+        "	{} {} {} {}".format(bbox.ul.x, bbox.ul.y, bbox.ll.x, bbox.ll.y)
+    )
+    graphic_box.append("")  # For blank line at end.
 
-#     return "\n".join(graphic_box)
-
-
-# def net_to_eeschema(self, tx):
-#     """Generate the EESCHEMA code for the net terminal.
-
-#     Args:
-#         tx (Tx): Transformation matrix for the node containing this net terminal.
-
-#     Returns:
-#         str: EESCHEMA code string.
-#     """
-#     self.pins[0].stub = True
-#     self.pins[0].orientation = "R"
-#     return pin_label_to_eeschema(self.pins[0], tx)
-#     # return pin_label_to_eeschema(self.pins[0], tx) + bbox_to_eeschema(self.bbox, self.tx * tx)
+    return "\n".join(graphic_box)
 
 
-# def part_to_eeschema(part, tx):
-#     """Create EESCHEMA code for a part.
+def net_to_eeschema(self, tx):
+    """Generate the EESCHEMA code for the net terminal.
 
-#     Args:
-#         part (Part): SKiDL part.
-#         tx (Tx): Transformation matrix.
+    Args:
+        tx (Tx): Transformation matrix for the node containing this net terminal.
 
-#     Returns:
-#         string: EESCHEMA code for the part.
-
-#     Notes:
-#         https://en.wikibooks.org/wiki/Kicad/file_formats#Schematic_Files_Format
-#     """
-
-#     tx = part.tx * tx
-#     origin = tx.origin.round()
-#     time_hex = hex(int(time.time()))[2:]
-#     unit_num = getattr(part, "num", 1)
-
-#     eeschema = []
-#     eeschema.append("$Comp")
-#     lib = os.path.splitext(part.lib.filename)[0]
-#     eeschema.append("L {}:{} {}".format(lib, part.name, part.ref))
-#     eeschema.append("U {} 1 {}".format(unit_num, time_hex))
-#     eeschema.append("P {} {}".format(str(origin.x), str(origin.y)))
-
-#     # Add part symbols. For now we are only adding the designator
-#     n_F0 = 1
-#     for i in range(len(part.draw)):
-#         if re.search("^DrawF0", str(part.draw[i])):
-#             n_F0 = i
-#             break
-#     eeschema.append(
-#         'F 0 "{}" {} {} {} {} {} {} {}'.format(
-#             part.ref,
-#             part.draw[n_F0].orientation,
-#             str(origin.x + part.draw[n_F0].x),
-#             str(origin.y + part.draw[n_F0].y),
-#             part.draw[n_F0].size,
-#             "000",  # TODO: Refine this to match part def.
-#             part.draw[n_F0].halign,
-#             part.draw[n_F0].valign,
-#         )
-#     )
-
-#     # Part value.
-#     n_F1 = 1
-#     for i in range(len(part.draw)):
-#         if re.search("^DrawF1", str(part.draw[i])):
-#             n_F1 = i
-#             break
-#     eeschema.append(
-#         'F 1 "{}" {} {} {} {} {} {} {}'.format(
-#             str(part.value),
-#             part.draw[n_F1].orientation,
-#             str(origin.x + part.draw[n_F1].x),
-#             str(origin.y + part.draw[n_F1].y),
-#             part.draw[n_F1].size,
-#             "000",  # TODO: Refine this to match part def.
-#             part.draw[n_F1].halign,
-#             part.draw[n_F1].valign,
-#         )
-#     )
-
-#     # Part footprint.
-#     n_F2 = 2
-#     for i in range(len(part.draw)):
-#         if re.search("^DrawF2", str(part.draw[i])):
-#             n_F2 = i
-#             break
-#     eeschema.append(
-#         'F 2 "{}" {} {} {} {} {} {} {}'.format(
-#             part.footprint,
-#             part.draw[n_F2].orientation,
-#             str(origin.x + part.draw[n_F2].x),
-#             str(origin.y + part.draw[n_F2].y),
-#             part.draw[n_F2].size,
-#             "001",  # TODO: Refine this to match part def.
-#             part.draw[n_F2].halign,
-#             part.draw[n_F2].valign,
-#         )
-#     )
-#     eeschema.append("   1   {} {}".format(str(origin.x), str(origin.y)))
-#     eeschema.append("   {}  {}  {}  {}".format(tx.a, tx.b, tx.c, tx.d))
-#     eeschema.append("$EndComp")
-#     eeschema.append("")  # For blank line at end.
-
-#     # For debugging: draws a bounding box around a part.
-#     # eeschema.append(bbox_to_eeschema(part.bbox, tx))
-#     # eeschema.append(bbox_to_eeschema(part.place_bbox, tx))
-
-#     return "\n".join(eeschema)
+    Returns:
+        str: EESCHEMA code string.
+    """
+    self.pins[0].stub = True
+    self.pins[0].orientation = "R"
+    return pin_label_to_eeschema(self.pins[0], tx)
+    # return pin_label_to_eeschema(self.pins[0], tx) + bbox_to_eeschema(self.bbox, self.tx * tx)
 
 
-# def wire_to_eeschema(net, wire, tx):
-#     """Create EESCHEMA code for a multi-segment wire.
+def part_to_eeschema(part, tx):
+    """Create EESCHEMA code for a part.
 
-#     Args:
-#         net (Net): Net associated with the wire.
-#         wire (list): List of Segments for a wire.
-#         tx (Tx): transformation matrix for each point in the wire.
+    Args:
+        part (Part): SKiDL part.
+        tx (Tx): Transformation matrix.
 
-#     Returns:
-#         string: Text to be placed into EESCHEMA file.
-#     """
+    Returns:
+        string: EESCHEMA code for the part.
 
-#     eeschema = []
-#     for segment in wire:
-#         eeschema.append("Wire Wire Line")
-#         w = (segment * tx).round()
-#         eeschema.append("  {} {} {} {}".format(w.p1.x, w.p1.y, w.p2.x, w.p2.y))
-#     eeschema.append("")  # For blank line at end.
-#     return "\n".join(eeschema)
+    Notes:
+        https://en.wikibooks.org/wiki/Kicad/file_formats#Schematic_Files_Format
+    """
+
+    tx = part.tx * tx
+    origin = tx.origin.round()
+    time_hex = hex(int(time.time()))[2:]
+    unit_num = getattr(part, "num", 1)
+
+    eeschema = []
+    eeschema.append("$Comp")
+    lib = os.path.splitext(part.lib.filename)[0]
+    eeschema.append("L {}:{} {}".format(lib, part.name, part.ref))
+    eeschema.append("U {} 1 {}".format(unit_num, time_hex))
+    eeschema.append("P {} {}".format(str(origin.x), str(origin.y)))
+
+    # Add part symbols. For now we are only adding the designator
+    n_F0 = 1
+    for i in range(len(part.draw)):
+        if re.search("^DrawF0", str(part.draw[i])):
+            n_F0 = i
+            break
+    eeschema.append(
+        'F 0 "{}" {} {} {} {} {} {} {}'.format(
+            part.ref,
+            part.draw[n_F0].orientation,
+            str(origin.x + part.draw[n_F0].x),
+            str(origin.y + part.draw[n_F0].y),
+            part.draw[n_F0].size,
+            "000",  # TODO: Refine this to match part def.
+            part.draw[n_F0].halign,
+            part.draw[n_F0].valign,
+        )
+    )
+
+    # Part value.
+    n_F1 = 1
+    for i in range(len(part.draw)):
+        if re.search("^DrawF1", str(part.draw[i])):
+            n_F1 = i
+            break
+    eeschema.append(
+        'F 1 "{}" {} {} {} {} {} {} {}'.format(
+            str(part.value),
+            part.draw[n_F1].orientation,
+            str(origin.x + part.draw[n_F1].x),
+            str(origin.y + part.draw[n_F1].y),
+            part.draw[n_F1].size,
+            "000",  # TODO: Refine this to match part def.
+            part.draw[n_F1].halign,
+            part.draw[n_F1].valign,
+        )
+    )
+
+    # Part footprint.
+    n_F2 = 2
+    for i in range(len(part.draw)):
+        if re.search("^DrawF2", str(part.draw[i])):
+            n_F2 = i
+            break
+    eeschema.append(
+        'F 2 "{}" {} {} {} {} {} {} {}'.format(
+            part.footprint,
+            part.draw[n_F2].orientation,
+            str(origin.x + part.draw[n_F2].x),
+            str(origin.y + part.draw[n_F2].y),
+            part.draw[n_F2].size,
+            "001",  # TODO: Refine this to match part def.
+            part.draw[n_F2].halign,
+            part.draw[n_F2].valign,
+        )
+    )
+    eeschema.append("   1   {} {}".format(str(origin.x), str(origin.y)))
+    eeschema.append("   {}  {}  {}  {}".format(tx.a, tx.b, tx.c, tx.d))
+    eeschema.append("$EndComp")
+    eeschema.append("")  # For blank line at end.
+
+    # For debugging: draws a bounding box around a part.
+    # eeschema.append(bbox_to_eeschema(part.bbox, tx))
+    # eeschema.append(bbox_to_eeschema(part.place_bbox, tx))
+
+    return "\n".join(eeschema)
 
 
-# def junction_to_eeschema(net, junctions, tx):
-#     eeschema = []
-#     for junction in junctions:
-#         pt = (junction * tx).round()
-#         eeschema.append("Connection ~ {} {}".format(pt.x, pt.y))
-#     eeschema.append("")  # For blank line at end.
-#     return "\n".join(eeschema)
+def wire_to_eeschema(net, wire, tx):
+    """Create EESCHEMA code for a multi-segment wire.
+
+    Args:
+        net (Net): Net associated with the wire.
+        wire (list): List of Segments for a wire.
+        tx (Tx): transformation matrix for each point in the wire.
+
+    Returns:
+        string: Text to be placed into EESCHEMA file.
+    """
+
+    eeschema = []
+    for segment in wire:
+        eeschema.append("Wire Wire Line")
+        w = (segment * tx).round()
+        eeschema.append("  {} {} {} {}".format(w.p1.x, w.p1.y, w.p2.x, w.p2.y))
+    eeschema.append("")  # For blank line at end.
+    return "\n".join(eeschema)
 
 
-# def power_part_to_eeschema(part, tx=Tx()):
-#     return ""  # REMOVE: Remove this.
-#     out = []
-#     for pin in part.pins:
-#         try:
-#             if not (pin.net is None):
-#                 if pin.net.netclass == "Power":
-#                     # strip out the '_...' section from power nets
-#                     t = pin.net.name
-#                     u = t.split("_")
-#                     symbol_name = u[0]
-#                     # find the stub in the part
-#                     time_hex = hex(int(time.time()))[2:]
-#                     pin_pt = (part.origin + offset + Point(pin.x, pin.y)).round()
-#                     x, y = pin_pt.x, pin_pt.y
-#                     out.append("$Comp\n")
-#                     out.append("L power:{} #PWR?\n".format(symbol_name))
-#                     out.append("U 1 1 {}\n".format(time_hex))
-#                     out.append("P {} {}\n".format(str(x), str(y)))
-#                     # Add part symbols. For now we are only adding the designator
-#                     n_F0 = 1
-#                     for i in range(len(part.draw)):
-#                         if re.search("^DrawF0", str(part.draw[i])):
-#                             n_F0 = i
-#                             break
-#                     part_orientation = part.draw[n_F0].orientation
-#                     part_horizontal_align = part.draw[n_F0].halign
-#                     part_vertical_align = part.draw[n_F0].valign
+def junction_to_eeschema(net, junctions, tx):
+    eeschema = []
+    for junction in junctions:
+        pt = (junction * tx).round()
+        eeschema.append("Connection ~ {} {}".format(pt.x, pt.y))
+    eeschema.append("")  # For blank line at end.
+    return "\n".join(eeschema)
 
-#                     # check if the pin orientation will clash with the power part
-#                     if "+" in symbol_name:
-#                         # voltage sources face up, so check if the pin is facing down (opposite logic y-axis)
-#                         if pin.orientation == "U":
-#                             orientation = [-1, 0, 0, 1]
-#                     elif "gnd" in symbol_name.lower():
-#                         # gnd points down so check if the pin is facing up (opposite logic y-axis)
-#                         if pin.orientation == "D":
-#                             orientation = [-1, 0, 0, 1]
-#                     out.append(
-#                         'F 0 "{}" {} {} {} {} {} {} {}\n'.format(
-#                             "#PWR?",
-#                             part_orientation,
-#                             str(x + 25),
-#                             str(y + 25),
-#                             str(40),
-#                             "001",
-#                             part_horizontal_align,
-#                             part_vertical_align,
-#                         )
-#                     )
-#                     out.append(
-#                         'F 1 "{}" {} {} {} {} {} {} {}\n'.format(
-#                             symbol_name,
-#                             part_orientation,
-#                             str(x + 25),
-#                             str(y + 25),
-#                             str(40),
-#                             "000",
-#                             part_horizontal_align,
-#                             part_vertical_align,
-#                         )
-#                     )
-#                     out.append("   1   {} {}\n".format(str(x), str(y)))
-#                     out.append(
-#                         "   {}   {}  {}  {}\n".format(
-#                             orientation[0],
-#                             orientation[1],
-#                             orientation[2],
-#                             orientation[3],
-#                         )
-#                     )
-#                     out.append("$EndComp\n")
-#         except Exception as inst:
-#             print(type(inst))
-#             print(inst.args)
-#             print(inst)
-#     return "\n" + "".join(out)
+
+def power_part_to_eeschema(part, tx=Tx()):
+    return ""  # REMOVE: Remove this.
+    out = []
+    for pin in part.pins:
+        try:
+            if not (pin.net is None):
+                if pin.net.netclass == "Power":
+                    # strip out the '_...' section from power nets
+                    t = pin.net.name
+                    u = t.split("_")
+                    symbol_name = u[0]
+                    # find the stub in the part
+                    time_hex = hex(int(time.time()))[2:]
+                    pin_pt = (part.origin + offset + Point(pin.x, pin.y)).round()
+                    x, y = pin_pt.x, pin_pt.y
+                    out.append("$Comp\n")
+                    out.append("L power:{} #PWR?\n".format(symbol_name))
+                    out.append("U 1 1 {}\n".format(time_hex))
+                    out.append("P {} {}\n".format(str(x), str(y)))
+                    # Add part symbols. For now we are only adding the designator
+                    n_F0 = 1
+                    for i in range(len(part.draw)):
+                        if re.search("^DrawF0", str(part.draw[i])):
+                            n_F0 = i
+                            break
+                    part_orientation = part.draw[n_F0].orientation
+                    part_horizontal_align = part.draw[n_F0].halign
+                    part_vertical_align = part.draw[n_F0].valign
+
+                    # check if the pin orientation will clash with the power part
+                    if "+" in symbol_name:
+                        # voltage sources face up, so check if the pin is facing down (opposite logic y-axis)
+                        if pin.orientation == "U":
+                            orientation = [-1, 0, 0, 1]
+                    elif "gnd" in symbol_name.lower():
+                        # gnd points down so check if the pin is facing up (opposite logic y-axis)
+                        if pin.orientation == "D":
+                            orientation = [-1, 0, 0, 1]
+                    out.append(
+                        'F 0 "{}" {} {} {} {} {} {} {}\n'.format(
+                            "#PWR?",
+                            part_orientation,
+                            str(x + 25),
+                            str(y + 25),
+                            str(40),
+                            "001",
+                            part_horizontal_align,
+                            part_vertical_align,
+                        )
+                    )
+                    out.append(
+                        'F 1 "{}" {} {} {} {} {} {} {}\n'.format(
+                            symbol_name,
+                            part_orientation,
+                            str(x + 25),
+                            str(y + 25),
+                            str(40),
+                            "000",
+                            part_horizontal_align,
+                            part_vertical_align,
+                        )
+                    )
+                    out.append("   1   {} {}\n".format(str(x), str(y)))
+                    out.append(
+                        "   {}   {}  {}  {}\n".format(
+                            orientation[0],
+                            orientation[1],
+                            orientation[2],
+                            orientation[3],
+                        )
+                    )
+                    out.append("$EndComp\n")
+        except Exception as inst:
+            print(type(inst))
+            print(inst.args)
+            print(inst)
+    return "\n" + "".join(out)
 
 
 # Sizes of EESCHEMA schematic pages from smallest to largest. Dimensions in mils.
@@ -554,12 +553,12 @@ def node_to_eeschema(node, sheet_tx=Tx()):
 Generate a KiCad EESCHEMA schematic from a Circuit object.
 """
 
-class has_symbol_layout_data(Trait.decless()):
+class has_symbol_layout_data(Trait):
     tx: Tx
     orientation_locked: bool
 
 
-class has_pin_layout_data(Trait.decless()):
+class has_pin_layout_data(Trait):
     pt: Point
     routed: bool
 
@@ -572,44 +571,47 @@ def _add_data_trait[T: Trait](node: Node, trait: type[T]) -> T:
     return node.add(Impl())
 
 
-def preprocess_circuit(circuit: Graph, transformer: SchTransformer, **options: Unpack[Options]):
+def preprocess_circuit(circuit: Graph, **options):
     """Add stuff to parts & nets for doing placement and routing of schematics."""
 
-    def units(part: F.Symbol) -> list[F.Symbol]:
+    def units(part: Module):
         return [part]
+        # TODO: handle units within parts
+        # if len(part.unit) == 0:
+        #     return [part]
+        # else:
+        #     return part.unit.values()
 
-    def initialize(part: F.Symbol):
+    def initialize(part: Module):
         """Initialize part or its part units."""
 
         # Initialize the units of the part, or the part itself if it has no units.
         pin_limit = options.get("orientation_pin_limit", 44)
         for part_unit in units(part):
-            layout_data = part.add(has_symbol_layout_data())
+            cmp_data_trait = _add_data_trait(part, has_symbol_layout_data)
 
             # Initialize transform matrix.
-            user_layout_data = part_unit.try_get_trait(
-                F.has_symbol_layout
-            ) or part_unit.add(F.has_symbol_layout())
-            layout_data.tx = Tx.from_symtx(user_layout_data.translations)
+            layout_data = part_unit.get_trait(F.has_symbol_layout) or part_unit.add(F.has_symbol_layout_defined())
+            cmp_data_trait.tx = Tx.from_symtx(layout_data.translations)
 
             # Lock part orientation if symtx was specified. Also lock parts with a lot of pins
             # since they're typically drawn the way they're supposed to be oriented.
             # And also lock single-pin parts because these are usually power/ground and
             # they shouldn't be flipped around.
             num_pins = len(part_unit.get_children(direct_only=True, types=F.Symbol.Pin))
-            layout_data.orientation_locked = bool(user_layout_data.translations) or (
-                num_pins >= pin_limit
+            cmp_data_trait.orientation_locked = bool(layout_data.translations) or not (
+                1 < num_pins <= pin_limit
             )
 
             # Initialize pin attributes used for generating schematics.
             for pin in part_unit.get_children(direct_only=True, types=F.Symbol.Pin):
-                pin_data = pin.add(has_pin_layout_data())
+                pin_data_trait = _add_data_trait(pin, has_pin_layout_data)
                 lib_pin = SchTransformer.get_lib_pin(pin)
                 # TODO: what to do with pin rotation?
-                pin_data.pt = Point(lib_pin.at.x, lib_pin.at.y)
-                pin_data.routed = False
+                pin_data_trait.pt = Point(lib_pin.at.x, lib_pin.at.y)
+                pin_data_trait.routed = False
 
-    def rotate_power_pins(part: F.Symbol):
+    def rotate_power_pins(part: Module):
         """Rotate a part based on the direction of its power pins.
 
         This function is to make sure that voltage sources face up and gnd pins
@@ -621,14 +623,10 @@ def preprocess_circuit(circuit: Graph, transformer: SchTransformer, **options: U
             return
 
         def is_pwr(net: F.Electrical):
-            if power := net.get_parent_of_type(F.ElectricPower):
-                return net is power.hv
-            return False
+            F.ElectricPower
 
-        def is_gnd(net: F.Electrical):
-            if power := net.get_parent_of_type(F.ElectricPower):
-                return net is power.lv
-            return False
+        def is_gnd(net):
+            return "gnd" in net_name.lower()
 
         dont_rotate_pin_cnt = options.get("dont_rotate_pin_count", 10000)
 
@@ -639,10 +637,9 @@ def preprocess_circuit(circuit: Graph, transformer: SchTransformer, **options: U
 
             # Tally what rotation would make each pwr/gnd pin point up or down.
             rotation_tally = Counter()
-            for pin in part_unit.get_children(direct_only=True, types=F.Symbol.Pin):
-                lib_pin = transformer.get_lib_pin(pin)
-                lib_pin.at.r
-                if is_gnd(pin.represents):
+            for pin in part_unit:
+                net_name = getattr(pin.net, "name", "").lower()
+                if is_gnd(net_name):
                     if pin.orientation == "U":
                         rotation_tally[0] += 1
                     if pin.orientation == "D":
@@ -651,7 +648,7 @@ def preprocess_circuit(circuit: Graph, transformer: SchTransformer, **options: U
                         rotation_tally[90] += 1
                     if pin.orientation == "R":
                         rotation_tally[270] += 1
-                elif is_pwr(pin.represents):
+                elif is_pwr(net_name):
                     if pin.orientation == "D":
                         rotation_tally[0] += 1
                     if pin.orientation == "U":
@@ -706,7 +703,7 @@ def preprocess_circuit(circuit: Graph, transformer: SchTransformer, **options: U
 
     # Pre-process parts
     # TODO: complete criteria on what schematic symbols we can handle
-    for part, has_symbol_trait in circuit.nodes_with_trait(F.Symbol.has_symbol):
+    for part, has_symbol_trait in circuit.nodes_with_trait(F.has_symbol):
         symbol = has_symbol_trait.get_symbol()
         # Initialize part attributes used for generating schematics.
         initialize(symbol)
@@ -718,20 +715,45 @@ def preprocess_circuit(circuit: Graph, transformer: SchTransformer, **options: U
         calc_part_bbox(symbol)
 
 
-def gen_schematic(
-    circuit: Module,
-    transformer: SchTransformer,
-    top_name,
-    title="Faebryk Schematic",
-    flatness=0.0,
-    **options: Unpack[Options],
-):
-    """
-    Create a schematic
+def finalize_parts_and_nets(circuit, **options):
+    """Restore parts and nets after place & route is done."""
 
-    Recommendation on RoutingFailure: expansion_factor *= 1.5
-    Recommendation on PlacementFailure: try again with a different random seed
+    # Remove any NetTerminals that were added.
+    net_terminals = (p for p in circuit.parts if isinstance(p, NetTerminal))
+    circuit.rmv_parts(*net_terminals)
+
+    # Return pins from the part units to their parent part.
+    for part in circuit.parts:
+        part.grab_pins()
+
+    # Remove some stuff added to parts during schematic generation process.
+    rmv_attr(circuit.parts, ("force", "bbox", "lbl_bbox", "tx"))
+
+
+def gen_schematic(
+    circuit,
+    filepath=".",
+    top_name=get_script_name(),
+    title="SKiDL-Generated Schematic",
+    flatness=0.0,
+    retries=2,
+    **options,
+):
+    """Create a schematic file from a Circuit object.
+
+    Args:
+        circuit (Circuit): The Circuit object that will have a schematic generated for it.
+        filepath (str, optional): The directory where the schematic files are placed. Defaults to ".".
+        top_name (str, optional): The name for the top of the circuit hierarchy. Defaults to get_script_name().
+        title (str, optional): The title of the schematic. Defaults to "SKiDL-Generated Schematic".
+        flatness (float, optional): Determines how much the hierarchy is flattened in the schematic. Defaults to 0.0 (completely hierarchical).
+        retries (int, optional): Number of times to re-try if routing fails. Defaults to 2.
+        options (dict, optional): Dict of options and values, usually for drawing/debugging.
     """
+
+    from skidl import KICAD
+    from skidl.schematics.node import Node
+    from skidl.tools import tool_modules
 
     from .place import PlacementFailure
     from .route import RoutingFailure
@@ -745,36 +767,56 @@ def gen_schematic(
     # Start with default routing area.
     expansion_factor = 1.0
 
-    preprocess_circuit(circuit, transformer, **options)
+    # Try to place & route one or more times.
+    for _ in range(retries):
+        preprocess_circuit(circuit, **options)
 
-    node = SchNode(circuit, tool_modules[KICAD], filepath, top_name, title, flatness)
+        node = Node(circuit, tool_modules[KICAD], filepath, top_name, title, flatness)
 
-    try:
-        # Place parts.
-        node.place(expansion_factor=expansion_factor, **options)
+        try:
+            # Place parts.
+            node.place(expansion_factor=expansion_factor, **options)
 
-        # Route parts.
-        node.route(**options)
+            # Route parts.
+            node.route(**options)
 
-    except PlacementFailure:
-        # Placement failed, so clean up ...
+        except PlacementFailure:
+            # Placement failed, so clean up ...
+            finalize_parts_and_nets(circuit, **options)
+            # ... and try again.
+            continue
+
+        except RoutingFailure:
+            # Routing failed, so clean up ...
+            finalize_parts_and_nets(circuit, **options)
+            # ... and expand routing area ...
+            expansion_factor *= 1.5  # HACK: Ad-hoc increase of expansion factor.
+            # ... and try again.
+            continue
+
+        # Generate EESCHEMA code for the schematic.
+        node_to_eeschema(node)
+
+        # Append place & route statistics for the schematic to a file.
+        if options.get("collect_stats"):
+            stats = node.collect_stats(**options)
+            with open(options["stats_file"], "a") as f:
+                f.write(stats)
+
+        # Clean up.
         finalize_parts_and_nets(circuit, **options)
-        # ... and try again.
-        continue
 
-    except RoutingFailure:
-        # Routing failed, so clean up ...
-        finalize_parts_and_nets(circuit, **options)
-        # ... and expand routing area ...
-        expansion_factor *= 1.5  # HACK: Ad-hoc increase of expansion factor.
-        # ... and try again.
-        continue
+        # Place & route was successful if we got here, so exit.
+        return
 
-    # Generate EESCHEMA code for the schematic.
-    node_to_eeschema(node)
-
-    # Append place & route statistics for the schematic to a file.
+    # Append failed place & route statistics for the schematic to a file.
     if options.get("collect_stats"):
-        stats = node.collect_stats(**options)
+        stats = "-1\n"
         with open(options["stats_file"], "a") as f:
             f.write(stats)
+
+    # Clean-up after failure.
+    finalize_parts_and_nets(circuit, **options)
+
+    # Exited the loop without successful routing.
+    raise (RoutingFailure)
