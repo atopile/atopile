@@ -255,13 +255,6 @@ def draw_start(bbox):
         font: PyGame font for rendering text.
     """
 
-    # Only import pygame if drawing is being done to avoid the startup message.
-    import pygame
-    import pygame.freetype
-
-    # Make pygame module available to other functions.
-    globals()["pygame"] = pygame
-
     # Screen drawing area.
     scr_bbox = BBox(Point(0, 0), Point(2000, 1500))
 

@@ -7,3 +7,6 @@ def get_script_name():
 def rmv_attr():
     # TODO:
     raise NotImplementedError
+
+class Part:
+    pass

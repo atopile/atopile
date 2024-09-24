@@ -13,9 +13,20 @@ from collections import Counter, defaultdict
 from enum import Enum
 from itertools import chain, zip_longest
 
-from skidl import Part
+from .constants import GRID, DRAWING_BOX_RESIZE
 
-from .debug_draw import draw_end, draw_endpoint, draw_routing, draw_seg, draw_start
+
+class Part:
+    pass
+
+from .debug_draw import (
+    draw_end,
+    draw_endpoint,
+    draw_routing,
+    draw_seg,
+    draw_start,
+    draw_text,
+)
 from .geometry import BBox, Point, Segment, Vector
 from .shims import rmv_attr
 
@@ -73,13 +84,6 @@ class Orientation(Enum):
 class Direction(Enum):
     LEFT = 3
     RIGHT = 4
-
-
-# Put the orientation/direction enums in global space to make using them easier.
-for orientation in Orientation:
-    globals()[orientation.name] = orientation.value
-for direction in Direction:
-    globals()[direction.name] = direction.value
 
 
 # Dictionary for storing colors to visually distinguish routed nets.
@@ -160,7 +164,7 @@ class Terminal:
     def route_pt(self):
         """Return (x,y) Point for a Terminal on a Face."""
         track = self.face.track
-        if track.orientation == HORZ:
+        if track.orientation == Orientation.HORZ:
             return Point(self.coord, track.coord)
         else:
             return Point(track.coord, self.coord)
@@ -424,7 +428,7 @@ class Face(Interval):
         """Return the bounding box of the 1-D face segment."""
         bbox = BBox()
 
-        if self.track.orientation == VERT:
+        if self.track.orientation == Orientation.VERT:
             # Face runs vertically, so bbox width is zero.
             bbox.add(Point(self.track.coord, self.beg.coord))
             bbox.add(Point(self.track.coord, self.end.coord))
@@ -668,7 +672,7 @@ class Face(Interval):
     def seg(self):
         """Return a Segment that coincides with the Face."""
 
-        if self.track.orientation == VERT:
+        if self.track.orientation == Orientation.VERT:
             p1 = Point(self.track.coord, self.beg.coord)
             p2 = Point(self.track.coord, self.end.coord)
         else:
@@ -784,8 +788,8 @@ class GlobalWire(list):
                 pt = pin.route_pt * pin.part.tx
                 track = pin.face.track
                 pt = {
-                    HORZ: Point(pt.x, track.coord),
-                    VERT: Point(track.coord, pt.y),
+                    Orientation.HORZ: Point(pt.x, track.coord),
+                    Orientation.VERT: Point(track.coord, pt.y),
                 }[track.orientation]
                 draw_endpoint(pt, scr, tx, color=color, dot_radius=10)
 
@@ -838,7 +842,7 @@ class GlobalRoute(list):
 
 
 class GlobalTrack(list):
-    def __init__(self, orientation=HORZ, coord=0, idx=None, *args, **kwargs):
+    def __init__(self, orientation=Orientation.HORZ, coord=0, idx=None, *args, **kwargs):
         """A horizontal/vertical track holding zero or more faces all having the same Y/X coordinate.
 
         These global tracks are made by extending the edges of part bounding boxes to
@@ -1186,10 +1190,10 @@ class SwitchBox:
 
         for face in self.face_list:
             face.audit()
-        assert self.top_face.track.orientation == HORZ
-        assert self.bottom_face.track.orientation == HORZ
-        assert self.left_face.track.orientation == VERT
-        assert self.right_face.track.orientation == VERT
+        assert self.top_face.track.orientation == Orientation.HORZ
+        assert self.bottom_face.track.orientation == Orientation.HORZ
+        assert self.left_face.track.orientation == Orientation.VERT
+        assert self.right_face.track.orientation == Orientation.VERT
         assert len(self.top_nets) == len(self.bottom_nets)
         assert len(self.left_nets) == len(self.right_nets)
 
@@ -2083,11 +2087,11 @@ class Router:
 
         # Create an H/V track for each H/V coord containing a list for holding the faces in that track.
         v_tracks = [
-            GlobalTrack(orientation=VERT, idx=idx, coord=coord)
+            GlobalTrack(orientation=Orientation.VERT, idx=idx, coord=coord)
             for idx, coord in enumerate(v_track_coord)
         ]
         h_tracks = [
-            GlobalTrack(orientation=HORZ, idx=idx, coord=coord)
+            GlobalTrack(orientation=Orientation.HORZ, idx=idx, coord=coord)
             for idx, coord in enumerate(h_track_coord)
         ]
 
