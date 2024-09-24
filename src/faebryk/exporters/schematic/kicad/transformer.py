@@ -4,7 +4,7 @@
 import logging
 import pprint
 from copy import deepcopy
-from functools import singledispatch
+from functools import singledispatchmethod
 from itertools import chain, groupby
 from os import PathLike
 from pathlib import Path
@@ -270,7 +270,7 @@ class SchTransformer:
         groups = groupby(lib_sym.symbols.items(), key=lambda item: int(item[0][-1]))
         return {k: [v[1] for v in vs] for k, vs in groups}
 
-    @singledispatch
+    @singledispatchmethod
     def get_lib_symbol(self, sym) -> SCH.C_lib_symbols.C_symbol:
         raise NotImplementedError(f"Don't know how to get lib symbol for {type(sym)}")
 
@@ -283,7 +283,7 @@ class SchTransformer:
     def _(self, sym: SCH.C_symbol_instance) -> SCH.C_lib_symbols.C_symbol:
         return self.sch.lib_symbols.symbols[sym.lib_id]
 
-    @singledispatch
+    @singledispatchmethod
     def get_lib_pin(self, pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
         raise NotImplementedError(f"Don't know how to get lib pin for {type(pin)}")
 
@@ -437,3 +437,78 @@ class SchTransformer:
             self.attach_symbol(module, unit_instance)
 
             self.sch.symbols.append(unit_instance)
+
+    # Bounding boxes ----------------------------------------------------------------
+    type BoundingBox = tuple[Geometry.Point2D, Geometry.Point2D]
+
+    @singledispatchmethod
+    @staticmethod
+    def get_bbox(obj) -> BoundingBox:
+        """
+        Get the bounding box of the object in it's reference frame
+        This means that for things like pins, which know their own position,
+        the bbox returned will include the offset of the pin.
+        """
+        raise NotImplementedError(f"Don't know how to get bbox for {type(obj)}")
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_arc) -> BoundingBox:
+        return Geometry.bbox(
+            Geometry.approximate_arc(obj.start, obj.mid, obj.end),
+            tolerance=obj.stroke.width,
+        )
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_polyline | C_rect) -> BoundingBox:
+        return Geometry.bbox(
+            ((pt.x, pt.y) for pt in obj.pts.xys),
+            tolerance=obj.stroke.width,
+        )
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_circle) -> BoundingBox:
+        radius = Geometry.distance_euclid(obj.center, obj.end)
+        return Geometry.bbox(
+            (obj.center.x - radius, obj.center.y - radius),
+            (obj.center.x + radius, obj.center.y + radius),
+            tolerance=obj.stroke.width,
+        )
+
+    @get_bbox.register
+    def _(self, pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin) -> BoundingBox:
+        # TODO: include the name and number in the bbox
+        start = (pin.at.x, pin.at.y)
+        end = Geometry.rotate(start, [(pin.at.x + pin.length, pin.at.y)], pin.at.r)[0]
+        return Geometry.bbox([start, end])
+
+    @get_bbox.register
+    @classmethod
+    def _(cls, symbol: SCH.C_lib_symbols.C_symbol.C_symbol) -> BoundingBox:
+        return Geometry.bbox(
+            map(
+                cls.get_bbox,
+                chain(
+                    symbol.arcs,
+                    symbol.polylines,
+                    symbol.circles,
+                    symbol.rectangles,
+                    symbol.pins,
+                ),
+            )
+        )
+
+    @get_bbox.register
+    @classmethod
+    def _(cls, symbol: SCH.C_lib_symbols.C_symbol) -> BoundingBox:
+        return Geometry.bbox(
+            chain.from_iterable(cls.get_bbox(unit) for unit in symbol.symbols.values())
+        )
+
+    @get_bbox.register
+    def _(self, symbol: SCH.C_symbol_instance) -> BoundingBox:
+        # FIXME: this requires context to get the lib symbol,
+        # which means it must be called with self
+        return Geometry.abs_pos(self.get_bbox(self.get_lib_symbol(symbol)))

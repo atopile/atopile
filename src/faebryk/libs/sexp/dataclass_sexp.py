@@ -480,6 +480,14 @@ class JSON_File:
 
 
 def dataclass_dfs(obj) -> Iterator[tuple[Any, list, list[str]]]:
+    """
+    Iterates over all dataclass fields and their values.
+
+    Yields tuples of:
+    - value of the field
+    - list of the objects leading to the value
+    - list of the names of the fields leading to the value
+    """
     return _iterate_tree(obj, [], [])
 
 
