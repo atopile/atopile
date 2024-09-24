@@ -28,6 +28,7 @@ from .shims import Net, Part, Pin, rmv_attr
 
 if TYPE_CHECKING:
     from .node import SchNode
+    from .net_terminal import NetTerminal
 
 ###################################################################
 #
@@ -960,7 +961,13 @@ def push_and_pull(
             draw_redraw()
 
 
-def evolve_placement(anchored_parts, mobile_parts, nets, force_func, **options):
+def evolve_placement(
+    anchored_parts: list[Part],
+    mobile_parts: list[Part],
+    nets: list[Net],
+    force_func: Callable[[Part, list[Part], ...], Vector],
+    **options
+):
     """Evolve part placement looking for optimum using force function.
 
     Args:
@@ -981,7 +988,13 @@ def evolve_placement(anchored_parts, mobile_parts, nets, force_func, **options):
         snap_to_grid(part)
 
 
-def place_net_terminals(net_terminals, placed_parts, nets, force_func, **options):
+def place_net_terminals(
+    net_terminals: list["NetTerminal"],
+    placed_parts: list[Part],
+    nets: list[Net],
+    force_func: Callable[[Part, list[Part], ...], Vector],
+    **options
+):
     """Place net terminals around already-placed parts.
 
     Args:
@@ -992,7 +1005,7 @@ def place_net_terminals(net_terminals, placed_parts, nets, force_func, **options
         options (dict): Dict of options and values that enable/disable functions.
     """
 
-    def trim_pull_pins(terminals, bbox):
+    def trim_pull_pins(terminals: list["NetTerminal"], bbox: BBox):
         """Trim pullpins of NetTerminals to the part pins closest to an edge of the bounding box of placed parts.
 
         Args:

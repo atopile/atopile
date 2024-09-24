@@ -2,9 +2,9 @@
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
-from skidl import Part, Pin
+from .constants import GRID
 from .geometry import Point, Tx, Vector
-
+from .shims import Net, Part, Pin
 
 """
 Net_Terminal class for handling net labels.
@@ -12,27 +12,27 @@ Net_Terminal class for handling net labels.
 
 
 class NetTerminal(Part):
-    def __init__(self, net, tool_module):
+    pull_pins: dict[Net, list[Pin]]
+
+    def __init__(self, net: Net, tool_module):
         """Specialized Part with a single pin attached to a net.
 
         This is intended for attaching to nets to label them, typically when
         the net spans across levels of hierarchical nodes.
         """
-
-        # Create a Part.
-        from skidl import SKIDL
-
-        super().__init__(name="NT", ref_prefix="NT", tool=SKIDL)
-
+        from .bboxes import calc_hier_label_bbox
         # Set a default transformation matrix for this part.
         self.tx = Tx()
 
         # Add a single pin to the part.
-        pin = Pin(num="1", name="~")
-        self.add_pins(pin)
+        pin = Pin()
+        pin.part = self
+        pin.num = "1"
+        pin.name = "~"
+        self.pins = [pin]
 
         # Connect the pin to the net.
-        pin += net
+        net.pins.append(pin)
 
         # Set the pin at point (0,0) and pointing leftward toward the part body
         # (consisting of just the net label for this type of part) so any attached routing
@@ -43,13 +43,13 @@ class NetTerminal(Part):
 
         # Calculate the bounding box, but as if the pin were pointed right so
         # the associated label text would go to the left.
-        self.bbox = tool_module.calc_hier_label_bbox(net.name, "R")
+        self.bbox = calc_hier_label_bbox(net.name, "R")
 
         # Resize bbox so it's an integer number of GRIDs.
-        self.bbox = self.bbox.snap_resize(tool_module.constants.GRID)
+        self.bbox = self.bbox.snap_resize(GRID)
 
         # Extend the bounding box a bit so any attached routing will come straight in.
-        self.bbox.max += Vector(tool_module.constants.GRID, 0)
+        self.bbox.max += Vector(GRID, 0)
         self.lbl_bbox = self.bbox
 
         # Flip the NetTerminal horizontally if it is an output net (label on the right).

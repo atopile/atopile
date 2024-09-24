@@ -31,6 +31,9 @@ def rmv_attr(objs, attrs):
 
 
 class Part:
+    # We need to assign these
+
+    # TODO: where are these expected to be assigned?
     pins: list["Pin"]  # TODO: source
     place_bbox: BBox  # TODO:
     lbl_bbox: BBox  # TODO:
@@ -48,6 +51,7 @@ class Part:
     # attr assigned, eg. I don't need to care about it
     original_tx: Tx  # internal use
     force: Vector  # used for debugging
+    mv: Vector  # internal use
 
     def __iter__(self) -> Iterator["Pin"]:
         # TODO:
@@ -55,6 +59,11 @@ class Part:
 
 
 class Pin:
+    # We need to assign these
+    num: str
+    name: str
+
+    # TODO: where are these expected to be assigned?
     part: Part  # TODO:
     place_pt: Point  # TODO:
     pt: Point  # TODO:
@@ -64,15 +73,24 @@ class Pin:
     place_pt: Point  # TODO:
     orientation: str  # TODO:
 
+    # Assigned in NetTerminal, but it's unclear
+    # whether this is typically something that comes from the user
+    x: float
+    y: float
+
     def is_connected(self) -> bool:
         # TODO:
         raise NotImplementedError
 
 
 class Net:
+    # We need to assign these
+    name: str
+    netio: str  # whether input or output
+
+    # TODO: where are these expected to be assigned?
     pins: list[Pin]  # TODO:
     parts: set[Part]  # TODO:
 
     def __iter__(self) -> Iterator[Pin]:
-        # TODO:
-        raise NotImplementedError
+        yield from self.pins
