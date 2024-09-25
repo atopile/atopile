@@ -1,9 +1,15 @@
-"""Replace common skidl functions with our own"""
+"""
+Replace common skidl functions with our own
+
+Design notes:
+- Skidl's original code uses hasattr to check if an attribute is present.
+  I don't want to refactor all this, so we're assigning attributes as Skidl does
+- We're not using dataclasses because typing doesn't pass through InitVar properly
+"""
 
 from typing import TYPE_CHECKING, Any, Iterator, TypedDict
 
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
-from dataclasses import dataclass
 
 if TYPE_CHECKING:
     from .route import Face, GlobalTrack
@@ -39,12 +45,11 @@ class Part:
     ref: str
     hierarchy: str  # dot-separated string of part names
     unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
-    pins: list["Pin"]  # TODO: source
+    pins: list["Pin"]
+    # A string of H, V, L, R operations that are applied in sequence left-to-right.
+    symtx: str
 
     # TODO: where are these expected to be assigned?
-    place_bbox: BBox  # TODO:
-    lbl_bbox: BBox  # TODO:
-    tx: Tx  # transformation matrix of the part's position
     prev_tx: Tx  # previous transformation matrix of the part's position
     anchor_pins: dict[Any, list["Pin"]]  # TODO: better types, what is this?
     pull_pins: dict[Any, list["Pin"]]  # TODO: better types, what is this?
@@ -55,7 +60,10 @@ class Part:
     delta_cost_tx: Tx  # transformation matrix associated with delta_cost
     orientation_locked: bool  # whether the part's orientation is locked
 
-    # attr assigned, eg. I don't need to care about it
+    # internal use
+    tx: Tx  # transformation matrix of the part's position
+    lbl_bbox: BBox
+    place_bbox: BBox
     original_tx: Tx  # internal use
     force: Vector  # used for debugging
     mv: Vector  # internal use
@@ -83,6 +91,7 @@ class Part:
 class PartUnit(Part):
     # TODO: represent these in Faebryk
 
+    num: int  # which unit does this represent
     parent: Part
 
     def grab_pins(self) -> None:
@@ -104,29 +113,23 @@ class Pin:
     name: str
     net: "Net"
     stub: bool  # whether to stub the pin or not
-
-    # TODO: where are these expected to be assigned?
-    part: Part  # TODO:
-    place_pt: Point  # TODO:
-    pt: Point  # TODO:
-    orientation: str  # TODO:
-    route_pt: Point  # TODO:
-    place_pt: Point  # TODO:
-    orientation: str  # TODO:
-    bbox: BBox  # TODO:
-
-    # Assigned in NetTerminal, but it's unclear
-    # whether this is typically something that comes from the user
+    part: Part  # to which part does this pin belong?
+    orientation: str  # "U"/"D"/"L"/"R" for the pin's location
+    # position of the pin
+    # - relative to the part?
     x: float
     y: float
 
     # internal use
+    pt: Point
+    place_pt: Point
+    bbox: BBox
     routed: bool
     route_pt: Point
     face: "Face"
 
     def is_connected(self) -> bool:
-        # TODO:
+        """Whether the pin is connected to anything"""
         raise NotImplementedError
 
 
