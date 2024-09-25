@@ -3,7 +3,7 @@ Replace common skidl functions with our own
 
 Design notes:
 - Skidl's original code uses hasattr to check if an attribute is present.
-  I don't want to refactor all this, so we're assigning attributes as Skidl does
+    I don't want to refactor all this, so we're assigning attributes as Skidl does
 - We're not using dataclasses because typing doesn't pass through InitVar properly
 """
 
@@ -42,39 +42,37 @@ def rmv_attr(objs, attrs):
 
 class Part:
     # We need to assign these
-    ref: str
     hierarchy: str  # dot-separated string of part names
-    unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
     pins: list["Pin"]
+    ref: str
     # A string of H, V, L, R operations that are applied in sequence left-to-right.
     symtx: str
-
-    # TODO: where are these expected to be assigned?
-    prev_tx: Tx  # previous transformation matrix of the part's position
-    anchor_pins: dict[Any, list["Pin"]]  # TODO: better types, what is this?
-    pull_pins: dict[Any, list["Pin"]]  # TODO: better types, what is this?
-    pin_ctrs: dict  # TODO: better types, what is this?
-    saved_anchor_pins: dict[Any, list["Pin"]]  # copy of anchor_pins
-    saved_pull_pins: dict[Any, list["Pin"]]  # copy of pull_pins
-    delta_cost: float  # the largest decrease in cost and the associated orientation.
-    delta_cost_tx: Tx  # transformation matrix associated with delta_cost
-    orientation_locked: bool  # whether the part's orientation is locked
+    unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
 
     # internal use
-    tx: Tx  # transformation matrix of the part's position
-    lbl_bbox: BBox
-    place_bbox: BBox
-    original_tx: Tx  # internal use
-    force: Vector  # used for debugging
-    mv: Vector  # internal use
-    left_track: "GlobalTrack"
-    right_track: "GlobalTrack"
-    top_track: "GlobalTrack"
+    anchor_pins: dict[Any, list["Pin"]]
     bottom_track: "GlobalTrack"
+    delta_cost_tx: Tx  # transformation matrix associated with delta_cost
+    delta_cost: float  # the largest decrease in cost and the associated orientation.
+    force: Vector  # used for debugging
+    lbl_bbox: BBox
+    left_track: "GlobalTrack"
+    mv: Vector  # internal use
+    # whether the part's orientation is locked, based on symtx or pin count
+    orientation_locked: bool
+    original_tx: Tx  # internal use
+    pin_ctrs: dict["Net", Point]
+    place_bbox: BBox
+    prev_tx: Tx  # previous transformation matrix of the part's position
+    pull_pins: dict[Any, list["Pin"]]
+    right_track: "GlobalTrack"
+    saved_anchor_pins: dict[Any, list["Pin"]]  # copy of anchor_pins
+    saved_pull_pins: dict[Any, list["Pin"]]  # copy of pull_pins
+    top_track: "GlobalTrack"
+    tx: Tx  # transformation matrix of the part's position
 
     def __iter__(self) -> Iterator["Pin"]:
-        # TODO:
-        raise NotImplementedError
+        yield from self.pins
 
     @property
     def draw(self):
@@ -109,24 +107,24 @@ class PartUnit(Part):
 
 class Pin:
     # We need to assign these
-    num: str
     name: str
     net: "Net"
-    stub: bool  # whether to stub the pin or not
-    part: Part  # to which part does this pin belong?
+    num: str
     orientation: str  # "U"/"D"/"L"/"R" for the pin's location
+    part: Part  # to which part does this pin belong?
+    stub: bool  # whether to stub the pin or not
     # position of the pin
     # - relative to the part?
     x: float
     y: float
 
     # internal use
-    pt: Point
-    place_pt: Point
     bbox: BBox
-    routed: bool
-    route_pt: Point
     face: "Face"
+    place_pt: Point
+    pt: Point
+    route_pt: Point
+    routed: bool
 
     def is_connected(self) -> bool:
         """Whether the pin is connected to anything"""
@@ -137,8 +135,8 @@ class Net:
     # We need to assign these
     name: str
     netio: str  # whether input or output
-    pins: list[Pin]
     parts: set[Part]
+    pins: list[Pin]
     stub: bool  # whether to stub the pin or not
 
     def __bool__(self) -> bool:
@@ -149,15 +147,18 @@ class Net:
         yield from self.pins
         yield from self.parts
 
+    def __hash__(self) -> int:
+        """Nets are sometimes used as keys in dicts, so they must be hashable"""
+        return id(self)
+
     def is_implicit(self) -> bool:
-        # TODO:
-        # Hint; The net has a user-assigned name, so add a terminal to it below.
+        """Whether the net has a user-assigned name"""
         raise NotImplementedError
 
 
 class Circuit:
-    parts: list[Part]
     nets: list[Net]
+    parts: list[Part]
 
 
 class Options(TypedDict):
