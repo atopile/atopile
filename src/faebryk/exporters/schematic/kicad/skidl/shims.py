@@ -51,10 +51,19 @@ class Part:
 
     # things we've added to make life easier
     fab_symbol: F.Symbol
+    bare_bbox: BBox
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
-        for attr in ["hierarchy", "pins", "ref", "symtx", "unit", "fab_symbol"]:
+        for attr in [
+            "hierarchy",
+            "pins",
+            "ref",
+            "symtx",
+            "unit",
+            "fab_symbol",
+            "bare_bbox",
+        ]:
             if not hasattr(self, attr):
                 raise ValueError(f"Missing attribute: {attr}")
 

@@ -612,30 +612,25 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
 
     def calc_part_bbox(part: Part):
         """Calculate the labeled bounding boxes and store it in the part."""
-        from faebryk.exporters.schematic.kicad.transformer import SchTransformer
+        # Find part/unit bounding boxes excluding any net labels on pins.
+        # TODO: part.lbl_bbox could be substituted for part.bbox.
+        # TODO: Part ref and value should be updated before calculating bounding box.
 
-        f_symbol = part.fab_symbol.get_trait(SchTransformer.has_linked_sch_symbol).symbol
-        bare_bboxes = BBox(Point(*pts) for pts in SchTransformer.get_bbox(f_symbol))
-
-        # # Find part/unit bounding boxes excluding any net labels on pins.
-        # # TODO: part.lbl_bbox could be substituted for part.bbox.
-        # # TODO: Part ref and value should be updated before calculating bounding box.
-
-        for part_unit, bare_bbox in zip(units(part), bare_bboxes):
+        for part_unit in units(part):
             assert isinstance(part_unit, (PartUnit, Part))
-            assert isinstance(bare_bbox, BBox)
+            assert isinstance(part_unit.bare_bbox, BBox)
 
             # Expand the bounding box if it's too small in either dimension.
             resize_wh = Vector(0, 0)
-            if bare_bbox.w < 100:
-                resize_wh.x = (100 - bare_bbox.w) / 2
-            if bare_bbox.h < 100:
-                resize_wh.y = (100 - bare_bbox.h) / 2
-            bare_bbox = bare_bbox.resize(resize_wh)
+            if part_unit.bare_bbox.w < 100:
+                resize_wh.x = (100 - part_unit.bare_bbox.w) / 2
+            if part_unit.bare_bbox.h < 100:
+                resize_wh.y = (100 - part_unit.bare_bbox.h) / 2
+            part_unit.bare_bbox = part_unit.bare_bbox.resize(resize_wh)
 
             # Find expanded bounding box that includes any hier labels attached to pins.
             part_unit.lbl_bbox = BBox()
-            part_unit.lbl_bbox.add(bare_bbox)
+            part_unit.lbl_bbox.add(part_unit.bare_bbox)
             for pin in part_unit:
                 if pin.stub:
                     # Find bounding box for net stub label attached to pin.
