@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Any, Iterator, TypedDict
 
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
+from dataclasses import dataclass
 
 if TYPE_CHECKING:
     from .route import Face, GlobalTrack
@@ -32,14 +33,15 @@ def rmv_attr(objs, attrs):
                 pass
 
 
+
 class Part:
     # We need to assign these
     ref: str
     hierarchy: str  # dot-separated string of part names
-    unit: dict[str, "Part"]  # units within the part, empty is this is all it is
+    unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
+    pins: list["Pin"]  # TODO: source
 
     # TODO: where are these expected to be assigned?
-    pins: list["Pin"]  # TODO: source
     place_bbox: BBox  # TODO:
     lbl_bbox: BBox  # TODO:
     tx: Tx  # transformation matrix of the part's position
@@ -71,6 +73,30 @@ class Part:
         # TODO:
         raise NotImplementedError
 
+    def grab_pins(self) -> None:
+        """Grab pin from Part and assign to PartUnit."""
+
+        for pin in self.pins:
+            pin.part = self
+
+
+class PartUnit(Part):
+    # TODO: represent these in Faebryk
+
+    parent: Part
+
+    def grab_pins(self) -> None:
+        """Grab pin from Part and assign to PartUnit."""
+
+        for pin in self.pins:
+            pin.part = self
+
+    def release_pins(self) -> None:
+        """Return PartUnit pins to parent Part."""
+
+        for pin in self.pins:
+            pin.part = self.parent
+
 
 class Pin:
     # We need to assign these
@@ -95,6 +121,7 @@ class Pin:
     y: float
 
     # internal use
+    routed: bool
     route_pt: Point
     face: "Face"
 

@@ -13,12 +13,14 @@ import os.path
 import re
 import time
 from collections import Counter, OrderedDict
+from typing import Unpack
 
 from .bboxes import calc_hier_label_bbox, calc_symbol_bbox
 from .constants import BLK_INT_PAD, BOX_LABEL_FONT_SIZE, GRID, PIN_LABEL_FONT_SIZE
 from .geometry import BBox, Point, Tx, Vector
 from .net_terminal import NetTerminal
-from .shims import get_script_name, rmv_attr
+from .node import HIER_SEP, SchNode
+from .shims import Circuit, Options, Part, PartUnit, get_script_name, rmv_attr
 
 
 def bbox_to_eeschema(bbox: BBox, tx: Tx, name=None):
@@ -421,7 +423,7 @@ def create_eeschema_file(
         )
 
 
-def node_to_eeschema(node, sheet_tx=Tx()):
+def node_to_eeschema(node: SchNode, sheet_tx: Tx = Tx()) -> str:
     """Convert node circuitry to an EESCHEMA sheet.
 
     Args:
@@ -430,9 +432,6 @@ def node_to_eeschema(node, sheet_tx=Tx()):
     Returns:
         str: EESCHEMA text for the node circuitry.
     """
-
-    from skidl import HIER_SEP
-
     # List to hold all the EESCHEMA code for this node.
     eeschema_code = []
 
@@ -519,16 +518,16 @@ Generate a KiCad EESCHEMA schematic from a Circuit object.
 # TODO: Handle symio attribute.
 
 
-def preprocess_circuit(circuit, **options):
+def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
     """Add stuff to parts & nets for doing placement and routing of schematics."""
 
-    def units(part):
+    def units(part: Part) -> list[PartUnit | Part]:
         if len(part.unit) == 0:
             return [part]
         else:
             return part.unit.values()
 
-    def initialize(part):
+    def initialize(part: Part):
         """Initialize part or its part units."""
 
         # Initialize the units of the part, or the part itself if it has no units.
@@ -554,7 +553,7 @@ def preprocess_circuit(circuit, **options):
                 pin.pt = Point(pin.x, pin.y)
                 pin.routed = False
 
-    def rotate_power_pins(part):
+    def rotate_power_pins(part: Part):
         """Rotate a part based on the direction of its power pins.
 
         This function is to make sure that voltage sources face up and gnd pins
@@ -612,7 +611,7 @@ def preprocess_circuit(circuit, **options):
                 for _ in range(int(round(rotation / 90))):
                     part_unit.tx = part_unit.tx * tx_cw_90
 
-    def calc_part_bbox(part):
+    def calc_part_bbox(part: Part):
         """Calculate the labeled bounding boxes and store it in the part."""
 
         # Find part/unit bounding boxes excluding any net labels on pins.
@@ -621,6 +620,9 @@ def preprocess_circuit(circuit, **options):
         bare_bboxes = calc_symbol_bbox(part)[1:]
 
         for part_unit, bare_bbox in zip(units(part), bare_bboxes):
+            assert isinstance(part_unit, (PartUnit, Part))
+            assert isinstance(bare_bbox, BBox)
+
             # Expand the bounding box if it's too small in either dimension.
             resize_wh = Vector(0, 0)
             if bare_bbox.w < 100:
@@ -656,12 +658,11 @@ def preprocess_circuit(circuit, **options):
         calc_part_bbox(part)
 
 
-def finalize_parts_and_nets(circuit, **options):
+def finalize_parts_and_nets(circuit: Circuit, **options: Unpack[Options]):
     """Restore parts and nets after place & route is done."""
 
     # Remove any NetTerminals that were added.
-    net_terminals = (p for p in circuit.parts if isinstance(p, NetTerminal))
-    circuit.rmv_parts(*net_terminals)
+    circuit.parts = [p for p in circuit.parts if not isinstance(p, NetTerminal)]
 
     # Return pins from the part units to their parent part.
     for part in circuit.parts:
@@ -672,13 +673,13 @@ def finalize_parts_and_nets(circuit, **options):
 
 
 def gen_schematic(
-    circuit,
-    filepath=".",
-    top_name=get_script_name(),
+    circuit: Circuit,
+    filepath: str = ".",
+    top_name: str = get_script_name(),
     title="SKiDL-Generated Schematic",
-    flatness=0.0,
-    retries=2,
-    **options
+    flatness: float = 0.0,
+    retries: int = 2,
+    **options: Unpack[Options],
 ):
     """Create a schematic file from a Circuit object.
 
@@ -692,7 +693,6 @@ def gen_schematic(
         options (dict, optional): Dict of options and values, usually for drawing/debugging.
     """
 
-    from .node import SchNode
     from .place import PlacementFailure
     from .route import RoutingFailure
 
@@ -733,7 +733,7 @@ def gen_schematic(
             continue
 
         # Generate EESCHEMA code for the schematic.
-        # TODO:
+        # TODO: extract into for generating schematic objects
         # node_to_eeschema(node)
 
         # Clean up.
