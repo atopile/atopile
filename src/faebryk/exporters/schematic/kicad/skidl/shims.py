@@ -9,6 +9,7 @@ Design notes:
 
 from typing import TYPE_CHECKING, Any, Iterator, TypedDict
 
+import faebryk.library._F as F
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
 
 if TYPE_CHECKING:
@@ -39,7 +40,6 @@ def rmv_attr(objs, attrs):
                 pass
 
 
-
 class Part:
     # We need to assign these
     hierarchy: str  # dot-separated string of part names
@@ -48,6 +48,15 @@ class Part:
     # A string of H, V, L, R operations that are applied in sequence left-to-right.
     symtx: str
     unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
+
+    # things we've added to make life easier
+    fab_symbol: F.Symbol
+
+    def audit(self) -> None:
+        """Ensure mandatory attributes are set"""
+        for attr in ["hierarchy", "pins", "ref", "symtx", "unit", "fab_symbol"]:
+            if not hasattr(self, attr):
+                raise ValueError(f"Missing attribute: {attr}")
 
     # internal use
     anchor_pins: dict[Any, list["Pin"]]
@@ -92,6 +101,13 @@ class PartUnit(Part):
     num: int  # which unit does this represent
     parent: Part
 
+    def audit(self) -> None:
+        """Ensure mandatory attributes are set"""
+        super().audit()
+        for attr in ["num", "parent"]:
+            if not hasattr(self, attr):
+                raise ValueError(f"Missing attribute: {attr}")
+
     def grab_pins(self) -> None:
         """Grab pin from Part and assign to PartUnit."""
 
@@ -118,6 +134,29 @@ class Pin:
     x: float
     y: float
 
+    # things we've added to make life easier
+    fab_pin: F.Symbol.Pin
+    fab_is_gnd: bool
+    fab_is_pwr: bool
+
+    def audit(self) -> None:
+        """Ensure mandatory attributes are set"""
+        for attr in [
+            "name",
+            "net",
+            "num",
+            "orientation",
+            "part",
+            "stub",
+            "x",
+            "y",
+            "fab_pin",
+            "fab_is_gnd",
+            "fab_is_pwr",
+        ]:
+            if not hasattr(self, attr):
+                raise ValueError(f"Missing attribute: {attr}")
+
     # internal use
     bbox: BBox
     face: "Face"
@@ -139,11 +178,18 @@ class Net:
     pins: list[Pin]
     stub: bool  # whether to stub the pin or not
 
+    def audit(self) -> None:
+        """Ensure mandatory attributes are set"""
+        for attr in ["name", "netio", "parts", "pins", "stub"]:
+            if not hasattr(self, attr):
+                raise ValueError(f"Missing attribute: {attr}")
+
     def __bool__(self) -> bool:
         """TODO: does this need to be false if no parts or pins?"""
         raise NotImplementedError
 
     def __iter__(self) -> Iterator[Pin | Part]:
+        raise NotImplementedError  # not sure what to output here
         yield from self.pins
         yield from self.parts
 
@@ -159,6 +205,12 @@ class Net:
 class Circuit:
     nets: list[Net]
     parts: list[Part]
+
+    def audit(self) -> None:
+        """Ensure mandatory attributes are set"""
+        for attr in ["nets", "parts"]:
+            if not hasattr(self, attr):
+                raise ValueError(f"Missing attribute: {attr}")
 
 
 class Options(TypedDict):

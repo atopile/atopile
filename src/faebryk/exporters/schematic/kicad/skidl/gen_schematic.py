@@ -20,7 +20,7 @@ from .constants import BLK_INT_PAD, BOX_LABEL_FONT_SIZE, GRID, PIN_LABEL_FONT_SI
 from .geometry import BBox, Point, Tx, Vector
 from .net_terminal import NetTerminal
 from .node import HIER_SEP, SchNode
-from .shims import Circuit, Options, Part, PartUnit, get_script_name, rmv_attr
+from .shims import Circuit, Options, Part, PartUnit, Pin, get_script_name, rmv_attr
 
 
 def bbox_to_eeschema(bbox: BBox, tx: Tx, name=None):
@@ -564,11 +564,11 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
         if not getattr(part, "symtx", ""):
             return
 
-        def is_pwr(net):
-            return net_name.startswith("+")
+        def is_pwr(pin: Pin) -> bool:
+            return pin.fab_is_pwr
 
-        def is_gnd(net):
-            return "gnd" in net_name.lower()
+        def is_gnd(pin: Pin) -> bool:
+            return pin.fab_is_gnd
 
         dont_rotate_pin_cnt = options.get("dont_rotate_pin_count", 10000)
 
@@ -580,8 +580,7 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
             # Tally what rotation would make each pwr/gnd pin point up or down.
             rotation_tally = Counter()
             for pin in part_unit:
-                net_name = getattr(pin.net, "name", "").lower()
-                if is_gnd(net_name):
+                if is_gnd(pin):
                     if pin.orientation == "U":
                         rotation_tally[0] += 1
                     if pin.orientation == "D":
@@ -590,7 +589,7 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
                         rotation_tally[90] += 1
                     if pin.orientation == "R":
                         rotation_tally[270] += 1
-                elif is_pwr(net_name):
+                elif is_pwr(pin):
                     if pin.orientation == "D":
                         rotation_tally[0] += 1
                     if pin.orientation == "U":

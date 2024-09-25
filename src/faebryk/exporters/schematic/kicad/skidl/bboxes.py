@@ -312,7 +312,7 @@ def calc_symbol_bbox(part: Part, **options: Unpack[Options]):
     return unit_bboxes
 
 
-def calc_hier_label_bbox(label, dir):
+def calc_hier_label_bbox(label: str, dir: str) -> BBox:
     """Calculate the bounding box for a hierarchical label.
 
     Args:
