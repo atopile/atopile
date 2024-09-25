@@ -8,13 +8,25 @@ Drawing routines used for debugging place & route.
 """
 from collections import defaultdict
 from random import randint
+from typing import TYPE_CHECKING
 
 from .geometry import BBox, Point, Segment, Tx, Vector
+
+if TYPE_CHECKING:
+    import pygame
+    import pygame.font
+
+    from faebryk.exporters.schematic.kicad.skidl.node import SchNode
+    from faebryk.exporters.schematic.kicad.skidl.route import Interval, NetInterval
+    from faebryk.exporters.schematic.kicad.skidl.shims import Net, Part
 
 # Dictionary for storing colors to visually distinguish routed nets.
 net_colors = defaultdict(lambda: (randint(0, 200), randint(0, 200), randint(0, 200)))
 
-def draw_box(bbox, scr, tx, color=(192, 255, 192), thickness=0):
+
+def draw_box(
+    bbox: BBox, scr: "pygame.Surface", tx: Tx, color=(192, 255, 192), thickness=0
+):
     """Draw a box in the drawing area.
 
     Args:
@@ -37,7 +49,8 @@ def draw_box(bbox, scr, tx, color=(192, 255, 192), thickness=0):
     )
     pygame.draw.polygon(scr, color, corners, thickness)
 
-def draw_endpoint(pt, scr, tx, color=(100, 100, 100), dot_radius=10):
+
+def draw_endpoint(pt: Point, scr: "pygame.Surface", tx: Tx, color=(100, 100, 100), dot_radius=10):
     """Draw a line segment endpoint in the drawing area.
 
     Args:
@@ -65,7 +78,14 @@ def draw_endpoint(pt, scr, tx, color=(100, 100, 100), dot_radius=10):
     radius = dot_radius * tx.a
     pygame.draw.circle(scr, color, (pt.x, pt.y), radius)
 
-def draw_seg(seg, scr, tx, color=(100, 100, 100), thickness=5, dot_radius=10):
+def draw_seg(
+    seg: Segment | "Interval" | "NetInterval",
+    scr: "pygame.Surface",
+    tx: Tx,
+    color=(100, 100, 100),
+    thickness=5,
+    dot_radius=10,
+):
     """Draw a line segment in the drawing area.
 
     Args:
@@ -96,7 +116,15 @@ def draw_seg(seg, scr, tx, color=(100, 100, 100), thickness=5, dot_radius=10):
         scr, color, (seg.p1.x, seg.p1.y), (seg.p2.x, seg.p2.y), width=thickness
     )
 
-def draw_text(txt, pt, scr, tx, font, color=(100, 100, 100), real=True):
+def draw_text(
+    txt: str,
+    pt: Point,
+    scr: "pygame.Surface",
+    tx: Tx,
+    font: "pygame.font.Font",
+    color=(100, 100, 100),
+    real=True,
+):
     """Render text in drawing area.
 
     Args:
@@ -113,9 +141,11 @@ def draw_text(txt, pt, scr, tx, font, color=(100, 100, 100), real=True):
         pt = pt * tx
 
     # Render text.
+    # TODO: pygame version may've varied because
+    # syntax highlighting doesn't recognise this
     font.render_to(scr, (pt.x, pt.y), txt, color)
 
-def draw_part(part, scr, tx, font):
+def draw_part(part: Part, scr: "pygame.Surface", tx: Tx, font: "pygame.font.Font"):
     """Draw part bounding box.
 
     Args:
@@ -139,7 +169,16 @@ def draw_part(part, scr, tx, font):
         # Probably trying to draw a block of parts which has no pins and can't iterate thru them.
         pass
 
-def draw_net(net, parts, scr, tx, font, color=(0, 0, 0), thickness=2, dot_radius=5):
+def draw_net(
+    net: "Net",
+    parts: list["Part"],
+    scr: "pygame.Surface",
+    tx: Tx,
+    font: "pygame.font.Font",
+    color=(0, 0, 0),
+    thickness=2,
+    dot_radius=5,
+):
     """Draw net and connected terminals.
 
     Args:
@@ -168,7 +207,14 @@ def draw_net(net, parts, scr, tx, font, color=(0, 0, 0), thickness=2, dot_radius
             dot_radius=dot_radius,
         )
 
-def draw_force(part, force, scr, tx, font, color=(128, 0, 0)):
+def draw_force(
+    part: Part,
+    force: Vector,
+    scr: "pygame.Surface",
+    tx: Tx,
+    font: "pygame.font.Font",
+    color=(128, 0, 0),
+):
     """Draw force vector affecting a part.
 
     Args:
@@ -185,7 +231,13 @@ def draw_force(part, force, scr, tx, font, color=(128, 0, 0)):
         Segment(anchor, anchor + force), scr, tx, color=color, thickness=5, dot_radius=5
     )
 
-def draw_placement(parts, nets, scr, tx, font):
+def draw_placement(
+    parts: list["Part"],
+    nets: list["Net"],
+    scr: "pygame.Surface",
+    tx: Tx,
+    font: "pygame.font.Font",
+):
     """Draw placement of parts and interconnecting nets.
 
     Args:
@@ -203,7 +255,13 @@ def draw_placement(parts, nets, scr, tx, font):
         draw_net(net, parts, scr, tx, font)
     draw_redraw()
 
-def draw_routing(node, bbox, parts, *other_stuff, **options):
+def draw_routing(
+    node: "SchNode",
+    bbox: BBox,
+    parts: list["Part"],
+    *other_stuff,
+    **options,
+):
     """Draw routing for debugging purposes.
 
     Args:
@@ -234,7 +292,10 @@ def draw_routing(node, bbox, parts, *other_stuff, **options):
 
     draw_end()
 
-def draw_clear(scr, color=(255, 255, 255)):
+def draw_clear(
+    scr: "pygame.Surface",
+    color: tuple[int, int, int] = (255, 255, 255),
+):
     """Clear drawing area.
 
     Args:
@@ -243,7 +304,9 @@ def draw_clear(scr, color=(255, 255, 255)):
     """
     scr.fill(color)
 
-def draw_start(bbox):
+def draw_start(
+    bbox: BBox,
+):
     """
     Initialize PyGame drawing area.
 
