@@ -15,7 +15,7 @@ import time
 from collections import Counter, OrderedDict
 from typing import Unpack
 
-from .bboxes import calc_hier_label_bbox, calc_symbol_bbox
+from .bboxes import calc_hier_label_bbox
 from .constants import BLK_INT_PAD, BOX_LABEL_FONT_SIZE, GRID, PIN_LABEL_FONT_SIZE
 from .geometry import BBox, Point, Tx, Vector
 from .net_terminal import NetTerminal
@@ -612,11 +612,14 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
 
     def calc_part_bbox(part: Part):
         """Calculate the labeled bounding boxes and store it in the part."""
+        from faebryk.exporters.schematic.kicad.transformer import SchTransformer
 
-        # Find part/unit bounding boxes excluding any net labels on pins.
-        # TODO: part.lbl_bbox could be substituted for part.bbox.
-        # TODO: Part ref and value should be updated before calculating bounding box.
-        bare_bboxes = calc_symbol_bbox(part)[1:]
+        f_symbol = part.fab_symbol.get_trait(SchTransformer.has_linked_sch_symbol).symbol
+        bare_bboxes = BBox(Point(*pts) for pts in SchTransformer.get_bbox(f_symbol))
+
+        # # Find part/unit bounding boxes excluding any net labels on pins.
+        # # TODO: part.lbl_bbox could be substituted for part.bbox.
+        # # TODO: Part ref and value should be updated before calculating bounding box.
 
         for part_unit, bare_bbox in zip(units(part), bare_bboxes):
             assert isinstance(part_unit, (PartUnit, Part))

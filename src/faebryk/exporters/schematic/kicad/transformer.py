@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import hashlib
 import logging
 import pprint
 from copy import deepcopy
@@ -8,14 +9,17 @@ from functools import singledispatchmethod
 from itertools import chain, groupby
 from os import PathLike
 from pathlib import Path
-from typing import Any, List, Protocol
+from typing import Any, List, Protocol, Unpack
 
-# import numpy as np
-# from shapely import Polygon
+from faebryk.exporters.schematic.kicad.skidl.shims import Options
 import faebryk.library._F as F
 from faebryk.core.graphinterface import Graph
 from faebryk.core.module import Module
 from faebryk.core.node import Node
+
+# import numpy as np
+# from shapely import Polygon
+from faebryk.exporters.pcb.kicad.transformer import is_marked
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import (
@@ -62,17 +66,12 @@ Alignment = tuple[Justify, Justify, Justify]
 Alignment_Default = (Justify.center_horizontal, Justify.center_vertical, Justify.normal)
 
 
-def gen_uuid(mark: str = "") -> UUID:
-    return _gen_uuid(mark)
-
-
-def is_marked(uuid: UUID, mark: str):
-    suffix = mark.encode().hex()
-    return uuid.replace("-", "").endswith(suffix)
-
-
 class _HasUUID(Protocol):
     uuid: UUID
+
+
+class _HasPropertys(Protocol):
+    propertys: dict[str, C_property]
 
 
 # TODO: consider common transformer base
@@ -99,7 +98,7 @@ class SchTransformer:
         self.app = app
         self._symbol_files_index: dict[str, Path] = {}
 
-        self.missing_symbols: list[SCH.C_lib_symbols.C_symbol] = []
+        self.missing_symbols: list[F.Symbol] = []
 
         self.dimensions = None
 
@@ -146,16 +145,7 @@ class SchTransformer:
             )
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
-
-        if self.missing_symbols:
-            # TODO: just go look for the symbols instead
-            raise ExceptionGroup(
-                "Missing lib symbols",
-                [
-                    f"Symbol {sym.name} not found in symbols dictionary"
-                    for sym in self.missing_symbols
-                ],
-            )
+        logger.debug(f"Missing: {pprint.pformat(self.missing_symbols)}")
 
     def attach_symbol(self, f_symbol: F.Symbol, sch_symbol: SCH.C_symbol_instance):
         """Bind the module and symbol together on the graph"""
@@ -165,21 +155,22 @@ class SchTransformer:
         for pin_name, pins in groupby(sch_symbol.pins, key=lambda p: p.name):
             f_symbol.pins[pin_name].add(SchTransformer.has_linked_sch_pins(pins))
 
-    def cleanup(self):
-        """Delete faebryk-created objects in schematic."""
+    # TODO: remove cleanup, it shouldn't really be required if we're marking propertys
+    # def cleanup(self):
+    #     """Delete faebryk-created objects in schematic."""
 
-        # find all objects with path_len 2 (direct children of a list in pcb)
-        candidates = [o for o in dataclass_dfs(self.sch) if len(o[1]) == 2]
-        for obj, path, _ in candidates:
-            if not self.is_marked(obj):
-                continue
+    #     # find all objects with path_len 2 (direct children of a list in pcb)
+    #     candidates = [o for o in dataclass_dfs(self.sch) if len(o[1]) == 2]
+    #     for obj, path, _ in candidates:
+    #         if not self.check_mark(obj):
+    #             continue
 
-            # delete object by removing it from the container they are in
-            holder = path[-1]
-            if isinstance(holder, list):
-                holder.remove(obj)
-            elif isinstance(holder, dict):
-                del holder[get_key(obj, holder)]
+    #         # delete object by removing it from the container they are in
+    #         holder = path[-1]
+    #         if isinstance(holder, list):
+    #             holder.remove(obj)
+    #         elif isinstance(holder, dict):
+    #             del holder[get_key(obj, holder)]
 
     def index_symbol_files(
         self, fp_lib_tables: PathLike | list[PathLike], load_globals: bool = True
@@ -207,16 +198,6 @@ class SchTransformer:
     @staticmethod
     def flipped[T](input_list: list[tuple[T, int]]) -> list[tuple[T, int]]:
         return [(x, (y + 180) % 360) for x, y in reversed(input_list)]
-
-    @staticmethod
-    def gen_uuid(mark: bool = False):
-        return gen_uuid(mark="FBRK" if mark else "")
-
-    @staticmethod
-    def is_marked(obj) -> bool:
-        if not hasattr(obj, "uuid"):
-            return False
-        return is_marked(obj.uuid, "FBRK")
 
     # Getter ---------------------------------------------------------------------------
     @staticmethod
@@ -294,31 +275,82 @@ class SchTransformer:
         )
         return lib_pin
 
-    # Insert ---------------------------------------------------------------------------
+    # Marking -------------------------------------------------------------------------
+    """
+    There are two methods to mark objects in the schematic:
+    1. For items with propertys, add a property with a hash of the contents of
+        itself, minus the mark property. This is used to detect changes to things
+        such as position that the user may have nudged externally.
+    2. For items without propertys, generate the uuid with the mark.
+
+    Anything generated by this transformer is marked.
+    """
+
     @staticmethod
-    def mark[R: _HasUUID](node: R) -> R:
-        if hasattr(node, "uuid"):
-            node.uuid = SchTransformer.gen_uuid(mark=True)  # type: ignore
+    def gen_uuid(mark: bool = False) -> UUID:
+        return _gen_uuid(mark="FBRK" if mark else "")
 
-        return node
+    @staticmethod
+    def is_uuid_marked(obj) -> bool:
+        if not hasattr(obj, "uuid"):
+            return False
+        assert isinstance(obj.uuid, str)
+        suffix = "FBRK".encode().hex()
+        return obj.uuid.replace("-", "").endswith(suffix)
 
-    def _get_list_field[R](self, node: R, prefix: str = "") -> list[R]:
-        root = self.sch
-        key = prefix + type(node).__name__.removeprefix("C_") + "s"
+    @staticmethod
+    def hash_contents(obj) -> str:
+        """Hash the contents of an object, minus the mark"""
+        # filter out mark properties
+        def _filter(k: tuple[Any, list[Any], list[str]]) -> bool:
+            obj, _, _ = k
+            if isinstance(obj, C_property):
+                if obj.name == "faebryk_mark":
+                    return False
+            return True
 
-        assert hasattr(root, key)
+        hasher = hashlib.blake2b()
+        for obj, _, name_path in filter(_filter, dataclass_dfs(obj)):
+            hasher.update(f"{name_path}={obj}".encode())
 
-        target = getattr(root, key)
-        assert isinstance(target, list)
-        assert all(isinstance(x, type(node)) for x in target)
-        return target
+        return hasher.hexdigest()
 
-    def _insert(self, obj: Any, prefix: str = ""):
-        obj = SchTransformer.mark(obj)
-        self._get_list_field(obj, prefix=prefix).append(obj)
+    @staticmethod
+    def check_mark(obj) -> bool:
+        """Return True if an object is validly marked"""
+        if hasattr(obj, "propertys"):
+            if "faebryk_mark" in obj.propertys:
+                prop = obj.propertys["faebryk_mark"]
+                assert isinstance(prop, C_property)
+                return prop.value == SchTransformer.hash_contents(obj)
+            else:
+                # items that have the capacity to be marked
+                # via propertys are only considered marked
+                # if they have the property and it's valid,
+                # despite their uuid
+                return False
 
-    def _delete(self, obj: Any, prefix: str = ""):
-        self._get_list_field(obj, prefix=prefix).remove(obj)
+        return SchTransformer.is_uuid_marked(obj)
+
+    @staticmethod
+    def mark[R: _HasUUID | _HasPropertys](obj: R) -> R:
+        """Mark the property if possible, otherwise ensure the uuid is marked"""
+        if hasattr(obj, "propertys"):
+            obj.propertys["faebryk_mark"] = C_property(
+                name="faebryk_mark",
+                value=SchTransformer.hash_contents(obj),
+            )
+
+        else:
+            if not hasattr(obj, "uuid"):
+                raise TypeError(f"Object {obj} has no propertys or uuid")
+
+            if not is_marked(obj):
+                obj.uuid = SchTransformer.gen_uuid(mark=True)
+
+        return obj
+
+    # Insert ---------------------------------------------------------------------------
 
     def insert_wire(
         self,
@@ -419,6 +451,9 @@ class SchTransformer:
                 uuid=self.gen_uuid(mark=True),
             )
 
+            # It's one of ours, until it's modified in KiCAD
+            SchTransformer.mark(unit_instance)
+
             # Add a C_property for the reference based on the override name
             if reference_name := module.get_trait(F.has_overriden_name).get_name():
                 unit_instance.propertys["Reference"] = C_property(
@@ -507,3 +542,14 @@ class SchTransformer:
         # FIXME: this requires context to get the lib symbol,
         # which means it must be called with self
         return Geometry.abs_pos(self.get_bbox(self.get_lib_symbol(symbol)))
+
+    def generate_schematic(self, **options: Unpack[Options]):
+        """Does what it says on the tin."""
+        # 1. add missing symbols
+        for f_symbol in self.missing_symbols:
+            self.insert_symbol(f_symbol)
+        self.missing_symbols = []
+
+        # 2. create shim objects
+        # 3. run skidl schematic generation
+        # 4. transform sch according to skidl
