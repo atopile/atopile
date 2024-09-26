@@ -96,7 +96,7 @@ class Tx:
         )
 
     @property
-    def origin(self) -> Point:
+    def origin(self) -> "Point":
         """Return the (dx, dy) translation as a Point."""
         return Point(self.dx, self.dy)
 
@@ -111,7 +111,7 @@ class Tx:
         """Return the scaling factor."""
         return (Point(1, 0) * self - Point(0, 0) * self).magnitude
 
-    def move(self, vec: Point) -> "Tx":
+    def move(self, vec: "Point") -> "Tx":
         """Return Tx with movement vector applied."""
         return self * Tx(dx=vec.x, dy=vec.y)
 

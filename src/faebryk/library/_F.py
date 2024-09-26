@@ -94,7 +94,6 @@ from faebryk.library.can_attach_via_pinmap_pinlist import can_attach_via_pinmap_
 from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
 from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
-from faebryk.library.has_symbol_layout_defined import has_symbol_layout_defined
 from faebryk.library.BJT import BJT
 from faebryk.library.Diode import Diode
 from faebryk.library.MOSFET import MOSFET

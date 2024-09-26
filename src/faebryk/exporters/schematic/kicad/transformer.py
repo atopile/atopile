@@ -9,7 +9,6 @@ from functools import singledispatchmethod
 from itertools import chain, groupby
 from os import PathLike
 from pathlib import Path
-from random import randint
 from typing import Any, List, Protocol, Unpack
 
 import faebryk.library._F as F
@@ -48,7 +47,6 @@ from faebryk.libs.util import (
     FuncDict,
     cast_assert,
     find,
-    get_key,
     not_none,
     once,
 )

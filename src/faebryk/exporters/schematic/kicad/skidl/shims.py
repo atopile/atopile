@@ -68,7 +68,7 @@ class Part:
     unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
 
     # things we've added to make life easier
-    sch_symbol: fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance
+    sch_symbol: "fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance"
     fab_symbol: F.Symbol | None
     bare_bbox: BBox
 
@@ -167,7 +167,7 @@ class Pin:
     y: float
 
     # things we've added to make life easier
-    sch_pin: fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance.C_pin
+    sch_pin: "fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance.C_pin"
     fab_pin: F.Symbol.Pin
     fab_is_gnd: bool
     fab_is_pwr: bool
