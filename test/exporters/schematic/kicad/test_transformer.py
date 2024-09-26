@@ -4,7 +4,7 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.exporters.schematic.kicad.transformer import SchTransformer
+from faebryk.exporters.schematic.kicad.transformer import Transformer
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
 from faebryk.libs.util import find
@@ -31,10 +31,10 @@ def sch_file(test_dir: Path):
 @pytest.fixture
 def transformer(sch_file: C_kicad_sch_file):
     app = Module()
-    return SchTransformer(sch_file.kicad_sch, app.get_graph(), app)
+    return Transformer(sch_file.kicad_sch, app.get_graph(), app)
 
 
-def test_wire_transformer(transformer: SchTransformer):
+def test_wire_transformer(transformer: Transformer):
     start_wire_count = len(transformer.sch.wires)
 
     transformer.insert_wire(
@@ -53,19 +53,19 @@ def test_wire_transformer(transformer: SchTransformer):
     ]
 
 
-def test_index_symbol_files(transformer: SchTransformer, fp_lib_path_path: Path):
+def test_index_symbol_files(transformer: Transformer, fp_lib_path_path: Path):
     assert len(transformer._symbol_files_index) == 0
     transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
     assert len(transformer._symbol_files_index) == 1
 
 
 @pytest.fixture
-def full_transformer(transformer: SchTransformer, fp_lib_path_path: Path):
+def full_transformer(transformer: Transformer, fp_lib_path_path: Path):
     transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
     return transformer
 
 
-def test_get_symbol_file(full_transformer: SchTransformer):
+def test_get_symbol_file(full_transformer: Transformer):
     with pytest.raises(FaebrykException):
         full_transformer.get_symbol_file("notta-lib")
 
@@ -76,7 +76,7 @@ def test_get_symbol_file(full_transformer: SchTransformer):
     )
 
 
-def test_insert_symbol(full_transformer: SchTransformer, sch_file: C_kicad_sch_file):
+def test_insert_symbol(full_transformer: Transformer, sch_file: C_kicad_sch_file):
     start_symbol_count = len(full_transformer.sch.symbols)
 
     # mimicing typically design/user-space

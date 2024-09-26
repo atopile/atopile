@@ -9,9 +9,9 @@ from functools import singledispatchmethod
 from itertools import chain, groupby
 from os import PathLike
 from pathlib import Path
+from random import randint
 from typing import Any, List, Protocol, Unpack
 
-from faebryk.exporters.schematic.kicad.skidl.shims import Options
 import faebryk.library._F as F
 from faebryk.core.graphinterface import Graph
 from faebryk.core.module import Module
@@ -20,6 +20,8 @@ from faebryk.core.node import Node
 # import numpy as np
 # from shapely import Polygon
 from faebryk.exporters.pcb.kicad.transformer import is_marked
+from faebryk.exporters.schematic.kicad.skidl import shims
+from faebryk.exporters.schematic.kicad.skidl.geometry import BBox
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import (
@@ -43,6 +45,7 @@ from faebryk.libs.kicad.fileformats_sch import (
 from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
+    FuncDict,
     cast_assert,
     find,
     get_key,
@@ -75,9 +78,9 @@ class _HasPropertys(Protocol):
 
 
 # TODO: consider common transformer base
-class SchTransformer:
+class Transformer:
 
-    class has_linked_sch_symbol(Module.TraitT.decless()):
+    class has_linked_sch_symbol(F.Symbol.TraitT.decless()):
         def __init__(self, symbol: SCH.C_symbol_instance) -> None:
             super().__init__()
             self.symbol = symbol
@@ -86,8 +89,10 @@ class SchTransformer:
         def __init__(
             self,
             pins: list[SCH.C_symbol_instance.C_pin],
+            symbol: SCH.C_symbol_instance,
         ) -> None:
             super().__init__()
+            self.symbol = symbol
             self.pins = pins
 
     def __init__(
@@ -141,7 +146,7 @@ class SchTransformer:
         attached = {
             n: t.symbol
             for n, t in self.graph.nodes_with_trait(
-                SchTransformer.has_linked_sch_symbol
+                Transformer.has_linked_sch_symbol
             )
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
@@ -153,7 +158,9 @@ class SchTransformer:
 
         # Attach the pins on the symbol to the module interface
         for pin_name, pins in groupby(sch_symbol.pins, key=lambda p: p.name):
-            f_symbol.pins[pin_name].add(SchTransformer.has_linked_sch_pins(pins))
+            f_symbol.pins[pin_name].add(
+                Transformer.has_linked_sch_pins(pins, sch_symbol)
+            )
 
     # TODO: remove cleanup, it shouldn't really be required if we're marking propertys
     # def cleanup(self):
@@ -202,13 +209,13 @@ class SchTransformer:
     # Getter ---------------------------------------------------------------------------
     @staticmethod
     def get_symbol(cmp: Node) -> F.Symbol:
-        return not_none(cmp.get_trait(SchTransformer.has_linked_sch_symbol)).symbol
+        return not_none(cmp.get_trait(Transformer.has_linked_sch_symbol)).symbol
 
     def get_all_symbols(self) -> List[tuple[Module, F.Symbol]]:
         return [
             (cast_assert(Module, cmp), t.symbol)
             for cmp, t in self.graph.nodes_with_trait(
-                SchTransformer.has_linked_sch_symbol
+                Transformer.has_linked_sch_symbol
             )
         ]
 
@@ -262,7 +269,7 @@ class SchTransformer:
         assert isinstance(graph_symbol, Node)
         lib_sym = self.get_lib_symbol(graph_symbol)
         units = self.get_related_lib_sym_units(lib_sym)
-        sym = graph_symbol.get_trait(SchTransformer.has_linked_sch_symbol).symbol
+        sym = graph_symbol.get_trait(Transformer.has_linked_sch_symbol).symbol
 
         def _name_filter(sch_pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin):
             return sch_pin.name in {
@@ -322,7 +329,7 @@ class SchTransformer:
             if "faebryk_mark" in obj.propertys:
                 prop = obj.propertys["faebryk_mark"]
                 assert isinstance(prop, C_property)
-                return prop.value == SchTransformer.hash_contents(obj)
+                return prop.value == Transformer.hash_contents(obj)
             else:
                 # items that have the capacity to be marked
                 # via propertys are only considered marked
@@ -330,7 +337,7 @@ class SchTransformer:
                 # despite their uuid
                 return False
 
-        return SchTransformer.is_uuid_marked(obj)
+        return Transformer.is_uuid_marked(obj)
 
     @staticmethod
     def mark[R: _HasUUID | _HasPropertys](obj: R) -> R:
@@ -338,7 +345,7 @@ class SchTransformer:
         if hasattr(obj, "propertys"):
             obj.propertys["faebryk_mark"] = C_property(
                 name="faebryk_mark",
-                value=SchTransformer.hash_contents(obj),
+                value=Transformer.hash_contents(obj),
             )
 
         else:
@@ -346,7 +353,7 @@ class SchTransformer:
                 raise TypeError(f"Object {obj} has no propertys or uuid")
 
             if not is_marked(obj):
-                obj.uuid = SchTransformer.gen_uuid(mark=True)
+                obj.uuid = Transformer.gen_uuid(mark=True)
 
         return obj
 
@@ -452,7 +459,7 @@ class SchTransformer:
             )
 
             # It's one of ours, until it's modified in KiCAD
-            SchTransformer.mark(unit_instance)
+            Transformer.mark(unit_instance)
 
             # Add a C_property for the reference based on the override name
             if reference_name := module.get_trait(F.has_overriden_name).get_name():
@@ -543,13 +550,115 @@ class SchTransformer:
         # which means it must be called with self
         return Geometry.abs_pos(self.get_bbox(self.get_lib_symbol(symbol)))
 
-    def generate_schematic(self, **options: Unpack[Options]):
+    def generate_schematic(self, **options: Unpack[shims.Options]):
         """Does what it says on the tin."""
         # 1. add missing symbols
         for f_symbol in self.missing_symbols:
             self.insert_symbol(f_symbol)
         self.missing_symbols = []
 
+        # 1.1 create hollow circuits to append to
+        circuit = shims.Circuit()
+
+        # 1.2 create maps to short-cut access between fab and sch
+        sch_to_fab_pin_map: FuncDict[SCH.C_symbol_instance.C_pin, F.Symbol.Pin | None] = FuncDict()
+        sch_to_fab_sym_map: FuncDict[SCH.C_symbol_instance, F.Symbol | None] = FuncDict()
+        # for each sch_symbol / (fab_symbol | None) pair, create a shim part
+        # we need to shim sym object which aren't even in the graph to avoid colliding
+        for _, f_sym_trait in self.graph.nodes_with_trait(F.Symbol.has_symbol):
+            if sch_sym_trait := f_sym_trait.reference.try_get_trait(
+                Transformer.has_linked_sch_symbol
+            ):
+                sch_to_fab_sym_map[sch_sym_trait.symbol] = f_sym_trait.reference
+        for sch_sym in self.sch.symbols:
+            for sch_pin in sch_sym.pins:
+                sch_to_fab_pin_map[sch_pin] = f_symbol.pins.get(sch_pin.name)
+            if sch_sym not in sch_to_fab_sym_map:
+                sch_to_fab_sym_map[sch_sym] = None
+
         # 2. create shim objects
+        # 2.1 make nets
+        sch_to_shim_pin_map: FuncDict[SCH.C_symbol_instance.C_pin, shims.Pin] = FuncDict()
+        fab_nets = self.graph.nodes_of_type(F.Net)
+        for net in fab_nets:
+            shim_net = shims.Net()
+            shim_net.name = net.get_trait(F.has_overriden_name).get_name()
+            shim_net.netio = ""  # TODO:
+            shim_net.stub = False  # TODO:
+
+            # make partial net-oriented pins
+            shim_net.pins = []
+            for mif in net.get_connected_interfaces():
+                if has_fab_pin := mif.try_get_trait(F.Symbol.Pin.has_pin):
+                    if has_sch_pin := has_fab_pin.reference.try_get_trait(
+                        Transformer.has_linked_sch_pins
+                    ):
+                        for sch_pin in has_sch_pin.pins:
+                            shim_pin = shims.Pin()
+                            shim_pin.net = shim_net
+                            shim_net.pins.append(shim_pin)
+                            sch_to_shim_pin_map[sch_pin] = shim_pin
+
+            circuit.nets.append(shim_net)
+
+        # 2.2 make parts
+        def _hierarchy(module: Module) -> str:
+            """
+            Make a string representation of the module's hierarchy
+            using the best name for each part we have
+            """
+            def _best_name(module: Module) -> str:
+                if name_trait := module.try_get_trait(F.has_overriden_name):
+                    return name_trait.get_name()
+                return module.get_name()
+
+            # skip the root module, because it's name is just "*"
+            hierarchy = [h[0] for h in module.get_hierarchy()][1:]
+            return ".".join(_best_name(n) for n in hierarchy)
+
+        # for each sch_symbol, create a shim part
+        for sch_sym, f_symbol in sch_to_fab_sym_map.items():
+            shim_part = shims.Part()
+            shim_part.hierarchy = _hierarchy(f_symbol.represents)
+            shim_part.ref = f_symbol.represents.get_trait(F.has_overriden_name).get_name()
+            # TODO: what's the ato analog?
+            # TODO: should this desc
+            shim_part.symtx = ""
+            shim_part.unit = {}  # TODO: support units
+            shim_part.fab_symbol = f_symbol
+            shim_part.bare_bbox = BBox(
+                Point(*pts) for pts in Transformer.get_bbox(f_symbol)
+            )
+
+            # 2.3 finish making pins, this time from a part-orientation
+            sch_lib_symbol = self.get_lib_symbol(sch_sym)
+            all_sch_units = list(sch_lib_symbol.symbols.values())
+            all_sch_lib_pins = [p for u in all_sch_units for p in u.pins]
+            for sch_pin in sch_sym.pins:
+                lib_sch_pin = find(all_sch_lib_pins, key=lambda x: x.name == sch_pin.name)
+                assert isinstance(lib_sch_pin, SCH.C_lib_symbols.C_symbol.C_symbol.C_pin)
+                shim_pin = sch_to_shim_pin_map.setdefault(sch_pin, shims.Pin())
+                shim_pin.name = sch_pin.name
+                shim_pin.num = lib_sch_pin.number
+                shim_pin.orientation = shims.angle_to_orientation(lib_sch_pin.at.r)
+                shim_pin.part = shim_part
+
+                # TODO: ideas:
+                # - stub powery things
+                # - override from symbol layout info trait
+                shim_pin.stub = False
+
+                shim_pin.x = lib_sch_pin.at.x
+                shim_pin.y = lib_sch_pin.at.y
+                shim_pin.fab_pin = sch_to_fab_pin_map[sch_pin]
+                shim_pin.sch_pin = sch_pin
+
+                shim_part.pins.append(shim_pin)
+
+            circuit.parts.append(shim_part)
+
+        # 2.-1 run audit on circuit
+        circuit.audit()
+
         # 3. run skidl schematic generation
         # 4. transform sch according to skidl

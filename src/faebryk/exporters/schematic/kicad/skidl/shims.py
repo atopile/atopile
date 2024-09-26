@@ -7,12 +7,15 @@ Design notes:
 - We're not using dataclasses because typing doesn't pass through InitVar properly
 """
 
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Iterator, TypedDict
 
 import faebryk.library._F as F
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
 
 if TYPE_CHECKING:
+    from faebryk.libs.kicad import fileformats_sch
+
     from .route import Face, GlobalTrack
 
 
@@ -40,6 +43,21 @@ def rmv_attr(objs, attrs):
                 pass
 
 
+
+def angle_to_orientation(angle: float) -> str:
+    """Convert an angle to an orientation"""
+    if angle == 0:
+        return "U"
+    elif angle == 90:
+        return "R"
+    elif angle == 180:
+        return "D"
+    elif angle == 270:
+        return "L"
+    else:
+        raise ValueError(f"Invalid angle: {angle}")
+
+
 class Part:
     # We need to assign these
     hierarchy: str  # dot-separated string of part names
@@ -50,7 +68,8 @@ class Part:
     unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
 
     # things we've added to make life easier
-    fab_symbol: F.Symbol
+    sch_symbol: fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance
+    fab_symbol: F.Symbol | None
     bare_bbox: BBox
 
     def audit(self) -> None:
@@ -66,6 +85,10 @@ class Part:
         ]:
             if not hasattr(self, attr):
                 raise ValueError(f"Missing attribute: {attr}")
+
+        # don't audit pins, they're handled through nets instead
+        for unit in self.unit.values():
+            unit.audit()
 
     # internal use
     anchor_pins: dict[Any, list["Pin"]]
@@ -132,8 +155,8 @@ class PartUnit(Part):
 
 class Pin:
     # We need to assign these
-    name: str
     net: "Net"
+    name: str
     num: str
     orientation: str  # "U"/"D"/"L"/"R" for the pin's location
     part: Part  # to which part does this pin belong?
@@ -144,6 +167,7 @@ class Pin:
     y: float
 
     # things we've added to make life easier
+    sch_pin: fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance.C_pin
     fab_pin: F.Symbol.Pin
     fab_is_gnd: bool
     fab_is_pwr: bool
@@ -183,15 +207,20 @@ class Net:
     # We need to assign these
     name: str
     netio: str  # whether input or output
-    parts: set[Part]
     pins: list[Pin]
     stub: bool  # whether to stub the pin or not
 
+    # internal use
+    parts: set[Part]
+
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
-        for attr in ["name", "netio", "parts", "pins", "stub"]:
+        for attr in ["name", "netio", "pins", "stub"]:
             if not hasattr(self, attr):
                 raise ValueError(f"Missing attribute: {attr}")
+
+        for pin in self.pins:
+            pin.audit()
 
     def __bool__(self) -> bool:
         """TODO: does this need to be false if no parts or pins?"""
@@ -220,6 +249,9 @@ class Circuit:
         for attr in ["nets", "parts"]:
             if not hasattr(self, attr):
                 raise ValueError(f"Missing attribute: {attr}")
+
+        for obj in chain(self.nets, self.parts):
+            obj.audit()
 
 
 class Options(TypedDict):
