@@ -75,6 +75,10 @@ class C_stroke:
     class E_type(SymEnum):
         solid = auto()
         default = auto()
+        dash_dot_dot = auto()
+        dash_dot = auto()
+        dash = auto()
+        dot = auto()
 
     width: float
     type: E_type
