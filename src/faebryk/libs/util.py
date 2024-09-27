@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import asyncio
+import collections.abc
 import inspect
 import logging
 import sys
@@ -11,11 +12,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import StrEnum
 from functools import cache
+from itertools import chain
 from textwrap import indent
 from typing import (
     Any,
     Callable,
     Concatenate,
+    Hashable,
     Iterable,
     Iterator,
     List,
@@ -951,3 +954,125 @@ def debugging() -> bool:
     except (ImportError, ModuleNotFoundError):
         return False
     return debugpy.is_client_connected()
+
+
+class FuncSet[T, H: Hashable](collections.abc.Set[T]):
+    """
+    A set by pre-processing the objects with the hasher function.
+    """
+
+    def __init__(self, data: Iterable[T] = tuple(), hasher: Callable[[T], H] = id):
+        self._hasher = hasher
+        self._deref: defaultdict[H, list[T]] = defaultdict(list)
+
+        for item in data:
+            self._deref[self._hasher(item)].append(item)
+
+    def add(self, item: T):
+        if item not in self._deref[self._hasher(item)]:
+            self._deref[self._hasher(item)].append(item)
+
+    def __contains__(self, item: T):
+        return item in self._deref[self._hasher(item)]
+
+    def __iter__(self) -> Iterator[T]:
+        yield from chain.from_iterable(self._deref.values())
+
+    def __len__(self) -> int:
+        return sum(len(v) for v in self._deref.values())
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}"
+            f"({repr(list(self))}, hasher={repr(self._hasher)})"
+        )
+
+
+class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
+    """
+    A dict by pre-processing the objects with the hasher function.
+    """
+
+    def __init__(
+        self,
+        data: Iterable[tuple[T, U]] = tuple(),
+        hasher: Callable[[T], H] = id,
+    ):
+        self._hasher = hasher
+        self._keys: defaultdict[H, list[T]] = defaultdict(list)
+        self._values: defaultdict[H, list[U]] = defaultdict(list)
+
+        for key, value in data:
+            hashed_key = self._hasher(key)
+            self._keys[hashed_key].append(key)
+            self._values[hashed_key].append(value)
+
+    def __contains__(self, item: T):
+        return item in self._keys[self._hasher(item)]
+
+    @property
+    def keys(self) -> Iterator[T]:
+        yield from chain.from_iterable(self._keys.values())
+
+    @property
+    def values(self) -> Iterator[U]:
+        yield from chain.from_iterable(self._values.values())
+
+    def __iter__(self) -> Iterator[T]:
+        yield from self.keys
+
+    def __len__(self) -> int:
+        return sum(len(v) for v in self._values.values())
+
+    def __getitem__(self, key: T) -> U:
+        hashed = self._hasher(key)
+        for test_key, value in zip(self._keys[hashed], self._values[hashed]):
+            if test_key == key:
+                return value
+        raise KeyError(key)
+
+    def __setitem__(self, key: T, value: U):
+        hashed_key = self._hasher(key)
+        try:
+            idx = self._keys[hashed_key].index(key)
+        except ValueError:
+            self._keys[hashed_key].append(key)
+            self._values[hashed_key].append(value)
+        else:
+            self._values[hashed_key][idx] = value
+            self._keys[hashed_key][idx] = key
+
+    def __delitem__(self, key: T):
+        hashed_key = self._hasher(key)
+        try:
+            idx = self._keys[hashed_key].index(key)
+        except ValueError:
+            raise KeyError(key)
+        else:
+            del self._values[hashed_key][idx]
+            del self._keys[hashed_key][idx]
+
+    def items(self) -> Iterable[tuple[T, U]]:
+        """Iter key-value pairs as items, just like a dict."""
+        yield from zip(self.keys, self.values)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}"
+            f"({repr(list(self.items()))}, hasher={repr(self._hasher)})"
+        )
+
+    def backwards_lookup(self, item: U) -> T:
+        """Find the first value that maps to item, and return its key."""
+        for key, value in self.items():
+            if value == item:
+                return key
+        raise KeyError(item)
+
+    def setdefault(self, key: T, default: U) -> U:
+        """Set default if key is not in the dict, and return the value."""
+        try:
+            return self[key]
+        except KeyError:
+            self[key] = default
+        return default
