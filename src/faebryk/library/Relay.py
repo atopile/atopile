@@ -29,4 +29,6 @@ class Relay(Module):
     contact_rated_switching_current: F.TBD[Quantity]
     contact_max_switchng_current: F.TBD[Quantity]
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("RELAY")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.K
+    )

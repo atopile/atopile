@@ -57,6 +57,8 @@ class ButtonCell(F.Battery):
     shape: F.TBD[Shape]
     size: F.TBD[Size]
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("B")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.B
+    )
 
     # TODO merge voltage with material voltage

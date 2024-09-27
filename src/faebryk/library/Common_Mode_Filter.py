@@ -14,4 +14,6 @@ class Common_Mode_Filter(Module):
     c_a = L.list_field(2, F.Electrical)
     c_b = L.list_field(2, F.Electrical)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("FL")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.FL
+    )

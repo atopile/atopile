@@ -31,7 +31,9 @@ class Capacitor(Module):
     temperature_coefficient: F.TBD[TemperatureCoefficient]
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("C")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.C
+    )
 
     @L.rt_field
     def can_bridge(self):

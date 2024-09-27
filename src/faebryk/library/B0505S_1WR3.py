@@ -27,7 +27,13 @@ class B0505S_1WR3(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    @L.rt_field
+    def bridge(self):
+        return F.can_bridge_defined(self.power_in, self.power_out)
+
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
 
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2307211806_EVISUN-B0505S-1WR3_C7465178.pdf"

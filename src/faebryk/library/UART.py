@@ -13,3 +13,10 @@ class UART(ModuleInterface):
     dsr: F.ElectricLogic
     dcd: F.ElectricLogic
     ri: F.ElectricLogic
+
+    # TODO: this creates too many connections in some projects
+    # @L.rt_field
+    # def single_electric_reference(self):
+    #    return F.has_single_electric_reference_defined(
+    #       F.ElectricLogic.connect_all_module_references(self)
+    #   )

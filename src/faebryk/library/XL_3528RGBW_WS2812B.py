@@ -44,13 +44,9 @@ class XL_3528RGBW_WS2812B(Module):
     do: F.ElectricLogic
     di: F.ElectricLogic
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
-
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("LED")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.LED
+    )
 
     # Add bridge trait
     @L.rt_field
@@ -75,4 +71,13 @@ class XL_3528RGBW_WS2812B(Module):
     esphome_config: _ws2812b_esphome_config
 
     def __preinit__(self):
+        # ------------------------------
+        #          parameters
+        # ------------------------------
+
+        # ------------------------------
+        #          connections
+        # ------------------------------
         self.power.decoupled.decouple()
+        F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
+        F.ElectricLogic.connect_all_module_references(self, exclude=[self.power])

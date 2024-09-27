@@ -8,10 +8,14 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P, Quantity
-from faebryk.libs.util import join_if_non_empty
+from faebryk.libs.util import assert_once, join_if_non_empty
 
 
 class LDO(Module):
+    @assert_once
+    def enable_output(self):
+        self.enable.set(True)
+
     class OutputType(Enum):
         FIXED = auto()
         ADJUSTABLE = auto()
@@ -44,9 +48,10 @@ class LDO(Module):
         # else:
         #    self.power_in.lv.connect(self.power_out.lv)
 
-        # LDO in & out share gnd reference
-        F.ElectricLogic.connect_all_node_references(
-            [self.power_in, self.power_out], gnd_only=True
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         )
 
     @L.rt_field
@@ -85,7 +90,9 @@ class LDO(Module):
             ),
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
 
     @L.rt_field
     def pin_association_heuristic(self):

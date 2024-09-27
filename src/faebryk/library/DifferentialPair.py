@@ -9,8 +9,8 @@ from faebryk.libs.units import Quantity
 
 
 class DifferentialPair(ModuleInterface):
-    p: F.Electrical
-    n: F.Electrical
+    p: F.SignalElectrical
+    n: F.SignalElectrical
 
     impedance: F.TBD[Quantity]
 
@@ -20,8 +20,8 @@ class DifferentialPair(ModuleInterface):
         for r in rs:
             r.resistance.merge(self.impedance)
 
-        terminated_bus.p.connect_via(rs[0], self.p)
-        terminated_bus.n.connect_via(rs[1], self.n)
+        terminated_bus.p.signal.connect_via(rs[0], self.p.signal)
+        terminated_bus.n.signal.connect_via(rs[1], self.n.signal)
         self.connect_shallow(terminated_bus)
 
         return terminated_bus

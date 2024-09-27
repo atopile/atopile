@@ -13,7 +13,9 @@ class B4B_ZR_SM4_TF(Module):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2304140030_BOOMELE-Boom-Precision-Elec-1-5-4P_C145997.pdf"
     )
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("J")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.J
+    )
 
     @L.rt_field
     def can_attach_to_footprint(self):

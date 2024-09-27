@@ -52,7 +52,9 @@ class Logic74xx(Module):
     power: F.ElectricPower
     logic_family: F.TBD[Family]
 
-    designator = L.f_field(F.has_designator_prefix_defined)("U")
+    designator = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
 
     @L.rt_field
     def single_electric_reference(self):

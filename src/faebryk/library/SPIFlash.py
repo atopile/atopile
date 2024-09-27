@@ -12,7 +12,9 @@ class SPIFlash(Module):
     spi = L.f_field(F.MultiSPI)(4)
 
     memory_size: F.TBD[Quantity]
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
 
     @L.rt_field
     def single_reference(self):

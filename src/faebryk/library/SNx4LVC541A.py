@@ -27,7 +27,9 @@ class SNx4LVC541A(Module):
     # ----------------------------------------
     #                traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://www.ti.com/lit/ds/symlink/sn74lvc541a.pdf?ts=1718881644774&ref_url=https%253A%252F%252Fwww.mouser.ie%252F"
     )

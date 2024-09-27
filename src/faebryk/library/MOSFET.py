@@ -29,7 +29,9 @@ class MOSFET(Module):
     gate: F.Electrical
     drain: F.Electrical
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("Q")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.Q
+    )
 
     # TODO pretty confusing
     @L.rt_field

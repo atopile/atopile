@@ -23,4 +23,6 @@ class GDT(Module):
     def can_bridge(self):
         return F.can_bridge_defined(self.tube_1, self.tube_2)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("GDT")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.GDT
+    )

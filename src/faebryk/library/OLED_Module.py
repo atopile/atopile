@@ -48,4 +48,6 @@ class OLED_Module(Module):
             F.Range(100 * P.uF, 220 * P.uF)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("OLED")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.DS
+    )

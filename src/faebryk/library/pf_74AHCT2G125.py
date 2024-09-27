@@ -46,7 +46,9 @@ class pf_74AHCT2G125(Module):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
 
     @L.rt_field
     def can_bridge(self):

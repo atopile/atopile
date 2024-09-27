@@ -132,7 +132,9 @@ class ESP32_C3_MINI_1(Module):
 
         return F.can_attach_to_footprint_via_pinmap(self.pinmap)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://www.espressif.com/sites/default/files/documentation/esp32-c3-mini-1_datasheet_en.pdf"
     )

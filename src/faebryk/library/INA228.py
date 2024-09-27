@@ -76,6 +76,10 @@ class INA228(Module):
         }
     )
 
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
+
     @L.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
@@ -84,8 +88,8 @@ class INA228(Module):
                 self.address_config_pin[1].signal: ["A1"],
                 self.alert.signal: ["ALERT"],
                 self.power.lv: ["GND"],
-                self.shunt_input.p: ["IN+"],
-                self.shunt_input.n: ["IN–"],
+                self.shunt_input.p.signal: ["IN+"],
+                self.shunt_input.n.signal: ["IN–"],
                 self.i2c.scl.signal: ["SCL"],
                 self.i2c.sda.signal: ["SDA"],
                 self.bus_voltage_sense.signal: ["VBUS"],
@@ -99,7 +103,9 @@ class INA228(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
-        F.ElectricLogic.connect_all_module_references(self, exclude={self.shunt_input})
+        F.ElectricLogic.connect_all_module_references(
+            self, exclude={self.shunt_input, self.bus_voltage_sense}
+        )
 
         # ------------------------------------
         #          parametrization

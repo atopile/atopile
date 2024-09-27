@@ -20,15 +20,9 @@ class TD541S485H(Module):
     read_enable: F.ElectricLogic
     write_enable: F.ElectricLogic
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
-
-    def __preinit__(self):
-        self.power.decoupled.decouple()
-        self.power_iso_in.decoupled.decouple()
-        self.power_iso_out.decoupled.decouple()
-
-        self.power_iso_in.lv.connect(self.power_iso_out.lv)
-        self.power_iso_out.voltage.merge(5 * P.V)
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
 
     @L.rt_field
     def attach_to_footprint(self):
@@ -45,8 +39,8 @@ class TD541S485H(Module):
                 "8": x.power.lv,
                 "9": x.power_iso_out.lv,
                 "10": x.power_iso_out.hv,
-                "13": x.rs485.diff_pair.n,
-                "14": x.rs485.diff_pair.p,
+                "13": x.rs485.diff_pair.n.signal,
+                "14": x.rs485.diff_pair.p.signal,
                 "15": x.power_iso_in.hv,
                 "16": x.power_iso_in.lv,
             }
@@ -55,3 +49,21 @@ class TD541S485H(Module):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://www.mornsun-power.com/public/uploads/pdf/TD(H)541S485H.pdf"
     )
+
+    def __preinit__(self):
+        self.power.decoupled.decouple()
+        self.power_iso_in.decoupled.decouple()
+        self.power_iso_out.decoupled.decouple()
+
+        self.power_iso_in.lv.connect(self.power_iso_out.lv)
+        self.power_iso_out.voltage.merge(5 * P.V)
+
+        F.ElectricLogic.connect_all_module_references(
+            self,
+            exclude=[
+                self.power,
+                self.uart,
+                self.read_enable,
+                self.write_enable,
+            ],
+        )

@@ -24,4 +24,6 @@ class MCP2221A(Module):
         self.power_vusb.decoupled.decouple()
         self.power.lv.connect(self.power_vusb.lv)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )

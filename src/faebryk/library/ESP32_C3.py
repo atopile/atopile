@@ -30,7 +30,9 @@ class ESP32_C3(Module):
     uart = L.list_field(2, F.UART_Base)
     # ... etc
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf"
     )

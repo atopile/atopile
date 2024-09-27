@@ -14,10 +14,12 @@ logger = logging.getLogger(__name__)
 class CH340x(Module):
     usb: F.USB2_0
     uart: F.UART
-    tnow: F.Electrical
+    tnow: F.ElectricLogic
     gpio_power: F.ElectricPower
 
-    designator = L.f_field(F.has_designator_prefix_defined)("U")
+    designator = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://wch-ic.com/downloads/file/79.html"
     )

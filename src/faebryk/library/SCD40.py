@@ -78,7 +78,9 @@ class SCD40(Module):
             F.I2C.define_max_frequency_capability(F.I2C.SpeedMode.fast_speed)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://sensirion.com/media/documents/48C4B7FB/64C134E7/Sensirion_SCD4x_Datasheet.pdf"
     )

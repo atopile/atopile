@@ -27,4 +27,6 @@ class pf_533984002(Module):
         "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1912111437_SHOU-HAN-1-25-2P_C393945.pdf"
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("J")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.J
+    )

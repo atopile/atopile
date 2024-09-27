@@ -16,26 +16,28 @@ logger = logging.getLogger(__name__)
 class M24C08_FMN6TP(Module):
     power: F.ElectricPower
     data: F.I2C
-    nwc: F.ElectricLogic
-    e = L.list_field(3, F.ElectricLogic)
+    write_protect: F.ElectricLogic
+    address_pin = L.list_field(3, F.ElectricLogic)
 
     @L.rt_field
     def attach_to_footprint(self):
         x = self
         return F.can_attach_to_footprint_via_pinmap(
             {
-                "1": x.e[0].signal,
-                "2": x.e[1].signal,
-                "3": x.e[2].signal,
+                "1": x.address_pin[0].signal,
+                "2": x.address_pin[1].signal,
+                "3": x.address_pin[2].signal,
                 "4": x.power.lv,
                 "5": x.data.sda.signal,
                 "6": x.data.scl.signal,
-                "7": x.nwc.signal,
+                "7": x.write_protect.signal,
                 "8": x.power.hv,
             }
         )
 
     def __preinit__(self):
+        F.ElectricLogic.connect_all_module_references(self)
+
         self.attach_to_footprint.attach(
             F.SOIC(8, size_xy=(3.9 * P.mm, 4.9 * P.mm), pitch=1.27 * P.mm)
         )
@@ -54,18 +56,20 @@ class M24C08_FMN6TP(Module):
             )
         )
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    def enable_write_protection(self, protect=True):
+        if protect:
+            self.write_protect.get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
+            return
+        self.write_protect.get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
 
     def set_address(self, addr: int):
-        assert addr < (1 << len(self.e))
+        assert addr < (1 << len(self.address_pin))
 
-        for i, e in enumerate(self.e):
+        for i, e in enumerate(self.address_pin):
             e.set(addr & (1 << i) != 0)
 
     datasheet = L.f_field(F.has_datasheet_defined)(

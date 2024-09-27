@@ -2,160 +2,162 @@
 # SPDX-License-Identifier: MIT
 
 from abc import abstractmethod
-from enum import StrEnum, auto
+from enum import StrEnum
 
 from faebryk.core.module import Module
 
 
 class has_designator_prefix(Module.TraitT):
     class Prefix(StrEnum):
-        A = auto()
+        A = "A"
         """Separable assembly or sub-assembly (e.g. printed circuit assembly)"""
-        AT = auto()
+        AT = "AT"
         """Attenuator or isolator"""
-        BR = auto()
+        BR = "BR"
         """
         Bridge rectifier (four diodes in a package) > often changed to "D" for diode
         """
-        B = auto()
+        B = "B"
         """Often shortened to "B" for Battery or battery holder"""
-        BT = auto()
+        BT = "BT"
         """Battery or battery holder > often shortened to "B" """
-        BAT = auto()
+        BAT = "BAT"
         """Battery or battery holder > often shortened to "B" """
-        C = auto()
+        C = "C"
         """Capacitor"""
-        CB = auto()
+        CB = "CB"
         """Circuit breaker"""
-        CN = auto()
+        CN = "CN"
         """Capacitor network > may be simplified to "C" for capacitor"""
-        D = auto()
+        D = "D"
         """
         Diode (all types, including LED), thyristor > "D" is preferred for various types
         of diodes
         """
-        CR = auto()
+        CR = "CR"
         """
         Diode (all types, including LED), thyristor > "D" is preferred for various types
         of diodes
         """
-        DL = auto()
+        DL = "DL"
         """Delay line"""
-        DN = auto()
+        DN = "DN"
         """Diode network > may be simplified to "D" for diode"""
-        DS = auto()
+        DS = "DS"
         """Display, general light source, lamp, signal light"""
-        F = auto()
+        F = "F"
         """Fuse"""
-        FB = auto()
+        FB = "FB"
         """Ferrite bead > sometimes changed to "L" for inductor, though "E" was used in
         the currently inactive standard IEEE 315 (see Clause 22.4)"""
-        L = auto()
+        L = "L"
         """Inductor or coil or ferrite bead > sometimes changed from "FB" for ferrite
         bead"""
-        FD = auto()
+        FD = "FD"
         """Fiducial"""
-        FL = auto()
+        FL = "FL"
         """Filter"""
-        G = auto()
+        G = "G"
         """Generator or oscillator"""
-        OSC = auto()
+        GDT = "GDT"
+        """Gas discharge tube"""
+        OSC = "OSC"
         """Generator or oscillator"""
-        GL = auto()
+        GL = "GL"
         """Graphical logo"""
-        GN = auto()
+        GN = "GN"
         """General network"""
-        H = auto()
+        H = "H"
         """Hardware, e.g., screws, nuts, washers, also used for drilled holes >
         sometimes hardware is expanded to "HW" """
-        HW = auto()
+        HW = "HW"
         """Expanded form of "H" for hardware"""
-        HY = auto()
+        HY = "HY"
         """Circulator or directional coupler"""
-        IR = auto()
+        IR = "IR"
         """Infrared diode > often changed to "D" for diode"""
-        J = auto()
+        J = "J"
         """Jack (least-movable connector of a connector pair), jack connector (connector
         may have "male" pin contacts and/or "female" socket contacts) > all types of
         connectors, including pin headers."""
-        JP = auto()
+        JP = "JP"
         """Jumper (link)"""
-        K = auto()
+        K = "K"
         """Relay or contactor"""
-        LD = auto()
+        LD = "LD"
         """LED > often changed to "D" for diode"""
-        LED = auto()
+        LED = "LED"
         """LED > often changed to "D" for diode"""
-        LS = auto()
+        LS = "LS"
         """Loudspeaker or buzzer"""
-        SPK = auto()
+        SPK = "SPK"
         """Loudspeaker or buzzer"""
-        M = auto()
+        M = "M"
         """Motor"""
-        MK = auto()
+        MK = "MK"
         """Microphone"""
-        MIC = auto()
+        MIC = "MIC"
         """Microphone"""
-        MP = auto()
+        MP = "MP"
         """Mechanical part (including screws and fasteners)"""
-        OP = auto()
+        OP = "OP"
         """Opto-isolator > often changed to "U" for IC"""
-        U = auto()
+        U = "U"
         """Shorter form of "U" (unit) preferred for Integrated Circuit instead of "IC"
         """
-        IC = auto()
+        IC = "IC"
         """Integrated circuit (IC) > often shortened to "U" """
-        P = auto()
+        P = "P"
         """Plug (most-movable connector of a connector pair), plug connector (connector
         may have "male" pin contacts and/or "female" socket contacts)"""
-        PS = auto()
+        PS = "PS"
         """Power supply"""
-        Q = auto()
+        Q = "Q"
         """Transistor (all types)"""
-        R = auto()
+        R = "R"
         """Resistor"""
-        RN = auto()
+        RN = "RN"
         """Resistor network > sometimes simplified to "R" for resistor, or "N" for
         network"""
-        N = auto()
+        N = "N"
         """Often used for networks, sometimes simplified from resistor network "RN" """
-        RT = auto()
+        RT = "RT"
         """Thermistor > sometimes simplified to "R" for resistor"""
-        RV = auto()
+        RV = "RV"
         """Varistor, variable resistor"""
-        S = auto()
+        S = "S"
         """Switch (all types, including buttons) > sometimes "SW" is erroneously used"""
-        SW = auto()
+        SW = "SW"
         """Sometimes erroneously used for Switch instead of "S" """
-        SA = auto()
+        SA = "SA"
         """Spark arrester"""
-        T = auto()
+        T = "T"
         """Transistor > often changed to "Q", but sometimes "T" is used for bipolar
         transistors and "Q" for FETs."""
-        TC = auto()
+        TC = "TC"
         """Thermocouple"""
-        TP = auto()
+        TP = "TP"
         """Test point"""
-        TR = auto()
+        TR = "TR"
         """Transformer > sometimes changed to "L" for inductor"""
-        TUN = auto()
+        TUN = "TUN"
         """Tuner"""
-        V = auto()
+        V = "V"
         """Vacuum tube"""
-        VR = auto()
+        VR = "VR"
         """Voltage regulator (voltage reference), or variable resistor (potentiometer /
         trimmer / rheostat) > voltage regulators are often "U" for IC, pots and trimmers
         often "R" for resistor"""
-        X = auto()
+        X = "X"
         """Socket connector for another item not P or J, paired with the letter symbol
         for that item (XV for vacuum tube socket, XF for fuse holder, XA for printed
         circuit assembly connector, XU for integrated circuit connector, XDS for light
         socket, etc.)"""
-        XTAL = auto()
+        XTAL = "XTAL"
         """Crystal, ceramic resonator, powered oscillator"""
-        Y = auto()
+        Y = "Y"
         """Crystal, ceramic resonator, powered oscillator"""
-        ZD = auto()
+        ZD = "ZD"
         """Zener diode > often changed to "D" for diode"""
 
     @abstractmethod

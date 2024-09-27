@@ -22,7 +22,9 @@ class Mounting_Hole(Module):
         Pad_Via = "Pad_Via"
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("H")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.H
+    )
 
     def __init__(self, diameter: Iso262_MetricScrewThreadSizes, pad_type: PadType):
         super().__init__()

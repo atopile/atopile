@@ -28,7 +28,9 @@ class Crystal(Module):
     # ----------------------------------------
     #                traits
     # ----------------------------------------
-    designator = L.f_field(F.has_designator_prefix_defined)("XTAL")
+    designator = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.XTAL
+    )
     footprint: F.can_attach_to_footprint_symmetrically
 
     # ----------------------------------------

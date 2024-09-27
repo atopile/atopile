@@ -147,7 +147,9 @@ class RP2040(Module):
     def decoupled(self):
         return F.can_be_decoupled_rails(self.power_io, self.power_core)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf"
     )

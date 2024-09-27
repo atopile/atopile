@@ -29,7 +29,13 @@ class SP3243E_ReferenceDesign(Module):
         # ----------------------------------------
         #              connections
         # ----------------------------------------
-        for pwr in self.get_children(direct_only=True, types=F.ElectricPower):
+        self.sp3243e.power.decoupled.decouple()
+        for pwr in [
+            self.sp3243e.positive_charge_pump_power,
+            self.sp3243e.negative_charge_pump_power,
+            self.sp3243e.voltage_doubler_charge_pump_power,
+            self.sp3243e.inverting_charge_pump_power,
+        ]:
             cap = pwr.decoupled.decouple()
             # TODO: min values according to self.power.voltage
             # 3.0V to 3.6V > C_all = 0.1μF

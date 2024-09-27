@@ -30,6 +30,26 @@ class DE9Connector(Module):
     )
 
     @L.rt_field
+    def pin_association_heuristic(self):
+        return F.has_pin_association_heuristic_lookup_table(
+            mapping={
+                self.shield: ["MH1"],
+                self.shield: ["MH2"],
+                self.contact[0]: ["1"],
+                self.contact[1]: ["2"],
+                self.contact[2]: ["3"],
+                self.contact[3]: ["4"],
+                self.contact[4]: ["5"],
+                self.contact[5]: ["6"],
+                self.contact[6]: ["7"],
+                self.contact[7]: ["8"],
+                self.contact[8]: ["9"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
+        )
+
+    @L.rt_field
     def can_attach_to_footprint(self):
         pinmap = {f"{i+1}": ei for i, ei in enumerate(self.contact)}
         pinmap.update({"10": self.shield})

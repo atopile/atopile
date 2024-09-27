@@ -30,12 +30,12 @@ class Header(Module):
         vertical_pin_count: int,
     ) -> None:
         super().__init__()
-        self.horizontal_pin_count = horizonal_pin_count
-        self.vertical_pin_count = vertical_pin_count
+        self._horizontal_pin_count = horizonal_pin_count
+        self._vertical_pin_count = vertical_pin_count
 
     def __preinit__(self):
-        self.pin_count_horizonal.merge(self.horizontal_pin_count)
-        self.pin_count_vertical.merge(self.vertical_pin_count)
+        self.pin_count_horizonal.merge(self._horizontal_pin_count)
+        self.pin_count_vertical.merge(self._vertical_pin_count)
 
     pin_pitch: F.TBD[Quantity]
     pin_type: F.TBD[PinType]
@@ -47,6 +47,10 @@ class Header(Module):
 
     @L.rt_field
     def unnamed(self):
-        return times(self.horizonal_pin_count * self.vertical_pin_count, F.Electrical)
+        return times(
+            self._horizontal_pin_count * self._vertical_pin_count, F.Electrical
+        )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("J")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.J
+    )

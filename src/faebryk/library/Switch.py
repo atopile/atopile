@@ -26,7 +26,9 @@ def Switch[T: ModuleInterface](interface_type: type[T]):
         def __init__(self) -> None:
             super().__init__(interface_type)
 
-        designator_prefix = L.f_field(F.has_designator_prefix_defined)("SW")
+        designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+            F.has_designator_prefix.Prefix.S
+        )
         attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
         unnamed = L.list_field(2, interface_type)

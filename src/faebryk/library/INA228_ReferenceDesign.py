@@ -25,7 +25,7 @@ class INA228_ReferenceDesign(Module):
 
         @L.rt_field
         def can_bridge(self):
-            (F.can_bridge_defined(self.power_in, self.power_out))
+            return F.can_bridge_defined(self.power_in, self.power_out)
 
         def __init__(self, lowside: bool = False, filtered: bool = False):
             super().__init__()
@@ -33,15 +33,28 @@ class INA228_ReferenceDesign(Module):
             self._filtered = filtered
 
         def __preinit__(self):
+            self.power_in.voltage.merge(
+                self.power_out.voltage
+            )  # TODO: minus voltagedrop over shunt
             self.shunt_sense.p.connect_via(self.shunt, self.shunt_sense.n)
             if self._lowside:
                 self.power_in.hv.connect_via(self.shunt, self.power_out.hv)
                 self.power_in.lv.connect(self.power_out.lv)
             else:
-                self.power_in.lv.connect_via(self.shunt, self.power_out.lv)
+                # TODO:short? self.power_in.lv.connect_via(self.shunt, self.power_out.lv
                 self.power_in.hv.connect(self.power_out.hv)
 
-            # TODO: add filtered option
+            if self._filtered:
+                raise NotImplementedError
+            # TODO: add filter
+            #    filter_cap = self.add(F.Capacitor())
+            #    filter_resistors = L.list_field(2, F.Resistor)
+            #
+            #    filter_cap.capacitance.merge(F.Range.from_center_rel(0.1 * P.uF, 0.01))
+            #    filter_cap.rated_voltage.merge(F.Range.from_center_rel(170 * P.V, 0.01)
+            #    for res in filter_resistors:
+            #        res.resistance.merge(10 * P.kohm)
+            # TODO: auto calculate, see: https://www.ti.com/lit/ug/tidu473/tidu473.pdf
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -68,24 +81,11 @@ class INA228_ReferenceDesign(Module):
         #            parametrization
         # ----------------------------------------
         shunted_power = self.add(
-            L.f_field(self.ShuntedElectricPower)(
-                lowside=self._lowside, filtered=self._filtered
-            )
+            self.ShuntedElectricPower(lowside=self._lowside, filtered=self._filtered)
         )
         shunted_power.shunt.resistance.merge(F.Range.from_center_rel(15 * P.mohm, 0.01))
         shunted_power.shunt.rated_power.merge(F.Range.from_center_rel(2 * P.W, 0.01))
         # TODO: calculate according to datasheet p36
-
-        # TODO: add filtered option
-        # if self._filtered:
-        #    filter_cap = self.add(F.Capacitor())
-        #    filter_resistors = L.list_field(2, F.Resistor)
-        #
-        #    filter_cap.capacitance.merge(F.Range.from_center_rel(0.1 * P.uF, 0.01))
-        #    filter_cap.rated_voltage.merge(F.Range.from_center_rel(170 * P.V, 0.01))
-        #    for res in filter_resistors:
-        #        res.resistance.merge(10 * P.kohm)
-        # TODO: auto calculate, see: https://www.ti.com/lit/ug/tidu473/tidu473.pdf
 
         # ----------------------------------------
         #              connections
@@ -93,9 +93,7 @@ class INA228_ReferenceDesign(Module):
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
 
         self.power_load.connect_via(shunted_power, self.power_source)
-        self.ina288.bus_voltage_sense.signal.connect(
-            self.power_load.hv if self._lowside else self.power_load.lv
-        )
+        self.ina288.bus_voltage_sense.signal.connect(self.power_load.hv)
 
         self.ina288.shunt_input.connect(shunted_power.shunt_sense)
 

@@ -29,7 +29,9 @@ class BJT(Module):
     base: F.Electrical
     collector: F.Electrical
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("Q")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.Q
+    )
 
     @rt_field
     def can_bridge(self):

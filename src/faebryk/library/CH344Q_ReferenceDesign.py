@@ -50,7 +50,7 @@ class CH344Q_ReferenceDesign(Module):
         )  # TODO: per pin
         self.vbus_fused.connect_via(self.ldo, pwr_3v3)
 
-        self.usb.connect(self.usb_uart_converter.usb)
+        self.usb.usb_if.d.connect(self.usb_uart_converter.usb)
 
         self.usb_uart_converter.act.connect(self.led_act.logic_in)
         self.usb_uart_converter.indicator_rx.connect(self.led_rx.logic_in)
@@ -80,10 +80,16 @@ class CH344Q_ReferenceDesign(Module):
         self.oscillator.crystal.frequency_tolerance.merge(
             F.Range.upper_bound(40 * P.ppm)
         )
+        self.oscillator.crystal.load_capacitance.merge(
+            F.Range.from_center(8 * P.pF, 10 * P.pF)
+        )  # TODO: should be property of crystal when picked
 
-        self.vbus_fused.max_current.merge(F.Range.lower_bound(500 * P.mA))
+        self.usb.usb_if.buspower.max_current.merge(
+            F.Range.from_center_rel(500 * P.mA, 0.1)
+        )
 
         self.ldo.output_current.merge(F.Range.lower_bound(500 * P.mA))
+        self.ldo.output_voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
 
         # reset lowpass
         self.reset_lowpass.response.merge(F.Filter.Response.LOWPASS)

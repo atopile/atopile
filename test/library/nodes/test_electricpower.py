@@ -21,9 +21,7 @@ class TestFusedPower(unittest.TestCase):
 
         fuse = next(iter(power_in_fused.get_children(direct_only=False, types=F.Fuse)))
 
-        self.assertEqual(
-            fuse.trip_current.get_most_narrow(), F.Range(0 * P.A, 500 * P.mA)
-        )
+        self.assertEqual(fuse.trip_current.get_most_narrow(), F.Constant(500 * P.mA))
         self.assertEqual(power_out.voltage.get_most_narrow(), 10 * P.V)
         # self.assertEqual(
         #    power_in_fused.max_current.get_most_narrow(), F.Range(0 * P.A, 500 * P.mA)

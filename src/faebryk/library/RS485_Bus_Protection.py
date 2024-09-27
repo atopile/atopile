@@ -122,10 +122,10 @@ class RS485_Bus_Protection(Module):
             polarization_resistors[1].resistance.merge(
                 F.Range(380 * P.ohm, 420 * P.ohm)
             )
-            self.rs485_in.diff_pair.p.connect_via(
+            self.rs485_in.diff_pair.p.signal.connect_via(
                 polarization_resistors[0], self.power.hv
             )
-            self.rs485_in.diff_pair.n.connect_via(
+            self.rs485_in.diff_pair.n.signal.connect_via(
                 polarization_resistors[1], self.power.lv
             )
 
@@ -162,19 +162,21 @@ class RS485_Bus_Protection(Module):
         self.gdt.common.connect(self.earth)
 
         # rs485_in connections
-        self.rs485_in.diff_pair.n.connect(self.common_mode_filter.c_a[0])
-        self.rs485_in.diff_pair.p.connect(self.common_mode_filter.c_b[0])
+        self.rs485_in.diff_pair.n.signal.connect(self.common_mode_filter.c_a[0])
+        self.rs485_in.diff_pair.p.signal.connect(self.common_mode_filter.c_b[0])
 
         # rs485_out connections
         self.common_mode_filter.c_a[1].connect_via(
             self.current_limmiter_resistors[0],
-            self.rs485_out.diff_pair.n,
+            self.rs485_out.diff_pair.n.signal,
         )
         self.common_mode_filter.c_b[1].connect_via(
             self.current_limmiter_resistors[1],
-            self.rs485_out.diff_pair.p,
+            self.rs485_out.diff_pair.p.signal,
         )
-        self.rs485_out.diff_pair.n.connect_via(self.gdt, self.rs485_out.diff_pair.p)
+        self.rs485_out.diff_pair.n.signal.connect_via(
+            self.gdt, self.rs485_out.diff_pair.p.signal
+        )
 
         # tvs connections
         # TODO: fix this, super ugly....

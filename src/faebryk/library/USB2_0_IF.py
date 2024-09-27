@@ -8,13 +8,11 @@ from faebryk.libs.library import L
 
 class USB2_0_IF(ModuleInterface):
     class Data(F.DifferentialPair):
-        pass
+        @L.rt_field
+        def single_electric_reference(self):
+            return F.has_single_electric_reference_defined(
+                F.ElectricLogic.connect_all_module_references(self)
+            )
 
     d: Data
     buspower: F.ElectricPower
-
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )

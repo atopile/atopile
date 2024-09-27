@@ -36,7 +36,9 @@ class EEPROM(Module):
     #                traits
     # ----------------------------------------
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
 
     @L.rt_field
     def single_electric_reference(self):

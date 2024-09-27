@@ -44,4 +44,6 @@ class Inductor(Module):
             ),
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("L")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.L
+    )

@@ -59,8 +59,8 @@ class ESP32_C3_MINI_1_ReferenceDesign(Module):
 
         # TODO: set the following in the pinmux
         # jtag gpio 4,5,6,7
-        esp32c3.usb.usb_if.d.n.connect(esp32c3.gpio[18].signal)
-        esp32c3.usb.usb_if.d.p.connect(esp32c3.gpio[19].signal)
+        esp32c3.usb.usb_if.d.n.signal.connect(esp32c3.gpio[18].signal)
+        esp32c3.usb.usb_if.d.p.signal.connect(esp32c3.gpio[19].signal)
         # UART0 gpio 30/31 (default)
         esp32c3.uart[0].rx.connect(esp32c3.gpio[20])
         esp32c3.uart[0].tx.connect(esp32c3.gpio[21])

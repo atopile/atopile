@@ -29,7 +29,9 @@ class Diode(Module):
             lambda p: p.as_unit("V"),
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("D")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.D
+    )
 
     @L.rt_field
     def pin_association_heuristic(self):

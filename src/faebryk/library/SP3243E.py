@@ -49,7 +49,9 @@ class SP3243E(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)("U")
+    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        F.has_designator_prefix.Prefix.U
+    )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://assets.maxlinear.com/web/documents/sp3243e.pdf"
     )
@@ -108,9 +110,16 @@ class SP3243E(Module):
 
         self.uart.base_uart.baud.merge(F.Range.upper_bound(250 * P.kbaud))
 
+        self.rs232.get_trait(
+            F.has_single_electric_reference
+        ).get_reference().voltage.merge(
+            F.Range.from_center(3 * P.V, 15 * P.V)
+        )  # TODO: Support negative numbers (-15 * P.V, 15 * P.V))
+
         # ------------------------------------
         #           connections
         # ------------------------------------
+        F.ElectricLogic.connect_all_module_references(self, exclude=[self.rs232])
 
         # ------------------------------------
         #          parametrization
