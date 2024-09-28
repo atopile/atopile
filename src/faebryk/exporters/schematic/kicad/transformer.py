@@ -146,9 +146,7 @@ class Transformer:
         # Log what we were able to attach
         attached = {
             n: t.symbol
-            for n, t in self.graph.nodes_with_trait(
-                Transformer.has_linked_sch_symbol
-            )
+            for n, t in self.graph.nodes_with_trait(Transformer.has_linked_sch_symbol)
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
         logger.debug(f"Missing: {pprint.pformat(self.missing_symbols)}")
@@ -165,9 +163,7 @@ class Transformer:
         # Attach the pins on the symbol to the module interface
         pin_by_name = groupby(sym_inst.pins, key=lambda p: pin_no_to_name[p.name])
         for pin_name, pins in pin_by_name:
-            f_symbol.pins[pin_name].add(
-                Transformer.has_linked_sch_pins(pins, sym_inst)
-            )
+            f_symbol.pins[pin_name].add(Transformer.has_linked_sch_pins(pins, sym_inst))
 
     # TODO: remove cleanup, it shouldn't really be required if we're marking propertys
     # def cleanup(self):
@@ -221,9 +217,7 @@ class Transformer:
     def get_all_symbols(self) -> List[tuple[Module, F.Symbol]]:
         return [
             (cast_assert(Module, cmp), t.symbol)
-            for cmp, t in self.graph.nodes_with_trait(
-                Transformer.has_linked_sch_symbol
-            )
+            for cmp, t in self.graph.nodes_with_trait(Transformer.has_linked_sch_symbol)
         ]
 
     @once
@@ -274,10 +268,7 @@ class Transformer:
 
     @staticmethod
     def get_unit_count(lib_sym: SCH.C_lib_symbols.C_symbol) -> int:
-        return max(
-            int(name.split("_")[1])
-            for name in lib_sym.symbols.keys()
-        )
+        return max(int(name.split("_")[1]) for name in lib_sym.symbols.keys())
 
     # TODO: remove
     # @singledispatchmethod
@@ -329,6 +320,7 @@ class Transformer:
     @staticmethod
     def hash_contents(obj) -> str:
         """Hash the contents of an object, minus the mark"""
+
         # filter out mark properties
         def _filter(k: tuple[Any, list[Any], list[str]]) -> bool:
             obj, _, _ = k
@@ -514,13 +506,15 @@ class Transformer:
     @staticmethod
     def _(obj: C_arc) -> BoundingBox:
         return Geometry.bbox(
-            list(chain.from_iterable(
-                Geometry.approximate_arc(
-                    (obj.start.x, obj.start.y),
-                    (obj.mid.x, obj.mid.y),
-                    (obj.end.x, obj.end.y),
+            list(
+                chain.from_iterable(
+                    Geometry.approximate_arc(
+                        (obj.start.x, obj.start.y),
+                        (obj.mid.x, obj.mid.y),
+                        (obj.end.x, obj.end.y),
+                    )
                 )
-            )),
+            ),
             tolerance=obj.stroke.width,
         )
 
@@ -567,13 +561,15 @@ class Transformer:
     @get_bbox.register
     @classmethod
     def _(cls, obj: SCH.C_lib_symbols.C_symbol.C_symbol) -> BoundingBox | None:
-        all_geos = list(chain(
-            obj.arcs,
-            obj.polylines,
-            obj.circles,
-            obj.rectangles,
-            obj.pins,
-        ))
+        all_geos = list(
+            chain(
+                obj.arcs,
+                obj.polylines,
+                obj.circles,
+                obj.rectangles,
+                obj.pins,
+            )
+        )
 
         bboxes = []
         for geo in all_geos:
@@ -588,36 +584,34 @@ class Transformer:
     @get_bbox.register
     @classmethod
     def _(cls, obj: SCH.C_lib_symbols.C_symbol) -> BoundingBox:
-        sub_points = list(chain.from_iterable(
-            bboxes
-            for unit in obj.symbols.values()
-            if (bboxes := cls.get_bbox(unit)) is not None
-        ))
+        sub_points = list(
+            chain.from_iterable(
+                bboxes
+                for unit in obj.symbols.values()
+                if (bboxes := cls.get_bbox(unit)) is not None
+            )
+        )
         assert len(sub_points) > 0
         return Geometry.bbox(sub_points)
 
     @get_bbox.register
     @classmethod
     def _(cls, obj: list) -> BoundingBox:
-        return Geometry.bbox(list(chain.from_iterable(cls.get_bbox(item) for item in obj)))
+        return Geometry.bbox(
+            list(chain.from_iterable(cls.get_bbox(item) for item in obj))
+        )
 
-    # TODO: remove
-    # @get_bbox.register
-    # def _(self, symbol: SCH.C_symbol_instance) -> BoundingBox:
-    #     # FIXME: this requires context to get the lib symbol,
-    #     # which means it must be called with self
-    #     return Geometry.abs_pos(
-    #         self.get_bbox(self.get_lib_syms(symbol))
-    #     )
-
-    def generate_schematic(self, **options: Unpack[shims.Options]):
-        """Does what it says on the tin."""
-        from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point
-
-        # 1. add missing symbols
+    def _add_missing_symbols(self):
+        """
+        Add symbols to the schematic that are missing based on the fab graph
+        """
         for f_symbol in self.missing_symbols:
             self.insert_symbol(f_symbol)
         self.missing_symbols = []
+
+    def _build_shim_circuit(self) -> shims.Circuit:
+        """Does what it says on the tin."""
+        from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point
 
         # 1.1 create hollow circuits to append to
         circuit = shims.Circuit()
@@ -625,8 +619,12 @@ class Transformer:
         circuit.nets = []
 
         # 1.2 create maps to short-cut access between fab and sch
-        sch_to_fab_pin_map: FuncDict[SCH.C_symbol_instance.C_pin, F.Symbol.Pin | None] = FuncDict()
-        sch_to_fab_sym_map: FuncDict[SCH.C_symbol_instance, F.Symbol | None] = FuncDict()
+        sch_to_fab_pin_map: FuncDict[
+            SCH.C_symbol_instance.C_pin, F.Symbol.Pin | None
+        ] = FuncDict()
+        sch_to_fab_sym_map: FuncDict[SCH.C_symbol_instance, F.Symbol | None] = (
+            FuncDict()
+        )
         # for each sch_symbol / (fab_symbol | None) pair, create a shim part
         # we need to shim sym object which aren't even in the graph to avoid colliding
         for _, f_sym_trait in self.graph.nodes_with_trait(F.Symbol.has_symbol):
@@ -643,7 +641,9 @@ class Transformer:
 
         # 2. create shim objects
         # 2.1 make nets
-        sch_to_shim_pin_map: FuncDict[SCH.C_symbol_instance.C_pin, shims.Pin] = FuncDict()
+        sch_to_shim_pin_map: FuncDict[SCH.C_symbol_instance.C_pin, shims.Pin] = (
+            FuncDict()
+        )
         fab_nets = self.graph.nodes_of_type(F.Net)
         for net in fab_nets:
             shim_net = shims.Net()
@@ -672,6 +672,7 @@ class Transformer:
             Make a string representation of the module's hierarchy
             using the best name for each part we have
             """
+
             def _best_name(module: Module) -> str:
                 if name_trait := module.try_get_trait(F.has_overriden_name):
                     return name_trait.get_name()
@@ -688,7 +689,9 @@ class Transformer:
             shim_part = shims.Part()
             shim_part.ref = sch_sym.propertys["Reference"].value
             # if we don't have a fab symbol, place the part at the top of the hierarchy
-            shim_part.hierarchy = _hierarchy(f_symbol.represents) if f_symbol else shim_part.ref
+            shim_part.hierarchy = (
+                _hierarchy(f_symbol.represents) if f_symbol else shim_part.ref
+            )
             # TODO: what's the ato analog?
             # TODO: should this desc
             shim_part.symtx = ""
@@ -703,7 +706,9 @@ class Transformer:
             all_sch_lib_pins = [p for u in sch_lib_symbol_units for p in u.pins]
 
             # if logger.isEnabledFor(logging.DEBUG): # TODO: enable
-            rich.print(f"Symbol {sch_sym.propertys['Reference'].value=} {sch_sym.uuid=}")
+            rich.print(
+                f"Symbol {sch_sym.propertys['Reference'].value=} {sch_sym.uuid=}"
+            )
             pins = rich.table.Table("pin.name=", "pin.number=")
             for pin in all_sch_lib_pins:
                 pins.add_row(pin.name.name, pin.number.number)
@@ -732,7 +737,9 @@ class Transformer:
                         f"Pin {sch_pin.name} not found in any unit of symbol {sch_sym.name}"
                     )
 
-                assert isinstance(lib_sch_pin, SCH.C_lib_symbols.C_symbol.C_symbol.C_pin)
+                assert isinstance(
+                    lib_sch_pin, SCH.C_lib_symbols.C_symbol.C_symbol.C_pin
+                )
                 shim_pin = sch_to_shim_pin_map.setdefault(sch_pin, shims.Pin())
                 shim_pin.name = sch_pin.name
                 shim_pin.num = lib_sch_pin.number
@@ -755,6 +762,19 @@ class Transformer:
 
         # 2.-1 run audit on circuit
         circuit.audit()
+        return circuit
+
+    def generate_schematic(self, **options: Unpack[shims.Options]):
+        """Does what it says on the tin."""
+        # 1. add missing symbols
+        self._add_missing_symbols()
+
+        # 2. build shim circuit
+        circuit = self._build_shim_circuit()
 
         # 3. run skidl schematic generation
+        from faebryk.exporters.schematic.kicad.skidl.gen_schematic import gen_schematic
+        gen_schematic(circuit, **options)
+
         # 4. transform sch according to skidl
+        # TODO:
