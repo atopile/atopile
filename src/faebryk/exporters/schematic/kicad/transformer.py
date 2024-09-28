@@ -11,6 +11,9 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, List, Protocol, Unpack
 
+import rich
+import rich.table
+
 import faebryk.library._F as F
 from faebryk.core.graphinterface import Graph
 from faebryk.core.module import Module
@@ -20,7 +23,6 @@ from faebryk.core.node import Node
 # from shapely import Polygon
 from faebryk.exporters.pcb.kicad.transformer import is_marked
 from faebryk.exporters.schematic.kicad.skidl import shims
-from faebryk.exporters.schematic.kicad.skidl.geometry import BBox
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import (
@@ -45,6 +47,7 @@ from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     FuncDict,
+    KeyErrorNotFound,
     cast_assert,
     find,
     not_none,
@@ -150,14 +153,20 @@ class Transformer:
         logger.debug(f"Attached: {pprint.pformat(attached)}")
         logger.debug(f"Missing: {pprint.pformat(self.missing_symbols)}")
 
-    def attach_symbol(self, f_symbol: F.Symbol, sch_symbol: SCH.C_symbol_instance):
+    def attach_symbol(self, f_symbol: F.Symbol, sym_inst: SCH.C_symbol_instance):
         """Bind the module and symbol together on the graph"""
-        f_symbol.add(self.has_linked_sch_symbol(sch_symbol))
+        f_symbol.add(self.has_linked_sch_symbol(sym_inst))
+
+        lib_sym = self._ensure_lib_symbol(sym_inst.lib_id)
+        lib_sym_units = self.get_sub_syms(lib_sym, sym_inst.unit)
+        lib_sym_pins = [p for u in lib_sym_units for p in u.pins]
+        pin_no_to_name = {str(pin.number.number): pin.name.name for pin in lib_sym_pins}
 
         # Attach the pins on the symbol to the module interface
-        for pin_name, pins in groupby(sch_symbol.pins, key=lambda p: p.name):
+        pin_by_name = groupby(sym_inst.pins, key=lambda p: pin_no_to_name[p.name])
+        for pin_name, pins in pin_by_name:
             f_symbol.pins[pin_name].add(
-                Transformer.has_linked_sch_pins(pins, sch_symbol)
+                Transformer.has_linked_sch_pins(pins, sym_inst)
             )
 
     # TODO: remove cleanup, it shouldn't really be required if we're marking propertys
@@ -227,58 +236,72 @@ class Transformer:
         return C_kicad_sym_file.loads(path)
 
     @staticmethod
-    def get_related_lib_sym_units(
+    def get_sub_syms(
         lib_sym: SCH.C_lib_symbols.C_symbol,
-    ) -> dict[int, list[SCH.C_lib_symbols.C_symbol.C_symbol]]:
+        unit: int | None,
+        body_style: int = 1,
+    ) -> list[SCH.C_lib_symbols.C_symbol.C_symbol]:
         """
-        Figure out units.
-        This seems to be purely based on naming convention.
-        There are two suffixed numbers on the end eg. _0_0, _0_1
-        They're in two sets of groups:
-            1. subunit. used to represent graphical vs. pin objects within a unit
-            2. unit. eg, a single op-amp in a package with 4
-        We need to lump the subunits together for further processing.
+        This is purely based on naming convention.
+        There are two suffixed numbers on the end: <name>_<x>_<y>, eg "LED_0_1"
+        The first number is the "unit" and the second is "body style"
+        Index 0 for either unit or body-style indicates "draw for all"
 
-        That is, we group them by the last number.
+        References:
+        - ^1 Parser:
+            https://gitlab.com/kicad/code/kicad/-/blob/b043f334de6183595fda935175d2e2635daa379c/eeschema/sch_io/kicad_sexpr/sch_io_kicad_sexpr_parser.cpp#L455-476
+        - ^2 Note on unit index meanings:
+            https://gitlab.com/kicad/code/kicad/-/blob/2c99bc6c6d0f548f590d4681e20868e8ddb5b9c7/eeschema/eeschema_jobs_handler.cpp#L702
         """
-        groups = groupby(lib_sym.symbols.items(), key=lambda item: int(item[0][-1]))
-        return {k: [v[1] for v in vs] for k, vs in groups}
 
-    @singledispatchmethod
-    def get_lib_symbol(self, sym) -> SCH.C_lib_symbols.C_symbol:
-        raise NotImplementedError(f"Don't know how to get lib symbol for {type(sym)}")
+        # kept body_style as an arg because I expect it will come up sooner than I like
+        # apparently body_style == 2 is comes from some option "de morgen?"
+        # don't need it now, but leaving this here for some poor sod later
+        if body_style != 1:
+            raise NotImplementedError("Only body style 1 is supported")
 
-    @get_lib_symbol.register
-    def _(self, sym: F.Symbol) -> SCH.C_lib_symbols.C_symbol:
-        lib_id = sym.get_trait(F.Symbol.has_kicad_symbol).symbol_name
-        return self._ensure_lib_symbol(lib_id)
+        sub_syms: list[SCH.C_lib_symbols.C_symbol.C_symbol] = []
+        for name, sym in lib_sym.symbols.items():
+            _, sub_sym_unit, sub_sym_body_style = name.split("_")
+            sub_sym_unit = int(sub_sym_unit)
+            sub_sym_body_style = int(sub_sym_body_style)
 
-    @get_lib_symbol.register
-    def _(self, sym: SCH.C_symbol_instance) -> SCH.C_lib_symbols.C_symbol:
-        return self.sch.lib_symbols.symbols[sym.lib_id]
+            if sub_sym_unit == unit or sub_sym_unit == 0 or unit is None:
+                if sub_sym_body_style == body_style or sub_sym_body_style == 0:
+                    sub_syms.append(sym)
 
-    @singledispatchmethod
-    def get_lib_pin(self, pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
-        raise NotImplementedError(f"Don't know how to get lib pin for {type(pin)}")
+        return sub_syms
 
-    @get_lib_pin.register
-    def _(self, pin: F.Symbol.Pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
-        graph_symbol, _ = pin.get_parent()
-        assert isinstance(graph_symbol, Node)
-        lib_sym = self.get_lib_symbol(graph_symbol)
-        units = self.get_related_lib_sym_units(lib_sym)
-        sym = graph_symbol.get_trait(Transformer.has_linked_sch_symbol).symbol
-
-        def _name_filter(sch_pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin):
-            return sch_pin.name in {
-                p.name for p in pin.get_trait(self.has_linked_sch_pins).pins
-            }
-
-        lib_pin = find(
-            chain.from_iterable(u.pins for u in units[sym.unit]),
-            _name_filter,
+    @staticmethod
+    def get_unit_count(lib_sym: SCH.C_lib_symbols.C_symbol) -> int:
+        return max(
+            int(name.split("_")[1])
+            for name in lib_sym.symbols.keys()
         )
-        return lib_pin
+
+    # TODO: remove
+    # @singledispatchmethod
+    # def get_lib_pin(self, pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
+    #     raise NotImplementedError(f"Don't know how to get lib pin for {type(pin)}")
+
+    # @get_lib_pin.register
+    # def _(self, pin: F.Symbol.Pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
+    #     graph_symbol, _ = pin.get_parent()
+    #     assert isinstance(graph_symbol, Node)
+    #     lib_sym = self.get_lib_syms(graph_symbol)
+    #     units = self.get_lib_syms(lib_sym)
+    #     sym = graph_symbol.get_trait(Transformer.has_linked_sch_symbol).symbol
+
+    #     def _name_filter(sch_pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin):
+    #         return sch_pin.name in {
+    #             p.name for p in pin.get_trait(self.has_linked_sch_pins).pins
+    #         }
+
+    #     lib_pin = find(
+    #         chain.from_iterable(u.pins for u in units[sym.unit]),
+    #         _name_filter,
+    #     )
+    #     return lib_pin
 
     # Marking -------------------------------------------------------------------------
     """
@@ -427,28 +450,29 @@ class Transformer:
         lib_sym = self._ensure_lib_symbol(lib_id)
 
         # insert all units
-        if len(self.get_related_lib_sym_units(lib_sym) > 1):
+        if self.get_unit_count(lib_sym) > 1:
             # problems today:
             # - F.Symbol -> Module mapping
             # - has_linked_sch_symbol mapping is currently 1:1
             # - has_kicad_symbol mapping is currently 1:1
             raise NotImplementedError("Multiple units not implemented")
 
-        for unit_key, unit_objs in self.get_related_lib_sym_units(lib_sym).items():
-            pins = []
+        for unit_key in range(self.get_unit_count(lib_sym)):
+            unit_objs = self.get_sub_syms(lib_sym, unit_key)
 
+            pins = []
             for subunit in unit_objs:
                 for pin in subunit.pins:
                     pins.append(
                         SCH.C_symbol_instance.C_pin(
-                            name=pin.name.name,
+                            name=pin.number.number,
                             uuid=self.gen_uuid(mark=True),
                         )
                     )
 
             unit_instance = SCH.C_symbol_instance(
                 lib_id=lib_id,
-                unit=unit_key + 1,  # yes, these are indexed from 1...
+                unit=unit_key,
                 at=C_xyr(at[0], at[1], rotation),
                 in_bom=True,
                 on_board=True,
@@ -478,7 +502,7 @@ class Transformer:
 
     @singledispatchmethod
     @staticmethod
-    def get_bbox(obj) -> BoundingBox:
+    def get_bbox(obj) -> BoundingBox | None:
         """
         Get the bounding box of the object in it's reference frame
         This means that for things like pins, which know their own position,
@@ -490,15 +514,35 @@ class Transformer:
     @staticmethod
     def _(obj: C_arc) -> BoundingBox:
         return Geometry.bbox(
-            Geometry.approximate_arc(obj.start, obj.mid, obj.end),
+            list(chain.from_iterable(
+                Geometry.approximate_arc(
+                    (obj.start.x, obj.start.y),
+                    (obj.mid.x, obj.mid.y),
+                    (obj.end.x, obj.end.y),
+                )
+            )),
             tolerance=obj.stroke.width,
         )
 
     @get_bbox.register
     @staticmethod
-    def _(obj: C_polyline | C_rect) -> BoundingBox:
+    def _(obj: C_polyline) -> BoundingBox | None:
+        if len(obj.pts.xys) == 0:
+            return None
+
         return Geometry.bbox(
-            ((pt.x, pt.y) for pt in obj.pts.xys),
+            [(pt.x, pt.y) for pt in obj.pts.xys],
+            tolerance=obj.stroke.width,
+        )
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_rect) -> BoundingBox | None:
+        return Geometry.bbox(
+            [
+                (obj.start.x, obj.start.y),
+                (obj.end.x, obj.end.y),
+            ],
             tolerance=obj.stroke.width,
         )
 
@@ -513,43 +557,63 @@ class Transformer:
         )
 
     @get_bbox.register
-    def _(self, pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin) -> BoundingBox:
+    @staticmethod
+    def _(obj: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin) -> BoundingBox:
         # TODO: include the name and number in the bbox
-        start = (pin.at.x, pin.at.y)
-        end = Geometry.rotate(start, [(pin.at.x + pin.length, pin.at.y)], pin.at.r)[0]
+        start = (obj.at.x, obj.at.y)
+        end = Geometry.rotate(start, [(obj.at.x + obj.length, obj.at.y)], obj.at.r)[0]
         return Geometry.bbox([start, end])
 
     @get_bbox.register
     @classmethod
-    def _(cls, symbol: SCH.C_lib_symbols.C_symbol.C_symbol) -> BoundingBox:
-        return Geometry.bbox(
-            map(
-                cls.get_bbox,
-                chain(
-                    symbol.arcs,
-                    symbol.polylines,
-                    symbol.circles,
-                    symbol.rectangles,
-                    symbol.pins,
-                ),
-            )
-        )
+    def _(cls, obj: SCH.C_lib_symbols.C_symbol.C_symbol) -> BoundingBox | None:
+        all_geos = list(chain(
+            obj.arcs,
+            obj.polylines,
+            obj.circles,
+            obj.rectangles,
+            obj.pins,
+        ))
+
+        bboxes = []
+        for geo in all_geos:
+            if (new_bboxes := cls.get_bbox(geo)) is not None:
+                bboxes.extend(new_bboxes)
+
+        if len(bboxes) == 0:
+            return None
+
+        return Geometry.bbox(bboxes)
 
     @get_bbox.register
     @classmethod
-    def _(cls, symbol: SCH.C_lib_symbols.C_symbol) -> BoundingBox:
-        return Geometry.bbox(
-            chain.from_iterable(cls.get_bbox(unit) for unit in symbol.symbols.values())
-        )
+    def _(cls, obj: SCH.C_lib_symbols.C_symbol) -> BoundingBox:
+        sub_points = list(chain.from_iterable(
+            bboxes
+            for unit in obj.symbols.values()
+            if (bboxes := cls.get_bbox(unit)) is not None
+        ))
+        assert len(sub_points) > 0
+        return Geometry.bbox(sub_points)
 
     @get_bbox.register
-    def _(self, symbol: SCH.C_symbol_instance) -> BoundingBox:
-        # FIXME: this requires context to get the lib symbol,
-        # which means it must be called with self
-        return Geometry.abs_pos(self.get_bbox(self.get_lib_symbol(symbol)))
+    @classmethod
+    def _(cls, obj: list) -> BoundingBox:
+        return Geometry.bbox(list(chain.from_iterable(cls.get_bbox(item) for item in obj)))
+
+    # TODO: remove
+    # @get_bbox.register
+    # def _(self, symbol: SCH.C_symbol_instance) -> BoundingBox:
+    #     # FIXME: this requires context to get the lib symbol,
+    #     # which means it must be called with self
+    #     return Geometry.abs_pos(
+    #         self.get_bbox(self.get_lib_syms(symbol))
+    #     )
 
     def generate_schematic(self, **options: Unpack[shims.Options]):
         """Does what it says on the tin."""
+        from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point
+
         # 1. add missing symbols
         for f_symbol in self.missing_symbols:
             self.insert_symbol(f_symbol)
@@ -557,6 +621,8 @@ class Transformer:
 
         # 1.1 create hollow circuits to append to
         circuit = shims.Circuit()
+        circuit.parts = []
+        circuit.nets = []
 
         # 1.2 create maps to short-cut access between fab and sch
         sch_to_fab_pin_map: FuncDict[SCH.C_symbol_instance.C_pin, F.Symbol.Pin | None] = FuncDict()
@@ -569,10 +635,11 @@ class Transformer:
             ):
                 sch_to_fab_sym_map[sch_sym_trait.symbol] = f_sym_trait.reference
         for sch_sym in self.sch.symbols:
+            f_symbol = sch_to_fab_sym_map.setdefault(sch_sym, None)
             for sch_pin in sch_sym.pins:
-                sch_to_fab_pin_map[sch_pin] = f_symbol.pins.get(sch_pin.name)
-            if sch_sym not in sch_to_fab_sym_map:
-                sch_to_fab_sym_map[sch_sym] = None
+                sch_to_fab_pin_map[sch_pin] = (
+                    f_symbol.pins.get(sch_pin.name) if f_symbol else None
+                )
 
         # 2. create shim objects
         # 2.1 make nets
@@ -616,24 +683,55 @@ class Transformer:
 
         # for each sch_symbol, create a shim part
         for sch_sym, f_symbol in sch_to_fab_sym_map.items():
+            lib_sym = self._ensure_lib_symbol(sch_sym.lib_id)
+            sch_lib_symbol_units = self.get_sub_syms(lib_sym, sch_sym.unit)
             shim_part = shims.Part()
-            shim_part.hierarchy = _hierarchy(f_symbol.represents)
-            shim_part.ref = f_symbol.represents.get_trait(F.has_overriden_name).get_name()
+            shim_part.ref = sch_sym.propertys["Reference"].value
+            # if we don't have a fab symbol, place the part at the top of the hierarchy
+            shim_part.hierarchy = _hierarchy(f_symbol.represents) if f_symbol else shim_part.ref
             # TODO: what's the ato analog?
             # TODO: should this desc
             shim_part.symtx = ""
             shim_part.unit = {}  # TODO: support units
             shim_part.fab_symbol = f_symbol
             shim_part.bare_bbox = BBox(
-                Point(*pts) for pts in Transformer.get_bbox(f_symbol)
+                *[Point(*pts) for pts in Transformer.get_bbox(sch_lib_symbol_units)]
             )
+            shim_part.pins = []
 
             # 2.3 finish making pins, this time from a part-orientation
-            sch_lib_symbol = self.get_lib_symbol(sch_sym)
-            all_sch_units = list(sch_lib_symbol.symbols.values())
-            all_sch_lib_pins = [p for u in all_sch_units for p in u.pins]
+            all_sch_lib_pins = [p for u in sch_lib_symbol_units for p in u.pins]
+
+            # if logger.isEnabledFor(logging.DEBUG): # TODO: enable
+            rich.print(f"Symbol {sch_sym.propertys['Reference'].value=} {sch_sym.uuid=}")
+            pins = rich.table.Table("pin.name=", "pin.number=")
+            for pin in all_sch_lib_pins:
+                pins.add_row(pin.name.name, pin.number.number)
+            rich.print(pins)
+
             for sch_pin in sch_sym.pins:
-                lib_sch_pin = find(all_sch_lib_pins, key=lambda x: x.name == sch_pin.name)
+                rich.print(f"Pin {sch_pin.name=}")
+                try:
+                    lib_sch_pin = find(
+                        all_sch_lib_pins,
+                        lambda x: str(x.number.number) == str(sch_pin.name),
+                    )
+                except KeyErrorNotFound:
+                    # KiCAD seems to make a full duplication of all the symbol objects
+                    # despite not displaying them unless they're relevant to the current
+                    # unit. Do our best to make sure it's at least a pin the symbol
+                    # overall has (ignoring the unit)
+                    lib_sym_pins_all_units = [
+                        p.number.number
+                        for sym in self.get_sub_syms(lib_sym, None)
+                        for p in sym.pins
+                    ]
+                    if sch_pin.name in lib_sym_pins_all_units:
+                        continue
+                    raise ValueError(
+                        f"Pin {sch_pin.name} not found in any unit of symbol {sch_sym.name}"
+                    )
+
                 assert isinstance(lib_sch_pin, SCH.C_lib_symbols.C_symbol.C_symbol.C_pin)
                 shim_pin = sch_to_shim_pin_map.setdefault(sch_pin, shims.Pin())
                 shim_pin.name = sch_pin.name
