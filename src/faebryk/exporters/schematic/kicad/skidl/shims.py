@@ -19,11 +19,6 @@ if TYPE_CHECKING:
     from .route import Face, GlobalTrack
 
 
-def get_script_name():
-    # TODO:
-    raise NotImplementedError
-
-
 def to_list(x):
     """
     Return x if it is already a list, or return a list containing x if x is a scalar.
@@ -115,6 +110,9 @@ class Part:
     def __iter__(self) -> Iterator["Pin"]:
         yield from self.pins
 
+    def __len__(self) -> int:
+        return len(self.pins)
+
     @property
     def draw(self):
         # TODO:
@@ -171,6 +169,7 @@ class Pin:
     fab_pin: F.Symbol.Pin
     fab_is_gnd: bool
     fab_is_pwr: bool
+    _is_connected: bool
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
@@ -200,7 +199,7 @@ class Pin:
 
     def is_connected(self) -> bool:
         """Whether the pin is connected to anything"""
-        raise NotImplementedError
+        return getattr(self, "_is_connected", False)
 
 
 class Net:

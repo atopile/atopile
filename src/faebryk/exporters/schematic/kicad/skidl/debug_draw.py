@@ -79,7 +79,7 @@ def draw_endpoint(pt: Point, scr: "pygame.Surface", tx: Tx, color=(100, 100, 100
     pygame.draw.circle(scr, color, (pt.x, pt.y), radius)
 
 def draw_seg(
-    seg: Segment | "Interval" | "NetInterval",
+    seg: "Segment | Interval | NetInterval",
     scr: "pygame.Surface",
     tx: Tx,
     color=(100, 100, 100),
@@ -145,7 +145,7 @@ def draw_text(
     # syntax highlighting doesn't recognise this
     font.render_to(scr, (pt.x, pt.y), txt, color)
 
-def draw_part(part: Part, scr: "pygame.Surface", tx: Tx, font: "pygame.font.Font"):
+def draw_part(part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Font"):
     """Draw part bounding box.
 
     Args:
@@ -208,7 +208,7 @@ def draw_net(
         )
 
 def draw_force(
-    part: Part,
+    part: "Part",
     force: Vector,
     scr: "pygame.Surface",
     tx: Tx,

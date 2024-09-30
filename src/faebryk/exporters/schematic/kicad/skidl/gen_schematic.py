@@ -20,7 +20,7 @@ from .constants import BLK_INT_PAD, BOX_LABEL_FONT_SIZE, GRID, PIN_LABEL_FONT_SI
 from .geometry import BBox, Point, Tx, Vector
 from .net_terminal import NetTerminal
 from .node import HIER_SEP, SchNode
-from .shims import Circuit, Options, Part, PartUnit, Pin, get_script_name, rmv_attr
+from .shims import Circuit, Options, Part, PartUnit, Pin, rmv_attr
 
 
 def bbox_to_eeschema(bbox: BBox, tx: Tx, name=None):
@@ -671,8 +671,8 @@ def finalize_parts_and_nets(circuit: Circuit, **options: Unpack[Options]):
 
 def gen_schematic(
     circuit: Circuit,
-    filepath: str = ".",
-    top_name: str = get_script_name(),
+    filepath: str,
+    top_name: str,
     title="SKiDL-Generated Schematic",
     flatness: float = 0.0,
     retries: int = 2,

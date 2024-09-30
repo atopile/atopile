@@ -694,7 +694,7 @@ class Face(Interval):
 
     def draw(
         self,
-        scr: Surface,
+        scr: "Surface",
         tx: Tx,
         font,
         color: tuple[int, int, int] = (128, 128, 128),
@@ -786,7 +786,7 @@ class GlobalWire(list[Face | Terminal]):
 
     def draw(
         self,
-        scr: Surface,
+        scr: "Surface",
         tx: Tx,
         color: tuple[int, int, int] = (0, 0, 0),
         thickness: int = 1,
@@ -847,7 +847,7 @@ class GlobalRoute(list[GlobalWire]):
 
     def draw(
         self,
-        scr: Surface,
+        scr: "Surface",
         tx: Tx,
         font,
         color: tuple[int, int, int] = (0, 0, 0),
@@ -1021,7 +1021,7 @@ class GlobalTrack(list[Face]):
 
     def draw(
         self,
-        scr: Surface,
+        scr: "Surface",
         tx: Tx,
         font,
         **options: Unpack[Options],
@@ -1313,7 +1313,7 @@ class SwitchBox:
             for seg in segments:
                 seg.flip_xy()
 
-    def coalesce(self, switchboxes: list["SwitchBox"]) -> "SwitchBox" | None:
+    def coalesce(self, switchboxes: list["SwitchBox"]) -> "SwitchBox | None":
         """Group switchboxes around a seed switchbox into a larger switchbox.
 
         Args:
@@ -2031,7 +2031,7 @@ class SwitchBox:
 
     def draw(
         self,
-        scr: Surface | None = None,
+        scr: "Surface | None" = None,
         tx: Tx | None = None,
         font = None,
         color: tuple[int, int, int] = (128, 0, 128),
@@ -3169,7 +3169,7 @@ class Router:
                 # Update the node net's wire with the cleaned version.
                 node.wires[net] = segments
 
-    def add_junctions(node: SchNode):
+    def add_junctions(node: "SchNode"):
         """Add X & T-junctions where wire segments in the same net meet."""
 
         def find_junctions(route: list[Segment]) -> list[Point]:
@@ -3217,14 +3217,14 @@ class Router:
             junctions = find_junctions(segments)
             node.junctions[net].extend(junctions)
 
-    def rmv_routing_stuff(node: SchNode):
+    def rmv_routing_stuff(node: "SchNode"):
         """Remove attributes added to parts/pins during routing."""
 
         rmv_attr(node.parts, ("left_track", "right_track", "top_track", "bottom_track"))
         for part in node.parts:
             rmv_attr(part.pins, ("route_pt", "face"))
 
-    def route(node: SchNode, **options: Unpack[Options]):
+    def route(node: "SchNode", **options: Unpack[Options]):
         """Route the wires between part pins in this node and its children.
 
         Steps:

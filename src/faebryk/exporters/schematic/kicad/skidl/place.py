@@ -84,7 +84,7 @@ class PartBlock:
 
     def __init__(
         self,
-        src: list[Part | "SchNode"] | Part | "SchNode",
+        src: "list[Part | SchNode] | Part | SchNode",
         bbox: BBox,
         anchor_pt: Point,
         snap_pt: Point,
@@ -1297,8 +1297,9 @@ class Placer:
                     continue
 
                 # HACK: Get similarity forces right-sized.
-                part_similarity[part][other_part] = part.similarity(other_part) / 100
-                # part_similarity[part][other_part] = 0.1
+                # TODO: @mawildoer put this back
+                # part_similarity[part][other_part] = part.similarity(other_part) / 100
+                part_similarity[part][other_part] = 0.1
 
             # Select the top-most pin in each part as the anchor point for force-directed placement.
             # tx = part.tx

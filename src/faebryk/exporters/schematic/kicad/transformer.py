@@ -664,6 +664,11 @@ class Transformer:
                             shim_net.pins.append(shim_pin)
                             sch_to_shim_pin_map[sch_pin] = shim_pin
 
+            # set is_connected for all pins on net if len(net.pins) > 0
+            is_connected = len(shim_net.pins) > 0
+            for pin in shim_net.pins:
+                pin._is_connected = is_connected
+
             circuit.nets.append(shim_net)
 
         # 2.2 make parts
@@ -774,7 +779,8 @@ class Transformer:
 
         # 3. run skidl schematic generation
         from faebryk.exporters.schematic.kicad.skidl.gen_schematic import gen_schematic
-        gen_schematic(circuit, **options)
+        gen_schematic(circuit, ".", "test", **options)
 
         # 4. transform sch according to skidl
         # TODO:
+        pass
