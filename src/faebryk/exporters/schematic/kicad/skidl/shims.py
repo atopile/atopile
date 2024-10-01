@@ -66,6 +66,7 @@ class Part:
     sch_symbol: "fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance"
     fab_symbol: F.Symbol | None
     bare_bbox: BBox
+    _similarites: dict["Part", float]
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
@@ -77,6 +78,7 @@ class Part:
             "unit",
             "fab_symbol",
             "bare_bbox",
+            "_similarites",
         ]:
             if not hasattr(self, attr):
                 raise ValueError(f"Missing attribute: {attr}")
@@ -113,6 +115,10 @@ class Part:
     def __len__(self) -> int:
         return len(self.pins)
 
+    def __hash__(self) -> int:
+        """Make hashable for use in dicts"""
+        return id(self)
+
     @property
     def draw(self):
         # TODO:
@@ -123,6 +129,10 @@ class Part:
 
         for pin in self.pins:
             pin.part = self
+
+    def similarity(self, part: "Part", **options) -> float:
+        assert not options, "No options supported"
+        return self._similarites[part]
 
 
 class PartUnit(Part):

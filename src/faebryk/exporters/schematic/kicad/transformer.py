@@ -765,6 +765,64 @@ class Transformer:
 
             circuit.parts.append(shim_part)
 
+        # 2.4 generate similarity matrix
+        def similarity(part: "shims.Part", other: "shims.Part", **options) -> float:
+            """
+            NOTE: Straight outta skidl
+            Return a measure of how similar two parts are.
+
+            Args:
+                part (Part): The part to compare to for similarity.
+                options (dict): Dictionary of options and settings affecting
+                    similarity computation.
+
+            Returns:
+                Float value for similarity (larger means more similar).
+            """
+
+            def score_pins():
+                pin_score = 0
+                if len(part.pins) == len(other.pins):
+                    for p_self, p_other in zip(part.ordered_pins, other.ordered_pins):
+                        if p_self.is_attached(p_other):
+                            pin_score += 1
+                return pin_score
+
+            # Every part starts off somewhat similar to another.
+            score = 1
+
+            if part.description == other.description:
+                score += 5
+            if part.name == other.name:
+                score += 5
+                if part.value == other.value:
+                    score += 2
+                score += score_pins()
+            elif part.ref_prefix == other.ref_prefix:
+                score += 3
+                if part.value == other.value:
+                    score += 2
+                score += score_pins()
+
+            return score / 3
+
+        similarities: dict[tuple[int, int], float] = {}
+        for part in circuit.parts:
+            part._similarites = {}
+
+            for other in circuit.parts:
+                if part is other:
+                    continue
+
+                key = tuple(sorted((hash(part), hash(other))))
+
+                if key not in similarities:
+                    # TODO: actually compute similarity
+                    # similarities[key] = similarity(part, other)
+                    similarities[key] = 10
+
+                part._similarites[other] = similarities[key]
+
         # 2.-1 run audit on circuit
         circuit.audit()
         return circuit
@@ -783,4 +841,3 @@ class Transformer:
 
         # 4. transform sch according to skidl
         # TODO:
-        pass

@@ -271,7 +271,18 @@ def add_anchor_pull_pins(parts: list[Part], nets: list[Net], **options: Unpack[O
             except ValueError:
                 # Set anchor for part with no pins at all.
                 anchor_pull_pin = Pin()
+
+                # FAEBRYK: manual construction of the part from here because
+                anchor_pull_pin.part = part
+                anchor_pull_pin.name = "ANCHOR_PULL"
+                anchor_pull_pin.num = "ANCHOR_PULL"
+                anchor_pull_pin.orientation = "top"
+                anchor_pull_pin.stub = True
+                anchor_pull_pin.pt = part.place_bbox.max
+                part.pins.append(anchor_pull_pin)
+
                 anchor_pull_pin.place_pt = part.place_bbox.max
+
             part.anchor_pins["similarity"] = [anchor_pull_pin]
             part.pull_pins["similarity"] = all_pull_pins
             all_pull_pins.append(anchor_pull_pin)
@@ -1152,7 +1163,9 @@ def place_net_terminals(
 class Placer:
     """Mixin to add place function to Node class."""
 
-    def group_parts(node: "SchNode", **options: Unpack[Options]):
+    def group_parts(
+        node: "SchNode", **options: Unpack[Options]
+    ) -> tuple[list[list[Part]], list[Net], list[Part]]:
         """Group parts in the Node that are connected by internal nets
 
         Args:
@@ -1193,10 +1206,10 @@ class Placer:
                     break
 
         # Remove any empty groups that were unioned into other groups.
-        connected_parts = [group for group in connected_parts if group]
+        connected_parts = [list(group) for group in connected_parts if group]
 
         # Find parts that aren't connected to anything.
-        floating_parts = set(node.parts) - set(itertools.chain(*connected_parts))
+        floating_parts = list(set(node.parts) - set(itertools.chain(*connected_parts)))
 
         return connected_parts, internal_nets, floating_parts
 
@@ -1297,9 +1310,8 @@ class Placer:
                     continue
 
                 # HACK: Get similarity forces right-sized.
-                # TODO: @mawildoer put this back
-                # part_similarity[part][other_part] = part.similarity(other_part) / 100
-                part_similarity[part][other_part] = 0.1
+                part_similarity[part][other_part] = part.similarity(other_part) / 100
+                # part_similarity[part][other_part] = 0.1
 
             # Select the top-most pin in each part as the anchor point for force-directed placement.
             # tx = part.tx
