@@ -710,14 +710,14 @@ class Transformer:
             # 2.3 finish making pins, this time from a part-orientation
             all_sch_lib_pins = [p for u in sch_lib_symbol_units for p in u.pins]
 
-            # if logger.isEnabledFor(logging.DEBUG): # TODO: enable
-            rich.print(
-                f"Symbol {sch_sym.propertys['Reference'].value=} {sch_sym.uuid=}"
-            )
-            pins = rich.table.Table("pin.name=", "pin.number=")
-            for pin in all_sch_lib_pins:
-                pins.add_row(pin.name.name, pin.number.number)
-            rich.print(pins)
+            if logger.isEnabledFor(logging.DEBUG):
+                rich.print(
+                    f"Symbol {sch_sym.propertys['Reference'].value=} {sch_sym.uuid=}"
+                )
+                pins = rich.table.Table("pin.name=", "pin.number=")
+                for pin in all_sch_lib_pins:
+                    pins.add_row(pin.name.name, pin.number.number)
+                rich.print(pins)
 
             for sch_pin in sch_sym.pins:
                 rich.print(f"Pin {sch_pin.name=}")
