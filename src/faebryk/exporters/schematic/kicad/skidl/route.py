@@ -1594,9 +1594,7 @@ class SwitchBox:
             # Return connection segments.
             return column_intvls
 
-        def prune_targets(
-            targets: list["Target"], current_col: int
-        ) -> list["Target"]:
+        def prune_targets(targets: list["Target"], current_col: int) -> list["Target"]:
             """Remove targets in columns to the left of the current left-to-right routing column"""
             return [target for target in targets if target.col > current_col]
 
@@ -1611,9 +1609,7 @@ class SwitchBox:
                 nets[intvl.end] = intvl.net
             return nets
 
-        def net_search(
-            net: "Net", start: int, track_nets: list["Net"]
-        ) -> int:
+        def net_search(net: "Net", start: int, track_nets: list["Net"]) -> int:
             """Search for the closest points for the net before and after the start point."""
 
             # illegal offset past the end of the list of track nets.
@@ -2033,7 +2029,7 @@ class SwitchBox:
         self,
         scr: "Surface | None" = None,
         tx: Tx | None = None,
-        font = None,
+        font=None,
         color: tuple[int, int, int] = (128, 0, 128),
         thickness: int = 2,
         **options: Unpack[Options],
@@ -2311,9 +2307,7 @@ class Router:
         #        d. Add the faces on the new route to the stop_faces list.
 
         # Core routing function.
-        def rt_srch(
-            start_face: Face, stop_faces: list[Face]
-        ) -> GlobalWire:
+        def rt_srch(start_face: Face, stop_faces: list[Face]) -> GlobalWire:
             """Return a minimal-distance path from the start face to one of the stop faces.
 
             Args:
@@ -2771,7 +2765,9 @@ class Router:
                 part_bboxes (list): List of BBoxes for the placed parts.
             """
 
-            def get_touching_segs(seg: Segment, ortho_segs: list[Segment]) -> list[Segment]:
+            def get_touching_segs(
+                seg: Segment, ortho_segs: list[Segment]
+            ) -> list[Segment]:
                 """Return list of orthogonal segments that touch the given segment."""
                 touch_segs = set()
                 for oseg in ortho_segs:
@@ -3009,7 +3005,9 @@ class Router:
                 }
                 return corners
 
-            def get_jogs(segments: list[Segment]) -> Iterator[tuple[list[Segment], list[Point]]]:
+            def get_jogs(
+                segments: list[Segment],
+            ) -> Iterator[tuple[list[Segment], list[Point]]]:
                 """Yield the three segments and starting and end points of a staircase or tophat jog."""
 
                 # Get dict of right-angle corners formed by segments.
@@ -3298,7 +3296,7 @@ class Router:
                     h_tracks,
                     v_tracks,
                     global_routes,
-                    **options
+                    **options,
                 )
 
             # Create detailed wiring using switchbox routing for the global routes.
@@ -3312,7 +3310,7 @@ class Router:
                     node.parts,
                     switchboxes,
                     global_routes,
-                    **options
+                    **options,
                 )
 
             node.switchbox_router(switchboxes, **options)
@@ -3325,7 +3323,7 @@ class Router:
                     node.parts,
                     global_routes,
                     switchboxes,
-                    **options
+                    **options,
                 )
 
             # Now clean-up the wires and add junctions.

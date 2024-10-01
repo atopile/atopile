@@ -70,6 +70,7 @@ class PlacementFailure(Exception):
 def pt_sum(pts):
     return sum(pts, Point(0, 0))
 
+
 def force_sum(forces):
     return sum(forces, Vector(0, 0))
 
@@ -78,6 +79,7 @@ def is_net_terminal(part):
     from .net_terminal import NetTerminal
 
     return isinstance(part, NetTerminal)
+
 
 # Class for movable groups of parts/child nodes.
 class PartBlock:
@@ -92,7 +94,9 @@ class PartBlock:
         block_pull_pins: dict[str, list[Pin]],
     ):
         self.src = src  # Source for this block.
-        self.place_bbox = bbox  # FIXME: Is this needed if place_bbox includes room for routing?
+        self.place_bbox = (
+            bbox  # FIXME: Is this needed if place_bbox includes room for routing?
+        )
 
         # Create anchor pin to which forces are applied to this block.
         anchor_pin = Pin()
@@ -196,7 +200,9 @@ def get_enclosing_bbox(parts: list[Part]) -> BBox:
     return BBox().add(*(part.place_bbox * part.tx for part in parts))
 
 
-def add_anchor_pull_pins(parts: list[Part], nets: list[Net], **options: Unpack[Options]):
+def add_anchor_pull_pins(
+    parts: list[Part], nets: list[Net], **options: Unpack[Options]
+):
     """Add positions of anchor and pull pins for attractive net forces between parts.
 
     Args:
@@ -394,7 +400,9 @@ def adjust_orientations(parts: list[Part], **options: Unpack[Options]) -> bool |
         # Find the point at which the cost reaches its lowest point.
         # delta_cost at location i is the change in cost *before* part i is moved.
         # Start with cost change of zero before any parts are moved.
-        delta_costs = [0,]
+        delta_costs = [
+            0,
+        ]
         delta_costs.extend((part.delta_cost for part in moved_parts))
         cost_seq = list(itertools.accumulate(delta_costs))
         min_cost = min(cost_seq)
@@ -609,12 +617,23 @@ def overlap_force(part: Part, parts: list[Part], **options: Unpack[Options]) -> 
             # Add some small random offset to break symmetry when parts exactly overlay each other.
             # Move right edge of part to the left of other part's left edge, etc...
             moves: list[list[float, Vector]] = []
-            rnd = Vector(random.random()-0.5, random.random()-0.5)
-            for edges, dir in ((("ll", "lr"), Vector(1,0)), (("ul", "ll"), Vector(0,1))):
-                move: Vector = (getattr(other_part_bbox, edges[0]) - getattr(part_bbox, edges[1]) - rnd) * dir
+            rnd = Vector(random.random() - 0.5, random.random() - 0.5)
+            for edges, dir in (
+                (("ll", "lr"), Vector(1, 0)),
+                (("ul", "ll"), Vector(0, 1)),
+            ):
+                move: Vector = (
+                    getattr(other_part_bbox, edges[0])
+                    - getattr(part_bbox, edges[1])
+                    - rnd
+                ) * dir
                 moves.append([move.magnitude, move])
                 # Flip edges...
-                move = (getattr(other_part_bbox, edges[1]) - getattr(part_bbox, edges[0]) - rnd) * dir
+                move = (
+                    getattr(other_part_bbox, edges[1])
+                    - getattr(part_bbox, edges[0])
+                    - rnd
+                ) * dir
                 moves.append([move.magnitude, move])
 
             # Select the smallest move that separates the parts.
@@ -626,7 +645,9 @@ def overlap_force(part: Part, parts: list[Part], **options: Unpack[Options]) -> 
     return total_force
 
 
-def overlap_force_rand(part: Part, parts: list[Part], **options: Unpack[Options]) -> Vector:
+def overlap_force_rand(
+    part: Part, parts: list[Part], **options: Unpack[Options]
+) -> Vector:
     """Compute the repulsive force on a part from overlapping other parts.
 
     Args:
@@ -652,14 +673,18 @@ def overlap_force_rand(part: Part, parts: list[Part], **options: Unpack[Options]
             # Add some small random offset to break symmetry when parts exactly overlay each other.
             # Move right edge of part to the left of other part's left edge.
             moves = []
-            rnd = Vector(random.random()-0.5, random.random()-0.5)
+            rnd = Vector(random.random() - 0.5, random.random() - 0.5)
             for edges, dir in (
                 (("ll", "lr"), Vector(1, 0)),
                 (("lr", "ll"), Vector(1, 0)),
                 (("ul", "ll"), Vector(0, 1)),
                 (("ll", "ul"), Vector(0, 1)),
             ):
-                move: Vector = (getattr(other_part_bbox, edges[0]) - getattr(part_bbox, edges[1]) - rnd) * dir
+                move: Vector = (
+                    getattr(other_part_bbox, edges[0])
+                    - getattr(part_bbox, edges[1])
+                    - rnd
+                ) * dir
                 moves.append([move.magnitude, move])
             accum = 0
             for move in moves:
@@ -685,7 +710,9 @@ repulsive_force = overlap_force
 
 
 def scale_attractive_repulsive_forces(
-    parts: list[Part], force_func: Callable[[Part, list[Part], ...], Vector], **options: Unpack[Options]
+    parts: list[Part],
+    force_func: Callable[[Part, list[Part], ...], Vector],
+    **options: Unpack[Options]
 ) -> float:
     """Set scaling between attractive net forces and repulsive part overlap forces."""
 
@@ -719,7 +746,11 @@ def scale_attractive_repulsive_forces(
 
 
 def total_part_force(
-    part: Part, parts: list[Part], scale: float, alpha: float, **options: Unpack[Options]
+    part: Part,
+    parts: list[Part],
+    scale: float,
+    alpha: float,
+    **options: Unpack[Options]
 ) -> Vector:
     """Compute the total of the attractive net and repulsive overlap forces on a part.
 
@@ -768,7 +799,12 @@ def similarity_force(
 
 
 def total_similarity_force(
-    part: Part, parts: list[Part], similarity: dict, scale: float, alpha: float, **options: Unpack[Options]
+    part: Part,
+    parts: list[Part],
+    similarity: dict,
+    scale: float,
+    alpha: float,
+    **options: Unpack[Options]
 ) -> Vector:
     """Compute the total of the attractive similarity and repulsive overlap forces on a part.
 
@@ -1075,7 +1111,9 @@ def place_net_terminals(
             # Right side, so terminal label flipped to jut out to the right.
             insets.append((abs(pull_pt.x - bbox.lr.x), Tx().flip_x()))
             # Top side, so terminal label rotated by 270 to jut out to the top.
-            insets.append((abs(pull_pt.y - bbox.ul.y), Tx().rot_90cw().rot_90cw().rot_90cw()))
+            insets.append(
+                (abs(pull_pt.y - bbox.ul.y), Tx().rot_90cw().rot_90cw().rot_90cw())
+            )
             # Bottom side. so terminal label rotated 90 to jut out to the bottom.
             insets.append((abs(pull_pt.y - bbox.ll.y), Tx().rot_90cw()))
 
@@ -1091,7 +1129,9 @@ def place_net_terminals(
             pull_pt = pull_pin.place_pt * pull_pin.part.tx
             terminal.tx = terminal.tx.move(pull_pt - anchor_pt)
 
-    def evolution(net_terminals: list["NetTerminal"], placed_parts: list[Part], bbox: BBox):
+    def evolution(
+        net_terminals: list["NetTerminal"], placed_parts: list[Part], bbox: BBox
+    ):
         """Evolve placement of NetTerminals starting from outermost from center to innermost."""
 
         evolution_type = options.get("terminal_evolution", "all_at_once")
@@ -1108,11 +1148,13 @@ def place_net_terminals(
             # Sort terminals from outermost to innermost w.r.t. the center.
             def dist_to_bbox_edge(term: "NetTerminal"):
                 pt = term.pins[0].place_pt * term.tx
-                return min((
-                    abs(pt.x - bbox.ll.x),
-                    abs(pt.x - bbox.lr.x),
-                    abs(pt.y - bbox.ll.y),
-                    abs(pt.y - bbox.ul.y))
+                return min(
+                    (
+                        abs(pt.x - bbox.ll.x),
+                        abs(pt.x - bbox.lr.x),
+                        abs(pt.y - bbox.ll.y),
+                        abs(pt.y - bbox.ul.y),
+                    )
                 )
 
             terminals = sorted(
@@ -1213,7 +1255,9 @@ class Placer:
 
         return connected_parts, internal_nets, floating_parts
 
-    def place_connected_parts(node: "SchNode", parts: list[Part], nets: list[Net], **options):
+    def place_connected_parts(
+        node: "SchNode", parts: list[Part], nets: list[Net], **options
+    ):
         """Place individual parts.
 
         Args:
@@ -1271,7 +1315,9 @@ class Placer:
             # Pause to look at placement for debugging purposes.
             draw_pause()
 
-    def place_floating_parts(node: "SchNode", parts: list[Part], **options: Unpack[Options]):
+    def place_floating_parts(
+        node: "SchNode", parts: list[Part], **options: Unpack[Options]
+    ):
         """Place individual parts.
 
         Args:
@@ -1378,7 +1424,9 @@ class Placer:
             bbox = bbox.resize(Vector(pad, pad))
 
             # Create the part block and place it on the list.
-            part_blocks.append(PartBlock(part_list, bbox, bbox.ctr, snap_pt, tag, block_pull_pins))
+            part_blocks.append(
+                PartBlock(part_list, bbox, bbox.ctr, snap_pt, tag, block_pull_pins)
+            )
 
         # Add part blocks for child nodes.
         for child in children:
@@ -1407,7 +1455,9 @@ class Placer:
                 tag = 4  # A child node with no snapping point.
 
             # Create the child block and place it on the list.
-            part_blocks.append(PartBlock(child, bbox, bbox.ctr, snap_pt, tag, block_pull_pins))
+            part_blocks.append(
+                PartBlock(child, bbox, bbox.ctr, snap_pt, tag, block_pull_pins)
+            )
 
         # Get ordered list of all block tags. Use this list to tell if tags are
         # adjacent since there may be missing tags if a particular type of block
