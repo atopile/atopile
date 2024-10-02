@@ -4,16 +4,27 @@
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import NodeException
 from faebryk.libs.util import not_none
 
 
 class Pad(ModuleInterface):
+    # FIXME: can net this become a reference instead?
     net: F.Electrical
     pcb: ModuleInterface
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)
         intf.add(F.has_linked_pad_defined(self))
+
+    @property
+    def interface(self) -> F.Electrical:
+        connections = self.net.get_direct_connections()
+        if len(connections) == 0:
+            raise NodeException(self, f"Pad {self} has no interface connected")
+        if len(connections) > 1:
+            raise NodeException(self, f"Pad {self} has multiple interfaces connected")
+        return list(connections)[0]
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(
