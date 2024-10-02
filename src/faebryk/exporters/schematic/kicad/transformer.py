@@ -38,6 +38,7 @@ from faebryk.libs.kicad.fileformats_sch import (
     C_circle,
     C_kicad_sch_file,
     C_kicad_sym_file,
+    C_lib_symbol,
     C_polyline,
     C_property,
     C_rect,
@@ -201,6 +202,12 @@ class Transformer:
                         "${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH)
                     )
                 )
+
+                # HACK: paths typically look like .../libs/footprints/xyz.pretty
+                # we actually want the .../libs/ part of it, so we'll just knock
+                # off the last two directories
+                resolved_lib_dir = resolved_lib_dir.parent.parent
+
                 for path in resolved_lib_dir.glob("*.kicad_sym"):
                     if path.stem not in self._symbol_files_index:
                         self._symbol_files_index[path.stem] = path
@@ -231,10 +238,10 @@ class Transformer:
 
     @staticmethod
     def get_sub_syms(
-        lib_sym: SCH.C_lib_symbols.C_symbol,
+        lib_sym: C_lib_symbol,
         unit: int | None,
         body_style: int = 1,
-    ) -> list[SCH.C_lib_symbols.C_symbol.C_symbol]:
+    ) -> list[C_lib_symbol.C_symbol]:
         """
         This is purely based on naming convention.
         There are two suffixed numbers on the end: <name>_<x>_<y>, eg "LED_0_1"
@@ -254,7 +261,7 @@ class Transformer:
         if body_style != 1:
             raise NotImplementedError("Only body style 1 is supported")
 
-        sub_syms: list[SCH.C_lib_symbols.C_symbol.C_symbol] = []
+        sub_syms: list[C_lib_symbol.C_symbol] = []
         for name, sym in lib_sym.symbols.items():
             _, sub_sym_unit, sub_sym_body_style = name.split("_")
             sub_sym_unit = int(sub_sym_unit)
@@ -267,7 +274,7 @@ class Transformer:
         return sub_syms
 
     @staticmethod
-    def get_unit_count(lib_sym: SCH.C_lib_symbols.C_symbol) -> int:
+    def get_unit_count(lib_sym: C_lib_symbol) -> int:
         return max(int(name.split("_")[1]) for name in lib_sym.symbols.keys())
 
     # TODO: remove
@@ -408,7 +415,7 @@ class Transformer:
     def _ensure_lib_symbol(
         self,
         lib_id: str,
-    ) -> SCH.C_lib_symbols.C_symbol:
+    ) -> C_lib_symbol:
         """Ensure a symbol is in the schematic library, and return it"""
         if lib_id in self.sch.lib_symbols.symbols:
             return self.sch.lib_symbols.symbols[lib_id]
@@ -483,7 +490,7 @@ class Transformer:
                 )
             else:
                 # TODO: handle not having an overriden name better
-                raise Exception(f"Module {module} has no overriden name")
+                raise ValueError(f"Module {module} has no overriden name")
 
             self.attach_symbol(symbol, unit_instance)
 
@@ -552,7 +559,7 @@ class Transformer:
 
     @get_bbox.register
     @staticmethod
-    def _(obj: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin) -> BoundingBox:
+    def _(obj: C_lib_symbol.C_symbol.C_pin) -> BoundingBox:
         # TODO: include the name and number in the bbox
         start = (obj.at.x, obj.at.y)
         end = Geometry.rotate(start, [(obj.at.x + obj.length, obj.at.y)], obj.at.r)[0]
@@ -560,7 +567,7 @@ class Transformer:
 
     @get_bbox.register
     @classmethod
-    def _(cls, obj: SCH.C_lib_symbols.C_symbol.C_symbol) -> BoundingBox | None:
+    def _(cls, obj: C_lib_symbol.C_symbol) -> BoundingBox | None:
         all_geos = list(
             chain(
                 obj.arcs,
@@ -583,7 +590,7 @@ class Transformer:
 
     @get_bbox.register
     @classmethod
-    def _(cls, obj: SCH.C_lib_symbols.C_symbol) -> BoundingBox:
+    def _(cls, obj: C_lib_symbol) -> BoundingBox:
         sub_points = list(
             chain.from_iterable(
                 bboxes
@@ -606,7 +613,7 @@ class Transformer:
         Add symbols to the schematic that are missing based on the fab graph
         """
         for f_symbol in self.missing_symbols:
-            self.insert_symbol(f_symbol)
+            self.insert_symbol(f_symbol.represents)
         self.missing_symbols = []
 
     def _build_shim_circuit(self) -> shims.Circuit:
@@ -711,7 +718,7 @@ class Transformer:
             all_sch_lib_pins = [p for u in sch_lib_symbol_units for p in u.pins]
 
             if logger.isEnabledFor(logging.DEBUG):
-                rich.print(
+                logger.debug(
                     f"Symbol {sch_sym.propertys['Reference'].value=} {sch_sym.uuid=}"
                 )
                 pins = rich.table.Table("pin.name=", "pin.number=")
@@ -720,7 +727,7 @@ class Transformer:
                 rich.print(pins)
 
             for sch_pin in sch_sym.pins:
-                rich.print(f"Pin {sch_pin.name=}")
+                logger.debug(f"Pin {sch_pin.name=}")
                 try:
                     lib_sch_pin = find(
                         all_sch_lib_pins,
@@ -743,7 +750,7 @@ class Transformer:
                     )
 
                 assert isinstance(
-                    lib_sch_pin, SCH.C_lib_symbols.C_symbol.C_symbol.C_pin
+                    lib_sch_pin, C_lib_symbol.C_symbol.C_pin
                 )
                 shim_pin = sch_to_shim_pin_map.setdefault(sch_pin, shims.Pin())
                 shim_pin.name = sch_pin.name
@@ -840,4 +847,4 @@ class Transformer:
         gen_schematic(circuit, ".", "test", **options)
 
         # 4. transform sch according to skidl
-        # TODO:
+        
