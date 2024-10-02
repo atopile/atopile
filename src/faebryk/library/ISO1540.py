@@ -76,12 +76,12 @@ class ISO1540(Module):
         return F.can_attach_to_footprint_via_pinmap(
             pinmap={
                 "1": self.non_iso.power.hv,
-                "2": self.non_iso.i2c.sda,
-                "3": self.non_iso.i2c.scl,
+                "2": self.non_iso.i2c.sda.signal,
+                "3": self.non_iso.i2c.scl.signal,
                 "4": self.non_iso.power.lv,
                 "5": self.iso.power.lv,
-                "6": self.iso.i2c.scl,
-                "7": self.iso.i2c.sda,
+                "6": self.iso.i2c.scl.signal,
+                "7": self.iso.i2c.sda.signal,
                 "8": self.iso.power.hv,
             }
         )

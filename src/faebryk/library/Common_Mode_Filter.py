@@ -6,14 +6,30 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import Quantity
 
 logger = logging.getLogger(__name__)
 
 
 class Common_Mode_Filter(Module):
-    c_a = L.list_field(2, F.Electrical)
-    c_b = L.list_field(2, F.Electrical)
+    coil_a: F.Inductor
+    coil_b: F.Inductor
+
+    inductance: F.TBD[Quantity]
+    self_resonant_frequency: F.TBD[Quantity]
+    rated_current: F.TBD[Quantity]
+    dc_resistance: F.TBD[Quantity]
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.FL
     )
+
+    def __preinit__(self):
+        # ----------------------------------------
+        #            parametrization
+        # ----------------------------------------
+        for coil in [self.coil_a, self.coil_b]:
+            coil.inductance.merge(self.inductance)
+            coil.self_resonant_frequency.merge(self.self_resonant_frequency)
+            coil.rated_current.merge(self.rated_current)
+            coil.dc_resistance.merge(self.dc_resistance)

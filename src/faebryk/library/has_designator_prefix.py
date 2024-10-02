@@ -98,6 +98,8 @@ class has_designator_prefix(Module.TraitT):
         """Microphone"""
         MIC = "MIC"
         """Microphone"""
+        MOD = "MOD"
+        """Module"""
         MP = "MP"
         """Mechanical part (including screws and fasteners)"""
         OP = "OP"

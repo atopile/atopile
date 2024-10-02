@@ -203,8 +203,8 @@ def attach(component: Module, partno: str, get_model: bool = True):
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
             component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
 
-        sym = F.Symbol.with_component(component, pinmap)
-        sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_footprint.info.name}"))
+            sym = F.Symbol.with_component(component, pinmap)
+            sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_footprint.info.name}"))
 
         # footprint
         fp = F.KicadFootprint(

@@ -21,7 +21,6 @@ class CH344Q(F.CH344):
     class UARTWrapper(Module):
         uart: F.UART
         tnow: F.ElectricLogic
-        ...
 
         @assert_once
         def enable_tnow_mode(self):

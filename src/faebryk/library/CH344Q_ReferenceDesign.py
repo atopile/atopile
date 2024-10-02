@@ -36,6 +36,48 @@ class CH344Q_ReferenceDesign(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
+    @L.rt_field
+    def pcb_layout(self):
+        from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
+        from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
+        from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
+
+        Point = F.has_pcb_position.Point
+        L = F.has_pcb_position.layer_type
+        LVL = LayoutTypeHierarchy.Level
+
+        return F.has_pcb_layout_defined(
+            layout=LayoutTypeHierarchy(
+                layouts=[
+                    LVL(
+                        mod_type=F.CH344Q,
+                        layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
+                    ),
+                    LVL(
+                        mod_type=F.Crystal_Oscillator,
+                        layout=LayoutAbsolute(Point((0, -8, 0, L.NONE))),
+                    ),
+                    LVL(
+                        mod_type=F.LDO,
+                        layout=LayoutAbsolute(Point((7.5, 0, 0, L.NONE))),
+                    ),
+                    LVL(
+                        mod_type=F.LEDIndicator,
+                        layout=LayoutExtrude(
+                            base=Point((-2.5, -11, 180, L.NONE)), vector=(0, 1.75, 0)
+                        ),
+                    ),
+                    LVL(
+                        mod_type=F.PoweredLED,
+                        layout=LayoutAbsolute(Point((-2.5, -16.25, 0, L.NONE))),
+                    ),
+                    LVL(
+                        mod_type=F.FilterElectricalRC,
+                        layout=LayoutAbsolute(Point((0, -8, 0, L.NONE))),
+                    ),
+                ]
+            )
+        )
 
     def __preinit__(self):
         # ------------------------------------

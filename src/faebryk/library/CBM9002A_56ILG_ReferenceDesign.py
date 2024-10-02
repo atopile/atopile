@@ -74,6 +74,9 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
 
         self.reset_circuit.logic.connect(self.mcu.reset)
 
+        self.avcc.decoupled.decouple()
+        self.vcc.decoupled.decouple()
+
         # ----------------------------------------
         #               Parameters
         # ----------------------------------------

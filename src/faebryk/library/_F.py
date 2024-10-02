@@ -75,7 +75,6 @@ from faebryk.library.is_representable_by_single_value_defined import is_represen
 from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
-from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
 from faebryk.library.Header import Header
 from faebryk.library.PJ398SM import PJ398SM
 from faebryk.library.RJ45_Receptacle import RJ45_Receptacle
@@ -131,6 +130,7 @@ from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.can_be_decoupled import can_be_decoupled
 from faebryk.library.is_decoupled import is_decoupled
+from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.Potentiometer import Potentiometer
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
