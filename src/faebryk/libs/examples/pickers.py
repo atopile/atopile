@@ -272,6 +272,12 @@ def pick_switch(module: "_TSwitch[F.Electrical]"):
         [
             PickerOption(
                 part=LCSC_Part(partno="C318884"),
+                pinmap={
+                    "1": module.unnamed[0],
+                    "2": module.unnamed[0],
+                    "3": module.unnamed[1],
+                    "4": module.unnamed[1],
+                },
             )
         ],
     )
