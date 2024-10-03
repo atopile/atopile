@@ -4,9 +4,11 @@
 import logging
 import shutil
 from pathlib import Path
+from typing import Callable
 
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
+from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.app.pcb import apply_design
@@ -32,7 +34,9 @@ DEV_MODE = ConfigFlag("EXP_DEV_MODE", False)
 logger = logging.getLogger(__name__)
 
 
-def apply_design_to_pcb(m: Module):
+def apply_design_to_pcb(
+    m: Module, transform: Callable[[PCB_Transformer], None] | None = None
+):
     """
     Picks parts for the module.
     Runs a simple ERC.
@@ -76,7 +80,7 @@ def apply_design_to_pcb(m: Module):
         PCB_FILE.unlink(missing_ok=True)
         shutil.copytree(example_prj, KICAD_SRC, dirs_exist_ok=True)
 
-    apply_design(PCB_FILE, NETLIST_OUT, G, m)
+    apply_design(PCB_FILE, NETLIST_OUT, G, m, transform)
 
     return G
 

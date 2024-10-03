@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Sequence
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.geometry.basic import Geometry
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, find
 
 if TYPE_CHECKING:
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -52,12 +53,18 @@ class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.imp
         def get_route_for_mifs_in_net(mifs) -> Route | None:
             pads = get_pads_pos_of_mifs(mifs + self.extra_mifs, self.extra_pads)
 
-            layers = {pos[3] for pos in pads.values()}
-
-            layers = {pos[3] for pos in pads.values()}
-            if len(layers) > 1:
-                raise NotImplementedError()
-            layer = next(iter(layers))
+            unique_layers = {layer for pos in pads.values() for layer in pos[3]}
+            try:
+                layer = find(
+                    unique_layers,
+                    lambda layer: all(layer in pos[3] for pos in pads.values()),
+                )
+            except KeyErrorAmbiguous as e:
+                layer = e.duplicates[0]
+            except KeyErrorNotFound as e:
+                raise NotImplementedError(
+                    "Only support pads that share at least one layer"
+                ) from e
 
             grouped_pads = group_pads_that_are_connected_already(pads)
 
@@ -66,10 +73,17 @@ class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.imp
 
             logger.debug(f"Routing pads: {pads}")
 
+            def _get_pad_pos(pad: F.Pad):
+                """
+                overwrite layer set with the layer we chose to route on
+                """
+                x, y, r, _ = pads[pad]
+                return x, y, r, layer
+
             def get_route_for_net_star():
                 # filter pads that are already connected
                 fpads = {
-                    (pad := next(iter(pad_group))): pads[pad]
+                    (pad := next(iter(pad_group))): _get_pad_pos(pad)
                     for pad_group in grouped_pads
                 }
 
@@ -82,7 +96,7 @@ class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.imp
                 return Route(pads=fpads.keys(), path=path)
 
             def get_route_for_direct():
-                sets = [{pads[pad] for pad in group} for group in grouped_pads]
+                sets = [{_get_pad_pos(pad) for pad in group} for group in grouped_pads]
 
                 path = Path()
 
