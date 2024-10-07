@@ -246,9 +246,10 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
                 output_str += str(assignment[0].value) +'\n\n'
 
     # check if it is an assignment
-    class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None)
-    if class_assignments:
-        output_str = str(class_assignments.value)
+    # FIXME: this is broken, because ClassLayers no longer have assignments attached
+    # class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None)
+    # if class_assignments:
+    #     output_str = str(class_assignments.value)
 
     if output_str:
         return lsp.Hover(contents=lsp.MarkupContent(
