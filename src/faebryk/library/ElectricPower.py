@@ -2,14 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 
-import math
 from typing import Self
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 from faebryk.libs.util import RecursionGuard
 
 
@@ -26,11 +25,7 @@ class ElectricPower(F.Power):
             return (
                 super()
                 .decouple()
-                .builder(
-                    lambda c: c.rated_voltage.merge(
-                        F.Range(obj.voltage * 2.0, math.inf * P.V)
-                    )
-                )
+                .builder(lambda c: c.rated_voltage.constrain_ge(obj.voltage * 2.0))
             )
 
     class can_be_surge_protected_power(F.can_be_surge_protected_defined):
@@ -50,8 +45,14 @@ class ElectricPower(F.Power):
     hv: F.Electrical
     lv: F.Electrical
 
-    voltage: F.TBD[Quantity]
-    max_current: F.TBD[Quantity]
+    voltage = L.p_field(
+        unit=P.V,
+        likely_constrained=True,
+        domain=L.Domains.Numbers.REAL(),
+        soft_set=L.Range(0 * P.V, 1000 * P.V),
+        tolerance_guess=5 * P.percent,
+    )
+    # max_current= L.p_field(unit=P.A)
     """
     Only for this particular power interface
     Does not propagate to connections
@@ -73,7 +74,7 @@ class ElectricPower(F.Power):
 
         self.connect_shallow(fused_power)
 
-        fuse.trip_current.merge(F.Constant(self.max_current))
+        # fuse.trip_current.merge(F.Constant(self.max_current))
         # fused_power.max_current.merge(F.Range(0 * P.A, fuse.trip_current))
 
         if attach_to is not None:
@@ -93,7 +94,7 @@ class ElectricPower(F.Power):
         if not isinstance(other, ElectricPower):
             return
 
-        self.voltage.merge(other.voltage)
+        self.voltage.alias_is(other.voltage)
 
     # TODO remove with lazy mifs
     def connect(self: Self, *other: Self, linkcls=None) -> Self:

@@ -6,7 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,11 @@ class UART_RS485(Module):
     read_enable: F.ElectricLogic
     write_enable: F.ElectricLogic
 
-    max_data_rate: F.TBD[Quantity]
-    gpio_voltage: F.TBD[Quantity]
+    max_data_rate = L.p_field(unit=P.baud)
+    gpio_voltage = L.p_field(unit=P.V)
 
     def __preinit__(self):
-        self.max_data_rate.merge(self.uart.baud)
+        self.max_data_rate.alias_is(self.uart.baud)
         self.power.voltage.merge(F.Range(3.3 * P.V, 5.0 * P.V))
         self.power.decoupled.decouple()
 

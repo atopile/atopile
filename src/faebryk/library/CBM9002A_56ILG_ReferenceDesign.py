@@ -24,12 +24,16 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
             self.logic.pulled.pull(up=True)
             self.logic.signal.connect_via(self.cap, self.logic.reference.lv)
 
-            self.cap.capacitance.merge(F.Range.from_center_rel(1 * P.uF, 0.05))
+            self.cap.capacitance.constrain_subset(
+                L.Range.from_center_rel(1 * P.uF, 0.05)
+            )
 
-            self.diode.forward_voltage.merge(F.Range(715 * P.mV, 1.5 * P.V))
-            self.diode.reverse_leakage_current.merge(F.Range.upper_bound(1 * P.uA))
-            self.diode.current.merge(F.Range.from_center_rel(300 * P.mA, 0.05))
-            self.diode.max_current.merge(F.Range.lower_bound(1 * P.A))
+            self.diode.forward_voltage.constrain_subset(F.Range(715 * P.mV, 1.5 * P.V))
+            self.diode.reverse_leakage_current.constrain_le(1 * P.uA)
+            self.diode.current.constrain_subset(
+                F.Range.from_center_rel(300 * P.mA, 0.05)
+            )
+            self.diode.current.constrain_ge(1 * P.A)
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -81,9 +85,9 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
         #               Parameters
         # ----------------------------------------
 
-        self.oscillator.crystal.frequency.merge(
+        self.oscillator.crystal.frequency.constrain_subset(
             F.Range.from_center_rel(24 * P.Mhertz, 0.05)
         )
-        self.oscillator.crystal.frequency_tolerance.merge(
+        self.oscillator.crystal.frequency_tolerance.constrain_subset(
             F.Range(0 * P.ppm, 20 * P.ppm)
         )

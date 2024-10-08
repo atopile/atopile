@@ -53,9 +53,15 @@ class ButtonCell(F.Battery):
         N_2430 = 2430
         N_2450 = 2450
 
-    material: F.TBD[Material]
-    shape: F.TBD[Shape]
-    size: F.TBD[Size]
+    material = L.p_field(
+        domain=L.Domains.ENUM(Material),
+    )
+    shape = L.p_field(
+        domain=L.Domains.ENUM(Shape),
+    )
+    size = L.p_field(
+        domain=L.Domains.ENUM(Size),
+    )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.B

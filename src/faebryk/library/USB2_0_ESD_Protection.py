@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class USB2_0_ESD_Protection(Module):
     usb = L.list_field(2, F.USB2_0)
 
-    vbus_esd_protection: F.TBD[bool]
-    data_esd_protection: F.TBD[bool]
+    vbus_esd_protection = L.p_field(domain=L.Domains.ENUM(bool))
+    data_esd_protection = L.p_field(domain=L.Domains.ENUM(bool))
 
     def __preinit__(self):
         self.usb[0].usb_if.buspower.voltage.merge(F.Range(4.75 * P.V, 5.25 * P.V))

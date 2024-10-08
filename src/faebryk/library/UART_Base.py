@@ -4,14 +4,14 @@
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
+from faebryk.libs.units import P
 
 
 class UART_Base(ModuleInterface):
     rx: F.ElectricLogic
     tx: F.ElectricLogic
 
-    baud: F.TBD[Quantity]
+    baud = L.p_field(unit=P.baud)
 
     @L.rt_field
     def single_electric_reference(self):
@@ -22,4 +22,4 @@ class UART_Base(ModuleInterface):
     def _on_connect(self, other: "UART_Base"):
         super()._on_connect(other)
 
-        self.baud.merge(other.baud)
+        self.baud.alias_is(other.baud)

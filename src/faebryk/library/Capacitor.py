@@ -7,7 +7,7 @@ from enum import IntEnum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
+from faebryk.libs.units import P
 from faebryk.libs.util import join_if_non_empty
 
 logger = logging.getLogger(__name__)
@@ -26,9 +26,21 @@ class Capacitor(Module):
 
     unnamed = L.list_field(2, F.Electrical)
 
-    capacitance: F.TBD[Quantity]
-    rated_voltage: F.TBD[Quantity]
-    temperature_coefficient: F.TBD[TemperatureCoefficient]
+    capacitance = L.p_field(
+        unit=P.F,
+        likely_constrained=True,
+        soft_set=L.Range(100 * P.pF, 1 * P.F),
+        tolerance_guess=10 * P.percent,
+    )
+    rated_voltage = L.p_field(
+        unit=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(10 * P.V, 100 * P.V),
+        tolerance_guess=10 * P.percent,
+    )
+    temperature_coefficient = L.p_field(
+        domain=L.Domains.ENUM(TemperatureCoefficient),
+    )
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

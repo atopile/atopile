@@ -34,7 +34,7 @@ class Crystal_Oscillator(Module):
 
     def __preinit__(self):
         for cap in self.capacitors:
-            cap.capacitance.merge(self.capacitance)
+            cap.capacitance.alias_is(self.capacitance)
 
         # ----------------------------------------
         #                traits

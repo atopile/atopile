@@ -15,8 +15,8 @@ class ResistorVoltageDivider(Module):
 
     node = L.list_field(3, F.Electrical)
 
-    ratio: F.TBD[float]
-    max_current: F.TBD[float]
+    ratio = L.p_field(domain=L.Domains.ENUM(float))
+    max_current = L.p_field(domain=L.Domains.ENUM(float))
 
     @L.rt_field
     def can_bridge(self):

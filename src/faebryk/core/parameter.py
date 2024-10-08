@@ -8,7 +8,7 @@ from typing import Protocol, runtime_checkable
 
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node, f_field
-from faebryk.libs.sets import Range
+from faebryk.libs.sets import Range, Set_
 from faebryk.libs.units import P, Quantity, Unit
 
 logger = logging.getLogger(__name__)
@@ -19,8 +19,139 @@ class HasUnit(Protocol):
     unit: Unit
 
 
+class ParameterOperatable(Protocol):
+    type PE = ParameterOperatable | int | float | Quantity | Set_
+
+    def alias_is(self, other: PE):
+        pass
+
+    def constrain_le(self, other: PE):
+        pass
+
+    def constrain_ge(self, other: PE):
+        pass
+
+    def constrain_lt(self, other: PE):
+        pass
+
+    def constrain_gt(self, other: PE):
+        pass
+
+    def constrain_ne(self, other: PE):
+        pass
+
+    def constrain_subset(self, other: PE):
+        pass
+
+    def constrain_superset(self, other: PE):
+        pass
+
+    def operation_add(self, other: PE) -> Expression:
+        pass
+
+    def operation_subtract(self, other: PE) -> Expression:
+        pass
+
+    def operation_multiply(self, other: PE) -> Expression:
+        pass
+
+    def operation_divide(self, other: PE) -> Expression:
+        pass
+
+    def operation_power(self, other: PE) -> Expression:
+        pass
+
+    def operation_log(self) -> Expression:
+        pass
+
+    def operation_sqrt(self) -> Expression:
+        pass
+
+    def operation_abs(self) -> Expression:
+        pass
+
+    def operation_floor(self) -> Expression:
+        pass
+
+    def operation_ceil(self) -> Expression:
+        pass
+
+    def operation_round(self) -> Expression:
+        pass
+
+    def operation_sin(self) -> Expression:
+        pass
+
+    def operation_cos(self) -> Expression:
+        pass
+
+    def operation_union(self, other: PE) -> Expression:
+        pass
+
+    def operation_intersection(self, other: PE) -> Expression:
+        pass
+
+    def operation_difference(self, other: PE) -> Expression:
+        pass
+
+    def operation_symmetric_difference(self, other: PE) -> Expression:
+        pass
+
+    def operation_and(self, other: PE) -> Expression:
+        pass
+
+    def operation_or(self, other: PE) -> Expression:
+        pass
+
+    def operation_not(self) -> Expression:
+        pass
+
+    def operation_xor(self, other: PE) -> Expression:
+        pass
+
+    def operation_implies(self, other: PE) -> Expression:
+        pass
+
+    # ----------------------------------------------------------------------------------
+    def __add__(self, other: PE):
+        return self.operation_add(other)
+
+    def __sub__(self, other: PE):
+        # TODO could be set difference
+        return self.operation_subtract(other)
+
+    def __mul__(self, other: PE):
+        return self.operation_multiply(other)
+
+    def __truediv__(self, other: PE):
+        return self.operation_divide(other)
+
+    def __rtruediv__(self, other: PE):
+        return self.operation_divide(other)
+
+    def __pow__(self, other: PE):
+        return self.operation_power(other)
+
+    def __abs__(self):
+        return self.operation_abs()
+
+    def __round__(self):
+        return self.operation_round()
+
+    def __and__(self, other: PE):
+        # TODO could be set intersection
+        return self.operation_and(other)
+
+    def __or__(self, other: PE):
+        # TODO could be set union
+        return self.operation_or(other)
+
+    def __xor__(self, other: PE):
+        return self.operation_xor(other)
+
+
 # TODO: prohibit instantiation
-class Expression(Node):
+class Expression(Node, ParameterOperatable):
     pass
 
 
@@ -251,6 +382,10 @@ class IsSubset(Predicate):
     pass
 
 
+class IsSuperset(Predicate):
+    pass
+
+
 class Alias(Node):
     pass
 
@@ -280,6 +415,7 @@ class R(Namespace):
 
         class Set(Namespace):
             IS_SUBSET = IsSubset
+            IS_SUPERSET = IsSuperset
 
     class Domains(Namespace):
         class ESeries(Namespace):
@@ -295,7 +431,7 @@ class R(Namespace):
             NATURAL = lambda: Numbers(integer=True, negative=False)  # noqa: E731
 
         BOOL = Boolean
-        ENUM = Enum
+        ENUM = EnumDomain
 
     class Expressions(Namespace):
         class Arithmetic(Namespace):
@@ -328,17 +464,20 @@ class R(Namespace):
             SYMMETRIC_DIFFERENCE = SymmetricDifference
 
 
-class Parameter(Node):
+class Parameter(Node, ParameterOperatable):
     def __init__(
         self,
         *,
-        unit: Unit | Quantity,
+        unit: Unit | Quantity | None = None,
         # hard constraints
         within: Range | None = None,
         domain: Domain = Numbers(negative=False),
         # soft constraints
         soft_set: Range | None = None,
-        guess: Quantity | None = None,
+        guess: Quantity
+        | int
+        | float
+        | None = None,  # TODO actually allowed to be anything from domain
         tolerance_guess: Quantity | None = None,
         # hints
         likely_constrained: bool = False,
@@ -360,109 +499,113 @@ class Parameter(Node):
         self.likely_constrained = likely_constrained
 
     # ----------------------------------------------------------------------------------
+    type PE = ParameterOperatable.PE
 
-    def alias_is(self, other: "Parameter"):
+    def alias_is(self, other: PE):
         pass
 
-    def constrain_le(self, other: "Parameter"):
+    def constrain_le(self, other: PE):
         pass
 
-    def constrain_ge(self, other: "Parameter"):
+    def constrain_ge(self, other: PE):
         pass
 
-    def constrain_lt(self, other: "Parameter"):
+    def constrain_lt(self, other: PE):
         pass
 
-    def constrain_gt(self, other: "Parameter"):
+    def constrain_gt(self, other: PE):
         pass
 
-    def constrain_ne(self, other: "Parameter"):
+    def constrain_ne(self, other: PE):
         pass
 
-    def constrain_subset(self, other: "Parameter"):
+    def constrain_subset(self, other: PE):
         pass
 
-    def operation_add(self, other: "Parameter"):
+    def operation_add(self, other: PE) -> Expression:
         pass
 
-    def operation_subtract(self, other: "Parameter"):
+    def operation_subtract(self, other: PE) -> Expression:
         pass
 
-    def operation_multiply(self, other: "Parameter"):
+    def operation_multiply(self, other: PE) -> Expression:
         pass
 
-    def operation_divide(self, other: "Parameter"):
+    def operation_divide(self, other: PE) -> Expression:
         pass
 
-    def operation_power(self, other: "Parameter"):
+    def operation_power(self, other: PE) -> Expression:
         pass
 
-    def operation_log(self):
+    def operation_log(self) -> Expression:
         pass
 
-    def operation_sqrt(self):
+    def operation_sqrt(self) -> Expression:
         pass
 
-    def operation_abs(self):
+    def operation_abs(self) -> Expression:
         pass
 
-    def operation_floor(self):
+    def operation_floor(self) -> Expression:
         pass
 
-    def operation_ceil(self):
+    def operation_ceil(self) -> Expression:
         pass
 
-    def operation_round(self):
+    def operation_round(self) -> Expression:
         pass
 
-    def operation_sin(self):
+    def operation_sin(self) -> Expression:
         pass
 
-    def operation_cos(self):
+    def operation_cos(self) -> Expression:
         pass
 
-    def operation_union(self, other: "Parameter"):
+    def operation_union(self, other: PE) -> Expression:
         pass
 
-    def operation_intersection(self, other: "Parameter"):
+    def operation_intersection(self, other: PE) -> Expression:
         pass
 
-    def operation_difference(self, other: "Parameter"):
+    def operation_difference(self, other: PE) -> Expression:
         pass
 
-    def operation_symmetric_difference(self, other: "Parameter"):
+    def operation_symmetric_difference(self, other: PE) -> Expression:
         pass
 
-    def operation_and(self, other: "Parameter"):
+    def operation_and(self, other: PE) -> Expression:
         pass
 
-    def operation_or(self, other: "Parameter"):
+    def operation_or(self, other: PE) -> Expression:
         pass
 
-    def operation_not(self):
+    def operation_not(self) -> Expression:
         pass
 
-    def operation_xor(self, other: "Parameter"):
+    def operation_xor(self, other: PE) -> Expression:
         pass
 
-    def operation_implies(self, other: "Parameter"):
+    def operation_implies(self, other: PE) -> Expression:
         pass
 
     # ----------------------------------------------------------------------------------
-    def __add__(self, other: "Parameter"):
+    def __add__(self, other: PE):
         return self.operation_add(other)
 
-    def __sub__(self, other: "Parameter"):
+    def __sub__(self, other: PE):
         # TODO could be set difference
         return self.operation_subtract(other)
 
-    def __mul__(self, other: "Parameter"):
+    def __mul__(self, other: PE):
         return self.operation_multiply(other)
 
-    def __truediv__(self, other: "Parameter"):
+    def __truediv__(self, other: PE):
         return self.operation_divide(other)
 
-    def __pow__(self, other: "Parameter"):
+    def __rtruediv__(self, other: PE):
+        return self.operation_divide(other)
+
+    def __pow__(self, other: PE):
         return self.operation_power(other)
 
     def __abs__(self):
@@ -471,15 +614,15 @@ class Parameter(Node):
     def __round__(self):
         return self.operation_round()
 
-    def __and__(self, other: "Parameter"):
+    def __and__(self, other: PE):
         # TODO could be set intersection
         return self.operation_and(other)
 
-    def __or__(self, other: "Parameter"):
+    def __or__(self, other: PE):
         # TODO could be set union
         return self.operation_or(other)
 
-    def __xor__(self, other: "Parameter"):
+    def __xor__(self, other: PE):
         return self.operation_xor(other)
 
 

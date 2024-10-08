@@ -7,7 +7,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 from faebryk.libs.util import assert_once, join_if_non_empty
 
 
@@ -24,15 +24,42 @@ class LDO(Module):
         POSITIVE = auto()
         NEGATIVE = auto()
 
-    max_input_voltage: F.TBD[Quantity]
-    output_voltage: F.TBD[Quantity]
-    output_polarity: F.TBD[OutputPolarity]
-    output_type: F.TBD[OutputType]
-    output_current: F.TBD[Quantity]
-    psrr: F.TBD[Quantity]
-    dropout_voltage: F.TBD[Quantity]
-    quiescent_current: F.TBD[Quantity]
-
+    max_input_voltage = L.p_field(
+        unit=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.V, 100 * P.V),
+    )
+    output_voltage = L.p_field(
+        unit=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.V, 100 * P.V),
+    )
+    quiescent_current = L.p_field(
+        unit=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mA, 100 * P.mA),
+    )
+    dropout_voltage = L.p_field(
+        unit=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mV, 100 * P.mV),
+    )
+    psrr = L.p_field(
+        unit=P.dB,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.dB, 100 * P.dB),
+    )
+    output_polarity = L.p_field(
+        domain=L.Domains.ENUM(OutputPolarity),
+    )
+    output_type = L.p_field(
+        domain=L.Domains.ENUM(OutputType),
+    )
+    output_current = L.p_field(
+        unit=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mA, 100 * P.mA),
+    )
     enable: F.ElectricLogic
     power_in: F.ElectricPower
     power_out = L.d_field(lambda: F.ElectricPower().make_source())

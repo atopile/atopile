@@ -21,4 +21,4 @@ class RJ45_Receptacle(Module):
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.J
     )
-    mounting: F.TBD[Mounting]
+    mounting = L.p_field(domain=L.Domains.ENUM(Mounting))

@@ -6,7 +6,8 @@ from enum import Enum, auto
 
 import faebryk.library._F as F
 from faebryk.core.parameter import Parameter
-from faebryk.libs.units import Quantity
+from faebryk.libs.library import L
+from faebryk.libs.units import P, Quantity
 
 
 class LED(F.Diode):
@@ -40,9 +41,9 @@ class LED(F.Diode):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
-    brightness: F.TBD[Quantity]
-    max_brightness: F.TBD[Quantity]
-    color: F.TBD[Color]
+    brightness = L.p_field(unit=P.candela)
+    max_brightness = L.p_field(unit=P.candela)
+    color = L.p_field(domain=L.Domains.ENUM(Color))
 
     def __preinit__(self):
         self.current.merge(self.brightness / self.max_brightness * self.max_current)

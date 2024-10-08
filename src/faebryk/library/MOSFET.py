@@ -6,7 +6,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
+from faebryk.libs.units import P
 
 
 class MOSFET(Module):
@@ -18,12 +18,12 @@ class MOSFET(Module):
         ENHANCEMENT = auto()
         DEPLETION = auto()
 
-    channel_type: F.TBD[ChannelType]
-    saturation_type: F.TBD[SaturationType]
-    gate_source_threshold_voltage: F.TBD[Quantity]
-    max_drain_source_voltage: F.TBD[Quantity]
-    max_continuous_drain_current: F.TBD[Quantity]
-    on_resistance: F.TBD[Quantity]
+    channel_type = L.p_field(domain=L.Domains.ENUM(ChannelType))
+    saturation_type = L.p_field(domain=L.Domains.ENUM(SaturationType))
+    gate_source_threshold_voltage = L.p_field(unit=P.V)
+    max_drain_source_voltage = L.p_field(unit=P.V)
+    max_continuous_drain_current = L.p_field(unit=P.A)
+    on_resistance = L.p_field(unit=P.ohm)
 
     source: F.Electrical
     gate: F.Electrical

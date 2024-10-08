@@ -6,7 +6,7 @@ from enum import Enum
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,11 @@ class I2C(ModuleInterface):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 
-    frequency: F.TBD[Quantity]
+    frequency = L.p_field(
+        unit=P.Hz,
+        likely_constrained=True,
+        soft_set=L.Range(10 * P.kHz, 3.4 * P.MHz),
+    )
 
     @L.rt_field
     def single_electric_reference(self):
@@ -32,7 +36,7 @@ class I2C(ModuleInterface):
     def _on_connect(self, other: "I2C"):
         super()._on_connect(other)
 
-        self.frequency.merge(other.frequency)
+        self.frequency.alias_is(other.frequency)
 
     class SpeedMode(Enum):
         low_speed = 10 * P.khertz

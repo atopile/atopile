@@ -63,15 +63,19 @@ class B0505S_1WR3(Module):
         # ----------------------------------------
         #            parametrization
         # ----------------------------------------
-        self.power_in.get_trait(F.can_be_decoupled).decouple().capacitance.merge(
-            F.Range.from_center_rel(4.7 * P.uF, 0.1)
+        self.power_in.get_trait(
+            F.can_be_decoupled
+        ).decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(4.7 * P.uF, 0.1)
         )
-        self.power_out.get_trait(F.can_be_decoupled).decouple().capacitance.merge(
+        self.power_out.get_trait(
+            F.can_be_decoupled
+        ).decouple().capacitance.constrain_subset(
             F.Range.from_center_rel(10 * P.uF, 0.1)
         )
 
         # ----------------------------------------
         #              connections
         # ----------------------------------------
-        self.power_in.voltage.merge(F.Range(4.3 * P.V, 9 * P.V))
-        self.power_out.voltage.merge(F.Range.from_center(5 * P.V, 0.5 * P.V))
+        self.power_in.voltage.constrain_subset(L.Range(4.3 * P.V, 9 * P.V))
+        self.power_out.voltage.constrain_superset(L.Range.from_center_rel(5 * P.V, 0.1))
