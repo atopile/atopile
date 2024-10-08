@@ -72,6 +72,72 @@ class Divide(Multiply):
         self.unit = numerator.unit / denominator.unit
 
 
+class Sqrt(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.unit = operand.unit**0.5
+
+
+class Power(Arithmetic):
+    def __init__(self, base, exponent: int):
+        super().__init__(base, exponent)
+        if isinstance(exponent, HasUnit) and not exponent.unit.is_compatible_with(
+            P.dimensionless
+        ):
+            raise ValueError("exponent must have dimensionless unit")
+        self.unit = (
+            base.unit**exponent if isinstance(base, HasUnit) else P.dimensionless
+        )
+
+
+class Log(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        if not operand.unit.is_compatible_with(P.dimensionless):
+            raise ValueError("operand must have dimensionless unit")
+        self.unit = P.dimensionless
+
+
+class Sin(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        if not operand.unit.is_compatible_with(P.dimensionless):
+            raise ValueError("operand must have dimensionless unit")
+        self.unit = P.dimensionless
+
+
+class Cos(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        if not operand.unit.is_compatible_with(P.dimensionless):
+            raise ValueError("operand must have dimensionless unit")
+        self.unit = P.dimensionless
+
+
+class Abs(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.unit = operand.unit
+
+
+class Round(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.unit = operand.unit
+
+
+class Floor(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.unit = operand.unit
+
+
+class Ceil(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.unit = operand.unit
+
+
 class Domain:
     pass
 
