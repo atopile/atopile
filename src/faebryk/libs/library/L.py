@@ -13,7 +13,7 @@ from faebryk.core.node import (  # noqa: F401
     list_field,
     rt_field,
 )
-from faebryk.core.parameter import p_field  # noqa: F401
+from faebryk.core.parameter import R, p_field  # noqa: F401
 from faebryk.core.reference import reference  # noqa: F401
 
 
@@ -21,3 +21,8 @@ class AbstractclassError(Exception): ...
 
 
 logger = logging.getLogger(__name__)
+
+
+Predicates = R.Predicates
+Domains = R.Domains
+Expressions = R.Expressions
