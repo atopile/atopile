@@ -20,17 +20,23 @@ class HasUnit(Protocol):
 
 
 # TODO: prohibit instantiation
-class Expression:
+class Expression(Node):
     pass
 
 
 class Arithmetic(Expression):
     def __init__(self, *operands):
-        types = [int, float, Quantity, Parameter, Expression]
+        types = [int, float, Quantity, Parameter, Arithmetic]
         if any(type(op) not in types for op in operands):
             raise ValueError(
                 "operands must be int, float, Quantity, Parameter, or Expression"
             )
+        if any(
+            param.domain not in [Numbers, ESeries]
+            for param in operands
+            if isinstance(param, Parameter)
+        ):
+            raise ValueError("parameters must have domain Numbers or ESeries")
         self.operands = operands
 
 
