@@ -1,3 +1,4 @@
+from faebryk.core.node import Node, f_field
 from faebryk.libs.units import Quantity, Unit
 import math
 
@@ -40,3 +41,12 @@ class RangeInclusive[T: _SupportsRangeOps]:
             _max = min(self.max, other.max)
 
         return RangeInclusive(_min, _max)
+
+class Parameter(Node):
+    def __init__(self, unit: Unit, within: RangeInclusive[Quantity]):
+        super().__init__()
+        assert unit.is_compatible(within.min.unit)
+        self.unit = unit
+        self.within = within
+
+p_field = f_field(Parameter)
