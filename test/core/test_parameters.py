@@ -365,6 +365,12 @@ class TestParameters(unittest.TestCase):
     def test_units(self):
         self.assertEqual(F.Constant(1e-9 * P.F), 1 * P.nF)
 
+    def test_new_definitions(self):
+        pass
+
+    def test_constant_sets(self):
+        pass
+
 
 if __name__ == "__main__":
     unittest.main()
