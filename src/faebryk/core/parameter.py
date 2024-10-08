@@ -169,16 +169,16 @@ class R(Namespace):
 
     class Domains(Namespace):
         class ESeries(Namespace):
-            E6 = lambda: ESeries(ESeries.SeriesType.E6)
-            E12 = lambda: ESeries(ESeries.SeriesType.E12)
-            E24 = lambda: ESeries(ESeries.SeriesType.E24)
-            E48 = lambda: ESeries(ESeries.SeriesType.E48)
-            E96 = lambda: ESeries(ESeries.SeriesType.E96)
-            E192 = lambda: ESeries(ESeries.SeriesType.E192)
+            E6 = lambda: ESeries(ESeries.SeriesType.E6)  # noqa: E731
+            E12 = lambda: ESeries(ESeries.SeriesType.E12)  # noqa: E731
+            E24 = lambda: ESeries(ESeries.SeriesType.E24)  # noqa: E731
+            E48 = lambda: ESeries(ESeries.SeriesType.E48)  # noqa: E731
+            E96 = lambda: ESeries(ESeries.SeriesType.E96)  # noqa: E731
+            E192 = lambda: ESeries(ESeries.SeriesType.E192)  # noqa: E731
 
         class Numbers(Namespace):
             REAL = Numbers
-            NATURAL = lambda: Numbers(integer=True, negative=False)
+            NATURAL = lambda: Numbers(integer=True, negative=False)  # noqa: E731
 
         BOOL = Boolean
         ENUM = Enum
