@@ -13,9 +13,12 @@ class _SupportsRangeOps(Protocol):
     def __ge__(self, __value) -> bool: ...
     def __gt__(self, __value) -> bool: ...
 
-    def __mul__(self, __value: float | Self) -> Self: ...
     def __sub__(self, __value: Self) -> Self: ...
     def __add__(self, __value: Self) -> Self: ...
+
+
+class _SupportsArithmeticOpsWithFloatMul(_SupportsRangeOps):
+    def __mul__(self, __value: float | Self) -> Self: ...
 
 
 class Set_[T](ABC, HasUnit):
@@ -66,9 +69,11 @@ class Range[T: _SupportsRangeOps](Set_[T]):
     def from_center(cls, center: T, abs_tol: T) -> "Range[T]":
         return cls(center - abs_tol, center + abs_tol)
 
-    @classmethod
-    def from_center_rel(cls, center: T, rel_tol: float) -> "Range[T]":
-        return cls(center - center * rel_tol, center + center * rel_tol)
+    @staticmethod
+    def from_center_rel[U: _SupportsArithmeticOpsWithFloatMul](
+        center: U, rel_tol: float
+    ) -> "Range[U]":
+        return Range[U](center - center * rel_tol, center + center * rel_tol)
 
     def intersection(self, other: "Range[T]") -> "Range[T]":
         if self.empty or other.empty:

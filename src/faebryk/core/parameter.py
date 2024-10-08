@@ -6,7 +6,7 @@ from enum import Enum, auto
 
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node, f_field
-from faebryk.libs.sets import Range, Set_, Set_
+from faebryk.libs.sets import Range, Set_
 from faebryk.libs.units import HasUnit, P, Quantity, Unit, dimensionless
 
 logger = logging.getLogger(__name__)
