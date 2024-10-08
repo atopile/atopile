@@ -2,14 +2,24 @@
 # SPDX-License-Identifier: MIT
 
 # re-exporting Quantity in-case we ever want to change it
+from typing import Protocol, runtime_checkable
+
 from pint import Quantity as _Quantity  # noqa: F401
 from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
 from pint.util import UnitsContainer as _UnitsContainer
+
+from faebryk.libs.util import cast_assert
 
 P = UnitRegistry()
 
 UnitsContainer = _UnitsContainer | str
 Quantity = P.Quantity
+dimensionless = cast_assert(Unit, P.dimensionless)
+
+
+@runtime_checkable
+class HasUnit(Protocol):
+    units: Unit
 
 
 def to_si_str(

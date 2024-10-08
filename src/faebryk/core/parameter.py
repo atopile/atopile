@@ -2,21 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import math
 from enum import Enum, auto
-from typing import Protocol, runtime_checkable
 
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node, f_field
-from faebryk.libs.sets import Range, Set_
-from faebryk.libs.units import P, Quantity, Unit
+from faebryk.libs.sets import Range, Set_, Set_
+from faebryk.libs.units import HasUnit, P, Quantity, Unit, dimensionless
 
 logger = logging.getLogger(__name__)
-
-
-@runtime_checkable
-class HasUnit(Protocol):
-    unit: Unit
 
 
 class ParameterOperatable(Protocol):
@@ -155,7 +148,7 @@ class Expression(Node, ParameterOperatable):
     pass
 
 
-class Arithmetic(Expression):
+class Arithmetic(HasUnit, Expression):
     def __init__(self, *operands):
         types = [int, float, Quantity, Parameter, Arithmetic]
         if any(type(op) not in types for op in operands):
@@ -175,11 +168,11 @@ class Additive(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
         units = [
-            op.unit if isinstance(op, HasUnit) else P.dimensionless for op in operands
+            op.units if isinstance(op, HasUnit) else dimensionless for op in operands
         ]
         # Check if all units are compatible
-        self.unit = units[0]
-        if not all(u.is_compatible_with(self.unit) for u in units):
+        self.units = units[0]
+        if not all(u.is_compatible_with(self.units) for u in units):
             raise ValueError("All operands must have compatible units")
 
 
@@ -196,85 +189,98 @@ class Subtract(Additive):
 class Multiply(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
-        self.unit = math.prod(
-            [op.unit if isinstance(op, HasUnit) else P.dimensionless for op in operands]
-        )
+        units = [
+            op.units if isinstance(op, HasUnit) else dimensionless for op in operands
+        ]
+        self.units = units[0]
+        for u in units[1:]:
+            self.units *= u
 
 
 class Divide(Multiply):
     def __init__(self, numerator, denominator):
         super().__init__(numerator, denominator)
-        self.unit = numerator.unit / denominator.unit
+        self.units = numerator.units / denominator.units
 
 
 class Sqrt(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
-        self.unit = operand.unit**0.5
+        self.units = operand.units**0.5
 
 
 class Power(Arithmetic):
     def __init__(self, base, exponent: int):
         super().__init__(base, exponent)
-        if isinstance(exponent, HasUnit) and not exponent.unit.is_compatible_with(
-            P.dimensionless
+        if isinstance(exponent, HasUnit) and not exponent.units.is_compatible_with(
+            dimensionless
         ):
             raise ValueError("exponent must have dimensionless unit")
-        self.unit = (
-            base.unit**exponent if isinstance(base, HasUnit) else P.dimensionless
-        )
+        units = base.units**exponent if isinstance(base, HasUnit) else dimensionless
+        assert isinstance(units, Unit)
+        self.units = units
 
 
 class Log(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(P.dimensionless):
+        if not operand.unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.unit = P.dimensionless
+        self.units = dimensionless
 
 
 class Sin(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(P.dimensionless):
+        if not operand.unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.unit = P.dimensionless
+        self.units = dimensionless
 
 
 class Cos(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(P.dimensionless):
+        if not operand.unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.unit = P.dimensionless
+        self.units = dimensionless
 
 
 class Abs(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
-        self.unit = operand.unit
+        self.units = operand.units
 
 
 class Round(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
-        self.unit = operand.unit
+        self.units = operand.units
 
 
 class Floor(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
-        self.unit = operand.unit
+        self.units = operand.units
 
 
 class Ceil(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
-        self.unit = operand.unit
+        self.units = operand.units
 
 
 class Logic(Expression):
-    pass
+    def __init__(self, *operands):
+        types = [bool, Parameter, Logic, Predicate]
+        if any(type(op) not in types for op in operands):
+            raise ValueError("operands must be bool, Parameter, Logic, or Predicate")
+        if any(
+            param.domain != Boolean or not param.units.is_compatible_with(dimensionless)
+            for param in operands
+            if isinstance(param, Parameter)
+        ):
+            raise ValueError("parameters must have domain Boolean without a unit")
+        self.operands = operands
 
 
 class And(Logic):
@@ -286,34 +292,48 @@ class Or(Logic):
 
 
 class Not(Logic):
-    pass
+    def __init__(self, operand):
+        super().__init__(operand)
 
 
 class Xor(Logic):
-    pass
+    def __init__(self, left, right):
+        super().__init__(left, right)
 
 
 class Implies(Logic):
+    def __init__(self, left, right):
+        super().__init__(left, right)
+
+
+class Setic(Expression):
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        types = [Parameter, Set_]
+        if any(type(op) not in types for op in operands):
+            raise ValueError("operands must be Parameter or Set")
+        units = [op.units for op in operands]
+        self.units = units[0]
+        for u in units[1:]:
+            if not self.units.is_compatible_with(u):
+                raise ValueError("all operands must have compatible units")
+        # TODO domain?
+
+
+class Union(Setic):
     pass
 
 
-class Set(Expression):
+class Intersection(Setic):
     pass
 
 
-class Union(Set):
-    pass
+class Difference(Setic):
+    def __init__(self, minuend, subtrahend):
+        super().__init__(minuend, subtrahend)
 
 
-class Intersection(Set):
-    pass
-
-
-class Difference(Set):
-    pass
-
-
-class SymmetricDifference(Set):
+class SymmetricDifference(Setic):
     pass
 
 
@@ -468,7 +488,7 @@ class Parameter(Node, ParameterOperatable):
     def __init__(
         self,
         *,
-        unit: Unit | Quantity | None = None,
+        units: Unit | Quantity | None = dimensionless,
         # hard constraints
         within: Range | None = None,
         domain: Domain = Numbers(negative=False),
@@ -485,12 +505,12 @@ class Parameter(Node, ParameterOperatable):
         super().__init__()
         if within is None:
             within = Range()
-        if not within.is_compatible_with_unit(unit):
+        if not within.units.is_compatible_with(units):
             raise ValueError("incompatible units")
 
-        if not isinstance(unit, Unit):
-            raise TypeError("unit must be a Unit")
-        self.unit = unit
+        if not isinstance(units, Unit):
+            raise TypeError("units must be a Unit")
+        self.units = units
         self.within = within
         self.domain = domain
         self.soft_set = soft_set

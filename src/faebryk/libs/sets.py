@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Protocol, Self
 
-from faebryk.libs.units import Quantity, Unit
+from faebryk.libs.units import HasUnit, P, Unit, dimensionless
 
 
 class _SupportsRangeOps(Protocol):
@@ -18,7 +18,7 @@ class _SupportsRangeOps(Protocol):
     def __add__(self, __value: Self) -> Self: ...
 
 
-class Set_[T](ABC):
+class Set_[T](ABC, HasUnit):
     def __init__(self):
         pass
 
@@ -26,13 +26,15 @@ class Set_[T](ABC):
     def __contains__(self, item: T):
         pass
 
-    @abstractmethod
-    def is_compatible_with_unit(self, unit: Unit | Quantity) -> bool:
-        pass
-
 
 class Range[T: _SupportsRangeOps](Set_[T]):
-    def __init__(self, min: T | None = None, max: T | None = None, empty: bool = False):
+    def __init__(
+        self,
+        min: T | None = None,
+        max: T | None = None,
+        empty: bool = False,
+        units: Unit | None = None,
+    ):
         self.empty = empty
         self.min = min
         self.max = max
@@ -40,19 +42,24 @@ class Range[T: _SupportsRangeOps](Set_[T]):
             raise ValueError("empty range cannot have min or max")
         if min is not None and max is not None and not min <= max:
             raise ValueError("min must be less than or equal to max")
+        if min is None and max is None:
+            if units is None:
+                raise ValueError("units must be provided for empyt and full ranges")
+            self.units = units
+        else:
+            min_unit = min.units if isinstance(min, HasUnit) else dimensionless
+            max_unit = max.units if isinstance(max, HasUnit) else dimensionless
+            if units and not min_unit.is_compatible_with(units):
+                raise ValueError("min incompatible with units")
+            if units and not max_unit.is_compatible_with(units):
+                raise ValueError("max incompatible with units")
+            self.units = units or min_unit
 
     def __contains__(self, item: T):
         if self.min is not None and not self.min <= item:
             return False
         if self.max is not None and not item <= self.max:
             return False
-        return True
-
-    def is_compatible_with_unit(self, unit: Unit | Quantity) -> bool:
-        for m in [self.min, self.max]:
-            if isinstance(m, Quantity) and not unit.is_compatible_with(m.units):
-                return False
-
         return True
 
     @classmethod
@@ -84,7 +91,7 @@ class Range[T: _SupportsRangeOps](Set_[T]):
         if (_min is not None and (_min not in self or _min not in other)) or (
             _max is not None and (_max not in self or _max not in other)
         ):
-            return Range(empty=True)
+            return Range(empty=True, units=self.units)
 
         return Range(_min, _max)
 
@@ -99,21 +106,19 @@ class Range[T: _SupportsRangeOps](Set_[T]):
 class Single[T](Set_[T]):
     def __init__(self, value: T):
         self.value = value
+        self.units = value.units if isinstance(value, HasUnit) else dimensionless
 
     def __contains__(self, item: T):
         return item == self.value
-
-    def is_compatible_with_unit(self, unit: Unit | Quantity) -> bool:
-        if isinstance(self.value, Quantity) and not unit.is_compatible_with(
-            self.value.units
-        ):
-            return False
-        return True
 
 
 class Set[T](Set_[T]):
     def __init__(self, *elements: T):
         self.elements = set(elements)
+        units = [e.units if isinstance(e, HasUnit) else dimensionless for e in elements]
+        self.units = units[0]
+        if not all(u.is_compatible_with(self.units) for u in units):
+            raise ValueError("all elements must have compatible units")
 
     def __contains__(self, item: T):
         return item in self.elements
