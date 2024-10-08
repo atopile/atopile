@@ -28,7 +28,7 @@ class Battery(Module):
     power: F.ElectricPower
 
     def __preinit__(self) -> None:
-        self.power.voltage.merge(self.voltage)
+        self.power.voltage.alias_is(self.voltage)
 
     @L.rt_field
     def single_electric_reference(self):

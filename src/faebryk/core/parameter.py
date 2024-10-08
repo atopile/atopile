@@ -6,8 +6,6 @@ import math
 from enum import Enum, auto
 from typing import Protocol, runtime_checkable
 
-from deprecated import deprecated
-
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node, f_field
 from faebryk.libs.sets import Range
@@ -138,6 +136,50 @@ class Ceil(Arithmetic):
         self.unit = operand.unit
 
 
+class Logic(Expression):
+    pass
+
+
+class And(Logic):
+    pass
+
+
+class Or(Logic):
+    pass
+
+
+class Not(Logic):
+    pass
+
+
+class Xor(Logic):
+    pass
+
+
+class Implies(Logic):
+    pass
+
+
+class Set(Expression):
+    pass
+
+
+class Union(Set):
+    pass
+
+
+class Intersection(Set):
+    pass
+
+
+class Difference(Set):
+    pass
+
+
+class SymmetricDifference(Set):
+    pass
+
+
 class Domain:
     pass
 
@@ -250,7 +292,34 @@ class R(Namespace):
         ENUM = Enum
 
     class Expressions(Namespace):
-        pass
+        class Arithmetic(Namespace):
+            ADD = Add
+            SUBTRACT = Subtract
+            MULTIPLY = Multiply
+            DIVIDE = Divide
+            POWER = Power
+            LOG = Log
+            SQRT = Sqrt
+            LOG = Log
+            ABS = Abs
+            FLOOR = Floor
+            CEIL = Ceil
+            ROUND = Round
+            SIN = Sin
+            COS = Cos
+
+        class Logic(Namespace):
+            AND = And
+            OR = Or
+            NOT = Not
+            XOR = Xor
+            IMPLIES = Implies
+
+        class Set(Namespace):
+            UNION = Union
+            INTERSECTION = Intersection
+            DIFFERENCE = Difference
+            SYMMETRIC_DIFFERENCE = SymmetricDifference
 
 
 class Parameter(Node):
@@ -284,6 +353,8 @@ class Parameter(Node):
         self.tolerance_guess = tolerance_guess
         self.likely_constrained = likely_constrained
 
+    # ----------------------------------------------------------------------------------
+
     def alias_is(self, other: "Parameter"):
         pass
 
@@ -305,9 +376,105 @@ class Parameter(Node):
     def constrain_subset(self, other: "Parameter"):
         pass
 
-    @deprecated("use alias_is instead")
-    def merge(self, other: "Parameter"):
-        return self.alias_is(other)
+    def operation_add(self, other: "Parameter"):
+        pass
+
+    def operation_subtract(self, other: "Parameter"):
+        pass
+
+    def operation_multiply(self, other: "Parameter"):
+        pass
+
+    def operation_divide(self, other: "Parameter"):
+        pass
+
+    def operation_power(self, other: "Parameter"):
+        pass
+
+    def operation_log(self):
+        pass
+
+    def operation_sqrt(self):
+        pass
+
+    def operation_abs(self):
+        pass
+
+    def operation_floor(self):
+        pass
+
+    def operation_ceil(self):
+        pass
+
+    def operation_round(self):
+        pass
+
+    def operation_sin(self):
+        pass
+
+    def operation_cos(self):
+        pass
+
+    def operation_union(self, other: "Parameter"):
+        pass
+
+    def operation_intersection(self, other: "Parameter"):
+        pass
+
+    def operation_difference(self, other: "Parameter"):
+        pass
+
+    def operation_symmetric_difference(self, other: "Parameter"):
+        pass
+
+    def operation_and(self, other: "Parameter"):
+        pass
+
+    def operation_or(self, other: "Parameter"):
+        pass
+
+    def operation_not(self):
+        pass
+
+    def operation_xor(self, other: "Parameter"):
+        pass
+
+    def operation_implies(self, other: "Parameter"):
+        pass
+
+    # ----------------------------------------------------------------------------------
+    def __add__(self, other: "Parameter"):
+        return self.operation_add(other)
+
+    def __sub__(self, other: "Parameter"):
+        # TODO could be set difference
+        return self.operation_subtract(other)
+
+    def __mul__(self, other: "Parameter"):
+        return self.operation_multiply(other)
+
+    def __truediv__(self, other: "Parameter"):
+        return self.operation_divide(other)
+
+    def __pow__(self, other: "Parameter"):
+        return self.operation_power(other)
+
+    def __abs__(self):
+        return self.operation_abs()
+
+    def __round__(self):
+        return self.operation_round()
+
+    def __and__(self, other: "Parameter"):
+        # TODO could be set intersection
+        return self.operation_and(other)
+
+    def __or__(self, other: "Parameter"):
+        # TODO could be set union
+        return self.operation_or(other)
+
+    def __xor__(self, other: "Parameter"):
+        return self.operation_xor(other)
 
 
 p_field = f_field(Parameter)
