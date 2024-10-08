@@ -15,6 +15,7 @@ from faebryk.core.node import (  # noqa: F401
 )
 from faebryk.core.parameter import R, p_field  # noqa: F401
 from faebryk.core.reference import reference  # noqa: F401
+from faebryk.libs.sets import Range, Set, Single  # noqa: F401
 
 
 class AbstractclassError(Exception): ...
