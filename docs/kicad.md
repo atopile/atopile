@@ -28,6 +28,13 @@ atopile allows you to reuse the layouts that are defined in your dependencies. Y
 
 ![KiCAD Buttons](assets/images/kicad_buttons.png)
 
+!!! note "Don't see the three buttons at the top?"
+
+    If you don't see the three buttons at the top of the screen, one of two things happened: 
+        1. You declined the option to do so during installation
+        2. There was an issue in the [system configuration script](https://github.com/atopile/atopile/blob/6487d76a867b8f30ac9935ea90de970d7c678bd6/src/atopile/cli/configure.py#L108-L146). 
+    You can attempt to reinstall the plugin by running `ato configure` on your command line.
+
 ---
 :fontawesome-brands-youtube:{ style="color: #EE0F0F" }
 __[atopile Layout Reuse]__ – :octicons-clock-24:
@@ -49,7 +56,7 @@ __[atopile Layout Reuse]__ – :octicons-clock-24:
 
 5) Select the group that you want to apply the auto layout on.
 
-6) Click the Download button. THis will apply the layout to that group.
+6) Click the Download button. This will apply the layout to that group.
 
 Groups will look like that:
 
