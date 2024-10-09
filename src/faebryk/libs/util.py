@@ -1076,3 +1076,41 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
         except KeyError:
             self[key] = default
         return default
+
+
+def dict_map_values(d: dict, function: Callable[[Any], Any]) -> dict:
+    """recursively map all values in a dict"""
+
+    result = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            result[key] = dict_map_values(value, function)
+        elif isinstance(value, list):
+            result[key] = [dict_map_values(v, function) for v in value]
+        else:
+            result[key] = function(value)
+    return result
+
+
+def merge_dicts(*dicts: dict) -> dict:
+    """merge a list of dicts into a single dict,
+    if same key is present and value is list, lists are merged
+    if same key is dict, dicts are merged recursively
+    """
+    result = {}
+    for d in dicts:
+        for k, v in d.items():
+            if k in result:
+                if isinstance(v, list):
+                    assert isinstance(
+                        result[k], list
+                    ), f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    result[k] += v
+                elif isinstance(v, dict):
+                    assert isinstance(result[k], dict)
+                    result[k] = merge_dicts(result[k], v)
+                else:
+                    result[k] = v
+            else:
+                result[k] = v
+    return result

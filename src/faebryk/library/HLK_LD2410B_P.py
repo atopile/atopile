@@ -20,7 +20,7 @@ class HLK_LD2410B_P(Module):
             val = cast_assert(Quantity, self.throttle.get_any_single())
 
             obj = self.obj
-            assert isinstance(obj, HLK_LD2410B_P), "This is not an HLK_LD2410B_P!"
+            assert isinstance(obj, HLK_LD2410B_P)
 
             uart_candidates = {
                 mif
