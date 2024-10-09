@@ -6,6 +6,8 @@ from enum import Enum, auto
 from types import NotImplementedType
 from typing import Any, Callable, Protocol
 
+from more_itertools import raise_
+
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node, f_field
 from faebryk.libs.sets import Range, Set_
@@ -169,6 +171,9 @@ class ParameterOperatable(Protocol):
         if_true: Callable[[], Any],
         if_false: Callable[[], Any],
     ) -> None: ...
+
+    def assert_true(self) -> None:
+        self.if_then_else(lambda: None, lambda: raise_(ValueError()))
 
     # TODO
     # def switch_case(

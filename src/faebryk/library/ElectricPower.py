@@ -86,7 +86,7 @@ class ElectricPower(F.Power):
 
     def __preinit__(self) -> None:
         ...
-        # self.voltage.merge(
+        # self.voltage.alias_is(
         #    self.hv.potential - self.lv.potential
         # )
 
