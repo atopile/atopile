@@ -25,7 +25,7 @@ class ElectricPower(F.Power):
             return (
                 super()
                 .decouple()
-                .builder(lambda c: c.rated_voltage.constrain_ge(obj.voltage * 2.0))
+                .builder(lambda c: c.max_voltage.constrain_ge(obj.voltage * 2.0))
             )
 
     class can_be_surge_protected_power(F.can_be_surge_protected_defined):

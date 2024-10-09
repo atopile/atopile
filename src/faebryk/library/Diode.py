@@ -15,10 +15,11 @@ class Diode(Module):
         soft_set=L.Range(0.1 * P.V, 1 * P.V),
         tolerance_guess=10 * P.percent,
     )
+    # Current at which the design is functional
     current = L.p_field(
         units=P.A,
         likely_constrained=True,
-        soft_set=L.Range(0.1 * P.mA, 100 * P.A),
+        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
         tolerance_guess=10 * P.percent,
     )
     reverse_working_voltage = L.p_field(
@@ -33,11 +34,12 @@ class Diode(Module):
         soft_set=L.Range(0.1 * P.nA, 1 * P.µA),
         tolerance_guess=10 * P.percent,
     )
+    # Current at which the design may be damaged
+    # In some cases, this is useful to know, e.g. to calculate the brightness of an LED
     max_current = L.p_field(
         units=P.A,
         likely_constrained=True,
-        soft_set=L.Range(0.1 * P.mA, 100 * P.A),
-        tolerance_guess=10 * P.percent,
+        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
     )
 
     anode: F.Electrical

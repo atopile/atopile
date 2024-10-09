@@ -27,11 +27,10 @@ class Common_Mode_Filter(Module):
         soft_set=L.Range(100 * P.Hz, 1 * P.MHz),
         tolerance_guess=10 * P.percent,
     )
-    rated_current = L.p_field(
+    max_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.A, 10 * P.A),
-        tolerance_guess=10 * P.percent,
     )
     dc_resistance = L.p_field(
         units=P.Ω,
@@ -48,5 +47,5 @@ class Common_Mode_Filter(Module):
         for coil in [self.coil_a, self.coil_b]:
             coil.inductance.alias_is(self.inductance)
             coil.self_resonant_frequency.alias_is(self.self_resonant_frequency)
-            coil.rated_current.alias_is(self.rated_current)
+            coil.max_current.alias_is(self.max_current)
             coil.dc_resistance.alias_is(self.dc_resistance)

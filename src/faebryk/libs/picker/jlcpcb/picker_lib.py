@@ -176,11 +176,11 @@ def find_resistor(cmp: Module):
             "Tolerance",
         ),
         MappingParameterDB(
-            "rated_power",
+            "max_power",
             ["Power(Watts)"],
         ),
         MappingParameterDB(
-            "rated_voltage",
+            "max_voltage",
             ["Overload Voltage (Max)"],
         ),
     ]
@@ -207,7 +207,7 @@ def find_capacitor(cmp: Module):
     mapping = [
         MappingParameterDB("capacitance", ["Capacitance"], "Tolerance"),
         MappingParameterDB(
-            "rated_voltage",
+            "max_voltage",
             ["Voltage Rated"],
         ),
         MappingParameterDB(
@@ -251,7 +251,7 @@ def find_inductor(cmp: Module):
             "Tolerance",
         ),
         MappingParameterDB(
-            "rated_current",
+            "max_current",
             ["Rated Current"],
         ),
         MappingParameterDB(

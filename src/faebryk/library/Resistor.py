@@ -13,8 +13,8 @@ class Resistor(Module):
     unnamed = L.list_field(2, F.Electrical)
 
     resistance = L.p_field(units=P.ohm)
-    rated_power = L.p_field(units=P.W)
-    rated_voltage = L.p_field(units=P.V)
+    max_power = L.p_field(units=P.W)
+    max_voltage = L.p_field(units=P.V)
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
@@ -30,12 +30,12 @@ class Resistor(Module):
         return F.has_simple_value_representation_based_on_params(
             (
                 self.resistance,
-                self.rated_power,
+                self.max_power,
             ),
-            lambda resistance, rated_power: join_if_non_empty(
+            lambda resistance, max_power: join_if_non_empty(
                 " ",
                 resistance.as_unit_with_tolerance("Ω"),
-                rated_power.as_unit("W"),
+                max_power.as_unit("W"),
             ),
         )
 

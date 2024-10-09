@@ -26,7 +26,7 @@ class USB_C_PSU_Vertical(Module):
         self.gnd_capacitor.capacitance.constrain_subset(
             L.Range.from_center_rel(100 * P.nF, 0.05)
         )
-        self.gnd_capacitor.rated_voltage.constrain_subset(
+        self.gnd_capacitor.max_voltage.constrain_subset(
             L.Range.from_center_rel(16 * P.V, 0.05)
         )
         self.gnd_resistor.resistance.constrain_subset(

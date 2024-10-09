@@ -49,7 +49,7 @@ class INA228_ReferenceDesign(Module):
             #    filter_resistors = L.list_field(2, F.Resistor)
             #
             #    filter_cap.capacitance.merge(F.Range.from_center_rel(0.1 * P.uF, 0.01))
-            #    filter_cap.rated_voltage.merge(F.Range.from_center_rel(170 * P.V, 0.01)
+            #    filter_cap.max_voltage.merge(F.Range.from_center_rel(170 * P.V, 0.01)
             #    for res in filter_resistors:
             #        res.resistance.merge(10 * P.kohm)
             # TODO: auto calculate, see: https://www.ti.com/lit/ug/tidu473/tidu473.pdf
@@ -84,7 +84,7 @@ class INA228_ReferenceDesign(Module):
         shunted_power.shunt.resistance.constrain_subset(
             L.Range.from_center_rel(15 * P.mohm, 0.01)
         )
-        shunted_power.shunt.rated_power.constrain_subset(
+        shunted_power.shunt.max_power.constrain_subset(
             L.Range.from_center_rel(2 * P.W, 0.01)
         )
         # TODO: calculate according to datasheet p36

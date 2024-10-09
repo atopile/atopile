@@ -32,11 +32,11 @@ class Capacitor(Module):
         soft_set=L.Range(100 * P.pF, 1 * P.F),
         tolerance_guess=10 * P.percent,
     )
-    rated_voltage = L.p_field(
+    # Voltage at which the design may be damaged
+    max_voltage = L.p_field(
         units=P.V,
         likely_constrained=True,
         soft_set=L.Range(10 * P.V, 100 * P.V),
-        tolerance_guess=10 * P.percent,
     )
     temperature_coefficient = L.p_field(
         domain=L.Domains.ENUM(TemperatureCoefficient),
@@ -56,7 +56,7 @@ class Capacitor(Module):
         return F.has_simple_value_representation_based_on_params(
             (
                 self.capacitance,
-                self.rated_voltage,
+                self.max_voltage,
                 self.temperature_coefficient,
             ),
             lambda c, v, t: join_if_non_empty(

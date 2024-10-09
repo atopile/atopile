@@ -24,11 +24,10 @@ class Inductor(Module):
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
     )
-    rated_current = L.p_field(
+    max_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.A),
-        tolerance_guess=10 * P.percent,
     )
     dc_resistance = L.p_field(
         units=P.Ω,
@@ -48,17 +47,17 @@ class Inductor(Module):
             (
                 self.inductance,
                 self.self_resonant_frequency,
-                self.rated_current,
+                self.max_current,
                 self.dc_resistance,
             ),
             lambda inductance,
             self_resonant_frequency,
-            rated_current,
+            max_current,
             dc_resistance: join_if_non_empty(
                 " ",
                 inductance.as_unit_with_tolerance("H"),
                 self_resonant_frequency.as_unit("Hz"),
-                rated_current.as_unit("A"),
+                max_current.as_unit("A"),
                 dc_resistance.as_unit("Ω"),
             ),
         )
