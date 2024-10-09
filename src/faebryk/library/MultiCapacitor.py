@@ -4,9 +4,8 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.parameter import Parameter, ParameterOperatable
+from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.units import Quantity
 from faebryk.libs.util import times  # noqa: F401
 
 logger = logging.getLogger(__name__)

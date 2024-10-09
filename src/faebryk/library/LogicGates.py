@@ -3,7 +3,6 @@
 
 import faebryk.library._F as F
 from faebryk.core.core import Namespace
-from faebryk.libs.library import L
 
 
 class LogicGates(Namespace):

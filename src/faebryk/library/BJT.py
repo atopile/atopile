@@ -6,7 +6,6 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.node import rt_field
-from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
 
 

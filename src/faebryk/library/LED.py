@@ -5,9 +5,9 @@
 from enum import Enum, auto
 
 import faebryk.library._F as F
-from faebryk.core.parameter import Parameter, ParameterOperatable
+from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 
 
 class LED(F.Diode):
