@@ -6,7 +6,7 @@ from atopile.errors import AtoError, iter_through_errors, ExceptionAccumulator
 def test_ExceptionAccumulator():
     with pytest.raises(ExceptionGroup):
         with ExceptionAccumulator() as error_collector:
-            with error_collector():
+            with error_collector.collect():
                 raise AtoError("test error")
 
             # FIXME: damn... I don't like that the type-checker/linter

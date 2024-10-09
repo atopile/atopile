@@ -217,11 +217,20 @@ class RangedValue:
     def to_dict(self) -> dict:
         """Convert the Physical instance to a dictionary."""
         min_qty = _convert_to_favorite_unit(self.min_qty)
-        multiplier = min_qty.magnitude / self.min_val
+        max_qty = self.max_qty.to(min_qty.units)
+
+        # get the min and max into the same favoured units
+        if self.min_val:
+            multiplier = min_qty.magnitude / self.min_val
+        elif self.max_val:
+            multiplier = max_qty.magnitude / self.max_val
+        else:
+            multiplier = 1
+
         return {
             "unit": str(min_qty.units),
             "min_val": min_qty.magnitude,
-            "max_val": self.max_val * multiplier,
+            "max_val": max_qty.magnitude,
             # TODO: remove these - we shouldn't be duplicating this kind of information
             "nominal": self.nominal * multiplier,
             "tolerance": self.tolerance * multiplier,
