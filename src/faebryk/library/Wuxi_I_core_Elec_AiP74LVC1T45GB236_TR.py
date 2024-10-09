@@ -75,5 +75,5 @@ class Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power_a.voltage.merge(F.Range(1.2 * P.V, 5.5 * P.V))
-        self.power_b.voltage.merge(F.Range(1.2 * P.V, 5.5 * P.V))
+        self.power_a.voltage.constrain_subset(L.Range(1.2 * P.V, 5.5 * P.V))
+        self.power_b.voltage.constrain_subset(L.Range(1.2 * P.V, 5.5 * P.V))

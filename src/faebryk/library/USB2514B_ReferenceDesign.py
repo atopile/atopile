@@ -84,26 +84,30 @@ class USB2514B_ReferenceDesign(Module):
             )
 
         # TODO: load_capacitance is a property of the crystal. remove this
-        self.crystal_oscillator.crystal.load_capacitance.merge(
-            F.Range(8 * P.pF, 15 * P.pF)
+        self.crystal_oscillator.crystal.load_capacitance.constrain_subset(
+            L.Range(8 * P.pF, 15 * P.pF)
         )
-        self.crystal_oscillator.crystal.frequency.merge(
-            F.Range.from_center_rel(24 * P.MHz, 0.01)
+        self.crystal_oscillator.crystal.frequency.constrain_subset(
+            L.Range.from_center_rel(24 * P.MHz, 0.01)
         )
-        self.crystal_oscillator.crystal.frequency_tolerance.merge(
-            F.Range.upper_bound(50 * P.ppm)
+        self.crystal_oscillator.crystal.frequency_tolerance.constrain_le(
+            L.Single(50 * P.ppm)
         )
 
         # usb transceiver bias resistor
-        self.bias_resistor.resistance.merge(F.Range.from_center_rel(12 * P.kohm, 0.01))
+        self.bias_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(12 * P.kohm, 0.01)
+        )
 
         for led in [self.suspend_indicator.led, self.power_3v3_indicator]:
-            led.led.color.merge(F.LED.Color.GREEN)
-            led.led.brightness.merge(
+            led.led.color.constrain_subset(L.Single(F.LED.Color.GREEN))
+            led.led.brightness.constrain_subset(
                 TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
             )
 
-        self.ldo_3v3.output_voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
+        self.ldo_3v3.output_voltage.constrain_subset(
+            L.Range.from_center_rel(3.3 * P.V, 0.05)
+        )
 
         # ----------------------------------------
         #              connections
@@ -131,12 +135,14 @@ class USB2514B_ReferenceDesign(Module):
                 self.hub_controller.configurable_downstream_usb[i].over_current_sense
             )
             dfp.usb_if.buspower.connect(self.usb_dfp_power_indicator[i].power)
-            self.usb_dfp_power_indicator[i].led.color.merge(F.LED.Color.YELLOW)
-            self.usb_dfp_power_indicator[i].led.brightness.merge(
+            self.usb_dfp_power_indicator[i].led.color.constrain_subset(
+                L.Single(F.LED.Color.YELLOW)
+            )
+            self.usb_dfp_power_indicator[i].led.brightness.constrain_subset(
                 TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
             )
             self.power_distribution_switch[i].set_current_limit(
-                F.Range.from_center_rel(520 * P.mA, 0.01)
+                L.Range.from_center_rel(520 * P.mA, 0.01)
             )
 
         # Bias resistor

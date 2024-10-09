@@ -16,8 +16,6 @@ class USB3_connector(Module):
     shield: F.Electrical
 
     def __preinit__(self):
-        self.usb3.usb3_if.usb_if.buspower.voltage.merge(F.Range(4.75 * P.V, 5.25 * P.V))
-
         self.usb3.usb3_if.usb_if.buspower.lv.connect(self.usb3.usb3_if.gnd_drain)
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
