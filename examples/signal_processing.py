@@ -44,8 +44,9 @@ class App(Module):
             L.Range.from_center_rel(3 * P.V, 0.05)
         )
 
+        # TODO
         # Construct
-        special.get_trait(F.has_construction_dependency).construct()
+        # special.get_trait(F.has_construction_dependency).construct()
 
 
 def main():
