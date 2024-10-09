@@ -49,12 +49,12 @@ class LED(F.Diode):
         self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
         self.brightness.constrain_le(self.max_brightness)
 
-    def set_intensity(self, intensity: ParameterOperatable) -> None:
+    def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
         self.brightness.alias_is(intensity * self.max_brightness)
 
     def connect_via_current_limiting_resistor(
         self,
-        input_voltage: ParameterOperatable,
+        input_voltage: ParameterOperatable.NumberLike,
         resistor: F.Resistor,
         target: F.Electrical,
         low_side: bool,

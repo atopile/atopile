@@ -22,8 +22,8 @@ class BJT(Module):
         SATURATION = auto()
         CUT_OFF = auto()
 
-    doping_type: Parameter[DopingType]
-    operation_region: Parameter[OperationRegion]
+    doping_type = L.p_field(domain=L.Domains.ENUM(DopingType))
+    operation_region = L.p_field(domain=L.Domains.ENUM(OperationRegion))
 
     emitter: F.Electrical
     base: F.Electrical

@@ -50,6 +50,6 @@ class MultiCapacitor(F.Capacitor):
 
         self.set_equal_capacitance_each(op)
 
-    def set_equal_capacitance_each(self, capacitance: ParameterOperatable):
+    def set_equal_capacitance_each(self, capacitance: ParameterOperatable.NumberLike):
         for c in self.capacitors:
             c.capacitance.constrain_subset(capacitance)

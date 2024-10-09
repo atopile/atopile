@@ -25,7 +25,7 @@ class Diodes_Incorporated_AP2552W6_7(Module):
     """
 
     @assert_once
-    def set_current_limit(self, current: ParameterOperatable) -> None:
+    def set_current_limit(self, current: ParameterOperatable.NumberLike) -> None:
         self.current_limit.alias_is(current)
 
         current_limit_setting_resistor = self.add(F.Resistor())
