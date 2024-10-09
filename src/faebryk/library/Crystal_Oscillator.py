@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 
-from copy import copy
-
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
@@ -26,11 +24,11 @@ class Crystal_Oscillator(Module):
     # ----------------------------------------
     # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
-    _STRAY_CAPACITANCE = F.Range(1 * P.pF, 5 * P.pF)
+    _STRAY_CAPACITANCE = L.Range(1 * P.pF, 5 * P.pF)
 
     @L.rt_field
     def capacitance(self):
-        return (self.crystal.load_capacitance - copy(self._STRAY_CAPACITANCE)) * 2
+        return (self.crystal.load_capacitance - self._STRAY_CAPACITANCE) * 2
 
     def __preinit__(self):
         for cap in self.capacitors:

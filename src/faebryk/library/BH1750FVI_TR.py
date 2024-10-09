@@ -77,7 +77,7 @@ class BH1750FVI_TR(Module):
         )
 
         # set constraints
-        self.power.voltage.constrain_subset(F.Range(2.4 * P.V, 3.6 * P.V))
+        self.power.voltage.constrain_subset(L.Range(2.4 * P.V, 3.6 * P.V))
 
         self.power.decoupled.decouple().capacitance.constrain_subset(
             L.Range.from_center_rel(100 * P.nF, 0.1)

@@ -188,7 +188,7 @@ class RS485_Bus_Protection(Module):
             L.Range.from_center_rel(2.7 * P.ohm, 0.05)
         )
         self.current_limmiter_resistors[0].rated_power.constrain_subset(
-            F.Range.lower_bound(500 * P.mW)
+            L.Range.lower_bound(500 * P.mW)
         )
         self.current_limmiter_resistors[1].resistance.constrain_subset(
             L.Range.from_center_rel(2.7 * P.ohm, 0.05)

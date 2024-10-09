@@ -88,7 +88,7 @@ class CH344Q_ReferenceDesign(Module):
         #           connections
         # ------------------------------------
         self.usb_uart_converter.power.decoupled.decouple().capacitance.constrain_subset(
-            F.Range.from_center_rel(1 * P.uF, 0.05)
+            L.Range.from_center_rel(1 * P.uF, 0.05)
         )  # TODO: per pin
         self.vbus_fused.connect_via(self.ldo, pwr_3v3)
 

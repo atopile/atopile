@@ -137,7 +137,7 @@ class RP2040_ReferenceDesign(Module):
             L.Range.from_center_rel(100 * P.nF, 0.05)
         )
         power_3v3.decoupled.decouple().capacitance.constrain_subset(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
+            L.Range.from_center_rel(10 * P.uF, 0.05)
         )
         self.rp2040.power_core.decoupled.decouple().specialize(
             F.MultiCapacitor(2)

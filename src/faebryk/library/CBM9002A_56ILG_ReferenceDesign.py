@@ -28,10 +28,10 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
                 L.Range.from_center_rel(1 * P.uF, 0.05)
             )
 
-            self.diode.forward_voltage.constrain_subset(F.Range(715 * P.mV, 1.5 * P.V))
+            self.diode.forward_voltage.constrain_subset(L.Range(715 * P.mV, 1.5 * P.V))
             self.diode.reverse_leakage_current.constrain_le(1 * P.uA)
             self.diode.current.constrain_subset(
-                F.Range.from_center_rel(300 * P.mA, 0.05)
+                L.Range.from_center_rel(300 * P.mA, 0.05)
             )
             self.diode.current.constrain_ge(1 * P.A)
 
@@ -86,8 +86,8 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
         # ----------------------------------------
 
         self.oscillator.crystal.frequency.constrain_subset(
-            F.Range.from_center_rel(24 * P.Mhertz, 0.05)
+            L.Range.from_center_rel(24 * P.Mhertz, 0.05)
         )
         self.oscillator.crystal.frequency_tolerance.constrain_subset(
-            F.Range(0 * P.ppm, 20 * P.ppm)
+            L.Range(0 * P.ppm, 20 * P.ppm)
         )

@@ -8,10 +8,7 @@ from faebryk.libs.library import L
 class CD4011(F.Logic74xx):
     def __init__(self):
         super().__init__(
-            [
-                lambda: F.ElectricLogicGates.NAND(input_cnt=F.Constant(2))
-                for _ in range(4)
-            ]
+            [lambda: F.ElectricLogicGates.NAND(input_cnt=L.Single(2)) for _ in range(4)]
         )
 
     simple_value_representation = L.f_field(F.has_simple_value_representation_defined)(

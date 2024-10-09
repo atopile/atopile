@@ -3,23 +3,22 @@
 
 import faebryk.library._F as F
 from faebryk.core.core import Namespace
+from faebryk.libs.library import L
 
 
 class LogicGates(Namespace):
     class OR(F.LogicGate):
         def __init__(self, input_cnt: F.Constant[int]):
-            super().__init__(input_cnt, F.Constant(1), F.LogicGate.can_logic_or_gate())
+            super().__init__(input_cnt, L.Single(1), F.LogicGate.can_logic_or_gate())
 
     class NOR(F.LogicGate):
         def __init__(self, input_cnt: F.Constant[int]):
-            super().__init__(input_cnt, F.Constant(1), F.LogicGate.can_logic_nor_gate())
+            super().__init__(input_cnt, L.Single(1), F.LogicGate.can_logic_nor_gate())
 
     class NAND(F.LogicGate):
         def __init__(self, input_cnt: F.Constant[int]):
-            super().__init__(
-                input_cnt, F.Constant(1), F.LogicGate.can_logic_nand_gate()
-            )
+            super().__init__(input_cnt, L.Single(1), F.LogicGate.can_logic_nand_gate())
 
     class XOR(F.LogicGate):
         def __init__(self, input_cnt: F.Constant[int]):
-            super().__init__(input_cnt, F.Constant(1), F.LogicGate.can_logic_xor_gate())
+            super().__init__(input_cnt, L.Single(1), F.LogicGate.can_logic_xor_gate())

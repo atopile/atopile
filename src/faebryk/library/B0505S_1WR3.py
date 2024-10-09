@@ -71,7 +71,7 @@ class B0505S_1WR3(Module):
         self.power_out.get_trait(
             F.can_be_decoupled
         ).decouple().capacitance.constrain_subset(
-            F.Range.from_center_rel(10 * P.uF, 0.1)
+            L.Range.from_center_rel(10 * P.uF, 0.1)
         )
 
         # ----------------------------------------
