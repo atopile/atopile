@@ -15,7 +15,7 @@ from rich.progress import Progress
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import Parameter, ParameterOperatable
 from faebryk.libs.util import flatten, not_none
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ class DescriptiveProperties(StrEnum):
 @dataclass
 class PickerOption:
     part: Part
-    params: dict[str, Parameter] | None = None
+    params: dict[str, ParameterOperatable.NonParamSet] | None = None
     filter: Callable[[Module], bool] | None = None
     pinmap: dict[str, F.Electrical] | None = None
     info: dict[str | DescriptiveProperties, str] | None = None
@@ -148,12 +148,14 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
 
     options = list(options)
 
+    # TODO this doesn't work
+    raise NotImplementedError("This doesn't work")
     try:
         option = next(
             filter(
                 lambda o: (not o.filter or o.filter(module))
                 and all(
-                    v.is_subset_of(params.get(k, F.ANY()))
+                    params[k].operation_is_superset(v)
                     for k, v in (o.params or {}).items()
                     if not k.startswith("_")
                 ),

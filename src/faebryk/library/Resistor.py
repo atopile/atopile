@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from more_itertools import raise_
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
@@ -45,13 +46,14 @@ class Resistor(Module):
         def replace_zero(m: Module):
             assert m is self
 
-            r = self.resistance.get_most_narrow()
-            if not F.Constant(0.0 * P.ohm).is_subset_of(r):
-                raise PickError("", self)
+            def do_replace():
+                self.resistance.constrain_subset(0.0 * P.ohm)
+                self.unnamed[0].connect(self.unnamed[1])
+                self.add(has_part_picked_remove())
 
-            self.resistance.constrain_subset(0.0 * P.ohm)
-            self.unnamed[0].connect(self.unnamed[1])
-            self.add(has_part_picked_remove())
+            self.resistance.operation_is_superset(0.0 * P.ohm).if_then_else(
+                lambda: do_replace(), lambda: raise_(PickError("", self))
+            )
 
         self.add(
             F.has_multi_picker(-100, F.has_multi_picker.FunctionPicker(replace_zero))

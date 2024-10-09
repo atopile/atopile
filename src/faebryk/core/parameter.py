@@ -21,11 +21,15 @@ class ParameterOperatable(Protocol):
     type QuantityLike = Quantity | NotImplementedType
     type Number = int | float | QuantityLike
 
-    type NumberLike = ParameterOperatable | Number | Set_[Number]
-    type BooleanLike = ParameterOperatable | bool | Set_[bool]
-    type EnumLike = ParameterOperatable | Enum | Set_[Enum]
+    type NonParamNumber = Number | Set_[Number]
+    type NumberLike = ParameterOperatable | NonParamNumber
+    type NonParamBoolean = bool | Set_[bool]
+    type BooleanLike = ParameterOperatable | NonParamBoolean
+    type NonParamEnum = Enum | Set_[Enum]
+    type EnumLike = ParameterOperatable | NonParamEnum
 
     type All = NumberLike | BooleanLike | EnumLike
+    type NonParamSet = NonParamNumber | NonParamBoolean | NonParamEnum
     type Sets = All
 
     def alias_is(self, other: All): ...

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import PickerOption, pick_module_by_params
 from faebryk.libs.units import P
@@ -27,17 +28,17 @@ def pick_fuse(module: F.Fuse):
             PickerOption(
                 part=LCSC_Part(partno="C914087"),
                 params={
-                    "fuse_type": F.Constant(F.Fuse.FuseType.RESETTABLE),
-                    "response_type": F.Constant(F.Fuse.ResponseType.SLOW),
-                    "trip_current": F.Constant(1 * P.A),
+                    "fuse_type": L.Single(F.Fuse.FuseType.RESETTABLE),
+                    "response_type": L.Single(F.Fuse.ResponseType.SLOW),
+                    "trip_current": 1 * P.A,
                 },
             ),
             PickerOption(
                 part=LCSC_Part(partno="C914085"),
                 params={
-                    "fuse_type": F.Constant(F.Fuse.FuseType.RESETTABLE),
-                    "response_type": F.Constant(F.Fuse.ResponseType.SLOW),
-                    "trip_current": F.Constant(0.5 * P.A),
+                    "fuse_type": L.Single(F.Fuse.FuseType.RESETTABLE),
+                    "response_type": L.Single(F.Fuse.ResponseType.SLOW),
+                    "trip_current": 0.5 * P.A,
                 },
             ),
         ],
@@ -56,14 +57,14 @@ def pick_mosfet(module: F.MOSFET):
             PickerOption(
                 part=LCSC_Part(partno="C20917"),
                 params={
-                    "channel_type": F.Constant(F.MOSFET.ChannelType.N_CHANNEL),
+                    "channel_type": L.Single(F.MOSFET.ChannelType.N_CHANNEL),
                 },
                 pinmap=standard_pinmap,
             ),
             PickerOption(
                 part=LCSC_Part(partno="C15127"),
                 params={
-                    "channel_type": F.Constant(F.MOSFET.ChannelType.P_CHANNEL),
+                    "channel_type": L.Single(F.MOSFET.ChannelType.P_CHANNEL),
                 },
                 pinmap=standard_pinmap,
             ),
@@ -84,23 +85,23 @@ def pick_capacitor(module: F.Capacitor):
             PickerOption(
                 part=LCSC_Part(partno="C1525"),
                 params={
-                    "temperature_coefficient": F.Range(
+                    "temperature_coefficient": L.Range(
                         F.Capacitor.TemperatureCoefficient.Y5V,
                         F.Capacitor.TemperatureCoefficient.X7R,
                     ),
-                    "capacitance": F.Constant(100 * P.nF),
-                    "max_voltage": F.Range(0 * P.V, 16 * P.V),
+                    "capacitance": 100 * P.nF,
+                    "max_voltage": L.Range(0 * P.V, 16 * P.V),
                 },
             ),
             PickerOption(
                 part=LCSC_Part(partno="C19702"),
                 params={
-                    "temperature_coefficient": F.Range(
+                    "temperature_coefficient": L.Range(
                         F.Capacitor.TemperatureCoefficient.Y5V,
                         F.Capacitor.TemperatureCoefficient.X7R,
                     ),
-                    "capacitance": F.Constant(10 * P.uF),
-                    "max_voltage": F.Range(0 * P.V, 10 * P.V),
+                    "capacitance": 10 * P.uF,
+                    "max_voltage": L.Range(0 * P.V, 10 * P.V),
                 },
             ),
         ],
@@ -119,59 +120,59 @@ def pick_resistor(resistor: F.Resistor):
         [
             PickerOption(
                 part=LCSC_Part(partno="C25111"),
-                params={"resistance": F.Constant(40.2 * P.kohm)},
+                params={"resistance": 40.2 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25076"),
-                params={"resistance": F.Constant(100 * P.kohm)},
+                params={"resistance": 100 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25087"),
-                params={"resistance": F.Constant(200 * P.kohm)},
+                params={"resistance": 200 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C11702"),
-                params={"resistance": F.Constant(1 * P.kohm)},
+                params={"resistance": 1 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25879"),
-                params={"resistance": F.Constant(2.2 * P.kohm)},
+                params={"resistance": 2.2 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25900"),
-                params={"resistance": F.Constant(4.7 * P.kohm)},
+                params={"resistance": 4.7 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25905"),
-                params={"resistance": F.Constant(5.1 * P.kohm)},
+                params={"resistance": 5.1 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25917"),
-                params={"resistance": F.Constant(6.8 * P.kohm)},
+                params={"resistance": 6.8 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25744"),
-                params={"resistance": F.Constant(10 * P.kohm)},
+                params={"resistance": 10 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25752"),
-                params={"resistance": F.Constant(12 * P.kohm)},
+                params={"resistance": 12 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25771"),
-                params={"resistance": F.Constant(27 * P.kohm)},
+                params={"resistance": 27 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25741"),
-                params={"resistance": F.Constant(100 * P.kohm)},
+                params={"resistance": 100 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25782"),
-                params={"resistance": F.Constant(390 * P.kohm)},
+                params={"resistance": 390 * P.kohm},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C25790"),
-                params={"resistance": F.Constant(470 * P.kohm)},
+                params={"resistance": 470 * P.kohm},
             ),
         ],
     )
@@ -184,30 +185,30 @@ def pick_led(module: F.LED):
             PickerOption(
                 part=LCSC_Part(partno="C72043"),
                 params={
-                    "color": F.Constant(F.LED.Color.EMERALD),
-                    "max_brightness": F.Constant(285 * P.mcandela),
-                    "forward_voltage": F.Constant(3.7 * P.volt),
-                    "max_current": F.Constant(100 * P.mA),
+                    "color": L.Single(F.LED.Color.EMERALD),
+                    "max_brightness": 285 * P.mcandela,
+                    "forward_voltage": 3.7 * P.volt,
+                    "max_current": 100 * P.mA,
                 },
                 pinmap={"1": module.cathode, "2": module.anode},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C72041"),
                 params={
-                    "color": F.Constant(F.LED.Color.BLUE),
-                    "max_brightness": F.Constant(28.5 * P.mcandela),
-                    "forward_voltage": F.Constant(3.1 * P.volt),
-                    "max_current": F.Constant(100 * P.mA),
+                    "color": L.Single(F.LED.Color.BLUE),
+                    "max_brightness": 28.5 * P.mcandela,
+                    "forward_voltage": 3.1 * P.volt,
+                    "max_current": 100 * P.mA,
                 },
                 pinmap={"1": module.cathode, "2": module.anode},
             ),
             PickerOption(
                 part=LCSC_Part(partno="C72038"),
                 params={
-                    "color": F.Constant(F.LED.Color.YELLOW),
-                    "max_brightness": F.Constant(180 * P.mcandela),
-                    "forward_voltage": F.Constant(2.3 * P.volt),
-                    "max_current": F.Constant(60 * P.mA),
+                    "color": L.Single(F.LED.Color.YELLOW),
+                    "max_brightness": 180 * P.mcandela,
+                    "forward_voltage": 2.3 * P.volt,
+                    "max_current": 60 * P.mA,
                 },
                 pinmap={"1": module.cathode, "2": module.anode},
             ),
@@ -222,7 +223,7 @@ def pick_tvs(module: F.TVS):
             PickerOption(
                 part=LCSC_Part(partno="C85402"),
                 params={
-                    "reverse_working_voltage": F.Constant(5 * P.V),
+                    "reverse_working_voltage": 5 * P.V,
                 },
                 pinmap={
                     "1": module.cathode,
@@ -233,7 +234,9 @@ def pick_tvs(module: F.TVS):
     )
 
 
-def pick_battery(module: F.Battery):
+def pick_battery(module):
+    if not isinstance(module, F.Battery):
+        raise ValueError("Module is not a Battery")
     if not isinstance(module, F.ButtonCell):
         bcell = F.ButtonCell()
         module.specialize(bcell)
@@ -248,11 +251,11 @@ def pick_battery(module: F.Battery):
             PickerOption(
                 part=LCSC_Part(partno="C5239862"),
                 params={
-                    "voltage": F.Constant(3 * P.V),
-                    "capacity": F.Range.from_center(225 * P.mAh, 50 * P.mAh),
-                    "material": F.Constant(F.ButtonCell.Material.Lithium),
-                    "size": F.Constant(F.ButtonCell.Size.N_2032),
-                    "shape": F.Constant(F.ButtonCell.Shape.Round),
+                    "voltage": 3 * P.V,
+                    "capacity": L.Range.from_center(225 * P.mAh, 50 * P.mAh),
+                    "material": L.Single(F.ButtonCell.Material.Lithium),
+                    "size": L.Single(F.ButtonCell.Size.N_2032),
+                    "shape": L.Single(F.ButtonCell.Shape.Round),
                 },
                 pinmap={
                     "1": module.power.lv,
