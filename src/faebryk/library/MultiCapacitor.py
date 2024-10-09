@@ -4,7 +4,7 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import Parameter, ParameterOperatable
 from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.units import Quantity
 from faebryk.libs.util import times  # noqa: F401
@@ -45,11 +45,11 @@ class MultiCapacitor(F.Capacitor):
         # ------------------------------------
         self.capacitance.alias_is(sum(c.capacitance for c in self.capacitors))
 
-    def set_equal_capacitance(self, capacitance: Parameter[Quantity]):
+    def set_equal_capacitance(self, capacitance: ParameterOperatable):
         op = capacitance / self._count
 
         self.set_equal_capacitance_each(op)
 
-    def set_equal_capacitance_each(self, capacitance: Parameter[Quantity]):
+    def set_equal_capacitance_each(self, capacitance: ParameterOperatable):
         for c in self.capacitors:
             c.capacitance.constrain_subset(capacitance)

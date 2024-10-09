@@ -5,7 +5,7 @@
 from enum import Enum, auto
 
 import faebryk.library._F as F
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import Parameter, ParameterOperatable
 from faebryk.libs.library import L
 from faebryk.libs.units import P, Quantity
 
@@ -49,12 +49,12 @@ class LED(F.Diode):
         self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
         self.brightness.constrain_le(self.max_brightness)
 
-    def set_intensity(self, intensity: Parameter[Quantity]) -> None:
+    def set_intensity(self, intensity: ParameterOperatable) -> None:
         self.brightness.alias_is(intensity * self.max_brightness)
 
     def connect_via_current_limiting_resistor(
         self,
-        input_voltage: Parameter[Quantity],
+        input_voltage: ParameterOperatable,
         resistor: F.Resistor,
         target: F.Electrical,
         low_side: bool,
