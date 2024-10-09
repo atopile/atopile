@@ -10,8 +10,8 @@ from faebryk.libs.util import times
 class ElectricLogicGate(F.LogicGate):
     def __init__(
         self,
-        input_cnt: F.Constant[int],
-        output_cnt: F.Constant[int],
+        input_cnt: int,
+        output_cnt: int,
         *functions: TraitImpl,
     ) -> None:
         self.input_cnt = input_cnt
