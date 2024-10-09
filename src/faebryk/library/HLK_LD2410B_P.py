@@ -10,7 +10,7 @@ from faebryk.libs.units import P
 class HLK_LD2410B_P(Module):
     class _ld2410b_esphome_config(F.has_esphome_config.impl()):
         throttle = L.p_field(
-            unit=P.ms,
+            units=P.ms,
             soft_set=L.Range(10 * P.ms, 1000 * P.ms),
         )
 

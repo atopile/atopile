@@ -17,12 +17,12 @@ class GDT(Module):
     tube_2: F.Electrical
 
     dc_breakdown_voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         likely_constrained=True,
         soft_set=L.Range(100 * P.V, 1000 * P.V),
     )
     impulse_discharge_current = L.p_field(
-        unit=P.A,
+        units=P.A,
         likely_constrained=True,
         soft_set=L.Range(100 * P.mA, 100 * P.A),
     )

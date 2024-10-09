@@ -9,7 +9,7 @@ from faebryk.libs.units import P
 
 class XL_3528RGBW_WS2812B(Module):
     class _ws2812b_esphome_config(F.has_esphome_config.impl()):
-        update_interval = L.p_field(unit=P.s)
+        update_interval = L.p_field(units=P.s)
 
         def get_config(self) -> dict:
             assert isinstance(self.update_interval, F.Constant)

@@ -16,30 +16,30 @@ class Comparator(Module):
         OpenDrain = auto()
 
     common_mode_rejection_ratio = L.p_field(
-        unit=P.dB,
+        units=P.dB,
         likely_constrained=True,
         soft_set=L.Range(60 * P.dB, 120 * P.dB),
         tolerance_guess=10 * P.percent,
     )
     input_bias_current = L.p_field(
-        unit=P.A,
+        units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.pA, 1 * P.µA),
         tolerance_guess=20 * P.percent,
     )
     input_hysteresis_voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mV, 100 * P.mV),
         tolerance_guess=15 * P.percent,
     )
     input_offset_voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         soft_set=L.Range(10 * P.µV, 10 * P.mV),
         tolerance_guess=20 * P.percent,
     )
     propagation_delay = L.p_field(
-        unit=P.s,
+        units=P.s,
         soft_set=L.Range(10 * P.ns, 1 * P.ms),
         tolerance_guess=15 * P.percent,
     )

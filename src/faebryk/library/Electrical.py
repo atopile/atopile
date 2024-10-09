@@ -5,7 +5,7 @@ from faebryk.core.moduleinterface import ModuleInterface
 
 
 class Electrical(ModuleInterface):
-    # potential= L.p_field(unit=P.dimensionless)
+    # potential= L.p_field(units=P.dimensionless)
 
     def get_net(self):
         from faebryk.library.Net import Net

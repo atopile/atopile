@@ -15,9 +15,9 @@ from faebryk.libs.util import join_if_non_empty
 class Resistor(Module):
     unnamed = L.list_field(2, F.Electrical)
 
-    resistance = L.p_field(unit=P.ohm)
-    rated_power = L.p_field(unit=P.W)
-    rated_voltage = L.p_field(unit=P.V)
+    resistance = L.p_field(units=P.ohm)
+    rated_power = L.p_field(units=P.W)
+    rated_voltage = L.p_field(units=P.V)
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

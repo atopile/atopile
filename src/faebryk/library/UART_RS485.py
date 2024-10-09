@@ -18,8 +18,8 @@ class UART_RS485(Module):
     read_enable: F.ElectricLogic
     write_enable: F.ElectricLogic
 
-    max_data_rate = L.p_field(unit=P.baud)
-    gpio_voltage = L.p_field(unit=P.V)
+    max_data_rate = L.p_field(units=P.baud)
+    gpio_voltage = L.p_field(units=P.V)
 
     def __preinit__(self):
         self.max_data_rate.alias_is(self.uart.baud)

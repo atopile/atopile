@@ -41,8 +41,8 @@ class LED(F.Diode):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
-    brightness = L.p_field(unit=P.candela)
-    max_brightness = L.p_field(unit=P.candela)
+    brightness = L.p_field(units=P.candela)
+    max_brightness = L.p_field(units=P.candela)
     color = L.p_field(domain=L.Domains.ENUM(Color))
 
     def __preinit__(self):

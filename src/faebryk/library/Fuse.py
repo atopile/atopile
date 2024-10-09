@@ -29,7 +29,7 @@ class Fuse(Module):
         domain=L.Domains.ENUM(ResponseType),
     )
     trip_current = L.p_field(
-        unit=P.A,
+        units=P.A,
         likely_constrained=True,
         domain=L.Domains.Numbers.REAL(),
         soft_set=L.Range(100 * P.mA, 100 * P.A),

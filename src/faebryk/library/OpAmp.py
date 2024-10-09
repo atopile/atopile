@@ -8,13 +8,13 @@ from faebryk.libs.units import P
 
 
 class OpAmp(Module):
-    bandwidth = L.p_field(unit=P.Hz)
-    common_mode_rejection_ratio = L.p_field(unit=P.dimensionless)
-    input_bias_current = L.p_field(unit=P.A)
-    input_offset_voltage = L.p_field(unit=P.V)
-    gain_bandwidth_product = L.p_field(unit=P.Hz)
-    output_current = L.p_field(unit=P.A)
-    slew_rate = L.p_field(unit=P.V / P.s)
+    bandwidth = L.p_field(units=P.Hz)
+    common_mode_rejection_ratio = L.p_field(units=P.dimensionless)
+    input_bias_current = L.p_field(units=P.A)
+    input_offset_voltage = L.p_field(units=P.V)
+    gain_bandwidth_product = L.p_field(units=P.Hz)
+    output_current = L.p_field(units=P.A)
+    slew_rate = L.p_field(units=P.V / P.s)
 
     power: F.ElectricPower
     inverting_input: F.Electrical

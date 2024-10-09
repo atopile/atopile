@@ -25,27 +25,27 @@ class LDO(Module):
         NEGATIVE = auto()
 
     max_input_voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         likely_constrained=True,
         soft_set=L.Range(1 * P.V, 100 * P.V),
     )
     output_voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         likely_constrained=True,
         soft_set=L.Range(1 * P.V, 100 * P.V),
     )
     quiescent_current = L.p_field(
-        unit=P.A,
+        units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.mA),
     )
     dropout_voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mV, 100 * P.mV),
     )
     psrr = L.p_field(
-        unit=P.dB,
+        units=P.dB,
         likely_constrained=True,
         soft_set=L.Range(1 * P.dB, 100 * P.dB),
     )
@@ -56,7 +56,7 @@ class LDO(Module):
         domain=L.Domains.ENUM(OutputType),
     )
     output_current = L.p_field(
-        unit=P.A,
+        units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.mA),
     )

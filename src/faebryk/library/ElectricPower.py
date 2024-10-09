@@ -46,13 +46,13 @@ class ElectricPower(F.Power):
     lv: F.Electrical
 
     voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         likely_constrained=True,
         domain=L.Domains.Numbers.REAL(),
         soft_set=L.Range(0 * P.V, 1000 * P.V),
         tolerance_guess=5 * P.percent,
     )
-    # max_current= L.p_field(unit=P.A)
+    # max_current= L.p_field(units=P.A)
     """
     Only for this particular power interface
     Does not propagate to connections

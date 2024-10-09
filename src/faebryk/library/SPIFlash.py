@@ -12,7 +12,7 @@ class SPIFlash(Module):
     spi = L.f_field(F.MultiSPI)(4)
 
     memory_size = L.p_field(
-        unit=P.byte,
+        units=P.byte,
         domain=L.Domains.Numbers.NATURAL(),
     )
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

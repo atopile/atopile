@@ -11,4 +11,4 @@ logger = logging.getLogger(__name__)
 
 
 class TVS(F.Diode):
-    reverse_breakdown_voltage = L.p_field(unit=P.V)
+    reverse_breakdown_voltage = L.p_field(units=P.V)

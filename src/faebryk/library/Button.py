@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class Button(Module):
     unnamed = L.list_field(2, F.Electrical)
     height = L.p_field(
-        unit=P.mm,
+        units=P.mm,
         likely_constrained=False,
         soft_set=L.Range(1 * P.mm, 10 * P.mm),
         tolerance_guess=10 * P.percent,

@@ -60,7 +60,7 @@ class Diodes_Incorporated_AP2552W6_7(Module):
     ilim: F.SignalElectrical
 
     current_limit = L.p_field(
-        unit=P.A,
+        units=P.A,
         likely_constrained=True,
         soft_set=L.Range(100 * P.mA, 2.1 * P.A),
         tolerance_guess=10 * P.percent,

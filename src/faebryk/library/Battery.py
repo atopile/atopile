@@ -10,12 +10,12 @@ from faebryk.libs.units import P
 
 class Battery(Module):
     voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         soft_set=L.Range(0 * P.V, 100 * P.V),
         likely_constrained=True,
     )
     capacity = L.p_field(
-        unit=P.Ah,
+        units=P.Ah,
         soft_set=L.Range(100 * P.mAh, 100 * P.Ah),
         likely_constrained=True,
     )

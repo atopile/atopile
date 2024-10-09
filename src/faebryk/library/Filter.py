@@ -18,7 +18,7 @@ class Filter(Module):
         OTHER = auto()
 
     cutoff_frequency = L.p_field(
-        unit=P.Hz,
+        units=P.Hz,
         likely_constrained=True,
         domain=L.Domains.Numbers.REAL(),
         soft_set=L.Range(0 * P.Hz, 1000 * P.Hz),

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class BH1750FVI_TR(Module):
     class _bh1750_esphome_config(F.has_esphome_config.impl()):
         update_interval = L.p_field(
-            unit=P.s,
+            units=P.s,
             soft_set=L.Range(100 * P.ms, 1 * P.day),
             guess=1 * P.s,
         )

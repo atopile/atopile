@@ -11,7 +11,7 @@ class UART_Base(ModuleInterface):
     rx: F.ElectricLogic
     tx: F.ElectricLogic
 
-    baud = L.p_field(unit=P.baud)
+    baud = L.p_field(units=P.baud)
 
     @L.rt_field
     def single_electric_reference(self):

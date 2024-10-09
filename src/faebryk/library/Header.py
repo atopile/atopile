@@ -38,7 +38,7 @@ class Header(Module):
         self.pin_count_vertical.alias_is(self._vertical_pin_count)
 
     pin_pitch = L.p_field(
-        unit=P.mm,
+        units=P.mm,
         likely_constrained=True,
         domain=L.Domains.Numbers.REAL(),
         soft_set=L.Range(1 * P.mm, 10 * P.mm),

@@ -12,7 +12,7 @@ from faebryk.libs.units import P
 class Potentiometer(Module):
     resistors_ifs = L.list_field(2, F.Electrical)
     wiper: F.Electrical
-    total_resistance = L.p_field(unit=P.ohm)
+    total_resistance = L.p_field(units=P.ohm)
     resistors = L.list_field(2, F.Resistor)
 
     def __preinit__(self):

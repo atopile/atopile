@@ -16,25 +16,25 @@ class Common_Mode_Filter(Module):
     coil_b: F.Inductor
 
     inductance = L.p_field(
-        unit=P.H,
+        units=P.H,
         likely_constrained=True,
         soft_set=L.Range(1 * P.µH, 10 * P.mH),
         tolerance_guess=10 * P.percent,
     )
     self_resonant_frequency = L.p_field(
-        unit=P.Hz,
+        units=P.Hz,
         likely_constrained=True,
         soft_set=L.Range(100 * P.Hz, 1 * P.MHz),
         tolerance_guess=10 * P.percent,
     )
     rated_current = L.p_field(
-        unit=P.A,
+        units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.A, 10 * P.A),
         tolerance_guess=10 * P.percent,
     )
     dc_resistance = L.p_field(
-        unit=P.Ω,
+        units=P.Ω,
     )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

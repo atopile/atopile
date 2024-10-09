@@ -13,25 +13,25 @@ class Inductor(Module):
     unnamed = L.list_field(2, F.Electrical)
 
     inductance = L.p_field(
-        unit=P.H,
+        units=P.H,
         likely_constrained=True,
         soft_set=L.Range(100 * P.nH, 1 * P.H),
         tolerance_guess=10 * P.percent,
     )
     self_resonant_frequency = L.p_field(
-        unit=P.Hz,
+        units=P.Hz,
         likely_constrained=True,
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
     )
     rated_current = L.p_field(
-        unit=P.A,
+        units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.A),
         tolerance_guess=10 * P.percent,
     )
     dc_resistance = L.p_field(
-        unit=P.Ω,
+        units=P.Ω,
         soft_set=L.Range(10 * P.mΩ, 100 * P.Ω),
         tolerance_guess=10 * P.percent,
     )

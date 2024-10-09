@@ -22,12 +22,12 @@ class Relay(Module):
     coil_p: F.Electrical
     coil_n: F.Electrical
 
-    coil_rated_voltage = L.p_field(unit=P.V)
-    coil_rated_current = L.p_field(unit=P.A)
-    coil_resistance = L.p_field(unit=P.ohm)
-    contact_max_switching_voltage = L.p_field(unit=P.V)
-    contact_rated_switching_current = L.p_field(unit=P.A)
-    contact_max_switchng_current = L.p_field(unit=P.A)
+    coil_rated_voltage = L.p_field(units=P.V)
+    coil_rated_current = L.p_field(units=P.A)
+    coil_resistance = L.p_field(units=P.ohm)
+    contact_max_switching_voltage = L.p_field(units=P.V)
+    contact_rated_switching_current = L.p_field(units=P.A)
+    contact_max_switchng_current = L.p_field(units=P.A)
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.K

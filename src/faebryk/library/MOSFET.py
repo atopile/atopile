@@ -20,10 +20,10 @@ class MOSFET(Module):
 
     channel_type = L.p_field(domain=L.Domains.ENUM(ChannelType))
     saturation_type = L.p_field(domain=L.Domains.ENUM(SaturationType))
-    gate_source_threshold_voltage = L.p_field(unit=P.V)
-    max_drain_source_voltage = L.p_field(unit=P.V)
-    max_continuous_drain_current = L.p_field(unit=P.A)
-    on_resistance = L.p_field(unit=P.ohm)
+    gate_source_threshold_voltage = L.p_field(units=P.V)
+    max_drain_source_voltage = L.p_field(units=P.V)
+    max_continuous_drain_current = L.p_field(units=P.A)
+    on_resistance = L.p_field(units=P.ohm)
 
     source: F.Electrical
     gate: F.Electrical

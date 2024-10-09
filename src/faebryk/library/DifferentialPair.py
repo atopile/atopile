@@ -14,7 +14,7 @@ class DifferentialPair(ModuleInterface):
     n: F.SignalElectrical
 
     impedance = L.p_field(
-        unit=P.Ω,
+        units=P.Ω,
         likely_constrained=True,
         soft_set=L.Range(10 * P.Ω, 100 * P.Ω),
         tolerance_guess=10 * P.percent,

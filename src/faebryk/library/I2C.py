@@ -16,7 +16,7 @@ class I2C(ModuleInterface):
     sda: F.ElectricLogic
 
     frequency = L.p_field(
-        unit=P.Hz,
+        units=P.Hz,
         likely_constrained=True,
         soft_set=L.Range(10 * P.kHz, 3.4 * P.MHz),
     )

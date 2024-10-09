@@ -26,7 +26,7 @@ class EEPROM(Module):
     # ----------------------------------------
 
     memory_size = L.p_field(
-        unit=P.bit,
+        units=P.bit,
         likely_constrained=True,
         domain=L.Domains.Numbers.NATURAL(),
         soft_set=L.Range(128 * P.bit, 1024 * P.kbit),

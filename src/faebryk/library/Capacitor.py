@@ -27,13 +27,13 @@ class Capacitor(Module):
     unnamed = L.list_field(2, F.Electrical)
 
     capacitance = L.p_field(
-        unit=P.F,
+        units=P.F,
         likely_constrained=True,
         soft_set=L.Range(100 * P.pF, 1 * P.F),
         tolerance_guess=10 * P.percent,
     )
     rated_voltage = L.p_field(
-        unit=P.V,
+        units=P.V,
         likely_constrained=True,
         soft_set=L.Range(10 * P.V, 100 * P.V),
         tolerance_guess=10 * P.percent,
