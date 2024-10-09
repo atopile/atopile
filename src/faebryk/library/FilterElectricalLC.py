@@ -3,6 +3,8 @@
 
 import math
 
+from more_itertools import raise_
+
 import faebryk.library._F as F
 from faebryk.libs.library import L
 from faebryk.libs.units import P
@@ -16,35 +18,33 @@ class FilterElectricalLC(F.Filter):
 
     z0 = L.p_field(units=P.ohm)
 
-    def __preinit__(self) -> None: ...
+    def __preinit__(self) -> None:
+        Li = self.inductor.inductance
+        C = self.capacitor.capacitance
+        fc = self.cutoff_frequency
 
-    @L.rt_field
-    def construction_dependency(self):
-        class _(F.has_construction_dependency.impl()):
-            def _construct(_self):
-                if F.Constant(F.Filter.Response.LOWPASS).is_subset_of(self.response):
-                    # TODO other orders & types
-                    self.order.constrain_subset(2)
-                    self.response.constrain_subset(F.Filter.Response.LOWPASS)
+        def build_lowpass():
+            # TODO other orders & types
+            self.order.constrain_subset(2)
+            self.response.constrain_subset(F.Filter.Response.LOWPASS)
 
-                    Li = self.inductor.inductance
-                    C = self.capacitor.capacitance
-                    fc = self.cutoff_frequency
+            fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
 
-                    fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
+            # low pass
+            self.in_.signal.connect_via(
+                (self.inductor, self.capacitor),
+                self.in_.reference.lv,
+            )
 
-                    # low pass
-                    self.in_.signal.connect_via(
-                        (self.inductor, self.capacitor),
-                        self.in_.reference.lv,
-                    )
+            self.in_.signal.connect_via(self.inductor, self.out.signal)
+            return
 
-                    self.in_.signal.connect_via(self.inductor, self.out.signal)
-                    return
+        (
+            self.response.operation_is_subset(F.Filter.Response.LOWPASS)
+            & self.order.operation_is_subset(2)
+        ).if_then_else(
+            build_lowpass,
+            lambda: raise_(NotImplementedError()),
+        )
 
-                if isinstance(self.response, F.Constant):
-                    raise F.has_construction_dependency.NotConstructableEver()
-
-                raise F.has_construction_dependency.NotConstructableYet()
-
-        return _()
+        # TODO add construction dependency trait

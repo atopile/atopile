@@ -183,7 +183,7 @@ class InitVar(dataclass_InitVar):
 class Node(FaebrykLibObject, metaclass=PostInitCaller):
     runtime_anon: list["Node"]
     runtime: dict[str, "Node"]
-    specialized: list["Node"]
+    specialized_nodes: list["Node"]
 
     self_gif: GraphInterfaceSelf
     children: GraphInterfaceHierarchical = f_field(GraphInterfaceHierarchical)(

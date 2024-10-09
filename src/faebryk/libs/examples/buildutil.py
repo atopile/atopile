@@ -10,7 +10,6 @@ import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.app.checks import run_checks
-from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.app.pcb import apply_design
 from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
@@ -48,10 +47,6 @@ def apply_design_to_pcb(
     """
 
     logger.info("Filling unspecified parameters")
-
-    replace_tbd_with_any(
-        m, recursive=True, loglvl=logging.DEBUG if DEV_MODE else logging.INFO
-    )
 
     G = m.get_graph()
     run_checks(m, G)

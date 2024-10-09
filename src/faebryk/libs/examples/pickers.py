@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import PickerOption, pick_module_by_params
 from faebryk.libs.units import P
@@ -237,7 +236,6 @@ def pick_tvs(module: F.TVS):
 def pick_battery(module: F.Battery):
     if not isinstance(module, F.ButtonCell):
         bcell = F.ButtonCell()
-        replace_tbd_with_any(bcell, recursive=False)
         module.specialize(bcell)
         bcell.add(
             F.has_multi_picker(0, F.has_multi_picker.FunctionPicker(pick_battery))

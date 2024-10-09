@@ -4,7 +4,7 @@
 import logging
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Protocol
+from typing import Any, Callable, Protocol
 
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node, f_field
@@ -40,6 +40,8 @@ class ParameterOperatable(Protocol):
     def constrain_subset(self, other: Sets): ...
 
     def constrain_superset(self, other: Sets): ...
+
+    def constrain_cardinality(self, other: int): ...
 
     def operation_add(self, other: NumberLike) -> "Expression": ...
 
@@ -85,6 +87,22 @@ class ParameterOperatable(Protocol):
 
     def operation_implies(self, other: BooleanLike) -> "Expression": ...
 
+    def operation_is_le(self, other: NumberLike) -> "Expression": ...
+
+    def operation_is_ge(self, other: NumberLike) -> "Expression": ...
+
+    def operation_is_lt(self, other: NumberLike) -> "Expression": ...
+
+    def operation_is_gt(self, other: NumberLike) -> "Expression": ...
+
+    def operation_is_ne(self, other: NumberLike) -> "Expression": ...
+
+    def operation_is_subset(self, other: Sets) -> "Expression": ...
+
+    def operation_is_superset(self, other: Sets) -> "Expression": ...
+
+    def get_any_single(self) -> Number | Enum: ...
+
     # ----------------------------------------------------------------------------------
     def __add__(self, other: NumberLike):
         return self.operation_add(other)
@@ -120,6 +138,7 @@ class ParameterOperatable(Protocol):
     def __round__(self):
         return self.operation_round()
 
+    # bitwise and
     def __and__(self, other: BooleanLike):
         # TODO could be set intersection
         return self.operation_and(other)
@@ -139,6 +158,22 @@ class ParameterOperatable(Protocol):
 
     def __rxor__(self, other: BooleanLike):
         return self.operation_xor(other)
+
+    # ----------------------------------------------------------------------------------
+
+    # TODO: move
+
+    def if_then_else(
+        self,
+        if_true: Callable[[], Any],
+        if_false: Callable[[], Any],
+    ) -> None: ...
+
+    # TODO
+    # def switch_case(
+    #    self,
+    #    cases: list[tuple[?, Callable[[], Any]]],
+    # ) -> None: ...
 
 
 # TODO: prohibit instantiation
@@ -525,6 +560,7 @@ class Parameter(Node, ParameterOperatable):
         tolerance_guess: Quantity | None = None,
         # hints
         likely_constrained: bool = False,
+        cardinality: int | None = None,
     ):
         super().__init__()
         if within is None:
@@ -541,6 +577,7 @@ class Parameter(Node, ParameterOperatable):
         self.guess = guess
         self.tolerance_guess = tolerance_guess
         self.likely_constrained = likely_constrained
+        self.cardinality = cardinality
 
     # ----------------------------------------------------------------------------------
     # TODO implement ParameterOperatable functions

@@ -47,6 +47,8 @@ class M24C08_FMN6TP(Module):
             L.Range(10 * P.nF, 100 * P.nF)
         )
 
+        self.power.voltage.constrain_subset(L.Range(1.7 * P.V, 5.5 * P.V))
+
         self.add(
             F.has_descriptive_properties_defined(
                 {

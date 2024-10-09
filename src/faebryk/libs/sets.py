@@ -17,7 +17,7 @@ class _SupportsRangeOps(Protocol):
     def __add__(self, __value: Self) -> Self: ...
 
 
-class _SupportsArithmeticOpsWithFloatMul(_SupportsRangeOps):
+class _SupportsArithmeticOpsWithFloatMul(_SupportsRangeOps, Protocol):
     def __mul__(self, __value: float | Self) -> Self: ...
 
 

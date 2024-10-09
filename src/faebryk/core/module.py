@@ -102,7 +102,7 @@ class Module(Node):
                 continue
             if dst is None:
                 raise Exception(f"Special module misses parameter: {src.get_name()}")
-            dst.merge(src)
+            dst.alias_is(src)
 
         # TODO this cant work
         # for t in self.traits:
@@ -118,7 +118,7 @@ class Module(Node):
         assert not has_parent or attach_to is None
         if not has_parent:
             if attach_to:
-                attach_to.add(special, container=attach_to.specialized)
+                attach_to.add(special, container=attach_to.specialized_nodes)
             else:
                 gen_parent = self.get_parent()
                 if gen_parent:

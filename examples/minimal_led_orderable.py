@@ -7,6 +7,7 @@ This file contains a faebryk sample.
 
 import logging
 from pathlib import Path
+from tkinter import W
 
 import typer
 
@@ -18,7 +19,6 @@ from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.manufacturing import export_pcba_artifacts
-from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.examples.buildutil import BUILD_DIR, PCB_FILE, apply_design_to_pcb
 from faebryk.libs.examples.pickers import add_example_pickers
@@ -56,8 +56,8 @@ class App(Module):
         self.led.power.connect_via(self.power_button, self.battery.power)
 
         # Parametrize
-        self.led.led.color.merge(F.LED.Color.YELLOW)
-        self.led.led.brightness.merge(
+        self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
+        self.led.led.brightness.constrain_subset(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
         )
 
@@ -130,7 +130,6 @@ def main():
     G = app.get_graph()
 
     # picking ----------------------------------------------------------------
-    replace_tbd_with_any(app, recursive=True)
     modules = app.get_children_modules(types=Module)
     try:
         JLCPCB_DB()

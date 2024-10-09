@@ -4,7 +4,8 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P
+from faebryk.libs.units import P, Quantity
+from faebryk.libs.util import cast_assert
 
 
 class HLK_LD2410B_P(Module):
@@ -12,11 +13,11 @@ class HLK_LD2410B_P(Module):
         throttle = L.p_field(
             units=P.ms,
             soft_set=L.Range(10 * P.ms, 1000 * P.ms),
+            cardinality=1,
         )
 
         def get_config(self) -> dict:
-            val = self.throttle.get_most_narrow()
-            assert isinstance(val, F.Constant), "No update interval set!"
+            val = cast_assert(Quantity, self.throttle.get_any_single())
 
             obj = self.obj
             assert isinstance(obj, HLK_LD2410B_P), "This is not an HLK_LD2410B_P!"
@@ -37,7 +38,7 @@ class HLK_LD2410B_P(Module):
 
             return {
                 "ld2410": {
-                    "throttle": f"{val.value.to('ms')}",
+                    "throttle": f"{val.to('ms')}",
                     "uart_id": uart_cfg["id"],
                 },
                 "binary_sensor": [

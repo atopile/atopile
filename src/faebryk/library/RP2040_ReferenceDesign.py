@@ -105,7 +105,7 @@ class RP2040_ReferenceDesign(Module):
         self.clock_source.crystal.add(
             F.has_descriptive_properties_defined(
                 {
-                    DescriptiveProperties.manufacturer.value: "Abracon LLC",
+                    DescriptiveProperties.manufacturer: "Abracon LLC",
                     DescriptiveProperties.partno: "ABM8-272-T3",
                 }
             )

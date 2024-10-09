@@ -52,7 +52,7 @@ class ElectricPower(F.Power):
         soft_set=L.Range(0 * P.V, 1000 * P.V),
         tolerance_guess=5 * P.percent,
     )
-    # max_current= L.p_field(units=P.A)
+    max_current = L.p_field(units=P.A)
     """
     Only for this particular power interface
     Does not propagate to connections
@@ -74,8 +74,10 @@ class ElectricPower(F.Power):
 
         self.connect_shallow(fused_power)
 
-        # fuse.trip_current.merge(F.Constant(self.max_current))
-        # fused_power.max_current.merge(F.Range(0 * P.A, fuse.trip_current))
+        fuse.trip_current.constrain_subset(
+            self.max_current * L.Range.from_center_rel(1.0, 0.1)
+        )
+        fused_power.max_current.constrain_le(fuse.trip_current)
 
         if attach_to is not None:
             attach_to.add(fused_power)

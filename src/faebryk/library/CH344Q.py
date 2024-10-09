@@ -72,7 +72,7 @@ class CH344Q(F.CH344):
     def descriptive_properties(self):
         return F.has_descriptive_properties_defined(
             {
-                DescriptiveProperties.manufacturer.value: "WCH",
+                DescriptiveProperties.manufacturer: "WCH",
                 DescriptiveProperties.partno: "CH344Q",
             },
         )

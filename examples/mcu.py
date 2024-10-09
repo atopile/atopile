@@ -29,8 +29,8 @@ class App(Module):
 
     def __preinit__(self) -> None:
         # Parametrize
-        self.led.led.led.color.merge(F.LED.Color.YELLOW)
-        self.led.led.led.brightness.merge(
+        self.led.led.led.color.constrain_subset(F.LED.Color.YELLOW)
+        self.led.led.led.brightness.constrain_subset(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
         )
 
