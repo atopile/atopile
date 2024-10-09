@@ -4,7 +4,7 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.module import Module, ModuleException
+from faebryk.core.module import Module
 from faebryk.core.parameter import ParameterOperatable
 from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude

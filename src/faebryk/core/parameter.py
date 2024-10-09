@@ -3,126 +3,113 @@
 
 import logging
 from enum import Enum, auto
+from typing import Protocol
 
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node, f_field
 from faebryk.libs.sets import Range, Set_
-from faebryk.libs.units import HasUnit, P, Quantity, Unit, dimensionless
+from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
 
 logger = logging.getLogger(__name__)
 
 
 class ParameterOperatable(Protocol):
-    type PE = ParameterOperatable | int | float | Quantity | Set_
+    type Number = int | float | Quantity
 
-    def alias_is(self, other: PE):
-        pass
+    type NumberLike = ParameterOperatable | Number | Set_[Number]
+    type BooleanLike = ParameterOperatable | bool | Set_[bool]
+    type EnumLike = ParameterOperatable | Enum | Set_[Enum]
 
-    def constrain_le(self, other: PE):
-        pass
+    type All = NumberLike | BooleanLike | EnumLike
+    type Sets = All
 
-    def constrain_ge(self, other: PE):
-        pass
+    def alias_is(self, other: All): ...
 
-    def constrain_lt(self, other: PE):
-        pass
+    def constrain_le(self, other: NumberLike): ...
 
-    def constrain_gt(self, other: PE):
-        pass
+    def constrain_ge(self, other: NumberLike): ...
 
-    def constrain_ne(self, other: PE):
-        pass
+    def constrain_lt(self, other: NumberLike): ...
 
-    def constrain_subset(self, other: PE):
-        pass
+    def constrain_gt(self, other: NumberLike): ...
 
-    def constrain_superset(self, other: PE):
-        pass
+    def constrain_ne(self, other: NumberLike): ...
 
-    def operation_add(self, other: PE) -> Expression:
-        pass
+    def constrain_subset(self, other: Sets): ...
 
-    def operation_subtract(self, other: PE) -> Expression:
-        pass
+    def constrain_superset(self, other: Sets): ...
 
-    def operation_multiply(self, other: PE) -> Expression:
-        pass
+    def operation_add(self, other: NumberLike) -> "Expression": ...
 
-    def operation_divide(self, other: PE) -> Expression:
-        pass
+    def operation_subtract(self, other: NumberLike) -> "Expression": ...
 
-    def operation_power(self, other: PE) -> Expression:
-        pass
+    def operation_multiply(self, other: NumberLike) -> "Expression": ...
 
-    def operation_log(self) -> Expression:
-        pass
+    def operation_divide(self: NumberLike, other: NumberLike) -> "Expression": ...
 
-    def operation_sqrt(self) -> Expression:
-        pass
+    def operation_power(self, other: NumberLike) -> "Expression": ...
 
-    def operation_abs(self) -> Expression:
-        pass
+    def operation_log(self) -> "Expression": ...
 
-    def operation_floor(self) -> Expression:
-        pass
+    def operation_sqrt(self) -> "Expression": ...
 
-    def operation_ceil(self) -> Expression:
-        pass
+    def operation_abs(self) -> "Expression": ...
 
-    def operation_round(self) -> Expression:
-        pass
+    def operation_floor(self) -> "Expression": ...
 
-    def operation_sin(self) -> Expression:
-        pass
+    def operation_ceil(self) -> "Expression": ...
 
-    def operation_cos(self) -> Expression:
-        pass
+    def operation_round(self) -> "Expression": ...
 
-    def operation_union(self, other: PE) -> Expression:
-        pass
+    def operation_sin(self) -> "Expression": ...
 
-    def operation_intersection(self, other: PE) -> Expression:
-        pass
+    def operation_cos(self) -> "Expression": ...
 
-    def operation_difference(self, other: PE) -> Expression:
-        pass
+    def operation_union(self, other: Sets) -> "Expression": ...
 
-    def operation_symmetric_difference(self, other: PE) -> Expression:
-        pass
+    def operation_intersection(self, other: Sets) -> "Expression": ...
 
-    def operation_and(self, other: PE) -> Expression:
-        pass
+    def operation_difference(self, other: Sets) -> "Expression": ...
 
-    def operation_or(self, other: PE) -> Expression:
-        pass
+    def operation_symmetric_difference(self, other: Sets) -> "Expression": ...
 
-    def operation_not(self) -> Expression:
-        pass
+    def operation_and(self, other: BooleanLike) -> "Expression": ...
 
-    def operation_xor(self, other: PE) -> Expression:
-        pass
+    def operation_or(self, other: BooleanLike) -> "Expression": ...
 
-    def operation_implies(self, other: PE) -> Expression:
-        pass
+    def operation_not(self) -> "Expression": ...
+
+    def operation_xor(self, other: BooleanLike) -> "Expression": ...
+
+    def operation_implies(self, other: BooleanLike) -> "Expression": ...
 
     # ----------------------------------------------------------------------------------
-    def __add__(self, other: PE):
+    def __add__(self, other: NumberLike):
         return self.operation_add(other)
 
-    def __sub__(self, other: PE):
+    def __radd__(self, other: NumberLike):
+        return self.operation_add(other)
+
+    def __sub__(self, other: NumberLike):
         # TODO could be set difference
         return self.operation_subtract(other)
 
-    def __mul__(self, other: PE):
+    def __rsub__(self, other: NumberLike):
+        return self.operation_subtract(other)
+
+    def __mul__(self, other: NumberLike):
         return self.operation_multiply(other)
 
-    def __truediv__(self, other: PE):
+    def __rmul__(self, other: NumberLike):
+        return self.operation_multiply(other)
+
+    def __truediv__(self, other: NumberLike):
         return self.operation_divide(other)
 
-    def __rtruediv__(self, other: PE):
-        return self.operation_divide(other)
+    def __rtruediv__(self, other: NumberLike):
+        return type(self).operation_divide(other, self)
 
-    def __pow__(self, other: PE):
+    def __pow__(self, other: NumberLike):
         return self.operation_power(other)
 
     def __abs__(self):
@@ -131,15 +118,24 @@ class ParameterOperatable(Protocol):
     def __round__(self):
         return self.operation_round()
 
-    def __and__(self, other: PE):
+    def __and__(self, other: BooleanLike):
         # TODO could be set intersection
         return self.operation_and(other)
 
-    def __or__(self, other: PE):
+    def __rand__(self, other: BooleanLike):
+        return self.operation_and(other)
+
+    def __or__(self, other: BooleanLike):
         # TODO could be set union
         return self.operation_or(other)
 
-    def __xor__(self, other: PE):
+    def __ror__(self, other: BooleanLike):
+        return self.operation_or(other)
+
+    def __xor__(self, other: BooleanLike):
+        return self.operation_xor(other)
+
+    def __rxor__(self, other: BooleanLike):
         return self.operation_xor(other)
 
 
@@ -519,131 +515,8 @@ class Parameter(Node, ParameterOperatable):
         self.likely_constrained = likely_constrained
 
     # ----------------------------------------------------------------------------------
-    type PE = ParameterOperatable.PE
-
-    def alias_is(self, other: PE):
-        pass
-
-    def constrain_le(self, other: PE):
-        pass
-
-    def constrain_ge(self, other: PE):
-        pass
-
-    def constrain_lt(self, other: PE):
-        pass
-
-    def constrain_gt(self, other: PE):
-        pass
-
-    def constrain_ne(self, other: PE):
-        pass
-
-    def constrain_subset(self, other: PE):
-        pass
-
-    def operation_add(self, other: PE) -> Expression:
-        pass
-
-    def operation_subtract(self, other: PE) -> Expression:
-        pass
-
-    def operation_multiply(self, other: PE) -> Expression:
-        pass
-
-    def operation_divide(self, other: PE) -> Expression:
-        pass
-
-    def operation_power(self, other: PE) -> Expression:
-        pass
-
-    def operation_log(self) -> Expression:
-        pass
-
-    def operation_sqrt(self) -> Expression:
-        pass
-
-    def operation_abs(self) -> Expression:
-        pass
-
-    def operation_floor(self) -> Expression:
-        pass
-
-    def operation_ceil(self) -> Expression:
-        pass
-
-    def operation_round(self) -> Expression:
-        pass
-
-    def operation_sin(self) -> Expression:
-        pass
-
-    def operation_cos(self) -> Expression:
-        pass
-
-    def operation_union(self, other: PE) -> Expression:
-        pass
-
-    def operation_intersection(self, other: PE) -> Expression:
-        pass
-
-    def operation_difference(self, other: PE) -> Expression:
-        pass
-
-    def operation_symmetric_difference(self, other: PE) -> Expression:
-        pass
-
-    def operation_and(self, other: PE) -> Expression:
-        pass
-
-    def operation_or(self, other: PE) -> Expression:
-        pass
-
-    def operation_not(self) -> Expression:
-        pass
-
-    def operation_xor(self, other: PE) -> Expression:
-        pass
-
-    def operation_implies(self, other: PE) -> Expression:
-        pass
-
+    # TODO implement ParameterOperatable functions
     # ----------------------------------------------------------------------------------
-    def __add__(self, other: PE):
-        return self.operation_add(other)
-
-    def __sub__(self, other: PE):
-        # TODO could be set difference
-        return self.operation_subtract(other)
-
-    def __mul__(self, other: PE):
-        return self.operation_multiply(other)
-
-    def __truediv__(self, other: PE):
-        return self.operation_divide(other)
-
-    def __rtruediv__(self, other: PE):
-        return self.operation_divide(other)
-
-    def __pow__(self, other: PE):
-        return self.operation_power(other)
-
-    def __abs__(self):
-        return self.operation_abs()
-
-    def __round__(self):
-        return self.operation_round()
-
-    def __and__(self, other: PE):
-        # TODO could be set intersection
-        return self.operation_and(other)
-
-    def __or__(self, other: PE):
-        # TODO could be set union
-        return self.operation_or(other)
-
-    def __xor__(self, other: PE):
-        return self.operation_xor(other)
 
 
 p_field = f_field(Parameter)

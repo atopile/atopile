@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 

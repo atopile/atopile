@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import math
 from enum import Enum, auto
 
 import faebryk.library._F as F

@@ -31,7 +31,7 @@ class FilterElectricalLC(F.Filter):
                     C = self.capacitor.capacitance
                     fc = self.cutoff_frequency
 
-                    fc.alias_is(1 / (2 * math.pi * math.sqrt(C * Li)))
+                    fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
 
                     # low pass
                     self.in_.signal.connect_via(

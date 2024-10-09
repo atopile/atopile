@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Protocol, Self
 
-from faebryk.libs.units import HasUnit, P, Unit, dimensionless
+from faebryk.libs.units import HasUnit, Unit, dimensionless
 
 
 class _SupportsRangeOps(Protocol):
