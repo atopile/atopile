@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import inspect
 import json
 import os
 import pathlib
@@ -12,7 +13,7 @@ import sys
 import traceback
 from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
-import contextlib
+from collections import defaultdict
 
 import atopile.address
 import atopile.config
@@ -27,7 +28,7 @@ import atopile.parse_utils
 # **********************************************************
 
 _line_to_def_block: dict[Path, list[Optional[atopile.address.AddrStr]]] = {}
-
+_error_accumulators: dict[Path, atopile.errors.ExceptionAccumulator] = defaultdict(atopile.errors.ExceptionAccumulator)
 
 def _reset_caches(file: Path):
     """Remove a file from the cache."""
@@ -36,43 +37,42 @@ def _reset_caches(file: Path):
 
     atopile.front_end.reset_caches(file)
 
+    del _error_accumulators[file]
+
 
 def _index_class_defs_by_line(file: Path):
     """Index class definitions in a given file by the line number"""
     _line_to_def_block[file] = []
+    accumulator = _error_accumulators[file]
 
-    with atopile.errors.ExceptionAccumulator() as accumulator:
-        addrs = atopile.front_end.scoop.ingest_file(file)
+    addrs = atopile.front_end.scoop.ingest_file(file)
 
-        for addr in addrs:
-            with accumulator.collect():
-                if addr == str(file):
-                    continue
-                try:
-                    atopile.front_end.lofty.get_instance(addr)
-                except atopile.errors._BaseAtoError as ex:
-                    log_warning(str(ex))
-                    continue
+    for addr in addrs:
+        with accumulator.collect():
+            if addr == str(file):
+                continue
 
-                # FIXME: we shouldn't be entangling this
-                # code w/ the front-end so much
-                try:
-                    cls_def = atopile.front_end.scoop.get_obj_def(addr)
-                    _, start_line, _, stop_line, _ = atopile.parse_utils.get_src_info_from_ctx(
-                        cls_def.src_ctx.block()
-                    )
-                except AttributeError:
-                    continue
+            atopile.front_end.lofty.get_instance(addr)
 
-                # We need to subtract one from the line numbers
-                # because the LSP uses 0-based indexing
-                stop_line_index = stop_line - 1
+            # FIXME: we shouldn't be entangling this
+            # code w/ the front-end so much
+            try:
+                cls_def = atopile.front_end.scoop.get_obj_def(addr)
+                _, start_line, _, stop_line, _ = atopile.parse_utils.get_src_info_from_ctx(
+                    cls_def.src_ctx.block()
+                )
+            except AttributeError:
+                continue
 
-                if stop_line_index >= len(_line_to_def_block[file]):
-                    _line_to_def_block[file].extend([None] * (stop_line_index - len(_line_to_def_block[file]) + 1))
+            # We need to subtract one from the line numbers
+            # because the LSP uses 0-based indexing
+            stop_line_index = stop_line - 1
 
-                for i in range(start_line - 1, stop_line_index):
-                    _line_to_def_block[file][i] = cls_def.address
+            if stop_line_index >= len(_line_to_def_block[file]):
+                _line_to_def_block[file].extend([None] * (stop_line_index - len(_line_to_def_block[file]) + 1))
+
+            for i in range(start_line - 1, stop_line_index):
+                _line_to_def_block[file][i] = cls_def.address
 
 
 def _get_def_addr_from_line(file: Path, line: int) -> Optional[atopile.address.AddrStr]:
@@ -168,14 +168,18 @@ def project_context(default_factory_if_unprocessable = lambda: None):
     return wrapper
 
 
-def publish_errors(errors: ExceptionGroup | None, uri: str):
-    if errors is None:
-        LSP_SERVER.publish_diagnostics(uri, [])
-        return
+def get_file(uri: str) -> Path:
+    document = LSP_SERVER.workspace.get_text_document(uri)
+    file = Path(document.path)
+    return file
+
+
+def publish_errors(uri: str):
+    file = get_file(uri)
 
     error_diagnostics = []
     processed_errors = set()
-    for error in errors.exceptions:
+    for error in _error_accumulators[file].errors:
         if isinstance(error, atopile.errors._BaseAtoError) and error.src_path and error.src_col and error.src_line:
             # don't duplicate errors
             if error.get_frozen() in processed_errors:
@@ -195,22 +199,18 @@ def publish_errors(errors: ExceptionGroup | None, uri: str):
     LSP_SERVER.publish_diagnostics(uri, error_diagnostics)
 
 
-@contextlib.contextmanager
-def publish_errors_context(uri: str):
-    try:
-        yield
-    except ExceptionGroup as e:
-        publish_errors(e, uri)
-    else:
-        publish_errors(None, uri)
-
-
 def publish_errors_decorator(func):
     # this doesn't use the context manage because we need the URI context
     @functools.wraps(func)
     def new_func(params: URIProtocol):
-        with publish_errors_context(params.text_document.uri):
-            return func(params)
+        accumulator = _error_accumulators[get_file(params.text_document.uri)]
+        if "accumulator" in inspect.signature(func).parameters:
+            return_val = func(params, accumulator=accumulator)
+        return_val = func(params)
+
+        publish_errors(params.text_document.uri)
+        return return_val
+
     return new_func
 
 
@@ -227,7 +227,7 @@ def publish_errors_decorator(func):
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_COMPLETION, lsp.CompletionOptions(trigger_characters=["."]),)
 @project_context(lambda: lsp.CompletionList(is_incomplete=False, items=[]))
 @publish_errors_decorator
-def completions(params: Optional[lsp.CompletionParams] = None) -> lsp.CompletionList:
+def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
     """Handler for completion requests."""
     document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
     file = Path(document.path)
@@ -375,22 +375,22 @@ def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[l
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
+@publish_errors_decorator
 def did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """LSP handler for textDocument/didOpen request."""
-    with publish_errors_context(params.text_document.uri):
-        # Currently this just handles new lines so the LSP can still give good completions outside modules
-        for event in params.content_changes:
-            # Check if the change is a new line
-            if newlines := event.text.count("\n"):
-                document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-                file = Path(document.path)
-                line_classes = _line_to_def_block[file]
-                insertion_line = event.range.start.line
-                _line_to_def_block[file] = (
-                    line_classes[:insertion_line + 1] +
-                    line_classes[insertion_line:insertion_line + 1] * newlines +
-                    line_classes[insertion_line + 1:]
-                )
+    # Currently this just handles new lines so the LSP can still give good completions outside modules
+    for event in params.content_changes:
+        # Check if the change is a new line
+        if newlines := event.text.count("\n"):
+            document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
+            file = Path(document.path)
+            line_classes = _line_to_def_block[file]
+            insertion_line = event.range.start.line
+            _line_to_def_block[file] = (
+                line_classes[:insertion_line + 1] +
+                line_classes[insertion_line:insertion_line + 1] * newlines +
+                line_classes[insertion_line + 1:]
+            )
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
