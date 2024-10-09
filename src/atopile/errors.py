@@ -390,8 +390,11 @@ class ExceptionAccumulator:
             for e in ex.exceptions:
                 if ctx and hasattr(e, "set_src_from_ctx"):
                     e.set_src_from_ctx(ctx)
-            self.errors.extend(ex.exceptions)
-            _log_ato_errors(ex, log)
+            self.add_errors(ex)
+
+    def add_errors(self, ex: ExceptionGroup):
+        self.errors.extend(ex.exceptions)
+        _log_ato_errors(ex, log)
 
     def make_collector(self) -> Callable[[Optional[ParserRuleContext]], ContextManager]:
         """

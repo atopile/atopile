@@ -15,11 +15,27 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
+def error_factory(e: Exception, msg: str, offendingSymbol, line, column) -> AtoSyntaxError:
+    from atopile.parse_utils import get_src_info_from_token
+    error = AtoSyntaxError(f"{str(e)} '{msg}'")
+
+    src_path, src_line, src_col = get_src_info_from_token(offendingSymbol)
+    error.src_path = src_path
+
+    # hack, need to up these one line for some reason
+    error.src_stop_line = src_line - 1
+    error.src_stop_col = column
+
+    error.src_line = line - 1
+    error.src_col = src_col
+    return error
+
+
 class ErrorListenerConverter(ErrorListener):
     """Converts an error into an AtoSyntaxError."""
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
-        raise AtoSyntaxError.from_token(offendingSymbol, f"{str(e)} '{msg}'", )
+        raise error_factory(e, msg, offendingSymbol, line, column)
 
 
 class ErrorListenerCollector(ErrorListenerConverter):
@@ -30,9 +46,7 @@ class ErrorListenerCollector(ErrorListenerConverter):
         super().__init__()
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
-        self.errors.append(
-            AtoSyntaxError.from_token(offendingSymbol, f"{str(e)} '{msg}'")
-        )
+        self.errors.append(error_factory(e, msg, offendingSymbol, line, column))
 
 
 def make_parser(src_stream: InputStream) -> AtopileParser:

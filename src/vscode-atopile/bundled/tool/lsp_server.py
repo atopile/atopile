@@ -45,7 +45,15 @@ def _index_class_defs_by_line(file: Path):
     _line_to_def_block[file] = []
     accumulator = _error_accumulators[file]
 
-    addrs = atopile.front_end.scoop.ingest_file(file)
+    addrs = None
+    try:
+        addrs = atopile.front_end.scoop.ingest_file(file)
+    except* atopile.errors._BaseAtoError as ex:
+        accumulator.add_errors(ex)
+    if addrs is None:
+        # we don't chuck a hissy here, but the caller won't progress much
+        # the errors are reported by the caller via publish_errors
+        return
 
     for addr in addrs:
         with accumulator.collect():
@@ -187,14 +195,23 @@ def publish_errors(uri: str):
             processed_errors.add(error.get_frozen())
 
             message = f"{error.title} - {error.message}"
-            error_diagnostics.append(lsp.Diagnostic(
+
+            # stop properly if we have information, but we don't always,
+            # so default to the first column of the next line
+            if error.src_stop_line and error.src_stop_col:
+                stop_position = lsp.Position(error.src_stop_line - 1, error.src_stop_col)
+            else:
+                stop_position = lsp.Position(error.src_line - 1, 0)
+
+            diagnostic = lsp.Diagnostic(
                 range=lsp.Range(
                     lsp.Position(error.src_line - 1, error.src_col),
-                    lsp.Position(error.src_stop_line - 1, error.src_stop_col)
+                    stop_position
                 ),
                 severity=lsp.DiagnosticSeverity.Error,
                 message=message
-            ))
+            )
+            error_diagnostics.append(diagnostic)
 
     LSP_SERVER.publish_diagnostics(uri, error_diagnostics)
 

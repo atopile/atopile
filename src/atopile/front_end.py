@@ -989,7 +989,7 @@ def lookup_class_in_closure(context: ClassDef, ref: Ref) -> AddrStr:
         return BUILTINS_BY_REF[ref].address
 
     raise errors.AtoKeyError.from_ctx(
-        context.src_ctx, f"Couldn't find {ref} in the scope of {context}"
+        context.src_ctx, f"Couldn't find '{ref}' in the scope of {context}"
     )
 
 
@@ -1254,7 +1254,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 )
             except KeyError as ex:
                 raise errors.AtoKeyError.from_ctx(
-                    ctx, f"Couldn't find ref {new_class_ref}"
+                    ctx, f"Couldn't find '{new_class_ref}'"
                 ) from ex
 
             try:
