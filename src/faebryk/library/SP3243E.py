@@ -108,7 +108,7 @@ class SP3243E(Module):
         # ------------------------------------
         self.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5.5 * P.V))
 
-        self.uart.base_uart.baud.constrain_le(L.Single(250 * P.kbaud))
+        self.uart.base_uart.baud.constrain_le(250 * P.kbaud)
 
         self.rs232.get_trait(
             F.has_single_electric_reference

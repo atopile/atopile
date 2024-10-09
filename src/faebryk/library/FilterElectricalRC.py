@@ -31,8 +31,8 @@ class FilterElectricalRC(F.Filter):
             def _construct(_self):
                 if F.Constant(F.Filter.Response.LOWPASS).is_subset_of(self.response):
                     # TODO other orders, types
-                    self.order.constrain_subset(L.Single(1))
-                    self.response.constrain_subset(L.Single(F.Filter.Response.LOWPASS))
+                    self.order.constrain_subset(1)
+                    self.response.constrain_subset(F.Filter.Response.LOWPASS)
 
                     R = self.resistor.resistance
                     C = self.capacitor.capacitance

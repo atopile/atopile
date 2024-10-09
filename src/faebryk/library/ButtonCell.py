@@ -5,7 +5,7 @@
 from enum import IntEnum, StrEnum
 
 import faebryk.library._F as F
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -21,15 +21,15 @@ class ButtonCell(F.Battery):
         NickelMetalHydride = "H"
 
         @property
-        def voltage(self) -> Parameter:
+        def voltage(self) -> ParameterOperatable.NumberLike:
             return {
-                self.Alkaline: L.Single(1.5 * P.V),
-                self.SilverOxide: L.Single(1.55 * P.V),
-                self.ZincAir: L.Single(1.65 * P.V),
-                self.Lithium: L.Single(3.0 * P.V),
-                self.Mercury: L.Single(1.35 * P.V),
-                self.NickelCadmium: L.Single(1.2 * P.V),
-                self.NickelMetalHydride: L.Single(1.2 * P.V),
+                self.Alkaline: 1.5 * P.V,
+                self.SilverOxide: 1.55 * P.V,
+                self.ZincAir: 1.65 * P.V,
+                self.Lithium: 3.0 * P.V,
+                self.Mercury: 1.35 * P.V,
+                self.NickelCadmium: 1.2 * P.V,
+                self.NickelMetalHydride: 1.2 * P.V,
             }[self]
 
     class Shape(StrEnum):

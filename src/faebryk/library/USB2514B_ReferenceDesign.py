@@ -90,9 +90,7 @@ class USB2514B_ReferenceDesign(Module):
         self.crystal_oscillator.crystal.frequency.constrain_subset(
             L.Range.from_center_rel(24 * P.MHz, 0.01)
         )
-        self.crystal_oscillator.crystal.frequency_tolerance.constrain_le(
-            L.Single(50 * P.ppm)
-        )
+        self.crystal_oscillator.crystal.frequency_tolerance.constrain_le(50 * P.ppm)
 
         # usb transceiver bias resistor
         self.bias_resistor.resistance.constrain_subset(
@@ -100,7 +98,7 @@ class USB2514B_ReferenceDesign(Module):
         )
 
         for led in [self.suspend_indicator.led, self.power_3v3_indicator]:
-            led.led.color.constrain_subset(L.Single(F.LED.Color.GREEN))
+            led.led.color.constrain_subset(F.LED.Color.GREEN)
             led.led.brightness.constrain_subset(
                 TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
             )
@@ -136,7 +134,7 @@ class USB2514B_ReferenceDesign(Module):
             )
             dfp.usb_if.buspower.connect(self.usb_dfp_power_indicator[i].power)
             self.usb_dfp_power_indicator[i].led.color.constrain_subset(
-                L.Single(F.LED.Color.YELLOW)
+                F.LED.Color.YELLOW
             )
             self.usb_dfp_power_indicator[i].led.brightness.constrain_subset(
                 TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value

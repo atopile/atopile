@@ -187,15 +187,11 @@ class RS485_Bus_Protection(Module):
         self.current_limmiter_resistors[0].resistance.constrain_subset(
             L.Range.from_center_rel(2.7 * P.ohm, 0.05)
         )
-        self.current_limmiter_resistors[0].rated_power.constrain_subset(
-            L.Range.lower_bound(500 * P.mW)
-        )
+        self.current_limmiter_resistors[0].rated_power.constrain_ge(500 * P.mW)
         self.current_limmiter_resistors[1].resistance.constrain_subset(
             L.Range.from_center_rel(2.7 * P.ohm, 0.05)
         )
-        self.current_limmiter_resistors[1].rated_power.constrain_ge(
-            L.Single(500 * P.mW)
-        )
+        self.current_limmiter_resistors[1].rated_power.constrain_ge(500 * P.mW)
 
         self.gnd_couple_resistor.resistance.constrain_subset(
             L.Range.from_center_rel(1 * P.Mohm, 0.05)
@@ -203,7 +199,7 @@ class RS485_Bus_Protection(Module):
         self.gnd_couple_capacitor.capacitance.constrain_subset(
             L.Range.from_center_rel(1 * P.uF, 0.05)
         )
-        self.gnd_couple_capacitor.rated_voltage.constrain_ge(L.Single(2 * P.kV))
+        self.gnd_couple_capacitor.rated_voltage.constrain_ge(2 * P.kV)
 
         # ----------------------------------------
         #               Connections

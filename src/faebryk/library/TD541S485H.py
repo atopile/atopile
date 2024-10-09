@@ -57,7 +57,7 @@ class TD541S485H(Module):
 
         self.power_iso_in.lv.connect(self.power_iso_out.lv)
         # TODO tolerance
-        self.power_iso_out.voltage.constrain_superset(L.Single(5 * P.V))
+        self.power_iso_out.voltage.constrain_superset(5 * P.V)
 
         F.ElectricLogic.connect_all_module_references(
             self,

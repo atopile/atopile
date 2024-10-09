@@ -3,6 +3,7 @@
 
 import logging
 from enum import Enum, auto
+from types import NotImplementedType
 from typing import Protocol
 
 from faebryk.core.core import Namespace
@@ -14,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class ParameterOperatable(Protocol):
-    type Number = int | float | Quantity
+    type QuantityLike = Quantity | NotImplementedType
+    type Number = int | float | QuantityLike
 
     type NumberLike = ParameterOperatable | Number | Set_[Number]
     type BooleanLike = ParameterOperatable | bool | Set_[bool]

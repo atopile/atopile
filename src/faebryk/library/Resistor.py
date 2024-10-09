@@ -49,7 +49,7 @@ class Resistor(Module):
             if not F.Constant(0.0 * P.ohm).is_subset_of(r):
                 raise PickError("", self)
 
-            self.resistance.constrain_subset(L.Single(0.0 * P.ohm))
+            self.resistance.constrain_subset(0.0 * P.ohm)
             self.unnamed[0].connect(self.unnamed[1])
             self.add(has_part_picked_remove())
 

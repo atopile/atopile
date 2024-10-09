@@ -38,7 +38,7 @@ class SNx4LVC541A(Module):
         # ----------------------------------------
         #                parameters
         # ----------------------------------------
-        self.power.voltage.constrain_le(L.Single(3.6 * P.V))
+        self.power.voltage.constrain_le(3.6 * P.V)
 
         # ----------------------------------------
         #                aliases

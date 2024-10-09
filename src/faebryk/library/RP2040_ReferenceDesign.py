@@ -118,7 +118,7 @@ class RP2040_ReferenceDesign(Module):
         )
 
         # Flash
-        self.flash.memory_size.constrain_subset(L.Single(16 * P.Mbit))
+        self.flash.memory_size.constrain_subset(16 * P.Mbit)
         self.flash.decoupled.decouple().capacitance.constrain_subset(
             L.Range.from_center_rel(100 * P.nF, 0.05)
         )
