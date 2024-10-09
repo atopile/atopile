@@ -33,6 +33,12 @@ class Diode(Module):
         soft_set=L.Range(0.1 * P.nA, 1 * P.µA),
         tolerance_guess=10 * P.percent,
     )
+    max_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.mA, 100 * P.A),
+        tolerance_guess=10 * P.percent,
+    )
 
     anode: F.Electrical
     cathode: F.Electrical
@@ -62,6 +68,9 @@ class Diode(Module):
             accept_prefix=False,
             case_sensitive=False,
         )
+
+    def __preinit__(self):
+        self.current.constrain_le(self.max_current)
 
     def get_needed_series_resistance_for_current_limit(
         self, input_voltage_V: ParameterOperatable

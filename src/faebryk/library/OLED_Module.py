@@ -43,9 +43,9 @@ class OLED_Module(Module):
     display_size = L.p_field(domain=L.Domains.ENUM(DisplaySize))
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range(3.0 * P.V, 5 * P.V))
-        self.power.decoupled.decouple().capacitance.merge(
-            F.Range(100 * P.uF, 220 * P.uF)
+        self.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5 * P.V))
+        self.power.decoupled.decouple().capacitance.constrain_subset(
+            L.Range(100 * P.uF, 220 * P.uF)
         )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

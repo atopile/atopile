@@ -38,7 +38,7 @@ class ElectricPower(F.Power):
         def protect(self):
             obj = self.get_obj(ElectricPower)
             return [
-                tvs.builder(lambda t: t.reverse_working_voltage.merge(obj.voltage))
+                tvs.builder(lambda t: t.reverse_working_voltage.alias_is(obj.voltage))
                 for tvs in super().protect()
             ]
 

@@ -23,20 +23,26 @@ class USB_C_PSU_Vertical(Module):
     fuse: F.Fuse
 
     def __preinit__(self):
-        self.gnd_capacitor.capacitance.merge(F.Range.from_center_rel(100 * P.nF, 0.05))
-        self.gnd_capacitor.rated_voltage.merge(F.Range.from_center_rel(16 * P.V, 0.05))
-        self.gnd_resistor.resistance.merge(F.Range.from_center_rel(1 * P.Mohm, 0.05))
+        self.gnd_capacitor.capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.05)
+        )
+        self.gnd_capacitor.rated_voltage.constrain_subset(
+            L.Range.from_center_rel(16 * P.V, 0.05)
+        )
+        self.gnd_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(1 * P.Mohm, 0.05)
+        )
         for res in self.configuration_resistors:
-            res.resistance.merge(F.Range.from_center_rel(5.1 * P.kohm, 0.05))
-        self.fuse.fuse_type.merge(F.Fuse.FuseType.RESETTABLE)
-        self.fuse.trip_current.merge(F.Range.from_center_rel(1 * P.A, 0.05))
+            res.resistance.constrain_subset(L.Range.from_center_rel(5.1 * P.kohm, 0.05))
+        self.fuse.fuse_type.constrain_subset(F.Fuse.FuseType.RESETTABLE)
+        self.fuse.trip_current.constrain_subset(L.Range.from_center_rel(1 * P.A, 0.05))
 
         # alliases
         vcon = self.usb_connector.vbus
         vusb = self.usb.usb_if.buspower
         v5 = self.power_out
         gnd = v5.lv
-        v5.voltage.merge(F.Range.from_center_rel(5 * P.V, 0.05))
+        v5.voltage.constrain_superset(L.Range.from_center_rel(5 * P.V, 0.05))
 
         vcon.hv.connect_via(self.fuse, v5.hv)
         vcon.lv.connect(gnd)

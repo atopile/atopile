@@ -110,4 +110,4 @@ class TPS2116(F.PowerMux):
         #          parametrization
         # ------------------------------------
         for power in [self.power_in[0], self.power_in[1], self.power_out]:
-            power.voltage.merge(F.Range(1.6 * P.V, 5.5 * P.V))
+            power.voltage.constrain_subset(L.Range(1.6 * P.V, 5.5 * P.V))

@@ -46,14 +46,11 @@ class LED(F.Diode):
     color = L.p_field(domain=L.Domains.ENUM(Color))
 
     def __preinit__(self):
-        self.current.merge(self.brightness / self.max_brightness * self.max_current)
-
-        # self.brightness.merge(
-        #    F.Range(0 * P.millicandela, self.max_brightness)
-        # )
+        self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
+        self.brightness.constrain_le(self.max_brightness)
 
     def set_intensity(self, intensity: Parameter[Quantity]) -> None:
-        self.brightness.merge(intensity * self.max_brightness)
+        self.brightness.alias_is(intensity * self.max_brightness)
 
     def connect_via_current_limiting_resistor(
         self,
@@ -67,7 +64,7 @@ class LED(F.Diode):
         else:
             self.anode.connect_via(resistor, target)
 
-        resistor.resistance.merge(
+        resistor.resistance.alias_is(
             self.get_needed_series_resistance_for_current_limit(input_voltage),
         )
         resistor.allow_removal_if_zero()

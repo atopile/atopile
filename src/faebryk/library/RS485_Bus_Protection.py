@@ -46,17 +46,21 @@ class RS485_Bus_Protection(Module):
             # ----------------------------------------
             #            parametrization
             # ----------------------------------------
-            self.tvs.reverse_working_voltage.merge(
-                F.Range.from_center_rel(8.5 * P.V, 0.05)
+            self.tvs.reverse_working_voltage.constrain_subset(
+                L.Range.from_center_rel(8.5 * P.V, 0.05)
             )
             # self.tvs.max_current.merge(F.Range.from_center_rel(41.7*P.A, 0.05))
             # self.tvs.forward_voltage.merge(F.Range(9.44*P.V, 10.40*P.V))
 
             for diode in self.clamping_diodes:
-                diode.forward_voltage.merge(F.Range.from_center_rel(1.1 * P.V, 0.05))
-                diode.max_current.merge(F.Range.from_center_rel(1 * P.A, 0.05))
-                diode.reverse_working_voltage.merge(
-                    F.Range.from_center_rel(1 * P.kV, 0.05)
+                diode.forward_voltage.constrain_subset(
+                    L.Range.from_center_rel(1.1 * P.V, 0.05)
+                )
+                diode.max_current.constrain_subset(
+                    L.Range.from_center_rel(1 * P.A, 0.05)
+                )
+                diode.reverse_working_voltage.constrain_subset(
+                    L.Range.from_center_rel(1 * P.kV, 0.05)
                 )
 
             # ----------------------------------------
@@ -155,8 +159,8 @@ class RS485_Bus_Protection(Module):
     def __preinit__(self):
         if self._termination:
             termination_resistor = self.add(F.Resistor(), name="termination_resistor")
-            termination_resistor.resistance.merge(
-                F.Range.from_center_rel(120 * P.ohm, 0.05)
+            termination_resistor.resistance.constrain_subset(
+                L.Range.from_center_rel(120 * P.ohm, 0.05)
             )
             self.rs485_ufp.diff_pair.p.connect_via(
                 termination_resistor, self.rs485_ufp.diff_pair.n
@@ -164,11 +168,11 @@ class RS485_Bus_Protection(Module):
         if self._polarization:
             polarization_resistors = self.add_to_container(2, F.Resistor)
 
-            polarization_resistors[0].resistance.merge(
-                F.Range(380 * P.ohm, 420 * P.ohm)
+            polarization_resistors[0].resistance.constrain_subset(
+                L.Range(380 * P.ohm, 420 * P.ohm)
             )
-            polarization_resistors[1].resistance.merge(
-                F.Range(380 * P.ohm, 420 * P.ohm)
+            polarization_resistors[1].resistance.constrain_subset(
+                L.Range(380 * P.ohm, 420 * P.ohm)
             )
             self.rs485_dfp.diff_pair.p.signal.connect_via(
                 polarization_resistors[0], self.power.hv
@@ -180,26 +184,26 @@ class RS485_Bus_Protection(Module):
         # ----------------------------------------
         #            parametrization
         # ----------------------------------------
-        self.current_limmiter_resistors[0].resistance.merge(
-            F.Range.from_center_rel(2.7 * P.ohm, 0.05)
+        self.current_limmiter_resistors[0].resistance.constrain_subset(
+            L.Range.from_center_rel(2.7 * P.ohm, 0.05)
         )
-        self.current_limmiter_resistors[0].rated_power.merge(
+        self.current_limmiter_resistors[0].rated_power.constrain_subset(
             F.Range.lower_bound(500 * P.mW)
         )
-        self.current_limmiter_resistors[1].resistance.merge(
-            F.Range.from_center_rel(2.7 * P.ohm, 0.05)
+        self.current_limmiter_resistors[1].resistance.constrain_subset(
+            L.Range.from_center_rel(2.7 * P.ohm, 0.05)
         )
-        self.current_limmiter_resistors[1].rated_power.merge(
-            F.Range.lower_bound(500 * P.mW)
+        self.current_limmiter_resistors[1].rated_power.constrain_ge(
+            L.Single(500 * P.mW)
         )
 
-        self.gnd_couple_resistor.resistance.merge(
-            F.Range.from_center_rel(1 * P.Mohm, 0.05)
+        self.gnd_couple_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(1 * P.Mohm, 0.05)
         )
-        self.gnd_couple_capacitor.capacitance.merge(
-            F.Range.from_center_rel(1 * P.uF, 0.05)
+        self.gnd_couple_capacitor.capacitance.constrain_subset(
+            L.Range.from_center_rel(1 * P.uF, 0.05)
         )
-        self.gnd_couple_capacitor.rated_voltage.merge(F.Range.lower_bound(2 * P.kV))
+        self.gnd_couple_capacitor.rated_voltage.constrain_ge(L.Single(2 * P.kV))
 
         # ----------------------------------------
         #               Connections

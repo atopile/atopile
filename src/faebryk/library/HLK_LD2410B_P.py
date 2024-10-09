@@ -80,7 +80,7 @@ class HLK_LD2410B_P(Module):
         )
 
     def __preinit__(self):
-        self.uart.baud.merge(F.Constant(256 * P.kbaud))
+        self.uart.baud.constrain_le(L.Single(256 * P.kbaud))
 
     # connect all logic references
     @L.rt_field

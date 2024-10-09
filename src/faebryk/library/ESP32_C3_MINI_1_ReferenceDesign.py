@@ -5,6 +5,7 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -23,8 +24,12 @@ class ESP32_C3_MINI_1_ReferenceDesign(Module):
             self.lp_filter.in_.signal.connect_via(
                 self.button, self.logic_out.reference.lv
             )
-            self.lp_filter.cutoff_frequency.merge(F.Range(100 * P.Hz, 200 * P.Hz))
-            self.lp_filter.response.merge(F.Filter.Response.LOWPASS)
+            self.lp_filter.cutoff_frequency.constrain_subset(
+                L.Range(100 * P.Hz, 200 * P.Hz)
+            )
+            self.lp_filter.response.constrain_subset(
+                L.Single(F.Filter.Response.LOWPASS)
+            )
 
     esp32_c3_mini_1: F.ESP32_C3_MINI_1
     boot_switch: DebouncedButton
@@ -88,9 +93,9 @@ class ESP32_C3_MINI_1_ReferenceDesign(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.low_speed_crystal_clock.crystal.frequency.merge(
-            F.Range.from_center_rel(32.768 * P.kHz, 0.001)
+        self.low_speed_crystal_clock.crystal.frequency.constrain_subset(
+            L.Range.from_center_rel(32.768 * P.kHz, 0.001)
         )
-        self.low_speed_crystal_clock.crystal.frequency_tolerance.merge(
-            F.Range(0 * P.ppm, 20 * P.ppm)
+        self.low_speed_crystal_clock.crystal.frequency_tolerance.constrain_subset(
+            L.Range(0 * P.ppm, 20 * P.ppm)
         )

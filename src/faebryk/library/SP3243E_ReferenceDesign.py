@@ -42,11 +42,13 @@ class SP3243E_ReferenceDesign(Module):
             # 4.5V to 5.5V > C1 = 0.047µF, C2,Cvp, Cvn = 0.33µF
             # 3.0V to 5.5V > C_all = 0.22μF
             #
-            cap.capacitance.merge(F.Range.from_center(0.22 * P.uF, 0.22 * 0.05 * P.uF))
+            cap.capacitance.constrain_subset(
+                L.Range.from_center(0.22 * P.uF, 0.22 * 0.05 * P.uF)
+            )
 
-            if isinstance(pwr.voltage.get_most_narrow(), F.TBD):
-                pwr.voltage.merge(
-                    F.Constant(8 * P.V)
-                    # F.Range.lower_bound(16 * P.V)
-                )  # TODO: fix merge
-                # TODO: merge conflict
+            # if isinstance(pwr.voltage.get_most_narrow(), F.TBD):
+            #    pwr.voltage.merge(
+            #        F.Constant(8 * P.V)
+            #        # F.Range.lower_bound(16 * P.V)
+            #    )  # TODO: fix merge
+            #    # TODO: merge conflict

@@ -33,9 +33,7 @@ class INA228_ReferenceDesign(Module):
             self._filtered = filtered
 
         def __preinit__(self):
-            self.power_in.voltage.merge(
-                self.power_out.voltage
-            )  # TODO: minus voltagedrop over shunt
+            self.power_in.voltage.alias_is(self.power_out.voltage)
             self.shunt_sense.p.connect_via(self.shunt, self.shunt_sense.n)
             if self._lowside:
                 self.power_in.hv.connect_via(self.shunt, self.power_out.hv)
@@ -83,8 +81,12 @@ class INA228_ReferenceDesign(Module):
         shunted_power = self.add(
             self.ShuntedElectricPower(lowside=self._lowside, filtered=self._filtered)
         )
-        shunted_power.shunt.resistance.merge(F.Range.from_center_rel(15 * P.mohm, 0.01))
-        shunted_power.shunt.rated_power.merge(F.Range.from_center_rel(2 * P.W, 0.01))
+        shunted_power.shunt.resistance.constrain_subset(
+            L.Range.from_center_rel(15 * P.mohm, 0.01)
+        )
+        shunted_power.shunt.rated_power.constrain_subset(
+            L.Range.from_center_rel(2 * P.W, 0.01)
+        )
         # TODO: calculate according to datasheet p36
 
         # ----------------------------------------
@@ -98,6 +100,8 @@ class INA228_ReferenceDesign(Module):
         self.ina288.shunt_input.connect(shunted_power.shunt_sense)
 
         # decouple power rail
-        self.ina288.power.get_trait(F.can_be_decoupled).decouple().capacitance.merge(
-            F.Range.from_center_rel(0.1 * P.uF, 0.01)
+        self.ina288.power.get_trait(
+            F.can_be_decoupled
+        ).decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(0.1 * P.uF, 0.01)
         )

@@ -1,11 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from math import sqrt
-
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import PickError, has_part_picked_remove
 from faebryk.libs.units import P
@@ -58,74 +55,4 @@ class Resistor(Module):
 
         self.add(
             F.has_multi_picker(-100, F.has_multi_picker.FunctionPicker(replace_zero))
-        )
-
-    def get_voltage_drop_by_current_resistance(self, current_A: Parameter) -> Parameter:
-        return current_A * self.resistance
-
-    def get_voltage_drop_by_power_resistance(self, power_W: Parameter) -> Parameter:
-        return sqrt(power_W * self.resistance)
-
-    @staticmethod
-    def set_voltage_drop_by_power_current(
-        power_W: Parameter, current_A: Parameter
-    ) -> Parameter:
-        return power_W / current_A
-
-    def get_current_flow_by_voltage_resistance(
-        self, voltage_drop_V: Parameter
-    ) -> Parameter:
-        return voltage_drop_V / self.resistance
-
-    def get_current_flow_by_power_resistance(self, power_W: Parameter) -> Parameter:
-        return sqrt(power_W / self.resistance)
-
-    @staticmethod
-    def get_current_flow_by_voltage_power(
-        voltage_drop_V: Parameter, power_W: Parameter
-    ) -> Parameter:
-        return power_W / voltage_drop_V
-
-    def set_resistance_by_voltage_current(
-        self, voltage_drop_V: Parameter, current_A: Parameter
-    ) -> Parameter:
-        self.resistance.merge(voltage_drop_V / current_A)
-        return self.resistance.get_most_narrow()
-
-    def set_resistance_by_voltage_power(
-        self, voltage_drop_V: Parameter, power_W: Parameter
-    ) -> Parameter:
-        self.resistance.merge(pow(voltage_drop_V, 2) / power_W)
-        return self.resistance.get_most_narrow()
-
-    def set_resistance_by_power_current(
-        self, current_A: Parameter, power_W: Parameter
-    ) -> Parameter:
-        self.resistance.merge(power_W / pow(current_A, 2))
-        return self.resistance.get_most_narrow()
-
-    def get_power_dissipation_by_voltage_resistance(
-        self, voltage_drop_V: Parameter
-    ) -> Parameter:
-        return pow(voltage_drop_V, 2) / self.resistance
-
-    def get_power_dissipation_by_current_resistance(
-        self, current_A: Parameter
-    ) -> Parameter:
-        return pow(current_A, 2) * self.resistance
-
-    @staticmethod
-    def get_power_dissipation_by_voltage_current(
-        voltage_drop_V: Parameter, current_A
-    ) -> Parameter:
-        return voltage_drop_V * current_A
-
-    def set_rated_power_by_voltage_resistance(self, voltage_drop_V: Parameter):
-        self.rated_power.merge(
-            self.get_power_dissipation_by_voltage_resistance(voltage_drop_V)
-        )
-
-    def set_rated_power_by_current_resistance(self, current_A: Parameter):
-        self.rated_power.merge(
-            self.get_power_dissipation_by_current_resistance(current_A)
         )

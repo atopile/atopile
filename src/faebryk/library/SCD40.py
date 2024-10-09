@@ -71,10 +71,10 @@ class SCD40(Module):
         )
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
+        self.power.voltage.constrain_subset(L.Range.from_center_rel(3.3 * P.V, 0.05))
         self.i2c.terminate()
         self.power.decoupled.decouple()
-        self.i2c.frequency.merge(
+        self.i2c.frequency.constrain_le(
             F.I2C.define_max_frequency_capability(F.I2C.SpeedMode.fast_speed)
         )
 

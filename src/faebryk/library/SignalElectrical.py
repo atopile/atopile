@@ -83,7 +83,7 @@ class SignalElectrical(F.Signal):
             def protect(_self):
                 return [
                     tvs.builder(
-                        lambda t: t.reverse_working_voltage.merge(
+                        lambda t: t.reverse_working_voltage.alias_is(
                             self.reference.voltage
                         )
                     )

@@ -21,6 +21,8 @@ class FilterElectricalRC(F.Filter):
     capacitor: F.Capacitor
     resistor: F.Resistor
 
+    z0 = L.p_field(units=P.ohm)
+
     def __preinit__(self): ...
 
     @L.rt_field
@@ -28,24 +30,15 @@ class FilterElectricalRC(F.Filter):
         class _(F.has_construction_dependency.impl()):
             def _construct(_self):
                 if F.Constant(F.Filter.Response.LOWPASS).is_subset_of(self.response):
-                    self.response.merge(F.Filter.Response.LOWPASS)
-
-                    # TODO other orders
-                    self.order.merge(1)
+                    # TODO other orders, types
+                    self.order.constrain_subset(L.Single(1))
+                    self.response.constrain_subset(L.Single(F.Filter.Response.LOWPASS))
 
                     R = self.resistor.resistance
                     C = self.capacitor.capacitance
                     fc = self.cutoff_frequency
 
-                    # TODO requires parameter constraint solving implemented
-                    # fc.merge(1 / (2 * math.pi * R * C))
-
-                    # instead assume fc being the driving param
-                    realistic_C = F.Range(1 * P.pF, 1 * P.mF)
-                    R.merge(1 / (2 * math.pi * realistic_C * fc))
-                    C.merge(1 / (2 * math.pi * R * fc))
-
-                    # TODO consider splitting C / L in a typical way
+                    fc.alias_is(1 / (2 * math.pi * R * C))
 
                     # low pass
                     self.in_.signal.connect_via(

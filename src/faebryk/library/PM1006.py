@@ -61,5 +61,5 @@ class PM1006(Module):
     # ---------------------------------------------------------------------
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range.from_center(5, 0.2))
-        self.data.baud.merge(F.Constant(9600 * P.baud))
+        self.power.voltage.constrain_subset(L.Range.from_center(5 * P.V, 0.2 * P.V))
+        self.data.baud.constrain_subset(L.Single(9600 * P.baud))

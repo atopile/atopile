@@ -43,8 +43,8 @@ class M24C08_FMN6TP(Module):
         )
 
         self.data.terminate()
-        self.power.decoupled.decouple().capacitance.merge(
-            F.Range(10 * P.nF, 100 * P.nF)
+        self.power.decoupled.decouple().capacitance.constrain_subset(
+            L.Range(10 * P.nF, 100 * P.nF)
         )
 
         self.add(

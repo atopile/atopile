@@ -6,7 +6,7 @@ from faebryk.libs.library import L
 
 
 class Logic(F.Signal):
-    state = L.f_field(F.Range)(False, True)
+    state = L.p_field(domain=L.Domains.BOOL())
 
     def set(self, on: bool):
-        self.state.merge(on)
+        self.state.constrain_subset(L.Single(on))

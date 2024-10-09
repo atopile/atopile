@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.library._F as F
+from faebryk.libs.library import L
 
 
 class PowerSwitchMOSFET(F.PowerSwitch):
@@ -21,15 +22,15 @@ class PowerSwitchMOSFET(F.PowerSwitch):
     mosfet: F.MOSFET
 
     def __preinit__(self):
-        self.mosfet.channel_type.merge(
-            F.Constant(
+        self.mosfet.channel_type.constrain_subset(
+            L.Single(
                 F.MOSFET.ChannelType.N_CHANNEL
                 if self._lowside
                 else F.MOSFET.ChannelType.P_CHANNEL
             )
         )
-        self.mosfet.saturation_type.merge(
-            F.Constant(F.MOSFET.SaturationType.ENHANCEMENT)
+        self.mosfet.saturation_type.constrain_subset(
+            L.Single(F.MOSFET.SaturationType.ENHANCEMENT)
         )
 
         # pull gate

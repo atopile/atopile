@@ -43,7 +43,7 @@ class MultiCapacitor(F.Capacitor):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.capacitance.merge(sum(c.capacitance for c in self.capacitors))
+        self.capacitance.alias_is(sum(c.capacitance for c in self.capacitors))
 
     def set_equal_capacitance(self, capacitance: Parameter[Quantity]):
         op = capacitance / self._count
@@ -52,4 +52,4 @@ class MultiCapacitor(F.Capacitor):
 
     def set_equal_capacitance_each(self, capacitance: Parameter[Quantity]):
         for c in self.capacitors:
-            c.capacitance.merge(capacitance)
+            c.capacitance.constrain_subset(capacitance)
