@@ -168,7 +168,6 @@ class Additive(Arithmetic):
         units = [
             op.units if isinstance(op, HasUnit) else dimensionless for op in operands
         ]
-        # Check if all units are compatible
         self.units = units[0]
         if not all(u.is_compatible_with(self.units) for u in units):
             raise ValueError("All operands must have compatible units")
@@ -307,7 +306,7 @@ class Implies(Logic):
 class Setic(Expression):
     def __init__(self, *operands):
         super().__init__(*operands)
-        types = [Parameter, Set_]
+        types = [Parameter, ParameterOperatable.Sets]
         if any(type(op) not in types for op in operands):
             raise ValueError("operands must be Parameter or Set")
         units = [op.units for op in operands]
@@ -372,23 +371,37 @@ class EnumDomain(Domain):
         self.enum_t = enum_t
 
 
-class Predicate(Node):
+class Predicate(Expression):
+    def __init__(self, left, right):
+        l_units = left.units if isinstance(left, HasUnit) else dimensionless
+        r_units = right.units if isinstance(right, HasUnit) else dimensionless
+        if not l_units.is_compatible_with(r_units):
+            raise ValueError("operands must have compatible units")
+        self.operands = [left, right]
+
+
+class NumericPredicate(Predicate):
+    def __init__(self, left, right):
+        super().__init__(left, right)
+        if isinstance(left, Parameter) and left.domain not in [Numbers, ESeries]:
+            raise ValueError("left operand must have domain Numbers or ESeries")
+        if isinstance(right, Parameter) and right.domain not in [Numbers, ESeries]:
+            raise ValueError("right operand must have domain Numbers or ESeries")
+
+
+class LessThan(NumericPredicate):
     pass
 
 
-class LessThan(Predicate):
+class GreaterThan(NumericPredicate):
     pass
 
 
-class GreaterThan(Predicate):
+class LessOrEqual(NumericPredicate):
     pass
 
 
-class LessOrEqual(Predicate):
-    pass
-
-
-class GreaterOrEqual(Predicate):
+class GreaterOrEqual(NumericPredicate):
     pass
 
 
@@ -396,15 +409,28 @@ class NotEqual(Predicate):
     pass
 
 
-class IsSubset(Predicate):
+class SeticPredicate(Predicate):
+    def __init__(self, left, right):
+        super().__init__(left, right)
+        types = [Parameter, ParameterOperatable.Sets]
+        if any(type(op) not in types for op in self.operands):
+            raise ValueError("operands must be Parameter or Set")
+        units = [op.units for op in self.operands]
+        for u in units[1:]:
+            if not units[0].is_compatible_with(u):
+                raise ValueError("all operands must have compatible units")
+        # TODO domain?
+
+
+class IsSubset(SeticPredicate):
     pass
 
 
-class IsSuperset(Predicate):
+class IsSuperset(SeticPredicate):
     pass
 
 
-class Alias(Node):
+class Alias(Expression):
     pass
 
 
