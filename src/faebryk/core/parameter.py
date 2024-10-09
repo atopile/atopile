@@ -10,6 +10,7 @@ from faebryk.core.core import Namespace
 from faebryk.core.node import Node, f_field
 from faebryk.libs.sets import Range, Set_
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
+from faebryk.libs.util import abstract
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ class ParameterOperatable(Protocol):
     # ) -> None: ...
 
 
-# TODO: prohibit instantiation
+@abstract
 class Expression(Node, ParameterOperatable):
     pass
 

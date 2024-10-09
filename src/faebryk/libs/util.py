@@ -1114,3 +1114,19 @@ def merge_dicts(*dicts: dict) -> dict:
             else:
                 result[k] = v
     return result
+
+
+def abstract[T: type](cls: T) -> T:
+    """
+    Mark a class as abstract.
+    """
+
+    old_new = cls.__new__
+
+    def _new(cls_, *args, **kwargs):
+        if cls_ is cls:
+            raise TypeError(f"{cls.__name__} is abstract and cannot be instantiated")
+        return old_new(cls_, *args, **kwargs)
+
+    cls.__new__ = _new
+    return cls
