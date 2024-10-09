@@ -1,0 +1,40 @@
+{#-
+  This file was automatically generated - do not edit
+-#}
+{% extends "base.html" %}
+{% block announce %}
+  For updates, star us on
+  <a href="https://github.com/atopile/atopile">
+    <span class="twemoji github">
+      {% include ".icons/fontawesome/brands/github.svg" %}
+    </span>
+    <strong>GitHub</strong>
+  </a>
+  , and follow <strong>@atopile_io</strong> on
+  <a href="https://twitter.com/atopile_io">
+    <span class="twemoji x-twitter">
+      {% include ".icons/fontawesome/brands/x-twitter.svg" %}
+    </span>
+    <strong>X</strong> (Twitter)
+  </a>
+  ,
+  <a href="https://www.youtube.com/@atopile_io">
+    <span class="twemoji youtube">
+      {% include ".icons/fontawesome/brands/youtube.svg" %}
+    </span>
+    <strong>YouTube</strong>
+  , or join us on
+  <a href="https://discord.gg/nkpC7wYRVw">
+    <span class="twemoji discord">
+      {% include ".icons/fontawesome/brands/discord.svg" %}
+    </span>
+    <strong>Discord</strong>
+  </a>
+{% endblock %}
+{% block extrahead %}
+  <link rel="stylesheet" href="{{ 'assets/stylesheets/custom.css' | url }}">
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ 'assets/javascripts/custom.129bd6ad.min.js' | url }}"></script>
+{% endblock %}
