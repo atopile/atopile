@@ -33,13 +33,13 @@ def build(build_ctxs: list[BuildContext]):
     Specify the root source file with the argument SOURCE.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
-    with ExceptionAccumulator() as err_cltr:
+    with ExceptionAccumulator() as accumulator:
         for build_ctx in build_ctxs:
             log.info("Building %s", build_ctx.name)
-            with err_cltr():
+            with accumulator.collect():
                 _do_build(build_ctx)
 
-        with err_cltr():
+        with accumulator.collect():
             project_context = atopile.config.get_project_context()
 
             # FIXME: this should be done elsewhere, but there's no other "overview"
@@ -60,10 +60,10 @@ def build(build_ctxs: list[BuildContext]):
 
 
 def do_prebuild(build_ctx: BuildContext) -> None:
-    with ExceptionAccumulator() as err_cltr:
+    with ExceptionAccumulator() as accumulator:
         # Solve the unknown variables
         if not build_ctx.dont_solve_equations:
-            with err_cltr():
+            with accumulator.collect():
                 atopile.assertions.simplify_expressions(build_ctx.entry)
                 atopile.assertions.solve_assertions(build_ctx)
                 atopile.assertions.simplify_expressions(build_ctx.entry)
@@ -73,7 +73,7 @@ def _do_build(build_ctx: BuildContext) -> None:
     """Execute a specific build."""
     do_prebuild(build_ctx)
 
-    with ExceptionAccumulator() as err_cltr:
+    with ExceptionAccumulator() as accumulator:
         # Ensure the build directory exists
         log.info("Writing outputs to %s", build_ctx.build_path)
         build_ctx.build_path.mkdir(parents=True, exist_ok=True)
@@ -98,7 +98,7 @@ def _do_build(build_ctx: BuildContext) -> None:
         built_targets = []
         for target_name in targets:
             log.info(f"Building '{target_name}' for '{build_ctx.name}' config")
-            with err_cltr():
+            with accumulator.collect():
                 muster.targets[target_name](build_ctx)
             built_targets.append(target_name)
 

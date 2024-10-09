@@ -1,4 +1,5 @@
 import collections.abc
+import functools
 import logging
 import sys
 import textwrap
@@ -6,7 +7,7 @@ import traceback
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Callable, ContextManager, Iterable, Optional, Type, TypeVar
+from typing import Callable, ContextManager, Iterable, Optional, Self, Type, TypeVar
 from types import ModuleType
 
 import rich
@@ -32,6 +33,8 @@ class _BaseAtoError(Exception):
         src_path: Optional[str | Path] = None,
         src_line: Optional[int] = None,
         src_col: Optional[int] = None,
+        src_stop_line: Optional[int] = None,
+        src_stop_col: Optional[int] = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -41,6 +44,8 @@ class _BaseAtoError(Exception):
         self.src_path = src_path
         self.src_line = src_line
         self.src_col = src_col
+        self.src_stop_line = src_stop_line
+        self.src_stop_col = src_stop_col
 
     @classmethod
     def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseAtoError":
@@ -57,10 +62,7 @@ class _BaseAtoError(Exception):
 
     def set_src_from_ctx(self, ctx: ParserRuleContext):
         """Add source info from a context."""
-        src_path, src_line, src_col, *_ = get_src_info_from_ctx(ctx)
-        self.src_path = src_path
-        self.src_line = src_line
-        self.src_col = src_col
+        self.src_path, self.src_line, self.src_col, self.src_stop_line, self.src_stop_col = get_src_info_from_ctx(ctx)
 
     @property
     def title(self):
@@ -100,6 +102,8 @@ class _BaseAtoError(Exception):
             self.src_path,
             self.src_line,
             self.src_col,
+            self.src_stop_line,
+            self.src_stop_col,
         )
 
 
@@ -378,24 +382,22 @@ class ExceptionAccumulator:
         self.accumulate_types = accumulate_types or AtoError
         self.group_message = group_message or ""
 
-    def make_collector(self):
+    @contextmanager
+    def collect(self, ctx: Optional[ParserRuleContext] = None):
+        try:
+            yield
+        except* self.accumulate_types as ex:
+            for e in ex.exceptions:
+                if ctx and hasattr(e, "set_src_from_ctx"):
+                    e.set_src_from_ctx(ctx)
+            self.errors.extend(ex.exceptions)
+            _log_ato_errors(ex, log)
+
+    def make_collector(self) -> Callable[[Optional[ParserRuleContext]], ContextManager]:
         """
         Return a context manager that collects any ato errors raised while executing it.
         """
-        @contextmanager
-        def _collect_ato_errors(ctx: Optional[ParserRuleContext] = None):
-            try:
-                yield
-            except* self.accumulate_types as ex:
-                if debugpy := in_debug_session():
-                    debugpy.breakpoint()
-                for e in ex.exceptions:
-                    if ctx and hasattr(e, "set_src_from_ctx"):
-                        e.set_src_from_ctx(ctx)
-                self.errors.extend(ex.exceptions)
-                _log_ato_errors(ex, log)
-
-        return _collect_ato_errors
+        return self.collect
 
     def raise_errors(self):
         """
@@ -414,8 +416,8 @@ class ExceptionAccumulator:
 
             raise ExceptionGroup(self.group_message, displayed_errors)
 
-    def __enter__(self) -> Callable[[], ContextManager]:
-        return self.make_collector()
+    def __enter__(self) -> Self:
+        return self
 
     def __exit__(self, *args):
         self.raise_errors()
@@ -435,11 +437,11 @@ def iter_through_errors(
     - the item from the iterable
     """
 
-    with ExceptionAccumulator(accumulate_types, group_message) as err_cltr:
+    with ExceptionAccumulator(accumulate_types, group_message) as accumulator:
         for item in gen:
             # NOTE: we don't create a single context manager for the whole generator
             # because generator context managers are a bit special
-            yield err_cltr, item
+            yield accumulator.collect, item
 
 
 C = TypeVar("C", bound=Callable)

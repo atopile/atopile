@@ -87,7 +87,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
         for instance_addr in instance_methods.all_descendants(build_ctx.entry):
             instance = lofty.get_instance(instance_addr)
             for assertion in instance.assertions:
-                with exception_accumulator():
+                with exception_accumulator.collect():
                     _try_log_assertion(assertion)
 
                     # Build the context in which to evaluate the assertion
