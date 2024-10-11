@@ -5,6 +5,7 @@
 """
 KiCad 5 drawing objects.
 """
+
 from dataclasses import dataclass
 
 

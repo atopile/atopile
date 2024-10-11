@@ -35,9 +35,11 @@ from .shims import Options, Part
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class PinDir:
     """Stores information about pins in each of four directions"""
+
     # direction: The direction the pin line is drawn from start to end.
     direction: Point
     # side: The side of the symbol the pin is on. (Opposite of the direction.)
@@ -73,7 +75,6 @@ def calc_symbol_bbox(part: Part, **options: Unpack[Options]):
     # Named tuples for part KiCad V5 DRAW primitives.
 
     def make_pin_dir_tbl(abs_xoff: int = 20) -> dict[str, "PinDir"]:
-
         # abs_xoff is the absolute distance of name/num from the end of the pin.
         rel_yoff_num = -0.15  # Relative distance of number above pin line.
         rel_yoff_name = (
@@ -127,7 +128,6 @@ def calc_symbol_bbox(part: Part, **options: Unpack[Options]):
 
     # Go through each graphic object that makes up the component symbol.
     for obj in part.draw:
-
         obj_bbox = BBox()  # Bounding box of all the component objects.
         thickness = 0
 

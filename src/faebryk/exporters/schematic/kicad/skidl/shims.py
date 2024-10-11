@@ -14,6 +14,8 @@ import faebryk.library._F as F
 from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point, Tx, Vector
 
 if TYPE_CHECKING:
+    import pygame
+
     from faebryk.libs.kicad import fileformats_sch
 
     from .route import Face, GlobalTrack
@@ -36,7 +38,6 @@ def rmv_attr(objs, attrs):
                 delattr(o, a)
             except AttributeError:
                 pass
-
 
 
 def angle_to_orientation(angle: float) -> str:
@@ -273,7 +274,7 @@ class Options(TypedDict):
     draw_placement: bool
     draw_routing_channels: bool
     draw_routing: bool
-    draw_scr: bool
+    draw_scr: "pygame.Surface"
     draw_switchbox_boundary: bool
     draw_switchbox_routing: bool
     draw_tx: Tx

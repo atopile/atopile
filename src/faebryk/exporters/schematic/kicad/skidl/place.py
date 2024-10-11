@@ -83,7 +83,6 @@ def is_net_terminal(part):
 
 # Class for movable groups of parts/child nodes.
 class PartBlock:
-
     def __init__(
         self,
         src: "list[Part | SchNode] | Part | SchNode",
@@ -340,7 +339,6 @@ def adjust_orientations(parts: list[Part], **options: Unpack[Options]) -> bool |
         calc_starting_cost = True
         for i in range(2):
             for j in range(4):
-
                 if calc_starting_cost:
                     # Calculate the cost of the starting orientation before any changes in orientation.
                     starting_cost = net_tension(part, **options)
@@ -712,7 +710,7 @@ repulsive_force = overlap_force
 def scale_attractive_repulsive_forces(
     parts: list[Part],
     force_func: Callable[[Part, list[Part], ...], Vector],
-    **options: Unpack[Options]
+    **options: Unpack[Options],
 ) -> float:
     """Set scaling between attractive net forces and repulsive part overlap forces."""
 
@@ -750,7 +748,7 @@ def total_part_force(
     parts: list[Part],
     scale: float,
     alpha: float,
-    **options: Unpack[Options]
+    **options: Unpack[Options],
 ) -> Vector:
     """Compute the total of the attractive net and repulsive overlap forces on a part.
 
@@ -804,7 +802,7 @@ def total_similarity_force(
     similarity: dict,
     scale: float,
     alpha: float,
-    **options: Unpack[Options]
+    **options: Unpack[Options],
 ) -> Vector:
     """Compute the total of the attractive similarity and repulsive overlap forces on a part.
 
@@ -879,7 +877,7 @@ def push_and_pull(
     mobile_parts: list[Part],
     nets: list[Net],
     force_func: Callable[[Part, list[Part], ...], Vector],
-    **options: Unpack[Options]
+    **options: Unpack[Options],
 ):
     """Move parts under influence of attractive nets and repulsive part overlaps.
 
@@ -1021,7 +1019,7 @@ def evolve_placement(
     mobile_parts: list[Part],
     nets: list[Net],
     force_func: Callable[[Part, list[Part], ...], Vector],
-    **options: Unpack[Options]
+    **options: Unpack[Options],
 ):
     """Evolve part placement looking for optimum using force function.
 
@@ -1048,7 +1046,7 @@ def place_net_terminals(
     placed_parts: list[Part],
     nets: list[Net],
     force_func: Callable[[Part, list[Part], ...], Vector],
-    **options: Unpack[Options]
+    **options: Unpack[Options],
 ):
     """Place net terminals around already-placed parts.
 
@@ -1179,7 +1177,7 @@ def place_net_terminals(
                             mobile_terminals[:-1],
                             nets,
                             force_func,
-                            **options
+                            **options,
                         )
                         # Anchor the mobile terminals after their placement is done.
                         anchored_parts.extend(mobile_terminals[:-1])
@@ -1383,7 +1381,7 @@ class Placer:
         connected_parts: list[list[Part]],
         floating_parts: list[Part],
         children: list["SchNode"],
-        **options: Unpack[Options]
+        **options: Unpack[Options],
     ):
         """Place blocks of parts and hierarchical sheets.
 
@@ -1584,17 +1582,12 @@ class Placer:
                 connected_parts, floating_parts, node.children.values(), **options
             )
 
-            # Remove any stuff leftover from this place & route run.
-            # print(f"added part attrs = {new_part_attrs}")
-            node.rmv_placement_stuff()
-            # node.show_added_attrs()
-
             # Calculate the bounding box for the node after placement of parts and children.
             node.calc_bbox()
 
-        except PlacementFailure:
+        finally:
+            # Remove any stuff leftover from this place & route run.
             node.rmv_placement_stuff()
-            raise PlacementFailure
 
     def get_snap_pt(node):
         """Get a Point to use for snapping the node to the grid.

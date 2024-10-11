@@ -21,6 +21,7 @@ class NetTerminal(Part):
         the net spans across levels of hierarchical nodes.
         """
         from .bboxes import calc_hier_label_bbox
+
         # Set a default transformation matrix for this part.
         self.tx = Tx()
 

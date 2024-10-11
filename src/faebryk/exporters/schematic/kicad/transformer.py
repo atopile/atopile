@@ -81,7 +81,6 @@ class _HasPropertys(Protocol):
 
 # TODO: consider common transformer base
 class Transformer:
-
     class has_linked_sch_symbol(F.Symbol.TraitT.decless()):
         def __init__(self, symbol: SCH.C_symbol_instance) -> None:
             super().__init__()
@@ -749,9 +748,7 @@ class Transformer:
                         f"Pin {sch_pin.name} not found in any unit of symbol {sch_sym.name}"
                     )
 
-                assert isinstance(
-                    lib_sch_pin, C_lib_symbol.C_symbol.C_pin
-                )
+                assert isinstance(lib_sch_pin, C_lib_symbol.C_symbol.C_pin)
                 shim_pin = sch_to_shim_pin_map.setdefault(sch_pin, shims.Pin())
                 shim_pin.name = sch_pin.name
                 shim_pin.num = lib_sch_pin.number
@@ -844,7 +841,7 @@ class Transformer:
 
         # 3. run skidl schematic generation
         from faebryk.exporters.schematic.kicad.skidl.gen_schematic import gen_schematic
+
         gen_schematic(circuit, ".", "test", **options)
 
         # 4. transform sch according to skidl
-        

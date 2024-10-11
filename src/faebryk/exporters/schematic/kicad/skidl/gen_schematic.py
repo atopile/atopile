@@ -7,7 +7,6 @@ Functions for generating a KiCad EESCHEMA schematic.
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
-
 import datetime
 import os.path
 import re
@@ -482,7 +481,6 @@ def node_to_eeschema(node: SchNode, sheet_tx: Tx = Tx()) -> str:
     # If this node was flattened, then return the EESCHEMA code and surrounding box
     # for inclusion in the parent node.
     if node.flattened:
-
         # Generate the graphic box that surrounds the flattened hierarchical block of this node.
         block_name = node.name.split(HIER_SEP)[-1]
         pad = Vector(BLK_INT_PAD, BLK_INT_PAD)
@@ -716,25 +714,22 @@ def gen_schematic(
             node.route(**options)
 
         except PlacementFailure:
-            # Placement failed, so clean up ...
-            finalize_parts_and_nets(circuit, **options)
-            # ... and try again.
+            # Placement failed, so try again.
             continue
 
         except RoutingFailure:
-            # Routing failed, so clean up ...
-            finalize_parts_and_nets(circuit, **options)
-            # ... and expand routing area ...
+            # Routing failed, so expand routing area ...
             expansion_factor *= 1.5  # HACK: Ad-hoc increase of expansion factor.
             # ... and try again.
             continue
 
+        finally:
+            # Clean up.
+            finalize_parts_and_nets(circuit, **options)
+
         # Generate EESCHEMA code for the schematic.
         # TODO: extract into for generating schematic objects
         # node_to_eeschema(node)
-
-        # Clean up.
-        finalize_parts_and_nets(circuit, **options)
 
         # Place & route was successful if we got here, so exit.
         return

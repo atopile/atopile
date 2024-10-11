@@ -6,6 +6,7 @@
 """
 Drawing routines used for debugging place & route.
 """
+
 from collections import defaultdict
 from random import randint
 from typing import TYPE_CHECKING
@@ -50,7 +51,9 @@ def draw_box(
     pygame.draw.polygon(scr, color, corners, thickness)
 
 
-def draw_endpoint(pt: Point, scr: "pygame.Surface", tx: Tx, color=(100, 100, 100), dot_radius=10):
+def draw_endpoint(
+    pt: Point, scr: "pygame.Surface", tx: Tx, color=(100, 100, 100), dot_radius=10
+):
     """Draw a line segment endpoint in the drawing area.
 
     Args:
@@ -77,6 +80,7 @@ def draw_endpoint(pt: Point, scr: "pygame.Surface", tx: Tx, color=(100, 100, 100
     # Draw dot for terminal.
     radius = dot_radius * tx.a
     pygame.draw.circle(scr, color, (pt.x, pt.y), radius)
+
 
 def draw_seg(
     seg: "Segment | Interval | NetInterval",
@@ -116,6 +120,7 @@ def draw_seg(
         scr, color, (seg.p1.x, seg.p1.y), (seg.p2.x, seg.p2.y), width=thickness
     )
 
+
 def draw_text(
     txt: str,
     pt: Point,
@@ -145,6 +150,7 @@ def draw_text(
     # syntax highlighting doesn't recognise this
     font.render_to(scr, (pt.x, pt.y), txt, color)
 
+
 def draw_part(part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Font"):
     """Draw part bounding box.
 
@@ -168,6 +174,7 @@ def draw_part(part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Fo
     except TypeError:
         # Probably trying to draw a block of parts which has no pins and can't iterate thru them.
         pass
+
 
 def draw_net(
     net: "Net",
@@ -207,6 +214,7 @@ def draw_net(
             dot_radius=dot_radius,
         )
 
+
 def draw_force(
     part: "Part",
     force: Vector,
@@ -231,6 +239,7 @@ def draw_force(
         Segment(anchor, anchor + force), scr, tx, color=color, thickness=5, dot_radius=5
     )
 
+
 def draw_placement(
     parts: list["Part"],
     nets: list["Net"],
@@ -254,6 +263,7 @@ def draw_placement(
     for net in nets:
         draw_net(net, parts, scr, tx, font)
     draw_redraw()
+
 
 def draw_routing(
     node: "SchNode",
@@ -292,6 +302,7 @@ def draw_routing(
 
     draw_end()
 
+
 def draw_clear(
     scr: "pygame.Surface",
     color: tuple[int, int, int] = (255, 255, 255),
@@ -303,6 +314,7 @@ def draw_clear(
         color (tuple, optional): Background color. Defaults to (255, 255, 255).
     """
     scr.fill(color)
+
 
 def draw_start(
     bbox: BBox,
@@ -321,7 +333,7 @@ def draw_start(
     import pygame
 
     # Screen drawing area.
-    scr_bbox = BBox(Point(0, 0), Point(2000, 1500))
+    scr_bbox = BBox(Point(0, 0), Point(1000, 1000))
 
     # Place a blank region around the object by expanding it's bounding box.
     border = max(bbox.w, bbox.h) / 20
@@ -357,10 +369,13 @@ def draw_start(
     # Return drawing screen, transformation matrix, and font.
     return scr, tx, font
 
+
 def draw_redraw():
     """Redraw the PyGame display."""
     import pygame
+
     pygame.display.flip()
+
 
 def draw_pause():
     """Pause drawing and then resume after button press."""
@@ -376,8 +391,10 @@ def draw_pause():
             if event.type in (pygame.KEYDOWN, pygame.QUIT):
                 running = False
 
+
 def draw_end():
     """Display drawing and wait for user to close PyGame window."""
     import pygame
+
     draw_pause()
     pygame.quit()

@@ -296,7 +296,7 @@ class SchNode(Placer, Router):
                 processed_nets.append(net)
 
                 # Skip stubbed nets.
-                if getattr(net, "stub", False) is True:
+                if getattr(net, "stub", False):
                     continue
 
                 # Add net to collection if at least one pin is on one of the parts of the node.

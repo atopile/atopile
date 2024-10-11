@@ -30,7 +30,15 @@ def to_mms(mils):
 
 
 class Tx:
-    def __init__(self, a: float = 1, b: float = 0, c: float = 0, d: float = 1, dx: float = 0, dy: float = 0):
+    def __init__(
+        self,
+        a: float = 1,
+        b: float = 0,
+        c: float = 0,
+        d: float = 1,
+        dx: float = 0,
+        dy: float = 0,
+    ):
         """Create a transformation matrix.
         tx = [
                a  b  0
