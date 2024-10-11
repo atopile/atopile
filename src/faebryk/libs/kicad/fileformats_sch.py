@@ -405,10 +405,8 @@ class C_kicad_sym_file(SEXP_File):
     class C_kicad_symbol_lib:
         version: int
         generator: str
-        symbols: dict[str, C_lib_symbol] = (
-            field(
-                **sexp_field(multidict=True, key=lambda x: x.name), default_factory=dict
-            )
+        symbols: dict[str, C_lib_symbol] = field(
+            **sexp_field(multidict=True, key=lambda x: x.name), default_factory=dict
         )
 
     kicad_symbol_lib: C_kicad_symbol_lib
