@@ -4,7 +4,7 @@
 import logging
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, Self
 
 from more_itertools import raise_
 
@@ -108,7 +108,15 @@ class ParameterOperatable(Protocol):
 
     def operation_is_superset(self, other: Sets) -> "Expression": ...
 
-    def get_any_single(self) -> Number | Enum: ...
+    def inspect_known_min(self) -> Number: ...
+
+    def inspect_known_max(self) -> Number: ...
+
+    # Run by the solver on finalization
+    # inspect_final: Callable[[Self], None]
+
+    # def inspect_num_known_supersets(self) -> int: ...
+    # def inspect_get_known_superset(self) -> Iterable[Set_]: ...
 
     # ----------------------------------------------------------------------------------
     def __add__(self, other: NumberLike):
@@ -170,14 +178,29 @@ class ParameterOperatable(Protocol):
 
     # TODO: move
 
+    # should be eager, in the sense that, if the outcome is known, the callable is
+    # called immediately, without storing an expression
+    # we must force a value (at the end of solving at the least)
     def if_then_else(
         self,
         if_true: Callable[[], Any],
         if_false: Callable[[], Any],
+        preference: bool | None = None,
     ) -> None: ...
 
-    def assert_true(self) -> None:
-        self.if_then_else(lambda: None, lambda: raise_(ValueError()))
+    # the way this is used right now (for testing) is problematic
+    # we don't want to add a constraint, because that would force it to hold
+    # instead we want to make an inspection at the "final" stage during solving
+    # could still be useful if we want to abort early with an error
+    def assert_true(
+        self, error: Callable[[], None] = lambda: raise_(ValueError())
+    ) -> None:
+        self.if_then_else(lambda: None, error, True)
+
+    # def assert_false(
+    #     self, error: Callable[[], None] = lambda: raise_(ValueError())
+    # ) -> None:
+    #     self.if_then_else(error, lambda: None, False)
 
     # TODO
     # def switch_case(
@@ -417,17 +440,27 @@ class EnumDomain(Domain):
 
 
 class Predicate(Expression):
-    def __init__(self, left, right):
+    def __init__(self, constraint: bool, left, right):
+        self._constraint = constraint
         l_units = left.units if isinstance(left, HasUnit) else dimensionless
         r_units = right.units if isinstance(right, HasUnit) else dimensionless
         if not l_units.is_compatible_with(r_units):
             raise ValueError("operands must have compatible units")
         self.operands = [left, right]
 
+    def constrain(self):
+        self._constraint = True
+
+    def is_constraint(self):
+        return self._constraint
+
+    # def run_when_known(self, f: Callable[[bool], None]):
+    #    getattr(self, "run_when_known_funcs", []).append(f)
+
 
 class NumericPredicate(Predicate):
-    def __init__(self, left, right):
-        super().__init__(left, right)
+    def __init__(self, constraint: bool, left, right):
+        super().__init__(constraint, left, right)
         if isinstance(left, Parameter) and left.domain not in [Numbers, ESeries]:
             raise ValueError("left operand must have domain Numbers or ESeries")
         if isinstance(right, Parameter) and right.domain not in [Numbers, ESeries]:
@@ -455,8 +488,8 @@ class NotEqual(Predicate):
 
 
 class SeticPredicate(Predicate):
-    def __init__(self, left, right):
-        super().__init__(left, right)
+    def __init__(self, constraint: bool, left, right):
+        super().__init__(constraint, left, right)
         types = [Parameter, ParameterOperatable.Sets]
         if any(type(op) not in types for op in self.operands):
             raise ValueError("operands must be Parameter or Set")
@@ -475,16 +508,9 @@ class IsSuperset(SeticPredicate):
     pass
 
 
-class Alias(Expression):
-    pass
-
-
-class Is(Alias):
-    pass
-
-
-class Aliases(Namespace):
-    IS = Is
+class Is(Predicate):
+    def __init__(self, constraint: bool, left, right):
+        super().__init__(constraint, left, right)
 
 
 # TODO rename?
