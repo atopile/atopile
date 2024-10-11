@@ -13,16 +13,19 @@ class Reference[O: Node](constructed_field):
     class UnboundError(Exception):
         """Cannot resolve unbound reference"""
 
-    def __init__(self, out_type: type[O] | None = None):
+    def __init__(self, out_type: type[O] | None = None, optional: bool = False):
         self.gifs: dict[Node, GraphInterfaceReference] = defaultdict(
             GraphInterfaceReference
         )
         self.is_set: set[Node] = set()
+        self.optional = optional
 
         def get(instance: Node) -> O:
             try:
                 return self.gifs[instance].get_reference()
             except GraphInterfaceReference.UnboundError as ex:
+                if self.optional:
+                    return None
                 raise Reference.UnboundError from ex
 
         def set_(instance: Node, value: O):

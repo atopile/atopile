@@ -135,3 +135,14 @@ def test_underlying_property_explicitly():
 
     # check that the property is set
     assert b.x is a
+
+
+def test_optional():
+    class A(Node):
+        pass
+
+    class B(Node):
+        x = Reference(A, optional=True)
+
+    b = B()
+    assert b.x is None
