@@ -77,8 +77,10 @@ class SchNode(Placer, Router):
         Args:
             circuit (Circuit): Circuit object.
         """
+        from .net_terminal import NetTerminal
 
         # Build the circuit node hierarchy by adding the parts.
+        assert circuit.parts, "Circuit has no parts"
         for part in circuit.parts:
             self.add_part(part)
 
@@ -113,6 +115,10 @@ class SchNode(Placer, Router):
                     continue
 
                 part = pin.part
+
+                # Skip NetTerminals because otherwise doesn't this just recurse forever?
+                if isinstance(part, NetTerminal):
+                    continue
 
                 if part.hierarchy in visited:
                     # Already added a terminal to this node, so don't add another.

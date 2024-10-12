@@ -54,6 +54,13 @@ def angle_to_orientation(angle: float) -> str:
         raise ValueError(f"Invalid angle: {angle}")
 
 
+def audit_has(obj, attrs: list[str]) -> None:
+    """Ensure mandatory attributes are set"""
+    missing = [attr for attr in attrs if not hasattr(obj, attr)]
+    if missing:
+        raise ValueError(f"Missing attributes: {missing}")
+
+
 class Part:
     # We need to assign these
     hierarchy: str  # dot-separated string of part names
@@ -71,18 +78,17 @@ class Part:
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
-        for attr in [
+        audit_has(self, [
             "hierarchy",
             "pins",
             "ref",
             "symtx",
             "unit",
             "fab_symbol",
+            "sch_symbol",
             "bare_bbox",
             "_similarites",
-        ]:
-            if not hasattr(self, attr):
-                raise ValueError(f"Missing attribute: {attr}")
+        ])
 
         # don't audit pins, they're handled through nets instead
         for unit in self.unit.values():
@@ -184,7 +190,7 @@ class Pin:
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
-        for attr in [
+        audit_has(self, [
             "name",
             "net",
             "num",
@@ -196,9 +202,7 @@ class Pin:
             "fab_pin",
             "fab_is_gnd",
             "fab_is_pwr",
-        ]:
-            if not hasattr(self, attr):
-                raise ValueError(f"Missing attribute: {attr}")
+        ])
 
     # internal use
     bbox: BBox
@@ -220,21 +224,22 @@ class Net:
     pins: list[Pin]
     stub: bool  # whether to stub the pin or not
 
+    # added for our use
+    _is_implicit: bool
+
     # internal use
     parts: set[Part]
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
-        for attr in ["name", "netio", "pins", "stub"]:
-            if not hasattr(self, attr):
-                raise ValueError(f"Missing attribute: {attr}")
+        audit_has(self, ["name", "netio", "pins", "stub"])
 
         for pin in self.pins:
             pin.audit()
 
     def __bool__(self) -> bool:
         """TODO: does this need to be false if no parts or pins?"""
-        raise NotImplementedError
+        return bool(self.pins) or bool(self.parts)
 
     def __iter__(self) -> Iterator[Pin | Part]:
         raise NotImplementedError  # not sure what to output here
@@ -247,7 +252,7 @@ class Net:
 
     def is_implicit(self) -> bool:
         """Whether the net has a user-assigned name"""
-        raise NotImplementedError
+        return self._is_implicit
 
 
 class Circuit:
@@ -256,9 +261,7 @@ class Circuit:
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
-        for attr in ["nets", "parts"]:
-            if not hasattr(self, attr):
-                raise ValueError(f"Missing attribute: {attr}")
+        audit_has(self, ["nets", "parts"])
 
         for obj in chain(self.nets, self.parts):
             obj.audit()

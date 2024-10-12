@@ -2,6 +2,9 @@
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
+import uuid
+from functools import cached_property
+
 from .constants import GRID
 from .geometry import Point, Tx, Vector
 from .shims import Net, Part, Pin
@@ -24,12 +27,22 @@ class NetTerminal(Part):
 
         # Set a default transformation matrix for this part.
         self.tx = Tx()
+        self.ref = net.name
+        self.symtx = ""
+        self.unit = {}
+        self.hierarchy = uuid.uuid4().hex
 
         # Add a single pin to the part.
         pin = Pin()
         pin.part = self
         pin.num = "1"
         pin.name = "~"
+        pin.stub = False
+        pin.fab_pin = None
+        pin.sch_pin = None
+        pin.fab_is_gnd = False
+        pin.fab_is_pwr = False
+        pin.net = net
         self.pins = [pin]
 
         # Connect the pin to the net.
@@ -62,3 +75,26 @@ class NetTerminal(Part):
             self.tx = (
                 self.tx.move(origin - term_origin).flip_x().move(term_origin - origin)
             )
+
+        pin.audit()
+        self.audit()
+
+    @cached_property
+    def hierarchy(self) -> str:
+        return uuid.uuid4().hex
+
+    @property
+    def sch_symbol(self) -> None:
+        return None
+
+    @property
+    def fab_symbol(self) -> None:
+        return None
+
+    @property
+    def bare_bbox(self) -> None:
+        return None
+
+    @property
+    def _similarites(self) -> dict[Part, float]:
+        return {}
