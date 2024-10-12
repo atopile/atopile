@@ -41,7 +41,8 @@ def get_or_set_name_and_value_of_node(c: Module):
                     c.get_full_name(),
                     type(c).__name__,
                     value,
-                )
+                ),
+                explicit=False,
             )
         )
 
