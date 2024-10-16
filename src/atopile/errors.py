@@ -326,39 +326,36 @@ def handle_ato_errors(logger: logging.Logger = log) -> None:
         raise AtoFatalError from ex
 
 
-def muffle_fatalities(func):
+@contextmanager
+def muffle_fatalities():
     """
     Decorator to quietly exit if a fatal error is raised.
     This is useful for the CLI, where we don't want to show a traceback.
     """
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        do_exit = False
-        try:
-            with handle_ato_errors():
-                return func(*args, **kwargs)
+    do_exit = False
+    try:
+        with handle_ato_errors():
+            yield
 
-        except* AtoFatalError:
-            telemetry.telemetry_data.ato_error = 1
-            rich.print(
-                "\n\nUnfortunately errors ^^^ stopped the build. "
-                "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
-            )
-            do_exit = True
+    except* AtoFatalError:
+        telemetry.telemetry_data.ato_error = 1
+        rich.print(
+            "\n\nUnfortunately errors ^^^ stopped the build. "
+            "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
+        )
+        do_exit = True
 
-        except* Exception as ex:
-            telemetry.telemetry_data.crash += len(ex.exceptions)
-            raise ex
+    except* Exception as ex:
+        telemetry.telemetry_data.crash += len(ex.exceptions)
+        raise ex
 
-        finally:
-            telemetry.log_telemetry()
+    finally:
+        telemetry.log_telemetry()
 
-        # Raisinng sys.exit here so all exceptions can be raised
-        if do_exit:
-            sys.exit(1)
-
-    return wrapper
+    # Raisinng sys.exit here so all exceptions can be raised
+    if do_exit:
+        sys.exit(1)
 
 
 class ExceptionAccumulator:
@@ -476,17 +473,13 @@ def downgrade(
     return wrapper
 
 
-def log_ato_errors(func):
+@contextmanager
+def log_ato_errors():
     """
-    Decorator to log ato errors.
+    Decorator / context to log ato errors.
     """
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except* AtoError as ex:
-            _log_ato_errors(ex, log)
-            raise
-
-    return wrapper
+    try:
+        yield
+    except* AtoError as ex:
+        _log_ato_errors(ex, log)
+        raise

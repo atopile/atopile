@@ -27,8 +27,8 @@ def project_options(f):
     @click.option("-t", "--target", multiple=True, envvar="ATO_TARGET")
     @click.option("-o", "--option", multiple=True, envvar="ATO_OPTION")
     @functools.wraps(f)
-    @errors.muffle_fatalities
-    @errors.log_ato_errors
+    @errors.muffle_fatalities()
+    @errors.log_ato_errors()
     def wrapper(
         *args,
         entry: str,
@@ -116,7 +116,7 @@ def project_options(f):
         atopile.config.set_project_context(project_ctx)
 
         # Make build contexts
-        with errors.handle_ato_errors():
+        with errors.handle_ato_errors(), errors.log_ato_errors():
             if build_names := build or config.builds.keys():
                 build_ctxs: list[atopile.config.BuildContext] = [
                     atopile.config.BuildContext.from_config_name(config, build_name)
