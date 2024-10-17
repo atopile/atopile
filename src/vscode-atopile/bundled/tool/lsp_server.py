@@ -301,6 +301,9 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
 
     if word_and_range := utils.cursor_word_and_range(document, params.position):
         word, range_ = word_and_range
+    else:
+        return None
+
     try:
         word = word[:word.index(".", params.position.character - range_.start.character)]
     except ValueError:
