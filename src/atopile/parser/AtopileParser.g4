@@ -138,8 +138,8 @@ literal_physical
     | bilateral_quantity
     | quantity;
 
-bound_quantity: quantity 'to' quantity;
-bilateral_quantity: quantity PLUS_OR_MINUS bilateral_tolerance;
+bound_quantity: quantity 'to' quantity;  // 10mV to 100V
+bilateral_quantity: quantity PLUS_OR_MINUS bilateral_tolerance;  // 3.3V +/- 10%
 quantity: ('+' | '-')? NUMBER name?;
 bilateral_tolerance: NUMBER ('%' | name)?;
 
