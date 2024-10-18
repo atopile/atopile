@@ -74,7 +74,12 @@ def configure_cache():
     cache_file_path = config.get_project_context().project_path / ".ato/component_cache.json"
     if cache_file_path.exists():
         with open(cache_file_path, "r") as cache_file:
+            try:
                 _component_cache = json.load(cache_file)
+            except json.JSONDecodeError as ex:
+                # protect against corrupt cache files
+                log.warning("Failed to load component cache: %s", ex)
+                _component_cache = {}
         # Clean out stale entries
         clean_cache()
     else:
