@@ -1,0 +1,6 @@
+ato-version: ^0.2.59
+paths:
+  src: ./
+builds:
+  cumulative_operators:
+    entry: cumulative_operators.ato:SomeModule

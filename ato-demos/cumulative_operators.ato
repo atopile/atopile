@@ -1,0 +1,26 @@
+interface Power:
+    voltage: voltage
+    current_budget: current
+    assert current_budget >= 0mA
+
+
+module SomeDevice:
+    power_in = new Power
+    power_in.voltage &= 3.3V +/- 15%
+    power_in.current_budget -= 10uA to 100mA
+
+
+module SomeSupply:
+    power_out = new Power
+    power_out.voltage |= 3V to 20V
+    power_out.current_budget += 1A
+
+
+module SomeModule:
+    supply = new SomeSupply
+
+    device_a = new SomeDevice
+    supply.power_out ~ device_a.power_in
+
+    device_b = new SomeDevice
+    supply.power_out ~ device_b.power_in
