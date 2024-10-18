@@ -8,6 +8,7 @@ Example picker library. Used both for demonstration and as the dedicated example
 import logging
 from typing import TYPE_CHECKING
 
+from faebryk.core.solver import DefaultSolver
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
@@ -285,6 +286,7 @@ def pick_switch(module: "_TSwitch[F.Electrical]"):
 
 
 def add_example_pickers(module: Module):
+    solver = DefaultSolver()
     lookup = {
         F.Resistor: pick_resistor,
         F.LED: pick_led,
@@ -298,5 +300,5 @@ def add_example_pickers(module: Module):
     F.has_multi_picker.add_pickers_by_type(
         module,
         lookup,
-        F.has_multi_picker.FunctionPicker,
+        lambda pick_fn: F.has_multi_picker.FunctionPicker(pick_fn, solver),
     )

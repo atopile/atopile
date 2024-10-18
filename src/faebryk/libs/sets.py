@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from typing import Any, Protocol, TypeVar
 
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
@@ -206,9 +206,22 @@ class _RangeUnion(_Set[T]):
     def __repr__(self) -> str:
         return f"_RangeUnion({', '.join(f"[{r.min}, {r.max}]" for r in self.ranges)})"
 
+    def __iter__(self) -> Generator[_Range[T]]:
+        yield from self.ranges
 
-def _Singles(*values: T) -> _RangeUnion[T]:
-    return _RangeUnion(*(_Single(v) for v in values))
+
+class _RangeUnionIter(_RangeUnion[T], Iterable[_Range[T]]):
+    def __iter__(self) -> Generator[_Range[T]]:
+        yield from self.ranges
+
+
+class _Singles(_RangeUnion[T], Iterable[T]):
+    def __init__(self, *values: T):
+        super().__init__(*(_Single(v) for v in values))
+
+    def __iter__(self) -> Generator[T]:
+        for r in self.ranges:
+            yield r.min
 
 
 __numeric_empty = _RangeUnion()
@@ -218,7 +231,7 @@ def _NumericEmpty() -> _RangeUnion:
     return __numeric_empty
 
 
-class _NonNumericSet[U](_Set[U]):
+class PlainSet[U](_Set[U]):
     def __init__(self, *elements: U):
         self.elements = set(elements)
 
@@ -227,6 +240,17 @@ class _NonNumericSet[U](_Set[U]):
 
     def __contains__(self, item: U) -> bool:
         return item in self.elements
+
+    def __eq__(self, value: Any) -> bool:
+        if not isinstance(value, PlainSet):
+            return False
+        return self.elements == value.elements
+
+    def __hash__(self) -> int:
+        return sum(hash(e) for e in self.elements)
+
+    def __repr__(self) -> str:
+        return f"PlainSet({', '.join(repr(e) for e in self.elements)})"
 
 
 # class Empty[T](Set_[T]):
@@ -440,7 +464,7 @@ class Ranges(UnitSet[TQuant]):
         self._ranges = _RangeUnion(*(get_backing(r) for r in ranges))
 
     @staticmethod
-    def _from_ranges(ranges: _RangeUnion[T], units: Unit) -> "Ranges[TQuant]":
+    def _from_ranges(ranges: "_RangeUnion[T]", units: Unit) -> "Ranges[TQuant]":
         r = Ranges.__new__(Ranges)
         r._ranges = ranges
         r.units = units

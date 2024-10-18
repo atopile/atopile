@@ -39,11 +39,13 @@ class Solver(Protocol):
     def assert_any_predicate(
         self,
         G: Graph,
-        predicates: list[Predicate],
+        predicates: list[tuple[Predicate, Any]],
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
         constrain_solved: bool = True,
-    ) -> tuple[list[Expression], list[Expression], list[Parameter]]: ...
+    ) -> tuple[
+        list[tuple[Predicate, Any]], list[tuple[Predicate, Any]], list[Parameter]
+    ]: ...
 
     # run deferred work
     def finalize(self, G: Graph) -> None: ...
@@ -69,7 +71,9 @@ class DefaultSolver(Solver):
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
         constrain_solved: bool = True,
-    ) -> tuple[list[Expression], list[Expression], list[Parameter]]:
+    ) -> tuple[
+        list[tuple[Predicate, Any]], list[tuple[Predicate, Any]], list[Parameter]
+    ]:
         raise NotImplementedError()
 
     def finalize(self, G: Graph) -> None:

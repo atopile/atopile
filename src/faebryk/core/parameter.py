@@ -17,6 +17,10 @@ from faebryk.libs.util import abstract
 logger = logging.getLogger(__name__)
 
 
+# When we make this generic, two types, type T of elements, and type S of known subsets
+# boolean: T == S == bool
+# enum: T == S == Enum
+# number: T == Number type, S == Range[Number]
 class ParameterOperatable(Protocol):
     type QuantityLike = Quantity | NotImplementedType
     type Number = int | float | QuantityLike
@@ -108,15 +112,26 @@ class ParameterOperatable(Protocol):
 
     def operation_is_superset(self, other: Sets) -> "Expression": ...
 
-    def inspect_known_min(self) -> Number: ...
+    def inspect_known_min(self: NumberLike) -> Number: ...
 
-    def inspect_known_max(self) -> Number: ...
+    def inspect_known_max(self: NumberLike) -> Number: ...
+
+    def inspect_known_values(self: BooleanLike) -> Set_[bool]: ...
 
     # Run by the solver on finalization
-    # inspect_final: Callable[[Self], None]
+    inspect_final: Callable[[Self], None] = lambda _: None
+
+    def inspect_add_on_final(self, fun: Callable[[Self], None]) -> None:
+        current = self.inspect_final
+
+        def new(self2):
+            current(self2)
+            fun(self2)
+
+        self.inspect_final = new
 
     # def inspect_num_known_supersets(self) -> int: ...
-    # def inspect_get_known_superset(self) -> Iterable[Set_]: ...
+    # def inspect_get_known_supersets(self) -> Iterable[Set_]: ...
 
     # ----------------------------------------------------------------------------------
     def __add__(self, other: NumberLike):

@@ -2,6 +2,7 @@ import logging
 from enum import Enum
 from typing import Callable
 
+from faebryk.core.solver import Solver
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.e_series import E_SERIES_VALUES
@@ -61,7 +62,7 @@ def find_component_by_lcsc_id(lcsc_id: str) -> Component:
     return next(iter(parts))
 
 
-def find_and_attach_by_lcsc_id(module: Module):
+def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
     """
     Find a part in the JLCPCB database by its LCSC part number
     """
@@ -113,7 +114,7 @@ def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
     return next(iter(parts))
 
 
-def find_and_attach_by_mfr(module: Module):
+def find_and_attach_by_mfr(module: Module, solver: Solver):
     """
     Find a part in the JLCPCB database by its manufacturer part number
     """
@@ -163,7 +164,7 @@ def find_and_attach_by_mfr(module: Module):
 # Type specific pickers ----------------------------------------------------------------
 
 
-def find_resistor(cmp: Module):
+def find_resistor(cmp: Module, solver: Solver):
     """
     Find a resistor part in the JLCPCB database that matches the parameters of the
     provided resistor
@@ -197,7 +198,7 @@ def find_resistor(cmp: Module):
     )
 
 
-def find_capacitor(cmp: Module):
+def find_capacitor(cmp: Module, solver: Solver):
     """
     Find a capacitor part in the JLCPCB database that matches the parameters of the
     provided capacitor
@@ -234,7 +235,7 @@ def find_capacitor(cmp: Module):
     )
 
 
-def find_inductor(cmp: Module):
+def find_inductor(cmp: Module, solver: Solver):
     """
     Find an inductor part in the JLCPCB database that matches the parameters of the
     provided inductor.
@@ -278,7 +279,7 @@ def find_inductor(cmp: Module):
     )
 
 
-def find_tvs(cmp: Module):
+def find_tvs(cmp: Module, solver: Solver):
     """
     Find a TVS diode part in the JLCPCB database that matches the parameters of the
     provided diode
@@ -324,7 +325,7 @@ def find_tvs(cmp: Module):
     )
 
 
-def find_diode(cmp: Module):
+def find_diode(cmp: Module, solver: Solver):
     """
     Find a diode part in the JLCPCB database that matches the parameters of the
     provided diode
@@ -363,7 +364,7 @@ def find_diode(cmp: Module):
     )
 
 
-def find_led(cmp: Module):
+def find_led(cmp: Module, solver: Solver):
     """
     Find a LED part in the JLCPCB database that matches the parameters of the
     provided LED
@@ -401,7 +402,7 @@ def find_led(cmp: Module):
     )
 
 
-def find_mosfet(cmp: Module):
+def find_mosfet(cmp: Module, solver: Solver):
     """
     Find a MOSFET part in the JLCPCB database that matches the parameters of the
     provided MOSFET
@@ -443,7 +444,7 @@ def find_mosfet(cmp: Module):
     )
 
 
-def find_ldo(cmp: Module):
+def find_ldo(cmp: Module, solver: Solver):
     """
     Find a LDO part in the JLCPCB database that matches the parameters of the
     provided LDO

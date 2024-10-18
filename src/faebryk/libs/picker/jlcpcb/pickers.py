@@ -1,5 +1,6 @@
 import logging
 
+from faebryk.core.solver import DefaultSolver
 import faebryk.library._F as F
 import faebryk.libs.picker.jlcpcb.picker_lib as P
 from faebryk.core.module import Module
@@ -86,12 +87,18 @@ def add_jlcpcb_pickers(module: Module, base_prio: int = 0) -> None:
 
     # Generic pickers
     prio = base_prio
-    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_lcsc_id)))
-    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_mfr)))
+    solver = DefaultSolver()
+    module.add(
+        F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_lcsc_id, solver))
+    )
+    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_mfr, solver)))
 
     # Type specific pickers
     prio = base_prio + 1
 
     F.has_multi_picker.add_pickers_by_type(
-        module, P.TYPE_SPECIFIC_LOOKUP, JLCPCBPicker, prio
+        module,
+        P.TYPE_SPECIFIC_LOOKUP,
+        lambda pick_fn: JLCPCBPicker(pick_fn, solver),
+        prio,
     )
