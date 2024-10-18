@@ -11,7 +11,7 @@ from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 
 
-from atopile import address, config, errors, instance_methods
+from atopile import address, config, errors, expressions, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import RangedValue
 
@@ -183,6 +183,9 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     specd_data_dict = {
         k: v.to_dict() if isinstance(v, RangedValue) else v for k, v in specd_data.items()
     }
+    for k, v in specd_data_dict.items():
+        if isinstance(v, expressions.Expression):
+            raise errors.AtoValueError(f"{k} is an unresolved expression. This is typically caused by one of the values in the expression being unresolved")
 
     # check if there are any Physical objects in the specd_data, if not, throw a warning
     if specd_data:  # Check that specd_data is not empty
