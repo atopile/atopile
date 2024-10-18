@@ -6,7 +6,7 @@ from pint import DimensionalityError
 
 from faebryk.libs.sets import (
     Range,
-    RangeUnion,
+    Ranges,
     Single,
     Singles,
     UnitEmpty,
@@ -60,21 +60,21 @@ def test_set_contains():
 
 
 def test_union_min_elem():
-    x = RangeUnion(
+    x = Ranges(
         Range(4, 5),
         Range(3, 7),
         Single(9),
-        RangeUnion(Range(1, 2), RangeUnion(Range(0, 1))),
+        Ranges(Range(1, 2), Ranges(Range(0, 1))),
     )
     assert x.min_elem() == 0
 
 
 def test_union_contains():
-    x = RangeUnion(
+    x = Ranges(
         Range(4, 5),
         Range(3, 7),
         Single(9),
-        RangeUnion(Range(1, 2), RangeUnion(Range(0, 1))),
+        Ranges(Range(1, 2), Ranges(Range(0, 1))),
     )
     assert 0 * dimensionless in x
     assert 1 * dimensionless in x
@@ -88,7 +88,7 @@ def test_union_contains():
     assert 9 * dimensionless in x
     assert 10 * dimensionless not in x
 
-    x = RangeUnion(Range(max=1.5 * P.V), Range(2.5 * P.V, 3.5 * P.V))
+    x = Ranges(Range(max=1.5 * P.V), Range(2.5 * P.V, 3.5 * P.V))
     assert float("-inf") * P.V in x
     assert 1 * P.V in x
     assert 1.5 * P.V in x
@@ -103,9 +103,9 @@ def test_union_contains():
 
 
 def test_union_empty():
-    x = RangeUnion(
+    x = Ranges(
         UnitEmpty(dimensionless),
-        RangeUnion(UnitEmpty(dimensionless), Singles(units=dimensionless)),
+        Ranges(UnitEmpty(dimensionless), Singles(units=dimensionless)),
     )
     assert x.is_empty()
 
@@ -113,12 +113,12 @@ def test_union_empty():
 def test_addition():
     assert Range(0, 1).op_add_range(Range(2, 3)) == Range(2, 4)
     assert Range(0, 1).op_add_range(Single(2)) == Range(2, 3)
-    assert RangeUnion(Single(2), Single(3)).op_add_range_union(
-        RangeUnion(Range(0, 1))
-    ) == Range(2, 4)
-    assert RangeUnion(Single(10), Range(20, 21)).op_add_range_union(
-        RangeUnion(Range(0, 1), Range(100, 101))
-    ) == RangeUnion(Range(10, 11), Range(110, 111), Range(20, 22), Range(120, 122))
+    assert Ranges(Single(2), Single(3)).op_add_ranges(Ranges(Range(0, 1))) == Range(
+        2, 4
+    )
+    assert Ranges(Single(10), Range(20, 21)).op_add_ranges(
+        Ranges(Range(0, 1), Range(100, 101))
+    ) == Ranges(Range(10, 11), Range(110, 111), Range(20, 22), Range(120, 122))
 
 
 def test_subtraction():
@@ -131,19 +131,19 @@ def test_multiplication():
     assert Range(0, 1).op_mul_range(Single(2)) == Range(0, 2)
     assert Range(0, 1).op_mul_range(Single(-2)) == Range(-2, 0)
     assert Range(-1, 1).op_mul_range(Range(2, 4)) == Range(-4, 4)
-    assert Singles(0, 1).op_mul_range_union(Singles(2, 3)) == Singles(0, 2, 3)
-    assert Singles(0, 1).op_mul_range_union(Singles(2, 3)).op_mul_range_union(
-        RangeUnion(Range(-1, 0))
-    ) == RangeUnion(Range(0, 0), Range(-2, 0), Range(-3, 0))
+    assert Singles(0, 1).op_mul_ranges(Singles(2, 3)) == Singles(0, 2, 3)
+    assert Singles(0, 1).op_mul_ranges(Singles(2, 3)).op_mul_ranges(
+        Ranges(Range(-1, 0))
+    ) == Ranges(Range(0, 0), Range(-2, 0), Range(-3, 0))
 
 
 def test_invert():
     assert Range(1, 2).op_invert() == Range(0.5, 1)
     assert Range(-2, -1).op_invert() == Range(-1, -0.5)
-    assert Range(-1, 1).op_invert() == RangeUnion(
+    assert Range(-1, 1).op_invert() == Ranges(
         Range(float("-inf"), -1), Range(1, float("inf"))
     )
-    assert RangeUnion(Range(-4, 2), Range(-1, 3)).op_invert() == RangeUnion(
+    assert Ranges(Range(-4, 2), Range(-1, 3)).op_invert() == Ranges(
         Range(max=-0.25), Range(min=1 / 3)
     )
 

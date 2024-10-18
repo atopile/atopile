@@ -157,7 +157,7 @@ class _RangeUnion(_Set[T]):
             raise ValueError("empty range cannot have min element")
         return self.ranges[0].min_elem()
 
-    def op_add_range_union(self, other: "_RangeUnion[T]") -> "_RangeUnion[T]":
+    def op_add_ranges(self, other: "_RangeUnion[T]") -> "_RangeUnion[T]":
         return _RangeUnion(
             *(r.op_add_range(o) for r in self.ranges for o in other.ranges)
         )
@@ -165,10 +165,10 @@ class _RangeUnion(_Set[T]):
     def op_negate(self) -> "_RangeUnion[T]":
         return _RangeUnion(*(r.op_negate() for r in self.ranges))
 
-    def op_subtract_range_union(self, other: "_RangeUnion[T]") -> "_RangeUnion[T]":
-        return self.op_add_range_union(other.op_negate())
+    def op_subtract_ranges(self, other: "_RangeUnion[T]") -> "_RangeUnion[T]":
+        return self.op_add_ranges(other.op_negate())
 
-    def op_mul_range_union(self, other: "_RangeUnion[T]") -> "_RangeUnion[T]":
+    def op_mul_ranges(self, other: "_RangeUnion[T]") -> "_RangeUnion[T]":
         return _RangeUnion(
             *(r.op_mul_range(o) for r in self.ranges for o in other.ranges)
         )
@@ -176,10 +176,10 @@ class _RangeUnion(_Set[T]):
     def op_invert(self) -> "_RangeUnion[float]":
         return _RangeUnion(*(r.op_invert() for r in self.ranges))
 
-    def op_div_range_union(
+    def op_div_ranges(
         self: "_RangeUnion[float]", other: "_RangeUnion[float]"
     ) -> "_RangeUnion[float]":
-        return self.op_mul_range_union(other.op_invert())
+        return self.op_mul_ranges(other.op_invert())
 
     def __contains__(self, item: T) -> bool:
         from bisect import bisect
@@ -218,7 +218,7 @@ def _NumericEmpty() -> _RangeUnion:
     return __numeric_empty
 
 
-class __NonNumericSet[U](_Set[U]):
+class _NonNumericSet[U](_Set[U]):
     def __init__(self, *elements: U):
         self.elements = set(elements)
 
@@ -335,11 +335,11 @@ class Range(UnitSet[TQuant]):
     def is_empty(self) -> bool:
         return self._range.is_empty()
 
-    def op_intersect_range(self, other: "Range[TQuant]") -> "RangeUnion[TQuant]":
+    def op_intersect_range(self, other: "Range[TQuant]") -> "Ranges[TQuant]":
         if not self.units.is_compatible_with(other.units):
-            return RangeUnion(units=self.units)
+            return Ranges(units=self.units)
         _range = self._range.op_intersect_range(other._range)
-        return RangeUnion._from_range_union(_range, self.units)
+        return Ranges._from_ranges(_range, self.units)
 
     def op_add_range(self, other: "Range[TQuant]") -> "Range[TQuant]":
         if not self.units.is_compatible_with(other.units):
@@ -363,15 +363,15 @@ class Range(UnitSet[TQuant]):
         _range = self._range.op_mul_range(other._range)
         return Range._from_range(_range, self.units * other.units)
 
-    def op_invert(self) -> "RangeUnion[TQuant]":
+    def op_invert(self) -> "Ranges[TQuant]":
         _range = self._range.op_invert()
-        return RangeUnion._from_range_union(_range, 1 / self.units)
+        return Ranges._from_ranges(_range, 1 / self.units)
 
-    def op_div_range(self, other: "Range[TQuant]") -> "RangeUnion[TQuant]":
+    def op_div_range(self, other: "Range[TQuant]") -> "Ranges[TQuant]":
         if not self.units.is_compatible_with(other.units):
             raise ValueError("incompatible units")
         _range = self._range.op_div_range(other._range)
-        return RangeUnion._from_range_union(_range, self.units / other.units)
+        return Ranges._from_ranges(_range, self.units / other.units)
 
     # def __copy__(self) -> Self:
     #    r = Range.__new__(Range)
@@ -399,7 +399,7 @@ class Range(UnitSet[TQuant]):
             return False
         if isinstance(value, Range):
             return self._range == value._range
-        if isinstance(value, RangeUnion) and len(value._ranges.ranges) == 1:
+        if isinstance(value, Ranges) and len(value._ranges.ranges) == 1:
             return self._range == value._ranges.ranges[0]
         return False
 
@@ -417,9 +417,9 @@ def Single(value: TQuant) -> Range[TQuant]:
     return Range(value, value)
 
 
-class RangeUnion(UnitSet[TQuant]):
+class Ranges(UnitSet[TQuant]):
     def __init__(
-        self, *ranges: Range[TQuant] | "RangeUnion[TQuant]", units: Unit | None = None
+        self, *ranges: Range[TQuant] | "Ranges[TQuant]", units: Unit | None = None
     ):
         range_units = [
             r.units if isinstance(r, HasUnit) else dimensionless for r in ranges
@@ -431,7 +431,7 @@ class RangeUnion(UnitSet[TQuant]):
         if not all(self.units.is_compatible_with(u) for u in range_units):
             raise ValueError("all elements must have compatible units")
 
-        def get_backing(r: Range[TQuant] | "RangeUnion[TQuant]"):
+        def get_backing(r: Range[TQuant] | "Ranges[TQuant]"):
             if isinstance(r, Range):
                 return r._range
             else:
@@ -440,11 +440,9 @@ class RangeUnion(UnitSet[TQuant]):
         self._ranges = _RangeUnion(*(get_backing(r) for r in ranges))
 
     @staticmethod
-    def _from_range_union(
-        range_union: _RangeUnion[T], units: Unit
-    ) -> "RangeUnion[TQuant]":
-        r = RangeUnion.__new__(RangeUnion)
-        r._ranges = range_union
+    def _from_ranges(ranges: _RangeUnion[T], units: Unit) -> "Ranges[TQuant]":
+        r = Ranges.__new__(Ranges)
+        r._ranges = ranges
         r.units = units
         r.range_units = base_units(units)
         return r
@@ -460,39 +458,37 @@ class RangeUnion(UnitSet[TQuant]):
             raise ValueError("empty range cannot have min element")
         return self.base_to_units(self._ranges.min_elem())
 
-    def op_add_range_union(self, other: "RangeUnion[TQuant]") -> "RangeUnion[TQuant]":
+    def op_add_ranges(self, other: "Ranges[TQuant]") -> "Ranges[TQuant]":
         if not self.units.is_compatible_with(other.units):
             raise ValueError("incompatible units")
-        _range = self._ranges.op_add_range_union(other._ranges)
-        return RangeUnion._from_range_union(_range, self.units)
+        _range = self._ranges.op_add_ranges(other._ranges)
+        return Ranges._from_ranges(_range, self.units)
 
-    def op_negate(self) -> "RangeUnion[TQuant]":
+    def op_negate(self) -> "Ranges[TQuant]":
         _range = self._ranges.op_negate()
-        return RangeUnion._from_range_union(_range, self.units)
+        return Ranges._from_ranges(_range, self.units)
 
-    def op_subtract_range_union(
-        self, other: "RangeUnion[TQuant]"
-    ) -> "RangeUnion[TQuant]":
+    def op_subtract_ranges(self, other: "Ranges[TQuant]") -> "Ranges[TQuant]":
         if not self.units.is_compatible_with(other.units):
             raise ValueError("incompatible units")
-        _range = self._ranges.op_subtract_range_union(other._ranges)
-        return RangeUnion._from_range_union(_range, self.units)
+        _range = self._ranges.op_subtract_ranges(other._ranges)
+        return Ranges._from_ranges(_range, self.units)
 
-    def op_mul_range_union(self, other: "RangeUnion[TQuant]") -> "RangeUnion[TQuant]":
+    def op_mul_ranges(self, other: "Ranges[TQuant]") -> "Ranges[TQuant]":
         if not self.units.is_compatible_with(other.units):
             raise ValueError("incompatible units")
-        _range = self._ranges.op_mul_range_union(other._ranges)
-        return RangeUnion._from_range_union(_range, self.units * other.units)
+        _range = self._ranges.op_mul_ranges(other._ranges)
+        return Ranges._from_ranges(_range, self.units * other.units)
 
-    def op_invert(self) -> "RangeUnion[TQuant]":
+    def op_invert(self) -> "Ranges[TQuant]":
         _range = self._ranges.op_invert()
-        return RangeUnion._from_range_union(_range, 1 / self.units)
+        return Ranges._from_ranges(_range, 1 / self.units)
 
-    def op_div_range_union(self, other: "RangeUnion[TQuant]") -> "RangeUnion[TQuant]":
+    def op_div_ranges(self, other: "Ranges[TQuant]") -> "Ranges[TQuant]":
         if not self.units.is_compatible_with(other.units):
             raise ValueError("incompatible units")
-        _range = self._ranges.op_div_range_union(other._ranges)
-        return RangeUnion._from_range_union(_range, self.units / other.units)
+        _range = self._ranges.op_div_ranges(other._ranges)
+        return Ranges._from_ranges(_range, self.units / other.units)
 
     def __contains__(self, item: Any) -> bool:
         if isinstance(item, Quantity):
@@ -509,7 +505,7 @@ class RangeUnion(UnitSet[TQuant]):
             return False
         if not self.units.is_compatible_with(value.units):
             return False
-        if isinstance(value, RangeUnion):
+        if isinstance(value, Ranges):
             return self._ranges == value._ranges
         if isinstance(value, Range) and len(self._ranges.ranges) == 1:
             return self._ranges.ranges[0] == value._range
@@ -521,12 +517,12 @@ class RangeUnion(UnitSet[TQuant]):
         return f"_RangeUnion({', '.join(f"[{self.base_to_units(r.min)}, {self.base_to_units(r.max)}]" for r in self._ranges.ranges)} | {self.units})"
 
 
-def UnitEmpty(units: Unit) -> RangeUnion[TQuant]:
-    return RangeUnion(units=units)
+def UnitEmpty(units: Unit) -> Ranges[TQuant]:
+    return Ranges(units=units)
 
 
-def Singles(*values: TQuant, units: Unit | None = None) -> RangeUnion[TQuant]:
-    return RangeUnion(*(Single(v) for v in values), units=units)
+def Singles(*values: TQuant, units: Unit | None = None) -> Ranges[TQuant]:
+    return Ranges(*(Single(v) for v in values), units=units)
 
 
 # class Set[T](Union[T]):
