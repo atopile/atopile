@@ -2,14 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import pytest
-from pint import DimensionalityError
 
 from faebryk.libs.sets import (
+    Empty,
     Range,
     Ranges,
     Single,
     Singles,
-    UnitEmpty,
 )
 from faebryk.libs.units import P, Unit, dimensionless
 from faebryk.libs.util import cast_assert
@@ -24,7 +23,7 @@ def test_range_intersection_simple():
 def test_range_intersection_empty():
     x = Range(0, 10)
     y = x.op_intersect_range(Range(15, 20))
-    assert y == UnitEmpty(dimensionless)
+    assert y == Empty(dimensionless)
 
 
 def test_range_unit_none():
@@ -104,10 +103,16 @@ def test_union_contains():
 
 def test_union_empty():
     x = Ranges(
-        UnitEmpty(dimensionless),
-        Ranges(UnitEmpty(dimensionless), Singles(units=dimensionless)),
+        Empty(dimensionless),
+        Ranges(Empty(dimensionless), Singles(units=dimensionless)),
     )
     assert x.is_empty()
+
+
+def test_add_empty():
+    assert (Empty(dimensionless).op_add_ranges(Ranges(Range(0, 1)))) == Empty(
+        dimensionless
+    )
 
 
 def test_addition():
@@ -121,9 +126,21 @@ def test_addition():
     ) == Ranges(Range(10, 11), Range(110, 111), Range(20, 22), Range(120, 122))
 
 
+def test_addition_unit():
+    assert Range(0 * P.V, 1 * P.V).op_add_range(Range(2 * P.V, 3 * P.V)) == Range(
+        2 * P.V, 4 * P.V
+    )
+
+
 def test_subtraction():
     assert Range(0, 1).op_subtract_range(Range(2, 3)) == Range(-3, -1)
     assert Range(0, 1).op_subtract_range(Single(2)) == Range(-2, -1)
+
+
+def test_subtraction_unit():
+    assert Range(0 * P.V, 1 * P.V).op_subtract_range(Range(2 * P.V, 3 * P.V)) == Range(
+        -3 * P.V, -1 * P.V
+    )
 
 
 def test_multiplication():
@@ -137,6 +154,12 @@ def test_multiplication():
     ) == Ranges(Range(0, 0), Range(-2, 0), Range(-3, 0))
 
 
+def test_multiplication_unit():
+    assert Range(0 * P.V, 2 * P.V).op_mul_range(Range(2 * P.A, 3 * P.A)) == Range(
+        0 * P.W, 6 * P.W
+    )
+
+
 def test_invert():
     assert Range(1, 2).op_invert() == Range(0.5, 1)
     assert Range(-2, -1).op_invert() == Range(-1, -0.5)
@@ -148,6 +171,16 @@ def test_invert():
     )
 
 
+def test_invert_unit():
+    assert Range(1 * P.V, 2 * P.V).op_invert() == Range(1 / (2 * P.V), 1 / (1 * P.V))
+
+
 def test_division():
     assert Range(0, 1).op_div_range(Range(2, 3)) == Range(0, 0.5)
     assert Range(0, 1).op_div_range(Range(0, 3)) == Range(min=0.0)
+
+
+def test_division_unit():
+    assert Range(0 * P.V, 1 * P.V).op_div_range(Range(2 * P.A, 3 * P.A)) == Range(
+        0 * P.ohm, 1 / 2 * P.ohm
+    )
