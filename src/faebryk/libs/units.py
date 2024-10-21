@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # re-exporting Quantity in-case we ever want to change it
-from typing import Protocol, runtime_checkable
+from typing import Any
 
 from pint import Quantity as _Quantity  # noqa: F401
 from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
@@ -17,9 +17,16 @@ Quantity = P.Quantity
 dimensionless = cast_assert(Unit, P.dimensionless)
 
 
-@runtime_checkable
-class HasUnit(Protocol):
+class HasUnit:
     units: Unit
+
+    @staticmethod
+    def check(obj: Any) -> bool:
+        return hasattr(obj, "units")
+
+    @staticmethod
+    def get_units_or_dimensionless(obj: Any) -> Unit:
+        return obj.units if HasUnit.check(obj) else dimensionless
 
 
 def to_si_str(

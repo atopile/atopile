@@ -4,13 +4,13 @@
 import logging
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Protocol, Self
-
-from more_itertools import raise_
+from typing import Any, Callable, Self
 
 from faebryk.core.core import Namespace
+from faebryk.core.graphinterface import GraphInterface
+from faebryk.core.link import LinkParent
 from faebryk.core.node import Node, f_field
-from faebryk.libs.sets import Range, Set_
+from faebryk.libs.sets import Empty, P_Set, Range, Ranges
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
 from faebryk.libs.util import abstract
 
@@ -21,102 +21,122 @@ logger = logging.getLogger(__name__)
 # boolean: T == S == bool
 # enum: T == S == Enum
 # number: T == Number type, S == Range[Number]
-class ParameterOperatable(Protocol):
+class ParameterOperatable:
     type QuantityLike = Quantity | NotImplementedType
     type Number = int | float | QuantityLike
 
-    type NonParamNumber = Number | Set_[Number]
+    type NonParamNumber = Number | P_Set[Number]
     type NumberLike = ParameterOperatable | NonParamNumber
-    type NonParamBoolean = bool | Set_[bool]
+    type NonParamBoolean = bool | P_Set[bool]
     type BooleanLike = ParameterOperatable | NonParamBoolean
-    type NonParamEnum = Enum | Set_[Enum]
+    type NonParamEnum = Enum | P_Set[Enum]
     type EnumLike = ParameterOperatable | NonParamEnum
 
     type All = NumberLike | BooleanLike | EnumLike
     type NonParamSet = NonParamNumber | NonParamBoolean | NonParamEnum
     type Sets = All
 
-    def alias_is(self, other: All): ...
+    operated_on: GraphInterface
 
-    def constrain_le(self, other: NumberLike): ...
+    def operation_add(self, other: NumberLike) -> "Expression":
+        return Add(self, other)
 
-    def constrain_ge(self, other: NumberLike): ...
+    def operation_subtract(self, other: NumberLike) -> "Expression":
+        return Subtract(minuend=self, subtrahend=other)
 
-    def constrain_lt(self, other: NumberLike): ...
+    def operation_multiply(self, other: NumberLike) -> "Expression":
+        return Multiply(self, other)
 
-    def constrain_gt(self, other: NumberLike): ...
+    def operation_divide(self: NumberLike, other: NumberLike) -> "Expression":
+        return Divide(numerator=self, denominator=other)
 
-    def constrain_ne(self, other: NumberLike): ...
+    def operation_power(self, other: NumberLike) -> "Expression":
+        return Power(base=self, exponent=other)
 
-    def constrain_subset(self, other: Sets): ...
+    def operation_log(self) -> "Expression":
+        return Log(self)
 
-    def constrain_superset(self, other: Sets): ...
+    def operation_sqrt(self) -> "Expression":
+        return Sqrt(self)
 
-    def constrain_cardinality(self, other: int): ...
+    def operation_abs(self) -> "Expression":
+        return Abs(self)
 
-    def operation_add(self, other: NumberLike) -> "Expression": ...
+    def operation_floor(self) -> "Expression":
+        return Floor(self)
 
-    def operation_subtract(self, other: NumberLike) -> "Expression": ...
+    def operation_ceil(self) -> "Expression":
+        return Ceil(self)
 
-    def operation_multiply(self, other: NumberLike) -> "Expression": ...
+    def operation_round(self) -> "Expression":
+        return Round(self)
 
-    def operation_divide(self: NumberLike, other: NumberLike) -> "Expression": ...
+    def operation_sin(self) -> "Expression":
+        return Sin(self)
 
-    def operation_power(self, other: NumberLike) -> "Expression": ...
+    def operation_cos(self) -> "Expression":
+        return Cos(self)
 
-    def operation_log(self) -> "Expression": ...
+    def operation_union(self, other: Sets) -> "Expression":
+        return Union(self, other)
 
-    def operation_sqrt(self) -> "Expression": ...
+    def operation_intersection(self, other: Sets) -> "Expression":
+        return Intersection(self, other)
 
-    def operation_abs(self) -> "Expression": ...
+    def operation_difference(self, other: Sets) -> "Expression":
+        return Difference(minuend=self, subtrahend=other)
 
-    def operation_floor(self) -> "Expression": ...
+    def operation_symmetric_difference(self, other: Sets) -> "Expression":
+        return SymmetricDifference(self, other)
 
-    def operation_ceil(self) -> "Expression": ...
+    def operation_and(self, other: BooleanLike) -> "Logic":
+        return And(self, other)
 
-    def operation_round(self) -> "Expression": ...
+    def operation_or(self, other: BooleanLike) -> "Logic":
+        return Or(self, other)
 
-    def operation_sin(self) -> "Expression": ...
+    def operation_not(self) -> "Logic":
+        return Not(self)
 
-    def operation_cos(self) -> "Expression": ...
+    def operation_xor(self, other: BooleanLike) -> "Logic":
+        return Xor(left=self, right=other)
 
-    def operation_union(self, other: Sets) -> "Expression": ...
+    def operation_implies(self, other: BooleanLike) -> "Logic":
+        return Implies(condition=self, implication=other)
 
-    def operation_intersection(self, other: Sets) -> "Expression": ...
+    def operation_is_le(self, other: NumberLike) -> "NumericPredicate":
+        return LessOrEqual(constraint=False, left=self, right=other)
 
-    def operation_difference(self, other: Sets) -> "Expression": ...
+    def operation_is_ge(self, other: NumberLike) -> "NumericPredicate":
+        return GreaterOrEqual(constraint=False, left=self, right=other)
 
-    def operation_symmetric_difference(self, other: Sets) -> "Expression": ...
+    def operation_is_lt(self, other: NumberLike) -> "NumericPredicate":
+        return LessThan(constraint=False, left=self, right=other)
 
-    def operation_and(self, other: BooleanLike) -> "Predicate": ...
+    def operation_is_gt(self, other: NumberLike) -> "NumericPredicate":
+        return GreaterThan(constraint=False, left=self, right=other)
 
-    def operation_or(self, other: BooleanLike) -> "Predicate": ...
+    def operation_is_ne(self, other: NumberLike) -> "NumericPredicate":
+        return NotEqual(constraint=False, left=self, right=other)
 
-    def operation_not(self) -> "Predicate": ...
+    def operation_is_subset(self, other: Sets) -> "SeticPredicate":
+        return IsSubset(constraint=False, left=self, right=other)
 
-    def operation_xor(self, other: BooleanLike) -> "Predicate": ...
+    def operation_is_superset(self, other: Sets) -> "SeticPredicate":
+        return IsSuperset(constraint=False, left=self, right=other)
 
-    def operation_implies(self, other: BooleanLike) -> "Predicate": ...
+    # TODO implement
+    def inspect_known_min(self: NumberLike) -> Number:
+        return 1 / 0
+        # raise NotImplementedError()
 
-    def operation_is_le(self, other: NumberLike) -> "Predicate": ...
+    def inspect_known_max(self: NumberLike) -> Number:
+        return 1 / 0
+        # raise NotImplementedError()
 
-    def operation_is_ge(self, other: NumberLike) -> "Predicate": ...
-
-    def operation_is_lt(self, other: NumberLike) -> "Predicate": ...
-
-    def operation_is_gt(self, other: NumberLike) -> "Predicate": ...
-
-    def operation_is_ne(self, other: NumberLike) -> "Predicate": ...
-
-    def operation_is_subset(self, other: Sets) -> "Predicate": ...
-
-    def operation_is_superset(self, other: Sets) -> "Predicate": ...
-
-    def inspect_known_min(self: NumberLike) -> Number: ...
-
-    def inspect_known_max(self: NumberLike) -> Number: ...
-
-    def inspect_known_values(self: BooleanLike) -> Set_[bool]: ...
+    def inspect_known_values(self: BooleanLike) -> P_Set[bool]:
+        return 1 / 0
+        # raise NotImplementedError()
 
     # Run by the solver on finalization
     inspect_final: Callable[[Self], None] = lambda _: None
@@ -131,7 +151,7 @@ class ParameterOperatable(Protocol):
         self.inspect_final = new
 
     # def inspect_num_known_supersets(self) -> int: ...
-    # def inspect_get_known_supersets(self) -> Iterable[Set_]: ...
+    # def inspect_get_known_supersets(self) -> Iterable[P_Set]: ...
 
     # ----------------------------------------------------------------------------------
     def __add__(self, other: NumberLike):
@@ -191,8 +211,6 @@ class ParameterOperatable(Protocol):
 
     # ----------------------------------------------------------------------------------
 
-    # TODO: move
-
     # should be eager, in the sense that, if the outcome is known, the callable is
     # called immediately, without storing an expression
     # we must force a value (at the end of solving at the least)
@@ -201,16 +219,13 @@ class ParameterOperatable(Protocol):
         if_true: Callable[[], Any],
         if_false: Callable[[], Any],
         preference: bool | None = None,
-    ) -> None: ...
-
-    # the way this is used right now (for testing) is problematic
-    # we don't want to add a constraint, because that would force it to hold
-    # instead we want to make an inspection at the "final" stage during solving
-    # could still be useful if we want to abort early with an error
-    def assert_true(
-        self, error: Callable[[], None] = lambda: raise_(ValueError())
     ) -> None:
-        self.if_then_else(lambda: None, error, True)
+        IfThenElse(self, if_true, if_false, preference)
+
+    # def assert_true(
+    #     self, error: Callable[[], None] = lambda: raise_(ValueError())
+    # ) -> None:
+    #     self.if_then_else(lambda: None, error, True)
 
     # def assert_false(
     #     self, error: Callable[[], None] = lambda: raise_(ValueError())
@@ -224,13 +239,70 @@ class ParameterOperatable(Protocol):
     # ) -> None: ...
 
 
+class Constrainable:
+    type All = ParameterOperatable.All
+    type Sets = ParameterOperatable.Sets
+    type NumberLike = ParameterOperatable.NumberLike
+
+    constraints: GraphInterface
+
+    def _constrain(self, constraint: "Predicate"):
+        self.constraints.connect(constraint.constrains)
+
+    def alias_is(self, other: All):
+        self._constrain(Is(constraint=True, left=self, right=other))
+
+    def constrain_le(self, other: NumberLike):
+        self._constrain(LessOrEqual(constraint=True, left=self, right=other))
+
+    def constrain_ge(self, other: NumberLike):
+        self._constrain(GreaterOrEqual(constraint=True, left=self, right=other))
+
+    def constrain_lt(self, other: NumberLike):
+        self._constrain(LessThan(constraint=True, left=self, right=other))
+
+    def constrain_gt(self, other: NumberLike):
+        self._constrain(GreaterThan(constraint=True, left=self, right=other))
+
+    def constrain_ne(self, other: NumberLike):
+        self._constrain(NotEqual(constraint=True, left=self, right=other))
+
+    def constrain_subset(self, other: Sets):
+        self._constrain(IsSubset(constraint=True, left=self, right=other))
+
+    def constrain_superset(self, other: Sets):
+        self._constrain(IsSuperset(constraint=True, left=self, right=other))
+
+    def constrain_cardinality(self, other: int):
+        self._constrain(Cardinality(constraint=True, left=self, right=other))
+
+    # shortcuts
+    def constraint_true(self):
+        self.alias_is(True)
+
+    def constraint_false(self):
+        self.alias_is(False)
+
+
 @abstract
 class Expression(Node, ParameterOperatable):
-    pass
+    operates_on: GraphInterface
+    operated_on: GraphInterface
+
+    def __init__(self, *operatable_operands: "Parameter | Expression"):
+        super().__init__()
+        for op in operatable_operands:
+            self.operates_on.connect(op.operated_on)
 
 
-class Arithmetic(HasUnit, Expression):
-    def __init__(self, *operands):
+@abstract
+class ConstrainableExpression(Expression, Constrainable):
+    constraints: GraphInterface
+
+
+@abstract
+class Arithmetic(ConstrainableExpression, HasUnit):
+    def __init__(self, *operands: ParameterOperatable.NumberLike):
         types = [int, float, Quantity, Parameter, Arithmetic]
         if any(type(op) not in types for op in operands):
             raise ValueError(
@@ -245,12 +317,11 @@ class Arithmetic(HasUnit, Expression):
         self.operands = operands
 
 
+@abstract
 class Additive(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
-        units = [
-            op.units if isinstance(op, HasUnit) else dimensionless for op in operands
-        ]
+        units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
         self.units = units[0]
         if not all(u.is_compatible_with(self.units) for u in units):
             raise ValueError("All operands must have compatible units")
@@ -262,22 +333,20 @@ class Add(Additive):
 
 
 class Subtract(Additive):
-    def __init__(self, *operands):
-        super().__init__(*operands)
+    def __init__(self, minuend, subtrahend):
+        super().__init__(minuend, subtrahend)
 
 
 class Multiply(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
-        units = [
-            op.units if isinstance(op, HasUnit) else dimensionless for op in operands
-        ]
+        units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
         self.units = units[0]
         for u in units[1:]:
             self.units *= u
 
 
-class Divide(Multiply):
+class Divide(Arithmetic):
     def __init__(self, numerator, denominator):
         super().__init__(numerator, denominator)
         self.units = numerator.units / denominator.units
@@ -296,7 +365,7 @@ class Power(Arithmetic):
             dimensionless
         ):
             raise ValueError("exponent must have dimensionless unit")
-        units = base.units**exponent if isinstance(base, HasUnit) else dimensionless
+        units = HasUnit.get_units_or_dimensionless(base) ** exponent
         assert isinstance(units, Unit)
         self.units = units
 
@@ -349,7 +418,7 @@ class Ceil(Arithmetic):
         self.units = operand.units
 
 
-class Logic(Expression):
+class Logic(ConstrainableExpression):
     def __init__(self, *operands):
         types = [bool, Parameter, Logic, Predicate]
         if any(type(op) not in types for op in operands):
@@ -382,11 +451,19 @@ class Xor(Logic):
 
 
 class Implies(Logic):
-    def __init__(self, left, right):
-        super().__init__(left, right)
+    def __init__(self, condition, implication):
+        super().__init__(condition, implication)
 
 
-class Setic(Expression):
+class IfThenElse(Expression):
+    def __init__(self, condition, if_true, if_false, preference: bool | None = None):
+        super().__init__(condition)
+        self.preference = preference
+        self.if_true = if_true
+        self.if_false = if_false
+
+
+class Setic(ConstrainableExpression):
     def __init__(self, *operands):
         super().__init__(*operands)
         types = [Parameter, ParameterOperatable.Sets]
@@ -455,10 +532,12 @@ class EnumDomain(Domain):
 
 
 class Predicate(Expression):
+    constrains: GraphInterface
+
     def __init__(self, constraint: bool, left, right):
         self._constraint = constraint
-        l_units = left.units if isinstance(left, HasUnit) else dimensionless
-        r_units = right.units if isinstance(right, HasUnit) else dimensionless
+        l_units = HasUnit.get_units_or_dimensionless(left)
+        r_units = HasUnit.get_units_or_dimensionless(right)
         if not l_units.is_compatible_with(r_units):
             raise ValueError("operands must have compatible units")
         self.operands = [left, right]
@@ -498,7 +577,7 @@ class GreaterOrEqual(NumericPredicate):
     pass
 
 
-class NotEqual(Predicate):
+class NotEqual(NumericPredicate):
     pass
 
 
@@ -520,6 +599,10 @@ class IsSubset(SeticPredicate):
 
 
 class IsSuperset(SeticPredicate):
+    pass
+
+
+class Cardinality(SeticPredicate):
     pass
 
 
@@ -594,13 +677,13 @@ class R(Namespace):
             SYMMETRIC_DIFFERENCE = SymmetricDifference
 
 
-class Parameter(Node, ParameterOperatable):
+class Parameter(Node, ParameterOperatable, Constrainable):
     def __init__(
         self,
         *,
         units: Unit | Quantity | None = dimensionless,
         # hard constraints
-        within: Range | None = None,
+        within: Ranges | Range | None = None,
         domain: Domain = Numbers(negative=False),
         # soft constraints
         soft_set: Range | None = None,
@@ -615,7 +698,7 @@ class Parameter(Node, ParameterOperatable):
     ):
         super().__init__()
         if within is None:
-            within = Range()
+            within = Empty(units)
         if not within.units.is_compatible_with(units):
             raise ValueError("incompatible units")
 
@@ -630,9 +713,15 @@ class Parameter(Node, ParameterOperatable):
         self.likely_constrained = likely_constrained
         self.cardinality = cardinality
 
-    # ----------------------------------------------------------------------------------
-    # TODO implement ParameterOperatable functions
-    # ----------------------------------------------------------------------------------
+    # Type forwards
+    type All = ParameterOperatable.All
+    type NumberLike = ParameterOperatable.NumberLike
+    type Sets = ParameterOperatable.Sets
+    type BooleanLike = ParameterOperatable.BooleanLike
+    type Number = ParameterOperatable.Number
+
+    constraints: GraphInterface
+    operated_on: GraphInterface
 
 
 p_field = f_field(Parameter)

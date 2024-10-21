@@ -15,7 +15,8 @@ class P_Set[T](Protocol):
     def __contains__(self, item: T) -> bool: ...
 
 
-class P_UnitSet[T](P_Set[T], HasUnit, Protocol): ...
+class P_UnitSet[T](P_Set[T], Protocol):
+    units: Unit
 
 
 # --------------------------------------------------------------------------------------
@@ -406,7 +407,7 @@ class Range(P_UnitSet[QuantityT]):
 
     # yucky with floats
     def __eq__(self, value: Any) -> bool:
-        if not isinstance(value, HasUnit):
+        if not HasUnit.check(value):
             return False
         if not self.units.is_compatible_with(value.units):
             return False
@@ -436,9 +437,7 @@ class Ranges(P_UnitSet[QuantityT]):
         *ranges: Range[QuantityT] | "Ranges[QuantityT]",
         units: Unit | None = None,
     ):
-        range_units = [
-            r.units if isinstance(r, HasUnit) else dimensionless for r in ranges
-        ]
+        range_units = [HasUnit.get_units_or_dimensionless(r) for r in ranges]
         if len(range_units) == 0 and units is None:
             raise ValueError("units must be provided for empty union")
         self.units = units or range_units[0]
@@ -516,7 +515,7 @@ class Ranges(P_UnitSet[QuantityT]):
         return False
 
     def __eq__(self, value: Any) -> bool:
-        if not isinstance(value, HasUnit):
+        if not HasUnit.check(value):
             return False
         if not self.units.is_compatible_with(value.units):
             return False
@@ -532,7 +531,9 @@ class Ranges(P_UnitSet[QuantityT]):
         return f"_RangeUnion({', '.join(f"[{self.base_to_units(r.min)}, {self.base_to_units(r.max)}]" for r in self._ranges.ranges)} | {self.units})"
 
 
-def Empty(units: Unit) -> Ranges[QuantityT]:
+def Empty(units: Unit | None = None) -> Ranges[QuantityT]:
+    if units is None:
+        units = dimensionless
     return Ranges(units=units)
 
 

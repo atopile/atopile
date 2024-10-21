@@ -3,7 +3,8 @@
 
 import logging
 
-from faebryk.core.parameter import Domains, Parameter
+from faebryk.core.parameter import Parameter
+from faebryk.libs.library import L
 from faebryk.libs.sets import Range
 from faebryk.libs.units import P
 
@@ -12,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 def test_new_definitions():
     _ = Parameter(
-        unit=P.ohm,
-        domain=Domains.Numbers.Reals.Positive(),
+        units=P.ohm,
+        domain=L.Domains.Numbers.REAL(negative=False),
         soft_set=Range(1 * P.ohm, 10 * P.Mohm),
         likely_constrained=True,
     )

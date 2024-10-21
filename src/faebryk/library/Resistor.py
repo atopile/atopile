@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from more_itertools import raise_
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
@@ -52,7 +53,9 @@ class Resistor(Module):
                 self.add(has_part_picked_remove())
 
             self.resistance.operation_is_superset(0.0 * P.ohm).if_then_else(
-                lambda: do_replace(), lambda: raise_(PickError("", self))
+                lambda: do_replace(),
+                lambda: raise_(PickError("", self)),
+                preference=True,
             )
 
         self.add(

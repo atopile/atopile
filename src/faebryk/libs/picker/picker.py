@@ -12,12 +12,12 @@ from typing import Callable, Iterable
 
 from rich.progress import Progress
 
-from faebryk.core.solver import Solver
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import Parameter, ParameterOperatable, Predicate
-from faebryk.libs.util import cast_assert, flatten, not_none
+from faebryk.core.solver import Solver
+from faebryk.libs.util import flatten, not_none
 
 logger = logging.getLogger(__name__)
 
