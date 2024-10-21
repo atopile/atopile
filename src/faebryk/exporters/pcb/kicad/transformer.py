@@ -73,7 +73,11 @@ Point2D = Geometry.Point2D
 
 Justify = C_effects.C_justify.E_justify
 Alignment = tuple[Justify, Justify, Justify]
-Alignment_Default = (Justify.center_horizontal, Justify.center_vertical, Justify.normal)
+Alignment_Default = (
+    Justify.center_horizontal,
+    Justify.center_vertical,
+    Justify.normal,
+)
 
 
 def gen_uuid(mark: str = "") -> UUID:
@@ -315,7 +319,7 @@ class PCB_Transformer:
     @staticmethod
     def get_bounding_box(
         fp: Footprint,
-        layers: str | set[str] | None = None,
+        layers: str | set[str],
     ) -> None | tuple[Point2D, Point2D]:
         if isinstance(layers, str):
             layers = {layers}
@@ -670,7 +674,7 @@ class PCB_Transformer:
                 else C_text_layer(layer),
                 effects=C_effects(
                     font=font,
-                    justify=alignment,
+                    justifys=[C_effects.C_justify(justifys=list(alignment))],
                 ),
                 uuid=self.gen_uuid(mark=True),
             )
@@ -1195,11 +1199,13 @@ class PCB_Transformer:
             if font:
                 reference.effects.font = font
             if justify:
-                reference.effects.justifys = [C_effects.C_justify(justify)]
+                reference.effects.justifys = [
+                    C_effects.C_justify(justifys=list(justify))
+                ]
 
             rot = rotation if rotation else reference.at.r
 
-            footprint_bbox = self.get_bounding_box(mod, {"F.SilkS", "B.SilkS"})
+            footprint_bbox = self.get_bounding_box(fp, {"F.SilkS", "B.SilkS"})
             if not footprint_bbox:
                 continue
             max_coord = C_xy(*footprint_bbox[1])
