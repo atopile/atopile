@@ -131,8 +131,10 @@ class PCB:
 
         # Remove nets ------------------------------------------------------------------
         logger.debug(f"Removed nets: {nets_removed}")
+        removed_net_numbers = list[int]()
         for net_name in nets_removed:
             pcb_net, pads = pcb_nets[net_name]
+            removed_net_numbers.append(pcb_net.number)
             pcb.kicad_pcb.nets.remove(pcb_net)
             for pad in pads:
                 assert pad.net
@@ -166,12 +168,17 @@ class PCB:
         logger.debug(f"New nets: {nets_added}")
         for net_name in nets_added:
             # nl_net = nl_nets[net_name]
+            if removed_net_numbers:
+                net_number = removed_net_numbers.pop()
+            else:
+                net_number = len(pcb.kicad_pcb.nets)
             pcb_net = C_kicad_pcb_file.C_kicad_pcb.C_net(
                 name=net_name,
-                number=len(pcb.kicad_pcb.nets),
+                number=net_number,
             )
             pcb.kicad_pcb.nets.append(pcb_net)
             pcb_nets[net_name] = (pcb_net, [])
+        pcb.kicad_pcb.nets.sort(key=lambda x: x.number)
 
         # Components ===================================================================
         pcb_comps = {
