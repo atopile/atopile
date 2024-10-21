@@ -22,10 +22,12 @@ class USB2514B(Module):
 
         usb: F.USB2_0_IF.Data
         usb_power_enable: F.ElectricLogic
+        over_current_sense: F.ElectricLogic
+
+        # configuration interfaces
+        battery_charging_enable: F.ElectricLogic
         usb_port_disable_p: F.ElectricLogic
         usb_port_disable_n: F.ElectricLogic
-        over_current_sense: F.ElectricLogic
-        battery_charging_enable: F.ElectricLogic
 
         @assert_once
         def configure_usb_port(
@@ -215,13 +217,13 @@ class USB2514B(Module):
                     3
                 ].battery_charging_enable.signal,
                 "21": self.configurable_downstream_usb[3].over_current_sense.signal,
-                "22": self.i2c.sda.signal,
+                "22": self.usb_removability_configuration_intput[1].signal,
                 "23": self.power_3v3.hv,
-                "24": self.i2c.scl.signal,
-                "25": self.high_speed_upstream_indicator.signal,
+                "24": self.configuration_source_input[0].signal,
+                "25": self.configuration_source_input[1].signal,
                 "26": self.reset.signal,
                 "27": self.vbus_detect.signal,
-                "28": self.suspense_indicator.signal,
+                "28": self.usb_removability_configuration_intput[0].signal,
                 "29": self.power_3v3_analog.hv,
                 "30": self.usb_upstream.n.signal,
                 "31": self.usb_upstream.p.signal,

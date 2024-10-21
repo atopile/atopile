@@ -59,17 +59,17 @@ class CH344Q_ReferenceDesign(Module):
                     ),
                     LVL(
                         mod_type=F.LDO,
-                        layout=LayoutAbsolute(Point((7.5, 0, 0, L.NONE))),
+                        layout=LayoutAbsolute(Point((9.5, 0, 0, L.NONE))),
                     ),
                     LVL(
                         mod_type=F.LEDIndicator,
                         layout=LayoutExtrude(
-                            base=Point((-2.5, -11, 180, L.NONE)), vector=(0, 1.75, 0)
+                            base=Point((-5.75, 7.5, 0, L.NONE)), vector=(-1.75, 0, 90)
                         ),
                     ),
                     LVL(
                         mod_type=F.PoweredLED,
-                        layout=LayoutAbsolute(Point((-2.5, -16.25, 0, L.NONE))),
+                        layout=LayoutAbsolute(Point((5, -8, 90, L.NONE))),
                     ),
                     LVL(
                         mod_type=F.FilterElectricalRC,
@@ -87,9 +87,9 @@ class CH344Q_ReferenceDesign(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
-        self.usb_uart_converter.power.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(1 * P.uF, 0.05)
-        )  # TODO: per pin
+        self.usb_uart_converter.power.decoupled.decouple().specialize(
+            F.MultiCapacitor(4)
+        ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
         self.vbus_fused.connect_via(self.ldo, pwr_3v3)
 
         self.usb.usb_if.d.connect(self.usb_uart_converter.usb)
@@ -97,12 +97,7 @@ class CH344Q_ReferenceDesign(Module):
         self.usb_uart_converter.act.connect(self.led_act.logic_in)
         self.usb_uart_converter.indicator_rx.connect(self.led_rx.logic_in)
         self.usb_uart_converter.indicator_tx.connect(self.led_tx.logic_in)
-        pwr_3v3.connect(
-            self.power_led.power,
-            self.led_rx.power_in,
-            self.led_tx.power_in,
-            self.led_act.power_in,
-        )
+        pwr_3v3.connect(self.power_led.power)
 
         self.usb_uart_converter.osc[1].connect(self.oscillator.xtal_if.xin)
         self.usb_uart_converter.osc[0].connect(self.oscillator.xtal_if.xout)
@@ -125,6 +120,16 @@ class CH344Q_ReferenceDesign(Module):
         self.oscillator.crystal.load_capacitance.merge(
             F.Range.from_center(8 * P.pF, 10 * P.pF)
         )  # TODO: should be property of crystal when picked
+        self.oscillator.current_limiting_resistor.resistance.merge(
+            F.Constant(0 * P.ohm)
+        )
+
+        self.ldo.power_in.decoupled.decouple().capacitance.merge(
+            F.Range.from_center_rel(100 * P.nF, 0.1)
+        )
+        self.ldo.power_out.decoupled.decouple().capacitance.merge(
+            F.Range.from_center_rel(100 * P.nF, 0.1)
+        )
 
         self.usb.usb_if.buspower.max_current.merge(
             F.Range.from_center_rel(500 * P.mA, 0.1)

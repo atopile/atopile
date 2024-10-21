@@ -70,7 +70,7 @@ class RP2040Pinmux(F.Pinmux):
         return {
             x.io[0]: [
                 x.spi[0].miso.signal,
-                x.uart[0].tx.signal,
+                x.uart[0].base_uart.tx.signal,
                 x.i2c[0].sda.signal,
                 x.pwm[0].A.signal,
                 x.gpio[0].signal,
@@ -81,7 +81,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[1]: [
                 x.spi[0].cs.signal,
-                x.uart[0].rx.signal,
+                x.uart[0].base_uart.rx.signal,
                 x.i2c[0].scl.signal,
                 x.pwm[0].B.signal,
                 x.gpio[1].signal,
@@ -114,7 +114,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[4]: [
                 x.spi[0].miso.signal,
-                x.uart[1].tx.signal,
+                x.uart[1].base_uart.tx.signal,
                 x.i2c[0].sda.signal,
                 x.pwm[2].A.signal,
                 x.gpio[4].signal,
@@ -125,7 +125,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[5]: [
                 x.spi[0].cs.signal,
-                x.uart[1].rx.signal,
+                x.uart[1].base_uart.rx.signal,
                 x.i2c[0].scl.signal,
                 x.pwm[2].B.signal,
                 x.gpio[5].signal,
@@ -158,7 +158,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[8]: [
                 x.spi[1].miso.signal,
-                x.uart[0].tx.signal,
+                x.uart[0].base_uart.tx.signal,
                 x.i2c[0].sda.signal,
                 x.pwm[4].A.signal,
                 x.gpio[8].signal,
@@ -169,7 +169,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[9]: [
                 x.spi[1].cs.signal,
-                x.uart[0].rx.signal,
+                x.uart[0].base_uart.rx.signal,
                 x.i2c[0].scl.signal,
                 x.pwm[4].B.signal,
                 x.gpio[9].signal,
@@ -202,7 +202,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[12]: [
                 x.spi[1].miso.signal,
-                x.uart[1].tx.signal,
+                x.uart[1].base_uart.tx.signal,
                 x.i2c[0].sda.signal,
                 x.pwm[6].A.signal,
                 x.gpio[12].signal,
@@ -213,7 +213,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[13]: [
                 x.spi[1].cs.signal,
-                x.uart[1].rx.signal,
+                x.uart[1].base_uart.rx.signal,
                 x.i2c[0].scl.signal,
                 x.pwm[6].B.signal,
                 x.gpio[13].signal,
@@ -246,7 +246,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[16]: [
                 x.spi[0].miso.signal,
-                x.uart[0].tx.signal,
+                x.uart[0].base_uart.tx.signal,
                 x.i2c[0].sda.signal,
                 x.pwm[0].A.signal,
                 x.gpio[16].signal,
@@ -257,7 +257,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[17]: [
                 x.spi[0].cs.signal,
-                x.uart[0].rx.signal,
+                x.uart[0].base_uart.rx.signal,
                 x.i2c[0].scl.signal,
                 x.pwm[0].B.signal,
                 x.gpio[17].signal,
@@ -290,7 +290,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[20]: [
                 x.spi[0].miso.signal,
-                x.uart[1].tx.signal,
+                x.uart[1].base_uart.tx.signal,
                 x.i2c[0].sda.signal,
                 x.pwm[2].A.signal,
                 x.gpio[20].signal,
@@ -301,7 +301,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[21]: [
                 x.spi[0].cs.signal,
-                x.uart[1].rx.signal,
+                x.uart[1].base_uart.rx.signal,
                 x.i2c[0].scl.signal,
                 x.pwm[2].B.signal,
                 x.gpio[21].signal,
@@ -334,7 +334,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[24]: [
                 x.spi[1].miso.signal,
-                x.uart[0].tx.signal,
+                x.uart[0].base_uart.tx.signal,
                 x.i2c[0].sda.signal,
                 x.pwm[4].A.signal,
                 x.gpio[24].signal,
@@ -345,7 +345,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[25]: [
                 x.spi[1].cs.signal,
-                x.uart[0].rx.signal,
+                x.uart[0].base_uart.rx.signal,
                 x.i2c[0].scl.signal,
                 x.pwm[4].B.signal,
                 x.gpio[25].signal,
@@ -378,7 +378,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[28]: [
                 x.spi[1].miso.signal,
-                x.uart[1].tx.signal,
+                x.uart[1].base_uart.tx.signal,
                 x.i2c[0].sda.signal,
                 x.pwm[6].A.signal,
                 x.gpio[28].signal,
@@ -389,7 +389,7 @@ class RP2040Pinmux(F.Pinmux):
             ],
             x.io[29]: [
                 x.spi[1].cs.signal,
-                x.uart[1].rx.signal,
+                x.uart[1].base_uart.rx.signal,
                 x.i2c[0].scl.signal,
                 x.pwm[6].B.signal,
                 x.gpio[29].signal,

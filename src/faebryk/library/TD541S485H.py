@@ -67,3 +67,7 @@ class TD541S485H(Module):
                 self.write_enable,
             ],
         )
+
+        # TODO: ugly
+        self.rs485.diff_pair.n.reference.connect(self.power_iso_out)
+        self.rs485.diff_pair.p.reference.connect(self.power_iso_out)

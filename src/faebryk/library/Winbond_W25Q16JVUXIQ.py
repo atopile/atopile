@@ -11,12 +11,9 @@ from faebryk.libs.units import P  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
+class Winbond_W25Q16JVUXIQ(F.SPIFlash):
     """
-    TODO: Docstring describing your module
-
-    128Mbit SOIC-8-208mil
-    NOR FLASH ROHS
+    16Mbit USON-8-EP(2x3) NOR FLASH ROHS
     """
 
     # ----------------------------------------
@@ -26,32 +23,28 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C97521"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
-        F.has_designator_prefix.Prefix.U
-    )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
         {
-            DescriptiveProperties.manufacturer: "Winbond Elec",
-            DescriptiveProperties.partno: "W25Q128JVSIQ",
+            DescriptiveProperties.manufacturer: "Winbond",
+            DescriptiveProperties.partno: "W25Q16JVUXIQ",
         }
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1811142111_Winbond-Elec-W25Q128JVSIQ_C97521.pdf"
+        "https://www.lcsc.com/datasheet/lcsc_datasheet_2205122030_Winbond-Elec-W25Q16JVUXIQ_C2843335.pdf"
     )
 
     @L.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.qspi.chip_select.signal: ["CS#"],
-                self.qspi.data[0].signal: ["DO"],
-                self.qspi.data[2].signal: ["IO2"],
-                self.power.lv: ["GND"],
-                self.qspi.data[1].signal: ["DI"],
                 self.qspi.clock.signal: ["CLK"],
-                self.qspi.data[3].signal: ["IO3"],
+                self.qspi.chip_select.signal: ["CS#"],
+                self.qspi.data[0].signal: ["DI(IO0)"],
+                self.qspi.data[1].signal: ["DO(IO1)"],
+                self.power.lv: ["GND", "EP"],
+                self.qspi.data[3].signal: ["HOLD#orRESET#(IO3)"],
                 self.power.hv: ["VCC"],
+                self.qspi.data[2].signal: ["WP#(IO2)"],
             },
             accept_prefix=False,
             case_sensitive=False,
@@ -69,4 +62,6 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        pass
+        self.memory_size.merge(F.Range.upper_bound(16 * P.Mbit))
+
+        self.power.voltage.merge(F.Range(2.7 * P.V, 3.6 * P.V))

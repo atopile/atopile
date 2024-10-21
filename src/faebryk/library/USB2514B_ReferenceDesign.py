@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
+from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
@@ -21,6 +22,42 @@ class USB2514B_ReferenceDesign(Module):
     -
     """
 
+    class PowerSwitchedUSB2_0(Module):
+        """
+        Power switched USB2_0 interface.
+        """
+
+        power_distribution_switch: F.Diodes_Incorporated_AP2552W6_7
+        usb_dfp_power_indicator: F.PoweredLED
+
+        power_in: F.ElectricPower
+        power_out: F.ElectricPower
+        usb_ufp_d: F.USB2_0_IF.Data
+        usb_dfp_d: F.USB2_0_IF.Data
+
+        @L.rt_field
+        def can_bridge(self):
+            return F.can_bridge_defined(self.usb_ufp_d, self.usb_dfp_d)
+
+        def __preinit__(self):
+            # ----------------------------------------
+            #              parametrization
+            # ----------------------------------------
+            self.usb_dfp_power_indicator.led.color.merge(F.LED.Color.YELLOW)
+            self.usb_dfp_power_indicator.led.brightness.merge(
+                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+            )
+            self.power_distribution_switch.set_current_limit(
+                F.Range.from_center_rel(520 * P.mA, 0.01)
+            )
+
+            # ----------------------------------------
+            #              connections
+            # ----------------------------------------
+            self.power_in.connect_via(self.power_distribution_switch, self.power_out)
+            self.power_out.connect(self.usb_dfp_power_indicator.power)
+            self.usb_ufp_d.connect(self.usb_dfp_d)
+
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
@@ -29,8 +66,7 @@ class USB2514B_ReferenceDesign(Module):
     ldo_3v3: F.LDO
     suspend_indicator = L.f_field(F.LEDIndicator)(use_mosfet=False)
     power_3v3_indicator: F.PoweredLED
-    power_distribution_switch = L.list_field(4, F.Diodes_Incorporated_AP2552W6_7)
-    usb_dfp_power_indicator = L.list_field(4, F.PoweredLED)
+    switched_usb_dfp = L.list_field(4, PowerSwitchedUSB2_0)
     bias_resistor: F.Resistor
     crystal_oscillator: F.Crystal_Oscillator
 
@@ -50,11 +86,64 @@ class USB2514B_ReferenceDesign(Module):
         L = F.has_pcb_position.layer_type
         LVL = LayoutTypeHierarchy.Level
 
-        # TODO:
         layouts = [
-            LVL(mod_type=F.USB2514B, layout=LayoutAbsolute(Point((0, 0, 0, L.NONE)))),
-            LVL(
-                mod_type=F.PoweredLED, layout=LayoutAbsolute(Point((2.50, 180, L.NONE)))
+            LVL(  # USB2514B
+                mod_type=self.PowerSwitchedUSB2_0,
+                layout=LayoutExtrude(base=Point((11, -9, 0, L.NONE)), vector=(0, 6, 0)),
+                children_layout=LayoutTypeHierarchy(
+                    layouts=[
+                        LVL(  # Diodes Incorporated AP2552W6_7
+                            mod_type=F.Diodes_Incorporated_AP2552W6_7,
+                            layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
+                        ),
+                        LVL(  # PoweredLED
+                            mod_type=F.PoweredLED,
+                            layout=LayoutAbsolute(Point((0, -2.75, 180, L.NONE))),
+                        ),
+                    ]
+                ),
+            ),
+            LVL(  # PoweredLED
+                mod_type=type(self.power_3v3_indicator),
+                layout=LayoutAbsolute(Point((5.5, 6, 180, L.NONE))),
+            ),
+            LVL(  # ResistorVoltageDivider
+                mod_type=type(self.vbus_voltage_divider),
+                layout=LayoutAbsolute(Point((-10, 0, 0, L.NONE))),
+            ),
+            LVL(  # Resistor
+                mod_type=type(self.bias_resistor),
+                layout=LayoutAbsolute(Point((-4.5, 3, 270, L.NONE))),
+            ),
+            LVL(  # LDO
+                mod_type=F.LDO,
+                layout=LayoutAbsolute(Point((1.5, 7, 270, L.NONE))),
+            ),
+            LVL(  # Crystal Oscillator
+                mod_type=F.Crystal_Oscillator,
+                layout=LayoutAbsolute(Point((-7.5, 0, 270, L.NONE))),
+                children_layout=LayoutTypeHierarchy(
+                    layouts=[
+                        LVL(
+                            mod_type=F.Crystal,
+                            layout=LayoutAbsolute(
+                                Point((0, 0, 0, L.NONE)),
+                            ),
+                        ),
+                        LVL(
+                            mod_type=F.Capacitor,
+                            layout=LayoutExtrude(
+                                base=Point((2.5, 0, 270, L.NONE)),
+                                vector=(0, 5, 180),
+                                dynamic_rotation=True,
+                                reverse_order=True,
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+            LVL(  # USB2514B
+                mod_type=F.USB2514B, layout=LayoutAbsolute(Point((0, 0, 0, L.NONE)))
             ),
         ]
 
@@ -94,6 +183,9 @@ class USB2514B_ReferenceDesign(Module):
             F.Range.upper_bound(50 * P.ppm)
         )
 
+        # TODO: ugly
+        self.crystal_oscillator.current_limiting_resistor.resistance.merge(0 * P.ohm)
+
         # usb transceiver bias resistor
         self.bias_resistor.resistance.merge(F.Range.from_center_rel(12 * P.kohm, 0.01))
 
@@ -104,6 +196,12 @@ class USB2514B_ReferenceDesign(Module):
             )
 
         self.ldo_3v3.output_voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
+        self.ldo_3v3.power_in.decoupled.decouple().capacitance.merge(
+            F.Range.from_center_rel(100 * P.nF, 0.1)
+        )
+        self.ldo_3v3.power_out.decoupled.decouple().capacitance.merge(
+            F.Range.from_center_rel(100 * P.nF, 0.1)
+        )
 
         # ----------------------------------------
         #              connections
@@ -121,22 +219,19 @@ class USB2514B_ReferenceDesign(Module):
         self.crystal_oscillator.gnd.connect(gnd)
 
         for i, dfp in enumerate(self.usb_dfp):
-            vbus.connect_via(self.power_distribution_switch[i], dfp.usb_if.buspower)
-            dfp.usb_if.d.connect(self.hub_controller.configurable_downstream_usb[i].usb)
-            # TODO: connect hub controller overcurrent and power control signals
-            self.power_distribution_switch[i].enable.connect(
+            # USB data
+            self.hub_controller.configurable_downstream_usb[i].usb.connect_via(
+                self.switched_usb_dfp[i], dfp.usb_if.d
+            )
+            # power
+            vbus.connect(self.switched_usb_dfp[i].power_in)
+            dfp.usb_if.buspower.connect(self.switched_usb_dfp[i].power_out)
+            # hub controller overcurrent and power control signals
+            self.switched_usb_dfp[i].power_distribution_switch.enable.connect(
                 self.hub_controller.configurable_downstream_usb[i].usb_power_enable
             )
-            self.power_distribution_switch[i].fault.connect(
+            self.switched_usb_dfp[i].power_distribution_switch.fault.connect(
                 self.hub_controller.configurable_downstream_usb[i].over_current_sense
-            )
-            dfp.usb_if.buspower.connect(self.usb_dfp_power_indicator[i].power)
-            self.usb_dfp_power_indicator[i].led.color.merge(F.LED.Color.YELLOW)
-            self.usb_dfp_power_indicator[i].led.brightness.merge(
-                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
-            )
-            self.power_distribution_switch[i].set_current_limit(
-                F.Range.from_center_rel(520 * P.mA, 0.01)
             )
 
         # Bias resistor

@@ -27,64 +27,17 @@ class RS485_Bus_Protection(Module):
     based on: https://www.mornsun-power.com/public/uploads/pdf/TD(H)541S485H.pdf
     """
 
-    class CompositeTVS(Module):
-        """
-        Wrapper around a set of diodes protecting against transient voltage spikes.
-        """
-
-        anode: F.Electrical
-        cathode: F.Electrical
-
-        clamping_diodes = L.list_field(2, F.Diode)
-        tvs: F.TVS
-
-        @L.rt_field
-        def can_bridge(self):
-            return F.can_bridge_defined(self.anode, self.cathode)
-
-        def __preinit__(self):
-            # ----------------------------------------
-            #            parametrization
-            # ----------------------------------------
-            self.tvs.reverse_working_voltage.merge(
-                F.Range.from_center_rel(8.5 * P.V, 0.05)
-            )
-            # self.tvs.max_current.merge(F.Range.from_center_rel(41.7*P.A, 0.05))
-            # self.tvs.forward_voltage.merge(F.Range(9.44*P.V, 10.40*P.V))
-
-            for diode in self.clamping_diodes:
-                diode.forward_voltage.merge(F.Range.from_center_rel(1.1 * P.V, 0.05))
-                diode.max_current.merge(F.Range.from_center_rel(1 * P.A, 0.05))
-                diode.reverse_working_voltage.merge(
-                    F.Range.from_center_rel(1 * P.kV, 0.05)
-                )
-
-            # ----------------------------------------
-            #               Connections
-            # ----------------------------------------
-            self.anode.connect_via(
-                [
-                    self.tvs,
-                    self.clamping_diodes[0],
-                ],
-                self.cathode,
-            )
-            self.clamping_diodes[0].cathode.connect_via(
-                self.clamping_diodes[1],
-                self.clamping_diodes[0].anode,
-            )
-
     def __init__(self, termination: bool = True, polarization: bool = True) -> None:
         super().__init__()
         self._termination = termination
         self._polarization = polarization
 
     current_limmiter_resistors = L.list_field(2, F.Resistor)
-    common_mode_filter: F.Common_Mode_Filter
+    gdt: F.GDT
+    rs485_tvs: F.ElecSuper_PSM712_ES
     gnd_couple_resistor: F.Resistor
     gnd_couple_capacitor: F.Capacitor
-    gdt: F.GDT
-    composite_tvs: CompositeTVS
+    common_mode_filter: F.Common_Mode_Filter
 
     power: F.ElectricPower
     rs485_dfp: F.RS485
@@ -97,54 +50,48 @@ class RS485_Bus_Protection(Module):
         Point = F.has_pcb_position.Point
         L = F.has_pcb_position.layer_type
         LVL = LayoutTypeHierarchy.Level
+
         self.gnd_couple_resistor.add(
             F.has_pcb_layout_defined(
-                LayoutAbsolute(
-                    Point((-10, 0, 90, L.NONE)),
-                )
+                layout=LayoutAbsolute(Point((-10.25, -1.5, 90, L.NONE)))
             )
         )
+
         layouts = [
-            LVL(
+            LVL(  # GDT
                 mod_type=F.GDT,
-                layout=LayoutAbsolute(
-                    Point((0, 0, 0, L.NONE)),
-                ),
+                layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
             ),
-            LVL(
-                mod_type=F.Resistor,
+            LVL(  # gnd_couple_capacitor
+                mod_type=type(self.gnd_couple_capacitor),
+                layout=LayoutAbsolute(Point((-7, -1.5, 90, L.NONE))),
+            ),
+            LVL(  # current_limmiter_resistors
+                mod_type=(
+                    type(self.current_limmiter_resistors[0]),
+                    type(self.current_limmiter_resistors[1]),
+                ),
                 layout=LayoutExtrude(
-                    base=Point((-4, -7, 0, L.NONE)),
-                    vector=(4, 0, 90),
+                    base=Point((-3, 7.5, 0, L.NONE)),
+                    vector=(6, 0, 90),
+                    reverse_order=True,
                 ),
             ),
-            LVL(
-                mod_type=self.CompositeTVS,
-                layout=LayoutAbsolute(Point((0, -14.5, 0, L.NONE))),
-                children_layout=LayoutTypeHierarchy(
-                    layouts=[
-                        LVL(
-                            mod_type=F.Diode,
-                            layout=LayoutExtrude(
-                                base=Point((-3.5, 0, 90, L.NONE)),
-                                vector=(3.5, 0, 0),
-                            ),
-                        ),
-                    ]
-                ),
+            # TODO: fix
+            # LVL(  # gnd_couple_resistor
+            #    mod_type=type(self.gnd_couple_resistor),
+            #    layout=LayoutAbsolute(Point((-10.25, -1.5, 90, L.NONE))),
+            # ),
+            LVL(  # CompositeTVS
+                mod_type=type(self.rs485_tvs),
+                layout=LayoutAbsolute(Point((0, 13.5, 0, L.NONE))),
             ),
-            LVL(
+            LVL(  # CommonModeFilter
                 mod_type=F.Common_Mode_Filter,
                 layout=LayoutAbsolute(
-                    Point((0, -20, 90, L.NONE)),
+                    Point((0, 18.5, 90, L.NONE)),
                 ),
             ),
-            # LVL(
-            #    mod_type=F.Capacitor,
-            #    layout=LayoutAbsolute(
-            #        Point((10, 0, 90, L.NONE)),
-            #    ),
-            # ),
         ]
         return F.has_pcb_layout_defined(LayoutTypeHierarchy(layouts))
 
@@ -224,6 +171,4 @@ class RS485_Bus_Protection(Module):
         self.gdt.common.connect(self.earth)
 
         # tvs connections
-        self.common_mode_filter.coil_a.unnamed[1].connect_via(
-            self.composite_tvs, self.common_mode_filter.coil_b.unnamed[1]
-        )
+        self.rs485_dfp.connect(self.rs485_tvs.rs485)

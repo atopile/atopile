@@ -12,8 +12,8 @@ class MultiSPI(ModuleInterface):
         super().__init__()
         self._data_lane_count = data_lane_count
 
-    clk: F.ElectricLogic
-    cs: F.ElectricLogic
+    clock: F.ElectricLogic
+    chip_select: F.ElectricLogic
 
     @L.rt_field
     def data(self):

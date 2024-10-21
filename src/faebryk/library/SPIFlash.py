@@ -9,7 +9,7 @@ from faebryk.libs.units import Quantity
 
 class SPIFlash(Module):
     power: F.ElectricPower
-    spi = L.f_field(F.MultiSPI)(4)
+    qspi = L.f_field(F.MultiSPI)(4)
 
     memory_size: F.TBD[Quantity]
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

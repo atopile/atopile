@@ -19,8 +19,7 @@ class Relay(Module):
     switch_b_no: F.Electrical
     switch_b_common: F.Electrical
     switch_b_nc: F.Electrical
-    coil_p: F.Electrical
-    coil_n: F.Electrical
+    coil_power: F.ElectricPower
 
     coil_rated_voltage: F.TBD[Quantity]
     coil_rated_current: F.TBD[Quantity]

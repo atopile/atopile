@@ -154,8 +154,8 @@ class RP2040_ReferenceDesign(Module):
         power_3v3.connect_via(self.rp2040.core_regulator, self.rp2040.power_core)
 
         #
-        self.flash.spi.connect(self.rp2040.qspi)
-        self.flash.spi.cs.connect(self.boot_selector.logic_out)
+        self.flash.qspi.connect(self.rp2040.qspi)
+        self.flash.qspi.chip_select.connect(self.boot_selector.logic_out)
 
         terminated_usb.connect(self.rp2040.usb)
 

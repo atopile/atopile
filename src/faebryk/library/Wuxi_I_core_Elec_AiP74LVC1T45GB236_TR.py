@@ -22,7 +22,6 @@ class Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR(Module):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    # TODO: Change auto-generated interface types to actual high level types
     direction: F.ElectricLogic
     port_a: F.ElectricLogic
     power_a: F.ElectricPower
@@ -44,6 +43,14 @@ class Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR(Module):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2209151800_Wuxi-I-core-Elec-AiP74LVC1T45GB236-TR_C5162251.pdf"
     )
+
+    @L.rt_field
+    def can_bridge(self):
+        return F.can_bridge_defined(self.port_a, self.port_b)
+
+    @L.rt_field
+    def decoupled(self):
+        return F.can_be_decoupled_rails(self.power_a, self.power_b)
 
     @L.rt_field
     def pin_association_heuristic(self):
@@ -77,3 +84,10 @@ class Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR(Module):
         # ------------------------------------
         self.power_a.voltage.merge(F.Range(1.2 * P.V, 5.5 * P.V))
         self.power_b.voltage.merge(F.Range(1.2 * P.V, 5.5 * P.V))
+
+        self.power_a.decoupled.decouple().capacitance.merge(
+            F.Range.from_center(100 * P.nF, 10 * P.nF)
+        )
+        self.power_b.decoupled.decouple().capacitance.merge(
+            F.Range.from_center(100 * P.nF, 10 * P.nF)
+        )

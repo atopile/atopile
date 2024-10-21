@@ -21,6 +21,10 @@ class SWDConnector(Module):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
+    datasheet = L.f_field(F.has_datasheet_defined)(
+        "https://developer.arm.com/documentation/101636/0100/Debug-and-Trace/JTAG-SWD-Interface"  # noqa E501
+    )
+
     def __preinit__(self):
         # ------------------------------------
         #           connections

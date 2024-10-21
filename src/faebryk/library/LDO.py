@@ -55,6 +55,10 @@ class LDO(Module):
         )
 
     @L.rt_field
+    def decoupled(self):
+        return F.can_be_decoupled_rails(self.power_in, self.power_out)
+
+    @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.power_in, self.power_out)
 
