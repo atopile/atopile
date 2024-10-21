@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 
-from faebryk.core.solver import DefaultSolver
 from faebryk.libs.library import L
-from faebryk.libs.sets import PlainSet
+from faebryk.libs.test.solver import solve_and_test
 
 
 def test_fused_power():
@@ -22,16 +21,9 @@ def test_fused_power():
 
     fuse = next(iter(power_in_fused.get_children(direct_only=False, types=F.Fuse)))
 
-    fuse.trip_current.operation_is_subset(
-        L.Range.from_center_rel(500 * P.mA, 0.1)
-    ).inspect_add_on_final(lambda x: x.inspect_known_values() == PlainSet(True))
-    power_out.voltage.operation_is_subset(10 * P.V).inspect_add_on_final(
-        lambda x: x.inspect_known_values() == PlainSet(True)
+    solve_and_test(
+        power_in,
+        fuse.trip_current.operation_is_subset(L.Range.from_center_rel(500 * P.mA, 0.1)),
+        power_out.voltage.operation_is_subset(10 * P.V),
+        power_out.max_current.operation_is_le(500 * P.mA * 0.9),
     )
-    power_out.max_current.operation_is_le(500 * P.mA * 0.9).inspect_add_on_final(
-        lambda x: x.inspect_known_values() == PlainSet(True)
-    )
-
-    graph = power_in.get_graph()
-    solver = DefaultSolver()
-    solver.finalize(graph)

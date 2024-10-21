@@ -1,10 +1,20 @@
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from faebryk.core.graph import Graph
-from faebryk.core.parameter import Expression, Parameter, Predicate
+from faebryk.core.parameter import Expression, Parameter, ParameterOperatable, Predicate
 
 
 class Solver(Protocol):
+    # TODO booleanlike is very permissive
+    type PredicateWithInfo[ArgType] = tuple[ParameterOperatable.BooleanLike, ArgType]
+
+    @dataclass
+    class SolveResult[ArgType]:
+        true_predicates: list["Solver.PredicateWithInfo[ArgType]"]
+        false_predicates: list["Solver.PredicateWithInfo[ArgType]"]
+        unknown_predicates: list["Solver.PredicateWithInfo[ArgType]"]
+
     # timeout per solve call in milliseconds
     timeout: int
     # threads: int
@@ -36,16 +46,14 @@ class Solver(Protocol):
     # - the first list contains the predicates that were actually solved, i.e. they are true/false
     # - the second list contains the expressions that remain unknown
     # - the third list contains the parameters that have an empty solution set
-    def assert_any_predicate(
+    def assert_any_predicate[ArgType](
         self,
         G: Graph,
-        predicates: list[tuple[Predicate, Any]],
+        predicates: list["Solver.PredicateWithInfo[ArgType]"],
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
         constrain_solved: bool = True,
-    ) -> tuple[
-        list[tuple[Predicate, Any]], list[tuple[Predicate, Any]], list[Parameter]
-    ]: ...
+    ) -> SolveResult[ArgType]: ...
 
     # run deferred work
     def finalize(self, G: Graph) -> None: ...
@@ -64,16 +72,14 @@ class DefaultSolver(Solver):
     ):
         raise NotImplementedError()
 
-    def assert_any_predicate(
+    def assert_any_predicate[ArgType](
         self,
         G: Graph,
-        predicates: list[Predicate],
+        predicates: list["Solver.PredicateWithInfo[ArgType]"],
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
         constrain_solved: bool = True,
-    ) -> tuple[
-        list[tuple[Predicate, Any]], list[tuple[Predicate, Any]], list[Parameter]
-    ]:
+    ) -> Solver.SolveResult[ArgType]:
         raise NotImplementedError()
 
     def finalize(self, G: Graph) -> None:

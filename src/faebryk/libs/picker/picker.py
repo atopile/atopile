@@ -12,11 +12,12 @@ from typing import Callable, Iterable
 
 from rich.progress import Progress
 
+from faebryk.core.solver import Solver
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.parameter import Parameter, ParameterOperatable
-from faebryk.libs.util import flatten, not_none
+from faebryk.core.parameter import Parameter, ParameterOperatable, Predicate
+from faebryk.libs.util import cast_assert, flatten, not_none
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,11 @@ class DescriptiveProperties(StrEnum):
 class PickerOption:
     part: Part
     params: dict[str, ParameterOperatable.NonParamSet] | None = None
+    """
+    Parameters that need to be matched for this option to be valid.
+
+    Assumes specified params are narrowest possible value for this part
+    """
     filter: Callable[[Module], bool] | None = None
     pinmap: dict[str, F.Electrical] | None = None
     info: dict[str | DescriptiveProperties, str] | None = None
@@ -136,7 +142,9 @@ class has_part_picked_remove(has_part_picked.impl()):
         return self.part
 
 
-def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
+def pick_module_by_params(
+    module: Module, solver: Solver, options: Iterable[PickerOption]
+):
     if module.has_trait(has_part_picked):
         logger.debug(f"Ignoring already picked module: {module}")
         return
@@ -147,16 +155,18 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
     }
 
     filtered_options = [o for o in options if not o.filter or o.filter(module)]
-    predicates = {}
+    predicates: dict[PickerOption, ParameterOperatable.BooleanLike] = {}
     for o in filtered_options:
-        predicate_list = []
+        predicate_list: list[Predicate] = []
 
         for k, v in (o.params or {}).items():
             if not k.startswith("_"):
                 param = params[k]
                 predicate_list.append(param.operation_is_superset(v))
 
+        # No predicates, thus always valid option
         if len(predicate_list) == 0:
+            predicates[o] = True
             continue
 
         anded = predicate_list[0]
@@ -168,15 +178,14 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
     if len(predicates) == 0:
         raise PickErrorParams(module, list(options))
 
-    true_predicates, unknown_predicates, empty_params = solver.assert_any_predicate(
+    solve_result = solver.assert_any_predicate(
         module.get_graph(), [(p, k) for k, p in predicates.items()]
     )
 
     # TODO handle failure parameters
 
-    # do we expect more than one?
-    # if so we can add a heuristic here
-    option = true_predicates[0][1]
+    # pick first valid option
+    _, option = next(iter(solve_result.true_predicates))
 
     if option.pinmap:
         module.add(F.can_attach_to_footprint_via_pinmap(option.pinmap))
@@ -184,7 +193,8 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
     option.part.supplier.attach(module, option)
     module.add(has_part_picked_defined(option.part))
 
-    # Merge params from footprint option
+    # Shrink solution space that we need to search for
+    # by hinting that option params are biggest possible set we might want to support
     for k, v in (option.params or {}).items():
         if k not in params:
             continue
