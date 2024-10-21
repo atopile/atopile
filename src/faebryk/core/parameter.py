@@ -8,7 +8,6 @@ from typing import Any, Callable, Self
 
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.link import LinkParent
 from faebryk.core.node import Node, f_field
 from faebryk.libs.sets import Empty, P_Set, Range, Ranges
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
@@ -289,9 +288,14 @@ class Expression(Node, ParameterOperatable):
     operates_on: GraphInterface
     operated_on: GraphInterface
 
-    def __init__(self, *operatable_operands: "Parameter | Expression"):
+    def __init__(self, *operands: ParameterOperatable.All):
         super().__init__()
-        for op in operatable_operands:
+        self.operatable_operands = {
+            op for op in operands if isinstance(op, (Parameter, Expression))
+        }
+
+    def __preinit__(self):
+        for op in self.operatable_operands:
             self.operates_on.connect(op.operated_on)
 
 
@@ -303,13 +307,14 @@ class ConstrainableExpression(Expression, Constrainable):
 @abstract
 class Arithmetic(ConstrainableExpression, HasUnit):
     def __init__(self, *operands: ParameterOperatable.NumberLike):
+        super().__init__(*operands)
         types = [int, float, Quantity, Parameter, Arithmetic]
         if any(type(op) not in types for op in operands):
             raise ValueError(
                 "operands must be int, float, Quantity, Parameter, or Expression"
             )
         if any(
-            param.domain not in [Numbers, ESeries]
+            not isinstance(param.domain, (Numbers, ESeries))
             for param in operands
             if isinstance(param, Parameter)
         ):
@@ -420,6 +425,7 @@ class Ceil(Arithmetic):
 
 class Logic(ConstrainableExpression):
     def __init__(self, *operands):
+        super().__init__(*operands)
         types = [bool, Parameter, Logic, Predicate]
         if any(type(op) not in types for op in operands):
             raise ValueError("operands must be bool, Parameter, Logic, or Predicate")
@@ -535,6 +541,7 @@ class Predicate(Expression):
     constrains: GraphInterface
 
     def __init__(self, constraint: bool, left, right):
+        super().__init__(left, right)
         self._constraint = constraint
         l_units = HasUnit.get_units_or_dimensionless(left)
         r_units = HasUnit.get_units_or_dimensionless(right)
@@ -555,10 +562,20 @@ class Predicate(Expression):
 class NumericPredicate(Predicate):
     def __init__(self, constraint: bool, left, right):
         super().__init__(constraint, left, right)
-        if isinstance(left, Parameter) and left.domain not in [Numbers, ESeries]:
-            raise ValueError("left operand must have domain Numbers or ESeries")
-        if isinstance(right, Parameter) and right.domain not in [Numbers, ESeries]:
-            raise ValueError("right operand must have domain Numbers or ESeries")
+        if isinstance(left, Parameter) and not isinstance(
+            left.domain, (Numbers, ESeries)
+        ):
+            raise ValueError(
+                "left operand must have domain Numbers or ESeries,"
+                f" not {type(left.domain)}"
+            )
+        if isinstance(right, Parameter) and not isinstance(
+            right.domain, (Numbers, ESeries)
+        ):
+            raise ValueError(
+                "right operand must have domain Numbers or ESeries,"
+                f" not {type(right.domain)}"
+            )
 
 
 class LessThan(NumericPredicate):

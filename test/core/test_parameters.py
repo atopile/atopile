@@ -3,6 +3,7 @@
 
 import logging
 
+from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
 from faebryk.libs.sets import Range
@@ -18,3 +19,35 @@ def test_new_definitions():
         soft_set=Range(1 * P.ohm, 10 * P.Mohm),
         likely_constrained=True,
     )
+
+
+def test_visualize():
+    """
+    Creates webserver that opens automatically if run in jupyter notebook
+    """
+    from faebryk.exporters.visualize.interactive_graph import interactive_graph
+
+    class App(Node):
+        p1 = L.f_field(Parameter)(units=P.ohm)
+
+    app = App()
+
+    p2 = Parameter(units=P.ohm)
+
+    app.p1.constrain_ge(p2 * 5)
+
+    G = app.get_graph()
+    interactive_graph(G)
+
+
+# TODO remove
+if __name__ == "__main__":
+    # if run in jupyter notebook
+    import sys
+
+    if "ipykernel" in sys.modules:
+        test_visualize()
+    else:
+        import typer
+
+        typer.run(test_visualize)
