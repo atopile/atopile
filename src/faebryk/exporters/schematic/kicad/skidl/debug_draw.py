@@ -7,9 +7,11 @@
 Drawing routines used for debugging place & route.
 """
 
+import contextlib
+import multiprocessing
 from collections import defaultdict
 from random import randint
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator
 
 from .geometry import BBox, Point, Segment, Tx, Vector
 
@@ -283,24 +285,20 @@ def draw_routing(
         options (dict, optional): Dictionary of options and values. Defaults to {}.
     """
 
-    # Initialize drawing area.
-    draw_scr, draw_tx, draw_font = draw_start(bbox)
+    with draw_context(bbox) as (draw_scr, draw_tx, draw_font):
+        # Draw parts.
+        for part in parts:
+            draw_part(part, draw_scr, draw_tx, draw_font)
 
-    # Draw parts.
-    for part in parts:
-        draw_part(part, draw_scr, draw_tx, draw_font)
+        # Draw wiring.
+        for wires in node.wires.values():
+            for wire in wires:
+                draw_seg(wire, draw_scr, draw_tx, (255, 0, 255), 3, dot_radius=10)
 
-    # Draw wiring.
-    for wires in node.wires.values():
-        for wire in wires:
-            draw_seg(wire, draw_scr, draw_tx, (255, 0, 255), 3, dot_radius=10)
-
-    # Draw other stuff (global routes, switchbox routes, etc.) that has a draw() method.
-    for stuff in other_stuff:
-        for obj in stuff:
-            obj.draw(draw_scr, draw_tx, draw_font, **options)
-
-    draw_end()
+        # Draw other stuff (global routes, switchbox routes, etc.) that has a draw() method.
+        for stuff in other_stuff:
+            for obj in stuff:
+                obj.draw(draw_scr, draw_tx, draw_font, **options)
 
 
 def draw_clear(
@@ -392,9 +390,35 @@ def draw_pause():
                 running = False
 
 
-def draw_end():
-    """Display drawing and wait for user to close PyGame window."""
+@contextlib.contextmanager
+def draw_context(bbox: BBox) -> Generator[tuple["pygame.Surface", Tx, "pygame.font.Font"], None, None]:
+    """Context manager for drawing."""
     import pygame
 
-    draw_pause()
-    pygame.quit()
+    try:
+        yield draw_start(bbox)
+    finally:
+        # FIXME: this doesn't work properly
+        # It seems to take a split second longer to actually quit,
+        # which means exceptions raised here cause the debug window to hang
+        pygame.quit()
+
+
+@contextlib.contextmanager
+def optional_draw_context(
+    options: dict,
+    predicate_key: str,
+    bbox: BBox,
+    pause_on_exit: bool = True,
+) -> Generator[tuple["pygame.Surface", Tx, "pygame.font.Font"], None, None]:
+    """Context manager for optional drawing."""
+    if options.get(predicate_key):
+        with draw_context(bbox) as (draw_scr, draw_tx, draw_font):
+            options.update(
+                {"draw_scr": draw_scr, "draw_tx": draw_tx, "draw_font": draw_font}
+            )
+            yield
+            if pause_on_exit:
+                draw_pause()
+    else:
+        yield None, None, None
