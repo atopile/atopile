@@ -14,6 +14,7 @@ from faebryk.libs.kicad.fileformats import (
 )
 from faebryk.libs.kicad.fileformats_common import C_effects, C_wh
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
+from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import get_parent
 from faebryk.libs.util import (
     KeyErrorNotFound,
@@ -50,9 +51,6 @@ def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
         dir_path = Path(lib.uri.replace("${KIPRJMOD}", str(fp_lib_path.parent)))
     except KeyErrorNotFound:
         # non-local lib, search in kicad global lib
-        # TODO don't hardcode path
-        GLOBAL_FP_LIB_PATH = Path("~/.config/kicad/8.0/fp-lib-table").expanduser()
-        GLOBAL_FP_DIR_PATH = Path("/usr/share/kicad/footprints")
         global_fp_lib_table = C_kicad_fp_lib_table_file.loads(GLOBAL_FP_LIB_PATH)
         lib = find(global_fp_lib_table.fp_lib_table.libs, lambda x: x.name == lib_id)
         dir_path = Path(

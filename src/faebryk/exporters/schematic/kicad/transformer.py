@@ -36,6 +36,7 @@ from faebryk.libs.kicad.fileformats_sch import (
     C_rect,
     C_stroke,
 )
+from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     cast_assert,
@@ -201,11 +202,6 @@ class SchTransformer:
             fp_lib_table_paths = [Path(p) for p in fp_lib_tables]
 
         # non-local lib, search in kicad global lib
-        # TODO don't hardcode path
-        # TODO: doesn't work on OSx. Make them at least search paths
-        # /Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols/
-        GLOBAL_FP_LIB_PATH = Path("~/.config/kicad/8.0/fp-lib-table").expanduser()
-        GLOBAL_FP_DIR_PATH = Path("/usr/share/kicad/footprints")
         if load_globals:
             fp_lib_table_paths += [GLOBAL_FP_LIB_PATH]
 
