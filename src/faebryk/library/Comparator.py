@@ -6,7 +6,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P, quantity
 
 
 class Comparator(Module):
@@ -18,7 +18,7 @@ class Comparator(Module):
     common_mode_rejection_ratio = L.p_field(
         units=P.dB,
         likely_constrained=True,
-        soft_set=L.Range(Quantity(60, P.dB), Quantity(120, P.dB)),
+        soft_set=L.Range(quantity(60, P.dB), quantity(120, P.dB)),
         tolerance_guess=10 * P.percent,
     )
     input_bias_current = L.p_field(

@@ -17,6 +17,10 @@ Quantity = P.Quantity
 dimensionless = cast_assert(Unit, P.dimensionless)
 
 
+def quantity(value: float | int, unit: UnitsContainer | Unit | Quantity) -> Quantity:
+    return P.Quantity(value, unit)
+
+
 class HasUnit:
     units: Unit
 

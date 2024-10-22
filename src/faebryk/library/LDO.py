@@ -6,7 +6,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P, quantity
 from faebryk.libs.util import assert_once, join_if_non_empty
 
 
@@ -46,7 +46,7 @@ class LDO(Module):
     psrr = L.p_field(
         units=P.dB,
         likely_constrained=True,
-        soft_set=L.Range(Quantity(1, P.dB), Quantity(100, P.dB)),
+        soft_set=L.Range(quantity(1, P.dB), quantity(100, P.dB)),
     )
     output_polarity = L.p_field(
         domain=L.Domains.ENUM(OutputPolarity),
