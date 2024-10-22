@@ -675,7 +675,7 @@ def gen_schematic(
     flatness: float = 0.0,
     retries: int = 2,
     **options: Unpack[Options],
-):
+) -> SchNode:
     """Create a schematic file from a Circuit object.
 
     Args:
@@ -715,27 +715,18 @@ def gen_schematic(
 
         except PlacementFailure:
             # Placement failed, so try again.
+            finalize_parts_and_nets(circuit, **options)
             continue
 
         except RoutingFailure:
             # Routing failed, so expand routing area ...
             expansion_factor *= 1.5  # HACK: Ad-hoc increase of expansion factor.
             # ... and try again.
+            finalize_parts_and_nets(circuit, **options)
             continue
 
-        finally:
-            # Clean up.
-            finalize_parts_and_nets(circuit, **options)
-
-        # Generate EESCHEMA code for the schematic.
-        # TODO: extract into for generating schematic objects
-        # node_to_eeschema(node)
-
         # Place & route was successful if we got here, so exit.
-        return
-
-    # Clean-up after failure.
-    finalize_parts_and_nets(circuit, **options)
+        return node
 
     # Exited the loop without successful routing.
     raise (RoutingFailure)

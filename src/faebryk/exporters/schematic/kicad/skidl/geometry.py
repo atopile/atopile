@@ -108,12 +108,6 @@ class Tx:
         """Return the (dx, dy) translation as a Point."""
         return Point(self.dx, self.dy)
 
-    # This setter doesn't work in Python 2.7.18.
-    # @origin.setter
-    # def origin(self, pt):
-    #     """Set the (dx, dy) translation from an (x,y) Point."""
-    #     self.dx, self.dy = pt.x, pt.y
-
     @property
     def scale(self) -> float:
         """Return the scaling factor."""

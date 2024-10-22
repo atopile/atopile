@@ -241,8 +241,9 @@ class C_kicad_sch_file(SEXP_File):
         @dataclass
         class C_junction:
             at: C_xy
-            diameter: float
-            color: tuple[int, int, int, int]
+            diameter: float = 0  # 0 indicates default diameter
+            # (0,0,0,0) indicates KiCAD default color
+            color: tuple[int, int, int, int] = (0, 0, 0, 0)
             uuid: UUID = uuid_field()
 
         @dataclass

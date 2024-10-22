@@ -3,10 +3,11 @@
 
 import hashlib
 import logging
+import math
 import pprint
 from copy import deepcopy
 from functools import singledispatchmethod
-from itertools import chain, groupby
+from itertools import chain
 from os import PathLike
 from pathlib import Path
 from typing import Any, List, Protocol, Unpack
@@ -22,6 +23,8 @@ from faebryk.core.node import Node
 # import numpy as np
 # from shapely import Polygon
 from faebryk.exporters.pcb.kicad.transformer import is_marked
+from faebryk.exporters.schematic.kicad.skidl import gen_schematic as skidl_sch
+from faebryk.exporters.schematic.kicad.skidl import node as skidl_node
 from faebryk.exporters.schematic.kicad.skidl import shims
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.geometry.basic import Geometry
@@ -162,7 +165,9 @@ class Transformer:
 
         # Attach the pins on the symbol to the module interface
         for pin in sym_inst.pins:
-            f_symbol.pins[pin.name].add(Transformer.has_linked_sch_pins([pin], sym_inst))
+            f_symbol.pins[pin.name].add(
+                Transformer.has_linked_sch_pins([pin], sym_inst)
+            )
 
     # TODO: remove cleanup, it shouldn't really be required if we're marking propertys
     # def cleanup(self):
@@ -391,13 +396,26 @@ class Transformer:
                 )
             )
 
+    def insert_junction(
+        self,
+        coord: Geometry.Point2D,
+    ):
+        self.sch.junctions.append(
+            SCH.C_junction(
+                at=C_xy(coord[0], coord[1]),
+            )
+        )
+
     def insert_text(
         self,
         text: str,
         at: C_xyr,
-        font: Font,
+        font: Font | None = None,
         alignment: Alignment | None = None,
     ):
+        if font is None:
+            font = self.font
+
         self.sch.texts.append(
             SCH.C_text(
                 text=text,
@@ -405,6 +423,35 @@ class Transformer:
                 effects=C_effects(
                     font=font,
                     justify=alignment,
+                ),
+                uuid=self.gen_uuid(mark=True),
+            )
+        )
+
+    def insert_global_label(
+        self,
+        text: str,
+        shape: SCH.C_global_label.E_shape,
+        at: C_xyr,
+        font: Font | None = None,
+        alignment: Alignment | None = None,
+    ):
+        if font is None:
+            font = self.font
+
+        if alignment is None:
+            justifys = []
+        else:
+            justifys = [C_effects.C_justify(justifys=[alignment])]
+
+        self.sch.global_labels.append(
+            SCH.C_global_label(
+                shape=shape,
+                text=text,
+                at=at,
+                effects=C_effects(
+                    font=font,
+                    justifys=justifys,
                 ),
                 uuid=self.gen_uuid(mark=True),
             )
@@ -616,6 +663,7 @@ class Transformer:
 
     def _build_shim_circuit(self) -> shims.Circuit:
         """Does what it says on the tin."""
+        # TODO: add existing wire locations
         from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point
 
         # 1.1 create hollow circuits to append to
@@ -772,8 +820,8 @@ class Transformer:
                     shim_pin.fab_is_gnd = False
                     shim_pin.fab_is_pwr = False
 
-                shim_pin.x = lib_sch_pin.at.x
-                shim_pin.y = lib_sch_pin.at.y
+                shim_pin.x = lib_sch_pin.at.x * 39.3701
+                shim_pin.y = lib_sch_pin.at.y * 39.3701
                 shim_pin.fab_pin = fab_pin
                 shim_pin.sch_pin = sch_pin
 
@@ -843,6 +891,97 @@ class Transformer:
         circuit.audit()
         return circuit
 
+    def _apply_shim_sch_node(
+        self, node: skidl_node.SchNode, sheet_tx: skidl_node.Tx = skidl_node.Tx()
+    ):
+        from faebryk.exporters.schematic.kicad.skidl.geometry import (
+            Tx,
+            tx_rot_0,
+            tx_rot_90,
+            tx_rot_180,
+            tx_rot_270,
+        )
+
+        def get_common_rotation(part_tx: Tx) -> float | None:
+            def _check(tx: Tx) -> bool:
+                return (
+                    math.isclose(tx.a, part_tx.a / part_tx.scale)
+                    and math.isclose(tx.b, part_tx.b / part_tx.scale)
+                    and math.isclose(tx.c, part_tx.c / part_tx.scale)
+                    and math.isclose(tx.d, part_tx.d / part_tx.scale)
+                )
+
+            if _check(tx_rot_0):
+                return 0
+            elif _check(tx_rot_90):
+                return 90
+            elif _check(tx_rot_180):
+                return 180
+            elif _check(tx_rot_270):
+                return 270
+            return None
+
+        mils_to_mm = Tx(a=0.0254, b=0, c=0, d=0.0254, dx=0, dy=0)
+
+        # if node.flattened:
+        #     # Create the transformation matrix for the placement of the parts
+        #     # in the node.
+        #     tx = node.tx * sheet_tx * mils_to_mm
+        # else:
+        #     flattened_bbox = node.internal_bbox()
+        #     tx = skidl_sch.calc_sheet_tx(flattened_bbox) * mils_to_mm
+        tx = node.tx * mils_to_mm
+
+        # TODO: Put flattened node into heirarchical block
+
+        for part in node.parts:
+            ## 2 add global labels
+            part_tx = part.tx * tx
+            if isinstance(part, skidl_sch.NetTerminal):
+                assert isinstance(tx, skidl_node.Tx)
+                pin = part.pins[0]
+                pt = pin.pt * part_tx
+                rotation = {
+                    "R": 0,
+                    "D": 90,
+                    "L": 180,
+                    "U": 270,
+                }[skidl_sch.calc_pin_dir(pin)]
+                self.insert_global_label(
+                    pin.net.name,
+                    at=C_xyr(x=pt.x, y=pt.y, r=rotation),
+                    shape=SCH.C_global_label.E_shape.bidirectional,
+                )
+            else:
+                ## 3. modify parts
+                # unlike Skidl, we're working under the assumption that all the parts
+                # are already in the schematic, we just need to move them
+                part.sch_symbol.at.x = part_tx.origin.x
+                part.sch_symbol.at.y = part_tx.origin.y
+                part.sch_symbol.at.r = get_common_rotation(part_tx) or 0
+
+        # 4. draw wires and junctions
+        for _, wire in node.wires.items():
+            skidl_points = [p * tx for seg in wire for p in [seg.p1, seg.p2]]
+            points = [(p.x, p.y) for p in skidl_points]
+            self.insert_wire(points)
+
+        for _, junctions in node.junctions.items():
+            for junc in junctions:
+                pt = junc * tx
+                self.insert_junction((pt.x, pt.y))
+
+        # 5. TODO: pin labels for stubbed nets
+
+    def apply_shim_sch_node(self, circuit: skidl_node.SchNode):
+        def dfs(node: skidl_node.SchNode):
+            yield node
+            for child in node.children.values():
+                yield from dfs(child)
+
+        for node in dfs(circuit):
+            self._apply_shim_sch_node(node)
+
     def generate_schematic(self, **options: Unpack[shims.Options]):
         """Does what it says on the tin."""
         # 1. add missing symbols
@@ -854,6 +993,10 @@ class Transformer:
         # 3. run skidl schematic generation
         from faebryk.exporters.schematic.kicad.skidl.gen_schematic import gen_schematic
 
-        gen_schematic(circuit, ".", "test", **options)
+        sch = gen_schematic(circuit, ".", "test", **options)
 
         # 4. transform sch according to skidl
+        self.apply_shim_sch_node(sch)
+
+        # 5. save
+        return self.sch

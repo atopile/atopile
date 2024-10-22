@@ -47,7 +47,7 @@ class SchNode(Placer, Router):
         self.flattened = False
         self.parts: list["Part"] = []
         self.wires: dict[Net, list[Segment]] = defaultdict(list)
-        self.junctions = defaultdict(list)
+        self.junctions: dict[Net, list[Point]] = defaultdict(list)
         self.tx = Tx()
         self.bbox = BBox()
 

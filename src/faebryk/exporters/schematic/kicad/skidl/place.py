@@ -6,6 +6,7 @@
 Autoplacer for arranging symbols in a schematic.
 """
 
+import contextlib
 import functools
 import itertools
 import math
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING, Callable, Unpack
 
 from .constants import BLK_EXT_PAD, BLK_INT_PAD, GRID
 from .debug_draw import (
+    optional_draw_context,
     draw_pause,
     draw_placement,
     draw_redraw,
@@ -1278,40 +1280,30 @@ class Placer:
         # Randomly place connected parts.
         random_placement(parts)
 
-        if options.get("draw_placement"):
-            # Draw the placement for debug purposes.
-            bbox = get_enclosing_bbox(parts)
-            draw_scr, draw_tx, draw_font = draw_start(bbox)
-            options.update(
-                {"draw_scr": draw_scr, "draw_tx": draw_tx, "draw_font": draw_font}
+        bbox = get_enclosing_bbox(parts)
+        with optional_draw_context(options, "draw_placement", bbox):
+            if options.get("compress_before_place"):
+                central_placement(parts, **options)
+
+            # Do force-directed placement of the parts in the parts.
+
+            # Separate the NetTerminals from the other parts.
+            net_terminals = [part for part in parts if is_net_terminal(part)]
+            real_parts = [part for part in parts if not is_net_terminal(part)]
+
+            # Do the first trial placement.
+            evolve_placement([], real_parts, nets, total_part_force, **options)
+
+            if options.get("rotate_parts"):
+                # Adjust part orientations after first trial placement is done.
+                if adjust_orientations(real_parts, **options):
+                    # Some part orientations were changed, so re-do placement.
+                    evolve_placement([], real_parts, nets, total_part_force, **options)
+
+            # Place NetTerminals after all the other parts.
+            place_net_terminals(
+                net_terminals, real_parts, nets, total_part_force, **options
             )
-
-        if options.get("compress_before_place"):
-            central_placement(parts, **options)
-
-        # Do force-directed placement of the parts in the parts.
-
-        # Separate the NetTerminals from the other parts.
-        net_terminals = [part for part in parts if is_net_terminal(part)]
-        real_parts = [part for part in parts if not is_net_terminal(part)]
-
-        # Do the first trial placement.
-        evolve_placement([], real_parts, nets, total_part_force, **options)
-
-        if options.get("rotate_parts"):
-            # Adjust part orientations after first trial placement is done.
-            if adjust_orientations(real_parts, **options):
-                # Some part orientations were changed, so re-do placement.
-                evolve_placement([], real_parts, nets, total_part_force, **options)
-
-        # Place NetTerminals after all the other parts.
-        place_net_terminals(
-            net_terminals, real_parts, nets, total_part_force, **options
-        )
-
-        if options.get("draw_placement"):
-            # Pause to look at placement for debugging purposes.
-            draw_pause()
 
     def place_floating_parts(
         node: "SchNode", parts: list[Part], **options: Unpack[Options]
@@ -1337,44 +1329,36 @@ class Placer:
         # Randomly place the floating parts.
         random_placement(parts)
 
-        if options.get("draw_placement"):
-            # Compute the drawing area for the floating parts
-            bbox = get_enclosing_bbox(parts)
-            draw_scr, draw_tx, draw_font = draw_start(bbox)
-            options.update(
-                {"draw_scr": draw_scr, "draw_tx": draw_tx, "draw_font": draw_font}
+        bbox = get_enclosing_bbox(parts)
+        with optional_draw_context(options, "draw_placement", bbox):
+            # For non-connected parts, do placement based on their similarity to each other.
+            part_similarity = defaultdict(lambda: defaultdict(lambda: 0))
+            for part in parts:
+                for other_part in parts:
+                    # Don't compute similarity of a part to itself.
+                    if other_part is part:
+                        continue
+
+                    # HACK: Get similarity forces right-sized.
+                    part_similarity[part][other_part] = (
+                        part.similarity(other_part) / 100
+                    )
+                    # part_similarity[part][other_part] = 0.1
+
+                # Select the top-most pin in each part as the anchor point for force-directed placement.
+                # tx = part.tx
+                # part.anchor_pin = max(part.anchor_pins, key=lambda pin: (pin.place_pt * tx).y)
+
+            force_func = functools.partial(
+                total_similarity_force, similarity=part_similarity
             )
 
-        # For non-connected parts, do placement based on their similarity to each other.
-        part_similarity = defaultdict(lambda: defaultdict(lambda: 0))
-        for part in parts:
-            for other_part in parts:
-                # Don't compute similarity of a part to itself.
-                if other_part is part:
-                    continue
+            if options.get("compress_before_place"):
+                # Compress all floating parts together.
+                central_placement(parts, **options)
 
-                # HACK: Get similarity forces right-sized.
-                part_similarity[part][other_part] = part.similarity(other_part) / 100
-                # part_similarity[part][other_part] = 0.1
-
-            # Select the top-most pin in each part as the anchor point for force-directed placement.
-            # tx = part.tx
-            # part.anchor_pin = max(part.anchor_pins, key=lambda pin: (pin.place_pt * tx).y)
-
-        force_func = functools.partial(
-            total_similarity_force, similarity=part_similarity
-        )
-
-        if options.get("compress_before_place"):
-            # Compress all floating parts together.
-            central_placement(parts, **options)
-
-        # Do force-directed placement of the parts in the group.
-        evolve_placement([], parts, [], force_func, **options)
-
-        if options.get("draw_placement"):
-            # Pause to look at placement for debugging purposes.
-            draw_pause()
+            # Do force-directed placement of the parts in the group.
+            evolve_placement([], parts, [], force_func, **options)
 
     def place_blocks(
         node: "SchNode",
@@ -1489,33 +1473,24 @@ class Placer:
         # Start off with a random placement of part blocks.
         random_placement(part_blocks)
 
-        if options.get("draw_placement"):
-            # Setup to draw the part block placement for debug purposes.
-            bbox = get_enclosing_bbox(part_blocks)
-            draw_scr, draw_tx, draw_font = draw_start(bbox)
-            options.update(
-                {"draw_scr": draw_scr, "draw_tx": draw_tx, "draw_font": draw_font}
-            )
+        bbox = get_enclosing_bbox(part_blocks)
 
-        # Arrange the part blocks with similarity force-directed placement.
-        force_func = functools.partial(total_similarity_force, similarity=blk_attr)
-        evolve_placement([], part_blocks, [], force_func, **options)
+        with optional_draw_context(options, "draw_placement", bbox):
+            # Arrange the part blocks with similarity force-directed placement.
+            force_func = functools.partial(total_similarity_force, similarity=blk_attr)
+            evolve_placement([], part_blocks, [], force_func, **options)
 
-        if options.get("draw_placement"):
-            # Pause to look at placement for debugging purposes.
-            draw_pause()
-
-        # Apply the placement moves of the part blocks to their underlying sources.
-        for blk in part_blocks:
-            try:
-                # Update the Tx matrix of the source (usually a child node).
-                blk.src.tx = blk.tx
-            except AttributeError:
-                # The source doesn't have a Tx so it must be a collection of parts.
-                # Apply the block placement to the Tx of each part.
-                assert isinstance(blk.src, list)
-                for part in blk.src:
-                    part.tx *= blk.tx
+            # Apply the placement moves of the part blocks to their underlying sources.
+            for blk in part_blocks:
+                try:
+                    # Update the Tx matrix of the source (usually a child node).
+                    blk.src.tx = blk.tx
+                except AttributeError:
+                    # The source doesn't have a Tx so it must be a collection of parts.
+                    # Apply the block placement to the Tx of each part.
+                    assert isinstance(blk.src, list)
+                    for part in blk.src:
+                        part.tx *= blk.tx
 
     def get_attrs(node: "SchNode"):
         """Return dict of attribute sets for the parts, pins, and nets in a node."""

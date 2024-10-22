@@ -69,26 +69,29 @@ class Part:
     # A string of H, V, L, R operations that are applied in sequence left-to-right.
     symtx: str
     unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
+    bare_bbox: BBox
 
     # things we've added to make life easier
     sch_symbol: "fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance"
     fab_symbol: F.Symbol | None
-    bare_bbox: BBox
     _similarites: dict["Part", float]
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
-        audit_has(self, [
-            "hierarchy",
-            "pins",
-            "ref",
-            "symtx",
-            "unit",
-            "fab_symbol",
-            "sch_symbol",
-            "bare_bbox",
-            "_similarites",
-        ])
+        audit_has(
+            self,
+            [
+                "hierarchy",
+                "pins",
+                "ref",
+                "symtx",
+                "unit",
+                "fab_symbol",
+                "sch_symbol",
+                "bare_bbox",
+                "_similarites",
+            ],
+        )
 
         # don't audit pins, they're handled through nets instead
         for unit in self.unit.values():
@@ -100,7 +103,8 @@ class Part:
     delta_cost_tx: Tx  # transformation matrix associated with delta_cost
     delta_cost: float  # the largest decrease in cost and the associated orientation.
     force: Vector  # used for debugging
-    lbl_bbox: BBox
+    bbox: BBox
+    lbl_bbox: BBox  # The bbox and lbl_bbox are tied together
     left_track: "GlobalTrack"
     mv: Vector  # internal use
     # whether the part's orientation is locked, based on symtx or pin count
@@ -128,7 +132,7 @@ class Part:
 
     @property
     def draw(self):
-        # TODO:
+        """This was used in SKiDL to capture all the drawn elements in a design."""
         raise NotImplementedError
 
     def grab_pins(self) -> None:
@@ -190,22 +194,24 @@ class Pin:
 
     def audit(self) -> None:
         """Ensure mandatory attributes are set"""
-        audit_has(self, [
-            "name",
-            "net",
-            "num",
-            "orientation",
-            "part",
-            "stub",
-            "x",
-            "y",
-            "fab_pin",
-            "fab_is_gnd",
-            "fab_is_pwr",
-        ])
+        audit_has(
+            self,
+            [
+                "name",
+                "net",
+                "num",
+                "orientation",
+                "part",
+                "stub",
+                "x",
+                "y",
+                "fab_pin",
+                "fab_is_gnd",
+                "fab_is_pwr",
+            ],
+        )
 
     # internal use
-    bbox: BBox
     face: "Face"
     place_pt: Point
     pt: Point

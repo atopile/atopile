@@ -7,6 +7,7 @@
 Autorouter for generating wiring between symbols in a schematic.
 """
 
+import contextlib
 import copy
 import random
 from collections import Counter, defaultdict
@@ -16,11 +17,11 @@ from typing import TYPE_CHECKING, Iterator, Unpack
 
 from .constants import DRAWING_BOX_RESIZE, GRID
 from .debug_draw import (
-    draw_end,
+    draw_context,
     draw_endpoint,
+    draw_pause,
     draw_routing,
     draw_seg,
-    draw_start,
     draw_text,
 )
 from .geometry import BBox, Point, Segment, Tx, Vector
@@ -2045,52 +2046,59 @@ class SwitchBox:
             options (dict, optional): Dictionary of options and values. Defaults to {}.
         """
 
+        # Nothing to see here.
+        if (
+            options.get("draw_switchbox_boundary")
+            and not options.get("draw_switchbox_routing")
+            and not options.get("draw_routing_channels")
+        ):
+            return
+
         # If the screen object is not None, then PyGame drawing is enabled so set flag
         # to initialize PyGame.
-        do_start_end = not bool(scr)
-
-        if do_start_end:
+        if bool(scr):
+            ctx = contextlib.nullcontext(enter_result=(scr, tx, font))
+        else:
             # Initialize PyGame.
-            scr, tx, font = draw_start(
+            ctx = draw_context(
                 self.bbox.resize(Vector(DRAWING_BOX_RESIZE, DRAWING_BOX_RESIZE))
             )
 
-        if options.get("draw_switchbox_boundary"):
-            # Draw switchbox boundary.
-            self.top_face.draw(scr, tx, font, color, thickness, **options)
-            self.bottom_face.draw(scr, tx, font, color, thickness, **options)
-            self.left_face.draw(scr, tx, font, color, thickness, **options)
-            self.right_face.draw(scr, tx, font, color, thickness, **options)
+        with ctx as (scr, tx, font):
+            if options.get("draw_switchbox_boundary"):
+                # Draw switchbox boundary.
+                self.top_face.draw(scr, tx, font, color, thickness, **options)
+                self.bottom_face.draw(scr, tx, font, color, thickness, **options)
+                self.left_face.draw(scr, tx, font, color, thickness, **options)
+                self.right_face.draw(scr, tx, font, color, thickness, **options)
 
-        if options.get("draw_switchbox_routing"):
-            # Draw routed wire segments.
-            try:
-                for segments in self.segments.values():
-                    for segment in segments:
-                        draw_seg(segment, scr, tx, dot_radius=0)
-            except AttributeError:
-                pass
+            if options.get("draw_switchbox_routing"):
+                # Draw routed wire segments.
+                try:
+                    for segments in self.segments.values():
+                        for segment in segments:
+                            draw_seg(segment, scr, tx, dot_radius=0)
+                except AttributeError:
+                    pass
 
-        if options.get("draw_routing_channels"):
-            # Draw routing channels from midpoint of one switchbox face to midpoint of another.
+            if options.get("draw_routing_channels"):
+                # Draw routing channels from midpoint of one switchbox face to midpoint of another.
 
-            def draw_channel(face1: Face, face2: Face) -> None:
-                seg1 = face1.seg
-                seg2 = face2.seg
-                p1 = (seg1.p1 + seg1.p2) / 2
-                p2 = (seg2.p1 + seg2.p2) / 2
-                draw_seg(Segment(p1, p2), scr, tx, (128, 0, 128), 1, dot_radius=0)
+                def draw_channel(face1: Face, face2: Face) -> None:
+                    seg1 = face1.seg
+                    seg2 = face2.seg
+                    p1 = (seg1.p1 + seg1.p2) / 2
+                    p2 = (seg2.p1 + seg2.p2) / 2
+                    draw_seg(Segment(p1, p2), scr, tx, (128, 0, 128), 1, dot_radius=0)
 
-            draw_channel(self.top_face, self.bottom_face)
-            draw_channel(self.top_face, self.left_face)
-            draw_channel(self.top_face, self.right_face)
-            draw_channel(self.bottom_face, self.left_face)
-            draw_channel(self.bottom_face, self.right_face)
-            draw_channel(self.left_face, self.right_face)
+                draw_channel(self.top_face, self.bottom_face)
+                draw_channel(self.top_face, self.left_face)
+                draw_channel(self.top_face, self.right_face)
+                draw_channel(self.bottom_face, self.left_face)
+                draw_channel(self.bottom_face, self.right_face)
+                draw_channel(self.left_face, self.right_face)
 
-        if do_start_end:
-            # Terminate PyGame.
-            draw_end()
+            draw_pause()
 
 
 class Router:
