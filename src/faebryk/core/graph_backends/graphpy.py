@@ -119,6 +119,10 @@ class GraphPY[T](Graph[T, PyGraph[T]]):
     def get_edges(self, obj: T) -> Mapping[T, L]:
         return self().edges(obj)
 
+    @property
+    def edges(self) -> list[tuple[T, T, L]]:
+        return self()._e
+
     @staticmethod
     def _union(rep: GI, old: GI):
         # merge big into small
