@@ -6,7 +6,7 @@ import logging
 import pytest
 
 from faebryk.core.node import Node
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import Expression, Parameter
 from faebryk.libs.library import L
 from faebryk.libs.sets import Range
 from faebryk.libs.units import P
@@ -46,7 +46,7 @@ def test_visualize():
     # pytest.raises(ValueError, bool, app.p1 >= p2 * 5)
 
     G = app.get_graph()
-    interactive_graph(G, height=1400)
+    interactive_graph(G, height=1400, node_types=(Parameter, Expression))
 
 
 # TODO remove

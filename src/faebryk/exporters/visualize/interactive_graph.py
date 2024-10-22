@@ -63,16 +63,21 @@ _GROUP_TYPES = {
 }
 
 
-def _group(node: Node):
+def _group(node: Node, root: bool):
     try:
         subtype = find_or(_GROUP_TYPES, lambda t: isinstance(node, t), default=Node)
     except KeyErrorAmbiguous as e:
         subtype = e.duplicates[0]
 
+    if root:
+        label = node.get_full_name(types=True)
+    else:
+        label = f"{node.get_name(accept_no_parent=True)}\n({typename(node)})"
+
     return {
         "data": {
             "id": id(node),
-            "label": f"{node.get_name(accept_no_parent=True)}\n({typename(node)})",
+            "label": label,
             "type": "group",
             "subtype": typename(subtype),
             "parent": id(p[0]) if (p := node.get_parent()) else None,
@@ -230,10 +235,16 @@ def interactive_subgraph(
     link_types = {typename(link) for link in links}
     gif_types = {typename(gif) for gif in gifs}
 
+    def node_has_parent_in_graph(node: Node) -> bool:
+        p = node.get_parent()
+        if not p:
+            return False
+        return p[0] in nodes
+
     elements = (
         [_gif(gif) for gif in gifs]
         + [_link(*edge) for edge in edges]
-        + [_group(node) for node in nodes]
+        + [_group(node, root=not node_has_parent_in_graph(node)) for node in nodes]
     )
 
     # Build stylesheet
