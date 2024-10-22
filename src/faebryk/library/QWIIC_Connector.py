@@ -61,4 +61,4 @@ class QWIIC_Connector(Module):
 
     def __preinit__(self):
         self.power.voltage.constrain_subset(L.Range.from_center(3.3 * P.V, 0.3 * P.V))
-        # self.power.max_current.merge(F.Range.from_center_rel(226 * P.mA, 0.05))
+        # self.power.max_current.merge(L.Range.from_center_rel(226 * P.mA, 0.05))

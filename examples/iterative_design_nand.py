@@ -122,7 +122,7 @@ def App():
     for _, t in app.get_graph().nodes_with_trait(F.ElectricLogic.has_pulls):
         for pull_resistor in (r for r in t.get_pulls() if r):
             pull_resistor.resistance.constrain_subset(
-                F.Range.from_center_rel(100 * P.kohm, 0.05)
+                L.Range.from_center_rel(100 * P.kohm, 0.05)
             )
     power_source.power.voltage.constrain_subset(L.Range.from_center_rel(3 * P.V, 0.05))
     led.led.led.brightness.constrain_subset(

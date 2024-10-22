@@ -174,7 +174,7 @@ class ESP32_C3(Module):
     #                ]
     #            ]
     #            + [
-    #                F.Range(10 * P.khertz, 800 * P.khertz)
+    #                L.Range(10 * P.khertz, 800 * P.khertz)
     #            ],  # TODO: should be range 200k-800k, but breaks parameter merge
     #        )
     #    )

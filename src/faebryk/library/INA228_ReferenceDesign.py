@@ -48,8 +48,8 @@ class INA228_ReferenceDesign(Module):
             #    filter_cap = self.add(F.Capacitor())
             #    filter_resistors = L.list_field(2, F.Resistor)
             #
-            #    filter_cap.capacitance.merge(F.Range.from_center_rel(0.1 * P.uF, 0.01))
-            #    filter_cap.max_voltage.merge(F.Range.from_center_rel(170 * P.V, 0.01)
+            #    filter_cap.capacitance.merge(L.Range.from_center_rel(0.1 * P.uF, 0.01))
+            #    filter_cap.max_voltage.merge(L.Range.from_center_rel(170 * P.V, 0.01)
             #    for res in filter_resistors:
             #        res.resistance.merge(10 * P.kohm)
             # TODO: auto calculate, see: https://www.ti.com/lit/ug/tidu473/tidu473.pdf

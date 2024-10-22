@@ -48,7 +48,7 @@ class SP3243E_ReferenceDesign(Module):
 
             # if isinstance(pwr.voltage.get_most_narrow(), F.TBD):
             #    pwr.voltage.merge(
-            #        F.Constant(8 * P.V)
-            #        # F.Range.lower_bound(16 * P.V)
+            #        L.Single(8 * P.V)
+            #        # L.Range.lower_bound(16 * P.V)
             #    )  # TODO: fix merge
             #    # TODO: merge conflict

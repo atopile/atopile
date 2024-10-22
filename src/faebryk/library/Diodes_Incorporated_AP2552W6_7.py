@@ -42,7 +42,7 @@ class Diodes_Incorporated_AP2552W6_7(Module):
 
         # Rlim = Range(Rlim_min, Rlim_max)
         # Rlim = F.Constant(51 * P.kohm)  # TODO: remove: ~0.52A typical current limit
-        # if not Rlim.is_subset_of(F.Range(10 * P.kohm, 210 * P.kohm)):
+        # if not Rlim.is_subset_of(L.Range(10 * P.kohm, 210 * P.kohm)):
         #    raise ModuleException(
         #        self,
         #        f"Rlim must be in the range 10kOhm to 210kOhm but is {Rlim.get_most_narrow()}",  # noqa: E501

@@ -49,8 +49,8 @@ class RS485_Bus_Protection(Module):
             self.tvs.reverse_working_voltage.constrain_subset(
                 L.Range.from_center_rel(8.5 * P.V, 0.05)
             )
-            # self.tvs.max_current.merge(F.Range.from_center_rel(41.7*P.A, 0.05))
-            # self.tvs.forward_voltage.merge(F.Range(9.44*P.V, 10.40*P.V))
+            # self.tvs.max_current.merge(L.Range.from_center_rel(41.7*P.A, 0.05))
+            # self.tvs.forward_voltage.merge(L.Range(9.44*P.V, 10.40*P.V))
 
             for diode in self.clamping_diodes:
                 diode.forward_voltage.constrain_subset(
