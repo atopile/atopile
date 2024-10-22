@@ -485,12 +485,17 @@ class Node(FaebrykLibObject, metaclass=PostInitCaller):
 
         # Call 2-stage constructors
         if self._init:
-            for base in reversed(type(self).mro()):
-                if hasattr(base, "__preinit__"):
-                    base.__preinit__(self)
-            for base in reversed(type(self).mro()):
-                if hasattr(base, "__postinit__"):
-                    base.__postinit__(self)
+            bases = list(reversed(type(self).mro()))
+            preinits = {
+                base.__preinit__ for base in bases if hasattr(base, "__preinit__")
+            }
+            postinits = {
+                base.__postinit__ for base in bases if hasattr(base, "__postinit__")
+            }
+            for preinit in preinits:
+                preinit(self)
+            for postinit in postinits:
+                postinit(self)
 
     def __init__(self):
         assert not hasattr(self, "_is_setup")
