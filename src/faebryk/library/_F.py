@@ -20,7 +20,6 @@ from faebryk.library.Electrical import Electrical
 from faebryk.library.has_esphome_config import has_esphome_config
 from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.has_pcb_position import has_pcb_position
-from faebryk.library.Constant import Constant
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Power import Power
 from faebryk.library.Signal import Signal

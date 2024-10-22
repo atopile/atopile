@@ -2,9 +2,9 @@ import logging
 from enum import Enum
 from typing import Callable
 
-from faebryk.core.solver import Solver
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.library import L
 from faebryk.libs.picker.jlcpcb.jlcpcb import (
@@ -34,15 +34,15 @@ qty: int = 1
 # Generic pickers ----------------------------------------------------------------------
 
 
-def str_to_enum[T: Enum](enum: type[T], x: str) -> L.Single[T]:
+def str_to_enum[T: Enum](enum: type[T], x: str) -> L.PlainSet[T]:
     name = x.replace(" ", "_").replace("-", "_").upper()
     if name not in [e.name for e in enum]:
         raise ValueError(f"Enum translation error: {x}[={name}] not in {enum}")
-    return L.Single(enum[name])
+    return L.PlainSet(enum[name])
 
 
-def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], L.Single[T]]:
-    def f(x: str) -> L.Single[T]:
+def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], L.PlainSet[T]]:
+    def f(x: str) -> L.PlainSet[T]:
         return str_to_enum(enum, x)
 
     return f

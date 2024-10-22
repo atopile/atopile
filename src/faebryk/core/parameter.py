@@ -9,6 +9,7 @@ from typing import Any, Callable, Self
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.node import Node, f_field
+from faebryk.core.trait import Trait
 from faebryk.libs.sets import P_Set, Range, Ranges
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
 from faebryk.libs.util import abstract, cast_assert
@@ -714,6 +715,8 @@ class R(Namespace):
 
 
 class Parameter(Node, ParameterOperatable, Constrainable):
+    class TraitT(Trait): ...
+
     def __init__(
         self,
         *,

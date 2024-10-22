@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from collections.abc import Generator, Iterable
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, Generic, Protocol, TypeVar, cast
 
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
 
@@ -427,8 +427,9 @@ class Range(P_UnitSet[QuantityT]):
         return f"Range({self.base_to_units(self._range.min)}, {self.base_to_units(self._range.max)} | {self.units})"
 
 
-def Single(value: QuantityT) -> Range[QuantityT]:
-    return Range(value, value)
+class Single(Range[QuantityT]):
+    def __init__(self, value: QuantityT):
+        super().__init__(value, value)
 
 
 class Ranges(P_UnitSet[QuantityT]):
