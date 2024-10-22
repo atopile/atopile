@@ -9,9 +9,9 @@ from typing import Any, Callable, Self
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.node import Node, f_field
-from faebryk.libs.sets import Empty, P_Set, Range, Ranges
+from faebryk.libs.sets import P_Set, Range, Ranges
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
-from faebryk.libs.util import abstract
+from faebryk.libs.util import abstract, cast_assert
 
 logger = logging.getLogger(__name__)
 
@@ -104,37 +104,37 @@ class ParameterOperatable:
         return Implies(condition=self, implication=other)
 
     def operation_is_le(self, other: NumberLike) -> "NumericPredicate":
-        return LessOrEqual(constraint=False, left=self, right=other)
+        return LessOrEqual(left=self, right=other)
 
     def operation_is_ge(self, other: NumberLike) -> "NumericPredicate":
-        return GreaterOrEqual(constraint=False, left=self, right=other)
+        return GreaterOrEqual(left=self, right=other)
 
     def operation_is_lt(self, other: NumberLike) -> "NumericPredicate":
-        return LessThan(constraint=False, left=self, right=other)
+        return LessThan(left=self, right=other)
 
     def operation_is_gt(self, other: NumberLike) -> "NumericPredicate":
-        return GreaterThan(constraint=False, left=self, right=other)
+        return GreaterThan(left=self, right=other)
 
     def operation_is_ne(self, other: NumberLike) -> "NumericPredicate":
-        return NotEqual(constraint=False, left=self, right=other)
+        return NotEqual(left=self, right=other)
 
     def operation_is_subset(self, other: Sets) -> "SeticPredicate":
-        return IsSubset(constraint=False, left=self, right=other)
+        return IsSubset(left=self, right=other)
 
     def operation_is_superset(self, other: Sets) -> "SeticPredicate":
-        return IsSuperset(constraint=False, left=self, right=other)
+        return IsSuperset(left=self, right=other)
 
     # TODO implement
     def inspect_known_min(self: NumberLike) -> Number:
-        return 1 / 0
+        raise Exception("not implemented")
         # raise NotImplementedError()
 
     def inspect_known_max(self: NumberLike) -> Number:
-        return 1 / 0
+        raise Exception("not implemented")
         # raise NotImplementedError()
 
     def inspect_known_values(self: BooleanLike) -> P_Set[bool]:
-        return 1 / 0
+        raise Exception("not implemented")
         # raise NotImplementedError()
 
     # Run by the solver on finalization
@@ -186,6 +186,27 @@ class ParameterOperatable:
 
     def __round__(self):
         return self.operation_round()
+
+    def __floor__(self):
+        return self.operation_floor()
+
+    def __ceil__(self):
+        return self.operation_ceil()
+
+    def __le__(self, other: NumberLike):
+        return self.operation_is_le(other)
+
+    def __ge__(self, other: NumberLike):
+        return self.operation_is_ge(other)
+
+    def __lt__(self, other: NumberLike):
+        return self.operation_is_lt(other)
+
+    def __gt__(self, other: NumberLike):
+        return self.operation_is_gt(other)
+
+    def __ne__(self, other: NumberLike):
+        return self.operation_is_ne(other)
 
     # bitwise and
     def __and__(self, other: BooleanLike):
@@ -243,50 +264,54 @@ class Constrainable:
     type Sets = ParameterOperatable.Sets
     type NumberLike = ParameterOperatable.NumberLike
 
-    constraints: GraphInterface
+    def __init__(self):
+        super().__init__()
+        self.constrained: bool = False
 
     def _constrain(self, constraint: "Predicate"):
-        self.constraints.connect(constraint.constrains)
+        constraint.constrain()
 
+    def _get(self) -> ParameterOperatable:
+        return cast_assert(ParameterOperatable, self)
+
+    # Generic
     def alias_is(self, other: All):
-        self._constrain(Is(constraint=True, left=self, right=other))
+        return self._constrain(Is(left=self, right=other))
 
+    # Numberlike
     def constrain_le(self, other: NumberLike):
-        self._constrain(LessOrEqual(constraint=True, left=self, right=other))
+        return self._constrain(self._get().operation_is_le(other))
 
     def constrain_ge(self, other: NumberLike):
-        self._constrain(GreaterOrEqual(constraint=True, left=self, right=other))
+        return self._constrain(self._get().operation_is_ge(other))
 
     def constrain_lt(self, other: NumberLike):
-        self._constrain(LessThan(constraint=True, left=self, right=other))
+        return self._constrain(self._get().operation_is_lt(other))
 
     def constrain_gt(self, other: NumberLike):
-        self._constrain(GreaterThan(constraint=True, left=self, right=other))
+        return self._constrain(self._get().operation_is_gt(other))
 
     def constrain_ne(self, other: NumberLike):
-        self._constrain(NotEqual(constraint=True, left=self, right=other))
+        return self._constrain(self._get().operation_is_ne(other))
 
+    # Setlike
     def constrain_subset(self, other: Sets):
-        self._constrain(IsSubset(constraint=True, left=self, right=other))
+        return self._constrain(self._get().operation_is_subset(other))
 
     def constrain_superset(self, other: Sets):
-        self._constrain(IsSuperset(constraint=True, left=self, right=other))
+        return self._constrain(self._get().operation_is_superset(other))
 
     def constrain_cardinality(self, other: int):
-        self._constrain(Cardinality(constraint=True, left=self, right=other))
+        return self._constrain(Cardinality(self._get(), other))
 
     # shortcuts
-    def constraint_true(self):
-        self.alias_is(True)
-
-    def constraint_false(self):
-        self.alias_is(False)
+    def constrain(self):
+        self.constrained = True
 
 
 @abstract
 class Expression(Node, ParameterOperatable):
     operates_on: GraphInterface
-    operated_on: GraphInterface
 
     def __init__(self, *operands: ParameterOperatable.All):
         super().__init__()
@@ -301,7 +326,7 @@ class Expression(Node, ParameterOperatable):
 
 @abstract
 class ConstrainableExpression(Expression, Constrainable):
-    constraints: GraphInterface
+    pass
 
 
 @abstract
@@ -348,7 +373,7 @@ class Multiply(Arithmetic):
         units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
         self.units = units[0]
         for u in units[1:]:
-            self.units *= u
+            self.units = cast_assert(Unit, self.units * u)
 
 
 class Divide(Arithmetic):
@@ -475,7 +500,7 @@ class Setic(ConstrainableExpression):
         types = [Parameter, ParameterOperatable.Sets]
         if any(type(op) not in types for op in operands):
             raise ValueError("operands must be Parameter or Set")
-        units = [op.units for op in operands]
+        units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
         self.units = units[0]
         for u in units[1:]:
             if not self.units.is_compatible_with(u):
@@ -537,31 +562,22 @@ class EnumDomain(Domain):
         self.enum_t = enum_t
 
 
-class Predicate(Expression):
-    constrains: GraphInterface
-
-    def __init__(self, constraint: bool, left, right):
+class Predicate(ConstrainableExpression):
+    def __init__(self, left, right):
         super().__init__(left, right)
-        self._constraint = constraint
         l_units = HasUnit.get_units_or_dimensionless(left)
         r_units = HasUnit.get_units_or_dimensionless(right)
         if not l_units.is_compatible_with(r_units):
             raise ValueError("operands must have compatible units")
         self.operands = [left, right]
 
-    def constrain(self):
-        self._constraint = True
-
-    def is_constraint(self):
-        return self._constraint
-
-    # def run_when_known(self, f: Callable[[bool], None]):
-    #    getattr(self, "run_when_known_funcs", []).append(f)
+    def __bool__(self):
+        raise ValueError("Predicate cannot be converted to bool")
 
 
 class NumericPredicate(Predicate):
-    def __init__(self, constraint: bool, left, right):
-        super().__init__(constraint, left, right)
+    def __init__(self, left, right):
+        super().__init__(left, right)
         if isinstance(left, Parameter) and not isinstance(
             left.domain, (Numbers, ESeries)
         ):
@@ -599,8 +615,8 @@ class NotEqual(NumericPredicate):
 
 
 class SeticPredicate(Predicate):
-    def __init__(self, constraint: bool, left, right):
-        super().__init__(constraint, left, right)
+    def __init__(self, left, right):
+        super().__init__(left, right)
         types = [Parameter, ParameterOperatable.Sets]
         if any(type(op) not in types for op in self.operands):
             raise ValueError("operands must be Parameter or Set")
@@ -620,12 +636,15 @@ class IsSuperset(SeticPredicate):
 
 
 class Cardinality(SeticPredicate):
-    pass
+    def __init__(
+        self, set: ParameterOperatable.Sets, cardinality: ParameterOperatable.NumberLike
+    ):
+        super().__init__(set, cardinality)
 
 
 class Is(Predicate):
-    def __init__(self, constraint: bool, left, right):
-        super().__init__(constraint, left, right)
+    def __init__(self, left, right):
+        super().__init__(left, right)
 
 
 # TODO rename?
@@ -714,9 +733,7 @@ class Parameter(Node, ParameterOperatable, Constrainable):
         cardinality: int | None = None,
     ):
         super().__init__()
-        if within is None:
-            within = Empty(units)
-        if not within.units.is_compatible_with(units):
+        if within is not None and not within.units.is_compatible_with(units):
             raise ValueError("incompatible units")
 
         if not isinstance(units, Unit):
@@ -736,9 +753,6 @@ class Parameter(Node, ParameterOperatable, Constrainable):
     type Sets = ParameterOperatable.Sets
     type BooleanLike = ParameterOperatable.BooleanLike
     type Number = ParameterOperatable.Number
-
-    constraints: GraphInterface
-    operated_on: GraphInterface
 
 
 p_field = f_field(Parameter)

@@ -3,6 +3,8 @@
 
 import logging
 
+import pytest
+
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
@@ -34,10 +36,14 @@ def test_visualize():
 
     p2 = Parameter(units=P.ohm)
 
-    app.p1.constrain_ge(p2 * 5)
+    # app.p1.constrain_ge(p2 * 5)
+    # app.p1.operation_is_ge(p2 * 5).constrain()
+    (app.p1 >= p2 * 5).constrain()
+
+    # pytest.raises(ValueError, bool, app.p1 >= p2 * 5)
 
     G = app.get_graph()
-    interactive_graph(G)
+    interactive_graph(G, height=1400)
 
 
 # TODO remove
