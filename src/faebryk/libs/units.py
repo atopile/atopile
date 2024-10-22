@@ -26,10 +26,12 @@ class HasUnit:
 
     @staticmethod
     def check(obj: Any) -> bool:
-        return hasattr(obj, "units")
+        return hasattr(obj, "units") or isinstance(obj, Unit)
 
     @staticmethod
     def get_units_or_dimensionless(obj: Any) -> Unit:
+        if isinstance(obj, Unit):
+            return obj
         return obj.units if HasUnit.check(obj) else dimensionless
 
 

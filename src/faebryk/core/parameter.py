@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # enum: T == S == Enum
 # number: T == Number type, S == Range[Number]
 class ParameterOperatable:
-    type QuantityLike = Quantity | NotImplementedType
+    type QuantityLike = Quantity | Unit | NotImplementedType
     type Number = int | float | QuantityLike
 
     type NonParamNumber = Number | P_Set[Number]
@@ -38,91 +38,91 @@ class ParameterOperatable:
 
     operated_on: GraphInterface
 
-    def operation_add(self, other: NumberLike) -> "Expression":
+    def operation_add(self, other: NumberLike):
         return Add(self, other)
 
-    def operation_subtract(self, other: NumberLike) -> "Expression":
+    def operation_subtract(self: NumberLike, other: NumberLike):
         return Subtract(minuend=self, subtrahend=other)
 
-    def operation_multiply(self, other: NumberLike) -> "Expression":
+    def operation_multiply(self, other: NumberLike):
         return Multiply(self, other)
 
-    def operation_divide(self: NumberLike, other: NumberLike) -> "Expression":
+    def operation_divide(self: NumberLike, other: NumberLike):
         return Divide(numerator=self, denominator=other)
 
-    def operation_power(self, other: NumberLike) -> "Expression":
+    def operation_power(self, other: NumberLike):
         return Power(base=self, exponent=other)
 
-    def operation_log(self) -> "Expression":
+    def operation_log(self):
         return Log(self)
 
-    def operation_sqrt(self) -> "Expression":
+    def operation_sqrt(self):
         return Sqrt(self)
 
-    def operation_abs(self) -> "Expression":
+    def operation_abs(self):
         return Abs(self)
 
-    def operation_floor(self) -> "Expression":
+    def operation_floor(self):
         return Floor(self)
 
-    def operation_ceil(self) -> "Expression":
+    def operation_ceil(self):
         return Ceil(self)
 
-    def operation_round(self) -> "Expression":
+    def operation_round(self):
         return Round(self)
 
-    def operation_sin(self) -> "Expression":
+    def operation_sin(self):
         return Sin(self)
 
-    def operation_cos(self) -> "Expression":
+    def operation_cos(self):
         return Cos(self)
 
-    def operation_union(self, other: Sets) -> "Expression":
+    def operation_union(self, other: Sets):
         return Union(self, other)
 
-    def operation_intersection(self, other: Sets) -> "Expression":
+    def operation_intersection(self, other: Sets):
         return Intersection(self, other)
 
-    def operation_difference(self, other: Sets) -> "Expression":
+    def operation_difference(self, other: Sets):
         return Difference(minuend=self, subtrahend=other)
 
-    def operation_symmetric_difference(self, other: Sets) -> "Expression":
+    def operation_symmetric_difference(self, other: Sets):
         return SymmetricDifference(self, other)
 
-    def operation_and(self, other: BooleanLike) -> "Logic":
+    def operation_and(self, other: BooleanLike):
         return And(self, other)
 
-    def operation_or(self, other: BooleanLike) -> "Logic":
+    def operation_or(self, other: BooleanLike):
         return Or(self, other)
 
-    def operation_not(self) -> "Logic":
+    def operation_not(self):
         return Not(self)
 
-    def operation_xor(self, other: BooleanLike) -> "Logic":
+    def operation_xor(self, other: BooleanLike):
         return Xor(left=self, right=other)
 
-    def operation_implies(self, other: BooleanLike) -> "Logic":
+    def operation_implies(self, other: BooleanLike):
         return Implies(condition=self, implication=other)
 
-    def operation_is_le(self, other: NumberLike) -> "NumericPredicate":
+    def operation_is_le(self, other: NumberLike):
         return LessOrEqual(left=self, right=other)
 
-    def operation_is_ge(self, other: NumberLike) -> "NumericPredicate":
+    def operation_is_ge(self, other: NumberLike):
         return GreaterOrEqual(left=self, right=other)
 
-    def operation_is_lt(self, other: NumberLike) -> "NumericPredicate":
+    def operation_is_lt(self, other: NumberLike):
         return LessThan(left=self, right=other)
 
-    def operation_is_gt(self, other: NumberLike) -> "NumericPredicate":
+    def operation_is_gt(self, other: NumberLike):
         return GreaterThan(left=self, right=other)
 
-    def operation_is_ne(self, other: NumberLike) -> "NumericPredicate":
+    def operation_is_ne(self, other: NumberLike):
         return NotEqual(left=self, right=other)
 
-    def operation_is_subset(self, other: Sets) -> "SeticPredicate":
+    def operation_is_subset(self, other: Sets):
         return IsSubset(left=self, right=other)
 
-    def operation_is_superset(self, other: Sets) -> "SeticPredicate":
+    def operation_is_superset(self, other: Sets):
         return IsSuperset(left=self, right=other)
 
     # TODO implement
@@ -165,7 +165,7 @@ class ParameterOperatable:
         return self.operation_subtract(other)
 
     def __rsub__(self, other: NumberLike):
-        return self.operation_subtract(other)
+        return type(self).operation_subtract(other, self)
 
     def __mul__(self, other: NumberLike):
         return self.operation_multiply(other)
@@ -334,8 +334,8 @@ class ConstrainableExpression(Expression, Constrainable):
 class Arithmetic(ConstrainableExpression, HasUnit):
     def __init__(self, *operands: ParameterOperatable.NumberLike):
         super().__init__(*operands)
-        types = [int, float, Quantity, Parameter, Arithmetic]
-        if any(type(op) not in types for op in operands):
+        types = int, float, Quantity, Unit, Parameter, Arithmetic
+        if any(not isinstance(op, types) for op in operands):
             raise ValueError(
                 "operands must be int, float, Quantity, Parameter, or Expression"
             )
@@ -452,8 +452,8 @@ class Ceil(Arithmetic):
 class Logic(ConstrainableExpression):
     def __init__(self, *operands):
         super().__init__(*operands)
-        types = [bool, Parameter, Logic, Predicate]
-        if any(type(op) not in types for op in operands):
+        types = bool, Parameter, Logic, Predicate
+        if any(not isinstance(op, types) for op in operands):
             raise ValueError("operands must be bool, Parameter, Logic, or Predicate")
         if any(
             param.domain != Boolean or not param.units.is_compatible_with(dimensionless)

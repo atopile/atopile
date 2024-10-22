@@ -30,15 +30,18 @@ def test_visualize():
     from faebryk.exporters.visualize.interactive_graph import interactive_graph
 
     class App(Node):
-        p1 = L.f_field(Parameter)(units=P.ohm)
+        p1 = L.f_field(Parameter)(units=P.V)
 
     app = App()
 
-    p2 = Parameter(units=P.ohm)
+    p2 = Parameter(units=P.V)
+    p3 = Parameter(units=P.A)
 
     # app.p1.constrain_ge(p2 * 5)
     # app.p1.operation_is_ge(p2 * 5).constrain()
     (app.p1 >= p2 * 5).constrain()
+
+    (p2 * p3 + app.p1 * 1 * P.A <= 10 * P.W).constrain()
 
     # pytest.raises(ValueError, bool, app.p1 >= p2 * 5)
 
