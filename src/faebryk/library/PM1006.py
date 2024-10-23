@@ -5,8 +5,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
-from faebryk.libs.util import cast_assert
+from faebryk.libs.units import P
 
 
 class PM1006(Module):
@@ -30,8 +29,6 @@ class PM1006(Module):
         update_interval = L.p_field(units=P.s, cardinality=1)
 
         def get_config(self) -> dict:
-            val = cast_assert(Quantity, self.update_interval.get_any_single())
-
             obj = self.obj
             assert isinstance(obj, PM1006), "This is not an PM1006!"
 
@@ -41,7 +38,7 @@ class PM1006(Module):
                 "sensor": [
                     {
                         "platform": "pm1006",
-                        "update_interval": f"{val.value.to('s')}",
+                        "update_interval": self.update_interval,
                         "uart_id": uart.get_trait(F.is_esphome_bus).get_bus_id(),
                     }
                 ]

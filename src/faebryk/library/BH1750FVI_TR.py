@@ -6,8 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
-from faebryk.libs.util import cast_assert
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,6 @@ class BH1750FVI_TR(Module):
         def get_config(self) -> dict:
             obj = self.obj
             assert isinstance(obj, BH1750FVI_TR)
-            val = cast_assert(Quantity, self.update_interval.get_any_single())
 
             i2c = F.is_esphome_bus.find_connected_bus(obj.i2c)
 
@@ -37,7 +35,7 @@ class BH1750FVI_TR(Module):
                         "name": "BH1750 Illuminance",
                         "address": "0x23",
                         "i2c_id": i2c.get_trait(F.is_esphome_bus).get_bus_id(),
-                        "update_interval": f"{val.to('s')}",
+                        "update_interval": self.update_interval,
                     }
                 ]
             }

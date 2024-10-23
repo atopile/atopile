@@ -298,8 +298,7 @@ def pick_switch(module: "_TSwitch[F.Electrical]", solver: Solver):
     )
 
 
-def add_example_pickers(module: Module):
-    solver = DefaultSolver()
+def add_example_pickers(module: Module, solver: Solver):
     lookup = {
         F.Resistor: pick_resistor,
         F.LED: pick_led,

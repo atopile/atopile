@@ -8,6 +8,7 @@ from typing import Callable
 
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
+from faebryk.core.solver import DefaultSolver
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.pcb import apply_design
@@ -54,15 +55,16 @@ def apply_design_to_pcb(
     # TODO this can be prettier
     # picking ----------------------------------------------------------------
     modules = m.get_children_modules(types=Module)
+    solver = DefaultSolver()
     try:
         JLCPCB_DB()
         for n in modules:
-            add_jlcpcb_pickers(n, base_prio=-10)
+            add_jlcpcb_pickers(n, solver, base_prio=-10)
     except FileNotFoundError:
         logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
 
     for n in modules:
-        add_example_pickers(n)
+        add_example_pickers(n, solver)
     pick_part_recursively(m)
     # -------------------------------------------------------------------------
 

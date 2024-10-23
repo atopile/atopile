@@ -1136,3 +1136,11 @@ def typename(obj):
     if isinstance(obj, type):
         return obj.__name__
     return type(obj).__name__
+
+
+def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
+    for k, v in list(d.items()):
+        if isinstance(v, dict):
+            dict_value_visitor(v, visitor)
+        else:
+            d[k] = visitor(k, v)

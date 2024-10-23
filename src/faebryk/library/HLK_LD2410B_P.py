@@ -4,8 +4,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
-from faebryk.libs.util import cast_assert
+from faebryk.libs.units import P
 
 
 class HLK_LD2410B_P(Module):
@@ -17,8 +16,6 @@ class HLK_LD2410B_P(Module):
         )
 
         def get_config(self) -> dict:
-            val = cast_assert(Quantity, self.throttle.get_any_single())
-
             obj = self.obj
             assert isinstance(obj, HLK_LD2410B_P)
 
@@ -38,7 +35,7 @@ class HLK_LD2410B_P(Module):
 
             return {
                 "ld2410": {
-                    "throttle": f"{val.to('ms')}",
+                    "throttle": self.throttle,
                     "uart_id": uart_cfg["id"],
                 },
                 "binary_sensor": [

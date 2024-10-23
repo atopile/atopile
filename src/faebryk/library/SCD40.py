@@ -5,8 +5,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
-from faebryk.libs.util import cast_assert
+from faebryk.libs.units import P
 
 
 class SCD40(Module):
@@ -18,8 +17,6 @@ class SCD40(Module):
         update_interval = L.p_field(units=P.s, cardinality=1)
 
         def get_config(self) -> dict:
-            val = cast_assert(Quantity, self.update_interval.get_any_single())
-
             obj = self.get_obj(SCD40)
 
             i2c = F.is_esphome_bus.find_connected_bus(obj.i2c)
@@ -39,7 +36,7 @@ class SCD40(Module):
                         },
                         "address": 0x62,
                         "i2c_id": i2c.get_trait(F.is_esphome_bus).get_bus_id(),
-                        "update_interval": f"{val.value.to('s')}",
+                        "update_interval": self.update_interval,
                     }
                 ]
             }

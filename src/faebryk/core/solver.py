@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from faebryk.core.graph import Graph
-from faebryk.core.parameter import Expression, Parameter, ParameterOperatable, Predicate
+from faebryk.core.parameter import Expression, ParameterOperatable, Predicate
 
 
 class Solver(Protocol):
@@ -15,6 +15,12 @@ class Solver(Protocol):
         false_predicates: list["Solver.PredicateWithInfo[ArgType]"]
         unknown_predicates: list["Solver.PredicateWithInfo[ArgType]"]
 
+    @dataclass
+    class SolveResultSingle:
+        # TODO thinkn about failure case
+        value: Any  # TODO Any -> NumberLike?
+        # parameters_with_empty_solution_sets: list[Parameter]
+
     # timeout per solve call in milliseconds
     timeout: int
     # threads: int
@@ -23,17 +29,15 @@ class Solver(Protocol):
 
     def get_any_single(
         self,
-        G: Graph,
-        expression: Expression,
+        expression: ParameterOperatable,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
         constrain_result: bool = True,
-    ) -> tuple[Any, list[Parameter]]:  # TODO Any -> NumberLike?
+    ) -> SolveResultSingle:
         """
         Solve for a single value for the given expression.
 
         Args:
-            G: The graph to solve on.
             expression: The expression to solve.
             suppose_constraint: An optional constraint that can be added to make solving
                                 easier. It is only in effect for the duration of the

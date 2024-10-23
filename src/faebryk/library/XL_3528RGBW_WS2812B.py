@@ -4,8 +4,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
-from faebryk.libs.util import cast_assert
+from faebryk.libs.units import P
 
 
 class XL_3528RGBW_WS2812B(Module):
@@ -16,13 +15,12 @@ class XL_3528RGBW_WS2812B(Module):
             obj = self.get_obj(XL_3528RGBW_WS2812B)
 
             data_pin = F.is_esphome_bus.find_connected_bus(obj.di.signal)
-            val = cast_assert(Quantity, self.update_interval.get_any_single())
 
             return {
                 "light": [
                     {
                         "platform": "esp32_rmt_led_strip",
-                        "update_interval": f"{val.to('s')}",
+                        "update_interval": self.update_interval,
                         "num_leds": 1,  # TODO: make dynamic
                         "rmt_channel": 0,  # TODO: make dynamic
                         "chipset": "WS2812",
