@@ -77,4 +77,4 @@ if __name__ == "__main__":
     else:
         import typer
 
-        typer.run(test_visualize_chain)
+        typer.run(test_visualize)

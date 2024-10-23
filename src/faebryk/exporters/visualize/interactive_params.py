@@ -134,7 +134,7 @@ DAGRE_LAYOUT = {
     # If 'greedy', uses heuristic to find feedback arc set
     "acyclicer": None,
     # Algorithm to assign rank to nodes: 'network-simplex', 'tight-tree' or 'longest-path'
-    "ranker": None,
+    "ranker": "tight-tree",
     # Number of ranks to keep between source and target of the edge
     # "minLen": lambda edge: 1,
     # Higher weight edges are generally made shorter and straighter
@@ -190,19 +190,17 @@ def buttons(layout: Layout):
                     {"label": "longest-path", "value": "longest-path"},
                 ],
             ),
-            html.Button("Apply Changes", id="apply-changes-button"),
         ],
     )
     layout.div_children.insert(-2, html_controls)
 
     @app.callback(
         Output("graph-view", "layout"),
-        Input("apply-changes-button", "n_clicks"),
-        State("layout-radio", "value"),
-        State("layout-dagre-ranker", "value"),
+        Input("layout-radio", "value"),
+        Input("layout-dagre-ranker", "value"),
         State("graph-view", "layout"),
     )
-    def absolute_layout(n_clicks, layout_radio, layout_dagre_ranker, current_layout):
+    def absolute_layout(layout_radio, layout_dagre_ranker, current_layout):
         print(layout_radio, layout_dagre_ranker)
         layout.set_type(layout_radio, current_layout)
 
