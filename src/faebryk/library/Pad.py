@@ -4,8 +4,7 @@
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import NodeException
-from faebryk.core.reference import Reference, reference
+from faebryk.core.reference import reference
 from faebryk.libs.util import not_none
 
 

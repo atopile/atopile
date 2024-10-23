@@ -390,7 +390,9 @@ def draw_pause():
 
 
 @contextlib.contextmanager
-def draw_context(bbox: BBox) -> Generator[tuple["pygame.Surface", Tx, "pygame.font.Font"], None, None]:
+def draw_context(
+    bbox: BBox,
+) -> Generator[tuple["pygame.Surface", Tx, "pygame.font.Font"], None, None]:
     """Context manager for drawing."""
     import pygame
 

@@ -28,7 +28,6 @@ from faebryk.libs.picker.picker import (
     Supplier,
 )
 from faebryk.libs.sexp import dataclass_sexp
-from faebryk.libs.util import duplicates
 
 logger = logging.getLogger(__name__)
 
