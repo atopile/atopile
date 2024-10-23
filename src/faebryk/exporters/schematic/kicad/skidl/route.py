@@ -9,6 +9,7 @@ Autorouter for generating wiring between symbols in a schematic.
 
 import contextlib
 import copy
+import logging
 import random
 from collections import Counter, defaultdict
 from enum import Enum
@@ -31,6 +32,10 @@ if TYPE_CHECKING:
     from pygame import Surface  # skidl calls this Screen
 
     from .node import SchNode
+
+
+logger = logging.getLogger(__name__)
+
 
 ###################################################################
 #
@@ -2251,16 +2256,19 @@ class Router:
                 closest_dist = abs(pt.y - part.top_track.coord)
                 pin_track = part.top_track
                 coord = pt.x  # Pin coord within top track.
+
                 dist = abs(pt.y - part.bottom_track.coord)
                 if dist < closest_dist:
                     closest_dist = dist
                     pin_track = part.bottom_track
                     coord = pt.x  # Pin coord within bottom track.
+
                 dist = abs(pt.x - part.left_track.coord)
                 if dist < closest_dist:
                     closest_dist = dist
                     pin_track = part.left_track
                     coord = pt.y  # Pin coord within left track.
+
                 dist = abs(pt.x - part.right_track.coord)
                 if dist < closest_dist:
                     closest_dist = dist
@@ -2280,6 +2288,10 @@ class Router:
                             terminal = Terminal(pin.net, face, coord)
                             face.terminals.append(terminal)
                         break
+                else:
+                    raise RuntimeError(
+                        f"{pin.part.ref=} {pin.name=} not assigned to a face."
+                    )
 
         # Set routing capacity of faces based on # of terminals on each face.
         for track in h_tracks + v_tracks:

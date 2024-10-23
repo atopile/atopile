@@ -82,6 +82,10 @@ class _HasPropertys(Protocol):
     propertys: dict[str, C_property]
 
 
+def mm_to_mil(mm: float) -> float:
+    return mm * 1000 / 25.4
+
+
 # TODO: consider common transformer base
 class Transformer:
     class has_linked_sch_symbol(F.Symbol.TraitT.decless()):
@@ -758,7 +762,10 @@ class Transformer:
             shim_part.fab_symbol = f_symbol
             shim_part.sch_symbol = sch_sym
             shim_part.bare_bbox = BBox(
-                *[Point(*pts) for pts in Transformer.get_bbox(sch_lib_symbol_units)]
+                *[
+                    Point(mm_to_mil(pts[0]), mm_to_mil(pts[1]))
+                    for pts in Transformer.get_bbox(sch_lib_symbol_units)
+                ]
             )
             shim_part.pins = []
 
@@ -820,8 +827,8 @@ class Transformer:
                     shim_pin.fab_is_gnd = False
                     shim_pin.fab_is_pwr = False
 
-                shim_pin.x = lib_sch_pin.at.x * 39.3701
-                shim_pin.y = lib_sch_pin.at.y * 39.3701
+                shim_pin.x = mm_to_mil(lib_sch_pin.at.x)
+                shim_pin.y = mm_to_mil(lib_sch_pin.at.y)
                 shim_pin.fab_pin = fab_pin
                 shim_pin.sch_pin = sch_pin
 

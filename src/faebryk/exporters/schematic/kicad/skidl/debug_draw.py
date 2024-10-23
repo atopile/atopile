@@ -8,7 +8,6 @@ Drawing routines used for debugging place & route.
 """
 
 import contextlib
-import multiprocessing
 from collections import defaultdict
 from random import randint
 from typing import TYPE_CHECKING, Generator

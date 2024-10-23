@@ -43,13 +43,13 @@ def rmv_attr(objs, attrs):
 def angle_to_orientation(angle: float) -> str:
     """Convert an angle to an orientation"""
     if angle == 0:
-        return "U"
-    elif angle == 90:
-        return "R"
-    elif angle == 180:
-        return "D"
-    elif angle == 270:
         return "L"
+    elif angle == 90:
+        return "D"
+    elif angle == 180:
+        return "R"
+    elif angle == 270:
+        return "U"
     else:
         raise ValueError(f"Invalid angle: {angle}")
 
