@@ -426,6 +426,12 @@ class ComponentQuery:
         self, param: ParameterOperatable, si_unit: str, e_series: E_SERIES | None = None
     ) -> Self:
         # TODO implement
+        # param will in the general case consist of multiple ranges
+        # we have to pick some range or make a new one to pre_filter our candidates
+        # we can try making a new range with inspect_min and max to filter out
+        # everything we already know won't fit
+        # then we can check the cardinality of the remaining candidates to see if we
+        # need to pick a range contained in the param to filter
         raise NotImplementedError()
         return self
 
