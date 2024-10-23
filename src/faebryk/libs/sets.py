@@ -13,6 +13,9 @@ from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
 class P_Set[T](Protocol):
     def is_empty(self) -> bool: ...
 
+    def __bool__(self) -> bool:
+        raise Exception("don't use bool to check for emptiness, use is_empty()")
+
     def __contains__(self, item: T) -> bool: ...
 
 
@@ -225,9 +228,9 @@ class _N_NonIterableRanges(P_Set[NumericT]):
             raise ValueError("empty range cannot have closest element")
         index = bisect(self.ranges, target, key=lambda r: r.min_elem())
         left = self.ranges[index - 1] if index > 0 else None
-        if left and target in left:
+        if left is not None and target in left:
             return target
-        left_bound = left.max_elem() if left else None
+        left_bound = left.max_elem() if left is not None else None
         right_bound = (
             self.ranges[index].min_elem() if index < len(self.ranges) else None
         )
@@ -520,8 +523,8 @@ class Range(P_UnitSet[QuantityT]):
         return False
 
     # TODO, convert to base unit first
-    # def __hash__(self) -> int:
-    #    return hash((self._range, self.units))
+    def __hash__(self) -> int:
+        return hash((self._range, self.range_units))
 
     def __repr__(self) -> str:
         if self.units.is_compatible_with(dimensionless):
@@ -700,7 +703,7 @@ class NonIterableRanges(P_UnitSet[QuantityT]):
         return False
 
     def __hash__(self) -> int:
-        return hash((self._ranges, self.units))
+        return hash((self._ranges, self.range_units))
 
     def __repr__(self) -> str:
         if self.units.is_compatible_with(dimensionless):

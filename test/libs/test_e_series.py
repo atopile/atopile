@@ -13,14 +13,18 @@ from faebryk.libs.units import dimensionless
 
 
 def test_intersect():
-    assert e_series_intersect(L.Range(1, 10), {1, 2, 3}) == L.Singles(1, 2, 3, 10)
-    assert e_series_intersect(L.Range(3, 10), {1, 8, 9}) == L.Singles(8, 9, 10)
-    assert e_series_intersect(L.Range(10, 1e3), {1, 1.5, 8, 9.9}) == L.Singles(
-        10, 15, 80, 99, 100, 150, 800, 990, 1000
+    assert e_series_intersect(L.Range(1, 10), frozenset({1, 2, 3})) == L.Singles(
+        1, 2, 3, 10
     )
-    assert e_series_intersect(L.Range(2.1e3, 7.9e3), {1, 2, 8, 9}) == L.Empty(
-        units=dimensionless
+    assert e_series_intersect(L.Range(3, 10), frozenset({1, 8, 9})) == L.Singles(
+        8, 9, 10
     )
+    assert e_series_intersect(
+        L.Range(10, 1e3), frozenset({1, 1.5, 8, 9.9})
+    ) == L.Singles(10, 15, 80, 99, 100, 150, 800, 990, 1000)
+    assert e_series_intersect(
+        L.Range(2.1e3, 7.9e3), frozenset({1, 2, 8, 9})
+    ) == L.Empty(units=dimensionless)
 
 
 def test_ratio():

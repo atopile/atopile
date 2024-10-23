@@ -25,8 +25,7 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import ParameterOperatable
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import (
-    E_SERIES_VALUES,
-    ParamNotResolvedError,
+    E_SERIES,
     e_series_intersect,
 )
 from faebryk.libs.library import L
@@ -407,19 +406,16 @@ class ComponentQuery:
         self,
         value: L.Ranges[Quantity],
         si_unit: str,
-        e_series: set[float] | None = None,
+        e_series: E_SERIES | None = None,
     ) -> Self:
         assert self.Q
 
         if value.is_unbounded():
             return self
         assert not self.results
-        try:
-            intersection = e_series_intersect(value, e_series or E_SERIES_VALUES.E_ALL)
-        except ParamNotResolvedError as e:
-            raise ComponentQuery.ParamError(
-                value, f"Could not run e_series_intersect: {e}"
-            ) from e
+        intersection = e_series_intersect(value, e_series)
+        if intersection.is_empty():
+            raise ComponentQuery.ParamError(value, "No intersection with E-series")
         si_vals = [
             to_si_str(r.min_elem(), si_unit).replace("µ", "u").replace("inf", "∞")
             for r in intersection
