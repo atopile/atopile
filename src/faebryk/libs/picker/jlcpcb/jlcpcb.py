@@ -12,20 +12,19 @@ from pathlib import Path
 from textwrap import indent
 from typing import Any, Callable, Generator, Self, Sequence, cast
 
-from more_itertools import take
 import patoolib
 import requests
-from pint import DimensionalityError
+from more_itertools import take
 from rich.progress import track
 from tortoise import Tortoise
 from tortoise.expressions import Q
 from tortoise.fields import CharField, IntField, JSONField
 from tortoise.models import Model
 
-from faebryk.core.solver import Solver
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter, ParameterOperatable
+from faebryk.core.parameter import ParameterOperatable
+from faebryk.core.solver import Solver
 from faebryk.libs.e_series import (
     E_SERIES_VALUES,
     ParamNotResolvedError,
@@ -44,7 +43,7 @@ from faebryk.libs.picker.picker import (
     has_part_picked_defined,
 )
 from faebryk.libs.units import P, Quantity, UndefinedUnitError, to_si_str
-from faebryk.libs.util import at_exit, cast_assert, try_or
+from faebryk.libs.util import at_exit, cast_assert
 
 logger = logging.getLogger(__name__)
 
@@ -102,10 +101,6 @@ class TBD_ParseError(L.P_UnitSet):
         import faebryk.libs.units
 
         return faebryk.libs.units.dimensionless
-
-    @units.setter
-    def units(self, value: Unit):
-        self.__setattr__("units", value)
 
 
 @dataclass(frozen=True)

@@ -133,7 +133,8 @@ DAGRE_LAYOUT = {
     # "align": None,
     # If 'greedy', uses heuristic to find feedback arc set
     # "acyclicer": None,
-    # Algorithm to assign rank to nodes: 'network-simplex', 'tight-tree' or 'longest-path'
+    # Algorithm to assign rank to nodes: 'network-simplex', 'tight-tree'
+    # or 'longest-path'
     # "ranker": "tight-tree",
     # Number of ranks to keep between source and target of the edge
     # "minLen": lambda edge: 1,

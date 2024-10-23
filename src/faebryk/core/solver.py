@@ -23,10 +23,13 @@ class Solver(Protocol):
 
     # solve for a single value for the given expression
     # while trying to minimize the value of the optional minimize expression
-    # suppose_constraint can be added, which by constraining the solution further can make solving easier
+    # suppose_constraint can be added, which by constraining the solution further can
+    # make solving easier
     # it is only in effect for the duration of the solve call
-    # constrain_result will make sure the result is actually part of the solution set of the expression
-    # returns a tuple of the value chosen and a list of parameters that have an empty solution set
+    # constrain_result will make sure the result is actually part of the solution set
+    # of the expression
+    # returns a tuple of the value chosen and a list of parameters that have an empty
+    # solution set
     def get_any_single(
         self,
         G: Graph,
@@ -39,7 +42,8 @@ class Solver(Protocol):
     # make at least one of the passed predicates true, unless that is impossible
     # while trying to minimize the value of the optional minimize expression
     # there is no specific order in which the predicates are solved
-    # suppose_constraint can be added, which by constraining the solution further can make solving easier
+    # suppose_constraint can be added, which by constraining the solution further can
+    # make solving easier
     # it is only in effect for the duration of the solve call
     # constrain_solved will add the solutions as constraints
     def assert_any_predicate[ArgType](

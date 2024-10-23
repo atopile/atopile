@@ -3,7 +3,6 @@
 
 from itertools import pairwise
 
-import faebryk.library._F as F
 from faebryk.libs.e_series import (
     E_SERIES_VALUES,
     e_series_intersect,

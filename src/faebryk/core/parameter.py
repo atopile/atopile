@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from collections.abc import Iterable
 import logging
+from collections.abc import Iterable
 from enum import Enum, auto
 from types import NotImplementedType
 from typing import Any, Callable, Self

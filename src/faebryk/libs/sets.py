@@ -520,7 +520,10 @@ class Range(P_UnitSet[QuantityT]):
     def __repr__(self) -> str:
         if self.units.is_compatible_with(dimensionless):
             return f"Range({self._range._min}, {self._range._max})"
-        return f"Range({self.base_to_units(self._range._min)}, {self.base_to_units(self._range._max)} | {self.units})"
+        return (
+            f"Range({self.base_to_units(self._range._min)}, "
+            f"{self.base_to_units(self._range._max)} | {self.units})"
+        )
 
 
 class Single(Range[QuantityT]):
@@ -695,8 +698,13 @@ class NonIterableRanges(P_UnitSet[QuantityT]):
 
     def __repr__(self) -> str:
         if self.units.is_compatible_with(dimensionless):
-            return f"_RangeUnion({', '.join(f"[{r._min}, {r._max}]" for r in self._ranges.ranges)})"
-        return f"_RangeUnion({', '.join(f"[{self.base_to_units(r._min)}, {self.base_to_units(r._max)}]" for r in self._ranges.ranges)} | {self.units})"
+            inner = ", ".join(f"[{r._min}, {r._max}]" for r in self._ranges.ranges)
+            return f"_RangeUnion({inner})"
+        inner = ", ".join(
+            f"[{self.base_to_units(r._min)}, {self.base_to_units(r._max)}]"
+            for r in self._ranges.ranges
+        )
+        return f"_RangeUnion({inner} | {self.units})"
 
 
 class Ranges(NonIterableRanges[QuantityT], Iterable[Range[QuantityT]]):

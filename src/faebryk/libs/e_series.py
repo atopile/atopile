@@ -1,12 +1,8 @@
-from collections.abc import Iterator, Sequence
-import copy
 import logging
-import math
+from collections.abc import Sequence
 from math import ceil, floor, log10
 from typing import Tuple, TypeVar, cast
 
-import faebryk.library._F as F
-from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
 from faebryk.libs.sets import Range, Ranges
 from faebryk.libs.units import Quantity, Unit, dimensionless

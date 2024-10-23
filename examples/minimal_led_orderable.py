@@ -7,7 +7,6 @@ This file contains a faebryk sample.
 
 import logging
 from pathlib import Path
-from tkinter import W
 
 import typer
 
