@@ -477,8 +477,11 @@ class Geometry:
         R = np.array(((c, -s), (s, c)))
 
         return cls.translate(
-            (-axis[0], -axis[1]),
-            [tuple(R @ np.array(point)) for point in cls.translate(axis, structure)],
+            axis,
+            [
+                tuple(R @ np.array(point))
+                for point in cls.translate((-axis[0], -axis[1]), structure)
+            ],
         )
 
     C = TypeVar("C", tuple[float, float], tuple[float, float, float])
