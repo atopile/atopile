@@ -194,7 +194,7 @@ def find_resistor(cmp: Module, solver: Solver):
         .filter_by_value(cmp.resistance, "Ω", E_SERIES_VALUES.E96)
         .filter_by_traits(cmp)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
@@ -231,7 +231,7 @@ def find_capacitor(cmp: Module, solver: Solver):
         .filter_by_traits(cmp)
         .filter_by_value(cmp.capacitance, "F", E_SERIES_VALUES.E24)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
@@ -275,7 +275,7 @@ def find_inductor(cmp: Module, solver: Solver):
         .filter_by_traits(cmp)
         .filter_by_value(cmp.inductance, "H", E_SERIES_VALUES.E24)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
@@ -321,7 +321,7 @@ def find_tvs(cmp: Module, solver: Solver):
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
@@ -360,7 +360,7 @@ def find_diode(cmp: Module, solver: Solver):
         .filter_by_value(cmp.reverse_working_voltage, "V", E_SERIES_VALUES.E3)
         .filter_by_traits(cmp)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
@@ -398,7 +398,7 @@ def find_led(cmp: Module, solver: Solver):
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
@@ -440,7 +440,7 @@ def find_mosfet(cmp: Module, solver: Solver):
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
@@ -495,7 +495,7 @@ def find_ldo(cmp: Module, solver: Solver):
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 

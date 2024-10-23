@@ -17,6 +17,8 @@ from faebryk.core.parameter import R, p_field  # noqa: F401
 from faebryk.core.reference import reference  # noqa: F401
 from faebryk.libs.sets import (  # noqa: F401
     Empty,
+    P_Set,
+    P_UnitSet,
     PlainSet,
     Range,
     Ranges,

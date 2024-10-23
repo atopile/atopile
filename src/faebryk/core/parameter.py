@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from collections.abc import Iterable
 import logging
 from enum import Enum, auto
 from types import NotImplementedType
@@ -150,8 +151,13 @@ class ParameterOperatable:
 
         self.inspect_final = new
 
-    # def inspect_num_known_supersets(self) -> int: ...
+    # Could be exponentially many
+    def inspect_num_known_supersets(self) -> int:
+        raise Exception("not implemented")
+
     # def inspect_get_known_supersets(self) -> Iterable[P_Set]: ...
+    def inspect_get_known_superranges(self: NumberLike) -> Iterable[Ranges]:
+        raise Exception("not implemented")
 
     # ----------------------------------------------------------------------------------
     def __add__(self, other: NumberLike):

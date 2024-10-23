@@ -238,6 +238,12 @@ class _N_NonIterableRanges(P_Set[NumericT]):
             return right_bound
         assert False  # unreachable
 
+    def is_superset_of(self, other: "_N_NonIterableRanges[NumericT]") -> bool:
+        return other == other.op_intersect_ranges(self)
+
+    def is_subset_of(self, other: "_N_NonIterableRanges[NumericT]") -> bool:
+        return other.is_superset_of(self)
+
     def op_intersect_range(
         self, other: "_N_Range[NumericT]"
     ) -> "_N_NonIterableRanges[NumericT]":
@@ -246,11 +252,32 @@ class _N_NonIterableRanges(P_Set[NumericT]):
     def op_intersect_ranges(
         self, other: "_N_NonIterableRanges[NumericT]"
     ) -> "_N_NonIterableRanges[NumericT]":
-        # TODO currently quadratic
-        # lists are sorted, so this could be linear
-        return _N_NonIterableRanges(
-            *(r.op_intersect_range(o) for r in self.ranges for o in other.ranges)
-        )
+        result = []
+        s, o = 0, 0
+        while s < len(self.ranges) and o < len(other.ranges):
+            rs, ro = self.ranges[s], other.ranges[o]
+            intersect = rs.op_intersect_range(ro)
+            if not intersect.is_empty():
+                result.append(intersect)
+
+            if rs.max_elem() < ro.min_elem():
+                # no remaining element in other list can intersect with rs
+                s += 1
+            elif ro.max_elem() < rs.min_elem():
+                # no remaining element in self list can intersect with ro
+                o += 1
+            elif rs.max_elem() < ro.max_elem():
+                # rs ends before ro, so move to next in self list
+                s += 1
+            elif ro.max_elem() < rs.max_elem():
+                # ro ends before rs, so move to next in other list
+                o += 1
+            else:
+                # rs and ro end on same number, so move to next in both lists
+                s += 1
+                o += 1
+
+        return _N_NonIterableRanges(*result)
 
     def op_union_ranges(
         self, other: "_N_NonIterableRanges[NumericT]"
@@ -500,6 +527,9 @@ class Single(Range[QuantityT]):
     def __init__(self, value: QuantityT):
         super().__init__(value, value)
 
+    def get_value(self) -> QuantityT:
+        return self.min_elem()
+
     def __iter__(self) -> Generator[Quantity]:
         yield self.min_elem()
 
@@ -568,6 +598,14 @@ class NonIterableRanges(P_UnitSet[QuantityT]):
         return self.base_to_units(
             self._ranges.closest_elem(target.to(self.range_units).magnitude)
         )
+
+    def is_superset_of(self, other: "NonIterableRanges[QuantityT]") -> bool:
+        if not self.units.is_compatible_with(other.units):
+            return False
+        return self._ranges.is_superset_of(other._ranges)
+
+    def is_subset_of(self, other: "NonIterableRanges[QuantityT]") -> bool:
+        return other.is_superset_of(self)
 
     def op_intersect_range(self, other: "Range[QuantityT]") -> "Ranges[QuantityT]":
         if not self.units.is_compatible_with(other.units):

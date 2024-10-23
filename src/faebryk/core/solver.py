@@ -36,16 +36,12 @@ class Solver(Protocol):
         constrain_result: bool = True,
     ) -> tuple[Any, list[Parameter]]: ...  # TODO Any -> NumberLike?
 
-    # make at least one of the passed predicates true
+    # make at least one of the passed predicates true, unless that is impossible
     # while trying to minimize the value of the optional minimize expression
     # there is no specific order in which the predicates are solved
     # suppose_constraint can be added, which by constraining the solution further can make solving easier
     # it is only in effect for the duration of the solve call
     # constrain_solved will add the solutions as constraints
-    # returns a tuple of two lists:
-    # - the first list contains the predicates that were actually solved, i.e. they are true/false
-    # - the second list contains the expressions that remain unknown
-    # - the third list contains the parameters that have an empty solution set
     def assert_any_predicate[ArgType](
         self,
         G: Graph,
