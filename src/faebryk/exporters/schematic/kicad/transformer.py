@@ -706,7 +706,12 @@ class Transformer:
         def _hierarchy(module: Module) -> str:
             """
             Make a string representation of the module's hierarchy
-            using the best name for each part we have
+            using the best name for each part we have.
+
+            NOTE: The hierarchy is used to determine whether parts live in the same module.
+            Top level should be unnamed, eg ""
+            Subsequent levels should be named and dot-separated
+            Part's ref should not be included at the end eg, don't do "led.U1"
             """
 
             def _best_name(module: Module) -> str:
@@ -715,7 +720,7 @@ class Transformer:
                 return module.get_name()
 
             # skip the root module, because it's name is just "*"
-            hierarchy = [h[0] for h in module.get_hierarchy()][1:]
+            hierarchy = [h[0] for h in module.get_hierarchy()][1:-1]
             return ".".join(_best_name(n) for n in hierarchy)
 
         # for each sch_symbol, create a shim part
@@ -726,7 +731,7 @@ class Transformer:
             shim_part.ref = sch_sym.propertys["Reference"].value
             # if we don't have a fab symbol, place the part at the top of the hierarchy
             shim_part.hierarchy = (
-                _hierarchy(f_symbol.represents) if f_symbol else shim_part.ref
+                _hierarchy(f_symbol.represents) if f_symbol else ""
             )
             # TODO: what's the ato analog?
             # TODO: should this desc
