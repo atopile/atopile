@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from itertools import pairwise
 
 import pytest
 
@@ -10,6 +11,7 @@ from faebryk.core.parameter import Expression, Parameter
 from faebryk.libs.library import L
 from faebryk.libs.sets import Range
 from faebryk.libs.units import P
+from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,22 @@ def test_visualize():
     # pytest.raises(ValueError, bool, app.p1 >= p2 * 5)
 
     G = app.get_graph()
+    interactive_graph(G, height=1400, node_types=(Parameter, Expression))
+
+
+def test_visualize_chain():
+    from faebryk.exporters.visualize.interactive_graph import interactive_graph
+
+    params = times(10, Parameter)
+    sums = [p1 + p2 for p1, p2 in pairwise(params)]
+    products = [p1 * p2 for p1, p2 in pairwise(sums)]
+    bigsum = sum(products)
+
+    predicates = [bigsum <= 100]
+    for p in predicates:
+        p.constrain()
+
+    G = params[0].get_graph()
     interactive_graph(G, height=1400, node_types=(Parameter, Expression))
 
 
