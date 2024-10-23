@@ -837,7 +837,9 @@ class Transformer:
                 # - stub powery things
                 # - override from symbol layout info trait
                 shim_pin.stub = False
-                if fab_power_if := fab_pin.get_parent_of_type(F.ElectricPower):
+                if fab_power_if := fab_pin.represents.get_parent_of_type(
+                    F.ElectricPower
+                ):
                     shim_pin.fab_is_gnd = fab_pin.represents is fab_power_if.lv
                     shim_pin.fab_is_pwr = fab_pin.represents is fab_power_if.hv
                 else:
