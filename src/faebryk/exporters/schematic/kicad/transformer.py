@@ -6,6 +6,7 @@ import logging
 import math
 import pprint
 from copy import deepcopy
+from dataclasses import is_dataclass
 from functools import singledispatchmethod
 from itertools import chain
 from os import PathLike
@@ -291,7 +292,6 @@ class Transformer:
 
     MARK_NAME = "faebryk_mark"
 
-
     @classmethod
     def _get_hash_contents(cls, obj_to_hash: Any) -> dict[tuple[str, ...], Any]:
         """
@@ -324,7 +324,6 @@ class Transformer:
                 obj = round(float(obj), 2)
 
             content_to_hash[name_path] = obj
-
 
         return dict(sorted(content_to_hash.items(), key=lambda x: x[0]))
 
@@ -749,10 +748,11 @@ class Transformer:
             Make a string representation of the module's hierarchy
             using the best name for each part we have.
 
-            NOTE: The hierarchy is used to determine whether parts live in the same module.
-            Top level should be unnamed, eg ""
-            Subsequent levels should be named and dot-separated
-            Part's ref should not be included at the end eg, don't do "led.U1"
+            NOTE: The hierarchy is used to determine whether parts
+            live in the same module.
+            - Top level should be unnamed, eg ""
+            - Subsequent levels should be named and dot-separated
+            - Part's ref should not be included at the end eg, don't do "led.U1"
             """
 
             def _best_name(module: Module) -> str:
@@ -771,9 +771,7 @@ class Transformer:
             shim_part = shims.Part()
             shim_part.ref = sch_sym.propertys["Reference"].value
             # if we don't have a fab symbol, place the part at the top of the hierarchy
-            shim_part.hierarchy = (
-                _hierarchy(f_symbol.represents) if f_symbol else ""
-            )
+            shim_part.hierarchy = _hierarchy(f_symbol.represents) if f_symbol else ""
             # TODO: what's the ato analog?
             # TODO: should this desc
             shim_part.symtx = ""
