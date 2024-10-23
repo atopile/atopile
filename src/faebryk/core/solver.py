@@ -29,7 +29,7 @@ class Solver(Protocol):
 
     def get_any_single(
         self,
-        expression: ParameterOperatable,
+        operatable: ParameterOperatable,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
         constrain_result: bool = True,
@@ -38,7 +38,7 @@ class Solver(Protocol):
         Solve for a single value for the given expression.
 
         Args:
-            expression: The expression to solve.
+            operatable: The expression or parameter to solve.
             suppose_constraint: An optional constraint that can be added to make solving
                                 easier. It is only in effect for the duration of the
                                 solve call.
@@ -47,14 +47,12 @@ class Solver(Protocol):
                               the expression.
 
         Returns:
-            A tuple containing the chosen value and a list of parameters with empty
-                               solution sets.
+            A SolveResultSingle object containing the chosen value.
         """
         ...
 
     def assert_any_predicate[ArgType](
         self,
-        G: Graph,
         predicates: list["Solver.PredicateWithInfo[ArgType]"],
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
@@ -64,7 +62,6 @@ class Solver(Protocol):
         Make at least one of the passed predicates true, unless that is impossible.
 
         Args:
-            G: The graph to solve on.
             predicates: A list of predicates to solve.
             suppose_constraint: An optional constraint that can be added to make solving
                                 easier. It is only in effect for the duration of the
@@ -89,8 +86,7 @@ class DefaultSolver(Solver):
 
     def get_any_single(
         self,
-        G: Graph,
-        expression: Expression,
+        operatable: ParameterOperatable,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
         constrain_result: bool = True,
@@ -99,7 +95,6 @@ class DefaultSolver(Solver):
 
     def assert_any_predicate[ArgType](
         self,
-        G: Graph,
         predicates: list["Solver.PredicateWithInfo[ArgType]"],
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,

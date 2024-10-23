@@ -178,9 +178,7 @@ def pick_module_by_params(
     if len(predicates) == 0:
         raise PickErrorParams(module, list(options))
 
-    solve_result = solver.assert_any_predicate(
-        module.get_graph(), [(p, k) for k, p in predicates.items()]
-    )
+    solve_result = solver.assert_any_predicate([(p, k) for k, p in predicates.items()])
 
     # TODO handle failure parameters
 

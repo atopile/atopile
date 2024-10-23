@@ -422,6 +422,13 @@ class ComponentQuery:
         ]
         return self.filter_by_description(*si_vals)
 
+    def hint_filter_parameter(
+        self, param: ParameterOperatable, si_unit: str, e_series: E_SERIES | None = None
+    ) -> Self:
+        # TODO implement
+        raise NotImplementedError()
+        return self
+
     def filter_by_category(self, category: str, subcategory: str) -> Self:
         assert self.Q
         category_ids = asyncio.run(Category().get_ids(category, subcategory))
@@ -531,7 +538,7 @@ class ComponentQuery:
                     anded &= m_param.operation_is_superset(c_range)
 
                 result = solver.assert_any_predicate(
-                    module.get_graph(), [(anded, None)], constrain_solved=False
+                    [(anded, None)], constrain_solved=False
                 )
                 if not result.true_predicates:
                     known_incompatible = True
