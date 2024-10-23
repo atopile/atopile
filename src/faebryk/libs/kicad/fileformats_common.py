@@ -153,7 +153,10 @@ def gen_uuid(mark: str = ""):
 
     suffix = mark.encode().hex()
     if suffix:
-        value = value[: -len(suffix)] + suffix
+        if len(suffix) >= len(value):
+            value = suffix[: len(value)]
+        else:
+            value = value[: -len(suffix)] + suffix
 
     DASH_IDX = [8, 12, 16, 20]
     formatted = value

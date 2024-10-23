@@ -343,7 +343,7 @@ class C_kicad_sch_file(SEXP_File):
             stroke: C_stroke
             uuid: UUID = uuid_field()
 
-        version: int = field(**sexp_field(assert_value=20211123))
+        version: int
         generator: str
         paper: str
         uuid: UUID = uuid_field()

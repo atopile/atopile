@@ -22,7 +22,6 @@ from faebryk.core.node import Node
 
 # import numpy as np
 # from shapely import Polygon
-from faebryk.exporters.pcb.kicad.transformer import is_marked
 from faebryk.exporters.schematic.kicad.skidl import gen_schematic as skidl_sch
 from faebryk.exporters.schematic.kicad.skidl import node as skidl_node
 from faebryk.exporters.schematic.kicad.skidl import shims
@@ -122,8 +121,8 @@ class Transformer:
         )
         self.font = FONT
 
-        # TODO: figure out what to do with cleanup
-        # self.cleanup()
+        if cleanup:
+            self.cleanup()
         self.attach()
 
     def attach(self):
@@ -163,6 +162,13 @@ class Transformer:
         logger.debug(f"Attached: {pprint.pformat(attached)}")
         logger.debug(f"Missing: {pprint.pformat(self.missing_symbols)}")
 
+    def cleanup(self):
+        """Remove everything we generated in the past."""
+        self.sch.symbols = list(
+            filter(lambda x: not self.check_mark(x), self.sch.symbols)
+        )
+        self.sch.wires = list(filter(lambda x: not self.check_mark(x), self.sch.wires))
+
     def attach_symbol(self, f_symbol: F.Symbol, sym_inst: SCH.C_symbol_instance):
         """Bind the module and symbol together on the graph"""
         f_symbol.add(self.has_linked_sch_symbol(sym_inst))
@@ -172,23 +178,6 @@ class Transformer:
             f_symbol.pins[pin.name].add(
                 Transformer.has_linked_sch_pins([pin], sym_inst)
             )
-
-    # TODO: remove cleanup, it shouldn't really be required if we're marking propertys
-    # def cleanup(self):
-    #     """Delete faebryk-created objects in schematic."""
-
-    #     # find all objects with path_len 2 (direct children of a list in pcb)
-    #     candidates = [o for o in dataclass_dfs(self.sch) if len(o[1]) == 2]
-    #     for obj, path, _ in candidates:
-    #         if not self.check_mark(obj):
-    #             continue
-
-    #         # delete object by removing it from the container they are in
-    #         holder = path[-1]
-    #         if isinstance(holder, list):
-    #             holder.remove(obj)
-    #         elif isinstance(holder, dict):
-    #             del holder[get_key(obj, holder)]
 
     def index_symbol_files(
         self, fp_lib_tables: PathLike | list[PathLike], load_globals: bool = True
@@ -284,30 +273,6 @@ class Transformer:
     def get_unit_count(lib_sym: C_lib_symbol) -> int:
         return max(int(name.split("_")[1]) for name in lib_sym.symbols.keys()) or 1
 
-    # TODO: remove
-    # @singledispatchmethod
-    # def get_lib_pin(self, pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
-    #     raise NotImplementedError(f"Don't know how to get lib pin for {type(pin)}")
-
-    # @get_lib_pin.register
-    # def _(self, pin: F.Symbol.Pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
-    #     graph_symbol, _ = pin.get_parent()
-    #     assert isinstance(graph_symbol, Node)
-    #     lib_sym = self.get_lib_syms(graph_symbol)
-    #     units = self.get_lib_syms(lib_sym)
-    #     sym = graph_symbol.get_trait(Transformer.has_linked_sch_symbol).symbol
-
-    #     def _name_filter(sch_pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin):
-    #         return sch_pin.name in {
-    #             p.name for p in pin.get_trait(self.has_linked_sch_pins).pins
-    #         }
-
-    #     lib_pin = find(
-    #         chain.from_iterable(u.pins for u in units[sym.unit]),
-    #         _name_filter,
-    #     )
-    #     return lib_pin
-
     # Marking -------------------------------------------------------------------------
     """
     There are two methods to mark objects in the schematic:
@@ -320,27 +285,17 @@ class Transformer:
     """
 
     @staticmethod
-    def gen_uuid(mark: bool = False) -> UUID:
-        return _gen_uuid(mark="FBRK" if mark else "")
-
-    @staticmethod
-    def is_uuid_marked(obj) -> bool:
-        if not hasattr(obj, "uuid"):
-            return False
-        assert isinstance(obj.uuid, str)
-        suffix = "FBRK".encode().hex()
-        return obj.uuid.replace("-", "").endswith(suffix)
-
-    @staticmethod
     def hash_contents(obj) -> str:
         """Hash the contents of an object, minus the mark"""
 
-        # filter out mark properties
+        # filter out mark properties and UUID
         def _filter(k: tuple[Any, list[Any], list[str]]) -> bool:
-            obj, _, _ = k
+            obj, _, name_path = k
             if isinstance(obj, C_property):
                 if obj.name == "faebryk_mark":
                     return False
+            if name_path and name_path[-1] == "uuid":
+                return False
             return True
 
         hasher = hashlib.blake2b()
@@ -350,37 +305,54 @@ class Transformer:
         return hasher.hexdigest()
 
     @staticmethod
-    def check_mark(obj) -> bool:
-        """Return True if an object is validly marked"""
+    def check_mark(obj: _HasUUID | _HasPropertys) -> bool:
+        """
+        Return True if an object is validly marked
+
+        Items that have the capacity to be marked
+        via propertys are only considered marked
+        if they have the property and it's valid,
+        despite their uuid
+        """
         if hasattr(obj, "propertys"):
             if "faebryk_mark" in obj.propertys:
                 prop = obj.propertys["faebryk_mark"]
                 assert isinstance(prop, C_property)
                 return prop.value == Transformer.hash_contents(obj)
-            else:
-                # items that have the capacity to be marked
-                # via propertys are only considered marked
-                # if they have the property and it's valid,
-                # despite their uuid
-                return False
 
-        return Transformer.is_uuid_marked(obj)
+            return False
+
+        if hasattr(obj, "uuid"):
+            assert isinstance(obj.uuid, str)
+            suffix = Transformer.hash_contents(obj).encode().hex()
+            uuid = obj.uuid.replace("-", "")
+            return uuid == suffix[: len(uuid)]
+
+        return False
 
     @staticmethod
     def mark[R: _HasUUID | _HasPropertys](obj: R) -> R:
         """Mark the property if possible, otherwise ensure the uuid is marked"""
+
+        # If there's already a valid mark, do nothing
+        # This is important to maintain consistent UUID marking
+        if Transformer.check_mark(obj):
+            return obj
+
+        hashed_contents = Transformer.hash_contents(obj)
+
         if hasattr(obj, "propertys"):
             obj.propertys["faebryk_mark"] = C_property(
                 name="faebryk_mark",
-                value=Transformer.hash_contents(obj),
+                value=hashed_contents,
             )
+            return obj
+
+        elif hasattr(obj, "uuid"):
+            obj.uuid = _gen_uuid(hashed_contents)
 
         else:
-            if not hasattr(obj, "uuid"):
-                raise TypeError(f"Object {obj} has no propertys or uuid")
-
-            if not is_marked(obj):
-                obj.uuid = Transformer.gen_uuid(mark=True)
+            raise TypeError(f"Object {obj} has no propertys or uuid")
 
         return obj
 
@@ -397,6 +369,7 @@ class Transformer:
                 SCH.C_wire(
                     pts=C_pts(xys=[C_xy(*coord) for coord in section]),
                     stroke=stroke or C_stroke(),
+                    uuid=_gen_uuid(),
                 )
             )
 
@@ -428,7 +401,7 @@ class Transformer:
                     font=font,
                     justify=alignment,
                 ),
-                uuid=self.gen_uuid(mark=True),
+                uuid=_gen_uuid(),
             )
         )
 
@@ -457,7 +430,7 @@ class Transformer:
                     font=font,
                     justifys=justifys,
                 ),
-                uuid=self.gen_uuid(mark=True),
+                uuid=_gen_uuid(),
             )
         )
 
@@ -514,7 +487,7 @@ class Transformer:
                     pins.append(
                         SCH.C_symbol_instance.C_pin(
                             name=pin.number.number,
-                            uuid=self.gen_uuid(mark=True),
+                            uuid=_gen_uuid(),
                         )
                     )
 
@@ -525,7 +498,7 @@ class Transformer:
                 in_bom=True,
                 on_board=True,
                 pins=pins,
-                uuid=self.gen_uuid(mark=True),
+                uuid=_gen_uuid(),
             )
 
             # It's one of ours, until it's modified in KiCAD
