@@ -152,10 +152,12 @@ class ParameterOperatable:
         self.inspect_final = new
 
     # Could be exponentially many
-    def inspect_num_known_supersets(self) -> int:
+    def inspect_known_supersets_are_few(self) -> bool:
         raise Exception("not implemented")
 
-    # def inspect_get_known_supersets(self) -> Iterable[P_Set]: ...
+    def inspect_get_known_supersets(self) -> Iterable[P_Set]:
+        raise Exception("not implemented")
+
     def inspect_get_known_superranges(self: NumberLike) -> Iterable[Ranges]:
         raise Exception("not implemented")
 

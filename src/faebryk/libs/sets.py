@@ -89,6 +89,9 @@ class _N_Range(P_Set[NumericT]):
     def is_empty(self) -> bool:
         return False
 
+    def is_unbounded(self) -> bool:
+        return self._min == float("-inf") and self._max == float("inf")
+
     def min_elem(self) -> NumericT:
         return self._min
 
@@ -447,6 +450,9 @@ class Range(P_UnitSet[QuantityT]):
     def is_empty(self) -> bool:
         return self._range.is_empty()
 
+    def is_unbounded(self) -> bool:
+        return self._range.is_unbounded()
+
     def op_intersect_range(
         self, other: "Range[QuantityT]"
     ) -> "NonIterableRanges[QuantityT]":
@@ -711,6 +717,11 @@ class Ranges(NonIterableRanges[QuantityT], Iterable[Range[QuantityT]]):
     def __iter__(self) -> Generator[Range[QuantityT]]:
         for r in self._ranges.ranges:
             yield Range._from_range(r, self.units)
+
+    def is_unbounded(self) -> bool:
+        if self.is_empty():
+            return False
+        return next(iter(self)).is_unbounded()
 
 
 def Empty(units: Unit | None = None) -> Ranges[QuantityT]:

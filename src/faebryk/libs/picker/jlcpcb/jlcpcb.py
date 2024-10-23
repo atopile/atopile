@@ -10,11 +10,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import indent
-from typing import Any, Callable, Generator, Self, Sequence, cast
+from typing import Any, Callable, Generator, Self, Sequence
 
 import patoolib
 import requests
-from more_itertools import take
 from rich.progress import track
 from tortoise import Tortoise
 from tortoise.expressions import Q
@@ -57,50 +56,6 @@ INSPECT_KNOWN_SUPERSETS_LIMIT = 100
 class JLCPCB_Part(LCSC_Part):
     def __init__(self, partno: str) -> None:
         super().__init__(partno=partno)
-
-
-class TBD_ParseError(L.P_UnitSet):
-    """
-    Wrapper for TBD that behaves exactly like TBD for the core and picker
-    But gives us the possibility to attach parser errors to it for deferred
-    error logging
-    """
-
-    def __init__(self, e: Exception, msg: str):
-        self.e = e
-        self.msg = msg
-        super().__init__()
-
-    def __repr__(self):
-        return f"{super().__repr__()}({self.msg}: {self.e})"
-
-    def __getattr__(self, name: str) -> Any:
-        import traceback
-
-        print("__getattr__", name)
-        traceback.print_stack()
-        return None
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        import traceback
-
-        print("__setattr__", name, value)
-        traceback.print_stack()
-
-    def is_empty(self) -> bool:
-        self.__getattr__("is_empty")
-        return True
-
-    def __contains__(self, item: Any) -> bool:
-        self.__getattr__("__contains__")
-        return False
-
-    @property
-    def units(self):
-        self.__getattr__("units")
-        import faebryk.libs.units
-
-        return faebryk.libs.units.dimensionless
 
 
 @dataclass(frozen=True)
@@ -229,7 +184,7 @@ class Component(Model):
 
         return unit_price * qty + handling_fee
 
-    def attribute_to_set(
+    def attribute_to_range(
         self, attribute_name: str, use_tolerance: bool = False, ignore_at: bool = True
     ) -> L.Range[Quantity]:
         """
@@ -285,7 +240,7 @@ class Component(Model):
 
         return L.Range.from_center_rel(value, tolerance)
 
-    def get_parameter(self, m: MappingParameterDB) -> L.Range[Quantity]:
+    def get_range(self, m: MappingParameterDB) -> L.Range[Quantity]:
         """
         Transform a component attribute to a parameter
 
@@ -333,11 +288,11 @@ class Component(Model):
         if parser is not None:
             return parser(self.extra["attributes"][attr_key])
 
-        return self.attribute_to_set(
+        return self.attribute_to_range(
             attr_key, tolerance_search_key is not None, m.ignore_at
         )
 
-    def get_params(
+    def get_range_for_mappings(
         self, mapping: list[MappingParameterDB]
     ) -> tuple[
         dict[MappingParameterDB, L.Range[Quantity]], dict[MappingParameterDB, Exception]
@@ -346,7 +301,7 @@ class Component(Model):
         exceptions = {}
         for m in mapping:
             try:
-                params[m] = self.get_parameter(m)
+                params[m] = self.get_range(m)
             except LookupError | ValueError | AssertionError as e:
                 exceptions[m] = e
         return params, exceptions
@@ -358,7 +313,7 @@ class Component(Model):
         qty: int = 1,
         ignore_exceptions: bool = False,
     ):
-        params, exceptions = self.get_params(mapping)
+        params, exceptions = self.get_range_for_mappings(mapping)
 
         if not ignore_exceptions and exceptions:
             params_str = indent(
@@ -456,7 +411,7 @@ class ComponentQuery:
     ) -> Self:
         assert self.Q
 
-        if value == L.Range(min=float("-inf"), max=float("inf")):
+        if value.is_unbounded():
             return self
         assert not self.results
         try:
@@ -466,9 +421,7 @@ class ComponentQuery:
                 value, f"Could not run e_series_intersect: {e}"
             ) from e
         si_vals = [
-            to_si_str(cast_assert(L.Single, r).get_value(), si_unit)
-            .replace("µ", "u")
-            .replace("inf", "∞")
+            to_si_str(r.min_elem(), si_unit).replace("µ", "u").replace("inf", "∞")
             for r in intersection
         ]
         return self.filter_by_description(*si_vals)
@@ -546,41 +499,52 @@ class ComponentQuery:
         :return: The first component that matches the parameters
         """
 
+        # iterate through all candidate components
         for c in self.get():
-            params, exceptions = c.get_params(mapping)
+            range_mapping, exceptions = c.get_range_for_mappings(mapping)
 
             if exceptions:  # TODO
                 continue
 
-            compatible = True
-            for m, p in params.items():
-                mod_param = getattr(module, m.param_name)
-                known_superset = L.Ranges(
-                    *take(
-                        INSPECT_KNOWN_SUPERSETS_LIMIT,
-                        mod_param.inspect_get_known_superranges(),
-                    )
+            param_mapping = [
+                (
+                    cast_assert(ParameterOperatable, getattr(module, m.param_name)),
+                    c_range,
                 )
-                if not known_superset.is_superset_of(L.Ranges(p)):
-                    compatible = False
+                for m, c_range in range_mapping.items()
+            ]
+
+            known_incompatible = False
+
+            # check for any param that has few supersets whether the component's range
+            # is compatible already instead of waiting for the solver
+            for m_param, c_range in param_mapping:
+                if not m_param.inspect_known_supersets_are_few():
+                    continue
+
+                known_superset = L.Ranges(*m_param.inspect_get_known_superranges())
+                if not known_superset.is_superset_of(L.Ranges(c_range)):
+                    known_incompatible = True
                     break
 
-            if compatible:
+            # check for every param whether the candidate component's range is
+            # compatible by querying the solver
+            if not known_incompatible:
                 anded = True
-                for m, p in params.items():
-                    mod_param = cast(ParameterOperatable, getattr(module, m.param_name))
-                    anded = mod_param.operation_is_superset(p).operation_and(anded)
+                for m_param, c_range in param_mapping:
+                    anded &= m_param.operation_is_superset(c_range)
 
                 result = solver.assert_any_predicate(
                     module.get_graph(), [(anded, None)], constrain_solved=False
                 )
-                if len(result.true_predicates) == 0:
-                    compatible = False
+                if not result.true_predicates:
+                    known_incompatible = True
 
-            if not compatible:
+            # debug
+            if known_incompatible:
                 logger.debug(
                     f"Component {c.lcsc} doesn't match: "
-                    f"{[p for p, v in params.items()]}"
+                    f"{[p for p, v in range_mapping.items()]}"
                 )
                 continue
 
@@ -600,7 +564,8 @@ class ComponentQuery:
         solver: Solver,
         qty: int = 1,
     ):
-        # TODO if no modules without TBD, rerun with TBD allowed
+        # TODO remove ignore_exceptions
+        # was used to handle TBDs
 
         failures = []
         for c in self.filter_by_module_params(module, mapping, solver):
