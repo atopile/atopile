@@ -122,42 +122,42 @@ DAGRE_LAYOUT = {
     # Dagre algorithm options (uses default value if undefined)
     "name": "dagre",
     # Separation between adjacent nodes in the same rank
-    "nodeSep": None,
+    # "nodeSep": None,
     # Separation between adjacent edges in the same rank
-    "edgeSep": None,
+    # "edgeSep": None,
     # Separation between each rank in the layout
-    "rankSep": None,
+    # "rankSep": None,
     # 'TB' for top to bottom flow, 'LR' for left to right
-    "rankDir": None,
+    # "rankDir": None,
     # Alignment for rank nodes. Can be 'UL', 'UR', 'DL', or 'DR'
-    "align": None,
+    # "align": None,
     # If 'greedy', uses heuristic to find feedback arc set
-    "acyclicer": None,
+    # "acyclicer": None,
     # Algorithm to assign rank to nodes: 'network-simplex', 'tight-tree' or 'longest-path'
-    "ranker": "tight-tree",
+    # "ranker": "tight-tree",
     # Number of ranks to keep between source and target of the edge
     # "minLen": lambda edge: 1,
     # Higher weight edges are generally made shorter and straighter
     # "edgeWeight": lambda edge: 1,
     # General layout options
     # Whether to fit to viewport
-    "fit": True,
+    # "fit": True,
     # Fit padding
-    "padding": 30,
+    # "padding": 30,
     # Factor to expand/compress overall area nodes take up
-    "spacingFactor": None,
+    # "spacingFactor": None,
     # Include labels in node space calculation
-    "nodeDimensionsIncludeLabels": False,
+    # "nodeDimensionsIncludeLabels": False,
     # Whether to transition node positions
-    "animate": False,
+    # "animate": False,
     # Whether to animate specific nodes
     # "animateFilter": lambda node, i: True,
     # Duration of animation in ms if enabled
-    "animationDuration": 500,
+    # "animationDuration": 500,
     # Easing of animation if enabled
-    "animationEasing": None,
+    # "animationEasing": None,
     # Constrain layout bounds: {x1, y1, x2, y2} or {x1, y1, w, h}
-    "boundingBox": None,
+    # "boundingBox": None,
     # Function to transform final node position
     # "transform": lambda node, pos: pos,
     # Callback on layoutready
@@ -171,25 +171,36 @@ DAGRE_LAYOUT = {
 
 def buttons(layout: Layout):
     app = layout.app
+
+    layout_chooser = dcc.RadioItems(
+        id="layout-radio",
+        options=[
+            {"label": "fcose", "value": "fcose"},
+            {"label": "dagre", "value": "dagre"},
+        ],
+        value="dagre",
+    )
+
+    dagre_ranker = dcc.RadioItems(
+        id="layout-dagre-ranker",
+        options=[
+            {"label": "network-simplex", "value": "network-simplex"},
+            {"label": "tight-tree", "value": "tight-tree"},
+            {"label": "longest-path", "value": "longest-path"},
+        ],
+        value="tight-tree",
+    )
+
     html_controls = html.Div(
         className="controls",
         style={"padding": "10px", "background-color": "#f0f0f0"},
         children=[
-            dcc.RadioItems(
-                id="layout-radio",
-                options=[
-                    {"label": "fcose", "value": "fcose"},
-                    {"label": "dagre", "value": "dagre"},
-                ],
-            ),
-            dcc.RadioItems(
-                id="layout-dagre-ranker",
-                options=[
-                    {"label": "network-simplex", "value": "network-simplex"},
-                    {"label": "tight-tree", "value": "tight-tree"},
-                    {"label": "longest-path", "value": "longest-path"},
-                ],
-            ),
+            html.Table(
+                [
+                    html.Tr([html.Td("Layout:"), html.Td(layout_chooser)]),
+                    html.Tr([html.Td("Dagre Ranker:"), html.Td(dagre_ranker)]),
+                ]
+            )
         ],
     )
     layout.div_children.insert(-2, html_controls)
@@ -201,7 +212,7 @@ def buttons(layout: Layout):
         State("graph-view", "layout"),
     )
     def absolute_layout(layout_radio, layout_dagre_ranker, current_layout):
-        print(layout_radio, layout_dagre_ranker)
+        # print(layout_radio, layout_dagre_ranker)
         layout.set_type(layout_radio, current_layout)
 
         if layout_dagre_ranker:
