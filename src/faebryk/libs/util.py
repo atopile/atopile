@@ -1130,3 +1130,9 @@ def abstract[T: type](cls: T) -> T:
 
     cls.__new__ = _new
     return cls
+
+
+def typename(obj):
+    if isinstance(obj, type):
+        return obj.__name__
+    return type(obj).__name__

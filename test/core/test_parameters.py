@@ -7,7 +7,7 @@ from itertools import pairwise
 import pytest
 
 from faebryk.core.node import Node
-from faebryk.core.parameter import Expression, Parameter
+from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
 from faebryk.libs.sets import Range
 from faebryk.libs.units import P
@@ -29,7 +29,7 @@ def test_visualize():
     """
     Creates webserver that opens automatically if run in jupyter notebook
     """
-    from faebryk.exporters.visualize.interactive_graph import interactive_graph
+    from faebryk.exporters.visualize.interactive_params import visualize_parameters
 
     class App(Node):
         p1 = L.f_field(Parameter)(units=P.V)
@@ -45,14 +45,14 @@ def test_visualize():
 
     (p2 * p3 + app.p1 * 1 * P.A <= 10 * P.W).constrain()
 
-    # pytest.raises(ValueError, bool, app.p1 >= p2 * 5)
+    pytest.raises(ValueError, bool, app.p1 >= p2 * 5)
 
     G = app.get_graph()
-    interactive_graph(G, height=1400, node_types=(Parameter, Expression))
+    visualize_parameters(G, height=1400)
 
 
 def test_visualize_chain():
-    from faebryk.exporters.visualize.interactive_graph import interactive_graph
+    from faebryk.exporters.visualize.interactive_params import visualize_parameters
 
     params = times(10, Parameter)
     sums = [p1 + p2 for p1, p2 in pairwise(params)]
@@ -64,7 +64,7 @@ def test_visualize_chain():
         p.constrain()
 
     G = params[0].get_graph()
-    interactive_graph(G, height=1400, node_types=(Parameter, Expression))
+    visualize_parameters(G, height=1400)
 
 
 # TODO remove
@@ -77,4 +77,4 @@ if __name__ == "__main__":
     else:
         import typer
 
-        typer.run(test_visualize)
+        typer.run(test_visualize_chain)

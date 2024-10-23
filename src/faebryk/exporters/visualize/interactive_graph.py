@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from gc import is_finalized
 from itertools import pairwise
 from typing import Any, Callable, Collection, Iterable
 
@@ -21,13 +20,7 @@ from faebryk.core.node import Node
 from faebryk.core.parameter import Expression, Parameter, Predicate
 from faebryk.core.trait import Trait
 from faebryk.exporters.visualize.util import generate_pastel_palette
-from faebryk.libs.util import KeyErrorAmbiguous, cast_assert, find, find_or, groupby
-
-
-def typename(obj):
-    if isinstance(obj, type):
-        return obj.__name__
-    return type(obj).__name__
+from faebryk.libs.util import KeyErrorAmbiguous, cast_assert, find_or, groupby, typename
 
 
 # Transformers -------------------------------------------------------------------------
@@ -210,59 +203,6 @@ def _Layout(
                         elements=elements,
                         layout={
                             "name": "fcose",
-                            # 'draft', 'default' or 'proof'
-                            # - "draft" only applies spectral layout
-                            # - "default" improves the quality with incremental layout
-                            #   (fast cooling rate)
-                            # - "proof" improves the quality with incremental layout
-                            #   (slow cooling rate)
-                            "quality": "proof",
-                            # Whether or not to animate the layout
-                            "animate": False,
-                            # Use random node positions at beginning of layout
-                            # if this is set to false,
-                            # then quality option must be "proof"
-                            "randomize": False,
-                            # Fit the viewport to the repositioned nodes
-                            "fit": True,
-                            # Padding around layout
-                            "padding": 50,
-                            # Whether to include labels in node dimensions.
-                            # Valid in "proof" quality
-                            "nodeDimensionsIncludeLabels": True,
-                            # Whether or not simple nodes (non-compound nodes)
-                            #  are of uniform dimensions
-                            "uniformNodeDimensions": True,
-                            # Whether to pack disconnected components -
-                            # cytoscape-layout-utilities extension should
-                            # be registered and initialized
-                            "packComponents": False,  # Graph is never disconnected
-                            # Node repulsion (non overlapping) multiplier
-                            "nodeRepulsion": 100,
-                            # Ideal edge (non nested) length
-                            "idealEdgeLength": 100,
-                            # Divisor to compute edge forces
-                            "edgeElasticity": 0.2,
-                            # Nesting factor (multiplier) to compute ideal edge length
-                            # for nested edges
-                            "nestingFactor": 0.0001,
-                            # Maximum number of iterations to perform -
-                            # this is a suggested value and might be adjusted by the
-                            #  algorithm as required
-                            "numIter": 2500 * 4,
-                            # For enabling tiling
-                            "tile": False,  # No unconnected nodes in Graph
-                            # Gravity force (constant)
-                            "gravity": 0,
-                            # Gravity range (constant)
-                            "gravityRange": 3.8,
-                            # Gravity force (constant) for compounds
-                            "gravityCompound": 20,
-                            # Gravity range (constant) for compounds
-                            "gravityRangeCompound": 0.5,
-                            # Initial cooling factor for incremental layout
-                            "initialEnergyOnIncremental": 0.5,
-                            "componentSpacing": 40,
                         }
                         | extra,
                     )
@@ -410,8 +350,8 @@ class Layout:
         if len(nodes) <= 1:
             return
 
-        if all(isinstance(n, GraphInterface) for n in nodes):
-            print(f"align {direction}: {nodes}")
+        # if all(isinstance(n, GraphInterface) for n in nodes):
+        #     print(f"align {direction}: {nodes}")
 
         if "alignmentConstraint" not in layout:
             layout["alignmentConstraint"] = {}
@@ -430,6 +370,76 @@ class Layout:
         if not layout:
             layout = self.layout
         self.add_align(*(gif_key(n) for n in nodes), horizontal=True, layout=layout)
+
+    def set_type(self, t: str, layout: dict | None = None):
+        if not layout:
+            layout = self.layout
+        if t == "fcose" or t is None:
+            _layout = {
+                "name": "fcose",
+                # 'draft', 'default' or 'proof'
+                # - "draft" only applies spectral layout
+                # - "default" improves the quality with incremental layout
+                #   (fast cooling rate)
+                # - "proof" improves the quality with incremental layout
+                #   (slow cooling rate)
+                "quality": "proof",
+                # Whether or not to animate the layout
+                "animate": False,
+                # Use random node positions at beginning of layout
+                # if this is set to false,
+                # then quality option must be "proof"
+                "randomize": False,
+                # Fit the viewport to the repositioned nodes
+                "fit": True,
+                # Padding around layout
+                "padding": 50,
+                # Whether to include labels in node dimensions.
+                # Valid in "proof" quality
+                "nodeDimensionsIncludeLabels": True,
+                # Whether or not simple nodes (non-compound nodes)
+                #  are of uniform dimensions
+                "uniformNodeDimensions": True,
+                # Whether to pack disconnected components -
+                # cytoscape-layout-utilities extension should
+                # be registered and initialized
+                "packComponents": False,  # Graph is never disconnected
+                # Node repulsion (non overlapping) multiplier
+                "nodeRepulsion": 100,
+                # Ideal edge (non nested) length
+                "idealEdgeLength": 100,
+                # Divisor to compute edge forces
+                "edgeElasticity": 0.2,
+                # Nesting factor (multiplier) to compute ideal edge length
+                # for nested edges
+                "nestingFactor": 0.0001,
+                # Maximum number of iterations to perform -
+                # this is a suggested value and might be adjusted by the
+                #  algorithm as required
+                "numIter": 2500 * 4,
+                # For enabling tiling
+                "tile": False,  # No unconnected nodes in Graph
+                # Gravity force (constant)
+                "gravity": 0,
+                # Gravity range (constant)
+                "gravityRange": 3.8,
+                # Gravity force (constant) for compounds
+                "gravityCompound": 20,
+                # Gravity range (constant) for compounds
+                "gravityRangeCompound": 0.5,
+                # Initial cooling factor for incremental layout
+                "initialEnergyOnIncremental": 0.5,
+                "componentSpacing": 40,
+            }
+        elif t == "dagre":
+            _layout = {
+                "name": "dagre",
+            }
+        else:
+            raise ValueError(f"Unknown layout: {t}")
+
+        layout.clear()
+        layout.update(_layout)
 
 
 def buttons(layout: Layout):
@@ -456,6 +466,21 @@ def buttons(layout: Layout):
             #             value=0.45,
             #             marks={i / 10: str(i / 10) for i in range(0, 11, 1)},
             #         ),
+            dcc.RadioItems(
+                id="layout-radio",
+                options=[
+                    {"label": "fcose", "value": "fcose"},
+                    {"label": "dagre", "value": "dagre"},
+                ],
+            ),
+            dcc.RadioItems(
+                id="layout-dagre-ranker",
+                options=[
+                    {"label": "network-simplex", "value": "network-simplex"},
+                    {"label": "tight-tree", "value": "tight-tree"},
+                    {"label": "longest-path", "value": "longest-path"},
+                ],
+            ),
             dcc.Checklist(
                 id="layout-checkbox",
                 options=[{"label": "Parameters", "value": "parameters"}],
@@ -469,12 +494,24 @@ def buttons(layout: Layout):
         Output("graph-view", "layout"),
         Input("apply-changes-button", "n_clicks"),
         State("layout-checkbox", "value"),
+        State("layout-radio", "value"),
+        State("layout-dagre-ranker", "value"),
         State("graph-view", "layout"),
     )
-    def absolute_layout(n_clicks, layout_checkbox, current_layout):
-        print(layout_checkbox)
+    def absolute_layout(
+        n_clicks, layout_checkbox, layout_radio, layout_dagre_ranker, current_layout
+    ):
+        print(layout_checkbox, layout_radio, layout_dagre_ranker)
+        layout.set_type(layout_radio, current_layout)
+
+        if layout_radio == "fcose":
+            layout_constraints(layout, current_layout)
+
         if "parameters" in (layout_checkbox or []):
             params_top(layout, current_layout)
+
+        if layout_dagre_ranker:
+            current_layout["ranker"] = layout_dagre_ranker
 
         return current_layout
 
@@ -620,11 +657,7 @@ def interactive_subgraph(
 
     # Extra layouting
     layout = Layout(app, elements, list(nodes))
-    layout_constraints(layout)
     buttons(layout)
-    # TODO remove
-    print("params_top", "-" * 80)
-    params_top(layout)
 
     # Print legend ---------------------------------------------------------------------
     console = Console()
