@@ -559,7 +559,8 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
         """
 
         # Don't rotate parts that are already explicitly rotated/flipped.
-        if not getattr(part, "symtx", ""):
+        # FIXME: this was the inverted in SKiDL
+        if getattr(part, "symtx", ""):
             return
 
         def is_pwr(pin: Pin) -> bool:
@@ -584,18 +585,18 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
                     if pin.orientation == "D":
                         rotation_tally[180] += 1
                     if pin.orientation == "L":
-                        rotation_tally[90] += 1
-                    if pin.orientation == "R":
                         rotation_tally[270] += 1
+                    if pin.orientation == "R":
+                        rotation_tally[90] += 1
                 elif is_pwr(pin):
                     if pin.orientation == "D":
                         rotation_tally[0] += 1
                     if pin.orientation == "U":
                         rotation_tally[180] += 1
                     if pin.orientation == "L":
-                        rotation_tally[270] += 1
-                    if pin.orientation == "R":
                         rotation_tally[90] += 1
+                    if pin.orientation == "R":
+                        rotation_tally[270] += 1
 
             # Rotate the part unit in the direction with the most tallies.
             try:
