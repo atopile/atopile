@@ -335,7 +335,9 @@ class Expression(Node, ParameterOperatable):
 
 @abstract
 class ConstrainableExpression(Expression, Constrainable):
-    pass
+    def __init__(self, *operands: ParameterOperatable.All):
+        Expression.__init__(self, *operands)
+        Constrainable.__init__(self)
 
 
 @abstract
@@ -626,9 +628,10 @@ class NotEqual(NumericPredicate):
 class SeticPredicate(Predicate):
     def __init__(self, left, right):
         super().__init__(left, right)
-        types = [Parameter, ParameterOperatable.Sets]
-        if any(type(op) not in types for op in self.operands):
-            raise ValueError("operands must be Parameter or Set")
+        types = ParameterOperatable, P_Set
+        # TODO
+        # if any(not isinstance(op, types) for op in self.operands):
+        #    raise ValueError("operands must be Parameter or Set")
         units = [op.units for op in self.operands]
         for u in units[1:]:
             if not units[0].is_compatible_with(u):

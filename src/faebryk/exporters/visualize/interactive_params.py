@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import cast
 
 import dash_core_components as dcc
@@ -14,6 +15,7 @@ from faebryk.core.graphinterface import Graph
 from faebryk.core.link import LinkSibling
 from faebryk.core.node import Node
 from faebryk.core.parameter import Expression, Parameter
+from faebryk.exporters.parameters.parameters_to_file import parameter_report
 from faebryk.exporters.visualize.interactive_graph import (
     _GROUP_TYPES,
     Layout,
@@ -236,6 +238,10 @@ def visualize_parameters(G: Graph, height: int | None = None):
         and e.node is not n
         and isinstance(e.node, Operand_)
     }
+
+    # TODO filter equivalency classes
+
+    parameter_report(G, Path("./build/params.txt"))
 
     elements = [_node(n) for n in nodes] + [_link(li) for li in edges]
     stylesheet = _Stylesheet()

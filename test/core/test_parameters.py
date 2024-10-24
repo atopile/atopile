@@ -6,6 +6,7 @@ from itertools import pairwise
 
 import pytest
 
+import faebryk.library._F as F
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
@@ -64,6 +65,15 @@ def test_visualize_chain():
         p.constrain()
 
     G = params[0].get_graph()
+    visualize_parameters(G, height=1400)
+
+
+def test_visualize_inspect_app():
+    from faebryk.exporters.visualize.interactive_params import visualize_parameters
+
+    rp2040 = F.RP2040()
+
+    G = rp2040.get_graph()
     visualize_parameters(G, height=1400)
 
 

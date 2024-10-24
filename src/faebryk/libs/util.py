@@ -12,7 +12,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import StrEnum
 from functools import cache
-from itertools import chain
+from genericpath import commonprefix
+from itertools import chain, pairwise
 from textwrap import indent
 from typing import (
     Any,
@@ -1144,3 +1145,69 @@ def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
             dict_value_visitor(v, visitor)
         else:
             d[k] = visitor(k, v)
+
+
+class DefaultFactoryDict[T, U](dict[T, U]):
+    def __init__(self, factory: Callable[[T], U], *args, **kwargs):
+        self.factory = factory
+        super().__init__(*args, **kwargs)
+
+    def __missing__(self, key: T) -> U:
+        res = self.factory(key)
+        self[key] = res
+        return res
+
+
+class EquivalenceClasses[T: Hashable]:
+    def __init__(self, base: Iterable[T] | None = None):
+        self.classes: dict[T, set[T]] = DefaultFactoryDict(lambda k: {k})
+        for elem in base or []:
+            self.classes[elem]
+
+    def add_eq(self, *values: T):
+        if len(values) < 2:
+            return
+        val1 = values[0]
+        for val in values[1:]:
+            self.classes[val1].update(self.classes[val])
+            for v in self.classes[val]:
+                self.classes[v] = self.classes[val1]
+
+    def get(self) -> list[set[T]]:
+        sets = {id(s): s for s in self.classes.values()}
+        return list(sets.values())
+
+
+def common_prefix_to_tree(iterable: list[str]) -> Iterable[str]:
+    """
+    Turns:
+
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.max_current|Parameter
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.voltage|Parameter
+    <760>|RP2040.adc[1]|ADC.reference|ElectricPower.max_current|Parameter
+    <760>|RP2040.adc[1]|ADC.reference|ElectricPower.voltage|Parameter
+
+    Into:
+
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.max_current|Parameter
+    -----------------------------------------------.voltage|Parameter
+    -----------------1]|ADC.reference|ElectricPower.max_current|Parameter
+    -----------------------------------------------.voltage|Parameter
+
+    Notes:
+        Recommended to sort the iterable first.
+    """
+    yield iterable[0]
+
+    for s1, s2 in pairwise(iterable):
+        prefix = commonprefix([s1, s2])
+        prefix_length = len(prefix)
+        yield "-" * prefix_length + s2[prefix_length:]
+
+
+def ind[T: str | list[str]](lines: T) -> T:
+    prefix = "    "
+    if isinstance(lines, str):
+        return indent(lines, prefix=prefix)
+    if isinstance(lines, list):
+        return [f"{prefix}{line}" for line in lines]  # type: ignore
