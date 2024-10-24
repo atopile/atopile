@@ -155,7 +155,7 @@ even_greyed_row = "on grey15 grey0"
 @click.option("--inspect", default=None)
 @click.option("--context", default=None, help="The context from which to inspect the module")
 @click.option("--dump-csv", default=None, help="Output the inspection to a CSV file", )
-@errors.log_ato_errors
+@errors.log_ato_errors()
 def inspect(build_ctxs: list[BuildContext], inspect: Optional[str], context: Optional[str], dump_csv: Optional[str]):
     """
     Utility to inspect what is connected to a component.

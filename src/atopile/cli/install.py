@@ -32,8 +32,8 @@ log.setLevel(logging.INFO)
 @click.option("--jlcpcb", is_flag=True, help="JLCPCB component ID")
 @click.option("--link", is_flag=True, help="Keep this dependency linked to the source")
 @click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
-@errors.muffle_fatalities
-@errors.log_ato_errors
+@errors.muffle_fatalities()
+@errors.log_ato_errors()
 def install(
     to_install: str,
     jlcpcb: bool,

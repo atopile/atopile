@@ -11,7 +11,7 @@ from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 
 
-from atopile import address, config, errors, instance_methods
+from atopile import address, config, errors, expressions, instance_methods
 from atopile.address import AddrStr
 from atopile.front_end import RangedValue
 
@@ -74,7 +74,12 @@ def configure_cache():
     cache_file_path = config.get_project_context().project_path / ".ato/component_cache.json"
     if cache_file_path.exists():
         with open(cache_file_path, "r") as cache_file:
+            try:
                 _component_cache = json.load(cache_file)
+            except json.JSONDecodeError as ex:
+                # protect against corrupt cache files
+                log.warning("Failed to load component cache: %s", ex)
+                _component_cache = {}
         # Clean out stale entries
         clean_cache()
     else:
@@ -178,6 +183,9 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     specd_data_dict = {
         k: v.to_dict() if isinstance(v, RangedValue) else v for k, v in specd_data.items()
     }
+    for k, v in specd_data_dict.items():
+        if isinstance(v, expressions.Expression):
+            raise errors.AtoValueError(f"{k} is an unresolved expression. This is typically caused by one of the values in the expression being unresolved")
 
     # check if there are any Physical objects in the specd_data, if not, throw a warning
     if specd_data:  # Check that specd_data is not empty

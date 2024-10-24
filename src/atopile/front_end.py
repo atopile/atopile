@@ -989,7 +989,7 @@ def lookup_class_in_closure(context: ClassDef, ref: Ref) -> AddrStr:
         return BUILTINS_BY_REF[ref].address
 
     raise errors.AtoKeyError.from_ctx(
-        context.src_ctx, f"Couldn't find {ref} in the scope of {context}"
+        context.src_ctx, f"Couldn't find '{ref}' in the scope of {context}"
     )
 
 
@@ -1254,7 +1254,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 )
             except KeyError as ex:
                 raise errors.AtoKeyError.from_ctx(
-                    current_obj_def.src_ctx, f"Couldn't find ref {new_class_ref}"
+                    ctx, f"Couldn't find '{new_class_ref}'"
                 ) from ex
 
             try:
@@ -1708,7 +1708,18 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             raise ValueError("Unexpected context in visitConnectable")
 
         with _translate_addr_key_errors(ctx):
-            return self._output_cache[addr]
+            instance = self._output_cache[addr]
+
+        # check the instance is either a signal, pin or interface
+        from atopile.instance_methods import match_interfaces, match_pins_and_signals
+        if not match_interfaces(addr) and not match_pins_and_signals(addr):
+            raise errors.AtoError.from_ctx(
+                ctx,
+                f"Cannot connect to {addr} because it's not a pin signal or interface",
+                title="Not connectable",
+            )
+
+        return instance
 
     # The following statements are handled exclusively by Dizzy
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext | Any):
