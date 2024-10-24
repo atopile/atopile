@@ -1007,10 +1007,11 @@ class Transformer:
                 part.sch_symbol.at.r = get_common_rotation(part_tx) or 0
 
         # 4. draw wires and junctions
-        for _, wire in node.wires.items():
-            skidl_points = [p * tx for seg in wire for p in [seg.p1, seg.p2]]
-            points = [(p.x, p.y) for p in skidl_points]
-            self.insert_wire(points)
+        for wire in node.wires.values():
+            for seg in wire:
+                skild_seg_points = [p * tx for p in [seg.p1, seg.p2]]
+                seg_points = [(p.x, p.y) for p in skild_seg_points]
+                self.insert_wire(seg_points)
 
         for _, junctions in node.junctions.items():
             for junc in junctions:
