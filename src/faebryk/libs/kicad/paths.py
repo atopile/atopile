@@ -32,7 +32,7 @@ match sys.platform:
             / "fp-lib-table"
         )
         GLOBAL_FP_DIR_PATH = Path(
-            "/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols"
+            "/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints"
         )
     case _:
         raise EnvironmentError(f"Unsupported platform: {sys.platform}")
