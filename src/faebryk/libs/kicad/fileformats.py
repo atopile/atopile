@@ -1343,7 +1343,7 @@ class C_kicad_fp_lib_table_file(SEXP_File):
             options: str
             descr: str
 
-        version: int = field(**sexp_field(assert_value=7))
+        version: int | None = field(default=None, **sexp_field())
         libs: list[C_lib] = field(**sexp_field(multidict=True), default_factory=list)
 
     fp_lib_table: C_fp_lib_table
