@@ -70,8 +70,6 @@ Point = Geometry.Point
 Point2D = Geometry.Point2D
 
 Justify = C_effects.C_justify.E_justify
-Alignment = tuple[Justify, Justify, Justify]
-Alignment_Default = (Justify.center_horizontal, Justify.center_vertical, Justify.normal)
 
 
 class _HasUUID(Protocol):
@@ -115,10 +113,9 @@ class Transformer:
 
         self.dimensions = None
 
-        FONT_SCALE = 8
+        FONT_SCALE_MM = 1.27
         FONT = Font(
-            size=C_wh(1 / FONT_SCALE, 1 / FONT_SCALE),
-            thickness=0.15 / FONT_SCALE,
+            size=C_wh(FONT_SCALE_MM, FONT_SCALE_MM),
         )
         self.font = FONT
 
@@ -423,15 +420,34 @@ class Transformer:
             )
         )
 
+    @staticmethod
+    def _build_justify(
+        justify: Justify | list[Justify] | None,
+    ) -> list[C_effects.C_justify.E_justify]:
+        """
+        Without any alignment, the text defaults to center alignment,
+        which beyond looking shit, also locks rotation to 0 or 90 degrees
+
+        Weird!
+        """
+        if justify is None:
+            justify = [C_effects.C_justify.E_justify.right]
+        elif isinstance(justify, Justify):
+            justify = [justify]
+
+        return [C_effects.C_justify(justifys=just) for just in justify]
+
     def insert_text(
         self,
         text: str,
         at: C_xyr,
         font: Font | None = None,
-        alignment: Alignment | None = None,
+        text_alignment: Justify | list[Justify] | None = None,
     ):
         if font is None:
             font = self.font
+
+        justifys = self._build_justify(text_alignment)
 
         self.sch.texts.append(
             SCH.C_text(
@@ -439,7 +455,7 @@ class Transformer:
                 at=at,
                 effects=C_effects(
                     font=font,
-                    justify=alignment,
+                    justifys=justifys,
                 ),
                 uuid=_gen_uuid(),
             )
@@ -451,15 +467,19 @@ class Transformer:
         shape: SCH.C_global_label.E_shape,
         at: C_xyr,
         font: Font | None = None,
-        alignment: Alignment | None = None,
+        text_alignment: Justify | list[Justify] | None = None,
     ):
         if font is None:
             font = self.font
 
-        if alignment is None:
-            justifys = []
+        # The rotation dictates the text alignment
+        # If the alignment is wrong, the rotation is sacrificed
+        if 0 < at.r <= 90:
+            text_alignment = [C_effects.C_justify.E_justify.left]
         else:
-            justifys = [C_effects.C_justify(justifys=[alignment])]
+            text_alignment = [C_effects.C_justify.E_justify.right]
+
+        justifys = self._build_justify(text_alignment)
 
         self.sch.global_labels.append(
             SCH.C_global_label(
@@ -976,7 +996,7 @@ class Transformer:
                 self.insert_global_label(
                     pin.net.name,
                     at=C_xyr(x=pt.x, y=pt.y, r=rotation),
-                    shape=SCH.C_global_label.E_shape.bidirectional,
+                    shape=SCH.C_global_label.E_shape.input,
                 )
             else:
                 ## 3. modify parts

@@ -8,6 +8,7 @@ Design notes:
 """
 
 from itertools import chain
+import math
 from typing import TYPE_CHECKING, Any, Iterator, TypedDict
 
 import faebryk.library._F as F
@@ -42,14 +43,14 @@ def rmv_attr(objs, attrs):
 
 def angle_to_orientation(angle: float) -> str:
     """Convert an angle to an orientation"""
-    if angle == 0:
-        return "L"
-    elif angle == 90:
-        return "D"
-    elif angle == 180:
+    if math.isclose(angle, 0):
         return "R"
-    elif angle == 270:
+    elif math.isclose(angle, 90):
         return "U"
+    elif math.isclose(angle, 180):
+        return "L"
+    elif math.isclose(angle, 270):
+        return "D"
     else:
         raise ValueError(f"Invalid angle: {angle}")
 
@@ -177,7 +178,25 @@ class Pin:
     net: "Net"
     name: str
     num: str
-    orientation: str  # "U"/"D"/"L"/"R" for the pin's location
+
+    # Pin rotation is confusing, because it has to do with the way to line coming
+    # from the pin is facing, not the side of the part/package it's on.
+    # Here's a diagram to help:
+    #
+    #          D
+    #          o
+    #          |
+    #       +-----+
+    #       |     |
+    #  R o--|     |--o L
+    #       |     |
+    #       +-----+
+    #          |
+    #          o
+    #          U
+    #
+    orientation: str  # "U"/"D"/"L"/"R" for the pin's rotation
+
     part: Part  # to which part does this pin belong?
     stub: bool  # whether to stub the pin or not
     # position of the pin
