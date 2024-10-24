@@ -107,7 +107,7 @@ class C_effects:
             **sexp_field(positional=True), default_factory=list
         )
 
-    font: C_font
+    font: Optional[C_font] = None
 
     @staticmethod
     def preprocess_shitty_hide(c_effects: netlist_type):
