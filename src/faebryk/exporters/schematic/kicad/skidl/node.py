@@ -3,6 +3,7 @@
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
+import itertools
 import re
 from collections import defaultdict
 from itertools import chain
@@ -77,12 +78,15 @@ class SchNode(Placer, Router):
         Args:
             circuit (Circuit): Circuit object.
         """
-        from .net_terminal import NetTerminal
-
         # Build the circuit node hierarchy by adding the parts.
         assert circuit.parts, "Circuit has no parts"
         for part in circuit.parts:
             self.add_part(part)
+
+        # FIXME: SKiDL doesn't seem to need to clean these up. We shouldn't really either
+        # The flattening and adding of terminals was the other way around in SKiDL.
+        # Flatten the hierarchy as specified by the flatness parameter.
+        self.flatten(self.flatness)
 
         # Add terminals to nodes in the hierarchy for nets that span across nodes.
         for net in circuit.nets:
@@ -91,8 +95,18 @@ class SchNode(Placer, Router):
                 continue
 
             # Search for pins in different nodes.
-            for pin1, pin2 in zip(net.pins[:-1], net.pins[1:]):
-                if pin1.part.hierarchy != pin2.part.hierarchy:
+            # NOTE: this was a zip in SKiDL
+            for pin1, pin2 in itertools.combinations(net.pins, 2):
+                def _find_effective_node(part: Part) -> SchNode:
+                    node = self.find_node_with_part(part)
+                    while node.flattened:
+                        if node.parent is None:
+                            raise RuntimeError("Cannot flatten top node")
+                        node = node.parent
+                    return node
+
+                # If two pins on a net are in different nodes, we should definitely add a terminal
+                if _find_effective_node(pin1.part) is not _find_effective_node(pin2.part):
                     # Found pins in different nodes, so break and add terminals to nodes below.
                     break
             else:
@@ -116,22 +130,16 @@ class SchNode(Placer, Router):
 
                 part = pin.part
 
-                # Skip NetTerminals because otherwise doesn't this just recurse forever?
-                if isinstance(part, NetTerminal):
-                    continue
-
                 if part.hierarchy in visited:
                     # Already added a terminal to this node, so don't add another.
                     continue
 
                 # Add NetTerminal to the node with this part/pin.
-                self.find_node_with_part(part).add_terminal(net)
+                self.find_node_with_part(part).add_terminal(net, part.hierarchy)
 
                 # Record that this hierarchical node was visited.
                 visited.append(part.hierarchy)
 
-        # Flatten the hierarchy as specified by the flatness parameter.
-        self.flatten(self.flatness)
 
     def add_part(self, part: Part, level: int = 0):
         """Add a part to the node at the appropriate level of the hierarchy.
@@ -167,6 +175,7 @@ class SchNode(Placer, Router):
         else:
             # Part is at a level below the current node. Get the child node using
             # the name of the next level in the hierarchy for this part.
+            # This is a default dict, so it also creates new nodes as needed.
             child_node = self.children[level_names[level + 1]]
 
             # Attach the child node to this node. (It may have just been created.)
@@ -175,7 +184,7 @@ class SchNode(Placer, Router):
             # Add part to the child node (or one of its children).
             child_node.add_part(part, level + 1)
 
-    def add_terminal(self, net: Net):
+    def add_terminal(self, net: Net, hierarchy: str):
         """Add a terminal for this net to the node.
 
         Args:
@@ -183,7 +192,7 @@ class SchNode(Placer, Router):
         """
         from .net_terminal import NetTerminal
 
-        nt = NetTerminal(net)
+        nt = NetTerminal(net, hierarchy)
         self.parts.append(nt)
 
     def external_bbox(self) -> BBox:

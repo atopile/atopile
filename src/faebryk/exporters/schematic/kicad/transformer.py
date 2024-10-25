@@ -741,7 +741,9 @@ class Transformer:
             shim_net.name = net.get_trait(F.has_overriden_name).get_name()
             shim_net.netio = ""  # TODO:
             shim_net.stub = False  # TODO:
-            shim_net._is_implicit = net.get_trait(F.has_overriden_name).is_explicit()
+            shim_net._is_implicit = not net.get_trait(
+                F.has_overriden_name
+            ).is_explicit()
 
             # make partial net-oriented pins
             shim_net.pins = []
@@ -783,7 +785,7 @@ class Transformer:
 
             # skip the root module, because it's name is just "*"
             hierarchy = [h[0] for h in module.get_hierarchy()][1:-1]
-            return ".".join(_best_name(n) for n in hierarchy)
+            return "." + ".".join(_best_name(n) for n in hierarchy)
 
         # for each sch_symbol, create a shim part
         for sch_sym, f_symbol in sch_to_fab_sym_map.items():

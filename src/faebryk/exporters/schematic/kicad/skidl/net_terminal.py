@@ -2,9 +2,6 @@
 
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
-import uuid
-from functools import cached_property
-
 from .constants import GRID
 from .geometry import Point, Tx, Vector
 from .shims import Net, Part, Pin
@@ -17,7 +14,7 @@ Net_Terminal class for handling net labels.
 class NetTerminal(Part):
     pull_pins: dict[Net, list[Pin]]
 
-    def __init__(self, net: Net):
+    def __init__(self, net: Net, hierarchy: str):
         """Specialized Part with a single pin attached to a net.
 
         This is intended for attaching to nets to label them, typically when
@@ -28,9 +25,9 @@ class NetTerminal(Part):
         # Set a default transformation matrix for this part.
         self.tx = Tx()
         self.ref = net.name
+        self.hierarchy = hierarchy
         self.symtx = ""
         self.unit = {}
-        self.hierarchy = uuid.uuid4().hex
 
         # Add a single pin to the part.
         pin = Pin()
@@ -78,10 +75,6 @@ class NetTerminal(Part):
 
         pin.audit()
         self.audit()
-
-    @cached_property
-    def hierarchy(self) -> str:
-        return uuid.uuid4().hex
 
     @property
     def sch_symbol(self) -> None:
