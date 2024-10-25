@@ -3291,6 +3291,23 @@ class Router:
             # Create horizontal & vertical global routing tracks and faces.
             h_tracks, v_tracks = node.create_routing_tracks(routing_bbox)
 
+            parts_missing_tracks: dict[Part, list[str]] = {}
+            for part in node.parts:
+                if not isinstance(part, Part):
+                    continue
+                if not part.left_track:
+                    parts_missing_tracks[part] = ["left"]
+                if not part.right_track:
+                    parts_missing_tracks[part] = ["right"]
+                if not part.top_track:
+                    parts_missing_tracks[part] = ["top"]
+                if not part.bottom_track:
+                    parts_missing_tracks[part] = ["bottom"]
+            if parts_missing_tracks:
+                raise RuntimeError(
+                    f"Parts missing tracks: {parts_missing_tracks}"
+                )
+
             # Create terminals on the faces in the routing tracks.
             node.create_terminals(internal_nets, h_tracks, v_tracks)
 
