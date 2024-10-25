@@ -46,6 +46,7 @@ class SchNode(Placer, Router):
         self.title = title
         self.flatness = flatness
         self.flattened = False
+        self.flattened_children = []
         self.parts: list["Part"] = []
         self.wires: dict[Net, list[Segment]] = defaultdict(list)
         self.junctions: dict[Net, list[Point]] = defaultdict(list)
@@ -65,9 +66,15 @@ class SchNode(Placer, Router):
             Node: The Node object containing the part.
         """
         level_names = part.hierarchy.split(HIER_SEP)
+
+        # descend based on the hierarchy name
         node = self
         for lvl_nm in level_names[1:]:
+            # stop descending if we're trying to go into something flattened
+            if lvl_nm in node.flattened_children:
+                break
             node = node.children[lvl_nm]
+
         assert part in node.parts
         return node
 
@@ -97,16 +104,8 @@ class SchNode(Placer, Router):
             # Search for pins in different nodes.
             # NOTE: this was a zip in SKiDL
             for pin1, pin2 in itertools.combinations(net.pins, 2):
-                def _find_effective_node(part: Part) -> SchNode:
-                    node = self.find_node_with_part(part)
-                    while node.flattened:
-                        if node.parent is None:
-                            raise RuntimeError("Cannot flatten top node")
-                        node = node.parent
-                    return node
-
                 # If two pins on a net are in different nodes, we should definitely add a terminal
-                if _find_effective_node(pin1.part) is not _find_effective_node(pin2.part):
+                if self.find_node_with_part(pin1.part) is not self.find_node_with_part(pin2.part):
                     # Found pins in different nodes, so break and add terminals to nodes below.
                     break
             else:
@@ -286,6 +285,14 @@ class SchNode(Placer, Router):
                 # Not enough slack left. Add these children as hierarchical sheets.
                 for child in child_types[child_type]:
                     child.flattened = False
+
+        # Move all the flattened children's content into this node
+        for child in self.children.values():
+            if child.flattened:
+                self.parts.extend(child.parts)
+                self.flattened_children.append(child.name)
+        for child in self.flattened_children:
+            del self.children[child]
 
     def get_internal_nets(self) -> list[Net]:
         """Return a list of nets that have at least one pin on a part in this node."""
