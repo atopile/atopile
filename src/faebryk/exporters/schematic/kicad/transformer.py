@@ -973,12 +973,12 @@ class Transformer:
         mils_to_mm = Tx(a=0.0254, b=0, c=0, d=0.0254, dx=0, dy=0)
 
         if node.flattened:
-            # Create the transformation matrix for the placement of the parts
-            # in the node.
-            tx = node.tx * sheet_tx * mils_to_mm
-        else:
-            flattened_bbox = node.internal_bbox()
-            tx = skidl_sch.calc_sheet_tx(flattened_bbox) * mils_to_mm
+            # This almost certainly shouldn't be hit any more because we've already
+            # flattened the node.
+            raise RuntimeError("Cannot apply flattened node")
+
+        flattened_bbox = node.internal_bbox()
+        tx = skidl_sch.calc_sheet_tx(flattened_bbox) * mils_to_mm
 
         # TODO: Put flattened node into heirarchical block
 
