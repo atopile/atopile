@@ -7,8 +7,8 @@ Design notes:
 - We're not using dataclasses because typing doesn't pass through InitVar properly
 """
 
-from itertools import chain
 import math
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Iterator, TypedDict
 
 import faebryk.library._F as F
