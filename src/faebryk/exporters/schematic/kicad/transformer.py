@@ -945,13 +945,10 @@ class Transformer:
     ):
         from faebryk.exporters.schematic.kicad.skidl.geometry import (
             Tx,
-            tx_rot_0,
-            tx_rot_90,
-            tx_rot_180,
             tx_rot_270,
         )
 
-        def get_common_rotation(part_tx: Tx) -> float | None:
+        def find_orientation(part_tx: Tx) -> tuple[float, bool]:
             def _check(tx: Tx) -> bool:
                 return (
                     math.isclose(tx.a, part_tx.a / part_tx.scale)
@@ -960,15 +957,20 @@ class Transformer:
                     and math.isclose(tx.d, part_tx.d / part_tx.scale)
                 )
 
-            if _check(tx_rot_0):
-                return 0
-            elif _check(tx_rot_90):
-                return 90
-            elif _check(tx_rot_180):
-                return 180
-            elif _check(tx_rot_270):
-                return 270
-            return None
+            candidate = Tx()
+            flip_x = False
+
+            for _ in range(2):
+                rotation = 0
+                for _ in range(4):
+                    if _check(candidate):
+                        return rotation, flip_x
+                    candidate *= tx_rot_270  # 90 degrees counterclockwise
+                    rotation += 90
+                flip_x = not flip_x
+                candidate = candidate.flip_x()
+
+            raise ValueError(f"No orientation found for {part_tx}")
 
         mils_to_mm = Tx(a=0.0254, b=0, c=0, d=0.0254, dx=0, dy=0)
 
@@ -1006,7 +1008,9 @@ class Transformer:
                 # are already in the schematic, we just need to move them
                 part.sch_symbol.at.x = part_tx.origin.x
                 part.sch_symbol.at.y = part_tx.origin.y
-                part.sch_symbol.at.r = get_common_rotation(part_tx) or 0
+                rotation, flip_x = find_orientation(part_tx)
+                part.sch_symbol.at.r = rotation
+                # part.sch_symbol.
 
         # 4. draw wires and junctions
         for wire in node.wires.values():
