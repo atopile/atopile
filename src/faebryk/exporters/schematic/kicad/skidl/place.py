@@ -1343,11 +1343,6 @@ class Placer:
                     part_similarity[part][other_part] = (
                         part.similarity(other_part) / 100
                     )
-                    # part_similarity[part][other_part] = 0.1
-
-                # Select the top-most pin in each part as the anchor point for force-directed placement.
-                # tx = part.tx
-                # part.anchor_pin = max(part.anchor_pins, key=lambda pin: (pin.place_pt * tx).y)
 
             force_func = functools.partial(
                 total_similarity_force, similarity=part_similarity
