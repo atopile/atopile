@@ -1,7 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+
 import logging
 import unittest
+from abc import ABC, abstractmethod
 from pathlib import Path
 from tempfile import mkdtemp
 
@@ -9,7 +11,9 @@ import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
+from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.picker import DescriptiveProperties, has_part_picked
@@ -18,23 +22,27 @@ from faebryk.libs.units import P, Quantity
 
 logger = logging.getLogger(__name__)
 
-
 lcsc.LIB_FOLDER = Path(mkdtemp())
 
 
-@unittest.skipIf(not JLCPCB_DB.config.db_path.exists(), reason="Requires large db")
-class TestPickerJlcpcb(unittest.TestCase):
+class TestPickerBase(unittest.TestCase, ABC):
+    @abstractmethod
+    def add_pickers(self, module: Module):
+        pass
+
     class TestRequirements:
         def __init__(
             self,
             test_case: unittest.TestCase,
             requirement: Module,
             footprint: list[tuple[str, int]],
+            add_pickers_func,
         ):
             self.test_case = test_case
             self.result = requirement
             self.requirement = requirement
             self.footprint = footprint
+            self.add_pickers_func = add_pickers_func
 
             self.req_lcsc_pn = None
             if self.requirement.has_trait(F.has_descriptive_properties) and "LCSC" in (
@@ -116,7 +124,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                     )
 
         def test(self):
-            add_jlcpcb_pickers(self.result)
+            self.add_pickers_func(self.result)
             self.result.get_trait(F.has_picker).pick()
 
             self.test_case.assertTrue(self.result.has_trait(has_part_picked))
@@ -183,6 +191,7 @@ class TestPickerJlcpcb(unittest.TestCase):
             self,
             requirement=requirement,
             footprint=[("SOT-23-5", 5)],
+            add_pickers_func=self.add_pickers,
         )
 
     def test_find_lcsc_partnumber(self):
@@ -199,17 +208,12 @@ class TestPickerJlcpcb(unittest.TestCase):
                 r.slew_rate.merge(F.Range.upper_bound(1 * P.MV / P.us)),
             )
         )
-        requirement.add(
-            F.has_descriptive_properties_defined(
-                {
-                    "LCSC": "C7972",
-                }
-            )
-        )
+        requirement.add(F.has_descriptive_properties_defined({"LCSC": "C7972"}))
         self.TestRequirements(
             self,
             requirement=requirement,
             footprint=[("SOT-23-5", 5)],
+            add_pickers_func=self.add_pickers,
         )
 
     def test_find_resistor(self):
@@ -223,6 +227,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 )
             ),
             footprint=[("0402", 2)],
+            add_pickers_func=self.add_pickers,
         )
 
         self.TestRequirements(
@@ -235,6 +240,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 )
             ),
             footprint=[("0603", 2)],
+            add_pickers_func=self.add_pickers,
         )
 
     def test_find_capacitor(self):
@@ -250,6 +256,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 )
             ),
             footprint=[("0603", 2)],
+            add_pickers_func=self.add_pickers,
         )
 
         self.TestRequirements(
@@ -264,6 +271,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 )
             ),
             footprint=[("0402", 2)],
+            add_pickers_func=self.add_pickers,
         )
 
     def test_find_inductor(self):
@@ -280,6 +288,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 )
             ),
             footprint=[("0603", 2)],
+            add_pickers_func=self.add_pickers,
         )
 
     def test_find_mosfet(self):
@@ -298,6 +307,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 )
             ),
             footprint=[("SOT-23", 3)],
+            add_pickers_func=self.add_pickers,
         )
 
     def test_find_diode(self):
@@ -313,6 +323,28 @@ class TestPickerJlcpcb(unittest.TestCase):
                 )
             ),
             footprint=[("SOD-123", 2)],
+            add_pickers_func=self.add_pickers,
+        )
+
+    def test_find_led(self):
+        self.TestRequirements(
+            self,
+            requirement=F.LED().builder(
+                lambda led: (
+                    led.color.merge(F.LED.Color.RED),
+                    led.brightness.merge(
+                        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+                    ),
+                    # TODO: check semantics of F.ANY vs F.TBD
+                    led.reverse_leakage_current.merge(F.ANY()),
+                    led.reverse_working_voltage.merge(F.ANY()),
+                    led.max_brightness.merge(F.Range.lower_bound(100 * P.millicandela)),
+                    led.forward_voltage.merge(F.Range.upper_bound(2.5 * P.V)),
+                    led.max_current.merge(F.Range.upper_bound(20 * P.mA)),
+                )
+            ),
+            footprint=[("0805", 2)],
+            add_pickers_func=self.add_pickers,
         )
 
     def test_find_tvs(self):
@@ -331,6 +363,7 @@ class TestPickerJlcpcb(unittest.TestCase):
                 )
             ),
             footprint=[("SMB(DO-214AA)", 2)],
+            add_pickers_func=self.add_pickers,
         )
 
     def test_find_ldo(self):
@@ -354,19 +387,15 @@ class TestPickerJlcpcb(unittest.TestCase):
                 ("SOT-23-3", 3),
                 ("SOT-23-3L", 3),
             ],
+            add_pickers_func=self.add_pickers,
         )
 
-    def tearDown(self):
-        # in test atexit not triggered, thus need to close DB manually
-        JLCPCB_DB.get().close()
 
+class TestPickerPerformanceBase(unittest.TestCase, ABC):
+    @abstractmethod
+    def add_pickers(self, module: Module):
+        pass
 
-def is_db_available():
-    return JLCPCB_DB.config.db_path.exists()
-
-
-@unittest.skipIf(not is_db_available(), reason="Requires large db")
-class TestPickerPerformanceJLCPCB(unittest.TestCase):
     def test_simple_full(self):
         # conclusions
         # - first pick overall is slow, need to load sqlite into buffer cache
@@ -415,7 +444,7 @@ class TestPickerPerformanceJLCPCB(unittest.TestCase):
         mods = resistors + caps + resistors_10k
 
         for mod in mods:
-            add_jlcpcb_pickers(mod)
+            self.add_pickers(mod)
 
         with timings.context("resistors"):
             for i, r in enumerate(resistors):
@@ -443,6 +472,39 @@ class TestPickerPerformanceJLCPCB(unittest.TestCase):
                 )
 
         print(timings)
+
+
+def is_db_available():
+    return JLCPCB_DB.config.db_path.exists()
+
+
+@unittest.skipIf(not is_db_available(), reason="Requires large db")
+class TestPickerJlcpcb(TestPickerBase):
+    def add_pickers(self, module):
+        add_jlcpcb_pickers(module)
+
+    def tearDown(self):
+        # in test atexit not triggered, thus need to close DB manually
+        JLCPCB_DB.get().close()
+
+
+@unittest.skipIf(not is_db_available(), reason="Requires large db")
+class TestPickerPerformanceJlcpcb(TestPickerPerformanceBase):
+    def add_pickers(self, module):
+        add_jlcpcb_pickers(module)
+
+    def tearDown(self):
+        JLCPCB_DB.get().close()
+
+
+class TestPickerApi(TestPickerBase):
+    def add_pickers(self, module):
+        add_api_pickers(module)
+
+
+class TestPickerPerformanceApi(TestPickerPerformanceBase):
+    def add_pickers(self, module):
+        add_api_pickers(module)
 
 
 if __name__ == "__main__":

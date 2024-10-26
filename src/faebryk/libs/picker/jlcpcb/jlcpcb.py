@@ -18,17 +18,12 @@ from pint import DimensionalityError
 from rich.progress import track
 from tortoise import Tortoise
 from tortoise.expressions import Q
-from tortoise.fields import CharField, IntField, JSONField
+from tortoise.fields import CharField, DatetimeField, IntField, JSONField
 from tortoise.models import Model
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
-from faebryk.libs.e_series import (
-    E_SERIES_VALUES,
-    ParamNotResolvedError,
-    e_series_intersect,
-)
 from faebryk.libs.picker.lcsc import (
     LCSC_NoDataException,
     LCSC_Part,
@@ -40,8 +35,8 @@ from faebryk.libs.picker.picker import (
     PickError,
     has_part_picked_defined,
 )
-from faebryk.libs.units import P, Quantity, UndefinedUnitError, to_si_str
-from faebryk.libs.util import at_exit, cast_assert, try_or
+from faebryk.libs.units import P, UndefinedUnitError
+from faebryk.libs.util import at_exit, try_or
 
 logger = logging.getLogger(__name__)
 
@@ -140,19 +135,22 @@ class Manufacturers(Model):
 class Component(Model):
     lcsc = IntField(primary_key=True)
     category_id = IntField()
+    category = CharField(max_length=255)
+    subcategory = CharField(max_length=255, optional=True)
     mfr = CharField(max_length=255)
     package = CharField(max_length=255)
     joints = IntField()
     manufacturer_id = IntField()
+    manufacturer_name = CharField(max_length=255, optional=True)
     basic = IntField()
     description = CharField(max_length=255)
     datasheet = CharField(max_length=255)
     stock = IntField()
     price = JSONField()
-    last_update = IntField()
+    last_update = DatetimeField()
     extra = JSONField()
     flag = IntField()
-    last_on_stock = IntField()
+    last_on_stock = DatetimeField()
     preferred = IntField()
 
     class Meta:
@@ -215,6 +213,11 @@ class Component(Model):
         # TODO better to actually parse this
         if ignore_at:
             value_field = value_field.split("@")[0]
+
+        # parse fields like "110mA;130mA"
+        # TODO: better data model so we can choose the appropriate value
+        if ";" in value_field:
+            value_field = value_field.split(";")[0]
 
         value_field = value_field.replace("cd", "candela")
 
@@ -343,9 +346,7 @@ class Component(Model):
             F.has_descriptive_properties_defined(
                 {
                     DescriptiveProperties.partno: self.mfr,
-                    DescriptiveProperties.manufacturer: asyncio.run(
-                        Manufacturers().get_from_id(self.manufacturer_id)
-                    ),
+                    DescriptiveProperties.manufacturer: self.mfr_name,
                     DescriptiveProperties.datasheet: self.datasheet,
                     "JLCPCB stock": str(self.stock),
                     "JLCPCB price": f"{self.get_price(qty):.4f}",
@@ -366,8 +367,11 @@ class Component(Model):
             )
 
     @property
-    def mfr_name(self) -> str:
-        return asyncio.run(Manufacturers().get_from_id(self.manufacturer_id))
+    def mfr_name(self):
+        try:
+            return self.manufacturer_name
+        except AttributeError:
+            return asyncio.run(Manufacturers().get_from_id(self.manufacturer_id))
 
 
 class ComponentQuery:
@@ -414,37 +418,19 @@ class ComponentQuery:
 
         return self
 
-    def filter_by_value(
-        self,
-        value: Parameter[Quantity],
-        si_unit: str,
-        e_series: set[float] | None = None,
-    ) -> Self:
+    def filter_by_si_values(self, value: Parameter, si_vals: list[str]) -> Self:
         assert self.Q
-        value = value.get_most_narrow()
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Filtering by value:\n{indent(value.get_tree_param().pretty(), ' '*4)}"
             )
+            logger.debug(f"Possible values: {si_vals}")
 
         if isinstance(value, F.ANY):
             return self
         assert not self.results
-        try:
-            intersection = F.Set(
-                [e_series_intersect(value, e_series or E_SERIES_VALUES.E_ALL)]
-            ).params
-        except ParamNotResolvedError as e:
-            raise ComponentQuery.ParamError(
-                value, f"Could not run e_series_intersect: {e}"
-            ) from e
-        si_vals = [
-            to_si_str(cast_assert(F.Constant, r).value, si_unit)
-            .replace("µ", "u")
-            .replace("inf", "∞")
-            for r in intersection
-        ]
+
         return self.filter_by_description(*si_vals)
 
     def filter_by_category(self, category: str, subcategory: str) -> Self:

@@ -5,13 +5,13 @@ import asyncio
 import collections.abc
 import inspect
 import logging
+import os
 import sys
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import StrEnum
-from functools import cache
 from itertools import chain
 from textwrap import indent
 from typing import (
@@ -711,102 +711,6 @@ class Lazy(LazyMixin):
         lazy_construct(cls)
 
 
-class ConfigFlag:
-    def __init__(self, name: str, default: bool = False, descr: str = "") -> None:
-        self.name = name
-        self.default = default
-        self.descr = descr
-
-    @cache
-    def __bool__(self):
-        import os
-
-        key = f"FBRK_{self.name}"
-
-        if key not in os.environ:
-            return self.default
-
-        matches = [
-            (True, ["1", "true", "yes", "y"]),
-            (False, ["0", "false", "no", "n"]),
-        ]
-        val = os.environ[key].lower()
-
-        res = find(matches, lambda x: val in x[1])[0]
-
-        if res != self.default:
-            logger.warning(f"Config flag |{self.name}={res}|")
-
-        return res
-
-
-class ConfigFlagEnum[E: StrEnum]:
-    def __init__(self, enum: type[E], name: str, default: E, descr: str = "") -> None:
-        self.enum = enum
-        self._name = name
-        self.default = default
-        self.descr = descr
-
-        self._resolved = None
-
-    def get(self):
-        if self._resolved is not None:
-            return self._resolved
-
-        import os
-
-        key = f"FBRK_{self._name}"
-
-        if key not in os.environ:
-            return self.default
-
-        val = os.environ[key].upper()
-        res = self.enum[val]
-
-        if res != self.default:
-            logger.warning(f"Config flag |{self._name}={res}|")
-
-        self._resolved = res
-        return res
-
-    def __eq__(self, other) -> Any:
-        return self.get() == other
-
-
-def zip_dicts_by_key(*dicts):
-    keys = {k for d in dicts for k in d}
-    return {k: tuple(d.get(k) for d in dicts) for k in keys}
-
-
-def paginated_query[T: Model](page_size: int, q: QuerySet[T]) -> Iterator[T]:
-    page = 0
-
-    async def get_page(page: int):
-        offset = page * page_size
-        return await q.offset(offset).limit(page_size)
-
-    while True:
-        results = asyncio.run(get_page(page))
-
-        if not results:
-            break  # No more records to fetch, exit the loop
-
-        for r in results:
-            yield r
-
-        page += 1
-
-
-def factory[T, **P](con: Callable[P, T]) -> Callable[P, Callable[[], T]]:
-    def _(*args: P.args, **kwargs: P.kwargs) -> Callable[[], T]:
-        def __() -> T:
-            return con(*args, **kwargs)
-
-        return __
-
-    return _
-
-
 def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         lookup = (args, tuple(kwargs.items()))
@@ -850,6 +754,110 @@ def assert_once_global[T, **P](f: Callable[P, T]) -> Callable[P, T]:
 
     wrapper.called = False
     return wrapper
+
+
+class _ConfigFlagBase[T]:
+    def __init__(self, name: str, default: T, descr: str = ""):
+        self._name = name
+        self.default = default
+        self.descr = descr
+        self._type: type[T] = type(default)
+
+    @property
+    def name(self) -> str:
+        return f"FBRK_{self._name}"
+
+    @property
+    def raw_value(self) -> str | None:
+        return os.getenv(self.name, None)
+
+    @once
+    def get(self) -> T:
+        raw_val = self.raw_value
+
+        if raw_val is None:
+            res = self.default
+        else:
+            res = self._convert(raw_val)
+
+        if res != self.default:
+            logger.warning(f"Config flag |{self.name}={res}|")
+
+        return res
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+    @abstractmethod
+    def _convert(self, raw_val: str) -> T: ...
+
+    def __eq__(self, other) -> bool:
+        return self.get() == other
+
+
+class ConfigFlag(_ConfigFlagBase[bool]):
+    def __init__(self, name: str, default: bool = False, descr: str = "") -> None:
+        super().__init__(name, default, descr)
+
+    def _convert(self, raw_val: str) -> bool:
+        matches = [
+            (True, ["1", "true", "yes", "y"]),
+            (False, ["0", "false", "no", "n"]),
+        ]
+        val = raw_val.lower()
+
+        return find(matches, lambda x: val in x[1])[0]
+
+    def __bool__(self):
+        return self.get()
+
+
+class ConfigFlagEnum[E: StrEnum](_ConfigFlagBase[E]):
+    def __init__(self, enum: type[E], name: str, default: E, descr: str = "") -> None:
+        super().__init__(name, default, descr)
+        self.enum = enum
+
+    def _convert(self, raw_val: str) -> E:
+        return self.enum[raw_val.upper()]
+
+
+class ConfigFlagString(_ConfigFlagBase[str]):
+    def _convert(self, raw_val: str) -> str:
+        return raw_val
+
+
+def zip_dicts_by_key(*dicts):
+    keys = {k for d in dicts for k in d}
+    return {k: tuple(d.get(k) for d in dicts) for k in keys}
+
+
+def paginated_query[T: Model](page_size: int, q: QuerySet[T]) -> Iterator[T]:
+    page = 0
+
+    async def get_page(page: int):
+        offset = page * page_size
+        return await q.offset(offset).limit(page_size)
+
+    while True:
+        results = asyncio.run(get_page(page))
+
+        if not results:
+            break  # No more records to fetch, exit the loop
+
+        for r in results:
+            yield r
+
+        page += 1
+
+
+def factory[T, **P](con: Callable[P, T]) -> Callable[P, Callable[[], T]]:
+    def _(*args: P.args, **kwargs: P.kwargs) -> Callable[[], T]:
+        def __() -> T:
+            return con(*args, **kwargs)
+
+        return __
+
+    return _
 
 
 class PostInitCaller(type):
