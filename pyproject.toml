@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 [project]
 name = "faebryk"
 version = "4.1.2"
-authors = [{ name = "ioannis_iteng", email = "ioannis@iteng.nl" }]
+authors = [{ name = "Ioannis Papamanoglou", email = "ioannis@atopile.io" }]
 description = "Open-source software-defined EDA"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -92,7 +92,10 @@ cmake.source-dir = "src/faebryk/core/cpp"
 
 [tool.pytest]
 [tool.pytest.ini_options]
-addopts = ["--import-mode=importlib", "--numprocesses=auto"]
+# loadscope to run tests for each file in same worker
+addopts = ["--import-mode=importlib", "--numprocesses=auto", "--dist=loadscope"]
+filterwarnings = ["ignore:.*:DeprecationWarning"]
+testpaths = ["test"]
 
 [tool.ruff]
 line-length = 88         # Same as Black.
@@ -102,15 +105,22 @@ target-version = "py312"
 exclude = ["_F.py"]
 
 [tool.ruff.lint]
-# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
+# Enable recommended set of rules
 select = [
-    # Pycodestyle
-    "E",
-    "W",
-    # Pyflakes
-    "F",
-    # Isort
-    "I001",
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I001", # isort
+    #"B",    # flake8-bugbear
+    #"C4",   # flake8-comprehensions
+    #"PL",   # Pylint
+    #"RUF",  # Ruff-specific rules
+    #"UP",   # pyupgrade
+    #"N",    # pep8-naming
+    #"SIM",  # flake8-simplify
+    #"TCH",  # flake8-type-checking
+    #"ARG",  # flake8-unused-arguments
+    #"PTH",  # flake8-use-pathlib
 ]
 ignore = [
     # Line too long
@@ -119,50 +129,50 @@ ignore = [
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = [
-    "A",
-    "B",
-    "C",
-    "D",
-    "E",
-    "F",
-    "G",
-    "I",
-    "N",
-    "Q",
-    "S",
-    "T",
-    "W",
-    "ANN",
-    "ARG",
-    "BLE",
-    "COM",
-    "DJ",
-    "DTZ",
-    "EM",
-    "ERA",
-    "EXE",
-    "FBT",
-    "ICN",
-    "INP",
-    "ISC",
-    "NPY",
-    "PD",
-    "PGH",
-    "PIE",
-    "PL",
-    "PT",
-    "PTH",
-    "PYI",
-    "RET",
-    "RSE",
-    "RUF",
-    "SIM",
-    "SLF",
-    "TCH",
-    "TID",
-    "TRY",
-    "UP",
-    "YTT",
+    "A",   # flake8-builtins
+    "B",   # flake8-bugbear
+    "C",   # flake8-comprehensions
+    "D",   # pydocstyle
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "G",   # flake8-logging-format
+    "I",   # isort
+    "N",   # pep8-naming
+    "Q",   # flake8-quotes
+    "S",   # flake8-bandit
+    "T",   # flake8-print
+    "W",   # pycodestyle warnings
+    "ANN", # flake8-annotations
+    "ARG", # flake8-unused-arguments
+    "BLE", # flake8-blind-except
+    "COM", # flake8-commas
+    "DJ",  # flake8-django
+    "DTZ", # flake8-datetimez
+    "EM",  # flake8-errmsg
+    "ERA", # eradicate
+    "EXE", # flake8-executable
+    "FBT", # flake8-boolean-trap
+    "ICN", # flake8-import-conventions
+    "INP", # flake8-no-pep420
+    "ISC", # flake8-implicit-str-concat
+    "NPY", # NumPy-specific rules
+    "PD",  # pandas-vet
+    "PGH", # pygrep-hooks
+    "PIE", # flake8-pie
+    "PL",  # Pylint
+    "PT",  # flake8-pytest-style
+    "PTH", # flake8-use-pathlib
+    "PYI", # flake8-pyi
+    "RET", # flake8-return
+    "RSE", # flake8-raise
+    "RUF", # Ruff-specific rules
+    "SIM", # flake8-simplify
+    "SLF", # flake8-self
+    "TCH", # flake8-type-checking
+    "TID", # flake8-tidy-imports
+    "TRY", # tryceratops
+    "UP",  # pyupgrade
+    "YTT", # flake8-2020
 ]
 unfixable = []
 
