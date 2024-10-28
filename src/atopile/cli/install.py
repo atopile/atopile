@@ -9,6 +9,7 @@ This CLI command provides the `ato install` command to:
 import logging
 import subprocess
 from pathlib import Path
+import sys
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -260,18 +261,24 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
     if not component_id.startswith("C") or not component_id[1:].isdigit():
         raise errors.AtoError(f"Component id {component_id} is invalid. Aborting.")
 
-    footprints_dir = top_level_path / "elec/footprints/footprints"
+    footprints_dir = top_level_path / atopile.config.get_project_config_from_path(top_level_path).paths.footprints
+    footprints_dir.mkdir(parents=True, exist_ok=True)
+
+    ato_src_dir = top_level_path / atopile.config.get_project_config_from_path(top_level_path).paths.src
+    ato_src_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Footprints directory: {footprints_dir}")
 
     command = [
+        sys.executable,
+        "-m",
         "easyeda2kicad",
         "--full",
         f"--lcsc_id={component_id}",
         f"--output={footprints_dir}",
         "--overwrite",
         "--ato",
-        f"--ato_file_path={top_level_path / 'elec/src'}",
+        f"--ato_file_path={ato_src_dir}",
     ]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
 

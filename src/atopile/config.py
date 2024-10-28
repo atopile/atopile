@@ -41,6 +41,7 @@ class ProjectPaths:
 
     src: Path = "elec/src"
     layout: Path = "elec/layout"
+    footprints: Path = "elec/footprints/footprints"
 
 
 @define
@@ -102,11 +103,11 @@ class ProjectConfig:
     dependencies: list[str | Dependency] = Factory(list)
     services: ProjectServicesConfig = Factory(ProjectServicesConfig)
 
-    @staticmethod
-    def _sanitise_dict_keys(d: dict) -> dict:
+    @classmethod
+    def _sanitise_dict_keys(cls, data: dict) -> dict:
         """Sanitise the keys of a dictionary to be valid python identifiers."""
-        data = copy.deepcopy(d)
-        data["ato_version"] = data.pop("ato-version")
+        data = copy.deepcopy(data) or {}
+        data["ato_version"] = data.pop("ato-version", cls.ato_version)
         return data
 
     @staticmethod
