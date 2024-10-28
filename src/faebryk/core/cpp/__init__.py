@@ -21,8 +21,18 @@ def compile_and_load():
     Forces C++ to compile into faebryk_core_cpp_editable module which is then loaded
     into _cpp.
     """
+    import platform
     import subprocess
     import sys
+
+    def _do(*args, **kwargs):
+        try:
+            return subprocess.check_output(
+                *args, stderr=subprocess.PIPE, text=True, **kwargs
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Subprocess error: {e.stderr}")
+            raise
 
     cpp_dir = pathlib.Path(__file__).parent
     build_dir = cpp_dir / "build"
@@ -33,15 +43,20 @@ def compile_and_load():
             "cmake not found, needed for compiling c++ code in editable mode"
         )
 
-    pybind11_dir = subprocess.check_output(
-        ["python", "-m", "pybind11", "--cmakedir"],
-        text=True,
-    ).strip()
+    pybind11_dir = _do(["python", "-m", "pybind11", "--cmakedir"]).strip()
 
-    # force recompile
+    # Force recompile
     # subprocess.run(["rm", "-rf", str(build_dir)], check=True)
 
-    subprocess.run(
+    other_flags = []
+
+    # On OSx we've had some issues with building for the right architecture
+    if sys.platform == "darwin":  # macOS
+        arch = platform.machine()
+        if arch in ["arm64", "x86_64"]:
+            other_flags += [f"-DCMAKE_OSX_ARCHITECTURES={arch}"]
+
+    _do(
         [
             "cmake",
             "-S",
@@ -50,16 +65,15 @@ def compile_and_load():
             str(build_dir),
             "-DEDITABLE=1",
             f"-DCMAKE_PREFIX_PATH={pybind11_dir}",
-        ],
-        check=True,
+        ]
+        + other_flags,
     )
-    subprocess.run(
+    _do(
         [
             "cmake",
             "--build",
             str(build_dir),
         ],
-        check=True,
     )
 
     if not build_dir.exists():
