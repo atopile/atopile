@@ -6,6 +6,8 @@ import collections.abc
 import inspect
 import logging
 import os
+import select
+import subprocess
 import sys
 from abc import abstractmethod
 from collections import defaultdict
@@ -1082,3 +1084,54 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
         except KeyError:
             self[key] = default
         return default
+
+
+def run_live(
+    *args,
+    logger: logging.Logger = logger,
+    stdout_level: int | None = logging.DEBUG,
+    stderr_level: int | None = logging.ERROR,
+    **kwargs,
+) -> str:
+    """Runs a process and logs the output live."""
+
+    process = subprocess.Popen(
+        *args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,  # Line buffered
+        **kwargs,
+    )
+
+    # Set up file descriptors to monitor
+    reads = [process.stdout, process.stderr]
+    stdout = []
+    while reads and process.poll() is None:
+        # Wait for output on either stream
+        readable, _, _ = select.select(reads, [], [])
+
+        for stream in readable:
+            line = stream.readline()
+            if not line:  # EOF
+                reads.remove(stream)
+                continue
+
+            if stream == process.stdout:
+                stdout.append(line)
+                if stdout_level is not None:
+                    logger.log(stdout_level, line.rstrip())
+            else:
+                if stderr_level is not None:
+                    logger.log(stderr_level, line.rstrip())
+
+    # Ensure the process has finished
+    process.wait()
+
+    # Get return code and check for errors
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(
+            process.returncode, args[0], "".join(stdout)
+        )
+
+    return "\n".join(stdout)

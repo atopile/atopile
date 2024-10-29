@@ -1,10 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import json
 import logging
 import pathlib
 import shutil
-import site
+from importlib.metadata import Distribution
 from typing import Callable
 
 logger = logging.getLogger(__name__)
@@ -12,8 +13,12 @@ logger = logging.getLogger(__name__)
 
 # Check if installed as editable
 def is_editable_install():
-    site_packages = site.getsitepackages()
-    return not any((pathlib.Path(sp) / "faebryk").exists() for sp in site_packages)
+    distro = Distribution.from_name("faebryk")
+    return (
+        json.loads(distro.read_text("direct_url.json"))
+        .get("dir_info", {})
+        .get("editable", False)
+    )
 
 
 def compile_and_load():
@@ -22,17 +27,9 @@ def compile_and_load():
     into _cpp.
     """
     import platform
-    import subprocess
     import sys
 
-    def _do(*args, **kwargs):
-        try:
-            return subprocess.check_output(
-                *args, stderr=subprocess.PIPE, text=True, **kwargs
-            )
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Subprocess error: {e.stderr}")
-            raise
+    from faebryk.libs.util import run_live
 
     cpp_dir = pathlib.Path(__file__).parent
     build_dir = cpp_dir / "build"
@@ -43,7 +40,9 @@ def compile_and_load():
             "cmake not found, needed for compiling c++ code in editable mode"
         )
 
-    pybind11_dir = _do(["python", "-m", "pybind11", "--cmakedir"]).strip()
+    pybind11_dir = run_live(
+        [sys.executable, "-m", "pybind11", "--cmakedir"], logger=logger
+    ).strip()
 
     # Force recompile
     # subprocess.run(["rm", "-rf", str(build_dir)], check=True)
@@ -56,7 +55,7 @@ def compile_and_load():
         if arch in ["arm64", "x86_64"]:
             other_flags += [f"-DCMAKE_OSX_ARCHITECTURES={arch}"]
 
-    _do(
+    run_live(
         [
             "cmake",
             "-S",
@@ -65,15 +64,18 @@ def compile_and_load():
             str(build_dir),
             "-DEDITABLE=1",
             f"-DCMAKE_PREFIX_PATH={pybind11_dir}",
+            "-DPython_EXECUTABLE=" + sys.executable,
         ]
         + other_flags,
+        logger=logger,
     )
-    _do(
+    run_live(
         [
             "cmake",
             "--build",
             str(build_dir),
         ],
+        logger=logger,
     )
 
     if not build_dir.exists():

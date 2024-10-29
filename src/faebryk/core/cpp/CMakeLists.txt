@@ -19,13 +19,17 @@ project(${PROJECT_NAME} LANGUAGES CXX)
 # Currently, Scikit-build does not support FindPython, so we convert the
 # provided hints ourselves.
 if(SKBUILD)
-  set(Python_EXECUTABLE "${PYTHON_EXECUTABLE}")
-  set(Python_INCLUDE_DIR "${PYTHON_INCLUDE_DIR}")
-  set(Python_LIBRARY "${PYTHON_LIBRARY}")
+    set(Python_EXECUTABLE "${PYTHON_EXECUTABLE}")
+    set(Python_INCLUDE_DIR "${PYTHON_INCLUDE_DIR}")
+    set(Python_LIBRARY "${PYTHON_LIBRARY}")
 endif()
 set(PYBIND11_FINDPYTHON OFF)
 find_package(Python COMPONENTS Interpreter Development.Module)
 find_package(pybind11 CONFIG REQUIRED)
+
+message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+message(STATUS "Python_INCLUDE_DIR: ${Python_INCLUDE_DIR}")
+message(STATUS "Python_LIBRARY: ${Python_LIBRARY}")
 
 # configure ------------------------------------------------------------
 # c++ standard
