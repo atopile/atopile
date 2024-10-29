@@ -23,13 +23,25 @@ if(SKBUILD)
     set(Python_INCLUDE_DIR "${PYTHON_INCLUDE_DIR}")
     set(Python_LIBRARY "${PYTHON_LIBRARY}")
 endif()
-set(PYBIND11_FINDPYTHON OFF)
-find_package(Python COMPONENTS Interpreter Development.Module)
-find_package(pybind11 CONFIG REQUIRED)
+if (CMAKE_VERSION VERSION_LESS 3.18)
+  set(DEV_MODULE Development)
+else()
+  set(DEV_MODULE Development.Module)
+endif()
+find_package(Python COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+  OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
+find_package(nanobind CONFIG REQUIRED)
 
 message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
 message(STATUS "Python_INCLUDE_DIR: ${Python_INCLUDE_DIR}")
 message(STATUS "Python_LIBRARY: ${Python_LIBRARY}")
+
+if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
 
 # configure ------------------------------------------------------------
 # c++ standard
@@ -37,17 +49,29 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # turn on optimization
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
-# enable debug symbols
-if(${EDITABLE})
-    set(CMAKE_BUILD_TYPE Debug)
-else()
-    set(CMAKE_BUILD_TYPE Release)
-endif()
 
+# if editable and GCC enable colors
+if(${EDITABLE} AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always")
+endif()
 # source files ---------------------------------------------------------
 include_directories(${CMAKE_SOURCE_DIR}/include)
 set(SOURCE_FILES src/main.cpp)
 
 # build ----------------------------------------------------------------
-pybind11_add_module(${PROJECT_NAME} ${SOURCE_FILES})
+nanobind_add_module(${PROJECT_NAME} ${SOURCE_FILES})
+
 install(TARGETS ${PROJECT_NAME} DESTINATION .)
+
+if(${EDITABLE})
+# create pyi stub file with type annotations
+nanobind_add_stub(${PROJECT_NAME}_stub 
+    MODULE ${PROJECT_NAME} 
+    OUTPUT ${PROJECT_NAME}.pyi
+    PYTHON_PATH $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    MARKER_FILE py.typed
+    DEPENDS ${PROJECT_NAME})
+
+#TODO currently pyi is imported into source dir by editable __init__ load
+# better to do that automatically with a precommit hook or in the CI
+endif()

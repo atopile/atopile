@@ -1092,7 +1092,7 @@ def run_live(
     stdout_level: int | None = logging.DEBUG,
     stderr_level: int | None = logging.ERROR,
     **kwargs,
-) -> str:
+) -> tuple[str, subprocess.Popen]:
     """Runs a process and logs the output live."""
 
     process = subprocess.Popen(
@@ -1134,4 +1134,4 @@ def run_live(
             process.returncode, args[0], "".join(stdout)
         )
 
-    return "\n".join(stdout)
+    return "\n".join(stdout), process

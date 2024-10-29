@@ -2,25 +2,27 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <pybind11/pybind11.h>
+#include <nanobind/nanobind.h>
 
 // check if c++20 is used
 #if __cplusplus < 202002L
 #error "C++20 is required"
 #endif
 
-namespace py = pybind11;
+namespace nb = nanobind;
+
+#if EDITABLE
+#define PYMOD(m) NB_MODULE(faebryk_core_cpp_editable, m)
+#warning "EDITABLE"
+#else
+#define PYMOD(m) NB_MODULE(faebryk_core_cpp, m)
+#endif
+
+// -------------------------------------------------------------------------------------
 
 int add(int i, int j) {
     return i + j;
 }
-
-#if EDITABLE
-#define PYMOD(m) PYBIND11_MODULE(faebryk_core_cpp_editable, m)
-#warning "EDITABLE"
-#else
-#define PYMOD(m) PYBIND11_MODULE(faebryk_core_cpp, m)
-#endif
 
 PYMOD(m) {
     m.doc() = "faebryk core c++ module";
