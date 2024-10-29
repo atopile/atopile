@@ -5,6 +5,7 @@ from pathlib import Path
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.exporters.schematic.kicad.transformer import Transformer
+from faebryk.libs.examples.buildutil import apply_design_to_pcb
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
 
 root_dir = Path(__file__).parent
@@ -21,12 +22,20 @@ def add_to_sys_path(path):
     sys.path.remove(str(path))
 
 
-# with add_to_sys_path(root_dir / "examples"):
-#     from minimal_led import App
-# app = App()
-# assert isinstance(app, Module)
+with add_to_sys_path(root_dir / "examples"):
+    from minimal_led import App
+app = App()
+assert isinstance(app, Module)
+assert isinstance(app.battery, F.Battery)
+assert isinstance(app.led, F.PoweredLED)
 
-app = Module()
+
+# app.battery.add(F.has_descriptive_properties_defined({"LCSC": "C5239862"}))
+app.led.led.add(F.has_descriptive_properties_defined({"LCSC": "C7429912"}))
+app.led.current_limiting_resistor.add(F.has_descriptive_properties_defined({"LCSC": "C25077"}))
+
+apply_design_to_pcb(app)
+
 
 full_transformer = Transformer(sch_file.kicad_sch, app.get_graph(), app)
 full_transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
