@@ -4,6 +4,7 @@ from typing import Callable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.parameter import Parameter
 from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.picker.jlcpcb.jlcpcb import (
     Component,
@@ -216,6 +217,10 @@ _MAPPINGS_BY_TYPE: dict[type[Module], list[MappingParameterDB]] = {
 }
 
 
+def try_get_param_mapping(module: Module) -> list[MappingParameterDB]:
+    return _MAPPINGS_BY_TYPE.get(type(module), [])
+
+
 # Generic pickers ----------------------------------------------------------------------
 
 
@@ -261,7 +266,14 @@ def find_and_attach_by_lcsc_id(module: Module):
             f"Part with LCSC part number {lcsc_pn} has insufficient stock", module
         )
 
-    part.attach(module, [])
+    try:
+        part.attach(module, try_get_param_mapping(module), allow_TBD=True)
+    except Parameter.MergeException as e:
+        # TODO might be better to raise an error that makes the picker give up
+        # but this works for now, just not extremely efficient
+        raise PickError(
+            f"Could not attach part with LCSC part number {lcsc_pn}: {e}", module
+        ) from e
 
 
 def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
@@ -323,11 +335,14 @@ def find_and_attach_by_mfr(module: Module):
 
     for part in parts:
         try:
-            part.attach(module, [])
+            part.attach(module, try_get_param_mapping(module), allow_TBD=True)
             return
         except ValueError as e:
             logger.warning(f"Failed to attach component: {e}")
             continue
+        except Parameter.MergeException:
+            # TODO not very efficient
+            pass
 
     raise PickError(
         f"Could not attach any part with manufacturer part number {mfr_pn}", module

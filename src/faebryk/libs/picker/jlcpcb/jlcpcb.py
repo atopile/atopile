@@ -339,8 +339,17 @@ class Component(Model):
                 f"Failed to parse parameters for component {self.partno}: {params_str}"
             )
 
-        for name, value in zip([m.param_name for m in mapping], params):
-            getattr(module, name).override(value)
+        # Override module parameters with picked component parameters
+        # sort by type to avoid merge conflicts
+        module_params: list[tuple[Parameter, Parameter]] = [
+            (getattr(module, name), value)
+            for name, value in zip([m.param_name for m in mapping], params)
+        ]
+        types_sort = [F.ANY, F.TBD, F.Constant, F.Range, F.Set, F.Operation]
+        for p, value in sorted(
+            module_params, key=lambda x: types_sort.index(type(x[0].get_most_narrow()))
+        ):
+            p.override(value)
 
         module.add(
             F.has_descriptive_properties_defined(
