@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.solver import DefaultSolver, Solver
+from faebryk.core.solver import Solver
 from faebryk.libs.library import L
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import PickerOption, pick_module_by_params

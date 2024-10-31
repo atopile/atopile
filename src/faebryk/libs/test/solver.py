@@ -8,7 +8,7 @@ from faebryk.libs.sets import PlainSet
 
 
 def solves_to(stmt: ParameterOperatable, result: bool):
-    stmt.inspect_add_on_final(lambda x: x.inspect_known_values() == PlainSet(result))
+    stmt.inspect_add_on_solution(lambda x: x.inspect_known_values() == PlainSet(result))
 
 
 def solve_and_test(G: Graph | Node, *stmts: ParameterOperatable):
@@ -19,4 +19,4 @@ def solve_and_test(G: Graph | Node, *stmts: ParameterOperatable):
         solves_to(stmt, True)
 
     solver = DefaultSolver()
-    solver.finalize(G)
+    solver.find_and_lock_solution(G)

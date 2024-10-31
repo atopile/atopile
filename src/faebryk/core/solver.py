@@ -78,7 +78,7 @@ class Solver(Protocol):
         ...
 
     # run deferred work
-    def finalize(self, G: Graph) -> None: ...
+    def find_and_lock_solution(self, G: Graph) -> None: ...
 
 
 class DefaultSolver(Solver):
@@ -102,5 +102,5 @@ class DefaultSolver(Solver):
     ) -> Solver.SolveResult[ArgType]:
         raise NotImplementedError()
 
-    def finalize(self, G: Graph) -> None:
+    def find_and_lock_solution(self, G: Graph) -> None:
         raise NotImplementedError()

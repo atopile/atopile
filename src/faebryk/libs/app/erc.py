@@ -78,7 +78,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                 if x.inspect_known_max() > voltage_limit:
                     raise ERCFaultElectricPowerUndefinedVoltage(ep)
 
-            ep.voltage.inspect_add_on_final(raise_on_limit)
+            ep.voltage.inspect_add_on_solution(raise_on_limit)
 
     # shorted nets
     nets = G.nodes_of_type(F.Net)

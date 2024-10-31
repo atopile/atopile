@@ -140,16 +140,16 @@ class ParameterOperatable:
         # raise NotImplementedError()
 
     # Run by the solver on finalization
-    inspect_final: Callable[[Self], None] = lambda _: None
+    inspect_solution: Callable[[Self], None] = lambda _: None
 
-    def inspect_add_on_final(self, fun: Callable[[Self], None]) -> None:
-        current = self.inspect_final
+    def inspect_add_on_solution(self, fun: Callable[[Self], None]) -> None:
+        current = self.inspect_solution
 
         def new(self2):
             current(self2)
             fun(self2)
 
-        self.inspect_final = new
+        self.inspect_solution = new
 
     # Could be exponentially many
     def inspect_known_supersets_are_few(self) -> bool:
@@ -628,7 +628,7 @@ class NotEqual(NumericPredicate):
 class SeticPredicate(Predicate):
     def __init__(self, left, right):
         super().__init__(left, right)
-        types = ParameterOperatable, P_Set
+        # types = ParameterOperatable, P_Set
         # TODO
         # if any(not isinstance(op, types) for op in self.operands):
         #    raise ValueError("operands must be Parameter or Set")

@@ -66,6 +66,7 @@ def apply_design_to_pcb(
     for n in modules:
         add_example_pickers(n, solver)
     pick_part_recursively(m)
+    solver.find_and_lock_solution(G)
     # -------------------------------------------------------------------------
 
     example_prj = Path(__file__).parent / Path("resources/example")
