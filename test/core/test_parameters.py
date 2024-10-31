@@ -54,6 +54,12 @@ def test_solve_phase_one():
     solver.phase_one_no_guess_solving(voltage1.get_graph())
 
 
+def test_solve_realworld():
+    app = F.RP2040()
+    solver = DefaultSolver()
+    solver.phase_one_no_guess_solving(app.get_graph())
+
+
 def test_visualize():
     """
     Creates webserver that opens automatically if run in jupyter notebook
@@ -110,7 +116,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_solve_phase_one
+    func = test_solve_realworld
 
     if "ipykernel" in sys.modules:
         func()

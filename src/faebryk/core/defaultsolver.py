@@ -21,7 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 def parameter_alias_classes(G: Graph) -> list[set[Parameter]]:
-    full_eq = EquivalenceClasses[Parameter](G.nodes_of_type(Parameter))
+    # TODO just get passed
+    params = [
+        p
+        for p in G.nodes_of_type(Parameter)
+        if get_constrained_predicates_involved_in(p)
+    ]
+    full_eq = EquivalenceClasses[Parameter](params)
 
     is_exprs = [e for e in G.nodes_of_type(Is) if e.constrained]
 
@@ -64,7 +70,14 @@ def get_constrained_predicates_involved_in(
 
 
 def parameter_dependency_classes(G: Graph) -> list[set[Parameter]]:
-    related = EquivalenceClasses[Parameter](G.nodes_of_type(Parameter))
+    # TODO just get passed
+    params = [
+        p
+        for p in G.nodes_of_type(Parameter)
+        if get_constrained_predicates_involved_in(p)
+    ]
+
+    related = EquivalenceClasses[Parameter](params)
 
     eq_exprs = [e for e in G.nodes_of_type(Predicate) if e.constrained]
 
@@ -99,11 +112,10 @@ def resolve_alias_classes(G: Graph) -> dict[ParameterOperatable, ParameterOperat
 
     repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
 
-    part_of_class_params = {p for c in p_alias_classes for p in c}
-    not_part_of_class_params = set(params).difference(part_of_class_params)
-
     # Make new param repre for alias classes
     for alias_class in p_alias_classes:
+        # TODO short-cut if len() == 1
+
         # single unit
         unit_candidates = {p.units for p in alias_class}
         if len(unit_candidates) > 1:
@@ -154,18 +166,6 @@ def resolve_alias_classes(G: Graph) -> dict[ParameterOperatable, ParameterOperat
             likely_constrained=likely_constrained,
         )
         repr_map.update({p: representative for p in alias_class})
-
-    # copy non alias params (that are in use)
-    for p in not_part_of_class_params:
-        repr_map[p] = Parameter(
-            units=p.units,
-            within=p.within,
-            domain=p.domain,
-            soft_set=p.soft_set,
-            guess=p.guess,
-            tolerance_guess=p.tolerance_guess,
-            likely_constrained=p.likely_constrained,
-        )
 
     # replace parameters in expressions and predicates
     for expr in exprs | predicates:
