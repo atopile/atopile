@@ -9,17 +9,32 @@ class Solver(Protocol):
     # TODO booleanlike is very permissive
     type PredicateWithInfo[ArgType] = tuple[ParameterOperatable.BooleanLike, ArgType]
 
+    class TimeoutError(Exception): ...
+
     @dataclass
-    class SolveResult[ArgType]:
+    class SolveResult:
+        timed_out: bool
+
+    @dataclass
+    class SolveResultAny[ArgType](SolveResult):
         true_predicates: list["Solver.PredicateWithInfo[ArgType]"]
         false_predicates: list["Solver.PredicateWithInfo[ArgType]"]
         unknown_predicates: list["Solver.PredicateWithInfo[ArgType]"]
 
     @dataclass
-    class SolveResultSingle:
+    class SolveResultSingle(SolveResult):
         # TODO thinkn about failure case
         value: Any  # TODO Any -> NumberLike?
         # parameters_with_empty_solution_sets: list[Parameter]
+
+        def get(self) -> Any:
+            if self.timed_out:
+                raise Solver.TimeoutError()
+            return self.value
+
+    @dataclass
+    class SolveResultAll(SolveResult):
+        has_solution: bool
 
     # timeout per solve call in milliseconds
     timeout: int
@@ -57,7 +72,7 @@ class Solver(Protocol):
         lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
-    ) -> SolveResult[ArgType]:
+    ) -> SolveResultAny[ArgType]:
         """
         Make at least one of the passed predicates true, unless that is impossible.
 
@@ -78,7 +93,7 @@ class Solver(Protocol):
         ...
 
     # run deferred work
-    def find_and_lock_solution(self, G: Graph) -> None: ...
+    def find_and_lock_solution(self, G: Graph) -> SolveResultAll: ...
 
 
 class DefaultSolver(Solver):
@@ -90,7 +105,7 @@ class DefaultSolver(Solver):
         lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
-    ):
+    ) -> Solver.SolveResultSingle:
         raise NotImplementedError()
 
     def assert_any_predicate[ArgType](
@@ -99,8 +114,8 @@ class DefaultSolver(Solver):
         lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
-    ) -> Solver.SolveResult[ArgType]:
+    ) -> Solver.SolveResultAny[ArgType]:
         raise NotImplementedError()
 
-    def find_and_lock_solution(self, G: Graph) -> None:
+    def find_and_lock_solution(self, G: Graph) -> Solver.SolveResultAll:
         raise NotImplementedError()
