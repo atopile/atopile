@@ -107,7 +107,7 @@ class Transformer:
         self.sch = sch
         self.graph = graph
         self.app = app
-        self._symbol_files_index: dict[str, Path] = {}
+        self._symbol_files_index: dict[str, Path] | None = None
 
         self.missing_symbols: list[F.Symbol] = []
 
@@ -185,6 +185,12 @@ class Transformer:
     def index_symbol_files(
         self, fp_lib_tables: PathLike | list[PathLike], load_globals: bool = True
     ) -> None:
+        """
+        Index the symbol files in the given library tables
+        """
+        if self._symbol_files_index is None:
+            self._symbol_files_index = {}
+
         if isinstance(fp_lib_tables, (str, Path)):
             fp_lib_table_paths = [Path(fp_lib_tables)]
         else:
@@ -229,8 +235,11 @@ class Transformer:
     @once
     def get_symbol_file(self, lib_name: str) -> C_kicad_sym_file:
         # primary caching handled by @once
+        if self._symbol_files_index is None:
+            raise ValueError("Symbol files index not indexed")
+
         if lib_name not in self._symbol_files_index:
-            raise FaebrykException(f"Symbol file {lib_name} not found")
+            raise FaebrykException(f"Symbol file \"{lib_name}\" not found")
 
         path = self._symbol_files_index[lib_name]
         return C_kicad_sym_file.loads(path)
@@ -369,9 +378,7 @@ class Transformer:
 
         if hasattr(obj, "propertys"):
             obj.propertys[cls.MARK_NAME] = C_property(
-                name=cls.MARK_NAME,
-                value=hashed_contents,
-                effects=C_effects(hide=True)
+                name=cls.MARK_NAME, value=hashed_contents, effects=C_effects(hide=True)
             )
             return obj
 
