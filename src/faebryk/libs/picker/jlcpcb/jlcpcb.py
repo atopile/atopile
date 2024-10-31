@@ -619,6 +619,7 @@ class JLCPCB_DB:
         self.db_path = config.db_path
         self.db_file = config.db_path / Path("cache.sqlite3")
         self.connected = False
+        self.fresh_db = False
 
         no_download_prompt = config.no_download_prompt
 
@@ -656,6 +657,8 @@ class JLCPCB_DB:
             },  # Use __name__ to refer to the current module
         )
         self.connected = True
+        if self.fresh_db:
+            await self.post_process_db()
 
     async def _close_db(self):
         from tortoise.log import logger as tortoise_logger
@@ -684,6 +687,13 @@ class JLCPCB_DB:
     def prompt_db_update(self, prompt: str = "Update JLCPCB database?") -> bool:
         ans = input(prompt + " [y/N]:").lower()
         return ans == "y"
+
+    async def post_process_db(self):
+        logger.info("Deleting out-of-stock components from DB")
+        await Component.filter(stock__lt=1).delete()
+
+        logger.info("Vacuuming DB")
+        await Tortoise.get_connection("default").execute_query("VACUUM;")
 
     def download(
         self,
@@ -754,3 +764,5 @@ class JLCPCB_DB:
             else:
                 volume_file = self.db_path / Path(f"cache.z{volume_num:02d}")
             os.remove(volume_file)
+
+        self.fresh_db = True
