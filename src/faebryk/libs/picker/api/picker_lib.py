@@ -18,7 +18,6 @@ from faebryk.libs.picker.api.api import (
     MOSFETParams,
     ResistorParams,
     TVSParams,
-    check_compatible_parameters,
     get_api_client,
     try_attach,
 )
@@ -153,7 +152,6 @@ def _filter_by_module_params_and_attach(
     Find a component with matching parameters
     """
     mapping = _MAPPINGS_BY_TYPE[component_type]
-    parts = [part for part in parts if check_compatible_parameters(cmp, part, mapping)]
 
     if not try_attach(cmp, parts, mapping, qty):
         raise PickError(

@@ -5,6 +5,7 @@ import functools
 import logging
 import textwrap
 from dataclasses import dataclass
+from typing import Iterable
 
 import requests
 from dataclasses_json import dataclass_json
@@ -71,7 +72,7 @@ def check_compatible_parameters(
 
 
 def try_attach(
-    cmp: Module, parts: list[Component], mapping: list[MappingParameterDB], qty: int
+    cmp: Module, parts: Iterable[Component], mapping: list[MappingParameterDB], qty: int
 ) -> bool:
     failures = []
     for part in parts:
