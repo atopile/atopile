@@ -25,7 +25,7 @@ def make_esphome_config(G: Graph, solver: Solver) -> dict:
         if not isinstance(v, Parameter):
             return v
 
-        return str(cast_assert(Quantity, solver.get_any_single(v).value))
+        return str(cast_assert(Quantity, solver.get_any_single(v, lock=True).value))
 
     dict_value_visitor(esphome_config, lambda _, v: solve_parameter(v))
 

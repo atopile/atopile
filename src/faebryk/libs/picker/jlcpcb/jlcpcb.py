@@ -543,9 +543,7 @@ class ComponentQuery:
                 for m_param, c_range in param_mapping:
                     anded &= m_param.operation_is_superset(c_range)
 
-                result = solver.assert_any_predicate(
-                    [(anded, None)], constrain_solved=False
-                )
+                result = solver.assert_any_predicate([(anded, None)], lock=False)
                 if not result.true_predicates:
                     known_incompatible = True
 

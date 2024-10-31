@@ -30,9 +30,9 @@ class Solver(Protocol):
     def get_any_single(
         self,
         operatable: ParameterOperatable,
+        lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
-        constrain_result: bool = True,
     ) -> SolveResultSingle:
         """
         Solve for a single value for the given expression.
@@ -43,7 +43,7 @@ class Solver(Protocol):
                                 easier. It is only in effect for the duration of the
                                 solve call.
             minimize: An optional expression to minimize while solving.
-            constrain_result: If True, ensure the result is part of the solution set of
+            lock: If True, ensure the result is part of the solution set of
                               the expression.
 
         Returns:
@@ -54,9 +54,9 @@ class Solver(Protocol):
     def assert_any_predicate[ArgType](
         self,
         predicates: list["Solver.PredicateWithInfo[ArgType]"],
+        lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
-        constrain_solved: bool = True,
     ) -> SolveResult[ArgType]:
         """
         Make at least one of the passed predicates true, unless that is impossible.
@@ -67,7 +67,7 @@ class Solver(Protocol):
                                 easier. It is only in effect for the duration of the
                                 solve call.
             minimize: An optional expression to minimize while solving.
-            constrain_solved: If True, add the solutions as constraints.
+            lock: If True, add the solutions as constraints.
 
         Returns:
             A SolveResult object containing the true, false, and unknown predicates.
@@ -87,18 +87,18 @@ class DefaultSolver(Solver):
     def get_any_single(
         self,
         operatable: ParameterOperatable,
+        lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
-        constrain_result: bool = True,
     ):
         raise NotImplementedError()
 
     def assert_any_predicate[ArgType](
         self,
         predicates: list["Solver.PredicateWithInfo[ArgType]"],
+        lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
-        constrain_solved: bool = True,
     ) -> Solver.SolveResult[ArgType]:
         raise NotImplementedError()
 
