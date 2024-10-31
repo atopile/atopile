@@ -105,7 +105,9 @@ class SchNode(Placer, Router):
             # NOTE: this was a zip in SKiDL
             for pin1, pin2 in itertools.combinations(net.pins, 2):
                 # If two pins on a net are in different nodes, we should definitely add a terminal
-                if self.find_node_with_part(pin1.part) is not self.find_node_with_part(pin2.part):
+                if self.find_node_with_part(pin1.part) is not self.find_node_with_part(
+                    pin2.part
+                ):
                     # Found pins in different nodes, so break and add terminals to nodes below.
                     break
             else:
@@ -138,7 +140,6 @@ class SchNode(Placer, Router):
 
                 # Record that this hierarchical node was visited.
                 visited.append(part.hierarchy)
-
 
     def add_part(self, part: Part, level: int = 0):
         """Add a part to the node at the appropriate level of the hierarchy.

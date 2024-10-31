@@ -3304,9 +3304,7 @@ class Router:
                 if not part.bottom_track:
                     parts_missing_tracks[part] = ["bottom"]
             if parts_missing_tracks:
-                raise RuntimeError(
-                    f"Parts missing tracks: {parts_missing_tracks}"
-                )
+                raise RuntimeError(f"Parts missing tracks: {parts_missing_tracks}")
 
             # Create terminals on the faces in the routing tracks.
             node.create_terminals(internal_nets, h_tracks, v_tracks)
