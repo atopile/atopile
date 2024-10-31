@@ -3,12 +3,16 @@
 
 import logging
 from statistics import median
-from typing import Any
+from typing import Any, cast
+
+from more_itertools import partition
 
 from faebryk.core.graphinterface import Graph, GraphInterfaceSelf
 from faebryk.core.parameter import (
+    Add,
     Expression,
     Is,
+    Multiply,
     Parameter,
     ParameterOperatable,
     Predicate,
@@ -97,6 +101,7 @@ def resolve_alias_classes(G: Graph) -> dict[ParameterOperatable, ParameterOperat
     exprs = G.nodes_of_type(Expression)
     predicates = {e for e in exprs if isinstance(e, Predicate)}
     exprs.difference_update(predicates)
+    exprs = {e for e in exprs if get_constrained_predicates_involved_in(e)}
 
     p_alias_classes = parameter_alias_classes(G)
     dependency_classes = parameter_dependency_classes(G)
@@ -191,6 +196,73 @@ def resolve_alias_classes(G: Graph) -> dict[ParameterOperatable, ParameterOperat
     return repr_map
 
 
+def copy_pop(o: ParameterOperatable) -> ParameterOperatable:
+    if isinstance(o, Expression):
+        return type(o)(*o.operands)
+    elif isinstance(o, Parameter):
+        return Parameter(
+            units=o.units,
+            within=o.within,
+            domain=o.domain,
+            soft_set=o.soft_set,
+            guess=o.guess,
+            tolerance_guess=o.tolerance_guess,
+            likely_constrained=o.likely_constrained,
+        )
+    else:
+        raise Exception()
+
+
+def compress_associative_expressions(
+    G: Graph,
+) -> dict[ParameterOperatable, ParameterOperatable]:
+    exprs = cast(set[Add | Multiply], G.nodes_of_types((Add, Multiply)))
+    exprs = {e for e in exprs if get_constrained_predicates_involved_in(e)}
+    # get out deepest expr in compressable tree
+    exprs = {e for e in exprs if type(e) not in {type(n) for n in e.get_operations()}}
+
+    repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
+
+    # (A + B) + C
+    #    X -> Y
+    # compress(Y)
+    #    compress(X) -> [A, B]
+    # -> [A, B, C]
+
+    def get_operands_of_ops_with_same_type[T: Add | Multiply](e: T) -> list[T]:
+        operands = e.operands
+        noncomp, compressable = partition(lambda o: type(o) is type(e), operands)
+        out = []
+        for c in compressable:
+            out += get_operands_of_ops_with_same_type(c)
+        return out + list(noncomp)
+
+    for expr in exprs:
+        operands = get_operands_of_ops_with_same_type(expr)
+        # copy
+        for o in operands:
+            repr_map[o] = copy_pop(o)
+
+        # make new compressed expr with (copied) operands
+        new_expr = type(expr)(
+            *(
+                repr_map[o] if isinstance(o, ParameterOperatable) else o
+                for o in operands
+            )
+        )
+        repr_map[expr] = new_expr
+
+    # copy other param ops
+    other_param_op = {
+        p
+        for p in G.nodes_of_type(ParameterOperatable)
+        if p not in repr_map and p not in exprs
+    }
+    repr_map.update({p: copy_pop(p) for p in other_param_op})
+
+    return repr_map
+
+
 class DefaultSolver(Solver):
     timeout: int = 1000
 
@@ -217,10 +289,13 @@ class DefaultSolver(Solver):
         # as long as progress iterate
 
         repr_map = resolve_alias_classes(G)
-
         graphs = {p.get_graph() for p in repr_map.values()}
         assert G not in graphs
+        logger.info(f"{len(graphs)} new graphs")
 
+        repr_map = compress_associative_expressions(G)
+        graphs = {p.get_graph() for p in repr_map.values()}
+        assert G not in graphs
         logger.info(f"{len(graphs)} new graphs")
         for s, d in repr_map.items():
             logger.info(f"{s} -> {d}")

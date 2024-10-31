@@ -39,6 +39,9 @@ class ParameterOperatable(Node):
 
     operated_on: GraphInterface
 
+    def get_operations(self) -> set["Expression"]:
+        return self.operated_on.get_connected_nodes(types=Expression)
+
     def operation_add(self, other: NumberLike):
         return Add(self, other)
 
@@ -332,6 +335,14 @@ class Expression(ParameterOperatable):
     def __preinit__(self):
         for op in self.operatable_operands:
             self.operates_on.connect(op.operated_on)
+
+    def get_operatable_operands(self) -> set[ParameterOperatable]:
+        return self.operates_on.get_connected_nodes(types=ParameterOperatable)
+
+    @staticmethod
+    def topo_sort(exprs: Iterable["Expression"]) -> list["Expression"]:
+        # TODO
+        raise NotImplementedError()
 
 
 @abstract

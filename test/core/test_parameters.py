@@ -54,6 +54,23 @@ def test_solve_phase_one():
     solver.phase_one_no_guess_solving(voltage1.get_graph())
 
 
+def test_assoc_compress():
+    class App(Module):
+        ops = L.list_field(10, lambda: Parameter(units=P.V))
+
+    app = App()
+
+    sum_ = app.ops[0]
+    for p in app.ops[1:]:
+        sum_ += p
+
+    (sum_ < 11 * P.V).constrain()
+
+    G = sum_.get_graph()
+    solver = DefaultSolver()
+    solver.phase_one_no_guess_solving(G)
+
+
 def test_solve_realworld():
     app = F.RP2040()
     solver = DefaultSolver()
@@ -116,7 +133,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_solve_realworld
+    func = test_assoc_compress
 
     if "ipykernel" in sys.modules:
         func()
