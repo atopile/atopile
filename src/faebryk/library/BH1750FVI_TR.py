@@ -17,10 +17,8 @@ class BH1750FVI_TR(Module):
             units=P.s,
             soft_set=L.Range(100 * P.ms, 1 * P.day),
             guess=1 * P.s,
+            tolerance_guess=0,
         )
-
-        def __preinit__(self):
-            self.update_interval.constrain_cardinality(1)
 
         def get_config(self) -> dict:
             obj = self.obj

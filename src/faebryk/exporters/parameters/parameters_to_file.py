@@ -32,7 +32,7 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-def parameter_equivalence_classes(G: Graph) -> list[set[Parameter]]:
+def parameter_dependency_classes(G: Graph) -> list[set[Parameter]]:
     related = EquivalenceClasses[Parameter](G.nodes_of_type(Parameter))
 
     eq_exprs = [e for e in G.nodes_of_type(Predicate) if e.constrained]
@@ -50,7 +50,7 @@ def parameter_report(G: Graph, path: Path):
     predicates = {e for e in exprs if isinstance(e, Predicate)}
     exprs.difference_update(predicates)
     alias_classes = parameter_alias_classes(G)
-    eq_classes = parameter_equivalence_classes(G)
+    eq_classes = parameter_dependency_classes(G)
     unused = [
         p
         for p in params

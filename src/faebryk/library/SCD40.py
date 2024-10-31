@@ -14,7 +14,7 @@ class SCD40(Module):
     """
 
     class _scd4x_esphome_config(F.has_esphome_config.impl()):
-        update_interval = L.p_field(units=P.s, cardinality=1)
+        update_interval = L.p_field(units=P.s, tolerance_guess=0)
 
         def get_config(self) -> dict:
             obj = self.get_obj(SCD40)

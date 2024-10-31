@@ -26,7 +26,7 @@ class PM1006(Module):
     """
 
     class _pm1006_esphome_config(F.has_esphome_config.impl()):
-        update_interval = L.p_field(units=P.s, cardinality=1)
+        update_interval = L.p_field(units=P.s, tolerance_guess=0)
 
         def get_config(self) -> dict:
             obj = self.obj

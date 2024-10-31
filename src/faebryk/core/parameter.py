@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # boolean: T == S == bool
 # enum: T == S == Enum
 # number: T == Number type, S == Range[Number]
-class ParameterOperatable:
+class ParameterOperatable(Node):
     type QuantityLike = Quantity | Unit | NotImplementedType
     type Number = int | float | QuantityLike
 
@@ -319,13 +319,14 @@ class Constrainable:
 
 
 @abstract
-class Expression(Node, ParameterOperatable):
+class Expression(ParameterOperatable):
     operates_on: GraphInterface
 
     def __init__(self, *operands: ParameterOperatable.All):
         super().__init__()
+        self.operands = operands
         self.operatable_operands = {
-            op for op in operands if isinstance(op, (Parameter, Expression))
+            op for op in operands if isinstance(op, ParameterOperatable)
         }
 
     def __preinit__(self):
@@ -725,7 +726,7 @@ class R(Namespace):
             SYMMETRIC_DIFFERENCE = SymmetricDifference
 
 
-class Parameter(Node, ParameterOperatable, Constrainable):
+class Parameter(ParameterOperatable, Constrainable):
     class TraitT(Trait): ...
 
     def __init__(
@@ -736,19 +737,24 @@ class Parameter(Node, ParameterOperatable, Constrainable):
         within: Ranges | Range | None = None,
         domain: Domain = Numbers(negative=False),
         # soft constraints
-        soft_set: Range | None = None,
+        soft_set: Ranges | Range | None = None,
         guess: Quantity
         | int
         | float
         | None = None,  # TODO actually allowed to be anything from domain
-        tolerance_guess: Quantity | None = None,
+        tolerance_guess: float | None = None,
         # hints
         likely_constrained: bool = False,
-        cardinality: int | None = None,
     ):
         super().__init__()
         if within is not None and not within.units.is_compatible_with(units):
             raise ValueError("incompatible units")
+
+        if isinstance(within, Range):
+            within = Ranges(within)
+
+        if isinstance(soft_set, Range):
+            soft_set = Ranges(soft_set)
 
         if not isinstance(units, Unit):
             raise TypeError("units must be a Unit")
@@ -759,7 +765,6 @@ class Parameter(Node, ParameterOperatable, Constrainable):
         self.guess = guess
         self.tolerance_guess = tolerance_guess
         self.likely_constrained = likely_constrained
-        self.cardinality = cardinality
 
     # Type forwards
     type All = ParameterOperatable.All

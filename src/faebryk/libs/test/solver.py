@@ -1,9 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.graphinterface import Graph
 from faebryk.core.node import Node
 from faebryk.core.parameter import ParameterOperatable
-from faebryk.core.solver import DefaultSolver
 from faebryk.libs.sets import PlainSet
 
 

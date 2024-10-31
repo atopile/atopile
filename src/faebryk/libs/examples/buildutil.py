@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Callable
 
 import faebryk.libs.picker.lcsc as lcsc
+from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.module import Module
-from faebryk.core.solver import DefaultSolver
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.pcb import apply_design

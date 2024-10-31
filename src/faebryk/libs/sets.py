@@ -626,12 +626,21 @@ class NonIterableRanges(P_UnitSet[QuantityT]):
         return Ranges._from_ranges(_range, self.units)
 
     def op_intersect_ranges(
-        self, other: "NonIterableRanges[QuantityT]"
+        self, *other: "NonIterableRanges[QuantityT]"
     ) -> "Ranges[QuantityT]":
-        if not self.units.is_compatible_with(other.units):
-            raise ValueError("incompatible units")
-        _range = self._ranges.op_intersect_ranges(other._ranges)
-        return Ranges._from_ranges(_range, self.units)
+        # TODO make pretty
+        def single(left, right):
+            if not left.units.is_compatible_with(right.units):
+                raise ValueError("incompatible units")
+            _range = left._ranges.op_intersect_ranges(right._ranges)
+            return Ranges._from_ranges(_range, left.units)
+
+        out = Ranges(self)
+
+        for o in other:
+            out = single(out, o)
+
+        return out
 
     def op_union_ranges(
         self, other: "NonIterableRanges[QuantityT]"

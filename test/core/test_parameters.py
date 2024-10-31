@@ -7,9 +7,12 @@ from itertools import pairwise
 import pytest
 
 import faebryk.library._F as F
+from faebryk.core.defaultsolver import DefaultSolver
+from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
+from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.sets import Range
 from faebryk.libs.units import P
 from faebryk.libs.util import times
@@ -24,6 +27,31 @@ def test_new_definitions():
         soft_set=Range(1 * P.ohm, 10 * P.Mohm),
         likely_constrained=True,
     )
+
+
+def test_solve_phase_one():
+    solver = DefaultSolver()
+
+    def Voltage():
+        return L.p_field(units=P.V, within=Range(0 * P.V, 10 * P.kV))
+
+    class App(Module):
+        voltage1 = Voltage()
+        voltage2 = Voltage()
+        voltage3 = Voltage()
+
+    app = App()
+    voltage1 = app.voltage1
+    voltage2 = app.voltage2
+    voltage3 = app.voltage3
+
+    voltage1.alias_is(voltage2)
+    voltage3.alias_is(voltage1 + voltage2)
+
+    voltage1.alias_is(Range(1 * P.V, 3 * P.V))
+    voltage3.alias_is(Range(4 * P.V, 6 * P.V))
+
+    solver.phase_one_no_guess_solving(voltage1.get_graph())
 
 
 def test_visualize():
@@ -82,9 +110,12 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
+    func = test_solve_phase_one
+
     if "ipykernel" in sys.modules:
-        test_visualize()
+        func()
     else:
         import typer
 
-        typer.run(test_visualize)
+        setup_basic_logging()
+        typer.run(func)

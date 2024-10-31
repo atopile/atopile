@@ -12,7 +12,7 @@ class HLK_LD2410B_P(Module):
         throttle = L.p_field(
             units=P.ms,
             soft_set=L.Range(10 * P.ms, 1000 * P.ms),
-            cardinality=1,
+            tolerance_guess=0,
         )
 
         def get_config(self) -> dict:
