@@ -219,6 +219,7 @@ class DefaultSolver(Solver):
         repr_map = resolve_alias_classes(G)
 
         graphs = {p.get_graph() for p in repr_map.values()}
+        assert G not in graphs
 
         logger.info(f"{len(graphs)} new graphs")
         for s, d in repr_map.items():
