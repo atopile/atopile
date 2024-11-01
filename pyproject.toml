@@ -1,11 +1,11 @@
 [build-system]
 # using scikit-build-core>0.9.3 disables editable mode
-requires = ["hatchling", "scikit-build-core==0.9.2", "nanobind~=2.2.0"]
+requires = ["hatchling", "scikit-build-core==0.9.2", "nanobind~=2.2.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "faebryk"
-version = "4.1.2"
+dynamic = ["version"]
 authors = [{ name = "Ioannis Papamanoglou", email = "ioannis@atopile.io" }]
 description = "Open-source software-defined EDA"
 readme = "README.md"
@@ -209,3 +209,6 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 [tool.ruff.lint.mccabe]
 # Unlike Flake8, default to a complexity level of 10.
 max-complexity = 10
+
+[tool.hatch.version]
+source = "vcs"
