@@ -59,6 +59,7 @@ PASS : 'pass';
 NEWLINE
  : ( {self.atStartOfInput()}?   SPACES
    | ( '\r'? '\n' | '\r' | '\f' ) SPACES?
+   | {self.atEndOfInput()}?
    )
    {self.onNewLine();}
  ;

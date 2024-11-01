@@ -125,3 +125,6 @@ class AtopileLexerBase(Lexer):
             comment = self.text[1:].strip()
             self.comments[(self.inputStream.name, self._tokenStartLine)] = comment
         super().skip()
+
+    def atEndOfInput(self):
+        return self._input.LA(1) == Token.EOF
