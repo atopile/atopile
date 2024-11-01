@@ -6,7 +6,6 @@
 Autoplacer for arranging symbols in a schematic.
 """
 
-import contextlib
 import functools
 import itertools
 import math
@@ -15,13 +14,12 @@ from collections import defaultdict
 from copy import copy
 from typing import TYPE_CHECKING, Callable, Unpack
 
+import logging
 from .constants import BLK_EXT_PAD, BLK_INT_PAD, GRID
 from .debug_draw import (
     optional_draw_context,
-    draw_pause,
     draw_placement,
     draw_redraw,
-    draw_start,
     draw_text,
 )
 from .geometry import BBox, Point, Tx, Vector
@@ -30,6 +28,10 @@ from .shims import Net, Options, Part, Pin, rmv_attr
 if TYPE_CHECKING:
     from .net_terminal import NetTerminal
     from .node import SchNode
+
+
+logger = logging.getLogger(__name__)
+
 
 ###################################################################
 #
@@ -1001,7 +1003,7 @@ def push_and_pull(
 
         if scr:
             # Draw current part placement for debugging purposes.
-            draw_placement(parts, nets, scr, tx, font)
+            draw_placement(parts, nets, scr, tx, font, **options)
             draw_text(
                 "alpha:{alpha:3.2f} iter:{_} force:{sum_of_forces:.1f} stable:{stable_threshold}".format(
                     **locals()
@@ -1290,6 +1292,12 @@ class Placer:
             # Separate the NetTerminals from the other parts.
             net_terminals = [part for part in parts if is_net_terminal(part)]
             real_parts = [part for part in parts if not is_net_terminal(part)]
+
+            if logger.isEnabledFor(logging.DEBUG):
+                for part in real_parts:
+                    logger.debug(f"{part.ref=} {part.tx=}")
+                    for pin in part:
+                        logger.debug(f"  {pin.name=} {pin.pt=}")
 
             # Do the first trial placement.
             evolve_placement([], real_parts, nets, total_part_force, **options)

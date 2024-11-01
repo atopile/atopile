@@ -120,7 +120,7 @@ class Part:
     saved_anchor_pins: dict[Any, list["Pin"]]  # copy of anchor_pins
     saved_pull_pins: dict[Any, list["Pin"]]  # copy of pull_pins
     top_track: "GlobalTrack"
-    tx: Tx  # transformation matrix of the part's position
+    _tx: Tx  # transformation matrix of the part's position
 
     def __iter__(self) -> Iterator["Pin"]:
         yield from self.pins
@@ -146,6 +146,14 @@ class Part:
     def similarity(self, part: "Part", **options) -> float:
         assert not options, "No options supported"
         return self._similarites[part]
+
+    @property
+    def tx(self) -> Tx:
+        return self._tx
+
+    @tx.setter
+    def tx(self, tx: Tx) -> None:
+        self._tx = tx
 
 
 class PartUnit(Part):
@@ -300,6 +308,7 @@ class Options(TypedDict):
     draw_assigned_terminals: bool
     draw_font: str
     draw_global_routing: bool
+    draw_pin_names: bool
     draw_placement: bool
     draw_routing_channels: bool
     draw_routing: bool

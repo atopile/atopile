@@ -152,7 +152,7 @@ def draw_text(
     font.render_to(scr, (pt.x, pt.y), txt, color)
 
 
-def draw_part(part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Font"):
+def draw_part(part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Font", **options):
     """Draw part bounding box.
 
     Args:
@@ -167,14 +167,27 @@ def draw_part(part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Fo
     draw_box(tx_bbox, scr, tx, color=(180, 255, 180), thickness=0)
     draw_box(tx_bbox, scr, tx, color=(90, 128, 90), thickness=5)
     draw_text(part.ref, tx_bbox.ctr, scr, tx, font)
+
     try:
-        for pin in part:
-            if hasattr(pin, "place_pt"):
-                pt = pin.place_pt * part.tx
-                draw_endpoint(pt, scr, tx, color=(200, 0, 200), dot_radius=10)
+        pins = list(part)
     except TypeError:
         # Probably trying to draw a block of parts which has no pins and can't iterate thru them.
-        pass
+        pins = []
+
+    for pin in pins:
+        if hasattr(pin, "place_pt"):
+            pt = pin.place_pt * part.tx
+            draw_endpoint(pt, scr, tx, color=(200, 0, 200), dot_radius=10)
+
+        if options.get("draw_pin_names"):
+            pt = pin.pt * part.tx
+            draw_text(pin.name, pt, scr, tx, font, color=(200, 0, 200))
+
+    # TODO: remove debug things
+    import pygame
+    pygame.draw.circle(scr, (255, 0, 0), (100, 100), 10)
+    pygame.draw.circle(scr, (0, 255, 0), (150, 100), 10)
+    pygame.draw.circle(scr, (0, 0, 255), (100, 150), 10)
 
 
 def draw_net(
@@ -247,6 +260,7 @@ def draw_placement(
     scr: "pygame.Surface",
     tx: Tx,
     font: "pygame.font.Font",
+    **options,
 ):
     """Draw placement of parts and interconnecting nets.
 
@@ -259,7 +273,7 @@ def draw_placement(
     """
     draw_clear(scr)
     for part in parts:
-        draw_part(part, scr, tx, font)
+        draw_part(part, scr, tx, font, **options)
         draw_force(part, getattr(part, "force", Vector(0, 0)), scr, tx, font)
     for net in nets:
         draw_net(net, parts, scr, tx, font)
@@ -330,7 +344,7 @@ def draw_start(
     import pygame
 
     # Screen drawing area.
-    scr_bbox = BBox(Point(0, 0), Point(1000, 1000))
+    scr_bbox = BBox(Point(0, 0), Point(1500, 1500))
 
     # Place a blank region around the object by expanding it's bounding box.
     border = max(bbox.w, bbox.h) / 20

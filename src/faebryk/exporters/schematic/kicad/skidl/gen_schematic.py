@@ -305,9 +305,9 @@ def get_A_size(bbox: BBox) -> str:
 def calc_sheet_tx(bbox):
     """Compute the page size and positioning for this sheet."""
     A_size = get_A_size(bbox)
-    page_bbox = bbox * Tx()
+    page_bbox = bbox * Tx(d=-1)
     move_to_ctr = A_sizes[A_size].ctr.snap(GRID) - page_bbox.ctr.snap(GRID)
-    move_tx = Tx().move(move_to_ctr)
+    move_tx = Tx(d=-1).move(move_to_ctr)
     return move_tx
 
 
@@ -515,7 +515,7 @@ Generate a KiCad EESCHEMA schematic from a Circuit object.
 
 # TODO: Handle symio attribute.
 
-def _ideal_part_rotation(part: Part) -> float:
+def _ideal_part_rotation(part: Part) -> tuple[float, float]:
     # Tally what rotation would make each pwr/gnd pin point up or down.
     def is_pwr(pin: Pin) -> bool:
         return pin.fab_is_pwr
@@ -523,34 +523,25 @@ def _ideal_part_rotation(part: Part) -> float:
     def is_gnd(pin: Pin) -> bool:
         return pin.fab_is_gnd
 
+    def rotation_for(start: str, finish: str) -> float:
+        seq = ["L", "U", "R", "D"] * 2
+        start_idx = seq.index(start)
+        finish_idx = seq.index(finish, start_idx)
+        return (finish_idx - start_idx) * 90
+
     rotation_tally = Counter()
-    for pin in part:
+    for pin in part.pins:
         if is_pwr(pin):
-            if pin.orientation == "D":
-                rotation_tally[0] += 1
-            if pin.orientation == "U":
-                rotation_tally[180] += 1
-            if pin.orientation == "L":
-                rotation_tally[90] += 1
-            if pin.orientation == "R":
-                rotation_tally[270] += 1
+            rotation_tally[rotation_for("D", pin.orientation)] += 1
         elif is_gnd(pin):
-            if pin.orientation == "U":
-                rotation_tally[0] += 1
-            if pin.orientation == "D":
-                rotation_tally[180] += 1
-            if pin.orientation == "L":
-                rotation_tally[270] += 1
-            if pin.orientation == "R":
-                rotation_tally[90] += 1
+            rotation_tally[rotation_for("U", pin.orientation)] += 1
+        # TODO: add support for IO pins left and right
 
     # Rotate the part unit in the direction with the most tallies.
-    try:
-        rotation = rotation_tally.most_common()[0][0]
-    except IndexError:
-        return 0
-
-    return rotation
+    if most_common := rotation_tally.most_common(1):
+        assert len(most_common) == 1
+        return most_common[0][0], most_common[0][1] / rotation_tally.total()
+    return 0, 0
 
 
 def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
@@ -607,8 +598,12 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
             if len(part_unit) > dont_rotate_pin_cnt:
                 return
 
-            rotation = _ideal_part_rotation(part_unit)
-            part_unit.tx = part_unit.tx.rot_ccw(rotation)
+            rotation, certainty = _ideal_part_rotation(part_unit)
+            if certainty:
+                part_unit.tx = part_unit.tx.rot_ccw(rotation)
+
+                if certainty >= part_unit.hints.lock_rotation_certainty:
+                    part_unit.orientation_locked = True
 
     def calc_part_bbox(part: Part):
         """Calculate the labeled bounding boxes and store it in the part."""

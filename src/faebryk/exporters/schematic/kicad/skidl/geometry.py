@@ -203,11 +203,27 @@ class Tx:
 
 
 # Some common rotations.
-Tx.ROT_CCW_90 = Tx(a=0, b=-1, c=1, d=0)
-Tx.ROT_CW_0 = Tx(a=1, b=0, c=0, d=1)
-Tx.ROT_CW_90 = Tx(a=0, b=1, c=-1, d=0)
-Tx.ROT_CW_180 = Tx(a=-1, b=0, c=0, d=-1)
-Tx.ROT_CW_270 = Tx(a=0, b=-1, c=1, d=0)
+# DANGER! These keywords are out of order!
+Tx.ROT_CCW_90 = Tx(
+    a=0, b=1,
+    c=-1, d=0
+)
+Tx.ROT_CW_0 = Tx(
+    a=1, b=0,
+    c=0, d=1
+)
+Tx.ROT_CW_90 = Tx(
+    a=0, b=-1,
+    c=1, d=0
+)
+Tx.ROT_CW_180 = Tx(
+    a=-1, b=0,
+    c=0, d=-1
+)
+Tx.ROT_CW_270 = Tx(
+    a=0, b=1,
+    c=-1, d=0
+)
 
 # Some common flips.
 Tx.FLIP_X = Tx(a=-1, b=0, c=0, d=1)
@@ -248,7 +264,7 @@ class Point:
             pt = Point(pt, pt)
         return Point(self.x - pt.x, self.y - pt.y)
 
-    def __mul__(self, m: "Tx | Point") -> "Point":
+    def __mul__(self, m: "Tx | Point | float") -> "Point":
         """Apply transformation matrix or scale factor to a point and return a point."""
         if isinstance(m, Tx):
             return Point(

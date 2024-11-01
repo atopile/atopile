@@ -25,14 +25,15 @@ def part() -> Part:
 
 
 @pytest.mark.parametrize(
-    "pwr_pins, gnd_pins, expected",
+    "pwr_pins, gnd_pins, expected, certainty",
     [
-        (["U"], ["D"], 180),
-        (["L"], ["R"], 90),
-        (["R"], ["L"], 270),
+        (["U"], ["D"], 180, 1.0),
+        (["L"], ["R"], 90, 1.0),
+        (["R"], ["L"], 270, 1.0),
+        ([], [], 0, 0),
     ],
 )
-def test_ideal_part_rotation(part, pwr_pins, gnd_pins, expected):
+def test_ideal_part_rotation(part, pwr_pins, gnd_pins, expected, certainty):
     from faebryk.exporters.schematic.kicad.skidl.gen_schematic import (
         _ideal_part_rotation,
     )
@@ -50,4 +51,4 @@ def test_ideal_part_rotation(part, pwr_pins, gnd_pins, expected):
             pin.fab_is_pwr = False
             pin.fab_is_gnd = False
 
-    assert _ideal_part_rotation(part) == expected
+    assert _ideal_part_rotation(part) == (expected, certainty)
