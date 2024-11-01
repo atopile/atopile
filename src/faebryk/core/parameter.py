@@ -42,6 +42,17 @@ class ParameterOperatable(Node):
     def get_operations(self) -> set["Expression"]:
         return self.operated_on.get_connected_nodes(types=Expression)
 
+    @staticmethod
+    def sort_by_depth(
+        exprs: Iterable["ParameterOperatable"], ascending: bool
+    ) -> list["ParameterOperatable"]:
+        def key(e: ParameterOperatable):
+            if isinstance(e, Expression):
+                return e.depth()
+            return 0
+
+        return sorted(exprs, key=key, reverse=not ascending)
+
     def operation_add(self, other: NumberLike):
         return Add(self, other)
 
@@ -339,10 +350,13 @@ class Expression(ParameterOperatable):
     def get_operatable_operands(self) -> set[ParameterOperatable]:
         return self.operates_on.get_connected_nodes(types=ParameterOperatable)
 
-    @staticmethod
-    def topo_sort(exprs: Iterable["Expression"]) -> list["Expression"]:
-        # TODO
-        raise NotImplementedError()
+    def depth(self) -> int:
+        if hasattr(self, "_depth"):
+            return self._depth
+        self._depth = 1 + max(
+            op.depth() if isinstance(op, Expression) else 0 for op in self.operands
+        )
+        return self._depth
 
 
 @abstract
@@ -356,7 +370,7 @@ class ConstrainableExpression(Expression, Constrainable):
 class Arithmetic(ConstrainableExpression, HasUnit):
     def __init__(self, *operands: ParameterOperatable.NumberLike):
         super().__init__(*operands)
-        types = int, float, Quantity, Unit, Parameter, Arithmetic
+        types = int, float, Quantity, Unit, Parameter, Arithmetic, Ranges
         if any(not isinstance(op, types) for op in operands):
             raise ValueError(
                 "operands must be int, float, Quantity, Parameter, or Expression"
@@ -755,7 +769,7 @@ class Parameter(ParameterOperatable, Constrainable):
         | None = None,  # TODO actually allowed to be anything from domain
         tolerance_guess: float | None = None,
         # hints
-        likely_constrained: bool = False,
+        likely_constrained: bool = False,  # TODO rename expect_constraits or similiar
     ):
         super().__init__()
         if within is not None and not within.units.is_compatible_with(units):

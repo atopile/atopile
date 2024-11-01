@@ -658,6 +658,20 @@ class NonIterableRanges(P_UnitSet[QuantityT]):
         _range = self._ranges.op_add_ranges(other._ranges)
         return Ranges._from_ranges(_range, self.units)
 
+    def __add__(self, other) -> "NonIterableRanges[QuantityT]":
+        if isinstance(other, NonIterableRanges):
+            return self.op_add_ranges(other)
+        elif isinstance(other, Range):
+            return self.op_add_ranges(Ranges(other))
+        elif isinstance(other, Quantity):
+            return self.op_add_ranges(Singles(other))
+        elif isinstance(other, int) or isinstance(other, float):
+            return self.op_add_ranges(Singles(other * dimensionless))
+        return NotImplemented
+
+    def __radd__(self, other) -> "NonIterableRanges[QuantityT]":
+        return self + other
+
     def op_negate(self) -> "Ranges[QuantityT]":
         _range = self._ranges.op_negate()
         return Ranges._from_ranges(_range, self.units)

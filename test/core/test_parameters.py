@@ -13,8 +13,8 @@ from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.sets import Range
-from faebryk.libs.units import P
+from faebryk.libs.sets import Range, Ranges
+from faebryk.libs.units import P, dimensionless
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -56,17 +56,26 @@ def test_solve_phase_one():
 
 def test_assoc_compress():
     class App(Module):
-        ops = L.list_field(10, lambda: Parameter(units=P.V))
+        ops = L.list_field(10, lambda: Parameter(units=dimensionless))
 
     app = App()
 
-    sum_ = app.ops[0]
-    for p in app.ops[1:]:
-        sum_ += p
+    # (((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7) + I + 8) + J + 9) < 11
+    # => (H + I + J + 24) < 11
+    constants = [c * dimensionless for c in range(0, 10)]
+    constants[5] = app.ops[0] - app.ops[0]
+    # constants[9] = Ranges(Range(0 * dimensionless, 1 * dimensionless))
+    acc = app.ops[0]
+    for i, p in enumerate(app.ops[1:3]):
+        acc += p + constants[i]
+    for i, p in enumerate(app.ops[3:7]):
+        acc *= p * constants[i + 3]
+    for i, p in enumerate(app.ops[7:]):
+        acc += p + constants[i + 7]
 
-    (sum_ < 11 * P.V).constrain()
+    (acc < 11).constrain()
 
-    G = sum_.get_graph()
+    G = acc.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
 
