@@ -92,6 +92,7 @@ ENV/
 
 # IDE stuff
 .vscode
+.aider*
 
 _local
 .local
