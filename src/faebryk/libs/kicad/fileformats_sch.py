@@ -222,6 +222,9 @@ class C_kicad_sch_file(SEXP_File):
                 name: str = field(**sexp_field(positional=True))
                 uuid: UUID = uuid_field()
 
+            class E_mirror(SymEnum):
+                x = "x"
+
             lib_id: str
             at: C_xyr
             unit: int
@@ -229,6 +232,7 @@ class C_kicad_sch_file(SEXP_File):
             on_board: bool = False
             uuid: UUID = uuid_field()
             fields_autoplaced: bool = True
+            mirror: Optional[E_mirror] = None  # Can be "x" for x-axis mirroring
             propertys: dict[str, C_property] = field(
                 **sexp_field(multidict=True, key=lambda x: x.name),
                 default_factory=dict,

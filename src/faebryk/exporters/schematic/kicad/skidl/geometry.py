@@ -4,7 +4,7 @@
 # The MIT License (MIT) - Copyright (c) Dave Vandenbout.
 
 from copy import copy
-from math import cos, radians, sin, sqrt
+from math import cos, radians, sin, sqrt, isclose
 
 """
 Stuff for handling geometry:
@@ -30,6 +30,17 @@ def to_mms(mils):
 
 
 class Tx:
+    """Transformation matrix."""
+    ROT_CCW_90: "Tx"
+
+    ROT_CW_0: "Tx"
+    ROT_CW_90: "Tx"
+    ROT_CW_180: "Tx"
+    ROT_CW_270: "Tx"
+
+    FLIP_X: "Tx"
+    FLIP_Y: "Tx"
+
     def __init__(
         self,
         a: float = 1,
@@ -103,6 +114,16 @@ class Tx:
             dy=self.dx * tx.b + self.dy * tx.d + tx.dy,
         )
 
+    def __eq__(self, other: "Tx") -> bool:
+        return (self.a, self.b, self.c, self.d, self.dx, self.dy) == (
+            other.a,
+            other.b,
+            other.c,
+            other.d,
+            other.dx,
+            other.dy,
+        )
+
     @property
     def origin(self) -> "Point":
         """Return the (dx, dy) translation as a Point."""
@@ -119,12 +140,25 @@ class Tx:
 
     def rot_90cw(self) -> "Tx":
         """Return Tx with 90-deg clock-wise rotation around (0, 0)."""
-        return self * Tx(a=0, b=1, c=-1, d=0)
+        return self * self.ROT_CW_90
 
-    def rot(self, degs: float) -> "Tx":
+    def rot_cw(self, degs: float) -> "Tx":
         """Return Tx rotated by the given angle (in degrees)."""
+        if degs % 360 == 0:
+            return self
+        elif degs % 360 == 90:
+            return self * self.ROT_CW_90
+        elif degs % 360 == 180:
+            return self * self.ROT_CW_180
+        elif degs % 360 == 270:
+            return self * self.ROT_CW_270
+
         rads = radians(degs)
         return self * Tx(a=cos(rads), b=sin(rads), c=-sin(rads), d=cos(rads))
+
+    def rot_ccw(self, degs: float) -> "Tx":
+        """Return Tx rotated by the given angle (in degrees)."""
+        return self.rot_cw(-degs)
 
     def flip_x(self) -> "Tx":
         """Return Tx with X coords flipped around (0, 0)."""
@@ -138,16 +172,46 @@ class Tx:
         """Return Tx with translation set to (0,0)."""
         return Tx(a=self.a, b=self.b, c=self.c, d=self.d)
 
+    def find_orientation(self) -> tuple[bool, float]:
+        """
+        Return the orientation of the transformation
+        matrix as a flip in x and rotation ccw in degrees.
+        """
+
+        def _check(tx: Tx) -> bool:
+            return (
+                isclose(tx.a, self.a / self.scale)
+                and isclose(tx.b, self.b / self.scale)
+                and isclose(tx.c, self.c / self.scale)
+                and isclose(tx.d, self.d / self.scale)
+            )
+
+        candidate = Tx()
+        flip_x = False
+
+        for _ in range(2):
+            rotation = 0
+            for _ in range(4):
+                if _check(candidate):
+                    return flip_x, rotation
+                candidate *= Tx.ROT_CCW_90
+                rotation += 90
+            flip_x = not flip_x
+            candidate = candidate.flip_x()
+
+        raise ValueError(f"No orientation found for {self}")
+
 
 # Some common rotations.
-tx_rot_0 = Tx(a=1, b=0, c=0, d=1)
-tx_rot_90 = Tx(a=0, b=1, c=-1, d=0)
-tx_rot_180 = Tx(a=-1, b=0, c=0, d=-1)
-tx_rot_270 = Tx(a=0, b=-1, c=1, d=0)
+Tx.ROT_CCW_90 = Tx(a=0, b=-1, c=1, d=0)
+Tx.ROT_CW_0 = Tx(a=1, b=0, c=0, d=1)
+Tx.ROT_CW_90 = Tx(a=0, b=1, c=-1, d=0)
+Tx.ROT_CW_180 = Tx(a=-1, b=0, c=0, d=-1)
+Tx.ROT_CW_270 = Tx(a=0, b=-1, c=1, d=0)
 
 # Some common flips.
-tx_flip_x = Tx(a=-1, b=0, c=0, d=1)
-tx_flip_y = Tx(a=1, b=0, c=0, d=-1)
+Tx.FLIP_X = Tx(a=-1, b=0, c=0, d=1)
+Tx.FLIP_Y = Tx(a=1, b=0, c=0, d=-1)
 
 
 class Point:

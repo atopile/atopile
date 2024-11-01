@@ -26,10 +26,6 @@ from .geometry import (
     BBox,
     Point,
     Tx,
-    tx_rot_0,
-    tx_rot_90,
-    tx_rot_180,
-    tx_rot_270,
 )
 from .shims import Options, Part
 
@@ -155,7 +151,7 @@ def calc_symbol_bbox(part: Part, **options: Unpack[Options]):
             bbox = BBox(Point(0, 0), Point(length, height))
 
             # Rotate bbox around origin.
-            rot_tx = {"H": Tx(), "V": tx_rot_90}[obj.orientation.upper()]
+            rot_tx = {"H": Tx(), "V": Tx.ROT_CW_90}[obj.orientation.upper()]
             bbox *= rot_tx
 
             # Horizontally align bbox.
@@ -325,10 +321,10 @@ def calc_hier_label_bbox(label: str, dir: str) -> BBox:
 
     # Rotation matrices for each direction.
     lbl_tx = {
-        "U": tx_rot_90,  # Pin on bottom pointing upwards.
-        "D": tx_rot_270,  # Pin on top pointing down.
-        "L": tx_rot_180,  # Pin on right pointing left.
-        "R": tx_rot_0,  # Pin on left pointing right.
+        "U": Tx.ROT_CW_90,  # Pin on bottom pointing upwards.
+        "D": Tx.ROT_CW_270,  # Pin on top pointing down.
+        "L": Tx.ROT_CW_180,  # Pin on right pointing left.
+        "R": Tx.ROT_CW_0,  # Pin on left pointing right.
     }
 
     # Calculate length and height of label + hierarchical marker.

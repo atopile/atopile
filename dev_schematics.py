@@ -2,17 +2,16 @@
 Issues:
 
 - [ ] Parts aren't being rotated properly
-  - It appears symtx should be minimally populated
 
 - [ ] Multiple net terminals of the same net
 
 - [ ] Component references aren't aligned to anything in particular
 
-- [ ] Battery's 180 degrees off
-
-- [ ] Unit should be 1, not 0
+- [x] Battery's 180 degrees off
 
 - [ ] Add top-level global labels
+
+- [x] Unit should be 1, not 0
 
 - [x] Placed off-sheet
 
@@ -79,11 +78,11 @@ full_transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
 
 options = Options(
     # draw_global_routing=True,
-    draw_placement=True,
-    draw_routing=True,
-    draw_routing_channels=True,
-    draw_switchbox_boundary=True,
-    draw_switchbox_routing=True,
+    # draw_placement=True,
+    # draw_routing=True,
+    # draw_routing_channels=True,
+    # draw_switchbox_boundary=True,
+    # draw_switchbox_routing=True,
     retries=3,
     pin_normalize=True,
     net_normalize=True,

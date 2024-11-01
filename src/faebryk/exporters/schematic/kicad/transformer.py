@@ -546,7 +546,7 @@ class Transformer:
             # - has_kicad_symbol mapping is currently 1:1
             raise NotImplementedError("Multiple units not implemented")
 
-        for unit_key in range(self.get_unit_count(lib_sym)):
+        for unit_key in range(1, self.get_unit_count(lib_sym) + 1):
             unit_objs = self.get_sub_syms(lib_sym, unit_key)
 
             pins = []
@@ -950,36 +950,7 @@ class Transformer:
     def _apply_shim_sch_node(
         self, node: skidl_node.SchNode, sheet_tx: skidl_node.Tx = skidl_node.Tx()
     ):
-        from faebryk.exporters.schematic.kicad.skidl.geometry import (
-            Tx,
-            tx_rot_270,
-        )
-
-        def find_orientation(part_tx: Tx) -> tuple[float, bool]:
-            def _check(tx: Tx) -> bool:
-                return (
-                    math.isclose(tx.a, part_tx.a / part_tx.scale)
-                    and math.isclose(tx.b, part_tx.b / part_tx.scale)
-                    and math.isclose(tx.c, part_tx.c / part_tx.scale)
-                    and math.isclose(tx.d, part_tx.d / part_tx.scale)
-                )
-
-            candidate = Tx()
-            flip_x = False
-
-            for _ in range(2):
-                rotation = 0
-                for _ in range(4):
-                    if _check(candidate):
-                        return rotation, flip_x
-                    candidate *= tx_rot_270  # 90 degrees counterclockwise
-                    rotation += 90
-                flip_x = not flip_x
-                candidate = candidate.flip_x()
-
-            raise ValueError(f"No orientation found for {part_tx}")
-
-        mils_to_mm = Tx(a=0.0254, b=0, c=0, d=0.0254, dx=0, dy=0)
+        from faebryk.exporters.schematic.kicad.skidl.geometry import mms_per_mil
 
         if node.flattened:
             # This almost certainly shouldn't be hit any more because we've already
@@ -987,9 +958,9 @@ class Transformer:
             raise RuntimeError("Cannot apply flattened node")
 
         flattened_bbox = node.internal_bbox()
-        tx = skidl_sch.calc_sheet_tx(flattened_bbox) * mils_to_mm
+        tx = skidl_sch.calc_sheet_tx(flattened_bbox) * mms_per_mil
 
-        # TODO: Put flattened node into heirarchical block
+        # TODO: Put flattened node into hierarchical block
 
         for part in node.parts:
             ## 2 add global labels
@@ -1015,9 +986,9 @@ class Transformer:
                 # are already in the schematic, we just need to move them
                 part.sch_symbol.at.x = part_tx.origin.x
                 part.sch_symbol.at.y = part_tx.origin.y
-                rotation, flip_x = find_orientation(part_tx)
-                part.sch_symbol.at.r = rotation
-                # part.sch_symbol.
+                flip_x, rot_ccw = part_tx.find_orientation()
+                part.sch_symbol.at.r = rot_ccw
+                part.sch_symbol.mirror = part.sch_symbol.E_mirror.x if flip_x else None
 
         # 4. draw wires and junctions
         for wire in node.wires.values():

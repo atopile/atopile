@@ -305,9 +305,9 @@ def get_A_size(bbox: BBox) -> str:
 def calc_sheet_tx(bbox):
     """Compute the page size and positioning for this sheet."""
     A_size = get_A_size(bbox)
-    page_bbox = bbox * Tx(d=-1)
+    page_bbox = bbox * Tx()
     move_to_ctr = A_sizes[A_size].ctr.snap(GRID) - page_bbox.ctr.snap(GRID)
-    move_tx = Tx(d=-1).move(move_to_ctr)
+    move_tx = Tx().move(move_to_ctr)
     return move_tx
 
 
@@ -515,6 +515,43 @@ Generate a KiCad EESCHEMA schematic from a Circuit object.
 
 # TODO: Handle symio attribute.
 
+def _ideal_part_rotation(part: Part) -> float:
+    # Tally what rotation would make each pwr/gnd pin point up or down.
+    def is_pwr(pin: Pin) -> bool:
+        return pin.fab_is_pwr
+
+    def is_gnd(pin: Pin) -> bool:
+        return pin.fab_is_gnd
+
+    rotation_tally = Counter()
+    for pin in part:
+        if is_pwr(pin):
+            if pin.orientation == "D":
+                rotation_tally[0] += 1
+            if pin.orientation == "U":
+                rotation_tally[180] += 1
+            if pin.orientation == "L":
+                rotation_tally[90] += 1
+            if pin.orientation == "R":
+                rotation_tally[270] += 1
+        elif is_gnd(pin):
+            if pin.orientation == "U":
+                rotation_tally[0] += 1
+            if pin.orientation == "D":
+                rotation_tally[180] += 1
+            if pin.orientation == "L":
+                rotation_tally[270] += 1
+            if pin.orientation == "R":
+                rotation_tally[90] += 1
+
+    # Rotate the part unit in the direction with the most tallies.
+    try:
+        rotation = rotation_tally.most_common()[0][0]
+    except IndexError:
+        return 0
+
+    return rotation
+
 
 def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
     """Add stuff to parts & nets for doing placement and routing of schematics."""
@@ -563,12 +600,6 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
         if getattr(part, "symtx", ""):
             return
 
-        def is_pwr(pin: Pin) -> bool:
-            return pin.fab_is_pwr
-
-        def is_gnd(pin: Pin) -> bool:
-            return pin.fab_is_gnd
-
         dont_rotate_pin_cnt = options.get("dont_rotate_pin_count", 10000)
 
         for part_unit in units(part):
@@ -576,38 +607,8 @@ def preprocess_circuit(circuit: Circuit, **options: Unpack[Options]):
             if len(part_unit) > dont_rotate_pin_cnt:
                 return
 
-            # Tally what rotation would make each pwr/gnd pin point up or down.
-            rotation_tally = Counter()
-            for pin in part_unit:
-                if is_gnd(pin):
-                    if pin.orientation == "U":
-                        rotation_tally[0] += 1
-                    if pin.orientation == "D":
-                        rotation_tally[180] += 1
-                    if pin.orientation == "L":
-                        rotation_tally[270] += 1
-                    if pin.orientation == "R":
-                        rotation_tally[90] += 1
-                elif is_pwr(pin):
-                    if pin.orientation == "D":
-                        rotation_tally[0] += 1
-                    if pin.orientation == "U":
-                        rotation_tally[180] += 1
-                    if pin.orientation == "L":
-                        rotation_tally[90] += 1
-                    if pin.orientation == "R":
-                        rotation_tally[270] += 1
-
-            # Rotate the part unit in the direction with the most tallies.
-            try:
-                rotation = rotation_tally.most_common()[0][0]
-            except IndexError:
-                pass
-            else:
-                # Rotate part unit 90-degrees clockwise until the desired rotation is reached.
-                tx_cw_90 = Tx(a=0, b=-1, c=1, d=0)  # 90-degree trans. matrix.
-                for _ in range(int(round(rotation / 90))):
-                    part_unit.tx = part_unit.tx * tx_cw_90
+            rotation = _ideal_part_rotation(part_unit)
+            part_unit.tx = part_unit.tx.rot_ccw(rotation)
 
     def calc_part_bbox(part: Part):
         """Calculate the labeled bounding boxes and store it in the part."""
