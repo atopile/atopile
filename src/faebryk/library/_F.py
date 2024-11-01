@@ -44,6 +44,7 @@ from faebryk.library.has_picker import has_picker
 from faebryk.library.has_pcb_layout import has_pcb_layout
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
 from faebryk.library.has_resistance import has_resistance
+from faebryk.library.has_schematic_hints import has_schematic_hints
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.ANY import ANY
@@ -85,7 +86,6 @@ from faebryk.library.has_kicad_footprint import has_kicad_footprint
 from faebryk.library.Pad import Pad
 from faebryk.library.Button import Button
 from faebryk.library.GDT import GDT
-from faebryk.library.has_symbol_layout import has_symbol_layout
 from faebryk.library.has_pin_association_heuristic_lookup_table import has_pin_association_heuristic_lookup_table
 from faebryk.library.LogicGate import LogicGate
 from faebryk.library.has_footprint_defined import has_footprint_defined

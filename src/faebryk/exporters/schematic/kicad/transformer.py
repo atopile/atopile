@@ -814,6 +814,10 @@ class Transformer:
                     for pts in Transformer.get_bbox(sch_lib_symbol_units)
                 ]
             )
+            shim_part.hints = (
+                f_symbol.represents.try_get_trait(F.has_schematic_hints)
+                or F.has_schematic_hints()
+            )
             shim_part.pins = []
 
             # 2.3 finish making pins, this time from a part-orientation

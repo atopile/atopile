@@ -71,6 +71,7 @@ class Part:
     symtx: str
     unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
     bare_bbox: BBox
+    hints: F.has_schematic_hints
 
     # things we've added to make life easier
     sch_symbol: "fileformats_sch.C_kicad_sch_file.C_kicad_sch.C_symbol_instance"
