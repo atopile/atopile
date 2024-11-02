@@ -3,7 +3,6 @@
 
 import hashlib
 import logging
-import math
 import pprint
 from copy import deepcopy
 from dataclasses import is_dataclass
@@ -1035,6 +1034,35 @@ class Transformer:
         self, **options: Unpack[shims.Options]
     ) -> tuple[skidl_node.SchNode, C_kicad_sch_file]:
         """Does what it says on the tin."""
+        _options = shims.Options(
+            # draw_global_routing=True,
+            # draw_placement=True,
+            # draw_pin_names=True,
+            # draw_routing=True,
+            # draw_routing_channels=True,
+            # draw_switchbox_boundary=True,
+            # draw_switchbox_routing=True,
+            retries=3,
+            pin_normalize=True,
+            net_normalize=True,
+            compress_before_place=True,
+            use_optimizer=True,
+            use_push_pull=True,
+            allow_jumps=True,
+            align_parts=True,
+            remove_overlaps=True,
+            slip_and_slide=True,
+            # rotate_parts=True,  # Doesn't work. It's forced on in a lower-level
+            trim_anchor_pull_pins=True,
+            # fanout_attenuation=True,
+            # remove_power=True,
+            # remove_high_fanout=True,
+            normalize=True,
+            flatness=1.0,
+        )
+
+        _options.update(options)
+
         # 1. add missing symbols
         self._add_missing_symbols()
 
@@ -1044,7 +1072,7 @@ class Transformer:
         # 3. run skidl schematic generation
         from faebryk.exporters.schematic.kicad.skidl.gen_schematic import gen_schematic
 
-        sch = gen_schematic(circuit, ".", "test", **options)
+        sch = gen_schematic(circuit, ".", "test", **_options)
 
         # 4. transform sch according to skidl
         self.apply_shim_sch_node(sch)

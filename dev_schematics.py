@@ -64,17 +64,17 @@ def add_to_sys_path(path):
 
 
 with add_to_sys_path(root_dir / "examples"):
-    from minimal_led import App
+    from mcu import App
+
 app = App()
-assert isinstance(app, Module)
-assert isinstance(app.battery, F.Battery)
-assert isinstance(app.led, F.PoweredLED)
 
-
-app.led.led.add(F.has_descriptive_properties_defined({"LCSC": "C7429912"}))
-app.led.current_limiting_resistor.add(
-    F.has_descriptive_properties_defined({"LCSC": "C25077"})
-)
+# assert isinstance(app, Module)
+# assert isinstance(app.battery, F.Battery)
+# assert isinstance(app.led, F.PoweredLED)
+# app.led.led.add(F.has_descriptive_properties_defined({"LCSC": "C7429912"}))
+# app.led.current_limiting_resistor.add(
+#     F.has_descriptive_properties_defined({"LCSC": "C25077"})
+# )
 
 apply_design_to_pcb(app)
 
@@ -90,23 +90,6 @@ options = Options(
     # draw_routing_channels=True,
     # draw_switchbox_boundary=True,
     # draw_switchbox_routing=True,
-    retries=3,
-    pin_normalize=True,
-    net_normalize=True,
-    compress_before_place=True,
-    use_optimizer=True,
-    use_push_pull=True,
-    allow_jumps=True,
-    align_parts=True,
-    remove_overlaps=True,
-    slip_and_slide=True,
-    # rotate_parts=True,  # Doesn't work. It's forced on in a lower-level
-    trim_anchor_pull_pins=True,
-    # fanout_attenuation=True,
-    # remove_power=True,
-    # remove_high_fanout=True,
-    normalize=True,
-    flatness=1.0,
 )
 
 sch = full_transformer.generate_schematic(**options)
