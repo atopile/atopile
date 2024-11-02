@@ -1,15 +1,17 @@
 """
 Issues:
 
-- [ ] Parts aren't being rotated properly
-
-- [ ] Multiple net terminals of the same net
-
 - [ ] Component references aren't aligned to anything in particular
 
-- [x] Battery's 180 degrees off
-
 - [ ] Add top-level global labels
+
+- [x] Multiple net terminals of the same net
+
+- [x] X/Y flips are dependent on the rotation of the part
+
+- [x] Parts aren't being rotated properly
+
+- [x] Battery's 180 degrees off
 
 - [x] Unit should be 1, not 0
 
@@ -31,6 +33,7 @@ Issues:
 """
 
 import contextlib
+import logging
 import sys
 from pathlib import Path
 
@@ -40,6 +43,9 @@ from faebryk.exporters.schematic.kicad.skidl.shims import Options
 from faebryk.exporters.schematic.kicad.transformer import Transformer
 from faebryk.libs.examples.buildutil import apply_design_to_pcb
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 root_dir = Path(__file__).parent
 test_dir = root_dir / "test"
@@ -78,7 +84,8 @@ full_transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
 
 options = Options(
     # draw_global_routing=True,
-    # draw_placement=True,
+    draw_placement=True,
+    draw_pin_names=True,
     # draw_routing=True,
     # draw_routing_channels=True,
     # draw_switchbox_boundary=True,

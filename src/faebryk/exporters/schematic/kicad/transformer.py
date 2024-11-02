@@ -990,9 +990,23 @@ class Transformer:
                 # are already in the schematic, we just need to move them
                 part.sch_symbol.at.x = part_tx.origin.x
                 part.sch_symbol.at.y = part_tx.origin.y
-                flip_x, rot_ccw = part_tx.find_orientation()
-                part.sch_symbol.at.r = rot_ccw
-                part.sch_symbol.mirror = part.sch_symbol.E_mirror.x if flip_x else None
+
+                # The allowed mirrors are dependent on the rotation of the part
+                flip_rot_conversions: dict[
+                    tuple[bool, int], tuple[SCH.C_symbol_instance.E_mirror, int]
+                ] = {
+                    (False, 0): (None, 0),
+                    (True, 0): (SCH.C_symbol_instance.E_mirror.y, 0),
+                    (False, 90): (None, 90),
+                    (True, 90): (SCH.C_symbol_instance.E_mirror.x, 90),
+                    (False, 180): (None, 180),
+                    (True, 180): (SCH.C_symbol_instance.E_mirror.x, 0),
+                    (False, 270): (None, 270),
+                    (True, 270): (SCH.C_symbol_instance.E_mirror.x, 270),
+                }
+                part.sch_symbol.mirror, part.sch_symbol.at.r = flip_rot_conversions[
+                    part.tx.find_orientation()
+                ]
 
         # 4. draw wires and junctions
         for wire in node.wires.values():
@@ -1017,7 +1031,9 @@ class Transformer:
         for node in dfs(circuit):
             self._apply_shim_sch_node(node)
 
-    def generate_schematic(self, **options: Unpack[shims.Options]):
+    def generate_schematic(
+        self, **options: Unpack[shims.Options]
+    ) -> tuple[skidl_node.SchNode, C_kicad_sch_file]:
         """Does what it says on the tin."""
         # 1. add missing symbols
         self._add_missing_symbols()
@@ -1034,4 +1050,4 @@ class Transformer:
         self.apply_shim_sch_node(sch)
 
         # 5. save
-        return self.sch
+        return circuit, sch

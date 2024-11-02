@@ -223,7 +223,12 @@ class C_kicad_sch_file(SEXP_File):
                 uuid: UUID = uuid_field()
 
             class E_mirror(SymEnum):
+                """
+                Mirroring is applied about the X or Y axes
+                The allowed mirrors are dependent on the rotation of the part
+                """
                 x = "x"
+                y = "y"
 
             lib_id: str
             at: C_xyr
@@ -232,7 +237,7 @@ class C_kicad_sch_file(SEXP_File):
             on_board: bool = False
             uuid: UUID = uuid_field()
             fields_autoplaced: bool = True
-            mirror: Optional[E_mirror] = None  # Can be "x" for x-axis mirroring
+            mirror: Optional[E_mirror] = None
             propertys: dict[str, C_property] = field(
                 **sexp_field(multidict=True, key=lambda x: x.name),
                 default_factory=dict,
