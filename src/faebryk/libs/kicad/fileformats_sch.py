@@ -69,9 +69,10 @@ class C_stroke:
 @dataclass(kw_only=True)
 class C_circle:
     center: C_xy
-    end: C_xy
     stroke: C_stroke
     fill: C_fill
+    radius: Optional[float] = None
+    end: Optional[C_xy] = None
 
 
 @dataclass(kw_only=True)

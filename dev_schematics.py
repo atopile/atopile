@@ -64,7 +64,7 @@ def add_to_sys_path(path):
 
 
 with add_to_sys_path(root_dir / "examples"):
-    from mcu import App
+    from iterative_design_nand import App
 
 app = App()
 

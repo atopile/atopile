@@ -639,7 +639,13 @@ class Transformer:
     @get_bbox.register
     @staticmethod
     def _(obj: C_circle) -> BoundingBox:
-        radius = Geometry.distance_euclid(obj.center, obj.end)
+        if obj.radius is None:
+            radius = Geometry.distance_euclid(obj.center, obj.end)
+        elif obj.end is None:
+            radius = obj.radius
+        else:
+            raise ValueError("Circle has both radius and end")
+
         return Geometry.bbox(
             (obj.center.x - radius, obj.center.y - radius),
             (obj.center.x + radius, obj.center.y + radius),
