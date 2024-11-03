@@ -25,6 +25,7 @@ from faebryk.libs.examples.buildutil import BUILD_DIR, PCB_FILE, apply_design_to
 from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.picker.common import CachePicker
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
@@ -133,6 +134,7 @@ def main():
     # picking ----------------------------------------------------------------
     replace_tbd_with_any(app, recursive=True)
     modules = app.get_children_modules(types=Module)
+    CachePicker.add_to_modules(modules, prio=-20)
     try:
         JLCPCB_DB()
         for n in modules:
