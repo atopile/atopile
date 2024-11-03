@@ -16,7 +16,7 @@ from faebryk.libs.picker.picker import (
     PickError,
 )
 from faebryk.libs.picker.util import generate_si_values
-from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, cast_assert
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,25 @@ def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], F.Constant[T]]:
         return str_to_enum(enum, x)
 
     return f
+
+
+def enum_to_str[T: Enum](x: Parameter[T], force: bool = True) -> set[str]:
+    val = x.get_most_narrow()
+    if isinstance(val, F.Constant):
+        val = F.Set([val])
+
+    if not isinstance(val, F.Set) or not all(
+        isinstance(inner, F.Constant) for inner in val.params
+    ):
+        if force:
+            raise ValueError(f"Expected a constant or set of constants, got {val}")
+        else:
+            return set()
+
+    return {
+        cast_assert(Enum, cast_assert(F.Constant, inner).value).name
+        for inner in val.params
+    }
 
 
 _MAPPINGS_BY_TYPE: dict[type[Module], list[MappingParameterDB]] = {
@@ -367,8 +386,10 @@ def find_resistor(cmp: Module):
         .filter_by_si_values(
             cmp.resistance,
             generate_si_values(cmp.resistance, "Ω", E_SERIES_VALUES.E96),
+            tolerance_requirement=0.01,
         )
         .filter_by_traits(cmp)
+        .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )
@@ -390,11 +411,13 @@ def find_capacitor(cmp: Module):
             "Capacitors", "Multilayer Ceramic Capacitors MLCC - SMD/SMT"
         )
         .filter_by_stock(qty)
-        .filter_by_traits(cmp)
         .filter_by_si_values(
             cmp.capacitance,
             generate_si_values(cmp.capacitance, "F", E_SERIES_VALUES.E24),
+            tolerance_requirement=0.05,
         )
+        .filter_by_traits(cmp)
+        .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )
@@ -422,7 +445,9 @@ def find_inductor(cmp: Module):
         .filter_by_si_values(
             cmp.inductance,
             generate_si_values(cmp.inductance, "H", E_SERIES_VALUES.E24),
+            tolerance_requirement=0.05,
         )
+        .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )
@@ -446,6 +471,7 @@ def find_tvs(cmp: Module):
         .filter_by_category("", "TVS")
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
+        .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )
@@ -474,6 +500,7 @@ def find_diode(cmp: Module):
             generate_si_values(cmp.reverse_working_voltage, "V", E_SERIES_VALUES.E3),
         )
         .filter_by_traits(cmp)
+        .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )
@@ -493,6 +520,8 @@ def find_led(cmp: Module):
         .filter_by_category("", "Light Emitting Diodes (LED)")
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
+        .filter_by_specified_parameters(mapping)
+        .filter_by_attribute_mention(list(enum_to_str(cmp.color, force=False)))
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )
@@ -512,6 +541,7 @@ def find_mosfet(cmp: Module):
         .filter_by_category("", "MOSFET")
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
+        .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )
@@ -531,6 +561,7 @@ def find_ldo(cmp: Module):
         .filter_by_category("", "LDO")
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
+        .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, qty)
     )

@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import has_part_picked_remove
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -47,3 +48,6 @@ class USB2_0_ESD_Protection(Module):
         #          parametrization
         # ------------------------------------
         self.usb[0].usb_if.buspower.voltage.merge(F.Range(4.75 * P.V, 5.25 * P.V))
+
+        # TODO remove if adding any child modules
+        has_part_picked_remove.mark_no_pick_needed(self)

@@ -58,6 +58,12 @@ class RP2040(Module):
         rts: F.ElectricLogic
         cts: F.ElectricLogic
 
+        @L.rt_field
+        def single_electric_reference(self):
+            return F.has_single_electric_reference_defined(
+                F.ElectricLogic.connect_all_module_references(self)
+            )
+
     class USBPowerControl(ModuleInterface):
         ovcur_det: F.ElectricLogic
         vbus_det: F.ElectricLogic

@@ -16,8 +16,6 @@ class PowerSwitchStatic(F.PowerSwitch):
     def __init__(self) -> None:
         super().__init__(normally_closed=False)
 
-    part_removed: has_part_picked_remove
-
     def __preinit__(self):
         self.power_in.connect(self.switched_power_out)
         self.logic_in.reference.connect(self.power_in)

@@ -49,24 +49,32 @@ class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
     @_resolved
     def __le__(self, other) -> bool:
         if isinstance(other, Constant):
+            if self == other:
+                return True
             return self.value <= other.value
         return other >= self.value
 
     @_resolved
     def __lt__(self, other) -> bool:
         if isinstance(other, Constant):
+            if self == other:
+                return False
             return self.value < other.value
         return other > self.value
 
     @_resolved
     def __ge__(self, other) -> bool:
         if isinstance(other, Constant):
+            if self == other:
+                return True
             return self.value >= other.value
         return other <= self.value
 
     @_resolved
     def __gt__(self, other) -> bool:
         if isinstance(other, Constant):
+            if self == other:
+                return False
             return self.value > other.value
         return other < self.value
 

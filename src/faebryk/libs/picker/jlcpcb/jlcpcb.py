@@ -3,7 +3,9 @@
 
 import asyncio
 import datetime
+import json
 import logging
+import math
 import os
 import struct
 import sys
@@ -18,7 +20,7 @@ from pint import DimensionalityError
 from rich.progress import track
 from tortoise import Tortoise
 from tortoise.expressions import Q
-from tortoise.fields import CharField, DatetimeField, IntField, JSONField
+from tortoise.fields import CharField, DatetimeField, IntField, JSONField, TextField
 from tortoise.models import Model
 
 import faebryk.library._F as F
@@ -36,7 +38,7 @@ from faebryk.libs.picker.picker import (
     has_part_picked_defined,
 )
 from faebryk.libs.units import P, UndefinedUnitError
-from faebryk.libs.util import at_exit, try_or
+from faebryk.libs.util import at_exit, once, try_or
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +150,7 @@ class Component(Model):
     stock = IntField()
     price = JSONField()
     last_update = DatetimeField()
-    extra = JSONField()
+    extra = TextField()
     flag = IntField()
     last_on_stock = DatetimeField()
     preferred = IntField()
@@ -195,6 +197,14 @@ class Component(Model):
 
         return unit_price * qty + handling_fee
 
+    @property
+    @once
+    def extra_(self) -> dict:
+        if isinstance(self.extra, str):
+            return json.loads(self.extra)
+        assert isinstance(self.extra, dict)
+        return self.extra
+
     def attribute_to_parameter(
         self, attribute_name: str, use_tolerance: bool = False, ignore_at: bool = True
     ) -> Parameter:
@@ -206,9 +216,9 @@ class Component(Model):
 
         :return: The parameter representing the attribute value
         """
-        assert isinstance(self.extra, dict) and "attributes" in self.extra
+        assert isinstance(self.extra_, dict) and "attributes" in self.extra_
 
-        value_field = self.extra["attributes"][attribute_name]
+        value_field = self.extra_["attributes"][attribute_name]
         # parse fields like "850mV@1A"
         # TODO better to actually parse this
         if ignore_at:
@@ -238,20 +248,20 @@ class Component(Model):
         if not use_tolerance:
             return F.Constant(value)
 
-        if "Tolerance" not in self.extra["attributes"]:
+        if "Tolerance" not in self.extra_["attributes"]:
             raise ValueError(f"No Tolerance field in component (lcsc: {self.lcsc})")
-        if "ppm" in self.extra["attributes"]["Tolerance"]:
-            tolerance = float(self.extra["attributes"]["Tolerance"].strip("±pm")) / 1e6
-        elif "%~+" in self.extra["attributes"]["Tolerance"]:
-            tolerances = self.extra["attributes"]["Tolerance"].split("~")
+        if "ppm" in self.extra_["attributes"]["Tolerance"]:
+            tolerance = float(self.extra_["attributes"]["Tolerance"].strip("±pm")) / 1e6
+        elif "%~+" in self.extra_["attributes"]["Tolerance"]:
+            tolerances = self.extra_["attributes"]["Tolerance"].split("~")
             tolerances = [float(t.strip("%+-")) for t in tolerances]
             tolerance = max(tolerances) / 100
-        elif "%" in self.extra["attributes"]["Tolerance"]:
-            tolerance = float(self.extra["attributes"]["Tolerance"].strip("%±")) / 100
+        elif "%" in self.extra_["attributes"]["Tolerance"]:
+            tolerance = float(self.extra_["attributes"]["Tolerance"].strip("%±")) / 100
         else:
             raise ValueError(
                 "Could not parse tolerance field "
-                f"'{self.extra['attributes']['Tolerance']}'"
+                f"'{self.extra_['attributes']['Tolerance']}'"
             )
 
         return F.Range.from_center_rel(value, tolerance)
@@ -278,23 +288,27 @@ class Component(Model):
                 "Cannot provide both tolerance_search_key and parser arguments"
             )
 
-        assert isinstance(self.extra, dict)
+        assert isinstance(self.extra_, dict)
 
         attr_key = next(
-            (k for k in attribute_search_keys if k in self.extra.get("attributes", "")),
+            (
+                k
+                for k in attribute_search_keys
+                if k in self.extra_.get("attributes", "")
+            ),
             None,
         )
 
-        if "attributes" not in self.extra:
+        if "attributes" not in self.extra_:
             raise LookupError("does not have any attributes")
         if attr_key is None:
             raise LookupError(
                 f"does not have any of required attribute fields: "
-                f"{attribute_search_keys} in {self.extra['attributes']}"
+                f"{attribute_search_keys} in {self.extra_['attributes']}"
             )
         if (
             tolerance_search_key is not None
-            and tolerance_search_key not in self.extra["attributes"]
+            and tolerance_search_key not in self.extra_["attributes"]
         ):
             raise LookupError(
                 f"does not have any of required tolerance fields: "
@@ -302,7 +316,7 @@ class Component(Model):
             )
 
         if parser is not None:
-            return parser(self.extra["attributes"][attr_key])
+            return parser(self.extra_["attributes"][attr_key])
 
         return self.attribute_to_parameter(
             attr_key, tolerance_search_key is not None, m.ignore_at
@@ -427,7 +441,12 @@ class ComponentQuery:
 
         return self
 
-    def filter_by_si_values(self, value: Parameter, si_vals: list[str]) -> Self:
+    def filter_by_si_values(
+        self,
+        value: Parameter,
+        si_vals: list[str],
+        tolerance_requirement: float | None = None,
+    ) -> Self:
         assert self.Q
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -436,11 +455,32 @@ class ComponentQuery:
             )
             logger.debug(f"Possible values: {si_vals}")
 
+        if tolerance_requirement is not None:
+            cmp = value.get_parent_of_type(Module)
+            assert cmp
+            value = value.get_most_narrow()
+            if not isinstance(value, F.Range):
+                raise PickError(f"Can only pick ranges, not: {value}", cmp)
+            tol = value.as_center_tuple(relative=True)[1]
+            if tol < tolerance_requirement:  # type: ignore
+                raise PickError(
+                    f"Tolerance not supported: {value}, "
+                    f"expected at least {tolerance_requirement}, but is {tol}",
+                    cmp,
+                )
+            self.filter_by_tolerance(tolerance_requirement)
+
         if isinstance(value, F.ANY):
             return self
         assert not self.results
 
         return self.filter_by_description(*si_vals)
+
+    def filter_by_tolerance(self, tolerance: float) -> Self:
+        assert self.Q
+
+        tol_int = int(math.floor(tolerance * 100))
+        return self.filter_by_description(f"±{tol_int}%")
 
     def filter_by_category(self, category: str, subcategory: str) -> Self:
         assert self.Q
@@ -479,6 +519,29 @@ class ComponentQuery:
     def filter_by_lcsc_pn(self, partnumber: str) -> Self:
         assert self.Q
         self.Q &= Q(lcsc=partnumber.strip("C"))
+        return self
+
+    def filter_by_specified_parameters(self, mapping: list[MappingParameterDB]) -> Self:
+        assert self.Q
+        keys = [m.attr_keys for m in mapping]
+
+        extra_query = Q()
+        for kl in keys:
+            sub_q = Q()
+            for k in kl:
+                sub_q |= Q(extra__contains=k)
+            extra_query &= sub_q
+        self.Q &= extra_query
+        return self
+
+    def filter_by_attribute_mention(self, candidates: list[str]) -> Self:
+        if not candidates:
+            return self
+        assert self.Q
+        q = Q()
+        for candidate in candidates:
+            q |= Q(extra__contains=candidate)
+        self.Q &= q
         return self
 
     def filter_by_manufacturer_pn(self, partnumber: str) -> Self:
@@ -527,18 +590,23 @@ class ComponentQuery:
                     for p, m in zip(params, mapping)
                 ]
             ):
-                logger.debug(
-                    f"Component {c.lcsc} doesn't match: "
-                    f"{[p for p, v in zip(params, pm) if not v]}"
-                )
+                if logger.isEnabledFor(logging.DEBUG):
+                    unmatch = [
+                        f"({m.param_name}: {p} <!=> "
+                        f"{getattr(module, m.param_name).get_most_narrow()})"
+                        for p, v, m in zip(params, pm, mapping)
+                        if not v
+                    ]
+                    logger.debug(f"Component {c.lcsc} doesn't match: [{unmatch}]")
                 continue
 
-            logger.debug(
-                f"Found part {c.lcsc:8} "
-                f"Basic: {bool(c.basic)}, Preferred: {bool(c.preferred)}, "
-                f"Price: ${c.get_price(1):2.4f}, "
-                f"{c.description:15},"
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    f"Found part {c.lcsc:8} "
+                    f"Basic: {bool(c.basic)}, Preferred: {bool(c.preferred)}, "
+                    f"Price: ${c.get_price(1):2.4f}, "
+                    f"{c.description:15},"
+                )
 
             yield c
 

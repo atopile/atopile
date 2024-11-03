@@ -90,7 +90,7 @@ def pick_capacitor(module: F.Capacitor):
                         F.Capacitor.TemperatureCoefficient.X7R,
                     ),
                     "capacitance": F.Constant(100 * P.nF),
-                    "rated_voltage": F.Range(0 * P.V, 16 * P.V),
+                    "rated_voltage": F.Constant(16 * P.V),
                 },
             ),
             PickerOption(
@@ -101,7 +101,7 @@ def pick_capacitor(module: F.Capacitor):
                         F.Capacitor.TemperatureCoefficient.X7R,
                     ),
                     "capacitance": F.Constant(10 * P.uF),
-                    "rated_voltage": F.Range(0 * P.V, 10 * P.V),
+                    "rated_voltage": F.Constant(10 * P.V),
                 },
             ),
         ],

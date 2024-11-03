@@ -4,7 +4,7 @@
 
 import logging
 from abc import abstractmethod
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -41,7 +41,7 @@ class has_multi_picker(F.has_picker.impl()):
     def __preinit__(self): ...
 
     class FunctionPicker(Picker):
-        def __init__(self, picker: Callable[[Module], None]):
+        def __init__(self, picker: Callable[[Module], Any]):
             self.picker = picker
 
         def pick(self, module: Module) -> None:
