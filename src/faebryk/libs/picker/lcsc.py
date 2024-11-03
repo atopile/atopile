@@ -11,6 +11,7 @@ from easyeda2kicad.easyeda.easyeda_importer import (
     EasyedaFootprintImporter,
     EasyedaSymbolImporter,
 )
+from easyeda2kicad.easyeda.parameters_easyeda import EeSymbol
 from easyeda2kicad.kicad.export_kicad_3d_model import Exporter3dModelKicad
 from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
@@ -22,8 +23,13 @@ from faebryk.libs.picker.picker import (
     PickerOption,
     Supplier,
 )
+from faebryk.libs.util import ConfigFlag
 
 logger = logging.getLogger(__name__)
+
+CRAWL_DATASHEET = ConfigFlag(
+    "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
+)
 
 # TODO dont hardcode relative paths
 BUILD_FOLDER = Path("./build")
@@ -174,6 +180,33 @@ def download_easyeda_info(partno: str, get_model: bool = True):
     return ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol
 
 
+def get_datasheet_url(part: EeSymbol):
+    # TODO use easyeda2kicad api as soon as works again
+    # return part.info.datasheet
+
+    if not CRAWL_DATASHEET:
+        return None
+
+    import re
+
+    import requests
+
+    url = part.info.datasheet
+    if not url:
+        return None
+    # make requests act like curl
+    lcsc_site = requests.get(url, headers={"User-Agent": "curl/7.81.0"})
+    partno = part.info.lcsc_id
+    # find _{partno}.pdf in html
+    match = re.search(f'href="(https://[^"]+_{partno}.pdf)"', lcsc_site.text)
+    if match:
+        pdfurl = match.group(1)
+        logger.debug(f"Found datasheet for {partno} at {pdfurl}")
+        return pdfurl
+    else:
+        return None
+
+
 def attach(component: Module, partno: str, get_model: bool = True):
     ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol = (
         download_easyeda_info(partno, get_model=get_model)
@@ -214,6 +247,10 @@ def attach(component: Module, partno: str, get_model: bool = True):
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
+
+    datasheet = get_datasheet_url(easyeda_symbol)
+    if datasheet:
+        component.add(F.has_datasheet_defined(datasheet))
 
     # model done by kicad (in fp)
 

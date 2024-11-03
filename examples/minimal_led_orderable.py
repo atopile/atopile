@@ -12,6 +12,7 @@ import typer
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.exporters.documentation.datasheets import export_datasheets
 from faebryk.exporters.pcb.kicad.artifacts import export_svg
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
@@ -149,6 +150,7 @@ def main():
     apply_design_to_pcb(app, transform_pcb)
     export_pcba_artifacts(ARTIFACTS, PCB_FILE, app)
     export_svg(PCB_FILE, ARTIFACTS / Path("pcba.svg"))
+    export_datasheets(app, BUILD_DIR / "documentation" / "datasheets")
 
 
 if __name__ == "__main__":
