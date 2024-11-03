@@ -19,7 +19,6 @@ class Crystal_Oscillator(Module):
     current_limiting_resistor: F.Resistor
 
     xtal_if: F.XtalIF
-    gnd: F.Electrical
 
     # ----------------------------------------
     #               parameters
@@ -49,9 +48,9 @@ class Crystal_Oscillator(Module):
         # ----------------------------------------
         #                connections
         # ----------------------------------------
-        self.crystal.gnd.connect(self.gnd)
-        self.crystal.unnamed[0].connect_via(self.capacitors[0], self.gnd)
-        self.crystal.unnamed[1].connect_via(self.capacitors[1], self.gnd)
+        self.crystal.gnd.connect(self.xtal_if.gnd)
+        self.crystal.unnamed[0].connect_via(self.capacitors[0], self.xtal_if.gnd)
+        self.crystal.unnamed[1].connect_via(self.capacitors[1], self.xtal_if.gnd)
 
         self.crystal.unnamed[0].connect_via(
             self.current_limiting_resistor, self.xtal_if.xout

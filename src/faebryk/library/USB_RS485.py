@@ -17,7 +17,7 @@ class USB_RS485(Module):
     termination: F.Resistor
     polarization = L.list_field(2, F.Resistor)
     usb: F.USB2_0
-    rs485: F.RS485
+    rs485: F.RS485HalfDuplex
 
     def __preinit__(self):
         self.usb.connect(self.usb_uart.usb)
@@ -36,11 +36,11 @@ class USB_RS485(Module):
         )
 
         # connect polarization resistors to RS485 A and B
-        self.uart_rs485.rs485.diff_pair.p.connect_via(
+        self.uart_rs485.rs485.diff_pair.p.signal.connect_via(
             self.polarization[0],
             self.uart_rs485.power.hv,
         )
-        self.uart_rs485.rs485.diff_pair.n.connect_via(
+        self.uart_rs485.rs485.diff_pair.n.signal.connect_via(
             self.polarization[1],
             self.uart_rs485.power.lv,
         )

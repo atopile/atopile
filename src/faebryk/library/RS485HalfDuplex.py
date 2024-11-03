@@ -5,5 +5,5 @@ import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 
 
-class RS485(ModuleInterface):
+class RS485HalfDuplex(ModuleInterface):
     diff_pair: F.DifferentialPair

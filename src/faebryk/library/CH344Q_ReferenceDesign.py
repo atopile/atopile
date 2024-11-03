@@ -29,10 +29,6 @@ class CH344Q_ReferenceDesign(Module):
     power_led: F.PoweredLED
     reset_lowpass: F.FilterElectricalRC
 
-    @L.rt_field
-    def vbus_fused(self):
-        return self.usb.usb_if.buspower.fused()
-
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
@@ -55,21 +51,23 @@ class CH344Q_ReferenceDesign(Module):
                     ),
                     LVL(
                         mod_type=F.Crystal_Oscillator,
-                        layout=LayoutAbsolute(Point((0, -8, 0, L.NONE))),
+                        layout=LayoutAbsolute(Point((-1, 10.75, 180, L.NONE))),
                     ),
                     LVL(
                         mod_type=F.LDO,
-                        layout=LayoutAbsolute(Point((9.5, 0, 0, L.NONE))),
+                        layout=LayoutAbsolute(Point((7.5, -9.25, 270, L.NONE))),
                     ),
                     LVL(
                         mod_type=F.LEDIndicator,
                         layout=LayoutExtrude(
-                            base=Point((-5.75, 7.5, 0, L.NONE)), vector=(-1.75, 0, 90)
+                            base=Point((8, 9.5, 0, L.NONE)),
+                            vector=(-1.75, 0, 90),
+                            reverse_order=True,
                         ),
                     ),
                     LVL(
                         mod_type=F.PoweredLED,
-                        layout=LayoutAbsolute(Point((5, -8, 90, L.NONE))),
+                        layout=LayoutAbsolute(Point((-6.5, 9.5, 270, L.NONE))),
                     ),
                     LVL(
                         mod_type=F.FilterElectricalRC,
@@ -90,7 +88,7 @@ class CH344Q_ReferenceDesign(Module):
         self.usb_uart_converter.power.decoupled.decouple().specialize(
             F.MultiCapacitor(4)
         ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
-        self.vbus_fused.connect_via(self.ldo, pwr_3v3)
+        self.usb.usb_if.buspower.connect_via(self.ldo, pwr_3v3)
 
         self.usb.usb_if.d.connect(self.usb_uart_converter.usb)
 
@@ -101,10 +99,17 @@ class CH344Q_ReferenceDesign(Module):
 
         self.usb_uart_converter.osc[1].connect(self.oscillator.xtal_if.xin)
         self.usb_uart_converter.osc[0].connect(self.oscillator.xtal_if.xout)
-        self.oscillator.gnd.connect(pwr_3v3.lv)
+        self.oscillator.xtal_if.gnd.connect(pwr_3v3.lv)
 
         self.reset_lowpass.out.connect(self.usb_uart_converter.reset)
-        self.usb_uart_converter.reset.pulled.pull(up=True)
+        self.reset_lowpass.in_.signal.connect(
+            self.usb_uart_converter.reset.reference.hv
+        )
+        self.reset_lowpass.in_.reference.connect(
+            self.usb_uart_converter.reset.reference
+        )
+        # TODO: already done by lowpass filter
+        # self.usb_uart_converter.reset.pulled.pull(up=True)
 
         # ------------------------------------
         #          parametrization
@@ -143,3 +148,8 @@ class CH344Q_ReferenceDesign(Module):
         self.reset_lowpass.cutoff_frequency.merge(
             F.Range.from_center_rel(100 * P.Hz, 0.1)
         )
+
+        # Specialize
+        special = self.reset_lowpass.specialize(F.FilterElectricalRC())
+        # Construct
+        special.get_trait(F.has_construction_dependency).construct()

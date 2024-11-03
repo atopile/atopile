@@ -40,8 +40,8 @@ class RS485_Bus_Protection(Module):
     common_mode_filter: F.Common_Mode_Filter
 
     power: F.ElectricPower
-    rs485_dfp: F.RS485
-    rs485_ufp: F.RS485
+    rs485_dfp: F.RS485HalfDuplex
+    rs485_ufp: F.RS485HalfDuplex
     earth: F.Electrical
 
     @L.rt_field

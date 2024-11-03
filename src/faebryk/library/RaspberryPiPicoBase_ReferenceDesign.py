@@ -80,8 +80,15 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             )
             # self.reference_out.voltage.merge(F.Range(2 * P.V, 3 * P.V))
 
+            self.power_in.connect(self.rc_filter.in_.reference)
             self.power_in.hv.connect(self.rc_filter.in_.signal)
             self.reference_out.hv.connect(self.rc_filter.out.signal)
+            self.reference_out.lv.connect(self.rc_filter.out.reference.lv)
+
+            # Specialize
+            special = self.rc_filter.specialize(F.FilterElectricalRC())
+            # Construct
+            special.get_trait(F.has_construction_dependency).construct()
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -157,7 +164,8 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         )
 
         # USB
-        terminated_usb = self.usb.usb_if.d.terminated()
+        terminated_usb = self.rp2040.usb.terminated()
+        self.add(terminated_usb)
         terminated_usb.impedance.merge(F.Range.from_center_rel(27.4 * P.ohm, 0.05))
 
         # Flash
@@ -228,7 +236,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         self.flash.qspi.connect(self.rp2040.qspi)
         self.flash.qspi.chip_select.connect(self.boot_selector.logic_out)
 
-        terminated_usb.connect(self.rp2040.usb)
+        terminated_usb.connect(self.usb.usb_if.d)
 
         self.rp2040.xtal_if.connect(self.clock_source.xtal_if)
 
@@ -241,7 +249,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         )
 
         self.status_led.logic_in.connect(self.rp2040.gpio[25])
-        # self.status_led.power_in.connect(power_3v3)
+        self.rp2040.pinmux.enable(self.rp2040.gpio[25])
 
     @L.rt_field
     def pcb_layout(self):
@@ -303,6 +311,12 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
                         mod_type=type(self.flash),
                         layout=LayoutAbsolute(
                             Point((-3.5, -8, 0, L.NONE)),
+                        ),
+                    ),
+                    LVL(
+                        mod_type=F.Resistor,
+                        layout=LayoutExtrude(
+                            base=Point((4, -9.75, 0, L.NONE)), vector=(0, 1.25, 180)
                         ),
                     ),
                     LVL(

@@ -16,7 +16,7 @@ class TD541S485H(Module):
     power_iso_in: F.ElectricPower
     power_iso_out: F.ElectricPower
     uart: F.UART_Base
-    rs485: F.RS485
+    rs485: F.RS485HalfDuplex
     read_enable: F.ElectricLogic
     write_enable: F.ElectricLogic
 

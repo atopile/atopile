@@ -12,42 +12,50 @@ from faebryk.libs.units import P  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-class ElecSuper_PSM712_ES(Module):
+class SK6812(Module):
     """
-    RS485 bus ESD and surge protection
+    RGB digital LED with SK6812 controller
 
-    17A 350W Bidirectional SOT-23
-    ESD and Surge Protection (TVS/ESD) ROHS
+    SMD5050-4P
+    RGB LEDs(Built-in IC) ROHS
     """
 
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    rs485: F.RS485HalfDuplex
+    power: F.ElectricPower
+    data_in: F.ElectricLogic
+    data_out: F.ElectricLogic
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
+    @L.rt_field
+    def can_bridge(self):
+        return F.can_bridge_defined(self.data_in, self.data_out)
+
+    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C5378720"})
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
-        F.has_designator_prefix.Prefix.U
+        F.has_designator_prefix.Prefix.LED
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
         {
-            DescriptiveProperties.manufacturer: "ElecSuper",
-            DescriptiveProperties.partno: "PSM712-ES",
+            DescriptiveProperties.manufacturer: "OPSCO Optoelectronics",
+            DescriptiveProperties.partno: "SK6812",
         }
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2209191800_ElecSuper-PSM712-ES_C5180294.pdf"
+        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2303300930_OPSCO-Optoelectronics-SK6812_C5378720.pdf"  # noqa: E501
     )
 
     @L.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.rs485.diff_pair.n.signal: ["1"],
-                self.rs485.diff_pair.p.signal: ["2"],
-                self.rs485.diff_pair.n.reference.lv: ["3"],
+                self.data_in.signal: ["DIN"],
+                self.data_out.signal: ["DOUT"],
+                self.power.lv: ["VSS", "GND"],
+                self.power.hv: ["VDD"],
             },
             accept_prefix=False,
             case_sensitive=False,
@@ -57,8 +65,11 @@ class ElecSuper_PSM712_ES(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
+        self.power.decoupled.decouple()
+        F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
+        F.ElectricLogic.connect_all_module_references(self, exclude=[self.power])
 
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        pass
+        self.power.voltage.merge(F.Range(3.3 * P.V, 5.5 * P.V))
