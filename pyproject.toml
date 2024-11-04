@@ -5,19 +5,19 @@ build-backend = "hatchling.build"
 # Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
 artifacts = [
-  "**/viewer/dist",
+    "**/viewer/dist",
 ]
 
 [tool.hatch.build.targets.sdist]
 artifacts = [
-  "**/viewer/dist",
+    "**/viewer/dist",
 ]
 
 [project]
 name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 license = ""
 authors = [
     { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
