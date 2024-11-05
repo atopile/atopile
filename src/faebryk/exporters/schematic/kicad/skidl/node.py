@@ -65,37 +65,41 @@ class SchNode(Placer, Router):
             self.add_circuit(circuit)
             logger.debug(f"Added circuit to node {self.name}")
 
-    def find_node_with_part(self, part: Part):
+    def find_node_with_part(self, part: Part) -> "SchNode":
         """Find the node that contains the part based on its hierarchy.
-
         Args:
             part (Part): The part being searched for in the node hierarchy.
 
         Returns:
             Node: The Node object containing the part.
         """
-        level_names = part.hierarchy.split(HIER_SEP)
+        for node in self.all_created_nodes:
+            if part in node.parts:
+                return node
+        raise ValueError(f"Part {part.ref} not found in any node")
 
-        # We're assuming that the part hierarchy is absolute, not relative
-        # so we're going to descend to the root node and then back up to the
-        node = self
-        while node.parent is not None:
-            node = node.parent
+        # level_names = part.hierarchy.split(HIER_SEP)
 
-        for lvl_nm in level_names[1:]:
-            # stop descending if we're trying to go into something flattened
-            if lvl_nm in node.flattened_children:
-                break
+        # # We're assuming that the part hierarchy is absolute, not relative
+        # # so we're going to descend to the root node and then back up to the
+        # node = self
+        # while node.parent is not None:
+        #     node = node.parent
 
-            # because this is a defaultdict, we need to be careful not to accidentally descend
-            # into a node that doesn't exist
-            if lvl_nm in node.children:
-                node = node.children[lvl_nm]
+        # for lvl_nm in level_names[1:]:
+        #     # stop descending if we're trying to go into something flattened
+        #     if lvl_nm in node.flattened_children:
+        #         break
 
-            raise ValueError(f"Node {node.name} has no child {lvl_nm}")
+        #     # because this is a defaultdict, we need to be careful not to accidentally descend
+        #     # into a node that doesn't exist
+        #     if lvl_nm in node.children:
+        #         node = node.children[lvl_nm]
+        #     else:
+        #         raise ValueError(f"Node {node.name} has no child {lvl_nm}")
 
-        assert part in node.parts
-        return node
+        # assert part in node.parts
+        # return node
 
     # TODO: what's a circuit to us?
     def add_circuit(self, circuit: Circuit):
@@ -178,7 +182,7 @@ class SchNode(Placer, Router):
         self.name = level_names[level]
 
         # File name for storing the schematic for this node.
-        base_filename = "_".join([self.top_name] + level_names[0 : level + 1]) + ".sch"
+        base_filename = "_".join([self.top_name] + level_names[1 : level + 1]) + ".sch"
         self.sheet_filename = base_filename
 
         if part_level == level:

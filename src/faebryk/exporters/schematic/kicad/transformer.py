@@ -1015,11 +1015,21 @@ class Transformer:
         # Sizes of EESCHEMA schematic pages from smallest to largest
         # Dimensions in mils
         A_sizes = {
-            "A4": skidl_bboxes.BBox(Point(0, 0), Point(11693, 8268)),
-            "A3": skidl_bboxes.BBox(Point(0, 0), Point(16535, 11693)),
-            "A2": skidl_bboxes.BBox(Point(0, 0), Point(23386, 16535)),
-            "A1": skidl_bboxes.BBox(Point(0, 0), Point(33110, 23386)),
-            "A0": skidl_bboxes.BBox(Point(0, 0), Point(46811, 33110)),
+            "A4": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(11693, 8268)
+            ),
+            "A3": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(16535, 11693)
+            ),
+            "A2": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(23386, 16535)
+            ),
+            "A1": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(33110, 23386)
+            ),
+            "A0": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(46811, 33110)
+            ),
         }
 
         def get_A_size(bbox: skidl_bboxes.BBox) -> str:
@@ -1050,10 +1060,10 @@ class Transformer:
 
         # Use the pin orientation to compute the pin direction vector.
         pin_vector = {
-            "U": Point(0, 1),
-            "D": Point(0, -1),
-            "L": Point(-1, 0),
-            "R": Point(1, 0),
+            "U": skidl_geometry.Point(0, 1),
+            "D": skidl_geometry.Point(0, -1),
+            "L": skidl_geometry.Point(-1, 0),
+            "R": skidl_geometry.Point(1, 0),
         }[pin.orientation]
 
         # Rotate the direction vector using the part rotation matrix.
@@ -1072,7 +1082,7 @@ class Transformer:
 
     def _apply_shim_sch_node(
         self,
-        node: skidl_node.SchNode,
+        node: "skidl_node.SchNode",
         sheet_tx: skidl_geometry.Tx = skidl_geometry.Tx(),
     ):
         if node.flattened:
@@ -1141,8 +1151,8 @@ class Transformer:
 
         # 5. TODO: pin labels for stubbed nets
 
-    def apply_shim_sch_node(self, circuit: skidl_node.SchNode):
-        def dfs(node: skidl_node.SchNode):
+    def apply_shim_sch_node(self, circuit: "skidl_node.SchNode"):
+        def dfs(node: "skidl_node.SchNode"):
             yield node
             for child in node.children.values():
                 yield from dfs(child)
@@ -1217,7 +1227,7 @@ class Transformer:
 
                 # Initialize pin attributes used for generating schematics.
                 for pin in part_unit:
-                    pin.pt = Point(pin.x, pin.y)
+                    pin.pt = skidl_geometry.Point(pin.x, pin.y)
                     pin.routed = False
 
         def rotate_power_pins(part: shims.Part):
@@ -1312,10 +1322,11 @@ class Transformer:
 
     def generate_schematic(
         self, **options: Unpack[shims.Options]
-    ) -> tuple[skidl_node.SchNode, C_kicad_sch_file]:
+    ) -> tuple["skidl_node.SchNode", C_kicad_sch_file]:
         """Does what it says on the tin."""
         import faebryk.exporters.schematic.kicad.skidl.place as skidl_place
         import faebryk.exporters.schematic.kicad.skidl.route as skidl_route
+        from faebryk.exporters.schematic.kicad.skidl.node import SchNode
 
         _options = shims.Options(
             # draw_global_routing=True,
@@ -1348,6 +1359,7 @@ class Transformer:
         )
 
         _options.update(options)
+        options = _options
 
         # 1. add missing symbols
         logger.debug("Adding missing symbols")
@@ -1365,7 +1377,7 @@ class Transformer:
             logger.debug("Preprocessing circuit")
             Transformer.preprocess_circuit(circuit, **options)
 
-            sch = skidl_node.SchNode(
+            sch = SchNode(
                 circuit,
                 ".",
                 options["top_name"],
