@@ -23,10 +23,9 @@ from .debug_draw import (
     draw_text,
 )
 from .geometry import BBox, Point, Tx, Vector
-from .shims import Net, Options, Part, Pin, rmv_attr
+from .shims import Net, Options, Part, Pin, rmv_attr, NetTerminal
 
 if TYPE_CHECKING:
-    from .net_terminal import NetTerminal
     from .node import SchNode
 
 
@@ -80,8 +79,6 @@ def force_sum(forces):
 
 
 def is_net_terminal(part):
-    from .net_terminal import NetTerminal
-
     return isinstance(part, NetTerminal)
 
 
@@ -164,8 +161,6 @@ def snap_to_grid(part_or_blk: Part | PartBlock):
 
 def add_placement_bboxes(parts: list[Part], **options: Unpack[Options]):
     """Expand part bounding boxes to include space for subsequent routing."""
-    from .net_terminal import NetTerminal
-
     for part in parts:
         # Placement bbox starts off with the part bbox (including any net labels).
         part.place_bbox = BBox()

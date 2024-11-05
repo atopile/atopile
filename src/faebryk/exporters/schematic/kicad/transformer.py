@@ -1,30 +1,28 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from collections import Counter
 import hashlib
 import logging
 import pprint
+from collections import Counter
 from copy import deepcopy
 from dataclasses import is_dataclass
 from functools import singledispatchmethod
 from itertools import chain
 from os import PathLike
 from pathlib import Path
-from typing import Any, List, Protocol, Unpack
+from typing import TYPE_CHECKING, Any, List, Protocol, Unpack
 
 import rich
 import rich.table
 
+import faebryk.exporters.schematic.kicad.skidl.bboxes as skidl_bboxes
+import faebryk.exporters.schematic.kicad.skidl.constants as skidl_constants
+import faebryk.exporters.schematic.kicad.skidl.geometry as skidl_geometry
 import faebryk.library._F as F
 from faebryk.core.graphinterface import Graph
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-
-# import numpy as np
-# from shapely import Polygon
-from faebryk.exporters.schematic.kicad.skidl import gen_schematic as skidl_sch
-from faebryk.exporters.schematic.kicad.skidl import node as skidl_node
 from faebryk.exporters.schematic.kicad.skidl import shims
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.geometry.basic import Geometry
@@ -51,12 +49,14 @@ from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     FuncDict,
-    KeyErrorNotFound,
     cast_assert,
-    find,
     not_none,
     once,
 )
+
+if TYPE_CHECKING:
+    import faebryk.exporters.schematic.kicad.skidl.node as skidl_node
+
 
 logger = logging.getLogger(__name__)
 
@@ -929,10 +929,7 @@ class Transformer:
                     # - stub powery things
                     # - override from symbol layout info trait
                     shim_pin.stub = False
-                    if (
-                        fab_pin is not None
-                        and fab_pin.represents is not None
-                    ):
+                    if fab_pin is not None and fab_pin.represents is not None:
                         shim_pin.fab_is_pwr, shim_pin.fab_is_gnd = (
                             Transformer._get_pwr_or_gnd(fab_pin.represents)
                         )
@@ -1012,26 +1009,87 @@ class Transformer:
         circuit.audit()
         return circuit
 
-    def _apply_shim_sch_node(
-        self, node: skidl_node.SchNode, sheet_tx: skidl_node.Tx = skidl_node.Tx()
-    ):
-        from faebryk.exporters.schematic.kicad.skidl.geometry import mms_per_mil
+    @staticmethod
+    def calc_sheet_tx(bbox: skidl_bboxes.BBox) -> skidl_geometry.Tx:
+        """Compute the page size and positioning for this sheet."""
+        # Sizes of EESCHEMA schematic pages from smallest to largest
+        # Dimensions in mils
+        A_sizes = {
+            "A4": skidl_bboxes.BBox(Point(0, 0), Point(11693, 8268)),
+            "A3": skidl_bboxes.BBox(Point(0, 0), Point(16535, 11693)),
+            "A2": skidl_bboxes.BBox(Point(0, 0), Point(23386, 16535)),
+            "A1": skidl_bboxes.BBox(Point(0, 0), Point(33110, 23386)),
+            "A0": skidl_bboxes.BBox(Point(0, 0), Point(46811, 33110)),
+        }
 
+        def get_A_size(bbox: skidl_bboxes.BBox) -> str:
+            """Return the A-size page needed to fit the given bounding box."""
+            width = bbox.w
+            height = bbox.h * 1.25  # HACK: why 1.25?
+            for A_size, page in A_sizes.items():
+                if width < page.w and height < page.h:
+                    return A_size
+            return "A0"  # Nothing fits, so use the largest available.
+
+        A_size = get_A_size(bbox)
+        page_bbox = bbox * skidl_geometry.Tx(d=-1)
+        move_to_ctr = A_sizes[A_size].ctr.snap(
+            skidl_constants.GRID
+        ) - page_bbox.ctr.snap(skidl_constants.GRID)
+        move_tx = skidl_geometry.Tx(d=-1).move(move_to_ctr)
+        return move_tx
+
+    @staticmethod
+    def calc_pin_dir(pin: shims.Pin) -> str:
+        """Calculate pin direction accounting for part transformation matrix."""
+
+        # Copy the part trans. matrix, but remove the translation vector,
+        # leaving only scaling/rotation stuff.
+        tx = pin.part.tx
+        tx = skidl_geometry.Tx(a=tx.a, b=tx.b, c=tx.c, d=tx.d)
+
+        # Use the pin orientation to compute the pin direction vector.
+        pin_vector = {
+            "U": Point(0, 1),
+            "D": Point(0, -1),
+            "L": Point(-1, 0),
+            "R": Point(1, 0),
+        }[pin.orientation]
+
+        # Rotate the direction vector using the part rotation matrix.
+        pin_vector = pin_vector * tx
+
+        # Create an integer tuple from the rotated direction vector.
+        pin_vector = (int(round(pin_vector.x)), int(round(pin_vector.y)))
+
+        # Return the pin orientation based on its rotated direction vector.
+        return {
+            (0, 1): "U",
+            (0, -1): "D",
+            (-1, 0): "L",
+            (1, 0): "R",
+        }[pin_vector]
+
+    def _apply_shim_sch_node(
+        self,
+        node: skidl_node.SchNode,
+        sheet_tx: skidl_geometry.Tx = skidl_geometry.Tx(),
+    ):
         if node.flattened:
             # This almost certainly shouldn't be hit any more because we've already
             # flattened the node.
             raise RuntimeError("Cannot apply flattened node")
 
         flattened_bbox = node.internal_bbox()
-        tx = skidl_sch.calc_sheet_tx(flattened_bbox) * mms_per_mil
+        tx = Transformer.calc_sheet_tx(flattened_bbox) * skidl_geometry.mms_per_mil
 
         # TODO: Put flattened node into hierarchical block
 
         for part in node.parts:
             ## 2 add global labels
             part_tx = part.tx * tx
-            if isinstance(part, skidl_sch.NetTerminal):
-                assert isinstance(tx, skidl_node.Tx)
+            if isinstance(part, shims.NetTerminal):
+                assert isinstance(tx, skidl_geometry.Tx)
                 pin = part.pins[0]
                 pt = pin.pt * part_tx
                 rotation = {
@@ -1039,7 +1097,7 @@ class Transformer:
                     "D": 90,
                     "L": 180,
                     "U": 270,
-                }[skidl_sch.calc_pin_dir(pin)]
+                }[Transformer.calc_pin_dir(pin)]
                 self.insert_global_label(
                     pin.net.name,
                     at=C_xyr(x=pt.x, y=pt.y, r=rotation),
@@ -1092,35 +1150,201 @@ class Transformer:
         for node in dfs(circuit):
             self._apply_shim_sch_node(node)
 
+    @staticmethod
+    def _ideal_part_rotation(part: shims.Part) -> tuple[float, float]:
+        # Tally what rotation would make each pwr/gnd pin point up or down.
+        def is_pwr(pin: shims.Pin) -> bool:
+            return pin.fab_is_pwr
+
+        def is_gnd(pin: shims.Pin) -> bool:
+            return pin.fab_is_gnd
+
+        def rotation_for(start: str, finish: str) -> float:
+            seq = ["L", "U", "R", "D"] * 2
+            start_idx = seq.index(start)
+            finish_idx = seq.index(finish, start_idx)
+            return (finish_idx - start_idx) * 90
+
+        rotation_tally = Counter()
+        for pin in part.pins:
+            if is_pwr(pin):
+                rotation_tally[rotation_for("D", pin.orientation)] += 1
+            elif is_gnd(pin):
+                rotation_tally[rotation_for("U", pin.orientation)] += 1
+            # TODO: add support for IO pins left and right
+
+        # Rotate the part unit in the direction with the most tallies.
+        if most_common := rotation_tally.most_common(1):
+            assert len(most_common) == 1
+            return most_common[0][0], most_common[0][1] / rotation_tally.total()
+
+        return 0, 0
+
+    @staticmethod
+    def preprocess_circuit(
+        circuit: shims.Circuit, **options: Unpack[shims.Options]
+    ) -> None:
+        """Add stuff to parts & nets for doing placement and routing of schematics."""
+
+        def units(part: shims.Part) -> list[shims.PartUnit | shims.Part]:
+            if len(part.unit) == 0:
+                return [part]
+            else:
+                return part.unit.values()
+
+        def initialize(part: shims.Part):
+            """Initialize part or its part units."""
+
+            # Initialize the units of the part, or the part itself if it has no units.
+            pin_limit = options.get("orientation_pin_limit", 44)
+            for part_unit in units(part):
+                # Initialize transform matrix.
+                part_unit.tx = skidl_geometry.Tx.from_symtx(
+                    getattr(part_unit, "symtx", "")
+                )
+
+                # Lock part orientation if symtx was specified. Also lock parts with a
+                #  lot of pins since they're typically drawn the way they're supposed to
+                #  be oriented. And also lock single-pin parts because these are usually
+                #  power/ground and they shouldn't be flipped around.
+                num_pins = len(part_unit.pins)
+                part_unit.orientation_locked = getattr(
+                    part_unit, "symtx", False
+                ) or not (1 < num_pins <= pin_limit)
+
+                # Assign pins from the parent part to the part unit.
+                part_unit.grab_pins()
+
+                # Initialize pin attributes used for generating schematics.
+                for pin in part_unit:
+                    pin.pt = Point(pin.x, pin.y)
+                    pin.routed = False
+
+        def rotate_power_pins(part: shims.Part):
+            """Rotate a part based on the direction of its power pins.
+
+            This function is to make sure that voltage sources face up and gnd pins
+            face down.
+            """
+
+            # Don't rotate parts that are already explicitly rotated/flipped.
+            # FIXME: this was the inverted in SKiDL
+            if getattr(part, "symtx", ""):
+                return
+
+            dont_rotate_pin_cnt = options.get("dont_rotate_pin_count", 10000)
+
+            for part_unit in units(part):
+                # Don't rotate parts with too many pins.
+                if len(part_unit) > dont_rotate_pin_cnt:
+                    return
+
+                rotation, certainty = Transformer._ideal_part_rotation(part_unit)
+                if certainty:
+                    part_unit.tx = part_unit.tx.rot_ccw(rotation)
+
+                    if certainty >= part_unit.hints.lock_rotation_certainty:
+                        part_unit.orientation_locked = True
+
+        def calc_part_bbox(part: shims.Part):
+            """Calculate the labeled bounding boxes and store it in the part."""
+            # Find part/unit bounding boxes excluding any net labels on pins.
+            # TODO: part.lbl_bbox could be substituted for part.bbox.
+            # TODO: Part ref and value should be updated before calculating bounding box
+
+            for part_unit in units(part):
+                assert isinstance(part_unit, (shims.PartUnit, shims.Part))
+                assert isinstance(part_unit.bare_bbox, shims.BBox)
+
+                # Expand the bounding box if it's too small in either dimension.
+                resize_wh = skidl_geometry.Vector(0, 0)
+                if part_unit.bare_bbox.w < 100:
+                    resize_wh.x = (100 - part_unit.bare_bbox.w) / 2
+                if part_unit.bare_bbox.h < 100:
+                    resize_wh.y = (100 - part_unit.bare_bbox.h) / 2
+                part_unit.bare_bbox = part_unit.bare_bbox.resize(resize_wh)
+
+                # Find expanded bounding box that includes any
+                # hier labels attached to pins.
+                part_unit.lbl_bbox = skidl_geometry.BBox()
+                part_unit.lbl_bbox.add(part_unit.bare_bbox)
+                for pin in part_unit:
+                    if pin.stub:
+                        # Find bounding box for net stub label attached to pin.
+                        hlbl_bbox = skidl_bboxes.calc_hier_label_bbox(
+                            pin.net.name, pin.orientation
+                        )
+                        # Move the label bbox to the pin location.
+                        hlbl_bbox *= skidl_geometry.Tx().move(pin.pt)
+                        # Update the bbox for the labelled part with this pin label.
+                        part_unit.lbl_bbox.add(hlbl_bbox)
+
+                # Set the active bounding box to the labeled version.
+                part_unit.bbox = part_unit.lbl_bbox
+
+        # Pre-process parts
+        for part in circuit.parts:
+            # Initialize part attributes used for generating schematics.
+            initialize(part)
+
+            # Rotate parts.  Power pins should face up. GND pins should face down.
+            rotate_power_pins(part)
+
+            # Compute bounding boxes around parts
+            calc_part_bbox(part)
+
+    def finalize_parts_and_nets(
+        circuit: shims.Circuit, **options: Unpack[shims.Options]
+    ) -> None:
+        """Restore parts and nets after place & route is done."""
+
+        # Remove any NetTerminals that were added.
+        circuit.parts = [
+            p for p in circuit.parts if not isinstance(p, shims.NetTerminal)
+        ]
+
+        # Return pins from the part units to their parent part.
+        for part in circuit.parts:
+            part.grab_pins()
+
+        # Remove some stuff added to parts during schematic generation process.
+        shims.rmv_attr(circuit.parts, ("force", "bbox", "lbl_bbox", "tx"))
+
     def generate_schematic(
         self, **options: Unpack[shims.Options]
     ) -> tuple[skidl_node.SchNode, C_kicad_sch_file]:
         """Does what it says on the tin."""
+        import faebryk.exporters.schematic.kicad.skidl.place as skidl_place
+        import faebryk.exporters.schematic.kicad.skidl.route as skidl_route
+
         _options = shims.Options(
             # draw_global_routing=True,
-            # draw_placement=True,
             # draw_pin_names=True,
-            # draw_routing=True,
+            # draw_placement=True,
             # draw_routing_channels=True,
+            # draw_routing=True,
             # draw_switchbox_boundary=True,
             # draw_switchbox_routing=True,
-            retries=3,
-            pin_normalize=True,
-            net_normalize=True,
+            # fanout_attenuation=True,
+            # remove_high_fanout=True,
+            # remove_power=True,
+            align_parts=True,
+            allow_jumps=True,
             compress_before_place=True,
+            flatness=1.0,
+            net_normalize=True,
+            normalize=True,
+            pin_normalize=True,
+            pt_to_pt_mult=5,
+            remove_overlaps=True,
+            retries=3,
+            rotate_parts=True,
+            slip_and_slide=True,
+            trim_anchor_pull_pins=True,
             use_optimizer=True,
             use_push_pull=True,
-            allow_jumps=True,
-            align_parts=True,
-            remove_overlaps=True,
-            slip_and_slide=True,
-            # rotate_parts=True,  # Doesn't work. It's forced on in a lower-level
-            trim_anchor_pull_pins=True,
-            # fanout_attenuation=True,
-            # remove_power=True,
-            # remove_high_fanout=True,
-            normalize=True,
-            flatness=1.0,
+            title="Faebryk Generated Schematic",
+            top_name="Schematic",
         )
 
         _options.update(options)
@@ -1129,15 +1353,58 @@ class Transformer:
         logger.debug("Adding missing symbols")
         self._add_missing_symbols()
 
-        # 2. build shim circuit
-        logger.debug("Building shim circuit")
-        circuit = self._build_shim_circuit()
-
-        # 3. run skidl schematic generation
-        from faebryk.exporters.schematic.kicad.skidl.gen_schematic import gen_schematic
-
+        # Try to place & route one or more times.
         logger.debug("Generating schematic layout and routing")
-        sch = gen_schematic(circuit, ".", "test", **_options)
+        expansion_factor = 1.0  # Start with default routing area.
+        errors: list[Exception] = []
+        for attempt_idx in range(options["retries"]):
+            logger.debug("Building shim circuit")
+            circuit = self._build_shim_circuit()
+
+            logger.debug(f"Attempting placement and routing {attempt_idx+1}")
+            logger.debug("Preprocessing circuit")
+            Transformer.preprocess_circuit(circuit, **options)
+
+            sch = skidl_node.SchNode(
+                circuit,
+                ".",
+                options["top_name"],
+                options["title"],
+                options["flatness"],
+            )
+
+            try:
+                # Place parts.
+                logger.debug("Placing parts")
+                sch.place(expansion_factor=expansion_factor, **options)
+
+                # Route parts.
+                logger.debug("Routing parts")
+                sch.route(**options)
+
+            except skidl_place.PlacementFailure as e:
+                # Placement failed, so try again.
+                logger.debug("Placement failed, trying again")
+                Transformer.finalize_parts_and_nets(circuit, **options)
+                errors.append(e)
+                continue
+
+            except skidl_route.RoutingFailure as e:
+                # Routing failed, so expand routing area ...
+                expansion_factor *= 1.5  # HACK: Ad-hoc increase of expansion factor.
+                # ... and try again.
+                logger.debug("Routing failed, trying again")
+                Transformer.finalize_parts_and_nets(circuit, **options)
+                errors.append(e)
+                continue
+
+            # Place & route was successful if we got here, so exit.
+            logger.debug("Placement and routing successful")
+            break
+
+        else:
+            # Exited the loop without successful routing.
+            raise ExceptionGroup("Placement and routing failed", errors)
 
         # 4. transform sch according to skidl
         logger.debug("Transforming schematic according to skidl")

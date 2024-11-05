@@ -17,7 +17,7 @@ import logging
 from .geometry import BBox, Point, Segment, Tx, Vector
 from .place import Placer
 from .route import Router
-from .shims import Circuit, Net, Options, Part, Pin
+from .shims import Circuit, Net, Options, Part, Pin, NetTerminal
 
 logger = logging.getLogger(__name__)
 
@@ -209,8 +209,6 @@ class SchNode(Placer, Router):
         Args:
             net (Net): The net to be added to this node.
         """
-        from .net_terminal import NetTerminal
-
         nt = NetTerminal(net, hierarchy)
         self.parts.append(nt)
 
