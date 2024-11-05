@@ -12,7 +12,7 @@ class Pad(ModuleInterface):
     # FIXME: can net this become a reference instead?
     net: F.Electrical
     pcb: ModuleInterface
-    interface = reference(F.Electrical)
+    interface = reference(F.Electrical, optional=True)
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)

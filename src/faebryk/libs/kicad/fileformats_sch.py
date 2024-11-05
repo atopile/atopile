@@ -220,7 +220,7 @@ class C_kicad_sch_file(SEXP_File):
 
             @dataclass
             class C_pin:
-                name: str = field(**sexp_field(positional=True))
+                number: str = field(**sexp_field(positional=True))
                 uuid: UUID = uuid_field()
 
             class E_mirror(SymEnum):

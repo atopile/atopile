@@ -1,3 +1,6 @@
+"""
+Node class for storing circuit hierarchy.
+"""
 # ruff: noqa: E501  imported from another project
 # -*- coding: utf-8 -*-
 
@@ -9,14 +12,15 @@ from collections import defaultdict
 from itertools import chain
 from typing import Unpack
 
+import logging
+
 from .geometry import BBox, Point, Segment, Tx, Vector
 from .place import Placer
 from .route import Router
 from .shims import Circuit, Net, Options, Part, Pin
 
-"""
-Node class for storing circuit hierarchy.
-"""
+logger = logging.getLogger(__name__)
+
 
 HIER_SEP = "."
 
@@ -27,6 +31,8 @@ class SchNode(Placer, Router):
     filename_sz = 20
     name_sz = 40
 
+    all_created_nodes: list["SchNode"] = []
+
     def __init__(
         self,
         circuit=None,
@@ -35,6 +41,8 @@ class SchNode(Placer, Router):
         title="",
         flatness=0.0,
     ):
+        logger.debug(f"Creating node {top_name=} with {circuit=} and {len(self.all_created_nodes)=}")
+        self.all_created_nodes.append(self)
         self.parent = None
         self.children = defaultdict(
             lambda: SchNode(None, filepath, top_name, title, flatness)
@@ -55,6 +63,7 @@ class SchNode(Placer, Router):
 
         if circuit:
             self.add_circuit(circuit)
+            logger.debug(f"Added circuit to node {self.name}")
 
     def find_node_with_part(self, part: Part):
         """Find the node that contains the part based on its hierarchy.
@@ -67,13 +76,23 @@ class SchNode(Placer, Router):
         """
         level_names = part.hierarchy.split(HIER_SEP)
 
-        # descend based on the hierarchy name
+        # We're assuming that the part hierarchy is absolute, not relative
+        # so we're going to descend to the root node and then back up to the
         node = self
+        while node.parent is not None:
+            node = node.parent
+
         for lvl_nm in level_names[1:]:
             # stop descending if we're trying to go into something flattened
             if lvl_nm in node.flattened_children:
                 break
-            node = node.children[lvl_nm]
+
+            # because this is a defaultdict, we need to be careful not to accidentally descend
+            # into a node that doesn't exist
+            if lvl_nm in node.children:
+                node = node.children[lvl_nm]
+
+            raise ValueError(f"Node {node.name} has no child {lvl_nm}")
 
         assert part in node.parts
         return node

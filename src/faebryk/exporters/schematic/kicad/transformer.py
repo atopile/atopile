@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from collections import Counter
 import hashlib
 import logging
 import pprint
@@ -177,7 +178,10 @@ class Transformer:
 
         # Attach the pins on the symbol to the module interface
         for pin in sym_inst.pins:
-            f_symbol.pins[pin.name].add(
+            if pin.number not in f_symbol.pins:
+                continue
+
+            f_symbol.pins[pin.number].add(
                 Transformer.has_linked_sch_pins([pin], sym_inst)
             )
 
@@ -238,7 +242,7 @@ class Transformer:
             raise ValueError("Symbol files index not indexed")
 
         if lib_name not in self._symbol_files_index:
-            raise FaebrykException(f"Symbol file \"{lib_name}\" not found")
+            raise FaebrykException(f'Symbol file "{lib_name}" not found')
 
         path = self._symbol_files_index[lib_name]
         return C_kicad_sym_file.loads(path)
@@ -270,7 +274,7 @@ class Transformer:
 
         sub_syms: list[C_lib_symbol.C_symbol] = []
         for name, sym in lib_sym.symbols.items():
-            _, sub_sym_unit, sub_sym_body_style = name.split("_")
+            *_, sub_sym_unit, sub_sym_body_style = name.split("_")
             sub_sym_unit = int(sub_sym_unit)
             sub_sym_body_style = int(sub_sym_body_style)
 
@@ -282,7 +286,11 @@ class Transformer:
 
     @staticmethod
     def get_unit_count(lib_sym: C_lib_symbol) -> int:
-        return max(int(name.split("_")[1]) for name in lib_sym.symbols.keys()) or 1
+        def _get_unit(name: str) -> int:
+            *_, unit, _ = name.split("_")
+            return int(unit)
+
+        return max(_get_unit(name) for name in lib_sym.symbols.keys()) or 1
 
     # Marking -------------------------------------------------------------------------
     """
@@ -553,7 +561,7 @@ class Transformer:
                 for pin in subunit.pins:
                     pins.append(
                         SCH.C_symbol_instance.C_pin(
-                            name=pin.number.number,
+                            number=pin.number.number,
                             uuid=_gen_uuid(),
                         )
                     )
@@ -647,8 +655,10 @@ class Transformer:
             raise ValueError("Circle has both radius and end")
 
         return Geometry.bbox(
-            (obj.center.x - radius, obj.center.y - radius),
-            (obj.center.x + radius, obj.center.y + radius),
+            [
+                (obj.center.x - radius, obj.center.y - radius),
+                (obj.center.x + radius, obj.center.y + radius),
+            ],
             tolerance=obj.stroke.width,
         )
 
@@ -711,6 +721,12 @@ class Transformer:
             self.insert_symbol(f_symbol.represents)
         self.missing_symbols = []
 
+    @staticmethod
+    def _get_pwr_or_gnd(interface: F.Electrical) -> tuple[bool, bool]:
+        if fab_power_if := interface.get_parent_of_type(F.ElectricPower):
+            return fab_power_if.hv, fab_power_if.lv
+        return False, False
+
     def _build_shim_circuit(self) -> shims.Circuit:
         """Does what it says on the tin."""
         # TODO: add existing wire locations
@@ -735,11 +751,11 @@ class Transformer:
                 Transformer.has_linked_sch_symbol
             ):
                 sch_to_fab_sym_map[sch_sym_trait.symbol] = f_sym_trait.reference
-        for sch_sym in self.sch.symbols:
-            f_symbol = sch_to_fab_sym_map.setdefault(sch_sym, None)
-            for sch_pin in sch_sym.pins:
-                sch_to_fab_pin_map[sch_pin] = (
-                    f_symbol.pins.get(sch_pin.name) if f_symbol else None
+        for sch_sym_inst in self.sch.symbols:
+            f_symbol = sch_to_fab_sym_map.setdefault(sch_sym_inst, None)
+            for sch_pin_inst in sch_sym_inst.pins:
+                sch_to_fab_pin_map[sch_pin_inst] = (
+                    f_symbol.pins.get(sch_pin_inst.number) if f_symbol else None
                 )
 
         # 2. create shim objects
@@ -751,7 +767,7 @@ class Transformer:
         for net in fab_nets:
             shim_net = shims.Net()
             shim_net.name = net.get_trait(F.has_overriden_name).get_name()
-            shim_net.netio = ""  # TODO:
+            shim_net.netio = ""  # TODO: isn't this more a pin property?
             shim_net.stub = False  # TODO:
             shim_net._is_implicit = not net.get_trait(
                 F.has_overriden_name
@@ -759,16 +775,30 @@ class Transformer:
 
             # make partial net-oriented pins
             shim_net.pins = []
+
+            mif_class_counter = Counter()
+
             for mif in net.get_connected_interfaces():
                 if has_fab_pin := mif.try_get_trait(F.Symbol.Pin.has_pin):
                     if has_sch_pin := has_fab_pin.reference.try_get_trait(
                         Transformer.has_linked_sch_pins
                     ):
-                        for sch_pin in has_sch_pin.pins:
+                        for sch_pin_inst in has_sch_pin.pins:
                             shim_pin = shims.Pin()
                             shim_pin.net = shim_net
                             shim_net.pins.append(shim_pin)
-                            sch_to_shim_pin_map[sch_pin] = shim_pin
+                            sch_to_shim_pin_map[sch_pin_inst] = shim_pin
+
+                mif_class_counter[Transformer._get_pwr_or_gnd(mif)] += 1
+
+            if most_common := mif_class_counter.most_common(1):
+                # If over half the things on the net are power or gnd, we'll
+                # use that as the net class
+                # TODO: should that be configurable?
+                if most_common[0][1] / mif_class_counter.total() > 0.5:
+                    _is_pwr, _is_gnd = most_common[0][0]
+                    shim_net.fab_is_pwr = _is_pwr
+                    shim_net.fab_is_gnd = _is_gnd
 
             # set is_connected for all pins on net if len(net.pins) > 0
             is_connected = len(shim_net.pins) > 0
@@ -800,11 +830,11 @@ class Transformer:
             return "." + ".".join(_best_name(n) for n in hierarchy)
 
         # for each sch_symbol, create a shim part
-        for sch_sym, f_symbol in sch_to_fab_sym_map.items():
-            lib_sym = self._ensure_lib_symbol(sch_sym.lib_id)
-            sch_lib_symbol_units = self.get_sub_syms(lib_sym, sch_sym.unit)
+        for sch_sym_inst, f_symbol in sch_to_fab_sym_map.items():
+            lib_sym = self._ensure_lib_symbol(sch_sym_inst.lib_id)
+            sch_lib_symbol_units = self.get_sub_syms(lib_sym, sch_sym_inst.unit)
             shim_part = shims.Part()
-            shim_part.ref = sch_sym.propertys["Reference"].value
+            shim_part.ref = sch_sym_inst.propertys["Reference"].value
             # if we don't have a fab symbol, place the part at the top of the hierarchy
             shim_part.hierarchy = _hierarchy(f_symbol.represents) if f_symbol else ""
             # TODO: what's the ato analog?
@@ -812,7 +842,7 @@ class Transformer:
             shim_part.symtx = ""
             shim_part.unit = {}  # TODO: support units
             shim_part.fab_symbol = f_symbol
-            shim_part.sch_symbol = sch_sym
+            shim_part.sch_symbol = sch_sym_inst
             shim_part.bare_bbox = BBox(
                 *[
                     Point(mm_to_mil(pts[0]), mm_to_mil(pts[1]))
@@ -830,25 +860,28 @@ class Transformer:
 
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
-                    f"Symbol {sch_sym.propertys['Reference'].value=} {sch_sym.uuid=}"
+                    f"Symbol {sch_sym_inst.propertys['Reference'].value=}"
+                    f" {sch_sym_inst.uuid=}"
                 )
                 pins = rich.table.Table("pin.name=", "pin.number=")
                 for pin in all_sch_lib_pins:
                     pins.add_row(pin.name.name, pin.number.number)
                 rich.print(pins)
 
-            for sch_pin in sch_sym.pins:
-                fab_pin = sch_to_fab_pin_map[sch_pin]
+            for sch_pin_inst in sch_sym_inst.pins:
+                # Using get here because it's okay in an error case to end up with None
+                fab_pin = sch_to_fab_pin_map.get(sch_pin_inst)
 
                 if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Pin {sch_pin.name=} {fab_pin=}")
+                    logger.debug(f"Pin {sch_pin_inst.number=} {fab_pin=}")
 
-                try:
-                    lib_sch_pin = find(
-                        all_sch_lib_pins,
-                        lambda x: str(x.number.number) == str(sch_pin.name),
-                    )
-                except KeyErrorNotFound:
+                lib_sch_pins = [
+                    p
+                    for p in all_sch_lib_pins
+                    if str(p.number.number) == str(sch_pin_inst.number)
+                ]
+
+                if len(lib_sch_pins) == 0:
                     # KiCAD seems to make a full duplication of all the symbol objects
                     # despite not displaying them unless they're relevant to the current
                     # unit. Do our best to make sure it's at least a pin the symbol
@@ -858,39 +891,62 @@ class Transformer:
                         for sym in self.get_sub_syms(lib_sym, None)
                         for p in sym.pins
                     ]
-                    if sch_pin.name in lib_sym_pins_all_units:
+                    if sch_pin_inst.number in lib_sym_pins_all_units:
                         continue
-                    raise ValueError(
-                        f"Pin {sch_pin.name} not found in any unit of"
-                        f" symbol {sch_sym.propertys['Reference'].value}"
+                    logger.warning(
+                        f"Pin {sch_pin_inst.number} not found in any unit of"
+                        f" symbol {sch_sym_inst.propertys['Reference'].value}"
+                    )
+                if len(lib_sch_pins) > 1:
+                    logger.warning(
+                        f"Pin {sch_pin_inst.number} has multiple instances in symbol"
+                        f" {sch_sym_inst.propertys['Reference'].value}. "
+                        "This is a bit weird, but we'll roll with the punches"
                     )
 
-                assert isinstance(lib_sch_pin, C_lib_symbol.C_symbol.C_pin)
-                shim_pin = sch_to_shim_pin_map.setdefault(sch_pin, shims.Pin())
-                shim_pin.name = sch_pin.name
-                shim_pin.num = lib_sch_pin.number
-                shim_pin.orientation = shims.angle_to_orientation(lib_sch_pin.at.r)
-                shim_pin.part = shim_part
+                for lib_sch_pin in lib_sch_pins:
+                    assert isinstance(lib_sch_pin, C_lib_symbol.C_symbol.C_pin)
 
-                # TODO: ideas:
-                # - stub powery things
-                # - override from symbol layout info trait
-                shim_pin.stub = False
-                if fab_power_if := fab_pin.represents.get_parent_of_type(
-                    F.ElectricPower
-                ):
-                    shim_pin.fab_is_gnd = fab_pin.represents is fab_power_if.lv
-                    shim_pin.fab_is_pwr = fab_pin.represents is fab_power_if.hv
-                else:
-                    shim_pin.fab_is_gnd = False
-                    shim_pin.fab_is_pwr = False
+                    if sch_pin_inst in sch_to_shim_pin_map:
+                        shim_pin = sch_to_shim_pin_map[sch_pin_inst]
+                    else:
+                        shim_pin = shims.Pin()
+                        # Since this pin wasn't created earlier while cycling nets,
+                        # it'll be missing it's net attribute
+                        shim_pin.net = shims.Net.null_net()
+                        # Add the pin to the map so we can find it later
+                        sch_to_shim_pin_map[sch_pin_inst] = shim_pin
 
-                shim_pin.x = mm_to_mil(lib_sch_pin.at.x)
-                shim_pin.y = mm_to_mil(lib_sch_pin.at.y)
-                shim_pin.fab_pin = fab_pin
-                shim_pin.sch_pin = sch_pin
+                    shim_pin.name = sch_pin_inst.number
+                    shim_pin.num = lib_sch_pin.number
+                    shim_pin.orientation = shims.angle_to_orientation(lib_sch_pin.at.r)
+                    shim_pin.part = shim_part
 
-                shim_part.pins.append(shim_pin)
+                    # If the pin in question is part of a power interface, use that
+                    # to determine if it's a power or gnd pin. Otherwise, pull from
+                    # the net.
+                    # TODO: ideas:
+                    # - stub powery things
+                    # - override from symbol layout info trait
+                    shim_pin.stub = False
+                    if (
+                        fab_pin is not None
+                        and fab_pin.represents is not None
+                    ):
+                        shim_pin.fab_is_pwr, shim_pin.fab_is_gnd = (
+                            Transformer._get_pwr_or_gnd(fab_pin.represents)
+                        )
+                        # shim_pin.stub = shim_pin.fab_is_gnd or shim_pin.fab_is_pwr
+                    else:
+                        shim_pin.fab_is_gnd = shim_pin.net.fab_is_gnd
+                        shim_pin.fab_is_pwr = shim_pin.net.fab_is_pwr
+
+                    shim_pin.x = mm_to_mil(lib_sch_pin.at.x)
+                    shim_pin.y = mm_to_mil(lib_sch_pin.at.y)
+                    shim_pin.fab_pin = fab_pin
+                    shim_pin.sch_pin = sch_pin_inst
+
+                    shim_part.pins.append(shim_pin)
 
             circuit.parts.append(shim_part)
 
@@ -1070,17 +1126,21 @@ class Transformer:
         _options.update(options)
 
         # 1. add missing symbols
+        logger.debug("Adding missing symbols")
         self._add_missing_symbols()
 
         # 2. build shim circuit
+        logger.debug("Building shim circuit")
         circuit = self._build_shim_circuit()
 
         # 3. run skidl schematic generation
         from faebryk.exporters.schematic.kicad.skidl.gen_schematic import gen_schematic
 
+        logger.debug("Generating schematic layout and routing")
         sch = gen_schematic(circuit, ".", "test", **_options)
 
         # 4. transform sch according to skidl
+        logger.debug("Transforming schematic according to skidl")
         self.apply_shim_sch_node(sch)
 
         # 5. save

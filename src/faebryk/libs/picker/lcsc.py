@@ -247,7 +247,13 @@ def attach(component: Module, partno: str, get_model: bool = True):
         )
 
         # FIXME: figure out what's up with duplicates
-        pinmap = {name: pad.interface for pad, name in pads.items()}
+        # Map from pin name -> interface the pad is electrically
+        # connected to in our code-based definition
+        pinmap = {
+            pin_number: pad.interface
+            for pad, pin_number in pads.items()
+            if pad.interface is not None
+        }
 
         sym = F.Symbol.with_component(component, pinmap)
         sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_symbol.info.name}"))

@@ -95,7 +95,9 @@ class Part:
             ],
         )
 
-        # don't audit pins, they're handled through nets instead
+        for pin in self.pins:
+            pin.audit()
+
         for unit in self.unit.values():
             unit.audit()
 
@@ -260,6 +262,8 @@ class Net:
 
     # added for our use
     _is_implicit: bool
+    fab_is_gnd: bool
+    fab_is_pwr: bool
 
     # internal use
     parts: set[Part]
@@ -287,6 +291,18 @@ class Net:
     def is_implicit(self) -> bool:
         """Whether the net has a user-assigned name"""
         return self._is_implicit
+
+    @classmethod
+    def null_net(cls) -> "Net":
+        net = cls()
+        net.name = ""
+        net.netio = ""
+        net.pins = []
+        net.stub = False
+        net._is_implicit = True
+        net.fab_is_gnd = False
+        net.fab_is_pwr = False
+        return net
 
 
 class Circuit:
