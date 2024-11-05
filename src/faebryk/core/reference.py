@@ -38,6 +38,8 @@ class Reference[O: Node](constructed_field):
             self.is_set.add(instance)
 
             if out_type is not None and not isinstance(value, out_type):
+                if value is None and self.optional:
+                    return
                 raise TypeError(f"Expected {out_type} got {type(value)}")
 
             # attach our gif to what we're referring to
@@ -53,10 +55,12 @@ class Reference[O: Node](constructed_field):
         return None
 
 
-def reference[O: Node](out_type: type[O] | None = None) -> O | Reference:
+def reference[
+    O: Node
+](out_type: type[O] | None = None, optional: bool = False) -> O | Reference:
     """
     Create a simple reference to other nodes properly encoded in the graph.
 
     This final wrapper is primarily to fudge the typing.
     """
-    return Reference(out_type=out_type)
+    return Reference(out_type=out_type, optional=optional)
