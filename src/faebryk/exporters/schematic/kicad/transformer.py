@@ -205,11 +205,12 @@ class Transformer:
 
         for lib_path in fp_lib_table_paths:
             for lib in C_kicad_fp_lib_table_file.loads(lib_path).fp_lib_table.libs:
-                resolved_lib_dir = Path(
-                    lib.uri.replace("${KIPRJMOD}", str(lib_path.parent)).replace(
-                        "${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH)
-                    )
+                resolved_lib_dir = lib.uri.replace("${KIPRJMOD}", str(lib_path.parent))
+                resolved_lib_dir = resolved_lib_dir.replace(
+                    "${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH)
                 )
+
+                resolved_lib_dir = Path(resolved_lib_dir)
 
                 # HACK: paths typically look like .../libs/footprints/xyz.pretty
                 # we actually want the .../libs/ part of it, so we'll just knock
@@ -648,7 +649,10 @@ class Transformer:
     @staticmethod
     def _(obj: C_circle) -> BoundingBox:
         if obj.radius is None:
-            radius = Geometry.distance_euclid(obj.center, obj.end)
+            radius = Geometry.distance_euclid(
+                Point([obj.center.x, obj.center.y]),
+                Point([obj.end.x, obj.end.y]),
+            )
         elif obj.end is None:
             radius = obj.radius
         else:
