@@ -18,14 +18,14 @@ This way we can add new modules without changing this file
 from faebryk.library.TBD import TBD
 from faebryk.library.Range import Range
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.Constant import Constant
 from faebryk.library.has_esphome_config import has_esphome_config
 from faebryk.library.is_esphome_bus import is_esphome_bus
-from faebryk.library.has_pcb_position import has_pcb_position
+from faebryk.library.has_construction_dependency import has_construction_dependency
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Power import Power
 from faebryk.library.Signal import Signal
-from faebryk.library.has_construction_dependency import has_construction_dependency
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
@@ -33,11 +33,11 @@ from faebryk.library.Operation import Operation
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
 from faebryk.library.can_bridge import can_bridge
-from faebryk.library.has_designator import has_designator
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
+from faebryk.library.has_datasheet import has_datasheet
+from faebryk.library.has_designator import has_designator
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_capacitance import has_capacitance
-from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_footprint_requirement import has_footprint_requirement
 from faebryk.library.has_kicad_ref import has_kicad_ref
 from faebryk.library.has_picker import has_picker
@@ -50,12 +50,12 @@ from faebryk.library.is_representable_by_single_value import is_representable_by
 from faebryk.library.ANY import ANY
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
-from faebryk.library.Set import Set
-from faebryk.library.has_esphome_config_defined import has_esphome_config_defined
-from faebryk.library.is_esphome_bus_defined import is_esphome_bus_defined
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.library.has_pcb_position_defined_relative import has_pcb_position_defined_relative
 from faebryk.library.has_pcb_position_defined_relative_to_parent import has_pcb_position_defined_relative_to_parent
+from faebryk.library.Set import Set
+from faebryk.library.has_esphome_config_defined import has_esphome_config_defined
+from faebryk.library.is_esphome_bus_defined import is_esphome_bus_defined
 from faebryk.library.has_single_electric_reference_defined import has_single_electric_reference_defined
 from faebryk.library.Filter import Filter
 from faebryk.library.Logic import Logic
@@ -63,11 +63,11 @@ from faebryk.library.Footprint import Footprint
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.can_bridge_defined import can_bridge_defined
-from faebryk.library.has_designator_defined import has_designator_defined
 from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
+from faebryk.library.has_datasheet_defined import has_datasheet_defined
+from faebryk.library.has_designator_defined import has_designator_defined
 from faebryk.library.has_simple_value_representation_based_on_params import has_simple_value_representation_based_on_params
 from faebryk.library.has_simple_value_representation_defined import has_simple_value_representation_defined
-from faebryk.library.has_datasheet_defined import has_datasheet_defined
 from faebryk.library.has_footprint_requirement_defined import has_footprint_requirement_defined
 from faebryk.library.has_multi_picker import has_multi_picker
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
@@ -148,6 +148,7 @@ from faebryk.library.Relay import Relay
 from faebryk.library.SignalElectrical import SignalElectrical
 from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
 from faebryk.library.ButtonCell import ButtonCell
+from faebryk.library.PANASONIC_AQY212EHAX import PANASONIC_AQY212EHAX
 from faebryk.library.PoweredLED import PoweredLED
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricLogic import ElectricLogic
@@ -156,7 +157,7 @@ from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
 from faebryk.library.Ethernet import Ethernet
-from faebryk.library.RS485 import RS485
+from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
 from faebryk.library.USB_Type_C_Receptacle_24_pin import USB_Type_C_Receptacle_24_pin
 from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
@@ -168,6 +169,7 @@ from faebryk.library.LDO import LDO
 from faebryk.library.MultiSPI import MultiSPI
 from faebryk.library.Pinmux import Pinmux
 from faebryk.library.RS232 import RS232
+from faebryk.library.SK6812 import SK6812
 from faebryk.library.SK9822_EC20 import SK9822_EC20
 from faebryk.library.SNx4LVC541A import SNx4LVC541A
 from faebryk.library.SPI import SPI
@@ -197,6 +199,7 @@ from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.RP2040Pinmux import RP2040Pinmux
 from faebryk.library.DE9RS232Connector import DE9RS232Connector
 from faebryk.library.SWDConnector import SWDConnector
+from faebryk.library.Analog_Devices_ADM2587EBRWZ import Analog_Devices_ADM2587EBRWZ
 from faebryk.library.HLK_LD2410B_P import HLK_LD2410B_P
 from faebryk.library.PM1006 import PM1006
 from faebryk.library.TD541S485H import TD541S485H
@@ -214,6 +217,7 @@ from faebryk.library.ISO1540_ReferenceDesign import ISO1540_ReferenceDesign
 from faebryk.library.Winbond_Elec_W25Q128JVSIQ import Winbond_Elec_W25Q128JVSIQ
 from faebryk.library.Winbond_W25Q16JVUXIQ import Winbond_W25Q16JVUXIQ
 from faebryk.library.RP2040 import RP2040
+from faebryk.library.Analog_Devices_ADM2587EBRWZ_ReferenceDesign import Analog_Devices_ADM2587EBRWZ_ReferenceDesign
 from faebryk.library.CH344 import CH344
 from faebryk.library.SP3243E import SP3243E
 from faebryk.library.CBM9002A_56ILG import CBM9002A_56ILG
@@ -251,3 +255,4 @@ from faebryk.library.LEDIndicator import LEDIndicator
 from faebryk.library.CH344Q_ReferenceDesign import CH344Q_ReferenceDesign
 from faebryk.library.RaspberryPiPicoBase_ReferenceDesign import RaspberryPiPicoBase_ReferenceDesign
 from faebryk.library.USB2514B_ReferenceDesign import USB2514B_ReferenceDesign
+from faebryk.library.RaspberryPiPico import RaspberryPiPico

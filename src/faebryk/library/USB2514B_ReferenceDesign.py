@@ -39,6 +39,24 @@ class USB2514B_ReferenceDesign(Module):
         def can_bridge(self):
             return F.can_bridge_defined(self.usb_ufp_d, self.usb_dfp_d)
 
+        @L.rt_field
+        def has_defined_layout(self):
+            Point = F.has_pcb_position.Point
+            L = F.has_pcb_position.layer_type
+            LVL = LayoutTypeHierarchy.Level
+
+            layouts = [
+                LVL(  # Diodes Incorporated AP2552W6_7
+                    mod_type=F.Diodes_Incorporated_AP2552W6_7,
+                    layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
+                ),
+                LVL(  # PoweredLED
+                    mod_type=F.PoweredLED,
+                    layout=LayoutAbsolute(Point((0, -2.75, 180, L.NONE))),
+                ),
+            ]
+            return F.has_pcb_layout_defined(LayoutTypeHierarchy(layouts))
+
         def __preinit__(self):
             # ----------------------------------------
             #              parametrization
@@ -88,28 +106,40 @@ class USB2514B_ReferenceDesign(Module):
 
         layouts = [
             LVL(  # USB2514B
+                mod_type=F.USB2514B, layout=LayoutAbsolute(Point((0, 0, 0, L.NONE)))
+            ),
+            LVL(  # PowerSwitchedUSB2_0
                 mod_type=self.PowerSwitchedUSB2_0,
-                layout=LayoutExtrude(base=Point((11, -9, 0, L.NONE)), vector=(0, 6, 0)),
-                children_layout=LayoutTypeHierarchy(
-                    layouts=[
-                        LVL(  # Diodes Incorporated AP2552W6_7
-                            mod_type=F.Diodes_Incorporated_AP2552W6_7,
-                            layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
-                        ),
-                        LVL(  # PoweredLED
-                            mod_type=F.PoweredLED,
-                            layout=LayoutAbsolute(Point((0, -2.75, 180, L.NONE))),
-                        ),
-                    ]
+                layout=LayoutExtrude(
+                    base=Point((13.5, 11, 180, L.NONE)),
+                    vector=(9, 0, 0),
+                    reverse_order=True,
                 ),
+            ),
+            LVL(  # LEDIndicator
+                mod_type=type(self.suspend_indicator),
+                layout=LayoutAbsolute(Point((-6.5, -5.75, 0, L.NONE))),
             ),
             LVL(  # PoweredLED
                 mod_type=type(self.power_3v3_indicator),
-                layout=LayoutAbsolute(Point((5.5, 6, 180, L.NONE))),
+                layout=LayoutAbsolute(Point((10.25, -4, 0, L.NONE))),
             ),
             LVL(  # ResistorVoltageDivider
                 mod_type=type(self.vbus_voltage_divider),
-                layout=LayoutAbsolute(Point((-10, 0, 0, L.NONE))),
+                layout=LayoutAbsolute(Point((-3, -5.25, 270, L.NONE))),
+                children_layout=LayoutTypeHierarchy(
+                    layouts=[
+                        LVL(  # Resistor
+                            mod_type=F.Resistor,
+                            layout=LayoutExtrude(
+                                base=Point((0, 0, 180, L.NONE)),
+                                vector=(0, -1.25, 180),
+                                dynamic_rotation=True,
+                                reverse_order=True,
+                            ),
+                        ),
+                    ]
+                ),
             ),
             LVL(  # Resistor
                 mod_type=type(self.bias_resistor),
@@ -117,11 +147,11 @@ class USB2514B_ReferenceDesign(Module):
             ),
             LVL(  # LDO
                 mod_type=F.LDO,
-                layout=LayoutAbsolute(Point((1.5, 7, 270, L.NONE))),
+                layout=LayoutAbsolute(Point((12, 0, 180, L.NONE))),
             ),
             LVL(  # Crystal Oscillator
                 mod_type=F.Crystal_Oscillator,
-                layout=LayoutAbsolute(Point((-7.5, 0, 270, L.NONE))),
+                layout=LayoutAbsolute(Point((-10, 0, 270, L.NONE))),
                 children_layout=LayoutTypeHierarchy(
                     layouts=[
                         LVL(
@@ -141,9 +171,6 @@ class USB2514B_ReferenceDesign(Module):
                         ),
                     ],
                 ),
-            ),
-            LVL(  # USB2514B
-                mod_type=F.USB2514B, layout=LayoutAbsolute(Point((0, 0, 0, L.NONE)))
             ),
         ]
 
@@ -203,20 +230,54 @@ class USB2514B_ReferenceDesign(Module):
             F.Range.from_center_rel(100 * P.nF, 0.1)
         )
 
+        # Hub controller power rails decoupling
+        regulator_decoupling_caps = (
+            self.hub_controller.power_3v3_regulator.decoupled.decouple().specialize(
+                F.MultiCapacitor(2)
+            )
+        )
+        regulator_decoupling_caps.capacitors[0].capacitance.merge(
+            F.Range.from_center_rel(100 * P.nF, 0.05)
+        )
+        regulator_decoupling_caps.capacitors[1].capacitance.merge(
+            F.Range.from_center_rel(4.7 * P.uF, 0.05)
+        )
+        self.hub_controller.power_3v3_analog.decoupled.decouple().specialize(
+            F.MultiCapacitor(4)
+        ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
+        self.hub_controller.power_pll.decoupled.decouple().capacitance.merge(
+            F.Range.from_center_rel(100 * P.nF, 0.5)
+        )
+        self.hub_controller.power_core.decoupled.decouple().capacitance.merge(
+            F.Range.from_center_rel(100 * P.nF, 0.5)
+        )
+        self.hub_controller.power_io.decoupled.decouple().capacitance.merge(
+            F.Range.from_center_rel(100 * P.nF, 0.5)
+        )
+
+        # VBUS detect
+        for r in self.vbus_voltage_divider.resistor:
+            r.resistance.merge(F.Range.from_center_rel(100 * P.kohm, 0.01))
+
+        # reset
+        self.hub_controller.reset.set_weak(on=True).resistance.merge(
+            F.Range.from_center_rel(100 * P.kohm, 0.01)
+        )
+
         # ----------------------------------------
         #              connections
         # ----------------------------------------
         # power
         vbus.connect(self.ldo_3v3.power_in)
         power_3v3.connect(
-            self.hub_controller.power_3v3,
+            self.hub_controller.power_3v3_regulator,
             self.hub_controller.power_3v3_analog,
         )
         self.ldo_3v3.enable_output()
 
         # crystal oscillator
         self.crystal_oscillator.xtal_if.connect(self.hub_controller.xtal_if)
-        self.crystal_oscillator.gnd.connect(gnd)
+        self.crystal_oscillator.xtal_if.gnd.connect(gnd)
 
         for i, dfp in enumerate(self.usb_dfp):
             # USB data
@@ -239,6 +300,13 @@ class USB2514B_ReferenceDesign(Module):
             self.bias_resistor, gnd
         )  # TODO: replace with pull?
 
+        # voltage divider
+        vbus.hv.connect_via(
+            self.vbus_voltage_divider, self.hub_controller.vbus_detect.signal
+        )
+        self.vbus_voltage_divider.node[2].connect(vbus.lv)
+
+        # USB upstream
         self.usb_ufp.usb_if.d.connect(self.hub_controller.usb_upstream)
 
         # LEDs

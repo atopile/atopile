@@ -15,7 +15,7 @@ from faebryk.libs.app.pcb import apply_design
 from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.picker.api.api import ApiNotConfiguredError
 from faebryk.libs.picker.api.pickers import add_api_pickers
-from faebryk.libs.picker.common import DB_PICKER_BACKEND, PickerType
+from faebryk.libs.picker.common import DB_PICKER_BACKEND, CachePicker, PickerType
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
@@ -64,6 +64,7 @@ def apply_design_to_pcb(
     # TODO this can be prettier
     # picking ----------------------------------------------------------------
     modules = m.get_children_modules(types=Module)
+    CachePicker.add_to_modules(modules, prio=-20)
 
     match DB_PICKER_BACKEND:
         case PickerType.JLCPCB:

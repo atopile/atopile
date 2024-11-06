@@ -6,8 +6,9 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module, ModuleException
 from faebryk.core.parameter import Parameter
-from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
+from faebryk.exporters.pcb.layout.heuristic_decoupling import Params
+from faebryk.exporters.pcb.layout.next_to import LayoutNextTo
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.libs.library import L  # noqa: F401
@@ -25,10 +26,10 @@ class Diodes_Incorporated_AP2552W6_7(Module):
     """
 
     @assert_once
-    def set_current_limit(self, current: Parameter[Quantity]) -> None:
+    def set_current_limit(self, current: Parameter[Quantity]) -> F.Resistor:
         self.current_limit.merge(current)
 
-        current_limit_setting_resistor = self.add(F.Resistor())
+        current_limit_setting_resistor = self.ilim.add(F.Resistor())
 
         self.ilim.signal.connect_via(
             current_limit_setting_resistor, self.ilim.reference.lv
@@ -41,7 +42,9 @@ class Diodes_Incorporated_AP2552W6_7(Module):
         # Rlim_max = (20.08 / (self.current_limit * P.mA)) ^ (1 / 0.904) * P.kohm
 
         # Rlim = Range(Rlim_min, Rlim_max)
-        Rlim = F.Constant(51 * P.kohm)  # TODO: remove: ~0.52A typical current limit
+        Rlim = F.Range.from_center_rel(
+            51 * P.kohm, 0.01
+        )  # TODO: remove: ~0.52A typical current limit
         if not Rlim.is_subset_of(F.Range(10 * P.kohm, 210 * P.kohm)):
             raise ModuleException(
                 self,
@@ -49,6 +52,8 @@ class Diodes_Incorporated_AP2552W6_7(Module):
             )
 
         current_limit_setting_resistor.resistance.merge(Rlim)
+
+        return current_limit_setting_resistor
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -105,8 +110,12 @@ class Diodes_Incorporated_AP2552W6_7(Module):
         layouts = [
             LVL(
                 mod_type=F.Resistor,
-                layout=LayoutAbsolute(
-                    Point((0, -3, 90, L.NONE)),
+                layout=LayoutNextTo(
+                    self.ilim.signal,
+                    params=Params(
+                        distance_between_pad_edges=1,
+                        extra_rotation_of_footprint=90,
+                    ),
                 ),
             ),
             LVL(

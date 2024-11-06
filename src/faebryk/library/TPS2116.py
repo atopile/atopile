@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import Enum
+from enum import Enum, auto
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.units import P  # noqa: F401
+from faebryk.libs.units import P
+from faebryk.libs.util import assert_once  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +36,37 @@ class TPS2116(F.PowerMux):
         Disables device.
         """
 
-    def set_mode(self, mode: Mode):
+    class SwitchoverVoltage(Enum):
+        _5V = auto()
+        _3V3 = auto()
+        _1V8 = auto()
+        CUSTOM = auto()
+
+    @assert_once
+    def set_mode(self, mode: Mode, switchover_voltage: SwitchoverVoltage):
         if mode == self.Mode.PRIORITY:
             self.mode.signal.connect(self.power_in[1].hv)
-            resistor_devider = self.add(F.ResistorVoltageDivider())
+            resistor_devider = self.select.add(F.ResistorVoltageDivider())
             self.power_in[0].hv.connect_via(resistor_devider, self.select.signal)
-            resistor_devider.node[2].connect(self.mode.reference.lv)
+            resistor_devider.node[2].connect(self.power_in[0].lv)
+            if switchover_voltage != self.SwitchoverVoltage.CUSTOM:
+                resistor_devider.resistor[1].resistance.merge(
+                    F.Range.from_center_rel(5 * P.kohm, 0.01)
+                )
+            if switchover_voltage == self.SwitchoverVoltage._5V:
+                resistor_devider.resistor[0].resistance.merge(
+                    F.Range.from_center_rel(16.9 * P.kohm, 0.01)
+                )
+            elif switchover_voltage == self.SwitchoverVoltage._3V3:
+                resistor_devider.resistor[0].resistance.merge(
+                    F.Range.from_center_rel(9.53 * P.kohm, 0.01)
+                )
+            elif switchover_voltage == self.SwitchoverVoltage._1V8:
+                resistor_devider.resistor[0].resistance.merge(
+                    F.Range.from_center_rel(2.80 * P.kohm, 0.01)
+                )
         else:
-            pass
+            raise NotImplementedError(f"Mode {mode} not implemented")
 
     # ----------------------------------------
     #     modules, interfaces, parameters

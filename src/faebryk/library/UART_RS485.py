@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class UART_RS485(Module):
     power: F.ElectricPower
     uart: F.UART_Base
-    rs485: F.RS485
+    rs485: F.RS485HalfDuplex
     read_enable: F.ElectricLogic
     write_enable: F.ElectricLogic
 

@@ -142,10 +142,11 @@ class USB2514B(Module):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    power_3v3: F.ElectricPower
+    power_3v3_regulator: F.ElectricPower
     power_3v3_analog: F.ElectricPower
     power_pll: F.ElectricPower
     power_core: F.ElectricPower
+    power_io: F.ElectricPower
 
     usb_upstream: F.USB2_0_IF.Data
     configurable_downstream_usb = L.list_field(4, ConfigurableUSB)
@@ -192,19 +193,19 @@ class USB2514B(Module):
                 "2": self.configurable_downstream_usb[0].usb.p.signal,
                 "3": self.configurable_downstream_usb[1].usb.n.signal,
                 "4": self.configurable_downstream_usb[1].usb.p.signal,
-                "5": self.power_3v3.hv,
+                "5": self.power_3v3_analog.hv,
                 "6": self.configurable_downstream_usb[2].usb.n.signal,
                 "7": self.configurable_downstream_usb[2].usb.p.signal,
                 "8": self.configurable_downstream_usb[3].usb.n.signal,
                 "9": self.configurable_downstream_usb[3].usb.p.signal,
-                "10": self.power_3v3.hv,
+                "10": self.power_3v3_analog.hv,
                 "11": self.test,
                 "12": self.configurable_downstream_usb[
                     0
                 ].battery_charging_enable.signal,
                 "13": self.configurable_downstream_usb[0].over_current_sense.signal,
                 "14": self.power_core.hv,
-                "15": self.power_3v3.hv,
+                "15": self.power_3v3_regulator.hv,
                 "16": self.configurable_downstream_usb[
                     1
                 ].battery_charging_enable.signal,
@@ -218,7 +219,7 @@ class USB2514B(Module):
                 ].battery_charging_enable.signal,
                 "21": self.configurable_downstream_usb[3].over_current_sense.signal,
                 "22": self.usb_removability_configuration_intput[1].signal,
-                "23": self.power_3v3.hv,
+                "23": self.power_io.hv,
                 "24": self.configuration_source_input[0].signal,
                 "25": self.configuration_source_input[1].signal,
                 "26": self.reset.signal,
@@ -231,8 +232,8 @@ class USB2514B(Module):
                 "33": self.xtal_if.xin,
                 "34": self.power_pll.hv,
                 "35": self.usb_bias_resistor_input.signal,
-                "36": self.power_3v3.hv,
-                "37": self.power_3v3.lv,
+                "36": self.power_3v3_analog.hv,
+                "37": self.power_3v3_analog.lv,
             }
         )
 
@@ -305,7 +306,7 @@ class USB2514B(Module):
                 ],
                 self.usb_upstream.p.signal: ["USBDP_UP"],
                 self.vbus_detect.signal: ["VBUS_DET"],
-                self.power_3v3.hv: ["VDD33"],
+                self.power_3v3_regulator.hv: ["VDD33"],
                 self.power_3v3_analog.hv: ["VDDA33"],
                 self.xtal_if.xin: ["XTALIN/CLKIN"],
                 self.xtal_if.xout: ["XTALOUT"],
@@ -333,6 +334,7 @@ class USB2514B(Module):
             exclude={
                 self.power_pll,
                 self.power_core,
+                self.power_io,
                 self.vbus_detect,
                 self.local_power_detection,
             },
@@ -347,5 +349,8 @@ class USB2514B(Module):
         self.power_core.voltage.merge(
             F.Range.from_center_rel(1.8 * P.V, 0.05)
         )  # datasheet does not specify a voltage range
-        self.power_3v3.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
+        self.power_3v3_regulator.voltage.merge(
+            F.Range.from_center(3.3 * P.V, 0.3 * P.V)
+        )
         self.power_3v3_analog.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
+        self.power_io.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))

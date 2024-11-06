@@ -12,6 +12,7 @@ import typer
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.exporters.documentation.datasheets import export_datasheets
 from faebryk.exporters.pcb.kicad.artifacts import export_svg
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
@@ -24,6 +25,7 @@ from faebryk.libs.examples.buildutil import BUILD_DIR, PCB_FILE, apply_design_to
 from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.picker.common import CachePicker
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
@@ -132,6 +134,7 @@ def main():
     # picking ----------------------------------------------------------------
     replace_tbd_with_any(app, recursive=True)
     modules = app.get_children_modules(types=Module)
+    CachePicker.add_to_modules(modules, prio=-20)
     try:
         JLCPCB_DB()
         for n in modules:
@@ -149,6 +152,7 @@ def main():
     apply_design_to_pcb(app, transform_pcb)
     export_pcba_artifacts(ARTIFACTS, PCB_FILE, app)
     export_svg(PCB_FILE, ARTIFACTS / Path("pcba.svg"))
+    export_datasheets(app, BUILD_DIR / "documentation" / "datasheets")
 
 
 if __name__ == "__main__":
