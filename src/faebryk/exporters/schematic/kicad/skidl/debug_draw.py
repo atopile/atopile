@@ -152,7 +152,9 @@ def draw_text(
     font.render_to(scr, (pt.x, pt.y), txt, color)
 
 
-def draw_part(part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Font", **options):
+def draw_part(
+    part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Font", **options
+):
     """Draw part bounding box.
 
     Args:
@@ -185,6 +187,7 @@ def draw_part(part: "Part", scr: "pygame.Surface", tx: Tx, font: "pygame.font.Fo
 
     # TODO: remove debug things
     import pygame
+
     pygame.draw.circle(scr, (255, 0, 0), (100, 100), 10)
     pygame.draw.circle(scr, (0, 255, 0), (150, 100), 10)
     pygame.draw.circle(scr, (0, 0, 255), (100, 150), 10)

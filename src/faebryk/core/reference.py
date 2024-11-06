@@ -55,9 +55,9 @@ class Reference[O: Node](constructed_field):
         return None
 
 
-def reference[
-    O: Node
-](out_type: type[O] | None = None, optional: bool = False) -> O | Reference:
+def reference[O: Node](
+    out_type: type[O] | None = None, optional: bool = False
+) -> O | Reference:
     """
     Create a simple reference to other nodes properly encoded in the graph.
 

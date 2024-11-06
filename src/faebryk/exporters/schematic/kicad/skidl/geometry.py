@@ -31,6 +31,7 @@ def to_mms(mils):
 
 class Tx:
     """Transformation matrix."""
+
     ROT_CCW_90: "Tx"
 
     ROT_CW_0: "Tx"
@@ -204,26 +205,11 @@ class Tx:
 
 # Some common rotations.
 # DANGER! These keywords are out of order!
-Tx.ROT_CCW_90 = Tx(
-    a=0, b=1,
-    c=-1, d=0
-)
-Tx.ROT_CW_0 = Tx(
-    a=1, b=0,
-    c=0, d=1
-)
-Tx.ROT_CW_90 = Tx(
-    a=0, b=-1,
-    c=1, d=0
-)
-Tx.ROT_CW_180 = Tx(
-    a=-1, b=0,
-    c=0, d=-1
-)
-Tx.ROT_CW_270 = Tx(
-    a=0, b=1,
-    c=-1, d=0
-)
+Tx.ROT_CCW_90 = Tx(a=0, b=1, c=-1, d=0)
+Tx.ROT_CW_0 = Tx(a=1, b=0, c=0, d=1)
+Tx.ROT_CW_90 = Tx(a=0, b=-1, c=1, d=0)
+Tx.ROT_CW_180 = Tx(a=-1, b=0, c=0, d=-1)
+Tx.ROT_CW_270 = Tx(a=0, b=1, c=-1, d=0)
 
 # Some common flips.
 Tx.FLIP_X = Tx(a=-1, b=0, c=0, d=1)

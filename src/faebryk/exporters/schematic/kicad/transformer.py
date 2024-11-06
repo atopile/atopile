@@ -27,9 +27,6 @@ from faebryk.exporters.schematic.kicad.skidl import shims
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import (
-    C_kicad_fp_lib_table_file,
-)
-from faebryk.libs.kicad.fileformats import (
     gen_uuid as _gen_uuid,
 )
 from faebryk.libs.kicad.fileformats_common import C_effects, C_pts, C_wh, C_xy, C_xyr
@@ -45,7 +42,6 @@ from faebryk.libs.kicad.fileformats_sch import (
     C_rect,
     C_stroke,
 )
-from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     FuncDict,
@@ -185,41 +181,42 @@ class Transformer:
                 Transformer.has_linked_sch_pins([pin], sym_inst)
             )
 
+    def index_symbol_libraries(
+        self, symbol_lib_paths: PathLike | list[PathLike]
+    ) -> None:
+        """Index the symbol libraries"""
+        if isinstance(symbol_lib_paths, (str, Path)):
+            symbol_lib_paths = [Path(symbol_lib_paths)]
+        else:
+            symbol_lib_paths = [Path(p) for p in symbol_lib_paths]
+
+        for path in symbol_lib_paths:
+            self._symbol_files_index[path.stem] = path
+
     def index_symbol_files(
-        self, fp_lib_tables: PathLike | list[PathLike], load_globals: bool = True
+        self,
+        symbol_lib_paths: PathLike | list[PathLike],
+        symbol_lib_search_paths: PathLike | list[PathLike],
+        load_globals: bool = False,
     ) -> None:
         """
         Index the symbol files in the given library tables
         """
+        if load_globals:
+            # TODO: this should work like GLOBAL_FP_LIB_PATH,
+            # then pass the sym-lib-table files
+            raise NotImplementedError("Loading global symbol libraries not implemented")
+
         if self._symbol_files_index is None:
             self._symbol_files_index = {}
 
-        if isinstance(fp_lib_tables, (str, Path)):
-            fp_lib_table_paths = [Path(fp_lib_tables)]
+        if isinstance(symbol_lib_search_paths, (str, Path)):
+            symbol_lib_search_paths = [Path(symbol_lib_search_paths)]
         else:
-            fp_lib_table_paths = [Path(p) for p in fp_lib_tables]
+            symbol_lib_search_paths = [Path(p) for p in symbol_lib_search_paths]
 
-        # non-local lib, search in kicad global lib
-        if load_globals:
-            fp_lib_table_paths += [GLOBAL_FP_LIB_PATH]
-
-        for lib_path in fp_lib_table_paths:
-            for lib in C_kicad_fp_lib_table_file.loads(lib_path).fp_lib_table.libs:
-                resolved_lib_dir = lib.uri.replace("${KIPRJMOD}", str(lib_path.parent))
-                resolved_lib_dir = resolved_lib_dir.replace(
-                    "${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH)
-                )
-
-                resolved_lib_dir = Path(resolved_lib_dir)
-
-                # HACK: paths typically look like .../libs/footprints/xyz.pretty
-                # we actually want the .../libs/ part of it, so we'll just knock
-                # off the last two directories
-                resolved_lib_dir = resolved_lib_dir.parent.parent
-
-                for path in resolved_lib_dir.glob("*.kicad_sym"):
-                    if path.stem not in self._symbol_files_index:
-                        self._symbol_files_index[path.stem] = path
+        for path in chain(symbol_lib_search_paths, symbol_lib_paths):
+            self.index_symbol_libraries(path)
 
     @staticmethod
     def flipped[T](input_list: list[tuple[T, int]]) -> list[tuple[T, int]]:

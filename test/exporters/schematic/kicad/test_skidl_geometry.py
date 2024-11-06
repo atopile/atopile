@@ -6,10 +6,10 @@ from faebryk.exporters.schematic.kicad.skidl.geometry import Point, Tx
 @pytest.mark.parametrize(
     "tx, expected",
     [
-        (Tx.ROT_CCW_90, (90, False)),
-        (Tx.FLIP_X * Tx.ROT_CCW_90, (90, True)),
-        (Tx.ROT_CW_90, (270, False)),
-        (Tx.FLIP_X * Tx.ROT_CW_90, (270, True)),
+        (Tx.ROT_CCW_90, (False, 90)),
+        (Tx.FLIP_X * Tx.ROT_CCW_90, (True, 90)),
+        (Tx.ROT_CW_90, (False, 270)),
+        (Tx.FLIP_X * Tx.ROT_CW_90, (True, 270)),
     ],
 )
 def test_find_orientation(tx: Tx, expected: tuple[float, bool]):

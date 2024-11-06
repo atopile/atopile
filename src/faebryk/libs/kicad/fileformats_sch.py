@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from enum import auto
 from typing import Optional
 
-from faebryk.exporters.pcb.kicad.transformer import gen_uuid
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
     C_effects,
@@ -27,6 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 def uuid_field():
+    def gen_uuid():
+        # TODO: wtf? This is one heck of a circular import defense
+        from faebryk.exporters.pcb.kicad.transformer import gen_uuid
+
+        return gen_uuid()
+
     return field(default_factory=gen_uuid)
 
 
@@ -228,6 +233,7 @@ class C_kicad_sch_file(SEXP_File):
                 Mirroring is applied about the X or Y axes
                 The allowed mirrors are dependent on the rotation of the part
                 """
+
                 x = "x"
                 y = "y"
 
@@ -399,9 +405,6 @@ class C_kicad_sch_file(SEXP_File):
                 version=20211123,
                 generator="faebryk",
                 paper="A4",
-                # uuid=gen_uuid(),
-                # lib_symbols=C_kicad_sch_file.C_kicad_sch.C_lib_symbols(symbols={}),
-                # title_block=C_kicad_sch_file.C_kicad_sch.C_title_block(),
             )
         )
 

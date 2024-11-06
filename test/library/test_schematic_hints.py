@@ -13,7 +13,7 @@ def test_default_hint_values():
     """Default hint values should match their defined defaults"""
     hints = has_schematic_hints()
     assert hints.lock_rotation_certainty == 0.6
-    assert hints.symbol_rotation == 0
+    assert hints.symbol_rotation is None
 
 
 def test_custom_hint_values(custom_hints):
@@ -98,7 +98,7 @@ def test_hint_inheritance():
 
     # Test inherited hints
     assert hints.lock_rotation_certainty == 0.9
-    assert hints.symbol_rotation == 0
+    assert hints.symbol_rotation is None
 
     # Test new hint
     assert hints.extra_hint == 42

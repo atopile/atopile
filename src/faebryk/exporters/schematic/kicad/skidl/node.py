@@ -41,7 +41,9 @@ class SchNode(Placer, Router):
         title="",
         flatness=0.0,
     ):
-        logger.debug(f"Creating node {top_name=} with {circuit=} and {len(self.all_created_nodes)=}")
+        logger.debug(
+            f"Creating node {top_name=} with {circuit=} and {len(self.all_created_nodes)=}"
+        )
         self.all_created_nodes.append(self)
         self.parent = None
         self.children = defaultdict(
