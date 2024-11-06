@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 def build(module) -> Path:
     build_dir = Path(".") / "build"
+    lib_path = build_dir / "kicad" / "libs"
 
-    fp_lib_path_path = build_dir / "kicad/source/fp-lib-table"
     sch_file = C_kicad_sch_file.skeleton()
 
     logger.info("Building app")
@@ -33,7 +33,7 @@ def build(module) -> Path:
 
     logger.info("Generating schematic")
     full_transformer = Transformer(sch_file.kicad_sch, app.get_graph(), app)
-    full_transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
+    full_transformer.index_symbol_files(lib_path, load_globals=False)
 
     full_transformer.generate_schematic()
 

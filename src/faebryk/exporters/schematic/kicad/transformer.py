@@ -181,22 +181,9 @@ class Transformer:
                 Transformer.has_linked_sch_pins([pin], sym_inst)
             )
 
-    def index_symbol_libraries(
-        self, symbol_lib_paths: PathLike | list[PathLike]
-    ) -> None:
-        """Index the symbol libraries"""
-        if isinstance(symbol_lib_paths, (str, Path)):
-            symbol_lib_paths = [Path(symbol_lib_paths)]
-        else:
-            symbol_lib_paths = [Path(p) for p in symbol_lib_paths]
-
-        for path in symbol_lib_paths:
-            self._symbol_files_index[path.stem] = path
-
     def index_symbol_files(
         self,
         symbol_lib_paths: PathLike | list[PathLike],
-        symbol_lib_search_paths: PathLike | list[PathLike],
         load_globals: bool = False,
     ) -> None:
         """
@@ -210,13 +197,26 @@ class Transformer:
         if self._symbol_files_index is None:
             self._symbol_files_index = {}
 
-        if isinstance(symbol_lib_search_paths, (str, Path)):
-            symbol_lib_search_paths = [Path(symbol_lib_search_paths)]
+        if isinstance(symbol_lib_paths, (str, Path)):
+            symbol_lib_paths = [Path(symbol_lib_paths)]
         else:
-            symbol_lib_search_paths = [Path(p) for p in symbol_lib_search_paths]
+            symbol_lib_paths = [Path(p) for p in symbol_lib_paths]
 
-        for path in chain(symbol_lib_search_paths, symbol_lib_paths):
-            self.index_symbol_libraries(path)
+        sym_paths = [p.glob("*.kicad_sym") for p in symbol_lib_paths] + [
+            symbol_lib_paths
+        ]
+
+        for path in chain.from_iterable(sym_paths):
+            assert isinstance(path, Path)
+            if not path.exists() or not path.is_file():
+                continue
+
+            try:
+                self.get_symbol_file(path)
+            except Exception:
+                continue
+
+            self._symbol_files_index[path.stem] = path
 
     @staticmethod
     def flipped[T](input_list: list[tuple[T, int]]) -> list[tuple[T, int]]:
@@ -234,7 +234,11 @@ class Transformer:
         ]
 
     @once
-    def get_symbol_file(self, lib_name: str) -> C_kicad_sym_file:
+    def get_symbol_file(self, path: Path) -> C_kicad_sym_file:
+        return C_kicad_sym_file.loads(path)
+
+    @once
+    def get_symbol_by_name(self, lib_name: str) -> C_kicad_sym_file:
         # primary caching handled by @once
         if self._symbol_files_index is None:
             raise ValueError("Symbol files index not indexed")
@@ -243,7 +247,7 @@ class Transformer:
             raise FaebrykException(f'Symbol file "{lib_name}" not found')
 
         path = self._symbol_files_index[lib_name]
-        return C_kicad_sym_file.loads(path)
+        return self.get_symbol_file(path)
 
     @staticmethod
     def get_sub_syms(
@@ -517,7 +521,7 @@ class Transformer:
 
         lib_name, symbol_name = lib_id.split(":")
         lib_sym = deepcopy(
-            self.get_symbol_file(lib_name).kicad_symbol_lib.symbols[symbol_name]
+            self.get_symbol_by_name(lib_name).kicad_symbol_lib.symbols[symbol_name]
         )
         lib_sym.name = lib_id
         self.sch.lib_symbols.symbols[lib_id] = lib_sym

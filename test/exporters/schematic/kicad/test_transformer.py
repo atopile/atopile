@@ -30,8 +30,8 @@ def test_dir():
 
 
 @pytest.fixture
-def fp_lib_path_path(test_dir: Path):
-    return test_dir / "common/resources/fp-lib-table"
+def sch_libs_path(test_dir: Path):
+    return test_dir / "common" / "libs"
 
 
 @pytest.fixture
@@ -64,24 +64,24 @@ def test_wire_transformer(transformer: Transformer):
     ]
 
 
-def test_index_symbol_files(transformer: Transformer, fp_lib_path_path: Path):
+def test_index_symbol_files(transformer: Transformer, sch_libs_path: Path):
     assert transformer._symbol_files_index is None
-    transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
+    transformer.index_symbol_files(sch_libs_path, load_globals=False)
     assert transformer._symbol_files_index is not None
     assert len(transformer._symbol_files_index) == 1
 
 
 @pytest.fixture
-def full_transformer(transformer: Transformer, fp_lib_path_path: Path):
-    transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
+def full_transformer(transformer: Transformer, sch_libs_path: Path):
+    transformer.index_symbol_files(sch_libs_path, load_globals=False)
     return transformer
 
 
 def test_get_symbol_file(full_transformer: Transformer):
     with pytest.raises(FaebrykException):
-        full_transformer.get_symbol_file("notta-lib")
+        full_transformer.get_symbol_by_name("notta-lib")
 
-    sym_flie = full_transformer.get_symbol_file("test")
+    sym_flie = full_transformer.get_symbol_by_name("test")
     assert (
         sym_flie.kicad_symbol_lib.symbols["AudioJack-CUI-SJ-3523-SMT"].name
         == "AudioJack-CUI-SJ-3523-SMT"
