@@ -26,7 +26,6 @@ class NetTerminal(Part):
         self.tx = Tx()
         self.ref = net.name
         self.hierarchy = hierarchy
-        self.symtx = ""
         self.unit = {}
 
         # Add a single pin to the part.

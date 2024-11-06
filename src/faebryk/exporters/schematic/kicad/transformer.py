@@ -847,9 +847,6 @@ class Transformer:
             shim_part.ref = sch_sym_inst.propertys["Reference"].value
             # if we don't have a fab symbol, place the part at the top of the hierarchy
             shim_part.hierarchy = _hierarchy(f_symbol.represents) if f_symbol else ""
-            # TODO: what's the ato analog?
-            # TODO: should this desc
-            shim_part.symtx = ""
             shim_part.unit = {}  # TODO: support units
             shim_part.fab_symbol = f_symbol
             shim_part.sch_symbol = sch_sym_inst
@@ -1219,18 +1216,23 @@ class Transformer:
             pin_limit = options.get("orientation_pin_limit", 44)
             for part_unit in units(part):
                 # Initialize transform matrix.
-                part_unit.tx = skidl_geometry.Tx.from_symtx(
-                    getattr(part_unit, "symtx", "")
-                )
+                if part_unit.hints.symbol_rotation is not None:
+                    symtx = "".join(
+                        ["R"] * (part_unit.hints.symbol_rotation % 360 // 90)
+                    )
+                    part_unit.tx = skidl_geometry.Tx.from_symtx(symtx)
+                else:
+                    part_unit.tx = skidl_geometry.Tx()
 
                 # Lock part orientation if symtx was specified. Also lock parts with a
                 #  lot of pins since they're typically drawn the way they're supposed to
                 #  be oriented. And also lock single-pin parts because these are usually
                 #  power/ground and they shouldn't be flipped around.
                 num_pins = len(part_unit.pins)
-                part_unit.orientation_locked = getattr(
-                    part_unit, "symtx", False
-                ) or not (1 < num_pins <= pin_limit)
+                part_unit.orientation_locked = (
+                    part_unit.hints.symbol_rotation is not None
+                    or not (1 < num_pins <= pin_limit)
+                )
 
                 # Assign pins from the parent part to the part unit.
                 part_unit.grab_pins()
@@ -1249,7 +1251,7 @@ class Transformer:
 
             # Don't rotate parts that are already explicitly rotated/flipped.
             # FIXME: this was the inverted in SKiDL
-            if getattr(part, "symtx", ""):
+            if part.hints.symbol_rotation is not None:
                 return
 
             dont_rotate_pin_cnt = options.get("dont_rotate_pin_count", 10000)

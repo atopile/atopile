@@ -34,9 +34,9 @@ class has_schematic_hints(L.Module.TraitT.decless()):
         return 0.6
 
     @_hint
-    def symbol_rotation(self) -> int:
+    def symbol_rotation(self) -> int | None:
         """The rotation to apply to symbols."""
-        return 0
+        return None
 
     def __init__(
         self,

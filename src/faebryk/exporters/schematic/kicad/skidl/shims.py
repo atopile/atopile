@@ -70,8 +70,6 @@ class Part:
     hierarchy: str  # dot-separated string of part names
     pins: list["Pin"]
     ref: str
-    # A string of H, V, L, R operations that are applied in sequence left-to-right.
-    symtx: str
     unit: dict[str, "PartUnit"]  # units within the part, empty is this is all it is
     bare_bbox: BBox
     hints: F.has_schematic_hints
@@ -89,7 +87,6 @@ class Part:
                 "hierarchy",
                 "pins",
                 "ref",
-                "symtx",
                 "unit",
                 "fab_symbol",
                 "sch_symbol",
@@ -362,7 +359,6 @@ class NetTerminal(Part):
         self.tx = Tx()
         self.ref = net.name
         self.hierarchy = hierarchy
-        self.symtx = ""
         self.unit = {}
 
         # Add a single pin to the part.
