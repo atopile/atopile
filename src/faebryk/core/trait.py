@@ -110,6 +110,12 @@ class TraitImpl(Node):
     def on_obj_set(self): ...
 
     def handle_duplicate(self, other: "TraitImpl", node: Node) -> bool:
+        """
+        Handler for duplicate traits.
+
+        Returns:
+            Whether the duplicate was handled.
+        """
         assert other is not self
         _, candidate = other.cmp(self)
         if candidate is not self:
