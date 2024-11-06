@@ -670,9 +670,15 @@ class Transformer:
     @staticmethod
     def _(obj: C_lib_symbol.C_symbol.C_pin) -> BoundingBox:
         # TODO: include the name and number in the bbox
-        start = (obj.at.x, obj.at.y)
-        end = Geometry.rotate(start, [(obj.at.x + obj.length, obj.at.y)], obj.at.r)[0]
-        return Geometry.bbox([start, end])
+        connection_point = (obj.at.x, obj.at.y)
+        pin_padding = 2 * skidl_constants.GRID * skidl_geometry.mms_per_mil
+        start = (obj.at.x - pin_padding, obj.at.y)
+        points = Geometry.rotate(
+            connection_point,
+            [start, (obj.at.x + obj.length, obj.at.y)],
+            obj.at.r,
+        )
+        return Geometry.bbox(points)
 
     @get_bbox.register
     @classmethod
