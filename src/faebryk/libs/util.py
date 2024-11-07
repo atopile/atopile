@@ -1159,5 +1159,10 @@ def os_open(path: os.PathLike):
                 subprocess.run(["open", path])
             except subprocess.CalledProcessError as ex:
                 raise CouldntOSOpen(f"Can't open {path} on macOS") from ex
+        case "linux":
+            try:
+                subprocess.run(["xdg-open", path])
+            except subprocess.CalledProcessError as ex:
+                raise CouldntOSOpen(f"Can't open {path} on Linux") from ex
         case _:
             raise CouldntOSOpen(f"Unsupported platform {sys.platform}")
