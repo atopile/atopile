@@ -28,6 +28,8 @@ class Reference[O: Node](constructed_field):
             try:
                 return cast(O, self.gifs[instance].get_reference())
             except GraphInterfaceReferenceUnboundError as ex:
+                if self.optional:
+                    return None
                 raise Reference.UnboundError from ex
 
         def set_(instance: Node, value: O):
