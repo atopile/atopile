@@ -23,6 +23,8 @@ class Solver(Protocol):
 
     class TimeoutError(SolverError): ...
 
+    class DivisionByZeroError(SolverError): ...
+
     @dataclass
     class SolveResult:
         timed_out: bool

@@ -54,17 +54,17 @@ def test_solve_phase_one():
     solver.phase_one_no_guess_solving(voltage1.get_graph())
 
 
-def test_assoc_compress():
+def test_simplify():
     class App(Module):
         ops = L.list_field(10, lambda: Parameter(units=dimensionless))
 
     app = App()
 
-    # (((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7) + I + 8) + J + 9) < 11
-    # => (H + I + J + 24) < 11
+    # (((((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7) + I + 8) + J + 9) - 3) - 4) < 11
+    # => (H + I + J + 17) < 11
     constants = [c * dimensionless for c in range(0, 10)]
     constants[5] = app.ops[0] - app.ops[0]
-    # constants[9] = Ranges(Range(0 * dimensionless, 1 * dimensionless))
+    constants[9] = Ranges(Range(0 * dimensionless, 1 * dimensionless))
     acc = app.ops[0]
     for i, p in enumerate(app.ops[1:3]):
         acc += p + constants[i]
@@ -73,7 +73,8 @@ def test_assoc_compress():
     for i, p in enumerate(app.ops[7:]):
         acc += p + constants[i + 7]
 
-    (acc < 11).constrain()
+    acc = (acc - 3 * dimensionless) - 4 * dimensionless
+    (acc < 11 * dimensionless).constrain()
 
     G = acc.get_graph()
     solver = DefaultSolver()
@@ -142,7 +143,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_assoc_compress
+    func = test_simplify
 
     if "ipykernel" in sys.modules:
         func()
