@@ -42,7 +42,7 @@ class Pad(ModuleInterface):
         pads = [
             pad
             for pad in footprint.get_children(direct_only=True, types=Pad)
-            if pad.net.is_connected_to(intf) is not None
+            if pad.net.is_connected_to(intf)
         ]
         return pads
 

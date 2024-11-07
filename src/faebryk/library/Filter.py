@@ -15,9 +15,9 @@ class Filter(Module):
         BANDSTOP = auto()
         OTHER = auto()
 
-    cutoff_frequency: F.TBD[float]
-    order: F.TBD[int]
-    response: F.TBD[Response]
+    cutoff_frequency: F.TBD
+    order: F.TBD
+    response: F.TBD
 
     in_: F.Signal
     out: F.Signal

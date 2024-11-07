@@ -11,15 +11,15 @@ from faebryk.libs.util import TwistArgs, find, try_avoid_endless_recursion
 logger = logging.getLogger(__name__)
 
 
-class Operation[PV](Parameter[PV]):
+class Operation(Parameter):
     class OperationNotExecutable(Exception): ...
 
-    type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
+    type LIT_OR_PARAM = Parameter.LIT_OR_PARAM
 
     def __init__(
         self,
         operands: typing.Iterable[LIT_OR_PARAM],
-        operation: typing.Callable[..., Parameter[PV]],
+        operation: typing.Callable[..., Parameter],
     ) -> None:
         super().__init__()
         self.operands = tuple(self.from_literal(o) for o in operands)
@@ -65,7 +65,7 @@ class Operation[PV](Parameter[PV]):
         logger.debug(f"{operands=} resolved to {out}")
         return out
 
-    def try_compress(self) -> Parameter[PV]:
+    def try_compress(self) -> Parameter:
         try:
             return self._execute()
         except Operation.OperationNotExecutable:

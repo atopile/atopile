@@ -15,7 +15,7 @@ class is_esphome_bus(ModuleInterface.TraitT):
 
     @staticmethod
     def find_connected_bus(bus: ModuleInterface):
-        connected_mifs = bus.get_direct_connections()
+        connected_mifs = list(bus.get_connected())
         try:
             return find(connected_mifs, lambda mif: mif.has_trait(is_esphome_bus))
         except ValueError:

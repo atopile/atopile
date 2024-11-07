@@ -6,12 +6,12 @@ import logging
 from typing import Callable, Iterable, Sequence
 
 import faebryk.library._F as F
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.library.Operation import Operation
 from faebryk.libs.picker.picker import has_part_picked
-from faebryk.libs.util import groupby, print_stack
+from faebryk.libs.util import groupby
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +26,8 @@ class ERCFaultShort(ERCFault):
     def __init__(self, faulting_ifs: Sequence[ModuleInterface], *args: object) -> None:
         link = faulting_ifs[0].is_connected_to(faulting_ifs[1])
         assert link
-        from faebryk.core.core import LINK_TB
-
-        stack = ""
-        if LINK_TB:
-            stack = print_stack(link.tb)
 
         super().__init__(faulting_ifs, *args)
-        print(stack)
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
@@ -43,6 +37,12 @@ class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
             f"{ep}: {ep.voltage}" for ep in faulting_EP
         )
         super().__init__(faulting_EP, msg, *args)
+
+
+class ERCPowerSourcesShortedError(ERCFault):
+    """
+    Multiple power sources shorted together
+    """
 
 
 def simple_erc(G: Graph):
@@ -65,11 +65,20 @@ def simple_erc(G: Graph):
     logger.info("Checking graph for ERC violations")
 
     # power short and power with undefined voltage
-    electricpower = G.nodes_of_type(F.ElectricPower)
+    electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
     logger.info(f"Checking {len(electricpower)} Power")
     for ep in electricpower:
         if ep.lv.is_connected_to(ep.hv):
             raise ERCFaultShort([ep], "shorted power")
+        if ep.has_trait(F.Power.is_power_source):
+            other_sources = [
+                other
+                for other in ep.get_connected()
+                if isinstance(other, F.ElectricPower)
+                and other.has_trait(F.Power.is_power_source)
+            ]
+            if other_sources:
+                raise ERCPowerSourcesShortedError([ep] + other_sources)
 
     unresolved_voltage = [
         ep
@@ -81,12 +90,12 @@ def simple_erc(G: Graph):
         raise ERCFaultElectricPowerUndefinedVoltage(unresolved_voltage)
 
     # shorted nets
-    nets = G.nodes_of_type(F.Net)
-    logger.info(f"Checking {len(nets)} nets")
+    nets = GraphFunctions(G).nodes_of_type(F.Net)
+    logger.info(f"Checking {len(nets)} explicit nets")
     for net in nets:
         collisions = {
             p[0]
-            for mif in net.part_of.get_direct_connections()
+            for mif in net.part_of.get_connected()
             if (p := mif.get_parent()) and isinstance(p[0], F.Net)
         }
 
@@ -122,7 +131,8 @@ def simple_erc(G: Graph):
     #        checked.add(mif)
     #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
     #            raise ERCFault([mif], "shorted symmetric footprint")
-    comps = G.nodes_of_types((F.Resistor, F.Capacitor, F.Fuse))
+    comps = GraphFunctions(G).nodes_of_types((F.Resistor, F.Capacitor, F.Fuse))
+    logger.info(f"Checking {len(comps)} passives")
     for comp in comps:
         assert isinstance(comp, (F.Resistor, F.Capacitor, F.Fuse))
         # TODO make prettier

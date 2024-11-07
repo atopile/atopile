@@ -8,10 +8,11 @@ import numpy as np
 
 from faebryk.core.parameter import Parameter, _resolved
 from faebryk.libs.units import Quantity, UnitsContainer, to_si_str
+from faebryk.libs.util import once
 
 
-class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
-    type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
+class Constant(Parameter):
+    type LIT_OR_PARAM = Parameter.LIT_OR_PARAM
 
     def __init__(self, value: LIT_OR_PARAM) -> None:
         super().__init__()
@@ -32,6 +33,9 @@ class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
 
     @_resolved
     def __eq__(self, other) -> bool:
+        if self is other:
+            return True
+
         if not isinstance(other, Constant):
             return False
 
@@ -42,8 +46,15 @@ class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
 
         return self.value == other.value
 
-    def __hash__(self) -> int:
+    @once
+    def _hash_val(self):
+        # assert not isinstance(self.value, Parameter)
         return hash(self.value)
+
+    def __hash__(self) -> int:
+        if isinstance(self.value, Parameter):
+            return hash(self.value)
+        return self._hash_val()
 
     # comparison operators
     @_resolved
@@ -98,12 +109,12 @@ class Constant[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
         return int(self.value)
 
     @_resolved
-    def __contains__(self, other: Parameter[PV]) -> bool:
+    def __contains__(self, other: Parameter) -> bool:
         if not isinstance(other, Constant):
             return False
         return other.value == self.value
 
-    def try_compress(self) -> Parameter[PV]:
+    def try_compress(self) -> Parameter:
         if isinstance(self.value, Parameter):
             return self.value
         return super().try_compress()

@@ -7,11 +7,15 @@ from itertools import chain
 
 import faebryk.library._F as F
 from faebryk.core.core import logger as core_logger
-from faebryk.core.link import LinkDirect, LinkDirectShallow, _TLinkDirectShallow
+from faebryk.core.link import (
+    LinkDirect,
+    LinkDirectConditional,
+    LinkDirectConditionalFilterResult,
+)
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
-from faebryk.libs.util import print_stack, times
+from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 core_logger.setLevel(logger.getEffectiveLevel())
@@ -47,20 +51,20 @@ class TestHierarchy(unittest.TestCase):
         mifs[0].connect_shallow(mifs[1])
         mifs[1].connect_shallow(mifs[2])
         self.assertTrue(mifs[0].is_connected_to(mifs[2]))
-        self.assertIsInstance(mifs[0].is_connected_to(mifs[2]), _TLinkDirectShallow)
+        self.assertIsInstance(mifs[0].is_connected_to(mifs[2]), LinkDirectConditional)
 
         mifs = times(3, ModuleInterface)
         mifs[0].connect_shallow(mifs[1])
         mifs[1].connect(mifs[2])
         self.assertTrue(mifs[0].is_connected_to(mifs[2]))
-        self.assertIsInstance(mifs[0].is_connected_to(mifs[2]), _TLinkDirectShallow)
+        self.assertIsInstance(mifs[0].is_connected_to(mifs[2]), LinkDirectConditional)
 
         # Test hierarchy down filter & chain resolution
         mifs = times(3, F.ElectricLogic)
         mifs[0].connect_shallow(mifs[1])
         mifs[1].connect(mifs[2])
         self.assertTrue(mifs[0].is_connected_to(mifs[2]))
-        self.assertIsInstance(mifs[0].is_connected_to(mifs[2]), _TLinkDirectShallow)
+        self.assertIsInstance(mifs[0].is_connected_to(mifs[2]), LinkDirectConditional)
 
         self.assertTrue(mifs[1].signal.is_connected_to(mifs[2].signal))
         self.assertTrue(mifs[1].reference.is_connected_to(mifs[2].reference))
@@ -132,18 +136,13 @@ class TestHierarchy(unittest.TestCase):
                     F.ElectricLogic.connect_all_module_references(self)
                 )
 
-        import faebryk.core.core as c
-
         # Enable to see the stack trace of invalid connections
         # c.LINK_TB = True
         app = UARTBuffer()
 
         def _assert_no_link(mif1, mif2):
             link = mif1.is_connected_to(mif2)
-            err = ""
-            if link and c.LINK_TB:
-                err = "\n" + print_stack(link.tb)
-            self.assertFalse(link, err)
+            self.assertFalse(link)
 
         def _assert_link(mif1: ModuleInterface, mif2: ModuleInterface, link=None):
             out = mif1.is_connected_to(mif2)
@@ -182,7 +181,7 @@ class TestHierarchy(unittest.TestCase):
         _assert_link(bus2.tx, buf.outs_l[0], LinkDirect)
 
         # connect shallow
-        _assert_link(buf.ins_l[0], buf.outs_l[0], _TLinkDirectShallow)
+        _assert_link(buf.ins_l[0], buf.outs_l[0], LinkDirectConditional)
 
         # Check that the two buffer sides are connected logically
         _assert_link(bus1.tx, bus2.tx)
@@ -217,7 +216,11 @@ class TestHierarchy(unittest.TestCase):
         self.assertTrue(mifs[0].is_connected_to(mifs[2]))
 
         # test special link
-        class _Link(LinkDirectShallow(lambda link, gif: True)): ...
+        class _Link(LinkDirectConditional):
+            def __init__(self):
+                super().__init__(
+                    lambda src, dst: LinkDirectConditionalFilterResult.FILTER_PASS
+                )
 
         mifs = times(3, ModuleInterface)
         mifs_special = times(3, Specialized)

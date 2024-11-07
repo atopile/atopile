@@ -24,6 +24,7 @@ from faebryk.library.has_esphome_config import has_esphome_config
 from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.has_construction_dependency import has_construction_dependency
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
+from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
 from faebryk.library.Signal import Signal
 from faebryk.library.has_footprint import has_footprint
@@ -33,6 +34,7 @@ from faebryk.library.Operation import Operation
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
 from faebryk.library.can_bridge import can_bridge
+from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator

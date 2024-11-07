@@ -3,11 +3,10 @@
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.units import Quantity
 
 
 class Electrical(ModuleInterface):
-    potential: F.TBD[Quantity]
+    potential: F.TBD
 
     def get_net(self):
         from faebryk.library.Net import Net

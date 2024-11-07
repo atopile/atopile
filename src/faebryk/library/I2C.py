@@ -6,7 +6,7 @@ from enum import Enum
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class I2C(ModuleInterface):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 
-    frequency: F.TBD[Quantity]
+    frequency: F.TBD
 
     @L.rt_field
     def single_electric_reference(self):

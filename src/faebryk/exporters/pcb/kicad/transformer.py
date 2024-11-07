@@ -16,7 +16,7 @@ from shapely import Polygon
 from typing_extensions import deprecated
 
 import faebryk.library._F as F
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
@@ -224,7 +224,7 @@ class PCB_Transformer:
         footprints = {
             (f.propertys["Reference"].value, f.name): f for f in self.pcb.footprints
         }
-        for node, fpt in self.graph.nodes_with_trait(F.has_footprint):
+        for node, fpt in GraphFunctions(self.graph).nodes_with_trait(F.has_footprint):
             if not node.has_trait(F.has_overriden_name):
                 continue
             g_fp = fpt.get_footprint()
@@ -259,7 +259,7 @@ class PCB_Transformer:
 
         attached = {
             n: t.get_fp()
-            for n, t in self.graph.nodes_with_trait(
+            for n, t in GraphFunctions(self.graph).nodes_with_trait(
                 PCB_Transformer.has_linked_kicad_footprint
             )
         }
@@ -303,7 +303,7 @@ class PCB_Transformer:
     def get_all_footprints(self) -> List[tuple[Module, Footprint]]:
         return [
             (cast_assert(Module, cmp), t.get_fp())
-            for cmp, t in self.graph.nodes_with_trait(
+            for cmp, t in GraphFunctions(self.graph).nodes_with_trait(
                 PCB_Transformer.has_linked_kicad_footprint
             )
         ]
@@ -503,7 +503,7 @@ class PCB_Transformer:
         pin_map = ffp.get_trait(F.has_kicad_footprint).get_pin_names()
         pin_name = find(
             pin_map.items(),
-            lambda pad_and_name: intf.is_connected_to(pad_and_name[0].net) is not None,
+            lambda pad_and_name: intf.is_connected_to(pad_and_name[0].net),
         )[1]
 
         fp = PCB_Transformer.get_fp(ffp)
@@ -878,7 +878,7 @@ class PCB_Transformer:
     # Positioning ----------------------------------------------------------------------
     def move_footprints(self):
         # position modules with defined positions
-        pos_mods = self.graph.nodes_with_traits(
+        pos_mods = GraphFunctions(self.graph).nodes_with_traits(
             (F.has_pcb_position, self.has_linked_kicad_footprint)
         )
 

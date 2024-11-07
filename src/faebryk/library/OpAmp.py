@@ -4,17 +4,16 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 
 
 class OpAmp(Module):
-    bandwidth: F.TBD[Quantity]
-    common_mode_rejection_ratio: F.TBD[Quantity]
-    input_bias_current: F.TBD[Quantity]
-    input_offset_voltage: F.TBD[Quantity]
-    gain_bandwidth_product: F.TBD[Quantity]
-    output_current: F.TBD[Quantity]
-    slew_rate: F.TBD[Quantity]
+    bandwidth: F.TBD
+    common_mode_rejection_ratio: F.TBD
+    input_bias_current: F.TBD
+    input_offset_voltage: F.TBD
+    gain_bandwidth_product: F.TBD
+    output_current: F.TBD
+    slew_rate: F.TBD
 
     power: F.ElectricPower
     inverting_input: F.Electrical

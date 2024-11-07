@@ -6,3 +6,4 @@ ConstructorInitializerIndentWidth: 2
 AllowShortFunctionsOnASingleLine: None
 AllowShortLambdasOnASingleLine: None
 ColumnLimit: 89
+SeparateDefinitionBlocks: Always

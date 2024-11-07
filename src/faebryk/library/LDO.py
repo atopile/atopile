@@ -7,7 +7,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 from faebryk.libs.util import assert_once, join_if_non_empty
 
 
@@ -24,14 +24,14 @@ class LDO(Module):
         POSITIVE = auto()
         NEGATIVE = auto()
 
-    max_input_voltage: F.TBD[Quantity]
-    output_voltage: F.TBD[Quantity]
-    output_polarity: F.TBD[OutputPolarity]
-    output_type: F.TBD[OutputType]
-    output_current: F.TBD[Quantity]
-    psrr: F.TBD[Quantity]
-    dropout_voltage: F.TBD[Quantity]
-    quiescent_current: F.TBD[Quantity]
+    max_input_voltage: F.TBD
+    output_voltage: F.TBD
+    output_polarity: F.TBD
+    output_type: F.TBD
+    output_current: F.TBD
+    psrr: F.TBD
+    dropout_voltage: F.TBD
+    quiescent_current: F.TBD
 
     enable: F.ElectricLogic
     power_in: F.ElectricPower

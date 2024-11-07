@@ -110,6 +110,4 @@ def format_and_write(code: str, path: Path):
     code = black.format_file_contents(code, fast=True, mode=black.FileMode())
     path.write_text(code)
 
-    print("Ruff----")
-    subprocess.run(["ruff", "check", "--fix", path], check=True)
-    print("--------")
+    subprocess.check_output(["ruff", "check", "--fix", path])

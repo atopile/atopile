@@ -4,12 +4,11 @@
 import logging
 from abc import abstractmethod
 
-import networkx as nx
-
 import faebryk.library._F as F
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.exporters.netlist.netlist import T2Netlist
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ def get_or_set_name_and_value_of_node(c: Module):
 class can_represent_kicad_footprint_via_attached_component(
     can_represent_kicad_footprint.impl()
 ):
-    def __init__(self, component: Module, graph: nx.Graph) -> None:
+    def __init__(self, component: Module, graph: Graph) -> None:
         """
         graph has to be electrically closed
         """
@@ -102,21 +101,17 @@ def add_or_get_net(interface: F.Electrical):
         net.part_of.connect(interface)
         return net
     if len(nets) > 1:
-        raise Exception(f"Multiple nets interconnected: {nets}")
+        raise KeyErrorAmbiguous(list(nets), "Multiple nets interconnected")
     return next(iter(nets))
 
 
-def attach_nets_and_kicad_info(g: Graph):
-    # g has to be closed
-
-    Gclosed = g
-
+def attach_nets_and_kicad_info(G: Graph):
     # group comps & fps
     node_fps = {
         n: t.get_footprint()
         # TODO maybe nicer to just look for footprints
         # and get their respective components instead
-        for n, t in Gclosed.nodes_with_trait(F.has_footprint)
+        for n, t in GraphFunctions(G).nodes_with_trait(F.has_footprint)
         if isinstance(n, Module)
     }
 
@@ -128,9 +123,8 @@ def attach_nets_and_kicad_info(g: Graph):
     for n, fp in node_fps.items():
         if fp.has_trait(can_represent_kicad_footprint):
             continue
-        fp.add(can_represent_kicad_footprint_via_attached_component(n, Gclosed))
+        fp.add(can_represent_kicad_footprint_via_attached_component(n, G))
 
     for fp in node_fps.values():
-        # TODO use graph
         for mif in fp.get_children(direct_only=True, types=F.Pad):
             add_or_get_net(mif.net)

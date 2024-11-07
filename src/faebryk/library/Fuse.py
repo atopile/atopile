@@ -7,7 +7,6 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +21,9 @@ class Fuse(Module):
         FAST = auto()
 
     unnamed = L.list_field(2, F.Electrical)
-    fuse_type: F.TBD[FuseType]
-    response_type: F.TBD[ResponseType]
-    trip_current: F.TBD[Quantity]
+    fuse_type: F.TBD
+    response_type: F.TBD
+    trip_current: F.TBD
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
 

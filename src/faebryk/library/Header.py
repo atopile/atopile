@@ -6,7 +6,6 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 from faebryk.libs.util import times
 
 
@@ -36,16 +35,16 @@ class Header(Module):
         self.pin_count_horizonal.merge(self._horizontal_pin_count)
         self.pin_count_vertical.merge(self._vertical_pin_count)
 
-    pin_pitch: F.TBD[Quantity]
-    mating_pin_lenght: F.TBD[Quantity]
-    conection_pin_lenght: F.TBD[Quantity]
-    spacer_height: F.TBD[Quantity]
-    pin_type: F.TBD[PinType]
-    pad_type: F.TBD[PadType]
-    angle: F.TBD[Angle]
+    pin_pitch: F.TBD
+    mating_pin_lenght: F.TBD
+    conection_pin_lenght: F.TBD
+    spacer_height: F.TBD
+    pin_type: F.TBD
+    pad_type: F.TBD
+    angle: F.TBD
 
-    pin_count_horizonal: F.TBD[int]
-    pin_count_vertical: F.TBD[int]
+    pin_count_horizonal: F.TBD
+    pin_count_vertical: F.TBD
 
     @L.rt_field
     def contact(self):

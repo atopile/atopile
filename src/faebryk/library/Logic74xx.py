@@ -50,7 +50,7 @@ class Logic74xx(Module):
         CD4000 = auto()
 
     power: F.ElectricPower
-    logic_family: F.TBD[Family]
+    logic_family: F.TBD
 
     designator = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.U

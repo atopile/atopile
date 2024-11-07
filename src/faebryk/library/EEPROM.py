@@ -4,7 +4,6 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 
 
 class EEPROM(Module):
@@ -25,7 +24,7 @@ class EEPROM(Module):
     #     modules, interfaces, parameters
     # ----------------------------------------
 
-    memory_size: F.TBD[Quantity]
+    memory_size: F.TBD
 
     power: F.ElectricPower
     i2c: F.I2C

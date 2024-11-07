@@ -4,12 +4,12 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 
 
 class HLK_LD2410B_P(Module):
     class _ld2410b_esphome_config(F.has_esphome_config.impl()):
-        throttle: F.TBD[Quantity]
+        throttle: F.TBD
 
         def get_config(self) -> dict:
             val = self.throttle.get_most_narrow()
@@ -20,7 +20,7 @@ class HLK_LD2410B_P(Module):
 
             uart_candidates = {
                 mif
-                for mif in obj.uart.get_direct_connections()
+                for mif in obj.uart.get_connected()
                 if mif.has_trait(F.is_esphome_bus)
                 and mif.has_trait(F.has_esphome_config)
             }

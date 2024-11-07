@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 import logging
 from typing import (
+    Any,
     Callable,
     Concatenate,
     Optional,
@@ -14,17 +15,23 @@ from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.node import Node
 from faebryk.core.trait import Trait
 from faebryk.libs.units import Quantity, UnitsContainer
-from faebryk.libs.util import Tree, TwistArgs, is_type_pair, try_avoid_endless_recursion
+from faebryk.libs.util import (
+    Tree,
+    TwistArgs,
+    cast_assert,
+    is_type_pair,
+    try_avoid_endless_recursion,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def _resolved[PV, O](
-    func: Callable[["Parameter[PV]", "Parameter[PV]"], O],
+    func: Callable[["Parameter", "Parameter"], O],
 ) -> Callable[
     [
-        "PV | set[PV] | tuple[PV, PV] | Parameter[PV]",
-        "PV | set[PV] | tuple[PV, PV] | Parameter[PV]",
+        "PV | set | tuple[PV, PV] | Parameter",
+        "PV | set | tuple[PV, PV] | Parameter",
     ],
     O,
 ]:
@@ -36,10 +43,10 @@ def _resolved[PV, O](
 
 
 def _resolved_self[PV, O, **P](
-    func: Callable[Concatenate["Parameter[PV]", P], O],
-) -> Callable[Concatenate["PV | set[PV] | tuple[PV, PV] | Parameter[PV]", P], O]:
+    func: Callable[Concatenate["Parameter", P], O],
+) -> Callable[Concatenate["PV | set | tuple[PV, PV] | Parameter", P], O]:
     def wrap(
-        p: "PV | set[PV] | tuple[PV, PV] | Parameter[PV]",
+        p: "PV | set | tuple[PV, PV] | Parameter",
         *args: P.args,
         **kwargs: P.kwargs,
     ):
@@ -48,9 +55,10 @@ def _resolved_self[PV, O, **P](
     return wrap
 
 
-class Parameter[PV](Node):
-    type LIT = PV | set[PV] | tuple[PV, PV]
-    type LIT_OR_PARAM = LIT | "Parameter[PV]"
+class Parameter(Node):
+    type PV = Any
+    type LIT = PV | set | tuple[PV, PV]
+    type LIT_OR_PARAM = LIT | "Parameter"
 
     class TraitT(Trait): ...
 
@@ -60,13 +68,20 @@ class Parameter[PV](Node):
     class MergeException(Exception): ...
 
     class SupportsSetOps:
-        def __contains__(self, other: "Parameter[PV].LIT_OR_PARAM") -> bool: ...
+        def __contains__(self, other: "Parameter.LIT_OR_PARAM") -> bool: ...
 
-    def try_compress(self) -> "Parameter[PV]":
+        @staticmethod
+        def check(other: "Parameter.LIT_OR_PARAM") -> bool:
+            return hasattr(other, "__contains__")
+
+    class is_dynamic(TraitT):
+        def execute(self) -> None: ...
+
+    def try_compress(self) -> "Parameter":
         return self
 
     @classmethod
-    def from_literal(cls, value: LIT_OR_PARAM) -> '"Parameter[PV]"':
+    def from_literal(cls, value: LIT_OR_PARAM) -> '"Parameter"':
         from faebryk.library.Constant import Constant
         from faebryk.library.Range import Range
         from faebryk.library.Set import Set
@@ -80,7 +95,7 @@ class Parameter[PV](Node):
         else:
             return Constant(value)
 
-    def _merge(self, other: "Parameter[PV]") -> "Parameter[PV]":
+    def _merge(self, other: "Parameter") -> "Parameter":
         from faebryk.library.ANY import ANY
         from faebryk.library.Operation import Operation
         from faebryk.library.Set import Set
@@ -98,20 +113,22 @@ class Parameter[PV](Node):
         except ValueError:
             ...
 
-        if pair := _is_pair(Parameter[PV], TBD):
+        if pair := _is_pair(Parameter, TBD):
             return pair[0]
 
-        if pair := _is_pair(Parameter[PV], ANY):
+        if pair := _is_pair(Parameter, ANY):
             return pair[0]
 
         # TODO remove as soon as possible
-        if pair := _is_pair(Parameter[PV], Operation):
+        if pair := _is_pair(Parameter, Operation):
             # TODO make MergeOperation that inherits from Operation
             # and return that instead, application can check if result is MergeOperation
             # if it was checking mergeability
             raise self.MergeException("cant merge range with operation")
 
-        if pair := _is_pair(Parameter[PV], Parameter[PV].SupportsSetOps):
+        if any(Parameter.SupportsSetOps.check(x) for x in (self, other)):
+            pair = (self, other)
+            # if pair := _is_pair(Parameter, Parameter.SupportsSetOps):
             out = self.intersect(*pair)
             if isinstance(out, Operation):
                 raise self.MergeException("not resolvable")
@@ -123,16 +140,16 @@ class Parameter[PV](Node):
 
         raise NotImplementedError
 
-    def _narrowed(self, other: "Parameter[PV]"):
+    def _narrowed(self, other: "Parameter"):
         if self is other:
             return
 
-        if self.narrowed_by.is_connected(other.narrows):
+        if self.narrowed_by.is_connected_to(other.narrows):
             return
         self.narrowed_by.connect(other.narrows)
 
     @_resolved
-    def is_mergeable_with(self: "Parameter[PV]", other: "Parameter[PV]") -> bool:
+    def is_mergeable_with(self: "Parameter", other: "Parameter") -> bool:
         try:
             self._merge(other)
             return True
@@ -142,7 +159,7 @@ class Parameter[PV](Node):
             return False
 
     @_resolved
-    def is_subset_of(self: "Parameter[PV]", other: "Parameter[PV]") -> bool:
+    def is_subset_of(self: "Parameter", other: "Parameter") -> bool:
         from faebryk.library.ANY import ANY
         from faebryk.library.Operation import Operation
         from faebryk.library.TBD import TBD
@@ -150,7 +167,7 @@ class Parameter[PV](Node):
         lhs = self
         rhs = other
 
-        def is_either_instance(t: type["Parameter[PV]"]):
+        def is_either_instance(t: type["Parameter"]):
             return isinstance(lhs, t) or isinstance(rhs, t)
 
         # Not resolveable
@@ -167,7 +184,9 @@ class Parameter[PV](Node):
         return lhs & rhs == lhs
 
     @_resolved
-    def merge(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+    def merge(self: "Parameter", other: "Parameter") -> "Parameter":
+        if self is other:
+            return self
         out = self._merge(other)
 
         self._narrowed(out)
@@ -176,7 +195,7 @@ class Parameter[PV](Node):
         return out
 
     @_resolved
-    def override(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+    def override(self: "Parameter", other: "Parameter") -> "Parameter":
         if not other.is_subset_of(self):
             raise self.MergeException("override not possible")
 
@@ -185,9 +204,7 @@ class Parameter[PV](Node):
 
     # TODO: replace with graph-based
     @staticmethod
-    def arithmetic_op(
-        op1: "Parameter[PV]", op2: "Parameter[PV]", op: Callable
-    ) -> "Parameter[PV]":
+    def arithmetic_op(op1: "Parameter", op2: "Parameter", op: Callable) -> "Parameter":
         from faebryk.library.ANY import ANY
         from faebryk.library.Constant import Constant
         from faebryk.library.Operation import Operation
@@ -255,7 +272,7 @@ class Parameter[PV](Node):
         raise NotImplementedError
 
     @staticmethod
-    def intersect(op1: "Parameter[PV]", op2: "Parameter[PV]") -> "Parameter[PV]":
+    def intersect(op1: "Parameter", op2: "Parameter") -> "Parameter":
         from faebryk.library.Constant import Constant
         from faebryk.library.Operation import Operation
         from faebryk.library.Range import Range
@@ -317,56 +334,56 @@ class Parameter[PV](Node):
         return Operation((op1, op2), op)
 
     @_resolved
-    def __add__(self: "Parameter[PV]", other: "Parameter[PV]"):
+    def __add__(self: "Parameter", other: "Parameter"):
         return self.arithmetic_op(self, other, lambda a, b: a + b)
 
     @_resolved
-    def __radd__(self: "Parameter[PV]", other: "Parameter[PV]"):
+    def __radd__(self: "Parameter", other: "Parameter"):
         return self.arithmetic_op(self, other, lambda a, b: b + a)
 
     @_resolved
-    def __sub__(self: "Parameter[PV]", other: "Parameter[PV]"):
+    def __sub__(self: "Parameter", other: "Parameter"):
         return self.arithmetic_op(self, other, lambda a, b: a - b)
 
     @_resolved
-    def __rsub__(self: "Parameter[PV]", other: "Parameter[PV]"):
+    def __rsub__(self: "Parameter", other: "Parameter"):
         return self.arithmetic_op(self, other, lambda a, b: b - a)
 
     # TODO PV | float
     @_resolved
-    def __mul__(self: "Parameter[PV]", other: "Parameter[PV]"):
+    def __mul__(self: "Parameter", other: "Parameter"):
         return self.arithmetic_op(self, other, lambda a, b: a * b)
 
     @_resolved
-    def __rmul__(self: "Parameter[PV]", other: "Parameter[PV]"):
+    def __rmul__(self: "Parameter", other: "Parameter"):
         return self.arithmetic_op(self, other, lambda a, b: b * a)
 
     # TODO PV | float
     @_resolved
-    def __truediv__(self: "Parameter[PV]", other: "Parameter[PV]"):
+    def __truediv__(self: "Parameter", other: "Parameter"):
         return self.arithmetic_op(self, other, lambda a, b: a / b)
 
     @_resolved
-    def __rtruediv__(self: "Parameter[PV]", other: "Parameter[PV]"):
+    def __rtruediv__(self: "Parameter", other: "Parameter"):
         return self.arithmetic_op(self, other, lambda a, b: b / a)
 
     @_resolved
-    def __pow__(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+    def __pow__(self: "Parameter", other: "Parameter") -> "Parameter":
         return self.arithmetic_op(self, other, lambda a, b: a**b)
 
     @_resolved
-    def __rpow__(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+    def __rpow__(self: "Parameter", other: "Parameter") -> "Parameter":
         return self.arithmetic_op(self, other, lambda a, b: b**a)
 
     @_resolved
-    def __and__(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+    def __and__(self: "Parameter", other: "Parameter") -> "Parameter":
         return self.intersect(self, other)
 
     @_resolved
-    def __rand__(self: "Parameter[PV]", other: "Parameter[PV]") -> "Parameter[PV]":
+    def __rand__(self: "Parameter", other: "Parameter") -> "Parameter":
         return self.intersect(other, self)
 
-    def get_most_narrow(self) -> "Parameter[PV]":
+    def get_most_narrow(self) -> "Parameter":
         out = self.get_narrowing_chain()[-1]
 
         com = out.try_compress()
@@ -378,12 +395,12 @@ class Parameter[PV](Node):
         return out
 
     @staticmethod
-    def resolve_all(params: "Sequence[Parameter[PV]]") -> "Parameter[PV]":
+    def resolve_all(params: "Sequence[Parameter]") -> "Parameter":
         from faebryk.library.TBD import TBD
 
         params_set = list(params)
         if not params_set:
-            return TBD[PV]()
+            return TBD()
         it = iter(params_set)
         most_specific = next(it)
         for param in it:
@@ -408,15 +425,15 @@ class Parameter[PV](Node):
 
     def get_narrowing_chain(self) -> list["Parameter"]:
         out: list[Parameter] = [self]
-        narrowers = self.narrowed_by.get_connected_nodes(Parameter)
+        narrowers = self.narrowed_by.get_connected_nodes([Parameter])
         if narrowers:
             assert len(narrowers) == 1, "Narrowing tree diverged"
-            out += next(iter(narrowers)).get_narrowing_chain()
+            out += cast_assert(Parameter, next(iter(narrowers))).get_narrowing_chain()
             assert id(self) not in map(id, out[1:]), "Narrowing tree cycle"
         return out
 
     def get_narrowed_siblings(self) -> set["Parameter"]:
-        return self.narrows.get_connected_nodes(Parameter)
+        return self.narrows.get_connected_nodes([Parameter])  # type: ignore
 
     def __copy__(self) -> Self:
         return type(self)()
@@ -434,9 +451,7 @@ class Parameter[PV](Node):
 
     # util functions -------------------------------------------------------------------
     @_resolved_self
-    def enum_parameter_representation(
-        self: "Parameter[PV]", required: bool = False
-    ) -> str:
+    def enum_parameter_representation(self: "Parameter", required: bool = False) -> str:
         return self._enum_parameter_representation(required=required)
 
     def _enum_parameter_representation(self, required: bool = False) -> str:
@@ -444,7 +459,7 @@ class Parameter[PV](Node):
 
     @_resolved_self
     def as_unit(
-        self: "Parameter[PV]",
+        self: "Parameter",
         unit: UnitsContainer,
         base: int = 1000,
         required: bool = False,
@@ -459,7 +474,7 @@ class Parameter[PV](Node):
 
     @_resolved_self
     def as_unit_with_tolerance(
-        self: "Parameter[PV]",
+        self: "Parameter",
         unit: UnitsContainer,
         base: int = 1000,
         required: bool = False,
@@ -472,7 +487,7 @@ class Parameter[PV](Node):
         return self._as_unit(unit, base=base, required=required)
 
     @_resolved_self
-    def get_max(self: "Parameter[PV]") -> PV:
+    def get_max(self: "Parameter") -> PV:
         return self._max()
 
     def _max(self):

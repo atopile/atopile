@@ -10,11 +10,6 @@ from faebryk.libs.util import ConfigFlag
 
 logger = logging.getLogger(__name__)
 
-LINK_TB = ConfigFlag(
-    "LINK_TB",
-    False,
-    "Save stack trace for each link. Warning: Very slow! Just use for debug",
-)
 ID_REPR = ConfigFlag("ID_REPR", False, "Add object id to repr")
 
 

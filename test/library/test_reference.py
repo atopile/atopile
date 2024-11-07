@@ -64,6 +64,7 @@ def test_set_value_before_constuction():
         x = Reference(A)
 
         def __init__(self, x):
+            super().__init__()
             self.x = x
 
     a = A()
@@ -80,6 +81,7 @@ def test_get_value_before_constuction():
         y = Reference(A)
 
         def __init__(self, x):
+            super().__init__()
             self.x = x
             self.y = self.x
 

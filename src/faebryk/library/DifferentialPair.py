@@ -5,14 +5,13 @@ from typing import Self
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.units import Quantity
 
 
 class DifferentialPair(ModuleInterface):
     p: F.SignalElectrical
     n: F.SignalElectrical
 
-    impedance: F.TBD[Quantity]
+    impedance: F.TBD
 
     def terminated(self) -> Self:
         terminated_bus = type(self)()

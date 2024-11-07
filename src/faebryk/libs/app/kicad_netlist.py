@@ -4,7 +4,7 @@
 import logging
 from pathlib import Path
 
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
 from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph

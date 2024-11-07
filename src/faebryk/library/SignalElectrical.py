@@ -4,20 +4,24 @@
 from typing import Iterable
 
 import faebryk.library._F as F
-from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.link import LinkFilteredException, _TLinkDirectShallow
+from faebryk.core.link import LinkDirectConditional, LinkDirectConditionalFilterResult
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
+from faebryk.core.node import CNode, Node
 from faebryk.libs.library import L
 
 
 class SignalElectrical(F.Signal):
-    class LinkIsolatedReference(_TLinkDirectShallow):
-        def __init__(self, interfaces: list[GraphInterface]) -> None:
-            if any(isinstance(gif.node, F.ElectricPower) for gif in interfaces):
-                raise LinkFilteredException("All nodes are ElectricPower")
-            super().__init__(interfaces)
+    class LinkIsolatedReference(LinkDirectConditional):
+        def test(self, node: CNode):
+            return not isinstance(node, F.ElectricPower)
+
+        def __init__(self) -> None:
+            super().__init__(
+                lambda src, dst: LinkDirectConditionalFilterResult.FILTER_PASS
+                if self.test(dst.node)
+                else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE
+            )
 
     # ----------------------------------------
     #     modules, interfaces, parameters

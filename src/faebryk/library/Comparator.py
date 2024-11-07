@@ -6,7 +6,6 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 
 
 class Comparator(Module):
@@ -15,12 +14,12 @@ class Comparator(Module):
         PushPull = auto()
         OpenDrain = auto()
 
-    common_mode_rejection_ratio: F.TBD[Quantity]
-    input_bias_current: F.TBD[Quantity]
-    input_hysteresis_voltage: F.TBD[Quantity]
-    input_offset_voltage: F.TBD[Quantity]
-    propagation_delay: F.TBD[Quantity]
-    output_type: F.TBD[OutputType]
+    common_mode_rejection_ratio: F.TBD
+    input_bias_current: F.TBD
+    input_hysteresis_voltage: F.TBD
+    input_offset_voltage: F.TBD
+    propagation_delay: F.TBD
+    output_type: F.TBD
 
     power: F.ElectricPower
     inverting_input: F.Electrical

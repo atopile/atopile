@@ -49,8 +49,8 @@ class LogicGate(Module):
 
     def __init__(
         self,
-        input_cnt: F.Constant[int],
-        output_cnt: F.Constant[int],
+        input_cnt: F.Constant,
+        output_cnt: F.Constant,
         *functions: TraitImpl,
     ) -> None:
         super().__init__()

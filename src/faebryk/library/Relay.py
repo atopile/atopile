@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +20,12 @@ class Relay(Module):
     switch_b_nc: F.Electrical
     coil_power: F.ElectricPower
 
-    coil_rated_voltage: F.TBD[Quantity]
-    coil_rated_current: F.TBD[Quantity]
-    coil_resistance: F.TBD[Quantity]
-    contact_max_switching_voltage: F.TBD[Quantity]
-    contact_rated_switching_current: F.TBD[Quantity]
-    contact_max_switchng_current: F.TBD[Quantity]
+    coil_rated_voltage: F.TBD
+    coil_rated_current: F.TBD
+    coil_resistance: F.TBD
+    contact_max_switching_voltage: F.TBD
+    contact_rated_switching_current: F.TBD
+    contact_max_switchng_current: F.TBD
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.K

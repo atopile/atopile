@@ -11,6 +11,7 @@ from itertools import groupby
 import networkx as nx
 
 import faebryk.library._F as F
+from faebryk.core.graph import GraphFunctions
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.grid import (
     Coord,
@@ -124,7 +125,7 @@ class PCB_Router:
         )
 
     def route_all(self):
-        nets = self.transformer.graph.nodes_of_type(F.Net)
+        nets = GraphFunctions(self.transformer.graph).nodes_of_type(F.Net)
 
         # TODO add net picking heuristic
         for net in nets:

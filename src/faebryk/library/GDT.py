@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +15,8 @@ class GDT(Module):
     tube_1: F.Electrical
     tube_2: F.Electrical
 
-    dc_breakdown_voltage: F.TBD[Quantity]
-    impulse_discharge_current: F.TBD[Quantity]
+    dc_breakdown_voltage: F.TBD
+    impulse_discharge_current: F.TBD
 
     @L.rt_field
     def can_bridge(self):

@@ -2,142 +2,48 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from abc import abstractmethod
-from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Mapping, Self
+from typing import TYPE_CHECKING
 
-from typing_extensions import deprecated
+from faebryk.core.cpp import Graph
+from faebryk.core.node import Node
 
-from faebryk.libs.util import (
-    ConfigFlag,
-    LazyMixin,
-    SharedReference,
-    bfs_visit,
-    lazy_construct,
-)
+if TYPE_CHECKING:
+    from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
 
-# only for typechecker
 
-if TYPE_CHECKING:
-    from faebryk.core.link import Link
+# TODO move these to C++
+# just here for making refactoring easier for the moment
+# a bit weird typecheck
+class GraphFunctions:
+    # Make all kinds of graph filtering functions so we can optimize them in the future
+    # Avoid letting user query all graph nodes always because quickly very slow
+    def __init__(self, graph: Graph):
+        self.graph = graph
 
-# TODO create GraphView base class
+    def node_projection(self) -> list["Node"]:
+        return list(self.nodes_of_type(Node))
 
-LAZY = ConfigFlag("LAZY", False, "Use lazy construction for graphs")
+    def nodes_with_trait[T: "Trait"](self, trait: type[T]) -> list[tuple["Node", T]]:
+        return [
+            (n, n.get_trait(trait))
+            for n in self.node_projection()
+            if n.has_trait(trait)
+        ]
 
+    # TODO: Waiting for python to add support for type mapping
+    def nodes_with_traits[*Ts](
+        self, traits: tuple[*Ts]
+    ):  # -> list[tuple[Node, tuple[*Ts]]]:
+        return [
+            (n, tuple(n.get_trait(trait) for trait in traits))  # type: ignore
+            for n in self.node_projection()
+            if all(n.has_trait(trait) for trait in traits)  # type: ignore
+        ]
 
-class Graph[T, GT](LazyMixin, SharedReference[GT]):
-    # perf counter
-    counter = 0
+    def nodes_of_type[T: "Node"](self, t: type[T]) -> set[T]:
+        return {n for n in self.graph.node_projection() if isinstance(n, t)}
 
-    def __init__(self, G: GT):
-        super().__init__(G)
-        type(self).counter += 1
-
-    @property
-    @deprecated("Use call")
-    def G(self):
-        return self()
-
-    def merge(self, other: Self) -> tuple[Self, bool]:
-        lhs, rhs = self, other
-
-        # if node not init, graph is empty / not existing
-        # thus we dont have to merge the graph, just need to setup the ref
-        if LAZY:
-            if not lhs.is_init or not rhs.is_init:
-                if not lhs.is_init:
-                    lhs, rhs = rhs, lhs
-                rhs.links = lhs.links
-                rhs.object = lhs.object
-                lhs.links.add(rhs)
-                rhs._init = True
-                return lhs, True
-
-        if lhs() == rhs():
-            return self, False
-
-        unioned = self._union(self(), other())
-        if unioned is rhs():
-            lhs, rhs = rhs, lhs
-        if unioned is not lhs():
-            lhs.set(unioned)
-
-        res = lhs.link(rhs)
-        if not res:
-            return self, False
-
-        # TODO remove, should not be needed
-        assert isinstance(res.representative, type(self))
-
-        return res.representative, True
-
-    def __repr__(self) -> str:
-        G = self()
-        node_cnt = self.node_cnt
-        edge_cnt = self.edge_cnt
-        g_repr = f"{type(G).__name__}({node_cnt=},{edge_cnt=})({hex(id(G))})"
-        return f"{type(self).__name__}({g_repr})"
-
-    @property
-    @abstractmethod
-    def node_cnt(self) -> int: ...
-
-    @property
-    @abstractmethod
-    def edge_cnt(self) -> int: ...
-
-    @abstractmethod
-    def v(self, obj: T): ...
-
-    @abstractmethod
-    def add_edge(self, from_obj: T, to_obj: T, link: "Link"): ...
-
-    # TODO implement everywhere
-    @abstractmethod
-    def remove_edge(self, from_obj: T, to_obj: T | None = None): ...
-
-    @abstractmethod
-    def is_connected(self, from_obj: T, to_obj: T) -> "Link | None": ...
-
-    @abstractmethod
-    def get_edges(self, obj: T) -> Mapping[T, "Link"]: ...
-
-    @staticmethod
-    @abstractmethod
-    def _union(rep: GT, old: GT) -> GT: ...
-
-    def bfs_visit(
-        self,
-        filter: Callable[[list[T], "Link"], bool],
-        start: Iterable[T],
-        G: GT | None = None,
-    ):
-        G = G or self()
-
-        return bfs_visit(
-            lambda n: [
-                o for o, link in self.get_edges(n[-1]).items() if filter(n + [o], link)
-            ],
-            start,
-        )
-
-    def __str__(self) -> str:
-        return f"{type(self).__name__}(V={self.node_cnt}, E={self.edge_cnt})"
-
-    @abstractmethod
-    def __iter__(self) -> Iterator[T]: ...
-
-    # TODO subgraph should return a new GraphView
-    @abstractmethod
-    def subgraph(self, node_filter: Callable[[T], bool]) -> Iterable[T]: ...
-
-    def subgraph_type(self, *types: type[T]):
-        return self.subgraph(lambda n: isinstance(n, types))
-
-    # TODO remove boilerplate for lazy, if it becomes a bit more usable
-    def __init_subclass__(cls) -> None:
-        super().__init_subclass__()
-        if LAZY:
-            lazy_construct(cls)
+    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]:
+        return {n for n in self.graph.node_projection() if isinstance(n, t)}

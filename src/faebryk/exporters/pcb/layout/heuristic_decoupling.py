@@ -199,7 +199,7 @@ def place_next_to_pad(
     nfp = module.get_trait(F.has_footprint).get_footprint()
     npad = find(
         nfp.get_children(direct_only=True, types=F.Pad),
-        lambda p: p.net.is_connected_to(pad.net) is not None,
+        lambda p: p.net.is_connected_to(pad.net),
     )
     nkfp, nkpad = npad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()
     if len(nkpad) != 1:
@@ -249,7 +249,7 @@ def place_next_to(
     for parent_pad, child in zip(pads_intf, children):
         intf = find(
             child.get_children(direct_only=True, types=F.Electrical),
-            lambda x: x.is_connected_to(parent_intf) is not None,
+            lambda x: x.is_connected_to(parent_intf),
         )
 
         logger.debug(f"Placing {intf} next to {parent_pad}")

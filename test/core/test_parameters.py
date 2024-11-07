@@ -52,8 +52,8 @@ class TestParameters(unittest.TestCase):
         )
 
         # TBD Range
-        a = F.TBD[int]()
-        b = F.TBD[int]()
+        a = F.TBD()
+        b = F.TBD()
         R_TBD = F.Range(a, b)
         add = R_ONE_TEN + R_TBD
         mul = R_ONE_TEN * R_TBD
@@ -95,8 +95,8 @@ class TestParameters(unittest.TestCase):
         self.assertEqual(R_ONE_TEN & {1, 2, 11}, F.Set([1, 2]))
         self.assertEqual(R_ONE_TEN & F.Range(12, 13), F.Set([]))
         # with tbd
-        a = F.TBD[int]()
-        b = F.TBD[int]()
+        a = F.TBD()
+        b = F.TBD()
         RTBD = F.Range(a, b)
         r_one_ten_con_tbd = R_ONE_TEN & RTBD
         assertIsInstance(r_one_ten_con_tbd, F.Operation)
@@ -154,16 +154,16 @@ class TestParameters(unittest.TestCase):
         self.assertEqual(F.ANY(), F.ANY())
 
         def test_merge(
-            a: Parameter[int] | set[int] | int | tuple[int, int],
-            b: Parameter[int] | set[int] | int | tuple[int, int],
+            a: Parameter | set[int] | int | tuple[int, int],
+            b: Parameter | set[int] | int | tuple[int, int],
             expected,
         ):
-            a = Parameter[int].from_literal(a)
-            expected = Parameter[int].from_literal(expected)
+            a = Parameter.from_literal(a)
+            expected = Parameter.from_literal(expected)
             self.assertEqual(a.merge(b), expected)
 
         def fail_merge(a, b):
-            a = Parameter[int].from_literal(a)
+            a = Parameter.from_literal(a)
             self.assertRaises(Parameter.MergeException, lambda: a.merge(b))
 
         # F.Sets ----
@@ -196,11 +196,11 @@ class TestParameters(unittest.TestCase):
 
     def test_specific(self):
         def test_spec(
-            a: Parameter[int] | set[int] | int | tuple[int, int],
-            b: Parameter[int] | set[int] | int | tuple[int, int],
+            a: Parameter | set[int] | int | tuple[int, int],
+            b: Parameter | set[int] | int | tuple[int, int],
             expected: bool = True,
         ):
-            b = Parameter[int].from_literal(b)
+            b = Parameter.from_literal(b)
             if expected:
                 self.assertTrue(b.is_subset_of(a))
             else:
@@ -231,11 +231,11 @@ class TestParameters(unittest.TestCase):
 
     def test_compress(self):
         def test_comp(
-            a: Parameter[int].LIT_OR_PARAM,
-            expected: Parameter[int].LIT_OR_PARAM,
+            a: Parameter.LIT_OR_PARAM,
+            expected: Parameter.LIT_OR_PARAM,
         ):
-            a = Parameter[int].from_literal(a)
-            expected = Parameter[int].from_literal(expected)
+            a = Parameter.from_literal(a)
+            expected = Parameter.from_literal(expected)
             self.assertEqual(a.get_most_narrow(), expected)
 
         test_comp(1, 1)

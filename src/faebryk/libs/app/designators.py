@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import cast
 
 import faebryk.library._F as F
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 from faebryk.libs.util import duplicates, get_key, groupby
@@ -22,7 +22,7 @@ def attach_random_designators(graph: Graph):
     sorts nodes by path and then sequentially assigns designators
     """
 
-    nodes = {n for n, _ in graph.nodes_with_trait(F.has_footprint)}
+    nodes = {n for n, _ in GraphFunctions(graph).nodes_with_trait(F.has_footprint)}
 
     in_use = {
         n.get_trait(F.has_designator).get_designator()
@@ -73,7 +73,7 @@ def attach_random_designators(graph: Graph):
 
 
 def override_names_with_designators(graph: Graph):
-    for n, t in graph.nodes_with_trait(F.has_designator):
+    for n, t in GraphFunctions(graph).nodes_with_trait(F.has_designator):
         name = t.get_designator()
         if n.has_trait(F.has_overriden_name):
             logger.warning(
@@ -122,7 +122,7 @@ def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: P
     pattern = re.compile(r"^(.*)\[[^\]]*\]$")
     translation = {
         n.get_full_name(): t.get_name()
-        for n, t in graph.nodes_with_trait(F.has_overriden_name)
+        for n, t in GraphFunctions(graph).nodes_with_trait(F.has_overriden_name)
     }
 
     for fp in pcb.kicad_pcb.footprints:

@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.library._F as F
-from faebryk.libs.library import L
+from faebryk.libs.library import L  # noqa: F401
 
 
 class Logic(F.Signal):
-    state = L.f_field(F.Range)(False, True)
+    """
+    Acts as protocol, because multi inheritance is not supported
+    """
 
-    def set(self, on: bool):
-        self.state.merge(on)
+    def set(self, on: bool): ...
