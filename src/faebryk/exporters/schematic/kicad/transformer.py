@@ -765,7 +765,9 @@ class Transformer:
         )
         # for each sch_symbol / (fab_symbol | None) pair, create a shim part
         # we need to shim sym object which aren't even in the graph to avoid colliding
-        for _, f_sym_trait in self.graph.nodes_with_trait(F.Symbol.has_symbol):
+        for _, f_sym_trait in GraphFunctions(self.graph).nodes_with_trait(
+            F.Symbol.has_symbol
+        ):
             if sch_sym_trait := f_sym_trait.reference.try_get_trait(
                 Transformer.has_linked_sch_symbol
             ):
@@ -782,7 +784,7 @@ class Transformer:
         sch_to_shim_pin_map: FuncDict[SCH.C_symbol_instance.C_pin, shims.Pin] = (
             FuncDict()
         )
-        fab_nets = self.graph.nodes_of_type(F.Net)
+        fab_nets = GraphFunctions(self.graph).nodes_of_type(F.Net)
         for net in fab_nets:
             shim_net = shims.Net()
             shim_net.name = net.get_trait(F.has_overriden_name).get_name()
