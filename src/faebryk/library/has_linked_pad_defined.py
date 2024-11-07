@@ -20,10 +20,10 @@ class has_linked_pad_defined(F.has_linked_pad.impl()):
     def get_pads(self) -> set["Pad"]:
         return self.pads
 
-    def handle_duplicate(self, other: TraitImpl, node: Node) -> bool:
-        if not isinstance(other, has_linked_pad_defined):
-            self.pads.update(other.get_pads())
-            return super().handle_duplicate(other, node)
+    def handle_duplicate(self, old: TraitImpl, node: Node) -> bool:
+        if not isinstance(old, has_linked_pad_defined):
+            self.pads.update(old.get_pads())
+            return super().handle_duplicate(old, node)
 
-        other.pads.update(self.pads)
+        old.pads.update(self.pads)
         return False

@@ -5,7 +5,7 @@ from faebryk.core.parameter import Parameter
 from faebryk.libs.units import UnitsContainer
 
 
-class ANY[PV](Parameter[PV]):
+class ANY(Parameter):
     """
     Allow parameter to take any value.
     Operations with this parameter automatically resolve to ANY too.

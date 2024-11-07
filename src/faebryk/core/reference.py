@@ -1,6 +1,10 @@
 from collections import defaultdict
+from typing import cast
 
-from faebryk.core.graphinterface import GraphInterfaceReference
+from faebryk.core.graphinterface import (
+    GraphInterfaceReference,
+    GraphInterfaceReferenceUnboundError,
+)
 from faebryk.core.link import LinkPointer
 from faebryk.core.node import Node, constructed_field
 
@@ -21,8 +25,8 @@ class Reference[O: Node](constructed_field):
 
         def get(instance: Node) -> O:
             try:
-                return self.gifs[instance].get_reference()
-            except GraphInterfaceReference.UnboundError as ex:
+                return cast(O, self.gifs[instance].get_reference())
+            except GraphInterfaceReferenceUnboundError as ex:
                 raise Reference.UnboundError from ex
 
         def set_(instance: Node, value: O):
@@ -38,7 +42,7 @@ class Reference[O: Node](constructed_field):
                 raise TypeError(f"Expected {out_type} got {type(value)}")
 
             # attach our gif to what we're referring to
-            self.gifs[instance].connect(value.self_gif, LinkPointer)
+            self.gifs[instance].connect(value.self_gif, LinkPointer())
 
         property.__init__(self, get, set_)
 

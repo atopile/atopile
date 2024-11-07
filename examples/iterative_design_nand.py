@@ -17,6 +17,7 @@ import logging
 import typer
 
 import faebryk.library._F as F
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.examples.buildutil import apply_design_to_pcb
@@ -119,7 +120,9 @@ def App():
         app.add(c)
 
     # parametrizing
-    for _, t in app.get_graph().nodes_with_trait(F.ElectricLogic.has_pulls):
+    for _, t in GraphFunctions(app.get_graph()).nodes_with_trait(
+        F.ElectricLogic.has_pulls
+    ):
         for pull_resistor in (r for r in t.get_pulls() if r):
             pull_resistor.resistance.merge(F.Range.from_center_rel(100 * P.kohm, 0.05))
     power_source.power.voltage.merge(3 * P.V)

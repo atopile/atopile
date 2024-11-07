@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Callable, Iterable
 from faebryk.core.moduleinterface import GraphInterfaceModuleSibling
 from faebryk.core.node import Node, NodeException, f_field
 from faebryk.core.trait import Trait
-from faebryk.libs.util import unique_ref
+from faebryk.libs.util import cast_assert, unique_ref
 
 if TYPE_CHECKING:
     from faebryk.core.moduleinterface import ModuleInterface
@@ -29,7 +29,7 @@ class Module(Node):
     def get_most_special(self) -> "Module":
         specialers = {
             specialer
-            for specialer_gif in self.specialized.get_direct_connections()
+            for specialer_gif in self.specialized.get_gif_edges()
             if (specialer := specialer_gif.node) is not self
             and isinstance(specialer, Module)
         }
@@ -118,11 +118,13 @@ class Module(Node):
         assert not has_parent or attach_to is None
         if not has_parent:
             if attach_to:
-                attach_to.add(special, container=attach_to.specialized)
+                attach_to.add(special, container=attach_to.specialized_)
             else:
                 gen_parent = self.get_parent()
                 if gen_parent:
-                    gen_parent[0].add(special, name=f"{gen_parent[1]}_specialized")
+                    cast_assert(Node, gen_parent[0]).add(
+                        special, name=f"{gen_parent[1]}_specialized"
+                    )
 
         return special
 

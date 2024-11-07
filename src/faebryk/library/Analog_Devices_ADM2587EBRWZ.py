@@ -97,6 +97,7 @@ class Analog_Devices_ADM2587EBRWZ(Module):
         )
 
     def __init__(self, full_duplex: bool = False):
+        super().__init__()
         self._full_duplex = full_duplex
         if full_duplex:
             raise NotImplementedError("Full duplex RS485 not implemented")

@@ -265,7 +265,7 @@ def pick_battery(module: F.Battery):
     )
 
 
-def pick_switch(module: "_TSwitch[F.Electrical]"):
+def pick_switch(module: "_TSwitch"):
     module.add(F.can_attach_to_footprint_symmetrically())
     pick_module_by_params(
         module,

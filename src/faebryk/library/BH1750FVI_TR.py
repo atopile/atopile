@@ -6,14 +6,14 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 class BH1750FVI_TR(Module):
     class _bh1750_esphome_config(F.has_esphome_config.impl()):
-        update_interval: F.TBD[Quantity]
+        update_interval: F.TBD
 
         def get_config(self) -> dict:
             val = self.update_interval.get_most_narrow()

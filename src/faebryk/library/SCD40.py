@@ -5,7 +5,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 
 
 class SCD40(Module):
@@ -14,7 +14,7 @@ class SCD40(Module):
     """
 
     class _scd4x_esphome_config(F.has_esphome_config.impl()):
-        update_interval: F.TBD[Quantity]
+        update_interval: F.TBD
 
         def get_config(self) -> dict:
             val = self.update_interval.get_most_narrow()

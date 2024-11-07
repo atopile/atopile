@@ -4,25 +4,27 @@ import logging
 from typing import (
     Iterable,
     Sequence,
+    cast,
 )
 
 from typing_extensions import Self
 
-from faebryk.core.core import LINK_TB
-from faebryk.core.graphinterface import (
-    GraphInterface,
-    GraphInterfaceHierarchical,
+from faebryk.core.cpp import (  # noqa: F401
+    GraphInterfaceModuleConnection,
+    GraphInterfaceModuleSibling,
 )
+from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.link import (
     Link,
     LinkDirect,
-    LinkDirectShallow,
+    LinkDirectConditional,
+    LinkDirectConditionalFilterResult,
     LinkFilteredException,
-    _TLinkDirectShallow,
 )
-from faebryk.core.node import Node
+from faebryk.core.node import CNode, Node
 from faebryk.core.trait import Trait
-from faebryk.libs.util import cast_assert, once, print_stack
+from faebryk.library.can_specialize import can_specialize
+from faebryk.libs.util import cast_assert, is_type_set_subclasses, once
 
 logger = logging.getLogger(__name__)
 
@@ -32,37 +34,30 @@ logger = logging.getLogger(__name__)
 # Chain resolve is for deciding what to do in a case like this
 # if1 -> link1 -> if2 -> link2 -> if3
 # This will then decide with which link if1 and if3 are connected
-def _resolve_link_transitive(links: Iterable[type[Link]]) -> type[Link]:
-    from faebryk.libs.util import is_type_set_subclasses
+def _resolve_link_transitive(links: set[type[Link]]) -> type[Link]:
+    if len(links) == 1:
+        return next(iter(links))
 
-    uniq = set(links)
-    assert uniq
-
-    if len(uniq) == 1:
-        return next(iter(uniq))
-
-    if is_type_set_subclasses(uniq, {_TLinkDirectShallow}):
+    if is_type_set_subclasses(links, {LinkDirectConditional}):
         # TODO this only works if the filter is identical
         raise NotImplementedError()
 
-    if is_type_set_subclasses(uniq, {LinkDirect, _TLinkDirectShallow}):
-        return [u for u in uniq if issubclass(u, _TLinkDirectShallow)][0]
+    if is_type_set_subclasses(links, {LinkDirect, LinkDirectConditional}):
+        return [u for u in links if issubclass(u, LinkDirectConditional)][0]
 
     raise NotImplementedError()
 
 
 # This one resolves the case if1 -> link1 -> if2; if1 -> link2 -> if2
 def _resolve_link_duplicate(links: Iterable[type[Link]]) -> type[Link]:
-    from faebryk.libs.util import is_type_set_subclasses
-
     uniq = set(links)
     assert uniq
 
     if len(uniq) == 1:
         return next(iter(uniq))
 
-    if is_type_set_subclasses(uniq, {LinkDirect, _TLinkDirectShallow}):
-        return [u for u in uniq if not issubclass(u, _TLinkDirectShallow)][0]
+    if is_type_set_subclasses(uniq, {LinkDirect, LinkDirectConditional}):
+        return [u for u in uniq if not issubclass(u, LinkDirectConditional)][0]
 
     raise NotImplementedError()
 
@@ -82,12 +77,6 @@ class _LEVEL:
 
 
 _CONNECT_DEPTH = _LEVEL()
-
-
-class GraphInterfaceModuleSibling(GraphInterfaceHierarchical): ...
-
-
-class GraphInterfaceModuleConnection(GraphInterface): ...
 
 
 # CONNECT PROCEDURE
@@ -116,27 +105,37 @@ class ModuleInterface(Node):
     specialized: GraphInterface
     connected: GraphInterfaceModuleConnection
 
-    # TODO rename
-    @classmethod
-    @once
-    def LinkDirectShallow(cls):
+    class _LinkDirectShallow(LinkDirectConditional):
         """
         Make link that only connects up but not down
         """
 
-        def test(node: Node):
-            return not any(isinstance(p[0], cls) for p in node.get_hierarchy()[:-1])
+        def has_no_parent_with_type(self, node: CNode):
+            parents = (p[0] for p in node.get_hierarchy()[:-1])
+            return not any(isinstance(p, self.test_type) for p in parents)
 
-        class _LinkDirectShallowMif(
-            LinkDirectShallow(lambda link, gif: test(gif.node))
-        ): ...
+        def __init__(self, test_type: type["ModuleInterface"]):
+            self.test_type = test_type
+            super().__init__(
+                lambda src, dst: LinkDirectConditionalFilterResult.FILTER_PASS
+                if self.has_no_parent_with_type(dst.node)
+                else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE
+            )
+
+    # TODO rename
+    @classmethod
+    @once
+    def LinkDirectShallow(cls):
+        class _LinkDirectShallowMif(ModuleInterface._LinkDirectShallow):
+            def __init__(self):
+                super().__init__(test_type=cls)
 
         return _LinkDirectShallowMif
 
     def __preinit__(self) -> None: ...
 
     @staticmethod
-    def _get_connected(gif: GraphInterface):
+    def _get_connected(gif: GraphInterface, clss: bool):
         assert isinstance(gif.node, ModuleInterface)
         connections = gif.edges.items()
 
@@ -144,19 +143,43 @@ class ModuleInterface(Node):
         assert len(connections) == len({c[0] for c in connections})
 
         return {
-            cast_assert(ModuleInterface, s.node): link
+            cast_assert(ModuleInterface, s.node): (link if not clss else type(link))
             for s, link in connections
             if s.node is not gif.node
         }
 
-    def get_connected(self):
-        return self._get_connected(self.connected)
+    def get_connected(self, clss: bool = False):
+        return self._get_connected(self.connected, clss)
 
-    def get_specialized(self):
-        return self._get_connected(self.specialized)
+    def get_specialized(self, clss: bool = False):
+        return self._get_connected(self.specialized, clss)
 
-    def get_specializes(self):
-        return self._get_connected(self.specializes)
+    def get_specializes(self, clss: bool = False):
+        return self._get_connected(self.specializes, clss)
+
+    @staticmethod
+    def _cross_connect(
+        s_group: dict["ModuleInterface", type[Link]],
+        d_group: dict["ModuleInterface", type[Link]],
+        linkcls: type[Link],
+        hint=None,
+    ):
+        if logger.isEnabledFor(logging.DEBUG) and hint is not None:
+            logger.debug(f"Connect {hint} {s_group} -> {d_group}")
+
+        for s, slink in s_group.items():
+            linkclss = {slink, linkcls}
+            linkclss_ambiguous = len(linkclss) > 1
+            for d, dlink in d_group.items():
+                # can happen while connection trees are resolving
+                if s is d:
+                    continue
+                if not linkclss_ambiguous and dlink in linkclss:
+                    link = linkcls
+                else:
+                    link = _resolve_link_transitive(linkclss | {dlink})
+
+                s._connect_across_hierarchies(d, linkcls=link)
 
     def _connect_siblings_and_connections(
         self, other: "ModuleInterface", linkcls: type[Link]
@@ -176,36 +199,23 @@ class ModuleInterface(Node):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"MIF connection: {self} to {other}")
 
-        def cross_connect(
-            s_group: dict[ModuleInterface, type[Link] | Link],
-            d_group: dict[ModuleInterface, type[Link] | Link],
-            hint=None,
-        ):
-            if logger.isEnabledFor(logging.DEBUG) and hint is not None:
-                logger.debug(f"Connect {hint} {s_group} -> {d_group}")
-
-            for s, slink in s_group.items():
-                if isinstance(slink, Link):
-                    slink = type(slink)
-                for d, dlink in d_group.items():
-                    if isinstance(dlink, Link):
-                        dlink = type(dlink)
-                    # can happen while connection trees are resolving
-                    if s is d:
-                        continue
-                    link = _resolve_link_transitive([slink, dlink, linkcls])
-
-                    s._connect_across_hierarchies(d, linkcls=link)
-
         # Connect to all connections
-        s_con = self.get_connected() | {self: linkcls}
-        d_con = other.get_connected() | {other: linkcls}
-        cross_connect(s_con, d_con, "connections")
+        s_con = self.get_connected(clss=True) | {self: linkcls}
+        d_con = other.get_connected(clss=True) | {other: linkcls}
+        ModuleInterface._cross_connect(s_con, d_con, linkcls, "connections")
 
         # Connect to all siblings
-        s_sib = self.get_specialized() | self.get_specializes() | {self: linkcls}
-        d_sib = other.get_specialized() | other.get_specializes() | {other: linkcls}
-        cross_connect(s_sib, d_sib, "siblings")
+        s_sib = (
+            self.get_specialized(clss=True)
+            | self.get_specializes(clss=True)
+            | {self: linkcls}
+        )
+        d_sib = (
+            other.get_specialized(clss=True)
+            | other.get_specializes(clss=True)
+            | {other: linkcls}
+        )
+        ModuleInterface._cross_connect(s_sib, d_sib, linkcls, "siblings")
 
         return self
 
@@ -261,7 +271,7 @@ class ModuleInterface(Node):
         # depends on connections between src_i & dst_i
         # e.g. if any Shallow, we need to choose shallow
         link = _resolve_link_transitive(
-            [type(sublink) for _, _, sublink in connection_map if sublink]
+            {type(sublink) for _, _, sublink in connection_map if sublink}
         )
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -278,8 +288,6 @@ class ModuleInterface(Node):
             resolved = _resolve_link_duplicate([type(existing_link), linkcls])
             if resolved is type(existing_link):
                 return
-            if LINK_TB:
-                print(print_stack(existing_link.tb))
             raise NotImplementedError(
                 "Overriding existing links not implemented, tried to override "
                 + f"{existing_link} with {resolved}"
@@ -287,7 +295,7 @@ class ModuleInterface(Node):
 
         # level 0 connect
         try:
-            self.connected.connect(other.connected, linkcls=linkcls)
+            self.connected.connect(other.connected, linkcls())
         except LinkFilteredException:
             return
 
@@ -313,13 +321,6 @@ class ModuleInterface(Node):
             raise Exception(f"Recursion error while connecting {self} to {other}")
 
         _CONNECT_DEPTH.dec()
-
-    def get_direct_connections(self) -> set["ModuleInterface"]:
-        return {
-            gif.node
-            for gif in self.connected.get_direct_connections()
-            if isinstance(gif.node, ModuleInterface) and gif.node is not self
-        }
 
     def connect(self: Self, *other: Self, linkcls=None) -> Self:
         # TODO consider some type of check at the end within the graph instead
@@ -347,12 +348,19 @@ class ModuleInterface(Node):
         return self.connect(other, linkcls=type(self).LinkDirectShallow())
 
     def is_connected_to(self, other: "ModuleInterface"):
-        return self.connected.is_connected(other.connected)
+        return self.connected.is_connected_to(other.connected)
 
     def specialize[T: ModuleInterface](self, special: T) -> T:
         logger.debug(f"Specializing MIF {self} with {special}")
 
-        assert isinstance(special, type(self))
+        extra = set()
+        # allow non-base specialization if explicitly allowed
+        if special.has_trait(can_specialize):
+            extra = set(special.get_trait(can_specialize).get_specializable_types())
+
+        assert isinstance(special, type(self)) or any(
+            issubclass(t, type(self)) for t in extra
+        )
 
         # This is doing the heavy lifting
         self.connect(special)
@@ -360,4 +368,4 @@ class ModuleInterface(Node):
         # Establish sibling relationship
         self.specialized.connect(special.specializes)
 
-        return special
+        return cast(T, special)

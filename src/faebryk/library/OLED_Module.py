@@ -38,9 +38,9 @@ class OLED_Module(Module):
     power: F.ElectricPower
     i2c: F.I2C
 
-    display_resolution: F.TBD[DisplayResolution]
-    display_controller: F.TBD[DisplayController]
-    display_size: F.TBD[DisplaySize]
+    display_resolution: F.TBD
+    display_controller: F.TBD
+    display_size: F.TBD
 
     def __preinit__(self):
         self.power.voltage.merge(F.Range(3.0 * P.V, 5 * P.V))

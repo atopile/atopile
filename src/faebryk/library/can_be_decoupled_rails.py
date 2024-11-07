@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class can_be_decoupled_rails(F.can_be_decoupled.impl()):
     def __init__(self, *rails: F.ElectricPower):
+        super().__init__()
         assert rails
         self._rails = rails
 

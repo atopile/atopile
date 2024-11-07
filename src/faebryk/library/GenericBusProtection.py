@@ -9,7 +9,9 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
 
 
-class GenericBusProtection[T: ModuleInterface](Module):
+class GenericBusProtection(Module):
+    type T = ModuleInterface
+
     @L.rt_field
     def bus_unprotected(self):
         return self.bus_factory()
@@ -23,7 +25,9 @@ class GenericBusProtection[T: ModuleInterface](Module):
         self.bus_factory = bus_factory
 
     def __preinit__(self):
-        def get_mifs[U: ModuleInterface](bus: T, mif_type: type[U]) -> set[U]:
+        def get_mifs[U: ModuleInterface](
+            bus: "GenericBusProtection.T", mif_type: type[U]
+        ) -> set[U]:
             return bus.get_children(direct_only=True, types=mif_type)
 
         raw = list(

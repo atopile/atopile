@@ -7,7 +7,7 @@ import pytest
 
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node
-from faebryk.core.trait import Trait, TraitImpl
+from faebryk.core.trait import Trait
 from faebryk.libs.library import L
 
 try:
@@ -46,20 +46,32 @@ def test_symbol_types(name: str, module):
             name.startswith("_")
             or not isinstance(module, type)
             or not issubclass(module, Node)
-            or (issubclass(module, Trait) and not issubclass(module, TraitImpl))
+            or (issubclass(module, Trait))
         )
     ],
 )
+@pytest.mark.timeout(60)  # TODO lower
 def test_init_args(name: str, module):
     """Make sure we can instantiate all classes without error"""
 
-    # check if constructor has no args & no varargs
-    init_signature = inspect.signature(module.__init__)
-    if len(init_signature.parameters) > 1 or any(
-        param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-        for param in init_signature.parameters.values()
+    # handle post_init_decorator
+    init = (
+        module.__init__
+        if not hasattr(module, "__original_init__")
+        else module.__original_init__
+    )
+    init_signature = inspect.signature(init)
+    args = [p for p in init_signature.parameters.values() if p.name != "self"]
+
+    # check if constructor has no non-default args
+    if any(
+        p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        and p.default is inspect.Parameter.empty
+        for p in args
     ):
-        pytest.skip("Skipped module with init args because we can't instantiate it")
+        pytest.skip(
+            f"Skipped module with init args because we can't instantiate it: {args}"
+        )
 
     try:
         module()

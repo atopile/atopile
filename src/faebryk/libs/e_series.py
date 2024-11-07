@@ -435,8 +435,8 @@ _e_series_cache: list[tuple[Parameter, int, set]] = []
 
 
 def e_series_intersect[T: float | Quantity](
-    value: Parameter[T], e_series: E_SERIES = E_SERIES_VALUES.E_ALL
-) -> F.Set[T]:
+    value: Parameter, e_series: E_SERIES = E_SERIES_VALUES.E_ALL
+) -> F.Set:
     # TODO this got really uglu, need to clean up
 
     value = value.get_most_narrow()

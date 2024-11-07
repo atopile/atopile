@@ -22,8 +22,8 @@ class BJT(Module):
         SATURATION = auto()
         CUT_OFF = auto()
 
-    doping_type: Parameter[DopingType]
-    operation_region: Parameter[OperationRegion]
+    doping_type: Parameter
+    operation_region: Parameter
 
     emitter: F.Electrical
     base: F.Electrical

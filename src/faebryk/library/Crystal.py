@@ -4,7 +4,6 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 
 
 class Crystal(Module):
@@ -17,13 +16,13 @@ class Crystal(Module):
     # ----------------------------------------
     #               parameters
     # ----------------------------------------
-    frequency: F.TBD[Quantity]
-    frequency_tolerance: F.TBD[F.Range]
-    frequency_temperature_tolerance: F.TBD[F.Range]
-    frequency_ageing: F.TBD[F.Range]
-    equivalent_series_resistance: F.TBD[Quantity]
-    shunt_capacitance: F.TBD[Quantity]
-    load_capacitance: F.TBD[Quantity]
+    frequency: F.TBD
+    frequency_tolerance: F.TBD
+    frequency_temperature_tolerance: F.TBD
+    frequency_ageing: F.TBD
+    equivalent_series_resistance: F.TBD
+    shunt_capacitance: F.TBD
+    load_capacitance: F.TBD
 
     # ----------------------------------------
     #                traits

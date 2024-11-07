@@ -6,7 +6,6 @@ from enum import Enum, auto
 
 import faebryk.library._F as F
 from faebryk.core.parameter import Parameter
-from faebryk.libs.units import Quantity
 
 
 class LED(F.Diode):
@@ -40,9 +39,9 @@ class LED(F.Diode):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
-    brightness: F.TBD[Quantity]
-    max_brightness: F.TBD[Quantity]
-    color: F.TBD[Color]
+    brightness: F.TBD
+    max_brightness: F.TBD
+    color: F.TBD
 
     def __preinit__(self):
         self.current.merge(self.brightness / self.max_brightness * self.max_current)
@@ -51,12 +50,12 @@ class LED(F.Diode):
         #    F.Range(0 * P.millicandela, self.max_brightness)
         # )
 
-    def set_intensity(self, intensity: Parameter[Quantity]) -> None:
+    def set_intensity(self, intensity: Parameter) -> None:
         self.brightness.merge(intensity * self.max_brightness)
 
     def connect_via_current_limiting_resistor(
         self,
-        input_voltage: Parameter[Quantity],
+        input_voltage: Parameter,
         resistor: F.Resistor,
         target: F.Electrical,
         low_side: bool,

@@ -13,7 +13,7 @@ from typing import Any, List, Protocol
 # import numpy as np
 # from shapely import Polygon
 import faebryk.library._F as F
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.exceptions import FaebrykException
@@ -125,7 +125,9 @@ class SchTransformer:
         symbols = {
             (f.propertys["Reference"].value, f.lib_id): f for f in self.sch.symbols
         }
-        for node, sym_trait in self.graph.nodes_with_trait(F.Symbol.has_symbol):
+        for node, sym_trait in GraphFunctions(self.graph).nodes_with_trait(
+            F.Symbol.has_symbol
+        ):
             # FIXME: I believe this trait is used as a proxy for being a component
             # since, names are replaced with designators during typical pipelines
             if not node.has_trait(F.has_overriden_name):
@@ -151,7 +153,7 @@ class SchTransformer:
         # Log what we were able to attach
         attached = {
             n: t.symbol
-            for n, t in self.graph.nodes_with_trait(
+            for n, t in GraphFunctions(self.graph).nodes_with_trait(
                 SchTransformer.has_linked_sch_symbol
             )
         }
@@ -238,7 +240,7 @@ class SchTransformer:
     def get_all_symbols(self) -> List[tuple[Module, F.Symbol]]:
         return [
             (cast_assert(Module, cmp), t.symbol)
-            for cmp, t in self.graph.nodes_with_trait(
+            for cmp, t in GraphFunctions(self.graph).nodes_with_trait(
                 SchTransformer.has_linked_sch_symbol
             )
         ]

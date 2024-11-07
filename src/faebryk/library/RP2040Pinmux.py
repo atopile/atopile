@@ -27,6 +27,7 @@ class RP2040Pinmux(F.Pinmux):
     #                 traits
     # ----------------------------------------
     def __init__(self, mcu: "RP2040"):
+        super().__init__()
         self._mcu = mcu
 
     def __preinit__(self):

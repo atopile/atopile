@@ -9,49 +9,43 @@ import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.library import L
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 from faebryk.libs.util import RecursionGuard
 
 
 class ElectricPower(F.Power):
-    class can_be_decoupled_power(F.can_be_decoupled_defined):
-        def __init__(self) -> None: ...
-
+    class can_be_decoupled_power(F.can_be_decoupled.impl()):
         def on_obj_set(self):
             obj = self.get_obj(ElectricPower)
-            super().__init__(hv=obj.hv, lv=obj.lv)
+            self.hv = obj.hv
+            self.lv = obj.lv
 
         def decouple(self):
             obj = self.get_obj(ElectricPower)
-            return (
-                super()
-                .decouple()
-                .builder(
-                    lambda c: c.rated_voltage.merge(
-                        F.Range(obj.voltage * 2.0, math.inf * P.V)
-                    )
+            return F.can_be_decoupled_defined.decouple(self).builder(
+                lambda c: c.rated_voltage.merge(
+                    F.Range(obj.voltage * 2.0, math.inf * P.V)
                 )
             )
 
-    class can_be_surge_protected_power(F.can_be_surge_protected_defined):
-        def __init__(self) -> None: ...
-
+    class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
         def on_obj_set(self):
             obj = self.get_obj(ElectricPower)
-            super().__init__(obj.lv, obj.hv)
+            self.lv = obj.lv
+            self.hv = obj.hv
 
         def protect(self):
             obj = self.get_obj(ElectricPower)
             return [
                 tvs.builder(lambda t: t.reverse_working_voltage.merge(obj.voltage))
-                for tvs in super().protect()
+                for tvs in F.can_be_surge_protected_defined.protect(self)
             ]
 
     hv: F.Electrical
     lv: F.Electrical
 
-    voltage: F.TBD[Quantity]
-    max_current: F.TBD[Quantity]
+    voltage: F.TBD
+    max_current: F.TBD
     """
     Only for this particular power interface
     Does not propagate to connections

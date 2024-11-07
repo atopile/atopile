@@ -47,11 +47,11 @@ def _test_netlist_graph():
         )
 
     # make netlist
-    G = resistor1.get_graph()
-    attach_random_designators(G)
-    override_names_with_designators(G)
-    attach_nets_and_kicad_info(G)
-    t2 = make_t2_netlist_from_graph(G)
+    G = resistor1.get_graph
+    attach_random_designators(G())
+    override_names_with_designators(G())
+    attach_nets_and_kicad_info(G())
+    t2 = make_t2_netlist_from_graph(G())
     for comp in t2.comps:
         del comp.properties["faebryk_name"]
     netlist = from_faebryk_t2_netlist(t2)

@@ -365,6 +365,7 @@ class Component(Model):
         ):
             p.override(value)
 
+        attach(module, self.partno)
         module.add(
             F.has_descriptive_properties_defined(
                 {
@@ -380,7 +381,6 @@ class Component(Model):
             )
         )
 
-        attach(module, self.partno)
         module.add(has_part_picked_defined(JLCPCB_Part(self.partno)))
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(

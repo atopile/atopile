@@ -12,6 +12,7 @@ class PoweredLED(Module):
     led: F.LED
 
     def __init__(self, low_side_resistor: bool = True):
+        super().__init__()
         self._low_side_resistor = low_side_resistor
 
     def __preinit__(self):

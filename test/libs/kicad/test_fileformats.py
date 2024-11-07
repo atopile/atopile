@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.kicad.fileformats import (
     C_effects,
     C_footprint,

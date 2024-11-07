@@ -4,17 +4,20 @@
 import asyncio
 import collections.abc
 import inspect
+import itertools
 import logging
 import os
 import select
 import subprocess
 import sys
+import time
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import StrEnum
 from itertools import chain
+from pathlib import Path
 from textwrap import indent
 from typing import (
     Any,
@@ -33,6 +36,7 @@ from typing import (
     get_origin,
 )
 
+import psutil
 from tortoise import Model
 from tortoise.queryset import QuerySet
 
@@ -68,9 +72,9 @@ class hashable_dict:
         return hash(self) == hash(other)
 
 
-def unique(it, key):
-    seen = []
-    out = []
+def unique[T, U](it: Iterable[T], key: Callable[[T], U]) -> list[T]:
+    seen: list[U] = []
+    out: list[T] = []
     for i in it:
         v = key(i)
         if v in seen:
@@ -646,7 +650,7 @@ class CallOnce[F: Callable]:
         return self.f(*args, **kwargs)
 
 
-def at_exit(func: Callable):
+def at_exit(func: Callable, on_exception: bool = True):
     import atexit
     import sys
 
@@ -654,7 +658,8 @@ def at_exit(func: Callable):
 
     atexit.register(f)
     hook = sys.excepthook
-    sys.excepthook = lambda *args: (f(), hook(*args))
+    if on_exception:
+        sys.excepthook = lambda *args: (f(), hook(*args))
 
     # get main thread
     import threading
@@ -714,6 +719,23 @@ class Lazy(LazyMixin):
 
 
 def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
+    # TODO add flag for this optimization
+    # might not be desirable if different instances with same hash
+    # return same values here
+    # check if f is a method with only self
+    if list(inspect.signature(f).parameters) == ["self"]:
+        name = f.__name__
+        attr_name = f"_{name}_once"
+
+        def wrapper_single(self) -> Any:
+            if not hasattr(self, attr_name):
+                setattr(self, attr_name, f(self))
+            return getattr(self, attr_name)
+
+        return wrapper_single
+
+    # TODO optimization: if takes self + args, use self as cache
+
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         lookup = (args, tuple(kwargs.items()))
         if lookup in wrapper.cache:
@@ -764,6 +786,7 @@ class _ConfigFlagBase[T]:
         self.default = default
         self.descr = descr
         self._type: type[T] = type(default)
+        self.get()
 
     @property
     def name(self) -> str:
@@ -794,6 +817,10 @@ class _ConfigFlagBase[T]:
     def _convert(self, raw_val: str) -> T: ...
 
     def __eq__(self, other) -> bool:
+        # catch cache lookup
+        if isinstance(other, _ConfigFlagBase):
+            return id(other) == id(self)
+
         return self.get() == other
 
 
@@ -816,16 +843,27 @@ class ConfigFlag(_ConfigFlagBase[bool]):
 
 class ConfigFlagEnum[E: StrEnum](_ConfigFlagBase[E]):
     def __init__(self, enum: type[E], name: str, default: E, descr: str = "") -> None:
-        super().__init__(name, default, descr)
         self.enum = enum
+        super().__init__(name, default, descr)
 
     def _convert(self, raw_val: str) -> E:
         return self.enum[raw_val.upper()]
 
 
 class ConfigFlagString(_ConfigFlagBase[str]):
+    def __init__(self, name: str, default: str = "", descr: str = "") -> None:
+        super().__init__(name, default, descr)
+
     def _convert(self, raw_val: str) -> str:
         return raw_val
+
+
+class ConfigFlagInt(_ConfigFlagBase[int]):
+    def __init__(self, name: str, default: int = 0, descr: str = "") -> None:
+        super().__init__(name, default, descr)
+
+    def _convert(self, raw_val: str) -> int:
+        return int(raw_val)
 
 
 def zip_dicts_by_key(*dicts):
@@ -867,6 +905,34 @@ class PostInitCaller(type):
         obj = type.__call__(cls, *args, **kwargs)
         obj.__post_init__(*args, **kwargs)
         return obj
+
+
+def post_init_decorator(cls):
+    """
+    Class decorator that calls __post_init__ after the last (of derived classes)
+    __init__ has been called.
+    Attention: Needs to be called on cls in __init_subclass__ of decorated class.
+    """
+    post_init_base = getattr(cls, "__post_init_decorator", None)
+    # already decorated
+    if post_init_base is cls:
+        return
+
+    original_init = cls.__init__
+
+    # inherited constructor
+    if post_init_base and post_init_base.__init__ == cls.__init__:
+        original_init = post_init_base.__original_init__
+
+    def new_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        if hasattr(self, "__post_init__") and type(self) is cls:
+            self.__post_init__(*args, **kwargs)
+
+    cls.__init__ = new_init
+    cls.__original_init__ = original_init
+    cls.__post_init_decorator = cls
+    return cls
 
 
 class Tree[T](dict[T, "Tree[T]"]):
@@ -1135,3 +1201,60 @@ def run_live(
         )
 
     return "\n".join(stdout), process
+
+
+@contextmanager
+def global_lock(lock_file_path: Path, timeout_s: float | None = None):
+    # TODO consider using filelock instead
+
+    lock_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    start_time = time.time()
+    while try_or(
+        lambda: bool(lock_file_path.touch(exist_ok=False)),
+        default=True,
+        catch=FileExistsError,
+    ):
+        # check if pid still alive
+        try:
+            pid = int(lock_file_path.read_text())
+        except ValueError:
+            lock_file_path.unlink(missing_ok=True)
+            continue
+        assert pid != os.getpid()
+        if not psutil.pid_exists(pid):
+            lock_file_path.unlink(missing_ok=True)
+            continue
+        if timeout_s and time.time() - start_time > timeout_s:
+            raise TimeoutError()
+        time.sleep(0.1)
+
+    # write our pid to the lock file
+    lock_file_path.write_text(str(os.getpid()))
+    try:
+        yield
+    finally:
+        lock_file_path.unlink(missing_ok=True)
+
+
+def typename(x: object | type) -> str:
+    if not isinstance(x, type):
+        x = type(x)
+    return x.__name__
+
+
+def consume(iter: Iterable, n: int) -> list:
+    assert n >= 0
+    out = list(itertools.islice(iter, n))
+    return out if len(out) == n else []
+
+
+class DefaultFactoryDict[T, U](dict[T, U]):
+    def __init__(self, factory: Callable[[T], U], *args, **kwargs):
+        self.factory = factory
+        super().__init__(*args, **kwargs)
+
+    def __missing__(self, key: T) -> U:
+        res = self.factory(key)
+        self[key] = res
+        return res

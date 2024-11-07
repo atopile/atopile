@@ -7,7 +7,7 @@ from typing import Any, Callable
 import yaml
 
 import faebryk.library._F as F
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import Parameter
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ def merge_dicts(*dicts: dict) -> dict:
 
 
 def make_esphome_config(G: Graph) -> dict:
-    esphome_components = G.nodes_with_trait(F.has_esphome_config)
+    esphome_components = GraphFunctions(G).nodes_with_trait(F.has_esphome_config)
 
     esphome_config = merge_dicts(*[t.get_config() for _, t in esphome_components])
 

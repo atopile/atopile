@@ -10,7 +10,7 @@ import faebryk.library._F as F
 from faebryk.libs.library import L
 
 
-class ElectricLogic(F.SignalElectrical, F.Logic):
+class ElectricLogic(F.SignalElectrical):
     class has_pulls(F.Logic.TraitT):
         @abstractmethod
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...
@@ -90,7 +90,7 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    push_pull: F.TBD[PushPull]
+    push_pull: F.TBD
 
     # ----------------------------------------
     #                 traits
@@ -99,6 +99,8 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
     def pulled(self):
         return ElectricLogic.can_be_pulled_defined(self.signal, self.reference)
 
+    specializable_types = L.f_field(F.can_specialize_defined)([F.Logic])
+
     # ----------------------------------------
     #                functions
     # ----------------------------------------
@@ -106,7 +108,6 @@ class ElectricLogic(F.SignalElectrical, F.Logic):
         """
         Set the logic signal by directly connecting to the reference.
         """
-        super().set(on)
         r = self.reference
         self.signal.connect(r.hv if on else r.lv)
 

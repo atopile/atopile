@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
+from typing import TypeGuard, cast
 
 from faebryk.core.node import Node, NodeException
 from faebryk.libs.util import cast_assert
@@ -46,21 +47,75 @@ class TraitUnbound(NodeException):
 class Trait(Node):
     __decless_trait__: bool = False
 
+    # TODO once
     @classmethod
     def impl[T: "Trait"](cls: type[T]):
-        class _Impl(TraitImpl, cls): ...
+        # Implements TraitImpl
+        class _Impl(cls):
+            __trait__: type[Trait] = cls
+
+            @property
+            def obj(self) -> Node:
+                p = self.get_parent()
+                if not p:
+                    raise TraitUnbound(self)
+                return cast_assert(Node, p[0])
+
+            def get_obj[TN: Node](self, type: type[TN]) -> TN:
+                return cast_assert(type, self.obj)
+
+            def cmp(self, new_t: "TraitImpl") -> tuple[bool, "TraitImpl"]:
+                assert TraitImpl.is_traitimpl(new_t)
+
+                # If new same or more specific
+                if new_t.implements(self.__trait__):
+                    return True, new_t
+
+                # hack type (ghetto protocol)
+                traitimpl = cast(TraitImpl, self)
+
+                # If we are more specific
+                if self.implements(new_t.__trait__):
+                    return True, traitimpl
+
+                return False, traitimpl
+
+            def implements(self, trait: type[Trait]):
+                return trait.is_traitimpl(self)
+
+            # Overwriteable ------------------------------------------------------------
+
+            def _handle_added_to_parent(self):
+                self.on_obj_set()
+
+            def on_obj_set(self): ...
+
+            def handle_duplicate(self, old: "TraitImpl", node: Node) -> bool:
+                assert old is not self
+                _, candidate = old.cmp(cast(TraitImpl, self))
+                if candidate is not self:
+                    # raise TraitAlreadyExists(node, self)
+                    return False
+
+                node.del_trait(old.__trait__)
+                return True
+
+            # override this to implement a dynamic trait
+            def is_implemented(self):
+                return True
 
         # this should be outside the class def to prevent
         # __init_subclass__ from overwriting it
         _Impl.__trait__ = cls
+        _Impl.__name__ = f"{cls.__name__}Impl"
 
         return _Impl
 
     def __new__(cls, *args, **kwargs):
-        if not issubclass(cls, TraitImpl):
-            raise TypeError("Don't instantiate Trait use Trait.impl instead")
+        if not TraitImpl.is_traitimpl_type(cls):
+            raise TypeError(f"Don't instantiate Trait [{cls}] use Trait.impl instead")
 
-        return super().__new__(cls)
+        return super().__new__(cls)  # type: ignore
 
     @classmethod
     def decless(cls):
@@ -70,56 +125,50 @@ class Trait(Node):
 
         return _Trait.impl()
 
+    @classmethod
+    def is_traitimpl(cls, obj: "Trait") -> TypeGuard["TraitImpl"]:
+        assert issubclass(cls, Trait)
+        if not TraitImpl.is_traitimpl(obj):
+            return False
+        return issubclass(obj.__trait__, cls)
 
+    # TODO check subclasses implementing abstractmethods (use subclass_init)
+
+
+# Hack, using this as protocol
+# Can't use actual protocol because CNode doesn't allow multiple inheritance
 class TraitImpl(Node):
-    __trait__: type[Trait] = None
+    """
+    Warning: Do not instancecheck against this type!
+    """
+
+    __trait__: type[Trait]
 
     @property
-    def obj(self) -> Node:
-        p = self.get_parent()
-        if not p:
-            raise TraitUnbound(self)
-        return p[0]
-
-    def get_obj[T: Node](self, type: type[T]) -> T:
-        return cast_assert(type, self.obj)
-
-    def cmp(self, other: "TraitImpl") -> tuple[bool, "TraitImpl"]:
-        assert type(other), TraitImpl
-
-        # If other same or more specific
-        if other.implements(self.__trait__):
-            return True, other
-
-        # If we are more specific
-        if self.implements(other.__trait__):
-            return True, self
-
-        return False, self
-
-    def implements(self, trait: type[Trait]):
-        assert issubclass(trait, Trait)
-
-        return issubclass(self.__trait__, trait)
+    def obj(self) -> Node: ...
+    def get_obj[T: Node](self, type: type[T]) -> T: ...
+    def cmp(self, other: "TraitImpl") -> tuple[bool, "TraitImpl"]: ...
+    def implements(self, trait: type[Trait]): ...
 
     # Overwriteable --------------------------------------------------------------------
-
-    def _handle_added_to_parent(self):
-        self.on_obj_set()
-
+    def _handle_added_to_parent(self): ...
     def on_obj_set(self): ...
+    def handle_duplicate(self, old: "TraitImpl", node: Node) -> bool:
+        """
+        Returns True if the duplicate was handled, False if the trait should be skipped
+        """
+        ...
 
-    def handle_duplicate(self, other: "TraitImpl", node: Node) -> bool:
-        assert other is not self
-        _, candidate = other.cmp(self)
-        if candidate is not self:
+    def is_implemented(self): ...
+
+    @staticmethod
+    def is_traitimpl(obj) -> TypeGuard["TraitImpl"]:
+        if not isinstance(obj, Trait):
             return False
+        return getattr(obj, "__trait__", None) is not None
 
-        node.del_trait(other.__trait__)
-        return True
-
-        # raise TraitAlreadyExists(node, self)
-
-    # override this to implement a dynamic trait
-    def is_implemented(self):
-        return True
+    @staticmethod
+    def is_traitimpl_type(obj) -> TypeGuard[type["TraitImpl"]]:
+        if not issubclass(obj, Trait):
+            return False
+        return getattr(obj, "__trait__", None) is not None

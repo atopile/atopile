@@ -219,6 +219,6 @@ def group_pads_that_are_connected_already(
 def get_routes_of_pad(pad: F.Pad):
     return {
         route
-        for mif in pad.pcb.get_direct_connections()
+        for mif in pad.pcb.get_connected()
         if (route := mif.get_parent_of_type(Route))
     }

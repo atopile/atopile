@@ -6,7 +6,7 @@ from enum import Enum
 
 import faebryk.library._F as F
 from faebryk.core.parameter import Parameter
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 
 """
 luminous intensity in candela (candela)
@@ -36,7 +36,7 @@ Illuminance= 125.66 lm / 10 m2 ≈ 12.57 lux
 
 
 class _Unit:
-    def __init__(self, value: Parameter[Quantity]):
+    def __init__(self, value: Parameter):
         self._value = value
 
     def __repr__(self):
@@ -57,20 +57,20 @@ class LuminousFlux(_Unit):
     def from_intensity(
         cls,
         intensity: LuminousIntensity,
-        solid_angle: Parameter[Quantity],
+        solid_angle: Parameter,
     ) -> "LuminousFlux":
         return LuminousFlux(intensity.value * solid_angle)
 
-    def to_intensity(self, solid_angle: Parameter[Quantity]) -> LuminousIntensity:
+    def to_intensity(self, solid_angle: Parameter) -> LuminousIntensity:
         return LuminousIntensity(self.value / solid_angle)
 
 
 class Illuminance(_Unit):
     @classmethod
-    def from_flux(cls, flux: LuminousFlux, area: Parameter[Quantity]) -> "Illuminance":
+    def from_flux(cls, flux: LuminousFlux, area: Parameter) -> "Illuminance":
         return Illuminance(flux.value / area)
 
-    def to_luminous_flux(self, area: Parameter[Quantity]) -> LuminousFlux:
+    def to_luminous_flux(self, area: Parameter) -> LuminousFlux:
         return LuminousFlux(self.value * area)
 
 

@@ -13,7 +13,7 @@ from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import P
 from faebryk.libs.util import assert_once
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class Diodes_Incorporated_AP2552W6_7(Module):
     """
 
     @assert_once
-    def set_current_limit(self, current: Parameter[Quantity]) -> F.Resistor:
+    def set_current_limit(self, current: Parameter) -> F.Resistor:
         self.current_limit.merge(current)
 
         current_limit_setting_resistor = self.ilim.add(F.Resistor())
@@ -64,7 +64,7 @@ class Diodes_Incorporated_AP2552W6_7(Module):
     fault: F.ElectricLogic
     ilim: F.SignalElectrical
 
-    current_limit: F.TBD[Quantity]
+    current_limit: F.TBD
     # ----------------------------------------
     #                 traits
     # ----------------------------------------

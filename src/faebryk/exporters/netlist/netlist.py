@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 
 import faebryk.library._F as F
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph, GraphFunctions
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class T2Netlist:
 def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
     from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
 
-    nets = G.nodes_of_type(F.Net)
+    nets = GraphFunctions(G).nodes_of_type(F.Net)
 
     t2_nets = [
         T2Netlist.Net(
@@ -60,7 +60,7 @@ def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
 
     comps = {
         t.get_footprint().get_trait(can_represent_kicad_footprint).get_kicad_obj()
-        for _, t in G.nodes_with_trait(F.has_footprint)
+        for _, t in GraphFunctions(G).nodes_with_trait(F.has_footprint)
     }
 
     not_found = [

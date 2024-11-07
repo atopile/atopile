@@ -8,10 +8,10 @@ from faebryk.core.parameter import Parameter, _resolved
 from faebryk.libs.units import UnitsContainer
 
 
-class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
-    type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
+class Set(Parameter):
+    type LIT_OR_PARAM = Parameter.LIT_OR_PARAM
 
-    def __init__(self, params: Iterable[Parameter[LIT_OR_PARAM]]) -> None:
+    def __init__(self, params: Iterable[Parameter]) -> None:
         super().__init__()
 
         # make primitves to constants
@@ -20,7 +20,7 @@ class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
         )
 
     @staticmethod
-    def _flatten(params: set[Parameter[PV]]) -> set[Parameter[PV]]:
+    def _flatten(params: set[Parameter]) -> set[Parameter]:
         param_set = set(
             p for p in params if not isinstance(p, Set) and isinstance(p, Parameter)
         )
@@ -28,11 +28,11 @@ class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
 
         return param_set | set_set
 
-    def flat(self) -> set[Parameter[PV]]:
+    def flat(self) -> set[Parameter]:
         return Set._flatten(self._params)
 
     @property
-    def params(self) -> set[Parameter[PV]]:
+    def params(self) -> set[Parameter]:
         return self.flat()
 
     def __str__(self) -> str:
@@ -67,7 +67,7 @@ class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
         return type(self)(self.params)
 
     @_resolved
-    def __contains__(self, other: Parameter[PV]) -> bool:
+    def __contains__(self, other: Parameter) -> bool:
         def nested_in(p):
             if other == p:
                 return True
@@ -77,7 +77,7 @@ class Set[PV](Parameter[PV], Parameter[PV].SupportsSetOps):
 
         return any(nested_in(p) for p in self.params)
 
-    def try_compress(self) -> Parameter[PV]:
+    def try_compress(self) -> Parameter:
         # compress into constant if possible
         if len(set(map(id, self.params))) == 1:
             return Parameter.from_literal(next(iter(self.params)))

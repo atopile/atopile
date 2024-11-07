@@ -77,10 +77,10 @@ class has_multi_picker(F.has_picker.impl()):
                 )
             )
 
-    def handle_duplicate(self, other: TraitImpl, node: Node) -> bool:
-        if not isinstance(other, has_multi_picker):
-            return super().handle_duplicate(other, node)
+    def handle_duplicate(self, old: TraitImpl, node: Node) -> bool:
+        if not isinstance(old, has_multi_picker):
+            return super().handle_duplicate(old, node)
 
-        other.pickers.extend(self.pickers)
-        other.pickers.sort(key=lambda x: x[0])
+        old.pickers.extend(self.pickers)
+        old.pickers.sort(key=lambda x: x[0])
         return False

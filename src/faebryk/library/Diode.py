@@ -5,15 +5,14 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 
 
 class Diode(Module):
-    forward_voltage: F.TBD[Quantity]
-    max_current: F.TBD[Quantity]
-    current: F.TBD[Quantity]
-    reverse_working_voltage: F.TBD[Quantity]
-    reverse_leakage_current: F.TBD[Quantity]
+    forward_voltage: F.TBD
+    max_current: F.TBD
+    current: F.TBD
+    reverse_working_voltage: F.TBD
+    reverse_leakage_current: F.TBD
 
     anode: F.Electrical
     cathode: F.Electrical
@@ -45,6 +44,6 @@ class Diode(Module):
         )
 
     def get_needed_series_resistance_for_current_limit(
-        self, input_voltage_V: Parameter[Quantity]
-    ) -> Parameter[Quantity]:
+        self, input_voltage_V: Parameter
+    ) -> Parameter:
         return (input_voltage_V - self.forward_voltage) / self.current

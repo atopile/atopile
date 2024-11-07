@@ -19,6 +19,7 @@ class LEDIndicator(Module):
     power_switch = L.f_field(F.PowerSwitch)(normally_closed=False)
 
     def __init__(self, use_mosfet: bool = True):
+        super().__init__()
         self._use_mosfet = use_mosfet
 
     def __preinit__(self):

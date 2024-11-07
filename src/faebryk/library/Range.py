@@ -18,46 +18,45 @@ class _SupportsRangeOps(Protocol):
     def __ge__(self, __value) -> bool: ...
 
 
-class Range[PV: _SupportsRangeOps](Parameter[PV], Parameter[PV].SupportsSetOps):
-    type LIT_OR_PARAM = Parameter[PV].LIT_OR_PARAM
+class Range(Parameter):
+    type PV = Parameter.PV
+    type LIT_OR_PARAM = Parameter.LIT_OR_PARAM
 
     class MinMaxError(Exception): ...
 
-    def __init__(self, *bounds: PV | Parameter[PV]) -> None:
+    def __init__(self, *bounds: PV | Parameter) -> None:
         super().__init__()
 
-        self._bounds: list[Parameter[PV]] = [
-            Parameter[PV].from_literal(b) for b in bounds
-        ]
+        self._bounds: list[Parameter] = [Parameter.from_literal(b) for b in bounds]
 
-    def _get_narrowed_bounds(self) -> list[Parameter[PV]]:
+    def _get_narrowed_bounds(self) -> list[Parameter]:
         return list({b.get_most_narrow() for b in self._bounds})
 
     @property
-    def min(self) -> Parameter[PV]:
+    def min(self) -> Parameter:
         try:
             return min(self._get_narrowed_bounds())
         except (TypeError, ValueError):
             raise self.MinMaxError()
 
     @property
-    def max(self) -> Parameter[PV]:
+    def max(self) -> Parameter:
         try:
             return max(self._get_narrowed_bounds())
         except (TypeError, ValueError):
             raise self.MinMaxError()
 
     @property
-    def bounds(self) -> list[Parameter[PV]]:
+    def bounds(self) -> list[Parameter]:
         try:
             return [self.min, self.max]
         except self.MinMaxError:
             return self._get_narrowed_bounds()
 
-    def as_tuple(self) -> tuple[Parameter[PV], Parameter[PV]]:
+    def as_tuple(self) -> tuple[Parameter, Parameter]:
         return (self.min, self.max)
 
-    def as_center_tuple(self, relative=False) -> tuple[Parameter[PV], Parameter[PV]]:
+    def as_center_tuple(self, relative=False) -> tuple[Parameter, Parameter]:
         center = (self.min + self.max) / 2
         delta = (self.max - self.min) / 2
         if relative:
@@ -65,15 +64,15 @@ class Range[PV: _SupportsRangeOps](Parameter[PV], Parameter[PV].SupportsSetOps):
         return center, delta
 
     @classmethod
-    def from_center(cls, center: LIT_OR_PARAM, delta: LIT_OR_PARAM) -> "Range[PV]":
+    def from_center(cls, center: LIT_OR_PARAM, delta: LIT_OR_PARAM) -> "Range":
         return cls(center - delta, center + delta)
 
     @classmethod
-    def from_center_rel(cls, center: PV, factor: PV) -> "Range[PV]":
+    def from_center_rel(cls, center: PV, factor: PV) -> "Range":
         return cls.from_center(center, center * factor)
 
     @classmethod
-    def _with_bound(cls, bound: LIT_OR_PARAM, other: float) -> "Range[PV]":
+    def _with_bound(cls, bound: LIT_OR_PARAM, other: float) -> "Range":
         try:
             other_with_unit = Parameter.with_same_unit(bound, other)
         except NotImplementedError:
@@ -82,11 +81,11 @@ class Range[PV: _SupportsRangeOps](Parameter[PV], Parameter[PV].SupportsSetOps):
         return cls(bound, other_with_unit)
 
     @classmethod
-    def lower_bound(cls, lower: LIT_OR_PARAM) -> "Range[PV]":
+    def lower_bound(cls, lower: LIT_OR_PARAM) -> "Range":
         return cls._with_bound(lower, inf)
 
     @classmethod
-    def upper_bound(cls, upper: LIT_OR_PARAM) -> "Range[PV]":
+    def upper_bound(cls, upper: LIT_OR_PARAM) -> "Range":
         return cls._with_bound(upper, 0)
 
     def __str__(self) -> str:
@@ -125,9 +124,9 @@ class Range[PV: _SupportsRangeOps](Parameter[PV], Parameter[PV].SupportsSetOps):
     def __copy__(self) -> Self:
         return type(self)(*self._bounds)
 
-    def try_compress(self) -> Parameter[PV]:
+    def try_compress(self) -> Parameter:
         # compress into constant if possible
-        if len(set(map(id, self.bounds))) == 1:
+        if len(set(map(id, self._get_narrowed_bounds()))) == 1:
             return Parameter.from_literal(self.bounds[0])
         return super().try_compress()
 

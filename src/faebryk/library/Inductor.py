@@ -5,17 +5,16 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import Quantity
 from faebryk.libs.util import join_if_non_empty
 
 
 class Inductor(Module):
     unnamed = L.list_field(2, F.Electrical)
 
-    inductance: F.TBD[Quantity]
-    self_resonant_frequency: F.TBD[Quantity]
-    rated_current: F.TBD[Quantity]
-    dc_resistance: F.TBD[Quantity]
+    inductance: F.TBD
+    self_resonant_frequency: F.TBD
+    rated_current: F.TBD
+    dc_resistance: F.TBD
 
     @L.rt_field
     def can_bridge(self):
