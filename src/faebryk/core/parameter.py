@@ -40,7 +40,8 @@ class ParameterOperatable(Node):
     operated_on: GraphInterface
 
     def get_operations(self) -> set["Expression"]:
-        return self.operated_on.get_connected_nodes(types=Expression)
+        res = self.operated_on.get_connected_nodes(types=Expression)
+        return res
 
     @staticmethod
     def sort_by_depth(

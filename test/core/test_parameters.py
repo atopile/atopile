@@ -98,6 +98,19 @@ def test_remove_obvious_tautologies():
     solver.phase_one_no_guess_solving(G)
 
 
+def test_subset_of_literal():
+    p0, p1, p2 = (
+        Parameter(units=dimensionless, within=Range(0, i, units=dimensionless))
+        for i in range(3)
+    )
+    p0.alias_is(p1)
+    p1.alias_is(p2)
+
+    G = p0.get_graph()
+    solver = DefaultSolver()
+    solver.phase_one_no_guess_solving(G)
+
+
 def test_solve_realworld():
     app = F.RP2040()
     solver = DefaultSolver()
@@ -160,7 +173,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_remove_obvious_tautologies
+    func = test_subset_of_literal
 
     if "ipykernel" in sys.modules:
         func()

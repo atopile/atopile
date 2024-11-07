@@ -16,6 +16,7 @@ from faebryk.core.parameter import (
     Divide,
     Expression,
     Is,
+    IsSubset,
     Log,
     Multiply,
     Parameter,
@@ -310,8 +311,55 @@ def resolve_alias_classes(
     return repr_map, dirty
 
 
+def subset_of_literal(
+    G: Graph,
+) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+    dirty = False
+    params = G.nodes_of_type(Parameter)
+    removed = set()
+    repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
 
+    for param in params:
 
+        def other_set(e: Is) -> ParameterOperatable.All:
+            if e.operands[0] is param:
+                return e.operands[1]
+            return e.operands[0]
+
+        is_subsets = [
+            e
+            for e in param.get_operations()
+            if isinstance(e, IsSubset)
+            and len(e.get_operations()) == 0
+            and not isinstance(other_set(e), ParameterOperatable)
+        ]
+        if len(is_subsets) > 1:
+            other_sets = [other_set(e) for e in is_subsets]
+            intersected = other_sets[0]
+            for s in other_sets[1:]:
+                intersected = intersected.op_intersect_ranges(Ranges(s))
+            removed.update(is_subsets)
+            new_param = copy_param(param)
+            new_param.constrain_subset(intersected)
+            repr_map[param] = new_param
+            dirty = True
+        else:
+            repr_map[param] = copy_param(param)
+
+    exprs = (
+        ParameterOperatable.sort_by_depth(  # TODO, do we need the sort here? same above
+            (
+                p
+                for p in G.nodes_of_type(Expression)
+                if p not in repr_map and p not in removed
+            ),
+            ascending=True,
+        )
+    )
+    for expr in exprs:
+        copy_operand_recursively(expr, repr_map)
+
+    return repr_map, dirty
 
 
 def is_replacable(
@@ -811,12 +859,22 @@ class DefaultSolver(Solver):
             graphs = {p.get_graph() for p in repr_map.values()}
             # TODO assert all new graphs
 
+            logger.info("Phase 5 Solving: Subset of literals")
+            repr_map = {}
+            for g in graphs:
+                subset_repr_map, subset_dirty = subset_of_literal(g)
+                repr_map.update(subset_repr_map)
+            debug_print(repr_map)
+            graphs = {p.get_graph() for p in repr_map.values()}
+            # TODO assert all new graphs
+
             dirty = (
                 alias_dirty
                 or assoc_add_mul_dirty
                 or assoc_sub_dirty
                 or arith_dirty
                 or tautology_dirty
+                or subset_dirty
             )
 
     def get_any_single(
