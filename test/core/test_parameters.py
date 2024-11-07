@@ -56,7 +56,12 @@ def test_solve_phase_one():
 
 def test_simplify():
     class App(Module):
-        ops = L.list_field(10, lambda: Parameter(units=dimensionless))
+        ops = L.list_field(
+            10,
+            lambda: Parameter(
+                units=dimensionless, within=Range(0, 1, units=dimensionless)
+            ),
+        )
 
     app = App()
 
@@ -77,6 +82,18 @@ def test_simplify():
     (acc < 11 * dimensionless).constrain()
 
     G = acc.get_graph()
+    solver = DefaultSolver()
+    solver.phase_one_no_guess_solving(G)
+
+
+def test_remove_obvious_tautologies():
+    p0, p1, p2 = (Parameter(units=dimensionless) for _ in range(3))
+    p0.alias_is(p1 + p2)
+    p1.constrain_ge(0)
+    p2.constrain_ge(0)
+    p2.alias_is(p2)
+
+    G = p0.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
 
@@ -143,7 +160,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_simplify
+    func = test_remove_obvious_tautologies
 
     if "ipykernel" in sys.modules:
         func()
