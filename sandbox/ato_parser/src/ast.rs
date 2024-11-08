@@ -53,6 +53,7 @@ pub enum Operator {
     BitwiseOr,
     BitwiseAnd,
     BitwiseXor,
+    BitwiseNot,
     LeftShift,
     RightShift,
     LessThan,
@@ -67,6 +68,7 @@ pub enum Operator {
     Not,
     At,
     Arrow,
+    IntegerDivide,
 }
 
 #[derive(Debug, Clone, PartialEq)]

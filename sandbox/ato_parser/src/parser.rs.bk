@@ -342,8 +342,15 @@ fn parse_binary_expression(input: &str) -> IResult<&str, Expression> {
         parse_term
     )))(input)?;
 
-    // Check for incomplete expressions
-    let (input, _) = not(one_of("+-|&"))(input)?;
+    // Check for incomplete expressions - if there's an operator at the end, fail
+    let (input, _) = not(ws(alt((
+        char('+'),
+        char('-'),
+        char('|'),
+        char('&'),
+        char('*'),
+        char('/'),
+    ))))(input)?;
 
     Ok((
         input,
@@ -363,6 +370,12 @@ fn parse_term(input: &str) -> IResult<&str, Expression> {
         parse_factor
     )))(input)?;
 
+    // Check for incomplete expressions - if there's an operator at the end, fail
+    let (input, _) = not(ws(alt((
+        char('*'),
+        char('/'),
+    ))))(input)?;
+
     Ok((
         input,
         rest.into_iter().fold(first, |acc, (op, expr)| {
@@ -377,6 +390,9 @@ fn parse_factor(input: &str) -> IResult<&str, Expression> {
         ws(value(Operator::Power, tag("**"))),
         parse_unary_expression
     )))(input)?;
+
+    // Check for incomplete expressions - if there's an operator at the end, fail
+    let (input, _) = not(ws(tag("**")))(input)?;
 
     Ok((
         input,
@@ -781,7 +797,7 @@ pub fn handle_line_continuation(input: &str) -> IResult<&str, String> {
         }
     }
 
-    Ok(("", result))
+    Ok(("", result.trim().to_string()))  // Trim the final result
 }
 
 // Helper function to take content until backslash or end
@@ -814,14 +830,13 @@ fn take_until_backslash(input: &str) -> IResult<&str, &str> {
 pub fn parse_statement_with_continuation(input: &str) -> IResult<&str, Statement> {
     let (remaining, joined_input) = handle_line_continuation(input)?;
     let joined = joined_input.to_string();
-    parse_statement(&joined)
-        .map(|(_, stmt)| (remaining, stmt))
-        .map_err(|_| {
-            nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Fail
-            ))
-        })
+    match parse_statement(&joined) {
+        Ok((_, stmt)) => Ok((remaining, stmt)),
+        Err(_) => Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Fail
+        )))
+    }
 }
 
 // Helper function to take content until newline

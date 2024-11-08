@@ -1,4 +1,7 @@
 use crate::*;
+use nom::{
+    Err as NomErr,
+};
 
 #[test]
 fn test_assignment_operators() {
@@ -80,6 +83,38 @@ fn test_assignment_operator_errors() {
 
     for input in cases {
         let result = parse_assignment(input);
-        assert!(result.is_err(), "Expected error for input: {}", input);
+        match result {
+            Ok(_) => panic!("Expected error for input: {}", input),
+            Err(_) => {
+                // Test passes if we get any error
+                assert!(true, "Got expected error for input: {}", input);
+            }
+        }
     }
-} 
+}
+
+// Helper function to verify assignment operator parsing
+fn verify_assignment_error(input: &str) -> bool {
+    matches!(parse_assignment(input), Err(_))
+}
+
+#[test]
+fn test_invalid_assignment_combinations() {
+    let cases = vec![
+        "x += ",             // Missing right-hand side
+        "x **= y **= z",     // Chained power assignment
+        "x //= y //= z",     // Chained integer divide
+        "@= x",              // Invalid target
+        "x = y = z",         // Chained simple assignment
+        "x += y += z",       // Chained add assignment
+        "x -= y -= z",       // Chained subtract assignment
+    ];
+
+    for input in cases {
+        assert!(
+            verify_assignment_error(input),
+            "Expected error but got success for input: {}",
+            input
+        );
+    }
+}

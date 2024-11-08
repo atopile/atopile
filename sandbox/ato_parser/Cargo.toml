@@ -9,6 +9,6 @@ name = "ato_parser"
 crate-type = ["cdylib"]
 
 [dependencies]
+pyo3 = { version = "0.22.6", features = ["extension-module"] }
 nom = "7.1.3"
-pyo3 = "0.22.0"
 thiserror = "1.0"
