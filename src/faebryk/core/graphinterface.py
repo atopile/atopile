@@ -68,14 +68,6 @@ class Graph(GraphImpl["GraphInterface"]):
     def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]:
         return {n for n in self.node_projection() if isinstance(n, t)}
 
-    def __hash__(self) -> int:
-        return id(self())
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Graph):
-            return False
-        return self() == other()
-
 
 class GraphInterface(FaebrykLibObject):
     GT = Graph
