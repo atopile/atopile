@@ -2,9 +2,9 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_until},
     character::complete::{
-        alpha1, alphanumeric1, char, digit1, multispace0, newline, space0, space1,
+        alpha1, alphanumeric1, char, digit1, multispace0, newline, none_of, one_of, space0, space1,
     },
-    combinator::{map, map_res, opt, recognize, value},
+    combinator::{map, map_res, not, opt, recognize, value},
     multi::{many0, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
@@ -145,14 +145,14 @@ pub fn parse_dep_import_stmt(input: &str) -> IResult<&str, Statement> {
 
 pub fn parse_assign_stmt(input: &str) -> IResult<&str, Statement> {
     let (input, target) = parse_identifier(input)?;
-    let (input, _) = space0(input)?;
-    let (input, operator) = parse_assignment_operator(input)?;
-    let (input, _) = space0(input)?;
-    let (input, value) = parse_expression(input)?;
     let (input, type_info) = opt(preceded(
         tuple((space0, char(':'), space0)),
         parse_identifier,
     ))(input)?;
+    let (input, _) = space0(input)?;
+    let (input, operator) = parse_assignment_operator(input)?;
+    let (input, _) = space0(input)?;
+    let (input, value) = parse_expression(input)?;
 
     Ok((
         input,
@@ -320,13 +320,13 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
 
 pub fn parse_expression(input: &str) -> IResult<&str, Expression> {
     alt((
-        parse_binary_expression,
-        parse_unary_expression,
-        parse_primary_expression,
         map(
             preceded(ws(tag("new")), parse_identifier),
             Expression::New
         ),
+        parse_binary_expression,
+        parse_unary_expression,
+        parse_primary_expression,
     ))(input)
 }
 
@@ -341,6 +341,9 @@ fn parse_binary_expression(input: &str) -> IResult<&str, Expression> {
         ))),
         parse_term
     )))(input)?;
+
+    // Check for incomplete expressions
+    let (input, _) = not(one_of("+-|&"))(input)?;
 
     Ok((
         input,
@@ -391,7 +394,7 @@ fn parse_unary_expression(input: &str) -> IResult<&str, Expression> {
                     value(Operator::Plus, char('+')),
                     value(Operator::Minus, char('-')),
                 )),
-                parse_primary_expression
+                parse_unary_expression
             )),
             |(op, expr)| Expression::UnaryOp(op, Box::new(expr)),
         ),
@@ -473,15 +476,17 @@ pub fn parse_block(input: &str) -> IResult<&str, Statement> {
         preceded(multispace0, parse_stmt),
     )))(input)?;
 
-    Ok((
-        input,
-        Statement::Block(BlockStmt {
-            block_type,
-            name,
-            parent,
-            body: body.into_iter().flatten().collect(),
-        }),
-    ))
+    let body = body.into_iter()
+        .flatten()
+        .filter(|stmt| !matches!(stmt, Statement::DocString(_) | Statement::Comment(_)))
+        .collect::<Vec<_>>();
+
+    Ok((input, Statement::Block(BlockStmt {
+        block_type,
+        name,
+        parent,
+        body,
+    })))
 }
 
 pub fn parse_assignment(input: &str) -> IResult<&str, Statement> {
@@ -511,19 +516,31 @@ pub fn parse_docstring(input: &str) -> IResult<&str, Statement> {
         delimited(char('"'), take_until("\""), char('"')),
         delimited(char('\''), take_until("'"), char('\'')),
     ))(input)?;
-
+    let (input, _) = opt(newline)(input)?;
     Ok((input, Statement::DocString(content.to_string())))
 }
 
 pub fn parse_comment(input: &str) -> IResult<&str, Statement> {
     let (input, _) = char('#')(input)?;
-    let (input, content) = take_until("\n")(input)?;
+    let (input, content) = alt((
+        take_until("\n"),
+        recognize(many0(none_of("\n")))  // Handle end of input
+    ))(input)?;
     let (input, _) = opt(newline)(input)?;
     Ok((input, Statement::Comment(content.trim().to_string())))
 }
 
 pub fn parse_line(input: &str) -> IResult<&str, Vec<Statement>> {
-    terminated(separated_list0(char(';'), parse_simple_stmt), opt(newline))(input)
+    let (input, stmts) = separated_list0(char(';'), parse_simple_stmt)(input)?;
+    let (input, _) = opt(char(';'))(input)?;
+    let (input, comment) = opt(parse_comment)(input)?;
+    let (input, _) = opt(newline)(input)?;
+
+    let mut result = stmts;
+    if let Some(c) = comment {
+        result.push(c);
+    }
+    Ok((input, result))
 }
 
 pub fn parse_lines(input: &str) -> IResult<&str, Vec<Statement>> {
@@ -755,24 +772,21 @@ pub fn handle_line_continuation(input: &str) -> IResult<&str, String> {
                     multispace0
                 ))(after_line)?;
                 
-                if next_line.is_empty() {
-                    break;
-                }
                 remaining = next_line;
             },
             Err(_) => {
-                result.push_str(remaining.trim_end());
+                result.push_str(remaining);
                 break;
             }
         }
     }
 
-    Ok(("", result))  // Return empty remaining input since we consumed it all
+    Ok(("", result))
 }
 
 // Helper function to take content until backslash or end
 fn take_until_backslash(input: &str) -> IResult<&str, &str> {
-    let mut end_pos = 0;
+    let mut pos = 0;
     let mut in_string = false;
     let mut escape_next = false;
 
@@ -784,17 +798,16 @@ fn take_until_backslash(input: &str) -> IResult<&str, &str> {
 
         match c {
             '\\' if !in_string => {
-                end_pos = i;
-                break;
+                return Ok((&input[i..], &input[..i]));
             }
             '"' | '\'' => in_string = !in_string,
             '\\' => escape_next = true,
             _ => {}
         }
-        end_pos = i + 1;
+        pos = i + 1;
     }
 
-    Ok((&input[end_pos..], &input[..end_pos]))
+    Ok(("", &input[..pos]))
 }
 
 // Add support for parsing statements with line continuations
