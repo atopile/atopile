@@ -5,7 +5,7 @@ import logging
 from collections.abc import Iterable
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Self
+from typing import Any, Callable, Self, override
 
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
@@ -53,6 +53,36 @@ class ParameterOperatable(Node):
             return 0
 
         return sorted(exprs, key=key, reverse=not ascending)
+
+    def _is_constrains(self) -> list["Is"]:
+        return [
+            i for i in self.operated_on.get_connected_nodes(types=Is) if i.constrained
+        ]
+
+    def obviously_eq(self, other: "ParameterOperatable.All") -> bool:
+        if self == other:
+            return True
+        if other in self._is_constrains():
+            return True
+        return False
+
+    def obviously_eq_hash(self) -> int:
+        if hasattr(self, "__hash"):
+            return self.__hash
+
+        ises = [i for i in self._is_constrains() if not isinstance(i, Expression)]
+
+        def keyfn(i: Is):
+            if isinstance(i, Parameter):
+                return 1 << 63
+            return hash(i) % (1 << 63)
+
+        sorted_ises = sorted(ises, key=keyfn)
+        if len(sorted_ises) > 0:
+            self.__hash = hash(sorted_ises[0])
+        else:
+            self.__hash = id(self)
+        return self.__hash
 
     def operation_add(self, other: NumberLike):
         return Add(self, other)
@@ -283,6 +313,18 @@ class ParameterOperatable(Node):
     # ) -> None: ...
 
 
+def obviously_eq(a: ParameterOperatable.All, b: ParameterOperatable.All) -> bool:
+    if a == b:
+        return True
+    if isinstance(a, ParameterOperatable):
+        return a.obviously_eq(b)
+    elif isinstance(b, ParameterOperatable):
+        return b.obviously_eq(a)
+    return False
+
+
+# TODO mixes two things, those that a constraining predicate can be called on,
+# and the predicate, which can have it's constrained be set??
 class Constrainable:
     type All = ParameterOperatable.All
     type Sets = ParameterOperatable.Sets
@@ -339,7 +381,7 @@ class Expression(ParameterOperatable):
 
     def __init__(self, *operands: ParameterOperatable.All):
         super().__init__()
-        self.operands = operands
+        self.operands = tuple(operands)
         self.operatable_operands = {
             op for op in operands if isinstance(op, ParameterOperatable)
         }
@@ -359,7 +401,24 @@ class Expression(ParameterOperatable):
         )
         return self._depth
 
+    # TODO caching
+    @override
+    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
+        if super().obviously_eq(other):
+            return True
+        if type(self) is type(other):
+            for s, o in zip(self.operands, other.operands):
+                if not obviously_eq(s, o):
+                    return False
+            return True
+        return False
 
+    def obviously_eq_hash(self) -> int:
+        return hash((type(self), self.operands))
+
+
+# TODO are any expressions not constrainable?
+# parameters are contstrainable, too, so all parameter-operatables are constrainable?
 @abstract
 class ConstrainableExpression(Expression, Constrainable):
     def __init__(self, *operands: ParameterOperatable.All):
@@ -382,7 +441,6 @@ class Arithmetic(ConstrainableExpression, HasUnit):
             if isinstance(param, Parameter)
         ):
             raise ValueError("parameters must have domain Numbers or ESeries")
-        self.operands = operands
 
 
 @abstract
@@ -395,9 +453,32 @@ class Additive(Arithmetic):
             raise ValueError("All operands must have compatible units")
 
 
+def _associative_obviously_eq(self: Expression, other: Expression) -> bool:
+    remaining = list(other.operands)
+    for op in self.operands:
+        for r in remaining:
+            if obviously_eq(op, r):
+                remaining.remove(r)
+                break
+    return not remaining
+
+
 class Add(Additive):
     def __init__(self, *operands):
         super().__init__(*operands)
+
+    # TODO caching
+    @override
+    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
+        if ParameterOperatable.obviously_eq(self, other):
+            return True
+        if isinstance(other, Add):
+            return _associative_obviously_eq(self, other)
+        return False
+
+    def obviously_eq_hash(self) -> int:
+        op_hash = sum(hash(op) for op in self.operands)
+        return hash((type(self), op_hash))
 
 
 class Subtract(Additive):
@@ -412,6 +493,19 @@ class Multiply(Arithmetic):
         self.units = units[0]
         for u in units[1:]:
             self.units = cast_assert(Unit, self.units * u)
+
+    # TODO caching
+    @override
+    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
+        if ParameterOperatable.obviously_eq(self, other):
+            return True
+        if isinstance(other, Add):
+            return _associative_obviously_eq(self, other)
+        return False
+
+    def obviously_eq_hash(self) -> int:
+        op_hash = sum(hash(op) for op in self.operands)
+        return hash((type(self), op_hash))
 
 
 class Divide(Arithmetic):
@@ -498,7 +592,6 @@ class Logic(ConstrainableExpression):
             if isinstance(param, Parameter)
         ):
             raise ValueError("parameters must have domain Boolean without a unit")
-        self.operands = operands
 
 
 class And(Logic):
@@ -607,7 +700,6 @@ class Predicate(ConstrainableExpression):
         r_units = HasUnit.get_units_or_dimensionless(right)
         if not l_units.is_compatible_with(r_units):
             raise ValueError("operands must have compatible units")
-        self.operands = [left, right]
 
     def __bool__(self):
         raise ValueError("Predicate cannot be converted to bool")

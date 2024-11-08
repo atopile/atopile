@@ -111,6 +111,21 @@ def test_subset_of_literal():
     solver.phase_one_no_guess_solving(G)
 
 
+def test_alias_classes():
+    p0, p1, p2, p3, p4 = (
+        Parameter(units=dimensionless, within=Range(0, i)) for i in range(5)
+    )
+    p0.alias_is(p1)
+    addition = p2 + p3
+    p1.alias_is(addition)
+    addition2 = p3 + p2
+    p4.alias_is(addition2)
+
+    G = p0.get_graph()
+    solver = DefaultSolver()
+    solver.phase_one_no_guess_solving(G)
+
+
 def test_solve_realworld():
     app = F.RP2040()
     solver = DefaultSolver()
@@ -173,7 +188,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_subset_of_literal
+    func = test_solve_realworld
 
     if "ipykernel" in sys.modules:
         func()

@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from collections import defaultdict
 import logging
 from collections.abc import Iterable
 from statistics import median
@@ -29,27 +30,60 @@ from faebryk.core.parameter import (
 from faebryk.core.solver import Solver
 from faebryk.libs.sets import Range, Ranges
 from faebryk.libs.units import Quantity, dimensionless
-from faebryk.libs.util import EquivalenceClasses
+from faebryk.libs.util import EquivalenceClasses, unique
 
 logger = logging.getLogger(__name__)
 
 
-def parameter_alias_classes(G: Graph) -> list[set[Parameter]]:
+def debug_print(repr_map: dict[ParameterOperatable, ParameterOperatable]):
+    import sys
+
+    if getattr(sys, "gettrace", lambda: None)():
+        log = print
+    else:
+        log = logger.info
+    for s, d in repr_map.items():
+        if isinstance(d, Expression):
+            if isinstance(s, Expression):
+                log(f"{s}[{s.operands}] -> {d}[{d.operands} | G {d.get_graph()!r}]")
+            else:
+                log(f"{s} -> {d}[{d.operands} | G {d.get_graph()!r}]")
+        else:
+            log(f"{s} -> {d} | G {d.get_graph()!r}")
+    graphs = unique(map(lambda p: p.get_graph(), repr_map.values()), lambda g: g())
+    log(f"{len(graphs)} graphs")
+
+
+def parameter_ops_alias_classes(
+    G: Graph,
+) -> dict[ParameterOperatable, set[ParameterOperatable]]:
     # TODO just get passed
-    params = [
+    param_ops = {
         p
-        for p in G.nodes_of_type(Parameter)
+        for p in G.nodes_of_type(ParameterOperatable)
         if get_constrained_predicates_involved_in(p)
-    ]
-    full_eq = EquivalenceClasses[Parameter](params)
+    }.difference(G.nodes_of_type(Predicate))
+    full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
 
     is_exprs = [e for e in G.nodes_of_type(Is) if e.constrained]
 
     for is_expr in is_exprs:
-        params_ops = [op for op in is_expr.operands if isinstance(op, Parameter)]
-        full_eq.add_eq(*params_ops)
+        full_eq.add_eq(*is_expr.operands)
 
-    return full_eq.get()
+    obvious_eq = defaultdict(list)
+    for p in param_ops:
+        obvious_eq[p.obviously_eq_hash()].append(p)
+    logger.info(f"obvious eq: {obvious_eq}")
+
+    for candidates in obvious_eq.values():
+        if len(candidates) > 1:
+            logger.debug(f"#obvious eq candidates: {len(candidates)}")
+            for i, p in enumerate(candidates):
+                for q in candidates[:i]:
+                    if p.obviously_eq(q):
+                        full_eq.add_eq(p, q)
+                        break
+    return full_eq.classes
 
 
 def get_params_for_expr(expr: Expression) -> set[Parameter]:
@@ -60,7 +94,7 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
 
 
 def get_constrained_predicates_involved_in(
-    p: Parameter | Expression,
+    p: ParameterOperatable,
 ) -> set[Predicate]:
     # p.self -> p.operated_on -> e1.operates_on -> e1.self
     dependants = p.bfs_node(
@@ -108,6 +142,9 @@ def create_new_expr(
     old_expr: Expression, *operands: ParameterOperatable.All
 ) -> Expression:
     new_expr = type(old_expr)(*operands)
+    for op in operands:
+        if isinstance(op, ParameterOperatable):
+            assert op.get_graph() == new_expr.get_graph()
     if isinstance(old_expr, Constrainable):
         cast(Constrainable, new_expr).constrained = old_expr.constrained
     return new_expr
@@ -206,9 +243,9 @@ def resolve_alias_classes(
     G: Graph,
 ) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
     dirty = False
-    params = [
+    params_ops = [
         p
-        for p in G.nodes_of_type(Parameter)
+        for p in G.nodes_of_type(ParameterOperatable)
         if get_constrained_predicates_involved_in(p)
     ]
     exprs = G.nodes_of_type(Expression)
@@ -216,11 +253,11 @@ def resolve_alias_classes(
     exprs.difference_update(predicates)
     exprs = {e for e in exprs if get_constrained_predicates_involved_in(e)}
 
-    p_alias_classes = parameter_alias_classes(G)
+    p_alias_classes = parameter_ops_alias_classes(G)
     dependency_classes = parameter_dependency_classes(G)
 
     infostr = (
-        f"{len(params)} parameters"
+        f"{len(params_ops)} parametersoperable"
         f"\n    {len(p_alias_classes)} alias classes"
         f"\n    {len(dependency_classes)} dependency classes"
         "\n"
@@ -230,61 +267,88 @@ def resolve_alias_classes(
     repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
 
     # Make new param repre for alias classes
-    for alias_class in p_alias_classes:
-        # TODO short-cut if len() == 1
-        if len(alias_class) > 1:
-            dirty = True
+    for param_op in ParameterOperatable.sort_by_depth(params_ops, ascending=True):
+        if param_op in repr_map or param_op not in p_alias_classes:
+            continue
 
+        alias_class = p_alias_classes[param_op]
+
+        # TODO short-cut if len() == 1 ?
+        param_alias_class = [p for p in alias_class if isinstance(p, Parameter)]
+        expr_alias_class = [p for p in alias_class if isinstance(p, Expression)]
+
+        # TODO non unit/numeric params, i.e. enums, bools
         # single unit
         unit_candidates = {p.units for p in alias_class}
         if len(unit_candidates) > 1:
             raise ValueError("Incompatible units in alias class")
+        if len(param_alias_class) > 0:
+            dirty |= len(param_alias_class) > 1
 
-        # single domain
-        domain_candidates = {p.domain for p in alias_class}
-        if len(domain_candidates) > 1:
-            raise ValueError("Incompatible domains in alias class")
+            # single domain
+            domain_candidates = {p.domain for p in param_alias_class}
+            if len(domain_candidates) > 1:
+                raise ValueError("Incompatible domains in alias class")
 
-        # intersect ranges
-        within_ranges = {p.within for p in alias_class if p.within is not None}
-        within = None
-        if within_ranges:
-            within = Ranges.op_intersect_ranges(*within_ranges)
+            # intersect ranges
+            within_ranges = {
+                p.within for p in param_alias_class if p.within is not None
+            }
+            within = None
+            if within_ranges:
+                within = Ranges.op_intersect_ranges(*within_ranges)
 
-        # heuristic:
-        # intersect soft sets
-        soft_sets = {p.soft_set for p in alias_class if p.soft_set is not None}
-        soft_set = None
-        if soft_sets:
-            soft_set = Ranges.op_intersect_ranges(*soft_sets)
+            # heuristic:
+            # intersect soft sets
+            soft_sets = {
+                p.soft_set for p in param_alias_class if p.soft_set is not None
+            }
+            soft_set = None
+            if soft_sets:
+                soft_set = Ranges.op_intersect_ranges(*soft_sets)
 
-        # heuristic:
-        # get median
-        guesses = {p.guess for p in alias_class if p.guess is not None}
-        guess = None
-        if guesses:
-            guess = median(guesses)  # type: ignore
+            # heuristic:
+            # get median
+            guesses = {p.guess for p in param_alias_class if p.guess is not None}
+            guess = None
+            if guesses:
+                guess = median(guesses)  # type: ignore
 
-        # heuristic:
-        # max tolerance guess
-        tolerance_guesses = {
-            p.tolerance_guess for p in alias_class if p.tolerance_guess is not None
-        }
-        tolerance_guess = None
-        if tolerance_guesses:
-            tolerance_guess = max(tolerance_guesses)
+            # heuristic:
+            # max tolerance guess
+            tolerance_guesses = {
+                p.tolerance_guess
+                for p in param_alias_class
+                if p.tolerance_guess is not None
+            }
+            tolerance_guess = None
+            if tolerance_guesses:
+                tolerance_guess = max(tolerance_guesses)
 
-        likely_constrained = any(p.likely_constrained for p in alias_class)
+            likely_constrained = any(p.likely_constrained for p in param_alias_class)
 
-        representative = Parameter(
-            units=unit_candidates.pop(),
-            within=within,
-            soft_set=soft_set,
-            guess=guess,
-            tolerance_guess=tolerance_guess,
-            likely_constrained=likely_constrained,
-        )
-        repr_map.update({p: representative for p in alias_class})
+            representative = Parameter(
+                units=unit_candidates.pop(),
+                within=within,
+                soft_set=soft_set,
+                guess=guess,
+                tolerance_guess=tolerance_guess,
+                likely_constrained=likely_constrained,
+            )
+            repr_map.update({p: representative for p in param_alias_class})
+        elif len(expr_alias_class) > 1:
+            dirty = True
+            representative = Parameter(units=unit_candidates.pop())
+
+        if len(expr_alias_class) > 0:
+            for e in expr_alias_class:
+                copy_expr = copy_operand_recursively(e, repr_map)
+                repr_map[e] = (
+                    representative  # copy_expr TODO make sure this makes sense
+                )
+                # TODO, if it doesn't have implicit constraints and it's operands don't aren't constraint, we can get rid of it
+                assert isinstance(copy_expr, Constrainable)
+                copy_expr.alias_is(representative)
 
     # replace parameters in expressions and predicates
     for expr in cast(
@@ -301,12 +365,13 @@ def resolve_alias_classes(
 
         # filter alias class Is
         if isinstance(expr, Is):
-            if all(isinstance(o, Parameter) for o in expr.operands):
-                continue
+            continue
 
-        operands = [try_replace(o) for o in expr.operands]
-        new_expr = create_new_expr(expr, *operands)
-        repr_map[expr] = new_expr
+        assert all(
+            o in repr_map or not isinstance(o, ParameterOperatable)
+            for o in expr.operands
+        )
+        repr_map[expr] = copy_operand_recursively(expr, repr_map)
 
     return repr_map, dirty
 
@@ -713,6 +778,8 @@ def compress_arithmetic_expressions(
     }, dirty
 
 
+# TODO move to expression?
+# TODO recursive?
 def has_implicit_constraint(po: ParameterOperatable) -> bool:
     if isinstance(po, Parameter | Add | Subtract | Multiply | Power):  # TODO others
         return False
@@ -761,20 +828,6 @@ class DefaultSolver(Solver):
     timeout: int = 1000
 
     def phase_one_no_guess_solving(self, g: Graph) -> None:
-        def debug_print(repr_map: dict[ParameterOperatable, ParameterOperatable]):
-            for s, d in repr_map.items():
-                if isinstance(d, Expression):
-                    if isinstance(s, Expression):
-                        logger.info(
-                            f"{s}[{s.operands}] -> {d}[{d.operands} | G {d.get_graph()!r}]"
-                        )
-                    else:
-                        logger.info(f"{s} -> {d}[{d.operands} | G {d.get_graph()!r}]")
-                else:
-                    logger.info(f"{s} -> {d} | G {d.get_graph()!r}")
-            graphs = {p.get_graph() for p in repr_map.values()}
-            logger.info(f"{len(graphs)} graphs")
-
         logger.info(f"Phase 1 Solving: No guesses {'-' * 80}")
 
         # strategies
@@ -803,13 +856,13 @@ class DefaultSolver(Solver):
         logger.info("Phase 0 Solving: normalize graph")
         repr_map = normalize_graph(g)
         debug_print(repr_map)
-        graphs = {p.get_graph() for p in repr_map.values()}
+        graphs = unique(map(lambda p: p.get_graph(), repr_map.values()), lambda g: g())
         # TODO assert all new graphs
 
         dirty = True
         iter = 0
 
-        while dirty:
+        while dirty and len(graphs) > 0:
             iter += 1
             logger.info(f"Iteration {iter}")
             logger.info("Phase 1 Solving: Alias classes")
@@ -818,7 +871,9 @@ class DefaultSolver(Solver):
                 alias_repr_map, alias_dirty = resolve_alias_classes(g)
                 repr_map.update(alias_repr_map)
             debug_print(repr_map)
-            graphs = {p.get_graph() for p in repr_map.values()}
+            graphs = unique(
+                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
+            )
             # TODO assert all new graphs
 
             logger.info("Phase 2a Solving: Add/Mul associative expressions")
@@ -829,7 +884,22 @@ class DefaultSolver(Solver):
                 )
                 repr_map.update(assoc_add_mul_repr_map)
             debug_print(repr_map)
-            graphs = {p.get_graph() for p in repr_map.values()}
+            graphs = unique(
+                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
+            )
+            # TODO assert all new graphs
+
+            logger.info("Phase 2a Solving: Add/Mul associative expressions")
+            repr_map = {}
+            for g in graphs:
+                assoc_add_mul_repr_map, assoc_add_mul_dirty = (
+                    compress_associative_add_mul(g)
+                )
+                repr_map.update(assoc_add_mul_repr_map)
+            debug_print(repr_map)
+            graphs = unique(
+                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
+            )
             # TODO assert all new graphs
 
             logger.info("Phase 2b Solving: Subtract associative expressions")
@@ -838,7 +908,9 @@ class DefaultSolver(Solver):
                 assoc_sub_repr_map, assoc_sub_dirty = compress_associative_sub(g)
                 repr_map.update(assoc_sub_repr_map)
             debug_print(repr_map)
-            graphs = {p.get_graph() for p in repr_map.values()}
+            graphs = unique(
+                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
+            )
             # TODO assert all new graphs
 
             logger.info("Phase 3 Solving: Arithmetic expressions")
@@ -847,7 +919,9 @@ class DefaultSolver(Solver):
                 arith_repr_map, arith_dirty = compress_arithmetic_expressions(g)
                 repr_map.update(arith_repr_map)
             debug_print(repr_map)
-            graphs = {p.get_graph() for p in repr_map.values()}
+            graphs = unique(
+                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
+            )
             # TODO assert all new graphs
 
             logger.info("Phase 4 Solving: Remove obvious tautologies")
@@ -856,7 +930,9 @@ class DefaultSolver(Solver):
                 tautology_repr_map, tautology_dirty = remove_obvious_tautologies(g)
                 repr_map.update(tautology_repr_map)
             debug_print(repr_map)
-            graphs = {p.get_graph() for p in repr_map.values()}
+            graphs = unique(
+                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
+            )
             # TODO assert all new graphs
 
             logger.info("Phase 5 Solving: Subset of literals")
@@ -865,7 +941,9 @@ class DefaultSolver(Solver):
                 subset_repr_map, subset_dirty = subset_of_literal(g)
                 repr_map.update(subset_repr_map)
             debug_print(repr_map)
-            graphs = {p.get_graph() for p in repr_map.values()}
+            graphs = unique(
+                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
+            )
             # TODO assert all new graphs
 
             dirty = (
