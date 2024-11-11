@@ -18,7 +18,7 @@ name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
-license = ""
+license = { file = "LICENSE" }
 authors = [
     { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
     { name = "Timothee Peter", email = "timothee.peter@mac.com" },
