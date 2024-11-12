@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 LEAK_WARNINGS = ConfigFlag("CPP_LEAK_WARNINGS", default=False)
 DEBUG_BUILD = ConfigFlag("CPP_DEBUG_BUILD", default=False)
+PRINTF_DEBUG = ConfigFlag("CPP_PRINTF_DEBUG", default=False)
 
 
 # Check if installed as editable
@@ -66,6 +67,7 @@ def compile_and_load():
 
     if DEBUG_BUILD:
         other_flags += ["-DCMAKE_BUILD_TYPE=Debug"]
+    other_flags += [f"-DGLOBAL_PRINTF_DEBUG={int(bool(PRINTF_DEBUG))}"]
 
     with global_lock(_build_dir / "lock", timeout_s=60):
         run_live(
@@ -115,6 +117,7 @@ def compile_and_load():
                 is_pyi=True,
             )
         )
+        run_live(["ruff", "check", "--fix", pyi_out], logger=logger)
 
 
 # Re-export c++ with type hints provided by __init__.pyi

@@ -26,6 +26,7 @@ from faebryk.library.has_construction_dependency import has_construction_depende
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
+from faebryk.library.is_dynamic_by_connections import is_dynamic_by_connections
 from faebryk.library.Signal import Signal
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.Mechanical import Mechanical

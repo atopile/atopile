@@ -108,8 +108,10 @@ class RP2040_ReferenceDesign(Module):
         )
 
         # USB
-        terminated_usb = self.usb.usb_if.d.terminated()
-        terminated_usb.impedance.merge(F.Range.from_center_rel(27.4 * P.ohm, 0.05))
+        terminated_usb_data = self.add(
+            self.usb.usb_if.d.terminated(), "_terminated_usb_data"
+        )
+        terminated_usb_data.impedance.merge(F.Range.from_center_rel(27.4 * P.ohm, 0.05))
 
         # Flash
         self.flash.memory_size.merge(16 * P.Mbit)
@@ -157,7 +159,7 @@ class RP2040_ReferenceDesign(Module):
         self.flash.qspi.connect(self.rp2040.qspi)
         self.flash.qspi.chip_select.connect(self.boot_selector.logic_out)
 
-        terminated_usb.connect(self.rp2040.usb)
+        terminated_usb_data.connect(self.rp2040.usb)
 
         self.rp2040.xtal_if.connect(self.clock_source.xtal_if)
 

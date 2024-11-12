@@ -28,9 +28,11 @@ Graph_ref Graph::merge_graphs(Graph_ref g1, Graph_ref g2) {
     auto G_source = (g1 == G_target) ? g2 : g1;
 
     assert(G_source->node_count() > 0);
+    size_t v_i_offset = G_target->node_count();
 
     for (auto &v : G_source->v) {
         v->G = G_target;
+        v->v_i += v_i_offset;
     }
     G_target->merge(*G_source);
     G_source->invalidate();
@@ -43,11 +45,10 @@ void Graph::add_edge(Link_ref link) {
 
     auto G = Graph::merge_graphs(from->G, to->G);
 
-    // remove existing link
+    // existing link
     if (G->e_cache_simple[from].contains(to)) {
-        // this->remove_edge(this->e_cache[from][to]);
-        // TODO: reconsider this
-        throw std::runtime_error("link already exists");
+        // handle policy in the caller
+        throw LinkExists(G->e_cache[from][to], link, "link already exists");
     }
 
     G->e_cache_simple[from].insert(to);
@@ -197,4 +198,33 @@ Graph::bfs_visit(std::function<bool(std::vector<GI_ref_weak> &, Link_ref)> filte
     }
 
     return visited;
+}
+
+Set<GI_ref> Graph::get_gifs() {
+    return this->v;
+}
+
+std::vector<std::tuple<GI_ref_weak, GI_ref_weak, Link_ref>> Graph::all_edges() {
+    return this->e;
+}
+
+LinkExists::LinkExists(Link_ref existing_link, Link_ref new_link, const std::string &msg)
+  : std::runtime_error(LinkExists::make_msg(existing_link, new_link, msg))
+  , existing_link(existing_link)
+  , new_link(new_link) {
+}
+
+std::string LinkExists::make_msg(Link_ref existing_link, Link_ref new_link,
+                                 const std::string &msg) {
+    std::stringstream ss;
+    ss << msg << ": E:" << existing_link->str() << " N:" << new_link->str();
+    return ss.str();
+}
+
+Link_ref LinkExists::get_existing_link() {
+    return this->existing_link;
+}
+
+Link_ref LinkExists::get_new_link() {
+    return this->new_link;
 }

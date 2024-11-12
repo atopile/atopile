@@ -16,6 +16,7 @@ from faebryk.core.node import Node
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.app.kicad_netlist import write_netlist
+from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
     C_kicad_pcb_file,
@@ -74,6 +75,8 @@ def apply_design(
     app: Module,
     transform: Callable[[PCB_Transformer], Any] | None = None,
 ):
+    resolve_dynamic_parameters(G)
+
     logger.info(f"Writing netlist to {netlist_path}")
     changed = write_netlist(G, netlist_path, use_kicad_designators=True)
     apply_netlist(pcb_path, netlist_path, changed)

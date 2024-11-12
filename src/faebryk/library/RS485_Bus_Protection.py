@@ -105,8 +105,8 @@ class RS485_Bus_Protection(Module):
             termination_resistor.resistance.merge(
                 F.Range.from_center_rel(120 * P.ohm, 0.05)
             )
-            self.rs485_ufp.diff_pair.p.connect_via(
-                termination_resistor, self.rs485_ufp.diff_pair.n
+            self.rs485_ufp.diff_pair.p.signal.connect_via(
+                termination_resistor, self.rs485_ufp.diff_pair.n.signal
             )
         if self._polarization:
             polarization_resistors = self.add_to_container(2, F.Resistor)

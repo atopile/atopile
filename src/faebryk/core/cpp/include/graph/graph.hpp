@@ -10,6 +10,7 @@
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/tuple.h>
 #include <nanobind/stl/unordered_map.h>
 #include <nanobind/stl/unordered_set.h>
 #include <nanobind/stl/vector.h>
@@ -35,11 +36,22 @@ using Node_ref = std::shared_ptr<Node>;
 using Graph_ref = std::shared_ptr<Graph>;
 using GI_refs_weak = std::vector<GI_ref_weak>;
 using HierarchicalNodeRef = std::pair<Node_ref, std::string>;
+using Link_weak_ref = Link *;
+
+class LinkExists : public std::runtime_error {
+  private:
+    Link_ref existing_link;
+    Link_ref new_link;
+    std::string make_msg(Link_ref existing_link, Link_ref new_link,
+                         const std::string &msg);
+
+  public:
+    LinkExists(Link_ref existing_link, Link_ref new_link, const std::string &msg);
+    Link_ref get_existing_link();
+    Link_ref get_new_link();
+};
 
 class Node {
-  private:
-    std::optional<nb::object> py_handle{};
-
   public:
     struct NodeException : public std::runtime_error {
         NodeException(Node &node, const std::string &msg)
@@ -53,8 +65,27 @@ class Node {
         }
     };
 
+    class Type {
+      private:
+        nb::handle type;
+        bool hack_cache_is_moduleinterface;
+
+      public:
+        Type(nb::handle type);
+        bool operator==(const Type &other) const;
+        std::string get_name();
+        // TODO these are weird
+        bool is_moduleinterface();
+        static nb::type_object get_moduleinterface_type();
+    };
+
+  private:
+    std::optional<nb::object> py_handle{};
+    std::optional<Type> type{};
+
   private:
     std::shared_ptr<GraphInterfaceSelf> self;
+
     std::shared_ptr<GraphInterfaceHierarchical> children;
     std::shared_ptr<GraphInterfaceHierarchical> parent;
 
@@ -80,6 +111,7 @@ class Node {
     std::string get_full_name(bool types = false);
     std::string repr();
 
+    Type get_type();
     std::string get_type_name();
     // TODO replace with constructor
     void set_py_handle(nb::object handle);
@@ -119,6 +151,7 @@ class GraphInterface {
     void connect(GI_ref_weak other);
     void connect(GI_refs_weak others);
     void connect(GI_ref_weak other, Link_ref link);
+    void connect(GI_refs_weak others, Link_ref link);
     // TODO replace with set_node(Node_ref node, std::string name)
     void set_node(Node_ref node);
     Node_ref get_node();
@@ -128,6 +161,9 @@ class GraphInterface {
     std::string repr();
     // force vtable, for typename
     virtual void do_stuff() {};
+
+    /** Index in Graph::v */
+    size_t v_i = 0;
 };
 
 class Link {
@@ -138,14 +174,52 @@ class Link {
   protected:
     Link();
     Link(GI_ref_weak from, GI_ref_weak to);
+    Link(const Link &other);
 
   public:
     std::pair<GI_ref_weak, GI_ref_weak> get_connections();
     virtual void set_connections(GI_ref_weak from, GI_ref_weak to);
     bool is_setup();
+    virtual Link_ref clone() const = 0;
+    virtual bool is_cloneable() const = 0;
+    virtual bool operator==(const Link &other) const;
+    virtual std::string str() const;
 };
 
-using Path = std::vector<GI_ref_weak>;
+struct Edge {
+    /*const*/ GI_ref_weak from;
+    /*const*/ GI_ref_weak to;
+
+    std::string str() const;
+};
+
+using TriEdge = std::tuple</*const*/ GI_ref_weak, /*const*/ GI_ref_weak,
+                           /*const*/ GI_ref_weak>;
+
+class Path {
+  public:
+    Path(/*const*/ GI_ref_weak path_head);
+    Path(std::vector<GI_ref_weak> path);
+    Path(const Path &other);
+    Path(Path &&other);
+    ~Path();
+
+    std::vector</*const*/ GI_ref_weak> path;
+
+    /*const*/ Link_weak_ref get_link(Edge edge) /*const*/;
+    std::optional<Edge> last_edge() /*const*/;
+    std::optional<TriEdge> last_tri_edge() /*const*/;
+    /*const*/ GI_ref_weak last() /*const*/;
+    /*const*/ GI_ref_weak first() /*const*/;
+    /*const*/ GI_ref_weak operator[](int idx) /*const*/;
+    size_t size() /*const*/;
+    bool contains(/*const*/ GI_ref_weak gif) /*const*/;
+    void iterate_edges(std::function<bool(Edge &)> visitor) /*const*/;
+    /*const*/ std::vector</*const*/ GI_ref_weak> &get_path() /*const*/;
+    size_t index(/*const*/ GI_ref_weak gif) /*const*/;
+
+    std::string str() const;
+};
 
 class Graph {
     Set<GI_ref> v;
@@ -175,6 +249,9 @@ class Graph {
     int edge_count();
 
     std::string repr();
+
+    Set<GI_ref> get_gifs();
+    std::vector<std::tuple<GI_ref_weak, GI_ref_weak, Link_ref>> all_edges();
 
     // Algorithms
     std::unordered_set<Node_ref> node_projection();

@@ -120,8 +120,8 @@ class KeyErrorAmbiguous[T](KeyError):
         self.duplicates = duplicates
 
 
-def find[T](haystack: Iterable[T], needle: Callable[[T], bool]) -> T:
-    results = list(filter(needle, haystack))
+def find[T](haystack: Iterable[T], needle: Callable[[T], Any]) -> T:
+    results = [x for x in haystack if needle(x)]
     if not results:
         raise KeyErrorNotFound()
     if len(results) != 1:
@@ -864,6 +864,9 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
 
     def _convert(self, raw_val: str) -> int:
         return int(raw_val)
+
+    def __int__(self) -> int:
+        return self.get()
 
 
 def zip_dicts_by_key(*dicts):

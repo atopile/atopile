@@ -4,6 +4,7 @@
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
+from faebryk.libs.util import cast_assert
 
 
 class UART_Base(ModuleInterface):
@@ -18,7 +19,7 @@ class UART_Base(ModuleInterface):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    def _on_connect(self, other: "UART_Base"):
-        super()._on_connect(other)
-
-        self.baud.merge(other.baud)
+    def __preinit__(self) -> None:
+        self.baud.add(
+            F.is_dynamic_by_connections(lambda mif: cast_assert(UART_Base, mif).baud)
+        )

@@ -56,6 +56,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 if(${EDITABLE} AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always")
 endif()
+
+if(GLOBAL_PRINTF_DEBUG)
+    add_definitions(-DGLOBAL_PRINTF_DEBUG=1)
+endif()
+
 # source files ---------------------------------------------------------
 include_directories(${CMAKE_SOURCE_DIR}/include)
 file(GLOB_RECURSE SOURCE_FILES 

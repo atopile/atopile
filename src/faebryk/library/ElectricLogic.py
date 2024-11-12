@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import sys
 from abc import abstractmethod
 from enum import Enum, auto
 from typing import Self
@@ -137,10 +136,3 @@ class ElectricLogic(F.SignalElectrical):
             self.reference.lv.connect(other.reference.lv)
 
         return super().connect_shallow(other)
-
-    def connect(self, *other: Self, linkcls=None):
-        recursion_depth = sys.getrecursionlimit()
-        sys.setrecursionlimit(10000)
-        ret = super().connect(*other, linkcls=linkcls)
-        sys.setrecursionlimit(recursion_depth)
-        return ret

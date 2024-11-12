@@ -3,7 +3,7 @@
 import logging
 from typing import TYPE_CHECKING, Callable, Iterable
 
-from faebryk.core.moduleinterface import GraphInterfaceModuleSibling
+from faebryk.core.cpp import GraphInterfaceModuleSibling
 from faebryk.core.node import Node, NodeException, f_field
 from faebryk.core.trait import Trait
 from faebryk.libs.util import cast_assert, unique_ref
@@ -145,6 +145,10 @@ class Module(Node):
             for k, (src_m, dst_m) in src_.zip_children_by_name_with(
                 dst_, ModuleInterface
             ).items():
+                # TODO: careful this also connects runtime children
+                # for now skip stuff prefixed with _
+                if k.startswith("_"):
+                    continue
                 if src_m is None or dst_m is None:
                     if not allow_partial:
                         raise Exception(f"Node with name {k} not present in both")

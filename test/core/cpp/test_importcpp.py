@@ -155,7 +155,24 @@ def test_mif_link():
     mif1 = ModuleInterface()
     mif2 = ModuleInterface()
     mif1.connect_shallow(mif2)
-    assert isinstance(mif1.is_connected_to(mif2), LinkDirectConditional)
+    paths = mif1.is_connected_to(mif2)
+    assert len(paths) == 1
+    path = paths[0]
+    assert len(path) == 4
+    assert isinstance(path[1].is_connected_to(path[2]), LinkDirectConditional)
+
+
+def test_cpp_type():
+    from faebryk.core.cpp import LinkDirect
+
+    class LinkDirectDerived(LinkDirect):
+        pass
+
+    obj = LinkDirect()
+    assert LinkDirect.is_cloneable(obj)
+
+    obj2 = LinkDirectDerived()
+    assert not LinkDirect.is_cloneable(obj2)
 
 
 if __name__ == "__main__":

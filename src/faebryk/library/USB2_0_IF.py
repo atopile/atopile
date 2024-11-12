@@ -9,6 +9,7 @@ from faebryk.libs.units import P
 
 class USB2_0_IF(ModuleInterface):
     class Data(F.DifferentialPair):
+        # FIXME: this should be in diffpair right?
         @L.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
@@ -16,8 +17,9 @@ class USB2_0_IF(ModuleInterface):
             )
 
         def __preinit__(self):
-            self.p.reference.voltage.merge(F.Range(0 * P.V, 3.6 * P.V))
-            self.n.reference.voltage.merge(F.Range(0 * P.V, 3.6 * P.V))
+            self.single_electric_reference.get_reference().voltage.merge(
+                F.Range(0 * P.V, 3.6 * P.V)
+            )
 
     d: Data
     buspower: F.ElectricPower

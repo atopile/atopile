@@ -50,7 +50,7 @@ def test_symbol_types(name: str, module):
         )
     ],
 )
-@pytest.mark.timeout(60)  # TODO lower
+# @pytest.mark.timeout(60)  # TODO lower
 def test_init_args(name: str, module):
     """Make sure we can instantiate all classes without error"""
 

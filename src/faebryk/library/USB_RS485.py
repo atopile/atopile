@@ -31,8 +31,8 @@ class USB_RS485(Module):
         self.usb.usb_if.buspower.connect(self.usb_uart.usb.usb_if.buspower)
 
         # connect termination resistor between RS485 A and B
-        self.uart_rs485.rs485.diff_pair.n.connect_via(
-            self.termination, self.uart_rs485.rs485.diff_pair.p
+        self.uart_rs485.rs485.diff_pair.n.signal.connect_via(
+            self.termination, self.uart_rs485.rs485.diff_pair.p.signal
         )
 
         # connect polarization resistors to RS485 A and B

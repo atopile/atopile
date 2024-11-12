@@ -39,6 +39,7 @@ void Node::set_py_handle(nb::object handle) {
     }
     assert(handle.is_valid());
     this->py_handle = handle;
+    this->type = Type(handle.type());
 }
 
 std::shared_ptr<Graph> Node::get_graph() {
@@ -70,10 +71,7 @@ HierarchicalNodeRef Node::get_parent_force() {
 }
 
 std::string Node::get_root_id() {
-    std::stringstream ss;
-    ss << std::hex << std::uppercase << reinterpret_cast<uintptr_t>(this);
-    auto out = ss.str();
-    return "*" + out.substr(out.size() - 4);
+    return util::formatted_ptr(this);
 }
 
 std::string Node::get_name(bool accept_no_parent) {
@@ -122,16 +120,7 @@ std::string Node::repr() {
 
 std::string Node::get_type_name() {
     if (this->py_handle.has_value()) {
-        auto out = std::string(
-            nb::repr(this->py_handle.value().type().attr("__name__")).c_str());
-        // format : 'ClassName'
-        // extract ClassName
-        // remove quotes
-        auto pos = out.find_first_of('\'');
-        if (pos != std::string::npos) {
-            out = out.substr(pos + 1, out.size() - 2);
-        }
-        return out;
+        return this->get_type().get_name();
     }
     return util::get_type_name(this);
 }
@@ -223,4 +212,36 @@ Node::get_children(bool direct_only, std::optional<std::vector<nb::type_object>>
     }
 
     return children_filtered;
+}
+
+Node::Type Node::get_type() {
+    if (!this->type) {
+        throw std::runtime_error("Node has no py_handle");
+    }
+    return *this->type;
+}
+
+Node::Type::Type(nb::handle type)
+  : type(type) {
+    // TODO can be done in a nicer way
+    this->hack_cache_is_moduleinterface =
+        pyutil::issubclass(this->type, this->get_moduleinterface_type());
+}
+
+bool Node::Type::operator==(const Type &other) const {
+    // TODO not sure this is ok
+    return this->type.ptr() == other.type.ptr();
+}
+
+std::string Node::Type::get_name() {
+    return pyutil::get_name(this->type);
+}
+
+bool Node::Type::is_moduleinterface() {
+    return this->hack_cache_is_moduleinterface;
+}
+
+nb::type_object Node::Type::get_moduleinterface_type() {
+    // TODO can be done in a nicer way
+    return nb::module_::import_("faebryk.core.moduleinterface").attr("ModuleInterface");
 }

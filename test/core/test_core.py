@@ -3,7 +3,20 @@
 
 import unittest
 
-from faebryk.core.link import LinkDirect, LinkParent, LinkSibling
+from faebryk.core.cpp import (
+    GraphInterface,
+    GraphInterfaceHierarchical,
+    LinkExists,
+    LinkNamedParent,
+)
+from faebryk.core.link import (
+    LinkDirect,
+    LinkDirectConditional,
+    LinkDirectConditionalFilterResult,
+    LinkParent,
+    LinkSibling,
+)
+from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.library import L
 
@@ -29,8 +42,8 @@ class TestGraph(unittest.TestCase):
         self.assertIsInstance(gif1.is_connected_to(gif3), linkcls)
         self.assertEqual(gif1.is_connected_to(gif3), gif3.is_connected_to(gif1))
 
-        self.assertRaises(RuntimeError, lambda: gif1.connect(gif3))
-        self.assertRaises(RuntimeError, lambda: gif1.connect(gif3, linkcls()))
+        self.assertRaises(LinkExists, lambda: gif1.connect(gif3))
+        self.assertRaises(LinkExists, lambda: gif1.connect(gif3, linkcls()))
 
         self.assertEqual(gif1.G, gif2.G)
 
@@ -96,6 +109,44 @@ class TestGraph(unittest.TestCase):
         self.assertRegex(
             x.get_full_name(), "[*][0-9A-F]{4}.i0.i1.i2.i3.i4.i5.i6.i7.i8.i9"
         )
+
+    def test_link_eq_direct(self):
+        gif1 = GraphInterface()
+        gif2 = GraphInterface()
+
+        gif1.connect(gif2)
+
+        self.assertEqual(gif1.is_connected_to(gif2), LinkDirect())
+        self.assertNotEqual(gif1.is_connected_to(gif2), LinkSibling())
+
+    def test_link_eq_args(self):
+        gif1 = GraphInterfaceHierarchical(is_parent=True)
+        gif2 = GraphInterfaceHierarchical(is_parent=False)
+
+        gif1.connect(gif2, link=LinkNamedParent("bla"))
+
+        self.assertEqual(gif1.is_connected_to(gif2), LinkNamedParent("bla"))
+        self.assertNotEqual(gif1.is_connected_to(gif2), LinkNamedParent("blub"))
+        self.assertNotEqual(gif1.is_connected_to(gif2), LinkDirect())
+
+    def test_inherited_link(self):
+        class _Link(LinkDirectConditional):
+            def __init__(self):
+                super().__init__(
+                    lambda path: LinkDirectConditionalFilterResult.FILTER_PASS
+                )
+
+        gif1 = GraphInterface()
+        gif2 = GraphInterface()
+
+        gif1.connect(gif2, link=_Link())
+        self.assertIsInstance(gif1.is_connected_to(gif2), _Link)
+
+    def test_unique_mif_shallow_link(self):
+        class MIFType(ModuleInterface):
+            pass
+
+        assert MIFType.LinkDirectShallow() is MIFType.LinkDirectShallow()
 
 
 if __name__ == "__main__":

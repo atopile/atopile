@@ -31,10 +31,12 @@ std::string GraphInterface::get_name() {
 }
 
 std::string GraphInterface::get_full_name(bool types) {
-    assert(this->node);
-
     std::stringstream ss;
-    ss << this->get_node()->get_full_name(types) << "." << this->name;
+    if (this->node) {
+        ss << this->get_node()->get_full_name(types) << "." << this->name;
+    } else {
+        ss << util::formatted_ptr(this);
+    }
     if (types) {
         ss << "|" << util::get_type_name(this) << "|";
     }
@@ -42,6 +44,9 @@ std::string GraphInterface::get_full_name(bool types) {
 }
 
 std::string GraphInterface::repr() {
+    if (this->node) {
+        return this->get_full_name(true);
+    }
     std::stringstream ss;
     ss << "<" << util::get_type_name(this) << " at " << this << ">";
     return ss.str();
@@ -71,6 +76,22 @@ void GraphInterface::connect(GI_ref_weak other, Link_ref link) {
     }
     link->set_connections(this, other);
     Graph::add_edge(link);
+}
+
+void GraphInterface::connect(GI_refs_weak others, Link_ref link) {
+    if (others.size() == 1) {
+        this->connect(others[0], link);
+        return;
+    }
+    // check link is cloneable
+    if (!link->is_cloneable()) {
+        throw std::runtime_error(std::string("link is not cloneable: ") +
+                                 pyutil::get_typename(link.get()));
+    }
+
+    for (auto other : others) {
+        this->connect(other, link->clone());
+    }
 }
 
 void GraphInterface::register_graph(std::shared_ptr<GraphInterface> gi) {

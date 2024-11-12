@@ -18,9 +18,10 @@ class SignalElectrical(F.Signal):
 
         def __init__(self) -> None:
             super().__init__(
-                lambda src, dst: LinkDirectConditionalFilterResult.FILTER_PASS
-                if self.test(dst.node)
-                else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE
+                lambda path: LinkDirectConditionalFilterResult.FILTER_PASS
+                if all(self.test(dst.node) for dst in path)
+                else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE,
+                needs_only_first_in_path=False,
             )
 
     # ----------------------------------------
