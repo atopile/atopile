@@ -65,7 +65,7 @@ def apply_design_to_pcb(
     CachePicker.add_to_modules(modules, prio=-20)
 
     match DB_PICKER_BACKEND:
-        case PickerType.JLCPCB:
+        case PickerType.SQLITE:
             try:
                 JLCPCB_DB()
                 for n in modules:

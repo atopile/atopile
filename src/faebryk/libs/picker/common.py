@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 class PickerType(StrEnum):
-    JLCPCB = "jlcpcb"
+    SQLITE = "sqlite"
     API = "api"
 
 
 DB_PICKER_BACKEND = ConfigFlagEnum(
-    PickerType, "PICKER", PickerType.JLCPCB, "Picker backend to use"
+    PickerType, "PICKER", PickerType.API, "Picker backend to use"
 )
 
 
