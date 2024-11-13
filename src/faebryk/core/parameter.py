@@ -74,6 +74,16 @@ class ParameterOperatable(Node):
             return True
         return False
 
+    @staticmethod
+    def pops_obviously_eq(a: All, b: All) -> bool:
+        if a == b:
+            return True
+        if isinstance(a, ParameterOperatable):
+            return a.obviously_eq(b)
+        elif isinstance(b, ParameterOperatable):
+            return b.obviously_eq(a)
+        return False
+
     def obviously_eq_hash(self) -> int:
         if hasattr(self, "__hash"):
             return self.__hash
@@ -352,16 +362,6 @@ class ParameterOperatable(Node):
     # ) -> None: ...
 
 
-def obviously_eq(a: ParameterOperatable.All, b: ParameterOperatable.All) -> bool:
-    if a == b:
-        return True
-    if isinstance(a, ParameterOperatable):
-        return a.obviously_eq(b)
-    elif isinstance(b, ParameterOperatable):
-        return b.obviously_eq(a)
-    return False
-
-
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     if isinstance(po, ParameterOperatable):
         return po.has_implicit_constraints_recursive()
@@ -419,13 +419,22 @@ class Expression(ParameterOperatable):
             return True
         if type(other) is type(self):
             for s, o in zip(self.operands, cast_assert(Expression, other).operands):
-                if not obviously_eq(s, o):
+                if not ParameterOperatable.pops_obviously_eq(s, o):
                     return False
             return True
         return False
 
     def obviously_eq_hash(self) -> int:
         return hash((type(self), self.operands))
+
+    def _associative_obviously_eq(self: "Expression", other: "Expression") -> bool:
+        remaining = list(other.operands)
+        for op in self.operands:
+            for r in remaining:
+                if ParameterOperatable.pops_obviously_eq(op, r):
+                    remaining.remove(r)
+                    break
+        return not remaining
 
 
 @abstract
@@ -475,16 +484,6 @@ class Additive(Arithmetic):
             raise ValueError("All operands must have compatible units")
 
 
-def _associative_obviously_eq(self: Expression, other: Expression) -> bool:
-    remaining = list(other.operands)
-    for op in self.operands:
-        for r in remaining:
-            if obviously_eq(op, r):
-                remaining.remove(r)
-                break
-    return not remaining
-
-
 class Add(Additive):
     def __init__(self, *operands):
         super().__init__(*operands)
@@ -495,7 +494,7 @@ class Add(Additive):
         if ParameterOperatable.obviously_eq(self, other):
             return True
         if isinstance(other, Add):
-            return _associative_obviously_eq(self, other)
+            return self._associative_obviously_eq(other)
         return False
 
     def obviously_eq_hash(self) -> int:
@@ -528,7 +527,7 @@ class Multiply(Arithmetic):
         if ParameterOperatable.obviously_eq(self, other):
             return True
         if isinstance(other, Multiply):
-            return _associative_obviously_eq(self, other)
+            return self._associative_obviously_eq(other)
         return False
 
     def obviously_eq_hash(self) -> int:

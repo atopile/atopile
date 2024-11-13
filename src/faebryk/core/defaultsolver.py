@@ -26,7 +26,6 @@ from faebryk.core.parameter import (
     Predicate,
     Subtract,
     has_implicit_constraints_recursive,
-    obviously_eq,
 )
 from faebryk.core.solver import Solver
 from faebryk.libs.sets import Range, Ranges
@@ -797,7 +796,7 @@ def remove_obvious_tautologies(
         left = pred_is.operands[0]
         right = pred_is.operands[1]
         if (
-            obviously_eq(left, right)
+            left is right  # TODO obv eq
             and not has_implicit_constraints_recursive(left)
             and not has_implicit_constraints_recursive(right)
         ):
