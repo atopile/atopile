@@ -8,6 +8,7 @@ from typing import Callable, Type
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
+from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES, E_SERIES_VALUES
 from faebryk.libs.picker.api.api import (
     CapacitorParams,
@@ -46,7 +47,7 @@ def generate_si_values(
     raise NotImplementedError()
 
 
-def find_component_by_lcsc_id(lcsc_id: str) -> Component:
+def find_component_by_lcsc_id(lcsc_id: str, solver: Solver) -> Component:
     def extract_numeric_id(lcsc_id: str) -> int:
         match = re.match(r"C(\d+)", lcsc_id)
         if match is None:
@@ -66,7 +67,7 @@ def find_component_by_lcsc_id(lcsc_id: str) -> Component:
     return next(iter(parts))
 
 
-def find_and_attach_by_lcsc_id(module: Module):
+def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
     """
     Find a part by LCSC part number
     """
@@ -97,7 +98,7 @@ def find_and_attach_by_lcsc_id(module: Module):
     part.attach(module, [])
 
 
-def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
+def find_component_by_mfr(mfr: str, mfr_pn: str, solver: Solver) -> Component:
     parts = client.fetch_part_by_mfr(mfr, mfr_pn)
 
     if len(parts) < 1:
@@ -113,7 +114,7 @@ def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
     return next(iter(parts))
 
 
-def find_and_attach_by_mfr(module: Module):
+def find_and_attach_by_mfr(module: Module, solver: Solver):
     """
     Find a part by manufacturer and manufacturer part number
     """
@@ -179,7 +180,7 @@ def _get_footprint_candidates(module: Module) -> list[FootprintCandidate]:
     return []
 
 
-def find_resistor(cmp: Module):
+def find_resistor(cmp: Module, solver: Solver):
     """
     Find a resistor with matching parameters
     """
@@ -197,7 +198,7 @@ def find_resistor(cmp: Module):
     _filter_by_module_params_and_attach(cmp, F.Resistor, parts)
 
 
-def find_capacitor(cmp: Module):
+def find_capacitor(cmp: Module, solver: Solver):
     """
     Find a capacitor with matching parameters
     """
@@ -215,7 +216,7 @@ def find_capacitor(cmp: Module):
     _filter_by_module_params_and_attach(cmp, F.Capacitor, parts)
 
 
-def find_inductor(cmp: Module):
+def find_inductor(cmp: Module, solver: Solver):
     """
     Find an inductor with matching parameters
     """
@@ -233,7 +234,7 @@ def find_inductor(cmp: Module):
     _filter_by_module_params_and_attach(cmp, F.Inductor, parts)
 
 
-def find_tvs(cmp: Module):
+def find_tvs(cmp: Module, solver: Solver):
     """
     Find a TVS diode with matching parameters
     """
@@ -247,7 +248,7 @@ def find_tvs(cmp: Module):
     _filter_by_module_params_and_attach(cmp, F.TVS, parts)
 
 
-def find_diode(cmp: Module):
+def find_diode(cmp: Module, solver: Solver):
     """
     Find a diode with matching parameters
     """
@@ -268,7 +269,7 @@ def find_diode(cmp: Module):
     _filter_by_module_params_and_attach(cmp, F.Diode, parts)
 
 
-def find_led(cmp: Module):
+def find_led(cmp: Module, solver: Solver):
     """
     Find an LED with matching parameters
     """
@@ -282,7 +283,7 @@ def find_led(cmp: Module):
     _filter_by_module_params_and_attach(cmp, F.LED, parts)
 
 
-def find_mosfet(cmp: Module):
+def find_mosfet(cmp: Module, solver: Solver):
     """
     Find a MOSFET with matching parameters
     """
@@ -297,7 +298,7 @@ def find_mosfet(cmp: Module):
     _filter_by_module_params_and_attach(cmp, F.MOSFET, parts)
 
 
-def find_ldo(cmp: Module):
+def find_ldo(cmp: Module, solver: Solver):
     """
     Find an LDO with matching parameters
     """
@@ -312,7 +313,7 @@ def find_ldo(cmp: Module):
     _filter_by_module_params_and_attach(cmp, F.LDO, parts)
 
 
-TYPE_SPECIFIC_LOOKUP: dict[type[Module], Callable[[Module], None]] = {
+TYPE_SPECIFIC_LOOKUP: dict[type[Module], Callable[[Module, Solver], None]] = {
     F.Resistor: find_resistor,
     F.Capacitor: find_capacitor,
     F.Inductor: find_inductor,

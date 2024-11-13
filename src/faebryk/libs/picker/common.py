@@ -10,6 +10,7 @@ from typing import Iterable
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
+from faebryk.core.solver import Solver
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.lcsc import attach
 from faebryk.libs.picker.picker import (
@@ -81,7 +82,8 @@ class StaticPartPicker(F.has_multi_picker.Picker, ABC):
             ) from e
 
 
-def _try_merge_params(target: Module, source: Module) -> bool:
+def _try_merge_params(target: Module, source: Module, solver: Solver) -> bool:
+    raise NotImplementedError
     assert type(target) is type(source)
 
     # Override module parameters with picked component parameters
@@ -105,10 +107,10 @@ class CachePicker(F.has_multi_picker.Picker):
         super().__init__()
         self.cache = defaultdict[type[Module], set[Module]](set)
 
-    def pick(self, module: Module):
+    def pick(self, module: Module, solver: Solver):
         mcache = [m for m in self.cache[type(module)] if m.has_trait(has_part_picked)]
         for m in mcache:
-            if not _try_merge_params(module, m):
+            if not _try_merge_params(module, m, solver):
                 continue
             logger.debug(f"Found compatible part in cache: {module} with {m}")
             module.add(

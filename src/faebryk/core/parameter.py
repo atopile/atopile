@@ -181,11 +181,11 @@ class ParameterOperatable(Node):
 
     # TODO implement
     def inspect_known_min(self: NumberLike) -> Number:
-        raise Exception("not implemented")
+        return HasUnit.get_units_or_dimensionless(self) * float("-inf")
         # raise NotImplementedError()
 
     def inspect_known_max(self: NumberLike) -> Number:
-        raise Exception("not implemented")
+        return HasUnit.get_units_or_dimensionless(self) * float("inf")
         # raise NotImplementedError()
 
     def inspect_known_values(self: BooleanLike) -> P_Set[bool]:

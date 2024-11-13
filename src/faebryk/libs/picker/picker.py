@@ -27,7 +27,7 @@ class Supplier(ABC):
     def attach(self, module: Module, part: "PickerOption"): ...
 
 
-@dataclass
+@dataclass(frozen=True)
 class Part:
     partno: str
     supplier: Supplier
@@ -39,7 +39,7 @@ class DescriptiveProperties(StrEnum):
     datasheet = "Datasheet"
 
 
-@dataclass
+@dataclass(frozen=True)
 class PickerOption:
     part: Part
     params: dict[str, ParameterOperatable.NonParamSet] | None = None
@@ -51,6 +51,9 @@ class PickerOption:
     filter: Callable[[Module], bool] | None = None
     pinmap: dict[str, F.Electrical] | None = None
     info: dict[str | DescriptiveProperties, str] | None = None
+
+    def __hash__(self):
+        return hash(self.part)
 
 
 class PickError(Exception):
@@ -252,7 +255,7 @@ def pick_part_recursively(module: Module, solver: Solver):
     pp = PickerProgress.from_module(module)
     try:
         with pp.context():
-            _pick_part_recursively(module, pp)
+            _pick_part_recursively(module, solver, pp)
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
         for m, sube in failed_parts.items():
