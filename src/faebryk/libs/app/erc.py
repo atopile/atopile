@@ -9,8 +9,8 @@ import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.library.Operation import Operation
 from faebryk.libs.picker.picker import has_part_picked
+from faebryk.libs.units import P
 from faebryk.libs.util import groupby
 
 logger = logging.getLogger(__name__)
@@ -31,12 +31,12 @@ class ERCFaultShort(ERCFault):
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
-    def __init__(self, faulting_EP: list[F.ElectricPower], *args: object) -> None:
-        faulting_EP = list(sorted(faulting_EP, key=lambda ep: ep.get_name()))
-        msg = "ElectricPower(s) with undefined or unsolved voltage: " + ",\n ".join(
-            f"{ep}: {ep.voltage}" for ep in faulting_EP
+    def __init__(self, faulting_EP: F.ElectricPower, *args: object) -> None:
+        msg = (
+            f"ElectricPower with undefined or unsolved voltage: {faulting_EP}:"
+            f" {faulting_EP.voltage}"
         )
-        super().__init__(faulting_EP, msg, *args)
+        super().__init__([faulting_EP], msg, *args)
 
 
 class ERCPowerSourcesShortedError(ERCFault):
@@ -45,7 +45,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: Graph):
+def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
     """Simple ERC check.
 
     This function will check for the following ERC violations:
@@ -80,14 +80,14 @@ def simple_erc(G: Graph):
             if other_sources:
                 raise ERCPowerSourcesShortedError([ep] + other_sources)
 
-    unresolved_voltage = [
-        ep
-        for ep in electricpower
-        if isinstance(ep.voltage.get_most_narrow(), (F.TBD, Operation))
-    ]
+    for ep in electricpower:
+        if ep.voltage.inspect_known_max() > voltage_limit:
 
-    if unresolved_voltage:
-        raise ERCFaultElectricPowerUndefinedVoltage(unresolved_voltage)
+            def raise_on_limit(x):
+                if x.inspect_known_max() > voltage_limit:
+                    raise ERCFaultElectricPowerUndefinedVoltage(ep)
+
+            ep.voltage.inspect_add_on_solution(raise_on_limit)
 
     # shorted nets
     nets = GraphFunctions(G).nodes_of_type(F.Net)

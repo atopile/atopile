@@ -5,16 +5,35 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 from faebryk.libs.util import join_if_non_empty
 
 
 class Inductor(Module):
     unnamed = L.list_field(2, F.Electrical)
 
-    inductance: F.TBD
-    self_resonant_frequency: F.TBD
-    rated_current: F.TBD
-    dc_resistance: F.TBD
+    inductance = L.p_field(
+        units=P.H,
+        likely_constrained=True,
+        soft_set=L.Range(100 * P.nH, 1 * P.H),
+        tolerance_guess=10 * P.percent,
+    )
+    self_resonant_frequency = L.p_field(
+        units=P.Hz,
+        likely_constrained=True,
+        soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
+        tolerance_guess=10 * P.percent,
+    )
+    max_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mA, 100 * P.A),
+    )
+    dc_resistance = L.p_field(
+        units=P.Ω,
+        soft_set=L.Range(10 * P.mΩ, 100 * P.Ω),
+        tolerance_guess=10 * P.percent,
+    )
 
     @L.rt_field
     def can_bridge(self):
@@ -28,17 +47,17 @@ class Inductor(Module):
             (
                 self.inductance,
                 self.self_resonant_frequency,
-                self.rated_current,
+                self.max_current,
                 self.dc_resistance,
             ),
             lambda inductance,
             self_resonant_frequency,
-            rated_current,
+            max_current,
             dc_resistance: join_if_non_empty(
                 " ",
                 inductance.as_unit_with_tolerance("H"),
                 self_resonant_frequency.as_unit("Hz"),
-                rated_current.as_unit("A"),
+                max_current.as_unit("A"),
                 dc_resistance.as_unit("Ω"),
             ),
         )

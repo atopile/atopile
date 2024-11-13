@@ -16,7 +16,11 @@ class I2C(ModuleInterface):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 
-    frequency: F.TBD
+    frequency = L.p_field(
+        units=P.Hz,
+        likely_constrained=True,
+        soft_set=L.Range(10 * P.kHz, 3.4 * P.MHz),
+    )
 
     @L.rt_field
     def single_electric_reference(self):
@@ -38,7 +42,7 @@ class I2C(ModuleInterface):
 
     @staticmethod
     def define_max_frequency_capability(mode: SpeedMode):
-        return F.Range(I2C.SpeedMode.low_speed, mode)
+        return L.Range(I2C.SpeedMode.low_speed, mode)
 
     def __preinit__(self) -> None:
         self.frequency.add(

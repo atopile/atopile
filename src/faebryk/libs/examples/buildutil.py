@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Callable
 
 import faebryk.libs.picker.lcsc as lcsc
+from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.app.checks import run_checks
-from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
+from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.app.pcb import apply_design
 from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.picker.api.api import ApiNotConfiguredError
@@ -52,13 +53,10 @@ def apply_design_to_pcb(
 
     logger.info("Filling unspecified parameters")
 
-    replace_tbd_with_any(
-        m, recursive=True, loglvl=logging.DEBUG if DEV_MODE else logging.INFO
-    )
-
     G = m.get_graph()
     resolve_dynamic_parameters(G)
     run_checks(m, G)
+    solver = DefaultSolver()
 
     # TODO this can be prettier
     # picking ----------------------------------------------------------------
@@ -70,7 +68,7 @@ def apply_design_to_pcb(
             try:
                 JLCPCB_DB()
                 for n in modules:
-                    add_jlcpcb_pickers(n, base_prio=-10)
+                    add_jlcpcb_pickers(n, base_prio=-10, solver=solver)
             except FileNotFoundError:
                 logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
         case PickerType.API:
@@ -81,8 +79,9 @@ def apply_design_to_pcb(
                 logger.warning("API not configured. Skipping API pickers.")
 
     for n in modules:
-        add_example_pickers(n)
+        add_example_pickers(n, solver)
     pick_part_recursively(m)
+    solver.find_and_lock_solution(G)
     # -------------------------------------------------------------------------
 
     example_prj = Path(__file__).parent / Path("resources/example")

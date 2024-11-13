@@ -33,10 +33,10 @@ class PowerSource(Module):
 
 
 class XOR_with_NANDS(F.LogicGates.XOR):
-    nands = L.list_field(4, lambda: F.LogicGates.NAND(F.Constant(2)))
+    nands = L.list_field(4, lambda: F.LogicGates.NAND(2))
 
     def __init__(self):
-        super().__init__(F.Constant(2))
+        super().__init__(2)
 
     def __preinit__(self):
         A = self.inputs[0]
@@ -72,7 +72,7 @@ def App():
     logic_in = F.Logic()
     logic_out = F.Logic()
 
-    xor = F.LogicGates.XOR(F.Constant(2))
+    xor = F.LogicGates.XOR(2)
     logic_out.connect(xor.get_trait(F.LogicOps.can_logic_xor).xor(logic_in, on))
 
     # led
@@ -124,9 +124,11 @@ def App():
         F.ElectricLogic.has_pulls
     ):
         for pull_resistor in (r for r in t.get_pulls() if r):
-            pull_resistor.resistance.merge(F.Range.from_center_rel(100 * P.kohm, 0.05))
-    power_source.power.voltage.merge(3 * P.V)
-    led.led.led.brightness.merge(
+            pull_resistor.resistance.constrain_subset(
+                L.Range.from_center_rel(100 * P.kohm, 0.05)
+            )
+    power_source.power.voltage.constrain_subset(L.Range.from_center_rel(3 * P.V, 0.05))
+    led.led.led.brightness.constrain_subset(
         TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
     )
 

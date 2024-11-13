@@ -4,6 +4,7 @@
 import logging
 from typing import Callable
 
+import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeException
 from faebryk.core.parameter import Parameter
@@ -12,7 +13,7 @@ from faebryk.libs.util import cast_assert, not_none, once
 logger = logging.getLogger(__name__)
 
 
-class is_dynamic_by_connections(Parameter.is_dynamic.impl()):
+class is_dynamic_by_connections(F.is_dynamic.impl()):
     def __init__(self, key: Callable[[ModuleInterface], Parameter]) -> None:
         super().__init__()
         self._key = key
@@ -40,9 +41,7 @@ class is_dynamic_by_connections(Parameter.is_dynamic.impl()):
         params_with_guard = [
             (
                 param,
-                cast_assert(
-                    is_dynamic_by_connections, param.get_trait(Parameter.is_dynamic)
-                ),
+                cast_assert(is_dynamic_by_connections, param.get_trait(F.is_dynamic)),
             )
             for param in params
         ]
@@ -57,7 +56,7 @@ class is_dynamic_by_connections(Parameter.is_dynamic.impl()):
             if id(param) in self._merged:
                 continue
             self._merged.add(id(param))
-            self_param.merge(param)
+            self_param.alias_is(param)
 
         # Enable guards again
         for _, guard in params_with_guard:

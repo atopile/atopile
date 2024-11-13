@@ -1,508 +1,895 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+
 import logging
-from typing import (
-    Any,
-    Callable,
-    Concatenate,
-    Optional,
-    Sequence,
-)
+from collections.abc import Iterable
+from enum import Enum, auto
+from types import NotImplementedType
+from typing import Any, Callable, Self, override
 
-from typing_extensions import Self
-
+from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.node import Node
+from faebryk.core.node import Node, f_field
 from faebryk.core.trait import Trait
-from faebryk.libs.units import Quantity, UnitsContainer
-from faebryk.libs.util import (
-    Tree,
-    TwistArgs,
-    cast_assert,
-    is_type_pair,
-    try_avoid_endless_recursion,
-)
+from faebryk.libs.sets import P_Set, Range, Ranges
+from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
+from faebryk.libs.util import abstract, cast_assert
 
 logger = logging.getLogger(__name__)
 
 
-def _resolved[PV, O](
-    func: Callable[["Parameter", "Parameter"], O],
-) -> Callable[
-    [
-        "PV | set | tuple[PV, PV] | Parameter",
-        "PV | set | tuple[PV, PV] | Parameter",
-    ],
-    O,
-]:
-    def wrap(*args):
-        args = [Parameter.from_literal(arg).get_most_narrow() for arg in args]
-        return func(*args)
+# When we make this generic, two types, type T of elements, and type S of known subsets
+# boolean: T == S == bool
+# enum: T == S == Enum
+# number: T == Number type, S == Range[Number]
+class ParameterOperatable(Node):
+    type QuantityLike = Quantity | Unit | NotImplementedType
+    type Number = int | float | QuantityLike
 
-    return wrap
+    type NonParamNumber = Number | P_Set[Number]
+    type NumberLike = ParameterOperatable | NonParamNumber
+    type NonParamBoolean = bool | P_Set[bool]
+    type BooleanLike = ParameterOperatable | NonParamBoolean
+    type NonParamEnum = Enum | P_Set[Enum]
+    type EnumLike = ParameterOperatable | NonParamEnum
+
+    type All = NumberLike | BooleanLike | EnumLike
+    type NonParamSet = NonParamNumber | NonParamBoolean | NonParamEnum
+    type Sets = All
+
+    operated_on: GraphInterface
+
+    def get_operations(self) -> set["Expression"]:
+        res = self.operated_on.get_connected_nodes(types=Expression)
+        return res
+
+    @staticmethod
+    def sort_by_depth(
+        exprs: Iterable["ParameterOperatable"], ascending: bool
+    ) -> list["ParameterOperatable"]:
+        def key(e: ParameterOperatable):
+            if isinstance(e, Expression):
+                return e.depth()
+            return 0
+
+        return sorted(exprs, key=key, reverse=not ascending)
+
+    def _is_constrains(self) -> list["Is"]:
+        return [
+            i for i in self.operated_on.get_connected_nodes(types=Is) if i.constrained
+        ]
+
+    def obviously_eq(self, other: "ParameterOperatable.All") -> bool:
+        if self == other:
+            return True
+        if other in self._is_constrains():
+            return True
+        return False
+
+    def obviously_eq_hash(self) -> int:
+        if hasattr(self, "__hash"):
+            return self.__hash
+
+        ises = [i for i in self._is_constrains() if not isinstance(i, Expression)]
+
+        def keyfn(i: Is):
+            if isinstance(i, Parameter):
+                return 1 << 63
+            return hash(i) % (1 << 63)
+
+        sorted_ises = sorted(ises, key=keyfn)
+        if len(sorted_ises) > 0:
+            self.__hash = hash(sorted_ises[0])
+        else:
+            self.__hash = id(self)
+        return self.__hash
+
+    def operation_add(self, other: NumberLike):
+        return Add(self, other)
+
+    def operation_subtract(self: NumberLike, other: NumberLike):
+        return Subtract(minuend=self, subtrahend=other)
+
+    def operation_multiply(self, other: NumberLike):
+        return Multiply(self, other)
+
+    def operation_divide(self: NumberLike, other: NumberLike):
+        return Divide(numerator=self, denominator=other)
+
+    def operation_power(self, other: NumberLike):
+        return Power(base=self, exponent=other)
+
+    def operation_log(self):
+        return Log(self)
+
+    def operation_sqrt(self):
+        return Sqrt(self)
+
+    def operation_abs(self):
+        return Abs(self)
+
+    def operation_floor(self):
+        return Floor(self)
+
+    def operation_ceil(self):
+        return Ceil(self)
+
+    def operation_round(self):
+        return Round(self)
+
+    def operation_sin(self):
+        return Sin(self)
+
+    def operation_cos(self):
+        return Cos(self)
+
+    def operation_union(self, other: Sets):
+        return Union(self, other)
+
+    def operation_intersection(self, other: Sets):
+        return Intersection(self, other)
+
+    def operation_difference(self, other: Sets):
+        return Difference(minuend=self, subtrahend=other)
+
+    def operation_symmetric_difference(self, other: Sets):
+        return SymmetricDifference(self, other)
+
+    def operation_and(self, other: BooleanLike):
+        return And(self, other)
+
+    def operation_or(self, other: BooleanLike):
+        return Or(self, other)
+
+    def operation_not(self):
+        return Not(self)
+
+    def operation_xor(self, other: BooleanLike):
+        return Xor(left=self, right=other)
+
+    def operation_implies(self, other: BooleanLike):
+        return Implies(condition=self, implication=other)
+
+    def operation_is_le(self, other: NumberLike):
+        return LessOrEqual(left=self, right=other)
+
+    def operation_is_ge(self, other: NumberLike):
+        return GreaterOrEqual(left=self, right=other)
+
+    def operation_is_lt(self, other: NumberLike):
+        return LessThan(left=self, right=other)
+
+    def operation_is_gt(self, other: NumberLike):
+        return GreaterThan(left=self, right=other)
+
+    def operation_is_ne(self, other: NumberLike):
+        return NotEqual(left=self, right=other)
+
+    def operation_is_subset(self, other: Sets):
+        return IsSubset(left=self, right=other)
+
+    def operation_is_superset(self, other: Sets):
+        return IsSuperset(left=self, right=other)
+
+    # TODO implement
+    def inspect_known_min(self: NumberLike) -> Number:
+        raise Exception("not implemented")
+        # raise NotImplementedError()
+
+    def inspect_known_max(self: NumberLike) -> Number:
+        raise Exception("not implemented")
+        # raise NotImplementedError()
+
+    def inspect_known_values(self: BooleanLike) -> P_Set[bool]:
+        raise Exception("not implemented")
+        # raise NotImplementedError()
+
+    # Run by the solver on finalization
+    inspect_solution: Callable[[Self], None] = lambda _: None
+
+    def inspect_add_on_solution(self, fun: Callable[[Self], None]) -> None:
+        current = self.inspect_solution
+
+        def new(self2):
+            current(self2)
+            fun(self2)
+
+        self.inspect_solution = new
+
+    # Could be exponentially many
+    def inspect_known_supersets_are_few(self) -> bool:
+        raise Exception("not implemented")
+
+    def inspect_get_known_supersets(self) -> Iterable[P_Set]:
+        raise Exception("not implemented")
+
+    def inspect_get_known_superranges(self: NumberLike) -> Iterable[Ranges]:
+        raise Exception("not implemented")
+
+    # ----------------------------------------------------------------------------------
+    def __add__(self, other: NumberLike):
+        return self.operation_add(other)
+
+    def __radd__(self, other: NumberLike):
+        return self.operation_add(other)
+
+    def __sub__(self, other: NumberLike):
+        # TODO could be set difference
+        return self.operation_subtract(other)
+
+    def __rsub__(self, other: NumberLike):
+        return type(self).operation_subtract(other, self)
+
+    def __mul__(self, other: NumberLike):
+        return self.operation_multiply(other)
+
+    def __rmul__(self, other: NumberLike):
+        return self.operation_multiply(other)
+
+    def __truediv__(self, other: NumberLike):
+        return self.operation_divide(other)
+
+    def __rtruediv__(self, other: NumberLike):
+        return type(self).operation_divide(other, self)
+
+    def __pow__(self, other: NumberLike):
+        return self.operation_power(other)
+
+    def __abs__(self):
+        return self.operation_abs()
+
+    def __round__(self):
+        return self.operation_round()
+
+    def __floor__(self):
+        return self.operation_floor()
+
+    def __ceil__(self):
+        return self.operation_ceil()
+
+    def __le__(self, other: NumberLike):
+        return self.operation_is_le(other)
+
+    def __ge__(self, other: NumberLike):
+        return self.operation_is_ge(other)
+
+    def __lt__(self, other: NumberLike):
+        return self.operation_is_lt(other)
+
+    def __gt__(self, other: NumberLike):
+        return self.operation_is_gt(other)
+
+    def __ne__(self, other: NumberLike):
+        return self.operation_is_ne(other)
+
+    # bitwise and
+    def __and__(self, other: BooleanLike):
+        # TODO could be set intersection
+        return self.operation_and(other)
+
+    def __rand__(self, other: BooleanLike):
+        return self.operation_and(other)
+
+    def __or__(self, other: BooleanLike):
+        # TODO could be set union
+        return self.operation_or(other)
+
+    def __ror__(self, other: BooleanLike):
+        return self.operation_or(other)
+
+    def __xor__(self, other: BooleanLike):
+        return self.operation_xor(other)
+
+    def __rxor__(self, other: BooleanLike):
+        return self.operation_xor(other)
+
+    # ----------------------------------------------------------------------------------
+
+    # should be eager, in the sense that, if the outcome is known, the callable is
+    # called immediately, without storing an expression
+    # we must force a value (at the end of solving at the least)
+    def if_then_else(
+        self,
+        if_true: Callable[[], Any],
+        if_false: Callable[[], Any],
+        preference: bool | None = None,
+    ) -> None:
+        IfThenElse(self, if_true, if_false, preference)
+
+    # def assert_true(
+    #     self, error: Callable[[], None] = lambda: raise_(ValueError())
+    # ) -> None:
+    #     self.if_then_else(lambda: None, error, True)
+
+    # def assert_false(
+    #     self, error: Callable[[], None] = lambda: raise_(ValueError())
+    # ) -> None:
+    #     self.if_then_else(error, lambda: None, False)
+
+    # TODO
+    # def switch_case(
+    #    self,
+    #    cases: list[tuple[?, Callable[[], Any]]],
+    # ) -> None: ...
 
 
-def _resolved_self[PV, O, **P](
-    func: Callable[Concatenate["Parameter", P], O],
-) -> Callable[Concatenate["PV | set | tuple[PV, PV] | Parameter", P], O]:
-    def wrap(
-        p: "PV | set | tuple[PV, PV] | Parameter",
-        *args: P.args,
-        **kwargs: P.kwargs,
+def obviously_eq(a: ParameterOperatable.All, b: ParameterOperatable.All) -> bool:
+    if a == b:
+        return True
+    if isinstance(a, ParameterOperatable):
+        return a.obviously_eq(b)
+    elif isinstance(b, ParameterOperatable):
+        return b.obviously_eq(a)
+    return False
+
+
+# TODO mixes two things, those that a constraining predicate can be called on,
+# and the predicate, which can have it's constrained be set??
+class Constrainable:
+    type All = ParameterOperatable.All
+    type Sets = ParameterOperatable.Sets
+    type NumberLike = ParameterOperatable.NumberLike
+
+    def __init__(self):
+        super().__init__()
+        self.constrained: bool = False
+
+    def _constrain(self, constraint: "Predicate"):
+        constraint.constrain()
+
+    def _get(self) -> ParameterOperatable:
+        return cast_assert(ParameterOperatable, self)
+
+    # Generic
+    def alias_is(self, other: All):
+        return self._constrain(Is(left=self, right=other))
+
+    # Numberlike
+    def constrain_le(self, other: NumberLike):
+        return self._constrain(self._get().operation_is_le(other))
+
+    def constrain_ge(self, other: NumberLike):
+        return self._constrain(self._get().operation_is_ge(other))
+
+    def constrain_lt(self, other: NumberLike):
+        return self._constrain(self._get().operation_is_lt(other))
+
+    def constrain_gt(self, other: NumberLike):
+        return self._constrain(self._get().operation_is_gt(other))
+
+    def constrain_ne(self, other: NumberLike):
+        return self._constrain(self._get().operation_is_ne(other))
+
+    # Setlike
+    def constrain_subset(self, other: Sets):
+        return self._constrain(self._get().operation_is_subset(other))
+
+    def constrain_superset(self, other: Sets):
+        return self._constrain(self._get().operation_is_superset(other))
+
+    def constrain_cardinality(self, other: int):
+        return self._constrain(Cardinality(self._get(), other))
+
+    # shortcuts
+    def constrain(self):
+        self.constrained = True
+
+
+@abstract
+class Expression(ParameterOperatable):
+    operates_on: GraphInterface
+
+    def __init__(self, *operands: ParameterOperatable.All):
+        super().__init__()
+        self.operands = tuple(operands)
+        self.operatable_operands = {
+            op for op in operands if isinstance(op, ParameterOperatable)
+        }
+
+    def __preinit__(self):
+        for op in self.operatable_operands:
+            self.operates_on.connect(op.operated_on)
+
+    def get_operatable_operands(self) -> set[ParameterOperatable]:
+        return self.operates_on.get_connected_nodes(types=ParameterOperatable)
+
+    def depth(self) -> int:
+        if hasattr(self, "_depth"):
+            return self._depth
+        self._depth = 1 + max(
+            op.depth() if isinstance(op, Expression) else 0 for op in self.operands
+        )
+        return self._depth
+
+    # TODO caching
+    @override
+    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
+        if super().obviously_eq(other):
+            return True
+        if type(self) is type(other):
+            for s, o in zip(self.operands, other.operands):
+                if not obviously_eq(s, o):
+                    return False
+            return True
+        return False
+
+    def obviously_eq_hash(self) -> int:
+        return hash((type(self), self.operands))
+
+
+# TODO are any expressions not constrainable?
+# parameters are contstrainable, too, so all parameter-operatables are constrainable?
+@abstract
+class ConstrainableExpression(Expression, Constrainable):
+    def __init__(self, *operands: ParameterOperatable.All):
+        Expression.__init__(self, *operands)
+        Constrainable.__init__(self)
+
+
+@abstract
+class Arithmetic(ConstrainableExpression, HasUnit):
+    def __init__(self, *operands: ParameterOperatable.NumberLike):
+        super().__init__(*operands)
+        types = int, float, Quantity, Unit, Parameter, Arithmetic, Ranges
+        if any(not isinstance(op, types) for op in operands):
+            raise ValueError(
+                "operands must be int, float, Quantity, Parameter, or Expression"
+            )
+        if any(
+            not isinstance(param.domain, (Numbers, ESeries))
+            for param in operands
+            if isinstance(param, Parameter)
+        ):
+            raise ValueError("parameters must have domain Numbers or ESeries")
+
+
+@abstract
+class Additive(Arithmetic):
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
+        self.units = units[0]
+        if not all(u.is_compatible_with(self.units) for u in units):
+            raise ValueError("All operands must have compatible units")
+
+
+def _associative_obviously_eq(self: Expression, other: Expression) -> bool:
+    remaining = list(other.operands)
+    for op in self.operands:
+        for r in remaining:
+            if obviously_eq(op, r):
+                remaining.remove(r)
+                break
+    return not remaining
+
+
+class Add(Additive):
+    def __init__(self, *operands):
+        super().__init__(*operands)
+
+    # TODO caching
+    @override
+    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
+        if ParameterOperatable.obviously_eq(self, other):
+            return True
+        if isinstance(other, Add):
+            return _associative_obviously_eq(self, other)
+        return False
+
+    def obviously_eq_hash(self) -> int:
+        op_hash = sum(hash(op) for op in self.operands)
+        return hash((type(self), op_hash))
+
+
+class Subtract(Additive):
+    def __init__(self, minuend, subtrahend):
+        super().__init__(minuend, subtrahend)
+
+
+class Multiply(Arithmetic):
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
+        self.units = units[0]
+        for u in units[1:]:
+            self.units = cast_assert(Unit, self.units * u)
+
+    # TODO caching
+    @override
+    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
+        if ParameterOperatable.obviously_eq(self, other):
+            return True
+        if isinstance(other, Add):
+            return _associative_obviously_eq(self, other)
+        return False
+
+    def obviously_eq_hash(self) -> int:
+        op_hash = sum(hash(op) for op in self.operands)
+        return hash((type(self), op_hash))
+
+
+class Divide(Arithmetic):
+    def __init__(self, numerator, denominator):
+        super().__init__(numerator, denominator)
+        self.units = numerator.units / denominator.units
+
+
+class Sqrt(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.units = operand.units**0.5
+
+
+class Power(Arithmetic):
+    def __init__(self, base, exponent: int):
+        super().__init__(base, exponent)
+        if isinstance(exponent, HasUnit) and not exponent.units.is_compatible_with(
+            dimensionless
+        ):
+            raise ValueError("exponent must have dimensionless unit")
+        units = HasUnit.get_units_or_dimensionless(base) ** exponent
+        assert isinstance(units, Unit)
+        self.units = units
+
+
+class Log(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        if not operand.unit.is_compatible_with(dimensionless):
+            raise ValueError("operand must have dimensionless unit")
+        self.units = dimensionless
+
+
+class Sin(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        if not operand.unit.is_compatible_with(dimensionless):
+            raise ValueError("operand must have dimensionless unit")
+        self.units = dimensionless
+
+
+class Cos(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        if not operand.unit.is_compatible_with(dimensionless):
+            raise ValueError("operand must have dimensionless unit")
+        self.units = dimensionless
+
+
+class Abs(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.units = operand.units
+
+
+class Round(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.units = operand.units
+
+
+class Floor(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.units = operand.units
+
+
+class Ceil(Arithmetic):
+    def __init__(self, operand):
+        super().__init__(operand)
+        self.units = operand.units
+
+
+class Logic(ConstrainableExpression):
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        types = bool, Parameter, Logic, Predicate
+        if any(not isinstance(op, types) for op in operands):
+            raise ValueError("operands must be bool, Parameter, Logic, or Predicate")
+        if any(
+            param.domain != Boolean or not param.units.is_compatible_with(dimensionless)
+            for param in operands
+            if isinstance(param, Parameter)
+        ):
+            raise ValueError("parameters must have domain Boolean without a unit")
+
+
+class And(Logic):
+    pass
+
+
+class Or(Logic):
+    pass
+
+
+class Not(Logic):
+    def __init__(self, operand):
+        super().__init__(operand)
+
+
+class Xor(Logic):
+    def __init__(self, left, right):
+        super().__init__(left, right)
+
+
+class Implies(Logic):
+    def __init__(self, condition, implication):
+        super().__init__(condition, implication)
+
+
+class IfThenElse(Expression):
+    def __init__(self, condition, if_true, if_false, preference: bool | None = None):
+        super().__init__(condition)
+        self.preference = preference
+        self.if_true = if_true
+        self.if_false = if_false
+
+
+class Setic(ConstrainableExpression):
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        types = [Parameter, ParameterOperatable.Sets]
+        if any(type(op) not in types for op in operands):
+            raise ValueError("operands must be Parameter or Set")
+        units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
+        self.units = units[0]
+        for u in units[1:]:
+            if not self.units.is_compatible_with(u):
+                raise ValueError("all operands must have compatible units")
+        # TODO domain?
+
+
+class Union(Setic):
+    pass
+
+
+class Intersection(Setic):
+    pass
+
+
+class Difference(Setic):
+    def __init__(self, minuend, subtrahend):
+        super().__init__(minuend, subtrahend)
+
+
+class SymmetricDifference(Setic):
+    pass
+
+
+class Domain:
+    pass
+
+
+class ESeries(Domain):
+    class SeriesType(Enum):
+        E6 = auto()
+        E12 = auto()
+        E24 = auto()
+        E48 = auto()
+        E96 = auto()
+        E192 = auto()
+
+    def __init__(self, series: SeriesType):
+        self.series = series
+
+
+class Numbers(Domain):
+    def __init__(
+        self, *, negative: bool = True, zero_allowed: bool = True, integer: bool = False
+    ) -> None:
+        super().__init__()
+        self.negative = negative
+        self.zero_allowed = zero_allowed
+        self.integer = integer
+
+
+class Boolean(Domain):
+    pass
+
+
+class EnumDomain(Domain):
+    def __init__(self, enum_t: type[Enum]):
+        super().__init__()
+        self.enum_t = enum_t
+
+
+class Predicate(ConstrainableExpression):
+    def __init__(self, left, right):
+        super().__init__(left, right)
+        l_units = HasUnit.get_units_or_dimensionless(left)
+        r_units = HasUnit.get_units_or_dimensionless(right)
+        if not l_units.is_compatible_with(r_units):
+            raise ValueError("operands must have compatible units")
+
+    def __bool__(self):
+        raise ValueError("Predicate cannot be converted to bool")
+
+
+class NumericPredicate(Predicate):
+    def __init__(self, left, right):
+        super().__init__(left, right)
+        if isinstance(left, Parameter) and not isinstance(
+            left.domain, (Numbers, ESeries)
+        ):
+            raise ValueError(
+                "left operand must have domain Numbers or ESeries,"
+                f" not {type(left.domain)}"
+            )
+        if isinstance(right, Parameter) and not isinstance(
+            right.domain, (Numbers, ESeries)
+        ):
+            raise ValueError(
+                "right operand must have domain Numbers or ESeries,"
+                f" not {type(right.domain)}"
+            )
+
+
+class LessThan(NumericPredicate):
+    pass
+
+
+class GreaterThan(NumericPredicate):
+    pass
+
+
+class LessOrEqual(NumericPredicate):
+    pass
+
+
+class GreaterOrEqual(NumericPredicate):
+    pass
+
+
+class NotEqual(NumericPredicate):
+    pass
+
+
+class SeticPredicate(Predicate):
+    def __init__(self, left, right):
+        super().__init__(left, right)
+        # types = ParameterOperatable, P_Set
+        # TODO
+        # if any(not isinstance(op, types) for op in self.operands):
+        #    raise ValueError("operands must be Parameter or Set")
+        units = [op.units for op in self.operands]
+        for u in units[1:]:
+            if not units[0].is_compatible_with(u):
+                raise ValueError("all operands must have compatible units")
+        # TODO domain?
+
+
+class IsSubset(SeticPredicate):
+    pass
+
+
+class IsSuperset(SeticPredicate):
+    pass
+
+
+class Cardinality(SeticPredicate):
+    def __init__(
+        self, set: ParameterOperatable.Sets, cardinality: ParameterOperatable.NumberLike
     ):
-        return func(Parameter.from_literal(p).get_most_narrow(), *args, **kwargs)
-
-    return wrap
+        super().__init__(set, cardinality)
 
 
-class Parameter(Node):
-    type PV = Any
-    type LIT = PV | set | tuple[PV, PV]
-    type LIT_OR_PARAM = LIT | "Parameter"
+class Is(Predicate):
+    def __init__(self, left, right):
+        super().__init__(left, right)
 
+
+# TODO rename?
+class R(Namespace):
+    """
+    Namespace holding Expressions, Domains and Predicates for Parameters.
+    R = paRameters
+    """
+
+    class Predicates(Namespace):
+        class Element(Namespace):
+            LT = LessThan
+            GT = GreaterThan
+            LE = LessOrEqual
+            GE = GreaterOrEqual
+            NE = NotEqual
+
+        class Set(Namespace):
+            IS_SUBSET = IsSubset
+            IS_SUPERSET = IsSuperset
+
+    class Domains(Namespace):
+        class ESeries(Namespace):
+            E6 = lambda: ESeries(ESeries.SeriesType.E6)  # noqa: E731
+            E12 = lambda: ESeries(ESeries.SeriesType.E12)  # noqa: E731
+            E24 = lambda: ESeries(ESeries.SeriesType.E24)  # noqa: E731
+            E48 = lambda: ESeries(ESeries.SeriesType.E48)  # noqa: E731
+            E96 = lambda: ESeries(ESeries.SeriesType.E96)  # noqa: E731
+            E192 = lambda: ESeries(ESeries.SeriesType.E192)  # noqa: E731
+
+        class Numbers(Namespace):
+            REAL = Numbers
+            NATURAL = lambda: Numbers(integer=True, negative=False)  # noqa: E731
+
+        BOOL = Boolean
+        ENUM = EnumDomain
+
+    class Expressions(Namespace):
+        class Arithmetic(Namespace):
+            ADD = Add
+            SUBTRACT = Subtract
+            MULTIPLY = Multiply
+            DIVIDE = Divide
+            POWER = Power
+            LOG = Log
+            SQRT = Sqrt
+            LOG = Log
+            ABS = Abs
+            FLOOR = Floor
+            CEIL = Ceil
+            ROUND = Round
+            SIN = Sin
+            COS = Cos
+
+        class Logic(Namespace):
+            AND = And
+            OR = Or
+            NOT = Not
+            XOR = Xor
+            IMPLIES = Implies
+
+        class Set(Namespace):
+            UNION = Union
+            INTERSECTION = Intersection
+            DIFFERENCE = Difference
+            SYMMETRIC_DIFFERENCE = SymmetricDifference
+
+
+class Parameter(ParameterOperatable, Constrainable):
     class TraitT(Trait): ...
 
-    narrowed_by: GraphInterface
-    narrows: GraphInterface
-
-    class MergeException(Exception): ...
-
-    class SupportsSetOps:
-        def __contains__(self, other: "Parameter.LIT_OR_PARAM") -> bool: ...
-
-        @staticmethod
-        def check(other: "Parameter.LIT_OR_PARAM") -> bool:
-            return hasattr(other, "__contains__")
-
-    class is_dynamic(TraitT):
-        def execute(self) -> None: ...
-
-    def try_compress(self) -> "Parameter":
-        return self
-
-    @classmethod
-    def from_literal(cls, value: LIT_OR_PARAM) -> '"Parameter"':
-        from faebryk.library.Constant import Constant
-        from faebryk.library.Range import Range
-        from faebryk.library.Set import Set
-
-        if isinstance(value, Parameter):
-            return value
-        elif isinstance(value, set):
-            return Set(value)
-        elif isinstance(value, tuple):
-            return Range(*value)
-        else:
-            return Constant(value)
-
-    def _merge(self, other: "Parameter") -> "Parameter":
-        from faebryk.library.ANY import ANY
-        from faebryk.library.Operation import Operation
-        from faebryk.library.Set import Set
-        from faebryk.library.TBD import TBD
-
-        def _is_pair[T, U](type1: type[T], type2: type[U]) -> Optional[tuple[T, U]]:
-            return is_type_pair(self, other, type1, type2)
-
-        if self is other:
-            return self
-
-        try:
-            if self == other:
-                return self
-        except ValueError:
-            ...
-
-        if pair := _is_pair(Parameter, TBD):
-            return pair[0]
-
-        if pair := _is_pair(Parameter, ANY):
-            return pair[0]
-
-        # TODO remove as soon as possible
-        if pair := _is_pair(Parameter, Operation):
-            # TODO make MergeOperation that inherits from Operation
-            # and return that instead, application can check if result is MergeOperation
-            # if it was checking mergeability
-            raise self.MergeException("cant merge range with operation")
-
-        if any(Parameter.SupportsSetOps.check(x) for x in (self, other)):
-            pair = (self, other)
-            # if pair := _is_pair(Parameter, Parameter.SupportsSetOps):
-            out = self.intersect(*pair)
-            if isinstance(out, Operation):
-                raise self.MergeException("not resolvable")
-            if out == Set([]) and not pair[0] == pair[1] == Set([]):
-                raise self.MergeException(
-                    f"conflicting sets/ranges: {self!r} {other!r}"
-                )
-            return out
-
-        raise NotImplementedError
-
-    def _narrowed(self, other: "Parameter"):
-        if self is other:
-            return
-
-        if self.narrowed_by.is_connected_to(other.narrows):
-            return
-        self.narrowed_by.connect(other.narrows)
-
-    @_resolved
-    def is_mergeable_with(self: "Parameter", other: "Parameter") -> bool:
-        try:
-            self._merge(other)
-            return True
-        except self.MergeException:
-            return False
-        except NotImplementedError:
-            return False
-
-    @_resolved
-    def is_subset_of(self: "Parameter", other: "Parameter") -> bool:
-        from faebryk.library.ANY import ANY
-        from faebryk.library.Operation import Operation
-        from faebryk.library.TBD import TBD
-
-        lhs = self
-        rhs = other
-
-        def is_either_instance(t: type["Parameter"]):
-            return isinstance(lhs, t) or isinstance(rhs, t)
-
-        # Not resolveable
-        if isinstance(rhs, ANY):
-            return True
-        if isinstance(lhs, ANY):
-            return False
-        if is_either_instance(TBD):
-            return False
-        if is_either_instance(Operation):
-            return False
-
-        # Sets
-        return lhs & rhs == lhs
-
-    @_resolved
-    def merge(self: "Parameter", other: "Parameter") -> "Parameter":
-        if self is other:
-            return self
-        out = self._merge(other)
-
-        self._narrowed(out)
-        other._narrowed(out)
-
-        return out
-
-    @_resolved
-    def override(self: "Parameter", other: "Parameter") -> "Parameter":
-        if not other.is_subset_of(self):
-            raise self.MergeException("override not possible")
-
-        self._narrowed(other)
-        return other
-
-    # TODO: replace with graph-based
-    @staticmethod
-    def arithmetic_op(op1: "Parameter", op2: "Parameter", op: Callable) -> "Parameter":
-        from faebryk.library.ANY import ANY
-        from faebryk.library.Constant import Constant
-        from faebryk.library.Operation import Operation
-        from faebryk.library.Range import Range
-        from faebryk.library.Set import Set
-        from faebryk.library.TBD import TBD
-
-        def _is_pair[T, U](
-            type1: type[T], type2: type[U]
-        ) -> Optional[tuple[T, U, Callable]]:
-            if isinstance(op1, type1) and isinstance(op2, type2):
-                return op1, op2, op
-            if isinstance(op1, type2) and isinstance(op2, type1):
-                return op2, op1, TwistArgs(op)
-
-            return None
-
-        if pair := _is_pair(Constant, Constant):
-            return Constant(op(pair[0].value, pair[1].value))
-
-        if pair := _is_pair(Range, Range):
-            try:
-                p0_min, p0_max = pair[0].min, pair[0].max
-                p1_min, p1_max = pair[1].min, pair[1].max
-            except Range.MinMaxError:
-                return Operation(pair[:2], op)
-            return Range(
-                *(
-                    op(lhs, rhs)
-                    for lhs, rhs in [
-                        (p0_min, p1_min),
-                        (p0_max, p1_max),
-                        (p0_min, p1_max),
-                        (p0_max, p1_min),
-                    ]
-                )
-            )
-
-        if pair := _is_pair(Constant, Range):
-            sop = pair[2]
-            try:
-                return Range(*(sop(pair[0], bound) for bound in pair[1].bounds))
-            except Range.MinMaxError:
-                return Operation(pair[:2], op)
-
-        if pair := _is_pair(Parameter, ANY):
-            sop = pair[2]
-            return Operation(pair[:2], sop)
-
-        if pair := _is_pair(Parameter, Operation):
-            sop = pair[2]
-            return Operation(pair[:2], sop)
-
-        if pair := _is_pair(Parameter, TBD):
-            sop = pair[2]
-            return Operation(pair[:2], sop)
-
-        if pair := _is_pair(Parameter, Set):
-            sop = pair[2]
-            return Set(
-                Parameter.arithmetic_op(nested, pair[0], sop)
-                for nested in pair[1].params
-            )
-
-        raise NotImplementedError
-
-    @staticmethod
-    def intersect(op1: "Parameter", op2: "Parameter") -> "Parameter":
-        from faebryk.library.Constant import Constant
-        from faebryk.library.Operation import Operation
-        from faebryk.library.Range import Range
-        from faebryk.library.Set import Set
-
-        if op1 == op2:
-            return op1
-
-        def _is_pair[T, U](
-            type1: type[T], type2: type[U]
-        ) -> Optional[tuple[T, U, Callable]]:
-            if isinstance(op1, type1) and isinstance(op2, type2):
-                return op1, op2, op
-            if isinstance(op1, type2) and isinstance(op2, type1):
-                return op2, op1, TwistArgs(op)
-
-            return None
-
-        def op(a, b):
-            return a & b
-
-        # same types
-        if pair := _is_pair(Constant, Constant):
-            return Set([])
-        if pair := _is_pair(Set, Set):
-            return Set(pair[0].params.intersection(pair[1].params))
-        if pair := _is_pair(Range, Range):
-            try:
-                min_ = max(pair[0].min, pair[1].min)
-                max_ = min(pair[0].max, pair[1].max)
-                if min_ > max_:
-                    return Set([])
-                if min_ == max_:
-                    return Constant(min_)
-                return Range(max_, min_)
-            except Range.MinMaxError:
-                return Operation(pair[:2], op)
-
-        # diff types
-        if pair := _is_pair(Constant, Range):
-            try:
-                if pair[0] in pair[1]:
-                    return pair[0]
-                else:
-                    return Set([])
-            except Range.MinMaxError:
-                return Operation(pair[:2], op)
-        if pair := _is_pair(Constant, Set):
-            if pair[0] in pair[1]:
-                return pair[0]
-            else:
-                return Set([])
-        if pair := _is_pair(Range, Set):
-            try:
-                return Set(i for i in pair[1].params if i in pair[0])
-            except Range.MinMaxError:
-                return Operation(pair[:2], op)
-
-        return Operation((op1, op2), op)
-
-    @_resolved
-    def __add__(self: "Parameter", other: "Parameter"):
-        return self.arithmetic_op(self, other, lambda a, b: a + b)
-
-    @_resolved
-    def __radd__(self: "Parameter", other: "Parameter"):
-        return self.arithmetic_op(self, other, lambda a, b: b + a)
-
-    @_resolved
-    def __sub__(self: "Parameter", other: "Parameter"):
-        return self.arithmetic_op(self, other, lambda a, b: a - b)
-
-    @_resolved
-    def __rsub__(self: "Parameter", other: "Parameter"):
-        return self.arithmetic_op(self, other, lambda a, b: b - a)
-
-    # TODO PV | float
-    @_resolved
-    def __mul__(self: "Parameter", other: "Parameter"):
-        return self.arithmetic_op(self, other, lambda a, b: a * b)
-
-    @_resolved
-    def __rmul__(self: "Parameter", other: "Parameter"):
-        return self.arithmetic_op(self, other, lambda a, b: b * a)
-
-    # TODO PV | float
-    @_resolved
-    def __truediv__(self: "Parameter", other: "Parameter"):
-        return self.arithmetic_op(self, other, lambda a, b: a / b)
-
-    @_resolved
-    def __rtruediv__(self: "Parameter", other: "Parameter"):
-        return self.arithmetic_op(self, other, lambda a, b: b / a)
-
-    @_resolved
-    def __pow__(self: "Parameter", other: "Parameter") -> "Parameter":
-        return self.arithmetic_op(self, other, lambda a, b: a**b)
-
-    @_resolved
-    def __rpow__(self: "Parameter", other: "Parameter") -> "Parameter":
-        return self.arithmetic_op(self, other, lambda a, b: b**a)
-
-    @_resolved
-    def __and__(self: "Parameter", other: "Parameter") -> "Parameter":
-        return self.intersect(self, other)
-
-    @_resolved
-    def __rand__(self: "Parameter", other: "Parameter") -> "Parameter":
-        return self.intersect(other, self)
-
-    def get_most_narrow(self) -> "Parameter":
-        out = self.get_narrowing_chain()[-1]
-
-        com = out.try_compress()
-        if com is not out:
-            com = com.get_most_narrow()
-            out._narrowed(com)
-            out = com
-
-        return out
-
-    @staticmethod
-    def resolve_all(params: "Sequence[Parameter]") -> "Parameter":
-        from faebryk.library.TBD import TBD
-
-        params_set = list(params)
-        if not params_set:
-            return TBD()
-        it = iter(params_set)
-        most_specific = next(it)
-        for param in it:
-            most_specific = most_specific.merge(param)
-
-        return most_specific
-
-    @try_avoid_endless_recursion
-    def __str__(self) -> str:
-        narrowest = self.get_most_narrow()
-        if narrowest is self:
-            return super().__str__()
-        return str(narrowest)
-
-    # @try_avoid_endless_recursion
-    # def __repr__(self) -> str:
-    #    narrowest = self.get_most_narrow()
-    #    if narrowest is self:
-    #        return super().__repr__()
-    #    # return f"{super().__repr__()} -> {repr(narrowest)}"
-    #    return repr(narrowest)
-
-    def get_narrowing_chain(self) -> list["Parameter"]:
-        out: list[Parameter] = [self]
-        narrowers = self.narrowed_by.get_connected_nodes([Parameter])
-        if narrowers:
-            assert len(narrowers) == 1, "Narrowing tree diverged"
-            out += cast_assert(Parameter, next(iter(narrowers))).get_narrowing_chain()
-            assert id(self) not in map(id, out[1:]), "Narrowing tree cycle"
-        return out
-
-    def get_narrowed_siblings(self) -> set["Parameter"]:
-        return self.narrows.get_connected_nodes([Parameter])  # type: ignore
-
-    def __copy__(self) -> Self:
-        return type(self)()
-
-    def __deepcopy__(self, memo) -> Self:
-        return self.__copy__()
-
-    def get_tree_param(self, include_root: bool = True) -> Tree["Parameter"]:
-        out = Tree[Parameter](
-            {p: p.get_tree_param() for p in self.get_narrowed_siblings()}
-        )
-        if include_root:
-            out = Tree[Parameter]({self: out})
-        return out
-
-    # util functions -------------------------------------------------------------------
-    @_resolved_self
-    def enum_parameter_representation(self: "Parameter", required: bool = False) -> str:
-        return self._enum_parameter_representation(required=required)
-
-    def _enum_parameter_representation(self, required: bool = False) -> str:
-        return self.as_unit("", required=required)
-
-    @_resolved_self
-    def as_unit(
-        self: "Parameter",
-        unit: UnitsContainer,
-        base: int = 1000,
-        required: bool = False,
-    ) -> str:
-        if base != 1000:
-            raise NotImplementedError("Only base 1000 supported")
-
-        return self._as_unit(unit, base=base, required=required)
-
-    def _as_unit(self, unit: UnitsContainer, base: int, required: bool) -> str:
-        raise ValueError(f"Unsupported {self}")
-
-    @_resolved_self
-    def as_unit_with_tolerance(
-        self: "Parameter",
-        unit: UnitsContainer,
-        base: int = 1000,
-        required: bool = False,
-    ) -> str:
-        return self._as_unit_with_tolerance(unit, base=base, required=required)
-
-    def _as_unit_with_tolerance(
-        self, unit: UnitsContainer, base: int, required: bool
-    ) -> str:
-        return self._as_unit(unit, base=base, required=required)
-
-    @_resolved_self
-    def get_max(self: "Parameter") -> PV:
-        return self._max()
-
-    def _max(self):
-        raise ValueError(f"Can't get max for {self}")
-
-    def with_same_unit(
-        self: "Quantity | float | int | LIT_OR_PARAM",
-        to_convert: float | int,
+    def __init__(
+        self,
+        *,
+        units: Unit | Quantity | None = dimensionless,
+        # hard constraints
+        within: Ranges | Range | None = None,
+        domain: Domain = Numbers(negative=False),
+        # soft constraints
+        soft_set: Ranges | Range | None = None,
+        guess: Quantity
+        | int
+        | float
+        | None = None,  # TODO actually allowed to be anything from domain
+        tolerance_guess: float | None = None,
+        # hints
+        likely_constrained: bool = False,  # TODO rename expect_constraits or similiar
     ):
-        from faebryk.library.Constant import Constant
+        super().__init__()
+        if within is not None and not within.units.is_compatible_with(units):
+            raise ValueError("incompatible units")
 
-        if isinstance(self, Constant) and isinstance(self.value, Quantity):
-            return Quantity(to_convert, self.value.units)
-        if isinstance(self, Quantity):
-            return Quantity(to_convert, self.units)
-        if isinstance(self, (float, int)):
-            return to_convert
-        raise NotImplementedError(f"Unsupported {self=}")
+        if isinstance(within, Range):
+            within = Ranges(within)
+
+        if isinstance(soft_set, Range):
+            soft_set = Ranges(soft_set)
+
+        if not isinstance(units, Unit):
+            raise TypeError("units must be a Unit")
+        self.units = units
+        self.within = within
+        self.domain = domain
+        self.soft_set = soft_set
+        self.guess = guess
+        self.tolerance_guess = tolerance_guess
+        self.likely_constrained = likely_constrained
+
+    # Type forwards
+    type All = ParameterOperatable.All
+    type NumberLike = ParameterOperatable.NumberLike
+    type Sets = ParameterOperatable.Sets
+    type BooleanLike = ParameterOperatable.BooleanLike
+    type Number = ParameterOperatable.Number
+
+
+p_field = f_field(Parameter)

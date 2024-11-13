@@ -5,7 +5,9 @@ from typing import Callable
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
+from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES_VALUES
+from faebryk.libs.library import L
 from faebryk.libs.picker.jlcpcb.jlcpcb import (
     Component,
     ComponentQuery,
@@ -15,7 +17,6 @@ from faebryk.libs.picker.picker import (
     DescriptiveProperties,
     PickError,
 )
-from faebryk.libs.picker.util import generate_si_values
 from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, cast_assert
 
 logger = logging.getLogger(__name__)
@@ -31,21 +32,26 @@ qty: int = 1
 #   - should be classes instead of functions
 
 
-def str_to_enum[T: Enum](enum: type[T], x: str) -> F.Constant:
+# Generic pickers ----------------------------------------------------------------------
+
+
+def str_to_enum[T: Enum](enum: type[T], x: str) -> L.PlainSet[T]:
     name = x.replace(" ", "_").replace("-", "_").upper()
     if name not in [e.name for e in enum]:
         raise ValueError(f"Enum translation error: {x}[={name}] not in {enum}")
-    return F.Constant(enum[name])
+    return L.PlainSet(enum[name])
 
 
-def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], F.Constant]:
-    def f(x: str) -> F.Constant:
+def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], L.PlainSet[T]]:
+    def f(x: str) -> L.PlainSet[T]:
         return str_to_enum(enum, x)
 
     return f
 
 
 def enum_to_str(x: Parameter, force: bool = True) -> set[str]:
+    # FIXME
+    raise NotImplementedError()
     val = x.get_most_narrow()
     if isinstance(val, F.Constant):
         val = F.Set([val])
@@ -257,7 +263,7 @@ def find_component_by_lcsc_id(lcsc_id: str) -> Component:
     return next(iter(parts))
 
 
-def find_and_attach_by_lcsc_id(module: Module):
+def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
     """
     Find a part in the JLCPCB database by its LCSC part number
     """
@@ -285,14 +291,8 @@ def find_and_attach_by_lcsc_id(module: Module):
             f"Part with LCSC part number {lcsc_pn} has insufficient stock", module
         )
 
-    try:
-        part.attach(module, try_get_param_mapping(module), allow_TBD=True)
-    except Parameter.MergeException as e:
-        # TODO might be better to raise an error that makes the picker give up
-        # but this works for now, just not extremely efficient
-        raise PickError(
-            f"Could not attach part with LCSC part number {lcsc_pn}: {e}", module
-        ) from e
+    # FIXME: check that params are compatible
+    part.attach(module, try_get_param_mapping(module))
 
 
 def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
@@ -318,7 +318,7 @@ def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
     return next(iter(parts))
 
 
-def find_and_attach_by_mfr(module: Module):
+def find_and_attach_by_mfr(module: Module, solver: Solver):
     """
     Find a part in the JLCPCB database by its manufacturer part number
     """
@@ -354,14 +354,12 @@ def find_and_attach_by_mfr(module: Module):
 
     for part in parts:
         try:
-            part.attach(module, try_get_param_mapping(module), allow_TBD=True)
+            # FIXME: check that params are compatible
+            part.attach(module, try_get_param_mapping(module))
             return
         except ValueError as e:
             logger.warning(f"Failed to attach component: {e}")
             continue
-        except Parameter.MergeException:
-            # TODO not very efficient
-            pass
 
     raise PickError(
         f"Could not attach any part with manufacturer part number {mfr_pn}", module
@@ -371,7 +369,7 @@ def find_and_attach_by_mfr(module: Module):
 # Type specific pickers ----------------------------------------------------------------
 
 
-def find_resistor(cmp: Module):
+def find_resistor(cmp: Module, solver: Solver):
     """
     Find a resistor part in the JLCPCB database that matches the parameters of the
     provided resistor
@@ -383,19 +381,15 @@ def find_resistor(cmp: Module):
         ComponentQuery()
         .filter_by_category("Resistors", "Chip Resistor - Surface Mount")
         .filter_by_stock(qty)
-        .filter_by_si_values(
-            cmp.resistance,
-            generate_si_values(cmp.resistance, "Ω", E_SERIES_VALUES.E96),
-            tolerance_requirement=0.01,
-        )
+        .hint_filter_parameter(cmp.resistance, "Ω", E_SERIES_VALUES.E96)
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
-def find_capacitor(cmp: Module):
+def find_capacitor(cmp: Module, solver: Solver):
     """
     Find a capacitor part in the JLCPCB database that matches the parameters of the
     provided capacitor
@@ -411,19 +405,15 @@ def find_capacitor(cmp: Module):
             "Capacitors", "Multilayer Ceramic Capacitors MLCC - SMD/SMT"
         )
         .filter_by_stock(qty)
-        .filter_by_si_values(
-            cmp.capacitance,
-            generate_si_values(cmp.capacitance, "F", E_SERIES_VALUES.E24),
-            tolerance_requirement=0.05,
-        )
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
+        .hint_filter_parameter(cmp.capacitance, "F", E_SERIES_VALUES.E24)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
-def find_inductor(cmp: Module):
+def find_inductor(cmp: Module, solver: Solver):
     """
     Find an inductor part in the JLCPCB database that matches the parameters of the
     provided inductor.
@@ -442,18 +432,14 @@ def find_inductor(cmp: Module):
         .filter_by_category("Inductors", "Inductors")
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
-        .filter_by_si_values(
-            cmp.inductance,
-            generate_si_values(cmp.inductance, "H", E_SERIES_VALUES.E24),
-            tolerance_requirement=0.05,
-        )
         .filter_by_specified_parameters(mapping)
+        .hint_filter_parameter(cmp.inductance, "H", E_SERIES_VALUES.E24)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
-def find_tvs(cmp: Module):
+def find_tvs(cmp: Module, solver: Solver):
     """
     Find a TVS diode part in the JLCPCB database that matches the parameters of the
     provided diode
@@ -473,11 +459,11 @@ def find_tvs(cmp: Module):
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
-def find_diode(cmp: Module):
+def find_diode(cmp: Module, solver: Solver):
     """
     Find a diode part in the JLCPCB database that matches the parameters of the
     provided diode
@@ -491,22 +477,16 @@ def find_diode(cmp: Module):
         ComponentQuery()
         .filter_by_category("Diodes", "")
         .filter_by_stock(qty)
-        .filter_by_si_values(
-            cmp.max_current,
-            generate_si_values(cmp.max_current, "A", E_SERIES_VALUES.E3),
-        )
-        .filter_by_si_values(
-            cmp.reverse_working_voltage,
-            generate_si_values(cmp.reverse_working_voltage, "V", E_SERIES_VALUES.E3),
-        )
+        .hint_filter_parameter(cmp.max_current, "A", E_SERIES_VALUES.E3)
+        .hint_filter_parameter(cmp.reverse_working_voltage, "V", E_SERIES_VALUES.E3)
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
-def find_led(cmp: Module):
+def find_led(cmp: Module, solver: Solver):
     """
     Find a LED part in the JLCPCB database that matches the parameters of the
     provided LED
@@ -521,13 +501,14 @@ def find_led(cmp: Module):
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
-        .filter_by_attribute_mention(list(enum_to_str(cmp.color, force=False)))
+        # TODO
+        # .filter_by_attribute_mention(list(enum_to_str(cmp.color, force=False)))
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
-def find_mosfet(cmp: Module):
+def find_mosfet(cmp: Module, solver: Solver):
     """
     Find a MOSFET part in the JLCPCB database that matches the parameters of the
     provided MOSFET
@@ -543,11 +524,11 @@ def find_mosfet(cmp: Module):
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 
-def find_ldo(cmp: Module):
+def find_ldo(cmp: Module, solver: Solver):
     """
     Find a LDO part in the JLCPCB database that matches the parameters of the
     provided LDO
@@ -563,7 +544,7 @@ def find_ldo(cmp: Module):
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
         .sort_by_price(qty)
-        .filter_by_module_params_and_attach(cmp, mapping, qty)
+        .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
 
 

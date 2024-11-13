@@ -222,8 +222,8 @@ class TestPickerBase(unittest.TestCase, ABC):
             requirement=F.Resistor().builder(
                 lambda r: (
                     r.resistance.merge(F.Range.from_center(10 * P.kohm, 1 * P.kohm)),
-                    r.rated_power.merge(F.Range.lower_bound(0.05 * P.W)),
-                    r.rated_voltage.merge(F.Range.lower_bound(25 * P.V)),
+                    r.max_power.merge(F.Range.lower_bound(0.05 * P.W)),
+                    r.max_voltage.merge(F.Range.lower_bound(25 * P.V)),
                 )
             ),
             footprint=[("0402", 2)],
@@ -235,8 +235,8 @@ class TestPickerBase(unittest.TestCase, ABC):
             requirement=F.Resistor().builder(
                 lambda r: (
                     r.resistance.merge(F.Range.from_center(69 * P.kohm, 2 * P.kohm)),
-                    r.rated_power.merge(F.Range.lower_bound(0.1 * P.W)),
-                    r.rated_voltage.merge(F.Range.lower_bound(50 * P.V)),
+                    r.max_power.merge(F.Range.lower_bound(0.1 * P.W)),
+                    r.max_voltage.merge(F.Range.lower_bound(50 * P.V)),
                 )
             ),
             footprint=[("0603", 2)],
@@ -249,7 +249,7 @@ class TestPickerBase(unittest.TestCase, ABC):
             requirement=F.Capacitor().builder(
                 lambda c: (
                     c.capacitance.merge(F.Range.from_center(100 * P.nF, 10 * P.nF)),
-                    c.rated_voltage.merge(F.Range.lower_bound(25 * P.V)),
+                    c.max_voltage.merge(F.Range.lower_bound(25 * P.V)),
                     c.temperature_coefficient.merge(
                         F.Range.lower_bound(F.Capacitor.TemperatureCoefficient.X7R)
                     ),
@@ -264,7 +264,7 @@ class TestPickerBase(unittest.TestCase, ABC):
             requirement=F.Capacitor().builder(
                 lambda c: (
                     c.capacitance.merge(F.Range.from_center(47 * P.pF, 4.7 * P.pF)),
-                    c.rated_voltage.merge(F.Range.lower_bound(50 * P.V)),
+                    c.max_voltage.merge(F.Range.lower_bound(50 * P.V)),
                     c.temperature_coefficient.merge(
                         F.Range.lower_bound(F.Capacitor.TemperatureCoefficient.C0G)
                     ),
@@ -280,7 +280,7 @@ class TestPickerBase(unittest.TestCase, ABC):
             requirement=F.Inductor().builder(
                 lambda i: (
                     i.inductance.merge(F.Range.from_center(4.7 * P.nH, 0.47 * P.nH)),
-                    i.rated_current.merge(F.Range.lower_bound(0.01 * P.A)),
+                    i.max_current.merge(F.Range.lower_bound(0.01 * P.A)),
                     i.dc_resistance.merge(F.Range.upper_bound(1 * P.ohm)),
                     i.self_resonant_frequency.merge(
                         F.Range.lower_bound(100 * P.Mhertz)
@@ -417,8 +417,8 @@ class TestPickerPerformanceBase(unittest.TestCase, ABC):
                     r.resistance.merge(
                         F.Range.from_center_rel(resistance_kohm * P.kohm, 0.1)
                     ),
-                    r.rated_power.merge(F.ANY()),
-                    r.rated_voltage.merge(F.ANY()),
+                    r.max_power.merge(F.ANY()),
+                    r.max_voltage.merge(F.ANY()),
                 )
             )
 
@@ -428,7 +428,7 @@ class TestPickerPerformanceBase(unittest.TestCase, ABC):
                     c.capacitance.merge(
                         F.Range.from_center_rel(capacitance_pf * P.pF, 0.1)
                     ),
-                    c.rated_voltage.merge(F.ANY()),
+                    c.max_voltage.merge(F.ANY()),
                     c.temperature_coefficient.merge(F.ANY()),
                 )
             )

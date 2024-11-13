@@ -15,7 +15,8 @@ from rich.progress import Progress
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import Parameter, ParameterOperatable, Predicate
+from faebryk.core.solver import Solver
 from faebryk.libs.util import flatten, not_none
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,12 @@ class DescriptiveProperties(StrEnum):
 @dataclass
 class PickerOption:
     part: Part
-    params: dict[str, Parameter] | None = None
+    params: dict[str, ParameterOperatable.NonParamSet] | None = None
+    """
+    Parameters that need to be matched for this option to be valid.
+
+    Assumes specified params are narrowest possible value for this part
+    """
     filter: Callable[[Module], bool] | None = None
     pinmap: dict[str, F.Electrical] | None = None
     info: dict[str | DescriptiveProperties, str] | None = None
@@ -147,32 +153,50 @@ class has_part_picked_remove(has_part_picked.impl()):
         )
 
 
-def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
+def pick_module_by_params(
+    module: Module, solver: Solver, options: Iterable[PickerOption]
+):
     if module.has_trait(has_part_picked):
         logger.debug(f"Ignoring already picked module: {module}")
         return
 
     params = {
-        not_none(p.get_parent())[1]: p.get_most_narrow()
+        not_none(p.get_parent())[1]: p
         for p in module.get_children(direct_only=True, types=Parameter)
     }
 
-    options = list(options)
+    filtered_options = [o for o in options if not o.filter or o.filter(module)]
+    predicates: dict[PickerOption, ParameterOperatable.BooleanLike] = {}
+    for o in filtered_options:
+        predicate_list: list[Predicate] = []
 
-    try:
-        option = next(
-            filter(
-                lambda o: (not o.filter or o.filter(module))
-                and all(
-                    v.is_subset_of(params.get(k, F.ANY()))
-                    for k, v in (o.params or {}).items()
-                    if not k.startswith("_")
-                ),
-                options,
-            )
-        )
-    except StopIteration:
-        raise PickErrorParams(module, options)
+        for k, v in (o.params or {}).items():
+            if not k.startswith("_"):
+                param = params[k]
+                predicate_list.append(param.operation_is_superset(v))
+
+        # No predicates, thus always valid option
+        if len(predicate_list) == 0:
+            predicates[o] = True
+            continue
+
+        anded = predicate_list[0]
+        for p in predicate_list[1:]:
+            anded = anded.operation_and(p)
+
+        predicates[o] = anded
+
+    if len(predicates) == 0:
+        raise PickErrorParams(module, list(options))
+
+    solve_result = solver.assert_any_predicate(
+        [(p, k) for k, p in predicates.items()], lock=True
+    )
+
+    # TODO handle failure parameters
+
+    # pick first valid option
+    _, option = next(iter(solve_result.true_predicates))
 
     if option.pinmap:
         module.add(F.can_attach_to_footprint_via_pinmap(option.pinmap))
@@ -180,11 +204,12 @@ def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
     option.part.supplier.attach(module, option)
     module.add(has_part_picked_defined(option.part))
 
-    # Merge params from footprint option
+    # Shrink solution space that we need to search for
+    # by hinting that option params are biggest possible set we might want to support
     for k, v in (option.params or {}).items():
         if k not in params:
             continue
-        params[k].override(v)
+        params[k].alias_is(v)
 
     logger.debug(f"Attached {option.part.partno} to {module}")
     return option

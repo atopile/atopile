@@ -33,10 +33,9 @@ class INA228_ReferenceDesign(Module):
             self._filtered = filtered
 
         def __preinit__(self):
-            self.power_in.voltage.merge(
-                self.power_out.voltage
-            )  # TODO: minus voltagedrop over shunt
             self.shunt_sense.p.signal.connect_via(self.shunt, self.shunt_sense.n.signal)
+            # TODO: minus voltagedrop over shunt
+            self.power_in.voltage.alias_is(self.power_out.voltage)
             if self._lowside:
                 self.power_in.lv.connect_via(self.shunt, self.power_out.lv)
                 self.power_in.hv.connect(self.power_out.hv)
@@ -50,8 +49,8 @@ class INA228_ReferenceDesign(Module):
             #    filter_cap = self.add(F.Capacitor())
             #    filter_resistors = L.list_field(2, F.Resistor)
             #
-            #    filter_cap.capacitance.merge(F.Range.from_center_rel(0.1 * P.uF, 0.01))
-            #    filter_cap.rated_voltage.merge(F.Range.from_center_rel(170 * P.V, 0.01)
+            #    filter_cap.capacitance.merge(L.Range.from_center_rel(0.1 * P.uF, 0.01))
+            #    filter_cap.max_voltage.merge(L.Range.from_center_rel(170 * P.V, 0.01)
             #    for res in filter_resistors:
             #        res.resistance.merge(10 * P.kohm)
             # TODO: auto calculate, see: https://www.ti.com/lit/ug/tidu473/tidu473.pdf
@@ -83,8 +82,12 @@ class INA228_ReferenceDesign(Module):
         shunted_power = self.add(
             self.ShuntedElectricPower(lowside=self._lowside, filtered=self._filtered)
         )
-        shunted_power.shunt.resistance.merge(F.Range.from_center_rel(15 * P.mohm, 0.01))
-        shunted_power.shunt.rated_power.merge(F.Range.from_center_rel(2 * P.W, 0.01))
+        shunted_power.shunt.resistance.constrain_subset(
+            L.Range.from_center_rel(15 * P.mohm, 0.01)
+        )
+        shunted_power.shunt.max_power.constrain_subset(
+            L.Range.from_center_rel(2 * P.W, 0.01)
+        )
         # TODO: calculate according to datasheet p36
 
         # ----------------------------------------
@@ -98,6 +101,8 @@ class INA228_ReferenceDesign(Module):
         self.ina288.shunt_input.connect(shunted_power.shunt_sense)
 
         # decouple power rail
-        self.ina288.power.get_trait(F.can_be_decoupled).decouple().capacitance.merge(
-            F.Range.from_center_rel(0.1 * P.uF, 0.01)
+        self.ina288.power.get_trait(
+            F.can_be_decoupled
+        ).decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(0.1 * P.uF, 0.01)
         )

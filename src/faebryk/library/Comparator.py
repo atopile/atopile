@@ -6,6 +6,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P, quantity
 
 
 class Comparator(Module):
@@ -14,12 +15,38 @@ class Comparator(Module):
         PushPull = auto()
         OpenDrain = auto()
 
-    common_mode_rejection_ratio: F.TBD
-    input_bias_current: F.TBD
-    input_hysteresis_voltage: F.TBD
-    input_offset_voltage: F.TBD
-    propagation_delay: F.TBD
-    output_type: F.TBD
+    common_mode_rejection_ratio = L.p_field(
+        units=P.dB,
+        likely_constrained=True,
+        soft_set=L.Range(quantity(60, P.dB), quantity(120, P.dB)),
+        tolerance_guess=10 * P.percent,
+    )
+    input_bias_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.pA, 1 * P.µA),
+        tolerance_guess=20 * P.percent,
+    )
+    input_hysteresis_voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mV, 100 * P.mV),
+        tolerance_guess=15 * P.percent,
+    )
+    input_offset_voltage = L.p_field(
+        units=P.V,
+        soft_set=L.Range(10 * P.µV, 10 * P.mV),
+        tolerance_guess=20 * P.percent,
+    )
+    propagation_delay = L.p_field(
+        units=P.s,
+        soft_set=L.Range(10 * P.ns, 1 * P.ms),
+        tolerance_guess=15 * P.percent,
+    )
+    output_type = L.p_field(
+        domain=L.Domains.ENUM(OutputType),
+        likely_constrained=True,
+    )
 
     power: F.ElectricPower
     inverting_input: F.Electrical

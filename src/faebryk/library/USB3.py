@@ -3,6 +3,7 @@
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
@@ -11,4 +12,6 @@ class USB3(ModuleInterface):
 
     def __preinit__(self):
         self.usb3_if.gnd_drain.connect(self.usb3_if.usb_if.buspower.lv)
-        self.usb3_if.usb_if.buspower.voltage.merge(F.Range(4.75 * P.V, 5.5 * P.V))
+        self.usb3_if.usb_if.buspower.voltage.constrain_subset(
+            L.Range(4.75 * P.V, 5.5 * P.V)
+        )

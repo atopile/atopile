@@ -3,6 +3,8 @@
 
 import math
 
+from more_itertools import raise_
+
 import faebryk.library._F as F
 from faebryk.libs.library import L
 from faebryk.libs.units import P
@@ -14,44 +16,35 @@ class FilterElectricalLC(F.Filter):
     capacitor: F.Capacitor
     inductor: F.Inductor
 
-    def __preinit__(self) -> None: ...
+    z0 = L.p_field(units=P.ohm)
 
-    @L.rt_field
-    def construction_dependency(self):
-        class _(F.has_construction_dependency.impl()):
-            def _construct(_self):
-                if F.Constant(F.Filter.Response.LOWPASS).is_subset_of(self.response):
-                    self.response.merge(F.Filter.Response.LOWPASS)
+    def __preinit__(self) -> None:
+        Li = self.inductor.inductance
+        C = self.capacitor.capacitance
+        fc = self.cutoff_frequency
 
-                    # TODO other orders
-                    self.order.merge(2)
+        def build_lowpass():
+            # TODO other orders & types
+            self.order.constrain_subset(2)
+            self.response.constrain_subset(F.Filter.Response.LOWPASS)
 
-                    L = self.inductor.inductance
-                    C = self.capacitor.capacitance
-                    fc = self.cutoff_frequency
+            fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
 
-                    # TODO requires parameter constraint solving implemented
-                    # fc.merge(1 / (2 * math.pi * math.sqrt(C * L)))
+            # low pass
+            self.in_.signal.connect_via(
+                (self.inductor, self.capacitor),
+                self.in_.reference.lv,
+            )
 
-                    # instead assume fc being the driving param
-                    realistic_C = F.Range(1 * P.pF, 1 * P.mF)
-                    L.merge(1 / ((2 * math.pi * fc) ** 2 * realistic_C))
-                    C.merge(1 / ((2 * math.pi * fc) ** 2 * L))
+            self.in_.signal.connect_via(self.inductor, self.out.signal)
+            return
 
-                    # TODO consider splitting C / L in a typical way
+        (
+            self.response.operation_is_subset(F.Filter.Response.LOWPASS)
+            & self.order.operation_is_subset(2)
+        ).if_then_else(
+            build_lowpass,
+            lambda: raise_(NotImplementedError()),
+        )
 
-                    # low pass
-                    self.in_.signal.connect_via(
-                        (self.inductor, self.capacitor),
-                        self.in_.reference.lv,
-                    )
-
-                    self.in_.signal.connect_via(self.inductor, self.out.signal)
-                    return
-
-                if isinstance(self.response, F.Constant):
-                    raise F.has_construction_dependency.NotConstructableEver()
-
-                raise F.has_construction_dependency.NotConstructableYet()
-
-        return _()
+        # TODO add construction dependency trait

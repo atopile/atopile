@@ -10,4 +10,8 @@ class Logic(F.Signal):
     Acts as protocol, because multi inheritance is not supported
     """
 
-    def set(self, on: bool): ...
+    # state = L.p_field(domain=L.Domains.BOOL())
+
+    def set(self, on: bool):
+        # self.state.constrain_subset(on)
+        ...

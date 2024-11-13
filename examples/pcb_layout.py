@@ -22,6 +22,7 @@ from faebryk.exporters.pcb.layout.heuristic_pulls import (
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.examples.buildutil import apply_design_to_pcb
+from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.units import P
 
@@ -37,23 +38,25 @@ class App(Module):
         self.leds.power.connect(self.battery.power)
 
         # Parametrize
-        self.leds.led.color.merge(F.LED.Color.YELLOW)
-        self.leds.led.brightness.merge(
+        self.leds.led.color.constrain_subset(F.LED.Color.YELLOW)
+        self.leds.led.brightness.constrain_subset(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
         )
 
-        self.eeprom.power.voltage.merge(3.3 * P.V)
+        self.eeprom.power.voltage.constrain_subset(
+            L.Range.from_center_rel(3.3 * P.V, 0.05)
+        )
         self.eeprom.set_address(0x0)
 
         # Layout
         Point = F.has_pcb_position.Point
-        L = F.has_pcb_position.layer_type
+        Ly = F.has_pcb_position.layer_type
 
         layout = LayoutTypeHierarchy(
             layouts=[
                 LayoutTypeHierarchy.Level(
                     mod_type=F.PoweredLED,
-                    layout=LayoutAbsolute(Point((0, 0, 0, L.TOP_LAYER))),
+                    layout=LayoutAbsolute(Point((0, 0, 0, Ly.TOP_LAYER))),
                     children_layout=LayoutTypeHierarchy(
                         layouts=[
                             LayoutTypeHierarchy.Level(
@@ -65,16 +68,16 @@ class App(Module):
                 ),
                 LayoutTypeHierarchy.Level(
                     mod_type=F.Battery,
-                    layout=LayoutAbsolute(Point((0, 20, 0, L.BOTTOM_LAYER))),
+                    layout=LayoutAbsolute(Point((0, 20, 0, Ly.BOTTOM_LAYER))),
                 ),
                 LayoutTypeHierarchy.Level(
                     mod_type=F.M24C08_FMN6TP,
-                    layout=LayoutAbsolute(Point((15, 10, 0, L.TOP_LAYER))),
+                    layout=LayoutAbsolute(Point((15, 10, 0, Ly.TOP_LAYER))),
                 ),
             ]
         )
         self.add(F.has_pcb_layout_defined(layout))
-        self.add(F.has_pcb_position_defined(Point((50, 50, 0, L.NONE))))
+        self.add(F.has_pcb_position_defined(Point((50, 50, 0, Ly.NONE))))
 
         LayoutHeuristicElectricalClosenessDecouplingCaps.add_to_all_suitable_modules(
             self

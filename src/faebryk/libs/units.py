@@ -2,14 +2,37 @@
 # SPDX-License-Identifier: MIT
 
 # re-exporting Quantity in-case we ever want to change it
+from typing import Any
+
 from pint import Quantity as _Quantity  # noqa: F401
 from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
 from pint.util import UnitsContainer as _UnitsContainer
+
+from faebryk.libs.util import cast_assert
 
 P = UnitRegistry()
 
 UnitsContainer = _UnitsContainer | str
 Quantity = P.Quantity
+dimensionless = cast_assert(Unit, P.dimensionless)
+
+
+def quantity(value: float | int, unit: UnitsContainer | Unit | Quantity) -> Quantity:
+    return P.Quantity(value, unit)
+
+
+class HasUnit:
+    units: Unit
+
+    @staticmethod
+    def check(obj: Any) -> bool:
+        return hasattr(obj, "units") or isinstance(obj, Unit)
+
+    @staticmethod
+    def get_units_or_dimensionless(obj: Any) -> Unit:
+        if isinstance(obj, Unit):
+            return obj
+        return obj.units if HasUnit.check(obj) else dimensionless
 
 
 def to_si_str(

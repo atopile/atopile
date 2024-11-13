@@ -1,13 +1,12 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import math
 from enum import Enum, auto
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P
+from faebryk.libs.units import P, quantity
 from faebryk.libs.util import assert_once, join_if_non_empty
 
 
@@ -24,22 +23,49 @@ class LDO(Module):
         POSITIVE = auto()
         NEGATIVE = auto()
 
-    max_input_voltage: F.TBD
-    output_voltage: F.TBD
-    output_polarity: F.TBD
-    output_type: F.TBD
-    output_current: F.TBD
-    psrr: F.TBD
-    dropout_voltage: F.TBD
-    quiescent_current: F.TBD
-
+    max_input_voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.V, 100 * P.V),
+    )
+    output_voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.V, 100 * P.V),
+    )
+    quiescent_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mA, 100 * P.mA),
+    )
+    dropout_voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mV, 100 * P.mV),
+    )
+    psrr = L.p_field(
+        units=P.dB,
+        likely_constrained=True,
+        soft_set=L.Range(quantity(1, P.dB), quantity(100, P.dB)),
+    )
+    output_polarity = L.p_field(
+        domain=L.Domains.ENUM(OutputPolarity),
+    )
+    output_type = L.p_field(
+        domain=L.Domains.ENUM(OutputType),
+    )
+    output_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mA, 100 * P.mA),
+    )
     enable: F.ElectricLogic
     power_in: F.ElectricPower
     power_out = L.d_field(lambda: F.ElectricPower().make_source())
 
     def __preinit__(self):
-        self.max_input_voltage.merge(F.Range(self.power_in.voltage, math.inf * P.V))
-        self.power_out.voltage.merge(self.output_voltage)
+        self.max_input_voltage.constrain_ge(self.power_in.voltage)
+        self.power_out.voltage.alias_is(self.output_voltage)
 
         self.enable.reference.connect(self.power_in)
         # TODO: should be implemented differently (see below)

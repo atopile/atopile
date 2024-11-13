@@ -4,11 +4,12 @@
 
 import logging
 from abc import abstractmethod
-from typing import Any, Callable, Mapping
+from typing import Callable, Mapping
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.core.solver import Solver
 from faebryk.core.trait import TraitImpl
 from faebryk.libs.picker.picker import PickError
 
@@ -41,11 +42,12 @@ class has_multi_picker(F.has_picker.impl()):
     def __preinit__(self): ...
 
     class FunctionPicker(Picker):
-        def __init__(self, picker: Callable[[Module], Any]):
+        def __init__(self, picker: Callable[[Module, Solver], None], solver: Solver):
             self.picker = picker
+            self.solver = solver
 
         def pick(self, module: Module) -> None:
-            self.picker(module)
+            self.picker(module, self.solver)
 
         def __repr__(self) -> str:
             return f"{type(self).__name__}({self.picker.__name__})"
