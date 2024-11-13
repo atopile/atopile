@@ -147,7 +147,7 @@ class has_part_picked_remove(has_part_picked.impl()):
             F.has_multi_picker(
                 -1000,
                 F.has_multi_picker.FunctionPicker(
-                    lambda m: m.add(has_part_picked_remove())
+                    lambda m, _: m.add(has_part_picked_remove()) and None
                 ),
             )
         )
@@ -248,7 +248,7 @@ class PickerProgress:
 
 
 # TODO should be a Picker
-def pick_part_recursively(module: Module):
+def pick_part_recursively(module: Module, solver: Solver):
     pp = PickerProgress.from_module(module)
     try:
         with pp.context():
@@ -293,7 +293,9 @@ def pick_part_recursively(module: Module):
         logger.warning(f"Part without pick {np}")
 
 
-def _pick_part_recursively(module: Module, progress: PickerProgress | None = None):
+def _pick_part_recursively(
+    module: Module, solver: Solver, progress: PickerProgress | None = None
+):
     assert isinstance(module, Module)
 
     # pick only for most specialized module
@@ -305,12 +307,12 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
     # pick mif module parts
     for mif in module.get_children(direct_only=True, types=ModuleInterface):
         for mod in _get_mif_top_level_modules(mif):
-            _pick_part_recursively(mod, progress)
+            _pick_part_recursively(mod, solver, progress)
 
     # pick
     if module.has_trait(F.has_picker):
         try:
-            module.get_trait(F.has_picker).pick()
+            module.get_trait(F.has_picker).pick(solver)
         except PickError as e:
             # if no children, raise
             # This whole logic will be so much easier if the recursive
@@ -325,7 +327,7 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
 
     # if module has been specialized during pick, try again
     if module.get_most_special() != module:
-        _pick_part_recursively(module, progress)
+        _pick_part_recursively(module, solver, progress)
         return
 
     # go level lower
@@ -341,7 +343,7 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
     while to_pick:
         for child in to_pick:
             try:
-                _pick_part_recursively(child, progress)
+                _pick_part_recursively(child, solver, progress)
             except PickError as e:
                 failed[child] = e
 

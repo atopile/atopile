@@ -40,7 +40,7 @@ class App(Module):
         # Parametrize
         self.leds.led.color.constrain_subset(F.LED.Color.YELLOW)
         self.leds.led.brightness.constrain_subset(
-            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
         self.eeprom.power.voltage.constrain_subset(

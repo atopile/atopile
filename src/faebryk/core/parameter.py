@@ -5,7 +5,7 @@ import logging
 from collections.abc import Iterable
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Self, override
+from typing import Any, Callable, Self, cast, override
 
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
@@ -40,8 +40,8 @@ class ParameterOperatable(Node):
     operated_on: GraphInterface
 
     def get_operations(self) -> set["Expression"]:
-        res = self.operated_on.get_connected_nodes(types=Expression)
-        return res
+        res = self.operated_on.get_connected_nodes(types=[Expression])
+        return cast(set[Expression], res)
 
     def has_implicit_constraint(self) -> bool:
         raise NotImplementedError()
@@ -62,9 +62,9 @@ class ParameterOperatable(Node):
 
     def _is_constrains(self) -> list["Is"]:
         return [
-            i.get_other_operand(self)
-            for i in self.operated_on.get_connected_nodes(types=Is)
-            if i.constrained
+            cast_assert(Is, i).get_other_operand(self)
+            for i in self.operated_on.get_connected_nodes(types=[Is])
+            if cast_assert(Is, i).constrained
         ]
 
     def obviously_eq(self, other: "ParameterOperatable.All") -> bool:
@@ -215,6 +215,37 @@ class ParameterOperatable(Node):
         raise Exception("not implemented")
 
     # ----------------------------------------------------------------------------------
+    # Generic
+    def alias_is(self, other: All):
+        return Is(self, other).constrain()
+
+    # Numberlike
+    def constrain_le(self, other: NumberLike):
+        return self.operation_is_le(other).constrain()
+
+    def constrain_ge(self, other: NumberLike):
+        return self.operation_is_ge(other).constrain()
+
+    def constrain_lt(self, other: NumberLike):
+        return self.operation_is_lt(other).constrain()
+
+    def constrain_gt(self, other: NumberLike):
+        return self.operation_is_gt(other).constrain()
+
+    def constrain_ne(self, other: NumberLike):
+        return self.operation_is_ne(other).constrain()
+
+    # Setlike
+    def constrain_subset(self, other: Sets):
+        return self.operation_is_subset(other).constrain()
+
+    def constrain_superset(self, other: Sets):
+        return self.operation_is_superset(other).constrain()
+
+    def constrain_cardinality(self, other: int):
+        return Cardinality(self, other).constrain()
+
+    # ----------------------------------------------------------------------------------
     def __add__(self, other: NumberLike):
         return self.operation_add(other)
 
@@ -337,58 +368,6 @@ def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     return False
 
 
-# TODO mixes two things, those that a constraining predicate can be called on,
-# and the predicate, which can have it's constrained be set??
-class Constrainable:
-    type All = ParameterOperatable.All
-    type Sets = ParameterOperatable.Sets
-    type NumberLike = ParameterOperatable.NumberLike
-
-    def __init__(self):
-        super().__init__()
-        self.constrained: bool = False
-
-    def _constrain(self, constraint: "Predicate"):
-        constraint.constrain()
-
-    def _get(self) -> ParameterOperatable:
-        return cast_assert(ParameterOperatable, self)
-
-    # Generic
-    def alias_is(self, other: All):
-        return self._constrain(Is(left=self, right=other))
-
-    # Numberlike
-    def constrain_le(self, other: NumberLike):
-        return self._constrain(self._get().operation_is_le(other))
-
-    def constrain_ge(self, other: NumberLike):
-        return self._constrain(self._get().operation_is_ge(other))
-
-    def constrain_lt(self, other: NumberLike):
-        return self._constrain(self._get().operation_is_lt(other))
-
-    def constrain_gt(self, other: NumberLike):
-        return self._constrain(self._get().operation_is_gt(other))
-
-    def constrain_ne(self, other: NumberLike):
-        return self._constrain(self._get().operation_is_ne(other))
-
-    # Setlike
-    def constrain_subset(self, other: Sets):
-        return self._constrain(self._get().operation_is_subset(other))
-
-    def constrain_superset(self, other: Sets):
-        return self._constrain(self._get().operation_is_superset(other))
-
-    def constrain_cardinality(self, other: int):
-        return self._constrain(Cardinality(self._get(), other))
-
-    # shortcuts
-    def constrain(self):
-        self.constrained = True
-
-
 @abstract
 class Expression(ParameterOperatable):
     operates_on: GraphInterface
@@ -402,10 +381,17 @@ class Expression(ParameterOperatable):
 
     def __preinit__(self):
         for op in self.operatable_operands:
+            # TODO: careful here, we should make it more clear that operates_on just
+            # expresses a relation but is not a replacement of self.operands
+            if self.operates_on.is_connected_to(op.operated_on):
+                continue
             self.operates_on.connect(op.operated_on)
 
     def get_operatable_operands(self) -> set[ParameterOperatable]:
-        return self.operates_on.get_connected_nodes(types=ParameterOperatable)
+        return cast(
+            set[ParameterOperatable],
+            self.operates_on.get_connected_nodes(types=[ParameterOperatable]),
+        )
 
     def depth(self) -> int:
         if hasattr(self, "_depth"):
@@ -431,8 +417,8 @@ class Expression(ParameterOperatable):
     def obviously_eq(self, other: ParameterOperatable.All) -> bool:
         if super().obviously_eq(other):
             return True
-        if type(self) is type(other):
-            for s, o in zip(self.operands, other.operands):
+        if type(other) is type(self):
+            for s, o in zip(self.operands, cast_assert(Expression, other).operands):
                 if not obviously_eq(s, o):
                     return False
             return True
@@ -442,20 +428,28 @@ class Expression(ParameterOperatable):
         return hash((type(self), self.operands))
 
 
-# TODO are any expressions not constrainable?
-# parameters are contstrainable, too, so all parameter-operatables are constrainable?
 @abstract
-class ConstrainableExpression(Expression, Constrainable):
+class ConstrainableExpression(Expression):
     def __init__(self, *operands: ParameterOperatable.All):
-        Expression.__init__(self, *operands)
-        Constrainable.__init__(self)
+        super().__init__(*operands)
+        self.constrained: bool = False
+
+    def _constrain(self, constraint: "Predicate"):
+        constraint.constrain()
+
+    # shortcuts
+    def constrain(self):
+        self.constrained = True
 
 
 @abstract
-class Arithmetic(ConstrainableExpression, HasUnit):
+class Arithmetic(Expression):
     def __init__(self, *operands: ParameterOperatable.NumberLike):
+        # HasUnit attr
+        self.units: Unit = cast(Unit, None)  # checked in postinit
+
         super().__init__(*operands)
-        types = int, float, Quantity, Unit, Parameter, Arithmetic, Ranges
+        types = int, float, Quantity, Unit, Parameter, Arithmetic, Ranges, Range
         if any(not isinstance(op, types) for op in operands):
             raise ValueError(
                 "operands must be int, float, Quantity, Parameter, or Expression"
@@ -466,6 +460,9 @@ class Arithmetic(ConstrainableExpression, HasUnit):
             if isinstance(param, Parameter)
         ):
             raise ValueError("parameters must have domain Numbers or ESeries")
+
+    def __postinit__(self):
+        assert self.units is not None
 
 
 @abstract
@@ -545,7 +542,9 @@ class Multiply(Arithmetic):
 class Divide(Arithmetic):
     def __init__(self, numerator, denominator):
         super().__init__(numerator, denominator)
-        self.units = numerator.units / denominator.units
+        self.units = HasUnit.get_units_or_dimensionless(
+            numerator
+        ) / HasUnit.get_units_or_dimensionless(denominator)  # type: ignore
 
     def has_implicit_constraint(self) -> bool:
         return True  # denominator not zero
@@ -563,9 +562,9 @@ class Sqrt(Arithmetic):
 class Power(Arithmetic):
     def __init__(self, base, exponent: int):
         super().__init__(base, exponent)
-        if isinstance(exponent, HasUnit) and not exponent.units.is_compatible_with(
-            dimensionless
-        ):
+        if HasUnit.check(exponent) and not HasUnit.get_units(
+            exponent
+        ).is_compatible_with(dimensionless):
             raise ValueError("exponent must have dimensionless unit")
         units = HasUnit.get_units_or_dimensionless(base) ** exponent
         assert isinstance(units, Unit)
@@ -686,7 +685,7 @@ class IfThenElse(Expression):
         self.if_false = if_false
 
 
-class Setic(ConstrainableExpression):
+class Setic(Expression):
     def __init__(self, *operands):
         super().__init__(*operands)
         types = [Parameter, ParameterOperatable.Sets]
@@ -757,6 +756,7 @@ class EnumDomain(Domain):
 class Predicate(ConstrainableExpression):
     def __init__(self, left, right):
         super().__init__(left, right)
+        left, right = self.operands
         l_units = HasUnit.get_units_or_dimensionless(left)
         r_units = HasUnit.get_units_or_dimensionless(right)
         if not l_units.is_compatible_with(r_units):
@@ -776,20 +776,15 @@ class Predicate(ConstrainableExpression):
 class NumericPredicate(Predicate):
     def __init__(self, left, right):
         super().__init__(left, right)
-        if isinstance(left, Parameter) and not isinstance(
-            left.domain, (Numbers, ESeries)
-        ):
-            raise ValueError(
-                "left operand must have domain Numbers or ESeries,"
-                f" not {type(left.domain)}"
-            )
-        if isinstance(right, Parameter) and not isinstance(
-            right.domain, (Numbers, ESeries)
-        ):
-            raise ValueError(
-                "right operand must have domain Numbers or ESeries,"
-                f" not {type(right.domain)}"
-            )
+
+        for op in self.operands:
+            if isinstance(op, Parameter) and not isinstance(
+                op.domain, (Numbers, ESeries)
+            ):
+                raise ValueError(
+                    "operand must have domain Numbers or ESeries,"
+                    f" not {type(op.domain)}"
+                )
 
 
 class LessThan(NumericPredicate):
@@ -819,7 +814,7 @@ class SeticPredicate(Predicate):
         # TODO
         # if any(not isinstance(op, types) for op in self.operands):
         #    raise ValueError("operands must be Parameter or Set")
-        units = [op.units for op in self.operands]
+        units = [HasUnit.get_units_or_dimensionless(op) for op in self.operands]
         for u in units[1:]:
             if not units[0].is_compatible_with(u):
                 raise ValueError("all operands must have compatible units")
@@ -912,7 +907,7 @@ class R(Namespace):
             SYMMETRIC_DIFFERENCE = SymmetricDifference
 
 
-class Parameter(ParameterOperatable, Constrainable):
+class Parameter(ParameterOperatable):
     class TraitT(Trait): ...
 
     def __init__(

@@ -251,9 +251,7 @@ def pick_battery(module: F.Battery | Module, solver: Solver):
         bcell = F.ButtonCell()
         module.specialize(bcell)
         bcell.add(
-            F.has_multi_picker(
-                0, F.has_multi_picker.FunctionPicker(pick_battery, solver)
-            )
+            F.has_multi_picker(0, F.has_multi_picker.FunctionPicker(pick_battery))
         )
         return
 
@@ -298,7 +296,7 @@ def pick_switch(module: "_TSwitch", solver: Solver):
     )
 
 
-def add_example_pickers(module: Module, solver: Solver):
+def add_example_pickers(module: Module):
     lookup = {
         F.Resistor: pick_resistor,
         F.LED: pick_led,
@@ -312,5 +310,5 @@ def add_example_pickers(module: Module, solver: Solver):
     F.has_multi_picker.add_pickers_by_type(
         module,
         lookup,
-        lambda pick_fn: F.has_multi_picker.FunctionPicker(pick_fn, solver),
+        lambda pick_fn: F.has_multi_picker.FunctionPicker(pick_fn),
     )

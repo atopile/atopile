@@ -150,4 +150,4 @@ class CH344Q_ReferenceDesign(Module):
         # Specialize
         special = self.reset_lowpass.specialize(F.FilterElectricalRC())
         # Construct
-        special.get_trait(F.has_construction_dependency).construct()
+        special.build_lowpass()

@@ -9,30 +9,29 @@ from typing import Any, cast
 
 from more_itertools import partition
 
-from faebryk.core.graphinterface import Graph, GraphInterfaceSelf
+from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.graphinterface import GraphInterfaceSelf
 from faebryk.core.parameter import (
     Add,
     Arithmetic,
-    Constrainable,
+    ConstrainableExpression,
     Divide,
     Expression,
     Is,
     IsSubset,
-    Log,
     Multiply,
     Parameter,
     ParameterOperatable,
     Power,
     Predicate,
-    Sqrt,
     Subtract,
     has_implicit_constraints_recursive,
     obviously_eq,
 )
 from faebryk.core.solver import Solver
 from faebryk.libs.sets import Range, Ranges
-from faebryk.libs.units import Quantity, dimensionless
-from faebryk.libs.util import EquivalenceClasses, unique
+from faebryk.libs.units import HasUnit, Quantity, dimensionless
+from faebryk.libs.util import EquivalenceClasses, unique_ref
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ def debug_print(repr_map: dict[ParameterOperatable, ParameterOperatable]):
                 log(f"{s} -> {d}[{d.operands} | G {d.get_graph()!r}]")
         else:
             log(f"{s} -> {d} | G {d.get_graph()!r}")
-    graphs = unique(map(lambda p: p.get_graph(), repr_map.values()), lambda g: g())
+    graphs = unique_ref(p.get_graph() for p in repr_map.values())
     log(f"{len(graphs)} graphs")
 
 
@@ -62,12 +61,12 @@ def parameter_ops_alias_classes(
     # TODO just get passed
     param_ops = {
         p
-        for p in G.nodes_of_type(ParameterOperatable)
+        for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
         if get_constrained_predicates_involved_in(p)
-    }.difference(G.nodes_of_type(Predicate))
+    }.difference(GraphFunctions(G).nodes_of_type(Predicate))
     full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
 
-    is_exprs = [e for e in G.nodes_of_type(Is) if e.constrained]
+    is_exprs = [e for e in GraphFunctions(G).nodes_of_type(Is) if e.constrained]
 
     for is_expr in is_exprs:
         full_eq.add_eq(*is_expr.operands)
@@ -100,7 +99,7 @@ def get_constrained_predicates_involved_in(
 ) -> set[Predicate]:
     # p.self -> p.operated_on -> e1.operates_on -> e1.self
     dependants = p.bfs_node(
-        lambda path, _: isinstance(path[-1].node, ParameterOperatable)
+        lambda path: isinstance(path[-1].node, ParameterOperatable)
         and (
             # self
             isinstance(path[-1], GraphInterfaceSelf)
@@ -124,13 +123,13 @@ def parameter_dependency_classes(G: Graph) -> list[set[Parameter]]:
     # TODO just get passed
     params = [
         p
-        for p in G.nodes_of_type(Parameter)
+        for p in GraphFunctions(G).nodes_of_type(Parameter)
         if get_constrained_predicates_involved_in(p)
     ]
 
     related = EquivalenceClasses[Parameter](params)
 
-    eq_exprs = [e for e in G.nodes_of_type(Predicate) if e.constrained]
+    eq_exprs = [e for e in GraphFunctions(G).nodes_of_type(Predicate) if e.constrained]
 
     for eq_expr in eq_exprs:
         params = get_params_for_expr(eq_expr)
@@ -147,8 +146,8 @@ def create_new_expr(
     for op in operands:
         if isinstance(op, ParameterOperatable):
             assert op.get_graph() == new_expr.get_graph()
-    if isinstance(old_expr, Constrainable):
-        cast(Constrainable, new_expr).constrained = old_expr.constrained
+    if isinstance(old_expr, ConstrainableExpression):
+        cast(ConstrainableExpression, new_expr).constrained = old_expr.constrained
     return new_expr
 
 
@@ -205,7 +204,7 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable]:
             return q.to_base_units().magnitude * dimensionless
         return q * dimensionless
 
-    param_ops = G.nodes_of_type(ParameterOperatable)
+    param_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
 
     repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
 
@@ -247,10 +246,10 @@ def resolve_alias_classes(
     dirty = False
     params_ops = [
         p
-        for p in G.nodes_of_type(ParameterOperatable)
+        for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
         if get_constrained_predicates_involved_in(p)
     ]
-    exprs = G.nodes_of_type(Expression)
+    exprs = GraphFunctions(G).nodes_of_type(Expression)
     predicates = {e for e in exprs if isinstance(e, Predicate)}
     exprs.difference_update(predicates)
     exprs = {e for e in exprs if get_constrained_predicates_involved_in(e)}
@@ -281,7 +280,7 @@ def resolve_alias_classes(
 
         # TODO non unit/numeric params, i.e. enums, bools
         # single unit
-        unit_candidates = {p.units for p in alias_class}
+        unit_candidates = {HasUnit.get_units(p) for p in alias_class}
         if len(unit_candidates) > 1:
             raise ValueError("Incompatible units in alias class")
         if len(param_alias_class) > 0:
@@ -348,22 +347,13 @@ def resolve_alias_classes(
                 repr_map[e] = (
                     representative  # copy_expr TODO make sure this makes sense
                 )
-                assert isinstance(copy_expr, Constrainable)
-                copy_expr.alias_is(representative)
+                Is(copy_expr, representative).constrain()
 
     # replace parameters in expressions and predicates
     for expr in cast(
         Iterable[Expression],
         ParameterOperatable.sort_by_depth(exprs | predicates, ascending=True),
     ):
-
-        def try_replace(o: ParameterOperatable.All):
-            if not isinstance(o, ParameterOperatable):
-                return o
-            if o in repr_map:
-                return repr_map[o]
-            raise Exception()
-
         # filter alias class Is
         if isinstance(expr, Is):
             continue
@@ -381,7 +371,7 @@ def subset_of_literal(
     G: Graph,
 ) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
     dirty = False
-    params = G.nodes_of_type(Parameter)
+    params = GraphFunctions(G).nodes_of_type(Parameter)
     removed = set()
     repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
 
@@ -410,7 +400,7 @@ def subset_of_literal(
         ParameterOperatable.sort_by_depth(  # TODO, do we need the sort here? same above
             (
                 p
-                for p in G.nodes_of_type(Expression)
+                for p in GraphFunctions(G).nodes_of_type(Expression)
                 if p not in repr_map and p not in removed
             ),
             ascending=True,
@@ -438,7 +428,9 @@ def compress_associative_add_mul(
     G: Graph,
 ) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
     dirty = False
-    add_muls = cast(set[Add | Multiply], G.nodes_of_types((Add, Multiply)))
+    add_muls = cast(
+        set[Add | Multiply], GraphFunctions(G).nodes_of_types((Add, Multiply))
+    )
     # get out deepest expr in compressable tree
     parent_add_muls = {
         e for e in add_muls if type(e) not in {type(n) for n in e.get_operations()}
@@ -491,7 +483,7 @@ def compress_associative_add_mul(
     other_param_op = ParameterOperatable.sort_by_depth(
         (
             p
-            for p in G.nodes_of_type(ParameterOperatable)
+            for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
             if p not in repr_map and p not in removed
         ),
         ascending=True,
@@ -507,7 +499,7 @@ def compress_associative_sub(
 ) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
     logger.info("Compressing Subtracts")
     dirty = False
-    subs = cast(set[Subtract], G.nodes_of_type(Subtract))
+    subs = cast(set[Subtract], GraphFunctions(G).nodes_of_type(Subtract))
     # get out deepest expr in compressable tree
     parent_subs = {
         e for e in subs if type(e) not in {type(n) for n in e.get_operations()}
@@ -584,7 +576,7 @@ def compress_associative_sub(
     other_param_op = ParameterOperatable.sort_by_depth(
         (
             p
-            for p in G.nodes_of_type(ParameterOperatable)
+            for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
             if p not in repr_map and p not in removed
         ),
         ascending=True,
@@ -601,7 +593,7 @@ def compress_arithmetic_expressions(
     G: Graph,
 ) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
     dirty = False
-    arith_exprs = cast(set[Arithmetic], G.nodes_of_type(Arithmetic))
+    arith_exprs = cast(set[Arithmetic], GraphFunctions(G).nodes_of_type(Arithmetic))
 
     repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
     removed = set()
@@ -620,7 +612,9 @@ def compress_arithmetic_expressions(
         non_replacable_nonconst_ops, replacable_nonconst_ops = partition(
             lambda o: o not in repr_map, nonconst_ops
         )
-        multiplicity = {}  # TODO, obviously_eq offers additional possibilites, must be replacable, no implicit constr
+        # TODO, obviously_eq offers additional possibilites,
+        # must be replacable, no implicit constr
+        multiplicity = {}
         for n in replacable_nonconst_ops:
             if n in multiplicity:
                 multiplicity[n] += 1
@@ -633,7 +627,8 @@ def compress_arithmetic_expressions(
                 for c in const_ops:
                     dirty = True
                     const_sum[0] += c
-                if const_sum[0] == 0 * expr.units:  # TODO make work with all the types
+                # TODO make work with all the types
+                if const_sum[0] == 0 * expr.units:
                     dirty = True
                     const_sum = []
             except StopIteration:
@@ -760,7 +755,7 @@ def compress_arithmetic_expressions(
         ParameterOperatable.sort_by_depth(  # TODO, do we need the sort here? same above
             (
                 p
-                for p in G.nodes_of_type(ParameterOperatable)
+                for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
                 if p not in repr_map and p not in removed
             ),
             ascending=True,
@@ -781,24 +776,23 @@ def remove_obvious_tautologies(
     removed = set()
     dirty = False
 
+    def remove_is(pred_is: Is):
+        if len(pred_is.get_operations()) == 0:
+            removed.add(pred_is)
+        else:
+            repr_map[pred_is] = True
+        nonlocal dirty
+        dirty = True
+
+    def known_unconstrained(po: ParameterOperatable) -> bool:
+        no_other_constraints = (
+            len(get_constrained_predicates_involved_in(po).difference({pred_is})) == 0
+        )
+        return no_other_constraints and not po.has_implicit_constraints_recursive()
+
     for pred_is in ParameterOperatable.sort_by_depth(
-        G.nodes_of_type(Is), ascending=True
+        GraphFunctions(G).nodes_of_type(Is), ascending=True
     ):
-
-        def remove_is(pred_is: Is):
-            if len(pred_is.get_operations()) == 0:
-                removed.add(pred_is)
-            else:
-                repr_map[pred_is] = True
-            dirty = True
-
-        def known_unconstrained(po: ParameterOperatable) -> bool:
-            no_other_constraints = (
-                len(get_constrained_predicates_involved_in(po).difference({pred_is}))
-                == 0
-            )
-            return no_other_constraints and not po.has_implicit_constraints_recursive()
-
         pred_is = cast(Is, pred_is)
         left = pred_is.operands[0]
         right = pred_is.operands[1]
@@ -815,7 +809,7 @@ def remove_obvious_tautologies(
             and known_unconstrained(right)
         ):
             remove_is(pred_is)
-    for p in G.nodes_of_type(ParameterOperatable):
+    for p in GraphFunctions(G).nodes_of_type(ParameterOperatable):
         if p not in removed and p not in repr_map:
             repr_map[p] = copy_operand_recursively(p, repr_map)
     return repr_map, dirty
@@ -853,7 +847,7 @@ class DefaultSolver(Solver):
         logger.info("Phase 0 Solving: normalize graph")
         repr_map = normalize_graph(g)
         debug_print(repr_map)
-        graphs = unique(map(lambda p: p.get_graph(), repr_map.values()), lambda g: g())
+        graphs = unique_ref(p.get_graph() for p in repr_map.values())
         # TODO assert all new graphs
 
         dirty = True
@@ -868,9 +862,7 @@ class DefaultSolver(Solver):
                 alias_repr_map, alias_dirty = resolve_alias_classes(g)
                 repr_map.update(alias_repr_map)
             debug_print(repr_map)
-            graphs = unique(
-                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
-            )
+            graphs = unique_ref(p.get_graph() for p in repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 2a Solving: Add/Mul associative expressions")
@@ -881,9 +873,7 @@ class DefaultSolver(Solver):
                 )
                 repr_map.update(assoc_add_mul_repr_map)
             debug_print(repr_map)
-            graphs = unique(
-                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
-            )
+            graphs = unique_ref(p.get_graph() for p in repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 2a Solving: Add/Mul associative expressions")
@@ -894,9 +884,7 @@ class DefaultSolver(Solver):
                 )
                 repr_map.update(assoc_add_mul_repr_map)
             debug_print(repr_map)
-            graphs = unique(
-                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
-            )
+            graphs = unique_ref(p.get_graph() for p in repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 2b Solving: Subtract associative expressions")
@@ -905,9 +893,7 @@ class DefaultSolver(Solver):
                 assoc_sub_repr_map, assoc_sub_dirty = compress_associative_sub(g)
                 repr_map.update(assoc_sub_repr_map)
             debug_print(repr_map)
-            graphs = unique(
-                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
-            )
+            graphs = unique_ref(p.get_graph() for p in repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 3 Solving: Arithmetic expressions")
@@ -916,9 +902,7 @@ class DefaultSolver(Solver):
                 arith_repr_map, arith_dirty = compress_arithmetic_expressions(g)
                 repr_map.update(arith_repr_map)
             debug_print(repr_map)
-            graphs = unique(
-                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
-            )
+            graphs = unique_ref(p.get_graph() for p in repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 4 Solving: Remove obvious tautologies")
@@ -927,9 +911,7 @@ class DefaultSolver(Solver):
                 tautology_repr_map, tautology_dirty = remove_obvious_tautologies(g)
                 repr_map.update(tautology_repr_map)
             debug_print(repr_map)
-            graphs = unique(
-                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
-            )
+            graphs = unique_ref(p.get_graph() for p in repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 5 Solving: Subset of literals")
@@ -938,9 +920,7 @@ class DefaultSolver(Solver):
                 subset_repr_map, subset_dirty = subset_of_literal(g)
                 repr_map.update(subset_repr_map)
             debug_print(repr_map)
-            graphs = unique(
-                map(lambda p: p.get_graph(), repr_map.values()), lambda g: g()
-            )
+            graphs = unique_ref(p.get_graph() for p in repr_map.values())
             # TODO assert all new graphs
 
             dirty = (

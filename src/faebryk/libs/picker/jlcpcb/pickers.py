@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class JLCPCBPicker(F.has_multi_picker.FunctionPicker):
-    def pick(self, module: Module):
+    def pick(self, module: Module, solver: Solver):
         try:
-            super().pick(module)
+            super().pick(module, solver)
         except ComponentQuery.ParamError as e:
             raise PickError(e.args[0], module) from e
         except ComponentQuery.Error as e:
@@ -46,10 +46,8 @@ def add_jlcpcb_pickers(module: Module, solver: Solver, base_prio: int = 0) -> No
 
     # Generic pickers
     prio = base_prio
-    module.add(
-        F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_lcsc_id, solver))
-    )
-    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_mfr, solver)))
+    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_lcsc_id)))
+    module.add(F.has_multi_picker(prio, JLCPCBPicker(P.find_and_attach_by_mfr)))
 
     # Type specific pickers
     prio = base_prio + 1
@@ -57,6 +55,6 @@ def add_jlcpcb_pickers(module: Module, solver: Solver, base_prio: int = 0) -> No
     F.has_multi_picker.add_pickers_by_type(
         module,
         P.TYPE_SPECIFIC_LOOKUP,
-        lambda pick_fn: JLCPCBPicker(pick_fn, solver),
+        JLCPCBPicker,
         prio,
     )

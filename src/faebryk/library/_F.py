@@ -20,7 +20,6 @@ from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_esphome_config import has_esphome_config
 from faebryk.library.is_esphome_bus import is_esphome_bus
-from faebryk.library.has_construction_dependency import has_construction_dependency
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
@@ -37,6 +36,7 @@ from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_capacitance import has_capacitance
+from faebryk.library.has_construction_dependency import has_construction_dependency
 from faebryk.library.has_footprint_requirement import has_footprint_requirement
 from faebryk.library.has_kicad_ref import has_kicad_ref
 from faebryk.library.has_picker import has_picker

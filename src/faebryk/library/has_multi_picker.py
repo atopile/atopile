@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 class has_multi_picker(F.has_picker.impl()):
-    def pick(self):
+    def pick(self, solver: Solver):
         module = self.get_obj(Module)
         es = []
         for _, picker in self.pickers:
             logger.debug(f"Trying picker for {module}: {picker}")
             try:
-                picker.pick(module)
+                picker.pick(module, solver)
                 logger.debug("Success")
                 return
             except PickError as e:
@@ -33,7 +33,7 @@ class has_multi_picker(F.has_picker.impl()):
 
     class Picker:
         @abstractmethod
-        def pick(self, module: Module): ...
+        def pick(self, module: Module, solver: Solver): ...
 
     def __init__(self, prio: int, picker: Picker):
         super().__init__()
@@ -42,12 +42,11 @@ class has_multi_picker(F.has_picker.impl()):
     def __preinit__(self): ...
 
     class FunctionPicker(Picker):
-        def __init__(self, picker: Callable[[Module, Solver], None], solver: Solver):
+        def __init__(self, picker: Callable[[Module, Solver], None]):
             self.picker = picker
-            self.solver = solver
 
-        def pick(self, module: Module) -> None:
-            self.picker(module, self.solver)
+        def pick(self, module: Module, solver: Solver) -> None:
+            self.picker(module, solver)
 
         def __repr__(self) -> str:
             return f"{type(self).__name__}({self.picker.__name__})"

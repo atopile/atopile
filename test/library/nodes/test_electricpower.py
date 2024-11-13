@@ -32,7 +32,7 @@ def test_fused_power():
     )
 
 
-def test_voltage_propagation(self):
+def test_voltage_propagation():
     import faebryk.library._F as F
     from faebryk.libs.units import P
 

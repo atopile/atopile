@@ -90,7 +90,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             # Specialize
             special = self.rc_filter.specialize(F.FilterElectricalRC())
             # Construct
-            special.get_trait(F.has_construction_dependency).construct()
+            special.build_lowpass()
 
     # ----------------------------------------
     #     modules, interfaces, parameters

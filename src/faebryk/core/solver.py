@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from faebryk.core.graphinterface import Graph
+from faebryk.core.graph import Graph
 from faebryk.core.parameter import (
     Expression,
     ParameterOperatable,

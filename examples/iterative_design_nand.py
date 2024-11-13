@@ -129,7 +129,7 @@ def App():
             )
     power_source.power.voltage.constrain_subset(L.Range.from_center_rel(3 * P.V, 0.05))
     led.led.led.brightness.constrain_subset(
-        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
     )
 
     # packages single nands as explicit IC

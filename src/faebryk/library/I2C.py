@@ -42,7 +42,7 @@ class I2C(ModuleInterface):
 
     @staticmethod
     def define_max_frequency_capability(mode: SpeedMode):
-        return L.Range(I2C.SpeedMode.low_speed, mode)
+        return L.Range(I2C.SpeedMode.low_speed.value, mode.value)
 
     def __preinit__(self) -> None:
         self.frequency.add(

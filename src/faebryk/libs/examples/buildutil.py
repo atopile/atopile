@@ -79,8 +79,8 @@ def apply_design_to_pcb(
                 logger.warning("API not configured. Skipping API pickers.")
 
     for n in modules:
-        add_example_pickers(n, solver)
-    pick_part_recursively(m)
+        add_example_pickers(n)
+    pick_part_recursively(m, solver)
     solver.find_and_lock_solution(G)
     # -------------------------------------------------------------------------
 

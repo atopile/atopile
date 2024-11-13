@@ -11,6 +11,7 @@ from pathlib import Path
 import typer
 
 import faebryk.library._F as F
+from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.module import Module
 from faebryk.exporters.documentation.datasheets import export_datasheets
 from faebryk.exporters.pcb.kicad.artifacts import export_svg
@@ -60,7 +61,7 @@ class App(Module):
         # Parametrize
         self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
         self.led.led.brightness.constrain_subset(
-            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
 
@@ -132,19 +133,21 @@ def main():
     G = app.get_graph()
     resolve_dynamic_parameters(G)
 
+    solver = DefaultSolver()
+
     # picking ----------------------------------------------------------------
     modules = app.get_children_modules(types=Module)
     CachePicker.add_to_modules(modules, prio=-20)
     try:
         JLCPCB_DB()
         for n in modules:
-            add_jlcpcb_pickers(n, base_prio=-10)
+            add_jlcpcb_pickers(n, solver=solver, base_prio=-10)
     except FileNotFoundError:
         logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
 
     for n in modules:
         add_example_pickers(n)
-    pick_part_recursively(app)
+    pick_part_recursively(app, solver)
 
     run_checks(app, G)
 

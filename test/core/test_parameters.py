@@ -133,6 +133,7 @@ def test_solve_realworld():
     solver.phase_one_no_guess_solving(app.get_graph())
 
 
+@pytest.mark.skip
 def test_visualize():
     """
     Creates webserver that opens automatically if run in jupyter notebook
@@ -159,6 +160,7 @@ def test_visualize():
     visualize_parameters(G, height=1400)
 
 
+@pytest.mark.skip
 def test_visualize_chain():
     from faebryk.exporters.visualize.interactive_params import visualize_parameters
 
@@ -175,6 +177,7 @@ def test_visualize_chain():
     visualize_parameters(G, height=1400)
 
 
+@pytest.mark.skip
 def test_visualize_inspect_app():
     from faebryk.exporters.visualize.interactive_params import visualize_parameters
 

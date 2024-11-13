@@ -1,14 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from more_itertools import raise_
-
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.parameter import Is
+from faebryk.core.solver import Solver
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import PickError, has_part_picked_remove
+from faebryk.libs.picker.picker import has_part_picked_remove
 from faebryk.libs.units import P
-from faebryk.libs.util import join_if_non_empty
+from faebryk.libs.util import join_if_non_empty, once
 
 
 class Resistor(Module):
@@ -44,18 +44,23 @@ class Resistor(Module):
     def allow_removal_if_zero(self):
         import faebryk.library._F as F
 
-        def replace_zero(m: Module):
+        @once
+        def do_replace():
+            self.resistance.constrain_subset(0.0 * P.ohm)
+            self.unnamed[0].connect(self.unnamed[1])
+            self.add(has_part_picked_remove())
+
+        self.resistance.operation_is_superset(0.0 * P.ohm).if_then_else(
+            lambda: do_replace(),
+            lambda: None,
+            preference=True,
+        )
+
+        def replace_zero(m: Module, solver: Solver):
             assert m is self
 
-            def do_replace():
-                self.resistance.constrain_subset(0.0 * P.ohm)
-                self.unnamed[0].connect(self.unnamed[1])
-                self.add(has_part_picked_remove())
-
-            self.resistance.operation_is_superset(0.0 * P.ohm).if_then_else(
-                lambda: do_replace(),
-                lambda: raise_(PickError("", self)),
-                preference=True,
+            solver.assert_any_predicate(
+                [(Is(self.resistance, 0.0 * P.ohm), None)], lock=True
             )
 
         self.add(
