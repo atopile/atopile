@@ -126,24 +126,30 @@ class RP2040_ReferenceDesign(Module):
         )
 
         # Power rails
+        range_100nF = L.Range.from_center_rel(100 * P.nF, 0.05)
+        caps_100nF = []
+        multi_cap = F.MultiCapacitor(6)
         self.rp2040.power_io.decoupled.decouple().specialize(
-            F.MultiCapacitor(6)
-        ).set_equal_capacitance_each(L.Range.from_center_rel(100 * P.nF, 0.05))
+            multi_cap
+        ).set_equal_capacitance_each(range_100nF)
+        caps_100nF.extend(multi_cap.capacitors)
         self.rp2040.core_regulator.power_in.decoupled.decouple().capacitance.constrain_subset(
             L.Range.from_center_rel(1 * P.uF, 0.05)
         )
-        self.rp2040.power_adc.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.05)
-        )
-        self.rp2040.power_usb_phy.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.05)
-        )
+        cap = self.rp2040.power_adc.decoupled.decouple()
+        cap.capacitance.constrain_subset(range_100nF)
+        caps_100nF.append(cap)
+        cap = self.rp2040.power_usb_phy.decoupled.decouple()
+        cap.capacitance.constrain_subset(range_100nF)
+        caps_100nF.append(cap)
         power_3v3.decoupled.decouple().capacitance.constrain_subset(
             L.Range.from_center_rel(10 * P.uF, 0.05)
         )
+        multi_cap = F.MultiCapacitor(2)
         self.rp2040.power_core.decoupled.decouple().specialize(
-            F.MultiCapacitor(2)
-        ).set_equal_capacitance_each(L.Range.from_center_rel(100 * P.nF, 0.05))
+            multi_cap
+        ).set_equal_capacitance_each(range_100nF)
+        caps_100nF.extend(multi_cap.capacitors)
         self.rp2040.core_regulator.power_out.decoupled.decouple().capacitance.constrain_subset(
             L.Range.from_center_rel(1 * P.uF, 0.05)
         )
@@ -172,10 +178,8 @@ class RP2040_ReferenceDesign(Module):
         LayoutHeuristicElectricalClosenessDecouplingCaps.add_to_all_suitable_modules(  # noqa: E501
             self
         )
-        # TODO
-        # for c in caps:
-        #    if 100 * P.nF in c.capacitance:
-        #        c.add(F.has_footprint_requirement_defined([("0201", 2)]))
+        for c in caps_100nF:
+            c.add(F.has_footprint_requirement_defined([("0201", 2)]))
 
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self
