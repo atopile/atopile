@@ -26,6 +26,8 @@ from faebryk.core.parameter import (
     Predicate,
     Sqrt,
     Subtract,
+    has_implicit_constraints_recursive,
+    obviously_eq,
 )
 from faebryk.core.solver import Solver
 from faebryk.libs.sets import Range, Ranges
@@ -346,8 +348,6 @@ def resolve_alias_classes(
                 repr_map[e] = (
                     representative  # copy_expr TODO make sure this makes sense
                 )
-                # TODO, if it doesn't have implicit constraints and it's operands don't
-                #   aren't constraint, we can get rid of it
                 assert isinstance(copy_expr, Constrainable)
                 copy_expr.alias_is(representative)
 
@@ -386,21 +386,15 @@ def subset_of_literal(
     repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
 
     for param in params:
-
-        def other_set(e: Is) -> ParameterOperatable.All:
-            if e.operands[0] is param:
-                return e.operands[1]
-            return e.operands[0]
-
         is_subsets = [
             e
             for e in param.get_operations()
             if isinstance(e, IsSubset)
             and len(e.get_operations()) == 0
-            and not isinstance(other_set(e), ParameterOperatable)
+            and not isinstance(e.get_other_operand(param), ParameterOperatable)
         ]
         if len(is_subsets) > 1:
-            other_sets = [other_set(e) for e in is_subsets]
+            other_sets = [e.get_other_operand(param) for e in is_subsets]
             intersected = other_sets[0]
             for s in other_sets[1:]:
                 intersected = intersected.op_intersect_ranges(Ranges(s))
@@ -626,7 +620,7 @@ def compress_arithmetic_expressions(
         non_replacable_nonconst_ops, replacable_nonconst_ops = partition(
             lambda o: o not in repr_map, nonconst_ops
         )
-        multiplicity = {}
+        multiplicity = {}  # TODO, obviously_eq offers additional possibilites, must be replacable, no implicit constr
         for n in replacable_nonconst_ops:
             if n in multiplicity:
                 multiplicity[n] += 1
@@ -721,7 +715,7 @@ def compress_arithmetic_expressions(
                 dirty = True
                 repr_map[expr] = expr.operands[0] - expr.operands[1]
                 removed.add(expr)
-            elif expr.operands[0] is expr.operands[1]:
+            elif expr.operands[0] is expr.operands[1]:  # TODO obv eq, replacable
                 dirty = True
                 repr_map[expr] = 0 * expr.units
                 removed.add(expr)
@@ -745,7 +739,7 @@ def compress_arithmetic_expressions(
                     # no valid solution but might not matter e.g. [phi(a,b,...)
                     # OR a/0 == b]
                     repr_map[expr] = copy_operand_recursively(expr, repr_map)
-            elif expr.operands[1] is expr.operands[0]:
+            elif expr.operands[1] is expr.operands[0]:  # TODO obv eq, replacable
                 dirty = True
                 repr_map[expr] = 1 * dimensionless
                 removed.add(expr)
@@ -780,48 +774,49 @@ def compress_arithmetic_expressions(
     }, dirty
 
 
-# TODO move to expression?
-# TODO recursive?
-def has_implicit_constraint(po: ParameterOperatable) -> bool:
-    if isinstance(po, Parameter | Add | Subtract | Multiply | Power):  # TODO others
-        return False
-    if isinstance(po, Divide):
-        return True  # implicit constraint: divisor not zero
-    if isinstance(po, Sqrt | Log):
-        return True  # implicit constraint: non-negative
-    return True
-
-
 def remove_obvious_tautologies(
     G: Graph,
 ) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+    repr_map = {}
     removed = set()
     dirty = False
+
     for pred_is in ParameterOperatable.sort_by_depth(
         G.nodes_of_type(Is), ascending=True
     ):
+
+        def remove_is(pred_is: Is):
+            if len(pred_is.get_operations()) == 0:
+                removed.add(pred_is)
+            else:
+                repr_map[pred_is] = True
+            dirty = True
 
         def known_unconstrained(po: ParameterOperatable) -> bool:
             no_other_constraints = (
                 len(get_constrained_predicates_involved_in(po).difference({pred_is}))
                 == 0
             )
-            return no_other_constraints and not has_implicit_constraint(po)
+            return no_other_constraints and not po.has_implicit_constraints_recursive()
 
         pred_is = cast(Is, pred_is)
-        if pred_is.operands[0] is pred_is.operands[1] and not known_unconstrained(
-            pred_is.operands[0]
+        left = pred_is.operands[0]
+        right = pred_is.operands[1]
+        if (
+            obviously_eq(left, right)
+            and not has_implicit_constraints_recursive(left)
+            and not has_implicit_constraints_recursive(right)
         ):
-            removed.add(pred_is)
-            dirty = True
-        elif known_unconstrained(pred_is.operands[0]) or known_unconstrained(
-            pred_is.operands[1]
+            remove_is(pred_is)
+        elif (
+            isinstance(left, Parameter)
+            and known_unconstrained(left)
+            or isinstance(right, Parameter)
+            and known_unconstrained(right)
         ):
-            removed.add(pred_is)
-            dirty = True
-    repr_map = {}
+            remove_is(pred_is)
     for p in G.nodes_of_type(ParameterOperatable):
-        if p not in removed:
+        if p not in removed and p not in repr_map:
             repr_map[p] = copy_operand_recursively(p, repr_map)
     return repr_map, dirty
 

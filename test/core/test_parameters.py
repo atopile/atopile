@@ -189,7 +189,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_solve_realworld
+    func = test_remove_obvious_tautologies
 
     if "ipykernel" in sys.modules:
         func()

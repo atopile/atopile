@@ -43,6 +43,12 @@ class ParameterOperatable(Node):
         res = self.operated_on.get_connected_nodes(types=Expression)
         return res
 
+    def has_implicit_constraint(self) -> bool:
+        raise NotImplementedError()
+
+    def has_implicit_constraints_recursive(self) -> bool:
+        raise NotImplementedError()
+
     @staticmethod
     def sort_by_depth(
         exprs: Iterable["ParameterOperatable"], ascending: bool
@@ -56,7 +62,9 @@ class ParameterOperatable(Node):
 
     def _is_constrains(self) -> list["Is"]:
         return [
-            i for i in self.operated_on.get_connected_nodes(types=Is) if i.constrained
+            i.get_other_operand(self)
+            for i in self.operated_on.get_connected_nodes(types=Is)
+            if i.constrained
         ]
 
     def obviously_eq(self, other: "ParameterOperatable.All") -> bool:
@@ -323,6 +331,12 @@ def obviously_eq(a: ParameterOperatable.All, b: ParameterOperatable.All) -> bool
     return False
 
 
+def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
+    if isinstance(po, ParameterOperatable):
+        return po.has_implicit_constraints_recursive()
+    return False
+
+
 # TODO mixes two things, those that a constraining predicate can be called on,
 # and the predicate, which can have it's constrained be set??
 class Constrainable:
@@ -400,6 +414,17 @@ class Expression(ParameterOperatable):
             op.depth() if isinstance(op, Expression) else 0 for op in self.operands
         )
         return self._depth
+
+    def has_implicit_constraint(self) -> bool:
+        return True  # opt out
+
+    def has_implicit_constraints_recursive(self) -> bool:
+        if self.has_implicit_constraint():
+            return True
+        for op in self.operands:
+            if isinstance(op, Expression) and op.has_implicit_constraints_recursive():
+                return True
+        return False
 
     # TODO caching
     @override
@@ -480,10 +505,16 @@ class Add(Additive):
         op_hash = sum(hash(op) for op in self.operands)
         return hash((type(self), op_hash))
 
+    def has_implicit_constraint(self) -> bool:
+        return False
+
 
 class Subtract(Additive):
     def __init__(self, minuend, subtrahend):
         super().__init__(minuend, subtrahend)
+
+    def has_implicit_constraint(self) -> bool:
+        return False
 
 
 class Multiply(Arithmetic):
@@ -499,7 +530,7 @@ class Multiply(Arithmetic):
     def obviously_eq(self, other: ParameterOperatable.All) -> bool:
         if ParameterOperatable.obviously_eq(self, other):
             return True
-        if isinstance(other, Add):
+        if isinstance(other, Multiply):
             return _associative_obviously_eq(self, other)
         return False
 
@@ -507,17 +538,26 @@ class Multiply(Arithmetic):
         op_hash = sum(hash(op) for op in self.operands)
         return hash((type(self), op_hash))
 
+    def has_implicit_constraint(self) -> bool:
+        return False
+
 
 class Divide(Arithmetic):
     def __init__(self, numerator, denominator):
         super().__init__(numerator, denominator)
         self.units = numerator.units / denominator.units
 
+    def has_implicit_constraint(self) -> bool:
+        return True  # denominator not zero
+
 
 class Sqrt(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units**0.5
+
+    def has_implicit_constraint(self) -> bool:
+        return True  # non-negative
 
 
 class Power(Arithmetic):
@@ -539,6 +579,9 @@ class Log(Arithmetic):
             raise ValueError("operand must have dimensionless unit")
         self.units = dimensionless
 
+    def has_implicit_constraint(self) -> bool:
+        return True  # non-negative
+
 
 class Sin(Arithmetic):
     def __init__(self, operand):
@@ -546,6 +589,9 @@ class Sin(Arithmetic):
         if not operand.unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
         self.units = dimensionless
+
+    def has_implicit_constraint(self) -> bool:
+        return False
 
 
 class Cos(Arithmetic):
@@ -555,11 +601,17 @@ class Cos(Arithmetic):
             raise ValueError("operand must have dimensionless unit")
         self.units = dimensionless
 
+    def has_implicit_constraint(self) -> bool:
+        return False
+
 
 class Abs(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units
+
+    def has_implicit_constraint(self) -> bool:
+        return False
 
 
 class Round(Arithmetic):
@@ -567,17 +619,26 @@ class Round(Arithmetic):
         super().__init__(operand)
         self.units = operand.units
 
+    def has_implicit_constraint(self) -> bool:
+        return False
+
 
 class Floor(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units
 
+    def has_implicit_constraint(self) -> bool:
+        return False
+
 
 class Ceil(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units
+
+    def has_implicit_constraint(self) -> bool:
+        return False
 
 
 class Logic(ConstrainableExpression):
@@ -703,6 +764,13 @@ class Predicate(ConstrainableExpression):
 
     def __bool__(self):
         raise ValueError("Predicate cannot be converted to bool")
+
+    def get_other_operand(
+        self, operand: ParameterOperatable.All
+    ) -> ParameterOperatable.All:
+        if self.operands[0] is operand:
+            return self.operands[1]
+        return self.operands[0]
 
 
 class NumericPredicate(Predicate):
@@ -890,6 +958,12 @@ class Parameter(ParameterOperatable, Constrainable):
     type Sets = ParameterOperatable.Sets
     type BooleanLike = ParameterOperatable.BooleanLike
     type Number = ParameterOperatable.Number
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+    def has_implicit_constraints_recursive(self) -> bool:
+        return False
 
 
 p_field = f_field(Parameter)
