@@ -6,6 +6,10 @@
 
 #include <nanobind/nanobind.h>
 
+// TODO this all should not really be necessary
+//  seems like we have a similar issue
+//  https://github.com/wjakob/nanobind/issues/668
+
 namespace nb = nanobind;
 
 // Fix for nanobind new override
