@@ -60,6 +60,13 @@ class Header(Module):
         soft_set=L.Range(2, 100),
     )
 
+    mating_pin_length = L.p_field(
+        units=P.mm,
+        likely_constrained=True,
+        domain=L.Domains.Numbers.REAL(),
+        soft_set=L.Range(1 * P.mm, 10 * P.mm),
+    )
+
     @L.rt_field
     def contact(self):
         return times(

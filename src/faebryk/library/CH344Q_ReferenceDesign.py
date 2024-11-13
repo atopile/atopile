@@ -123,15 +123,13 @@ class CH344Q_ReferenceDesign(Module):
         self.oscillator.crystal.load_capacitance.constrain_subset(
             L.Range.from_center(8 * P.pF, 10 * P.pF)
         )  # TODO: should be property of crystal when picked
-        self.oscillator.current_limiting_resistor.resistance.merge(
-            F.Constant(0 * P.ohm)
-        )
+        self.oscillator.current_limiting_resistor.resistance.constrain_subset(0 * P.ohm)
 
-        self.ldo.power_in.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.1)
+        self.ldo.power_in.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
         )
-        self.ldo.power_out.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.1)
+        self.ldo.power_out.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
         )
 
         # self.usb.usb_if.buspower.max_current.constrain_subset(

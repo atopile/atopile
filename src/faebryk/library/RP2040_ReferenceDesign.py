@@ -172,8 +172,9 @@ class RP2040_ReferenceDesign(Module):
         LayoutHeuristicElectricalClosenessDecouplingCaps.add_to_all_suitable_modules(  # noqa: E501
             self
         )
+        # TODO
         # for c in caps:
-        #    if F.Constant(100 * P.nF).is_subset_of(c.capacitance):
+        #    if 100 * P.nF in c.capacitance:
         #        c.add(F.has_footprint_requirement_defined([("0201", 2)]))
 
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(

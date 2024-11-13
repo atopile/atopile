@@ -90,16 +90,12 @@ def _try_merge_params(target: Module, source: Module) -> bool:
     )
 
     # sort by type to avoid merge conflicts
-    types_sort = [F.ANY, F.TBD, F.Constant, F.Range, F.Set, F.Operation]
-    it = sorted(
-        module_params.values(),
-        key=lambda x: types_sort.index(type(x[0].get_most_narrow())),
-    )
+    it = module_params.values()
     for p, value in it:
         if not value.is_subset_of(p):
             return False
     for p, value in it:
-        p.override(value)
+        p.alias_is(value)
 
     return True
 
@@ -112,17 +108,18 @@ class CachePicker(F.has_multi_picker.Picker):
     def pick(self, module: Module):
         mcache = [m for m in self.cache[type(module)] if m.has_trait(has_part_picked)]
         for m in mcache:
-            if _try_merge_params(module, m):
-                logger.debug(f"Found compatible part in cache: {module} with {m}")
-                module.add(
-                    F.has_descriptive_properties_defined(
-                        m.get_trait(F.has_descriptive_properties).get_properties()
-                    )
+            if not _try_merge_params(module, m):
+                continue
+            logger.debug(f"Found compatible part in cache: {module} with {m}")
+            module.add(
+                F.has_descriptive_properties_defined(
+                    m.get_trait(F.has_descriptive_properties).get_properties()
                 )
-                part = m.get_trait(has_part_picked).get_part()
-                attach(module, part.partno)
-                module.add(has_part_picked_defined(part))
-                return
+            )
+            part = m.get_trait(has_part_picked).get_part()
+            attach(module, part.partno)
+            module.add(has_part_picked_defined(part))
+            return
 
         self.cache[type(module)].add(module)
         raise PickError(f"No compatible part found in cache for {module}", module)

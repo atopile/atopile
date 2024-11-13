@@ -7,7 +7,8 @@ from typing import Callable, Type
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.libs.e_series import E_SERIES_VALUES
+from faebryk.core.parameter import Parameter
+from faebryk.libs.e_series import E_SERIES, E_SERIES_VALUES
 from faebryk.libs.picker.api.api import (
     CapacitorParams,
     DiodeParams,
@@ -27,7 +28,7 @@ from faebryk.libs.picker.api.api import (
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
 from faebryk.libs.picker.picker import DescriptiveProperties, PickError
-from faebryk.libs.picker.util import generate_si_values
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,13 @@ client = get_api_client()
 
 # TODO add trait to module that specifies the quantity of the part
 qty: int = 1
+
+
+def generate_si_values(
+    param: Parameter, si_unit: str, e_series: E_SERIES
+) -> list[Quantity]:
+    # FIXME: implement with new params
+    raise NotImplementedError()
 
 
 def find_component_by_lcsc_id(lcsc_id: str) -> Component:

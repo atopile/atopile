@@ -42,7 +42,7 @@ class Diodes_Incorporated_AP2552W6_7(Module):
         # Rlim_max = (20.08 / (self.current_limit * P.mA)) ^ (1 / 0.904) * P.kohm
 
         # Rlim = Range(Rlim_min, Rlim_max)
-        # Rlim = F.Constant(51 * P.kohm)  # TODO: remove: ~0.52A typical current limit
+        # Rlim = 51 * P.kohm  # TODO: remove: ~0.52A typical current limit
         # if not Rlim.is_subset_of(L.Range(10 * P.kohm, 210 * P.kohm)):
         #    raise ModuleException(
         #        self,

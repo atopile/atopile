@@ -61,12 +61,12 @@ class USB2514B_ReferenceDesign(Module):
             # ----------------------------------------
             #              parametrization
             # ----------------------------------------
-            self.usb_dfp_power_indicator.led.color.merge(F.LED.Color.YELLOW)
-            self.usb_dfp_power_indicator.led.brightness.merge(
-                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+            self.usb_dfp_power_indicator.led.color.constrain_subset(F.LED.Color.YELLOW)
+            self.usb_dfp_power_indicator.led.brightness.constrain_subset(
+                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
             )
             self.power_distribution_switch.set_current_limit(
-                F.Range.from_center_rel(520 * P.mA, 0.01)
+                L.Range.from_center_rel(520 * P.mA, 0.01)
             )
 
             # ----------------------------------------

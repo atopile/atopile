@@ -50,20 +50,20 @@ class TPS2116(F.PowerMux):
             self.power_in[0].hv.connect_via(resistor_devider, self.select.signal)
             resistor_devider.node[2].connect(self.power_in[0].lv)
             if switchover_voltage != self.SwitchoverVoltage.CUSTOM:
-                resistor_devider.resistor[1].resistance.merge(
-                    F.Range.from_center_rel(5 * P.kohm, 0.01)
+                resistor_devider.resistor[1].resistance.constrain_subset(
+                    L.Range.from_center_rel(5 * P.kohm, 0.01)
                 )
             if switchover_voltage == self.SwitchoverVoltage._5V:
-                resistor_devider.resistor[0].resistance.merge(
-                    F.Range.from_center_rel(16.9 * P.kohm, 0.01)
+                resistor_devider.resistor[0].resistance.constrain_subset(
+                    L.Range.from_center_rel(16.9 * P.kohm, 0.01)
                 )
             elif switchover_voltage == self.SwitchoverVoltage._3V3:
-                resistor_devider.resistor[0].resistance.merge(
-                    F.Range.from_center_rel(9.53 * P.kohm, 0.01)
+                resistor_devider.resistor[0].resistance.constrain_subset(
+                    L.Range.from_center_rel(9.53 * P.kohm, 0.01)
                 )
             elif switchover_voltage == self.SwitchoverVoltage._1V8:
-                resistor_devider.resistor[0].resistance.merge(
-                    F.Range.from_center_rel(2.80 * P.kohm, 0.01)
+                resistor_devider.resistor[0].resistance.constrain_subset(
+                    L.Range.from_center_rel(2.80 * P.kohm, 0.01)
                 )
         else:
             raise NotImplementedError(f"Mode {mode} not implemented")

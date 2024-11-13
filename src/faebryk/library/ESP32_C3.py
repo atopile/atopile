@@ -164,7 +164,7 @@ class ESP32_C3(Module):
 
     #    self.i2c.add(is_esphome_bus_defined("i2c_0"))
     #    self.i2c.add(_i2c_esphome_config())
-    #    self.i2c.frequency.merge(
+    #    self.i2c.frequency.constrain_subset(
     #        Set(
     #            [
     #                F.I2C.define_max_frequency_capability(speed)
