@@ -561,4 +561,5 @@ def test_regression_rp2040_usb_diffpair_full():
 
 
 if __name__ == "__main__":
-    test_regression_rp2040_usb_diffpair()
+    # test_regression_rp2040_usb_diffpair()
+    test_up_connect_simple_multiple()
