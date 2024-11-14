@@ -8,6 +8,7 @@ TODO:
 
 import collections
 import importlib
+import itertools
 import logging
 import operator
 import sys
@@ -32,20 +33,26 @@ from antlr4 import ParserRuleContext
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.util import FuncDict
+import faebryk.core.parameter as fab_param
 
-from atopile import address, config, errors, expressions, parse_utils
-from atopile.address import AddrStr
+from atopile import address, config, errors, parse_utils
 from atopile.datatypes import KeyOptItem, KeyOptMap, StackList
-from atopile.expressions import RangedValue
 from atopile.front_end import _get_unit_from_ctx
 from atopile.parse import parser
 from atopile.parse_utils import get_src_info_from_ctx
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
+from faebryk.libs.units import Quantity, dimensionless
 
 from atopile.datatypes import Ref
 
 log = logging.getLogger(__name__)
+
+
+class from_dsl(Trait.decless()):
+    def __init__(self, src_ctx: ParserRuleContext) -> None:
+        super().__init__()
+        self.src_ctx = src_ctx
 
 
 class BasicsMixin:
@@ -82,18 +89,20 @@ class BasicsMixin:
 
 
 class PhysicalValuesMixin:
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> L.Range:
         """Yield a physical value from a physical context."""
         if ctx.quantity():
-            return self.visitQuantity(ctx.quantity())
-        if ctx.bilateral_quantity():
-            return self.visitBilateral_quantity(ctx.bilateral_quantity())
-        if ctx.bound_quantity():
-            return self.visitBound_quantity(ctx.bound_quantity())
+            qty = self.visitQuantity(ctx.quantity())
+            value = L.Range(qty, qty)
+        elif ctx.bilateral_quantity():
+            value = self.visitBilateral_quantity(ctx.bilateral_quantity())
+        elif ctx.bound_quantity():
+            value = self.visitBound_quantity(ctx.bound_quantity())
+        else:
+            raise ValueError  # this should be protected because it shouldn't be parseable
+        return value
 
-        raise ValueError  # this should be protected because it shouldn't be parseable
-
-    def visitQuantity(self, ctx: ap.QuantityContext) -> RangedValue:
+    def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
         """Yield a physical value from an implicit quantity context."""
         raw: str = ctx.NUMBER().getText()
         if raw.startswith("0x"):
@@ -105,25 +114,15 @@ class PhysicalValuesMixin:
         if ctx.MINUS():
             value = -value
 
-        if ctx.name():
-            unit = _get_unit_from_ctx(ctx.name())
+        if unit_ctx := ctx.name():
+            unit = _get_unit_from_ctx(unit_ctx)
+            return value * unit
         else:
-            unit = pint.Unit("")
+            return value * dimensionless
 
-        value = RangedValue(
-            val_a=value,
-            val_b=value,
-            unit=unit,
-            str_rep=parse_utils.reconstruct(ctx),
-            # We don't bother with other formatting info here
-            # because it's not used for un-toleranced values
-        )
-        setattr(value, "src_ctx", ctx)
-        return value
-
-    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> RangedValue:
+    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> L.Range:
         """Yield a physical value from a bilateral quantity context."""
-        nominal_quantity = self.visitQuantity(ctx.quantity())
+        nominal_qty = self.visitQuantity(ctx.quantity())
 
         tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
         tol_num = float(tol_ctx.NUMBER().getText())
@@ -137,104 +136,60 @@ class PhysicalValuesMixin:
             tol_divider = None
 
         if tol_divider:
-            if nominal_quantity == 0:
+            if nominal_qty == 0:
                 raise errors.AtoError.from_ctx(
                     tol_ctx,
                     "Can't calculate tolerance percentage of a nominal value of zero",
                 )
 
-            # In this case, life's a little easier, and we can simply multiply the nominal
-            value = RangedValue(
-                val_a=nominal_quantity.min_val
-                - (nominal_quantity.min_val * tol_num / tol_divider),
-                val_b=nominal_quantity.max_val
-                + (nominal_quantity.max_val * tol_num / tol_divider),
-                unit=nominal_quantity.unit,
-                str_rep=parse_utils.reconstruct(ctx),
-            )
-            setattr(value, "src_ctx", ctx)
-            return value
+            # Calculate tolerance value from percentage/ppm
+            tol_value = tol_num / tol_divider
+            return L.Range.from_center_rel(nominal_qty, tol_value)
 
-        # Handle tolerances with units
-        if tol_ctx.name():
+        # Ensure the tolerance has a unit
+        if tol_name := tol_ctx.name():
             # In this case there's a named unit on the tolerance itself
-            # We need to make sure it's dimensionally compatible with the nominal
-            tol_quantity = RangedValue(
-                -tol_num, tol_num, _get_unit_from_ctx(tol_ctx.name()), tol_ctx
+            tol_qty = tol_num * _get_unit_from_ctx(tol_name)
+        elif nominal_qty.unitless:
+            tol_qty = tol_num * dimensionless
+        else:
+            tol_qty = tol_num * nominal_qty.units
+
+        # Ensure units on the nominal quantity
+        if nominal_qty.unitless:
+            nominal_qty = nominal_qty * tol_qty.units
+
+        # If the nominal has a unit, then we rely on the ranged value's unit compatibility
+        if not nominal_qty.is_compatible_with(tol_qty):
+            raise errors.AtoTypeError.from_ctx(
+                tol_name,
+                f"Tolerance unit '{tol_qty.units}' is not dimensionally"
+                f" compatible with nominal unit '{nominal_qty.units}'",
             )
 
-            # If the nominal has no unit, then we take the unit's tolerance for the nominal
-            if nominal_quantity.unit == pint.Unit(""):
-                value = RangedValue(
-                    val_a=nominal_quantity.min_val + tol_quantity.min_val,
-                    val_b=nominal_quantity.max_val + tol_quantity.max_val,
-                    unit=tol_quantity.unit,
-                    str_rep=parse_utils.reconstruct(ctx),
-                )
-                setattr(value, "src_ctx", ctx)
-                return value
+        return L.Range.from_center(nominal_qty, tol_qty)
 
-            # If the nominal has a unit, then we rely on the ranged value's unit compatibility
-            try:
-                return nominal_quantity + tol_quantity
-            except pint.DimensionalityError as ex:
-                raise errors.AtoTypeError.from_ctx(
-                    tol_ctx.name(),
-                    f"Tolerance unit '{tol_quantity.unit}' is not dimensionally"
-                    f" compatible with nominal unit '{nominal_quantity.unit}'",
-                ) from ex
-
-        # If there's no unit or percent, then we have a simple tolerance in the same units
-        # as the nominal
-        value = RangedValue(
-            val_a=nominal_quantity.min_val - tol_num,
-            val_b=nominal_quantity.max_val + tol_num,
-            unit=nominal_quantity.unit,
-            str_rep=parse_utils.reconstruct(ctx),
-        )
-        setattr(value, "src_ctx", ctx)
-        return value
-
-    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> RangedValue:
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> L.Range:
         """Yield a physical value from a bound quantity context."""
 
-        start = self.visitQuantity(ctx.quantity(0))
-        assert start.tolerance == 0
-        end = self.visitQuantity(ctx.quantity(1))
-        assert end.tolerance == 0
+        start, end = map(self.visitQuantity, ctx.quantity())
 
         # If only one of them has a unit, take the unit from the one which does
-        if (start.unit == pint.Unit("")) ^ (end.unit == pint.Unit("")):
-            if start.unit == pint.Unit(""):
-                known_unit = end.unit
-            else:
-                known_unit = start.unit
+        if start.unitless and not end.unitless:
+            start = start * end.units
+        elif not start.unitless and end.unitless:
+            end = end * start.units
 
-            value = RangedValue(
-                val_a=start.min_val,
-                val_b=end.min_val,
-                unit=known_unit,
-                str_rep=parse_utils.reconstruct(ctx),
-            )
-            setattr(value, "src_ctx", ctx)
-            return value
-
-        # If they've both got units, let the RangedValue handle
-        # the dimensional compatibility
-        try:
-            value = RangedValue(
-                val_a=start.min_qty,
-                val_b=end.min_qty,
-                str_rep=parse_utils.reconstruct(ctx),
-            )
-            setattr(value, "src_ctx", ctx)
-            return value
-        except pint.DimensionalityError as ex:
+        elif not start.is_compatible_with(end):
+            # If they've both got units, let the RangedValue handle
+            # the dimensional compatibility
             raise errors.AtoTypeError.from_ctx(
                 ctx,
-                f"Tolerance unit '{end.unit}' is not dimensionally"
-                f" compatible with nominal unit '{start.unit}'",
-            ) from ex
+                f"Tolerance unit '{end.units}' is not dimensionally"
+                f" compatible with nominal unit '{start.units}'",
+            )
+
+        return L.Range(start, end)
 
 
 class NOTHING:
@@ -368,12 +323,6 @@ class _DictyModule(collections.abc.Mapping):
         return cls(module.get_most_special())
 
 
-class from_dsl(Trait.decless()):
-    def __init__(self, src_ctx: ParserRuleContext) -> None:
-        super().__init__()
-        self.src_ctx = src_ctx
-
-
 @dataclass
 class Context:
     """Context dataclass for the visitor constructor."""
@@ -435,25 +384,26 @@ class Surveyor(AtopileParserVisitor, BasicsMixin, SequenceMixin):
         return context
 
 
+class _AtoComponent(L.Module):
+    @L.rt_field
+    def attach_to_footprint(self):
+        return F.can_attach_to_footprint_via_pinmap({})
+
+    def add_pin(self, name: str) -> F.Electrical:
+        mif = self.add(F.Electrical(), name=name)
+        self.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap[name] = mif
+        return mif
+
+
 class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixin):
     def __init__(self) -> None:
         super().__init__()
         self._scopes = FuncDict[ParserRuleContext, Context]()
+        self._node_stack = StackList[L.Node]()
 
-    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
-        """Handle declaration statements."""
-        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        if len(assigned_value_ref) > 1:
-            raise errors.AtoSyntaxError.from_ctx(
-                ctx, f"Can't declare fields in a nested object {assigned_value_ref}"
-            )
-
-        assigned_name = assigned_value_ref[0]
-
-        # FIXME: how we can mark declarations w/ faebryk core?
-        warnings.warn(f"Declaring {assigned_name} ignored")
-
-        return KeyOptMap.empty()
+    @property
+    def _current_node(self) -> L.Node:
+        return self._node_stack[-1]
 
     def _index_file(self, file_path: Path) -> Context:
         ast = parser.get_ast_from_file(file_path)
@@ -499,9 +449,18 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
                 item.original_ctx, f"Can't import file type {from_path.suffix}"
             )
 
-    def _get_referenced_item(
-        self, context: Context, ref: Ref
+    def _get_referenced_class(
+        self, ctx: ParserRuleContext, ref: Ref
     ) -> Type[L.Node] | ap.BlockdefContext | None:
+        while ctx not in self._scopes:
+            if ctx.parentCtx is None:
+                raise ValueError(f"No scope found for {ref}")
+            ctx = ctx.parentCtx
+
+        context = self._scopes[ctx]
+
+        # TODO: there are more cases to check here,
+        # eg. if we have part of a ref resolved
         if ref not in context.refs:
             return None
 
@@ -512,6 +471,26 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
             context.refs[ref] = item
 
         return item
+
+    def _get_referenced_node(self, ref: Ref, ctx: ParserRuleContext) -> L.Node:
+        node = self._current_node
+        for i, name in enumerate(ref):
+
+            # FIXME: shimming integer names to make valid python identifiers
+            try:
+                int(name)
+            except ValueError:
+                pass
+            else:
+                name = f"_{name}"
+
+            if hasattr(node, name):
+                node = getattr(node, name)
+            else:
+                raise errors.AtoKeyError.from_ctx(
+                    ctx, f"{ref[:i]} has no attribute '{name}'"
+                )
+        return node
 
     def _build_ato_node(self, ctx: ap.BlockdefContext) -> L.Node:
         # Find the superclass of the new node, if there's one defined
@@ -525,33 +504,28 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
 
         # Create a base node to build off
         if supers_refs:
-            base_node = self._init_node(ctx, ctx, supers_refs[0])
+            base_node = self._init_node(ctx, supers_refs[0])
         else:
             # Create a shell of base-node to build off
             block_type = ctx.blocktype()
             assert isinstance(block_type, ap.BlocktypeContext)
             if block_type.INTERFACE():
-                base_type = L.ModuleInterface
-            elif block_type.COMPONENT() or block_type.MODULE():
-                # TODO: distinguish between components and modules
-                base_type = L.Module
+                base_node = L.ModuleInterface()
+            elif block_type.COMPONENT():
+                base_node = _AtoComponent()
+            elif block_type.MODULE():
+                base_node = L.Module()
             else:
                 raise ValueError(f"Unknown block type {block_type.getText()}")
-            base_node = base_type()
 
         # Make the noise
-        for err_cltr, (ref, item) in errors.iter_through_errors(self.visitBlock(ctx.block())):
-            with err_cltr():
-                if ref in base_node:
-                    raise errors.AtoKeyError.from_ctx(ctx, f"Duplicate declaration of {ref}")
-                base_node[ref] = item
+        with self._node_stack.enter(base_node):
+            self.visitBlock(ctx.block())
 
         return base_node
 
-    def _init_node(
-        self, stmt_ctx: ParserRuleContext, context: Context, ref: Ref
-    ) -> L.Node:
-        if item := self._get_referenced_item(context, ref):
+    def _init_node(self, stmt_ctx: ParserRuleContext, ref: Ref) -> L.Node:
+        if item := self._get_referenced_class(stmt_ctx, ref):
             if isinstance(item, L.Node):
                 return item()
             elif isinstance(item, ap.BlockdefContext):
@@ -583,20 +557,198 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
             assert isinstance(new_stmt_ctx, ap.New_stmtContext)
             ref = self.visitName_or_attr(new_stmt_ctx.name_or_attr())
 
-            context = self._scopes[ctx]
-            new_node = self._init_node(ctx, context, ref)
-            return KeyOptMap.from_item(KeyOptItem.from_kv(assigned_ref, new_node))
+            new_node = self._init_node(ctx, ref)
+            self._current_node.add(new_node, name=assigned_name)
+
+        target = self._get_referenced_node(assigned_ref, ctx)
 
         ########## Handle Reserved Assignments ##########
         # TODO: handle special assignments for reserved names in atopile
+        # TODO: shim "value" property, rated_xyz etc...
+        # TODO: shim mpn / LCSC id etc...
 
         ########## Handle Actual Assignments ##########
-        # Figure out what Instance object the assignment is being made to
-        # TODO: handle assignments. This is kinda hard before we need to actually
-        # translate to faebryk core maths models
-        # raise NotImplementedError
-        warnings.warn(f"Assigning {assigned_name} ignored")
+        if literal_physical_ctx := assignable_ctx.literal_physical():
+            value = self.visitLiteral_physical(literal_physical_ctx)
+            param = fab_param.Parameter(soft_set=value)
+            target.add(param, name=assigned_name)
+        elif arithmetic_expression_ctx := assignable_ctx.arithmetic_expression():
+            expr = self.visitArithmetic_expression(arithmetic_expression_ctx)
+            param = fab_param.Parameter()
+            param.alias_is(expr)
+            target.add(param, name=assigned_name)
+        elif assignable_ctx.string() or assignable_ctx.boolean_():
+            warnings.warn(f"Assigning {assigned_name} ignored")
+        else:
+            raise ValueError(f"Unhandled assignable type {assignable_ctx}")
+
         return KeyOptMap.empty()
+
+    def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
+        # TODO: something useful with the pin mapping
+        if ctx.name():
+            name = self.visitName_or_attr(ctx.name())
+        elif ctx.totally_an_integer():
+            name = f"_{ctx.totally_an_integer().getText()}"
+        elif ctx.string():
+            name = self.visitString(ctx.string())
+        else:
+            raise ValueError(f"Unhandled pin name type {ctx}")
+
+        if not isinstance(self._current_node, _AtoComponent):
+            raise errors.AtoTypeError.from_ctx(
+                ctx, f"Can't declare pins on components of type {self._current_node}"
+            )
+
+        mif = self._current_node.add_pin(name)
+        return KeyOptMap.from_item(KeyOptItem(name, mif))
+
+    def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
+        name = self.visitName_or_attr(ctx.name())
+        mif = self._current_node.add(F.Electrical(), name=name)
+        return KeyOptMap.from_item(KeyOptItem(name, mif))
+
+    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
+        """Connect interfaces together"""
+        connectables = [self.visitConnectable(c) for c in ctx.connectable()]
+        for err_cltr, (a, b) in errors.iter_through_errors(
+            itertools.pairwise(connectables)
+        ):
+            with err_cltr():
+                a.connect(b)
+        return KeyOptMap.empty()
+
+    def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:
+        """Return the address of the connectable object."""
+        if def_stmt := ctx.pindef_stmt() or ctx.signaldef_stmt():
+            (_, mif), *_ = self.visit(def_stmt)
+            return mif
+        elif name_or_attr_ctx := ctx.name_or_attr():
+            ref = self.visitName_or_attr(name_or_attr_ctx)
+            return self._get_referenced_node(ref, ctx)
+
+    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext) -> KeyOptMap:
+        from_, to = map(self.visitName_or_attr, ctx.name_or_attr())
+        node = self._get_referenced_node(from_, ctx)
+        if not isinstance(node, L.Module):
+            raise errors.AtoTypeError.from_ctx(
+                ctx, f"Can't retype {node}"
+            )
+
+        node.specialize(self._init_node(ctx, to))
+        return KeyOptMap.empty()
+
+    def visitBlockdef(self, ctx: ap.BlockdefContext):
+        """Do nothing. Handled in Surveyor."""
+        return KeyOptMap.empty()
+
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> KeyOptMap:
+        """Do nothing. Handled in Surveyor."""
+        return KeyOptMap.empty()
+
+    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext) -> KeyOptMap:
+        """Do nothing. Handled in Surveyor."""
+        return KeyOptMap.empty()
+
+    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
+        comparisons = [c for _, c in self.visitComparison(ctx.comparison())]
+        for cmp in comparisons:
+            assert isinstance(cmp, fab_param.Constrainable)
+            cmp.constrain()
+        return KeyOptMap.empty()
+
+    def visitComparison(self, ctx: ap.ComparisonContext) -> KeyOptMap:
+        _visited = FuncDict[ParserRuleContext, fab_param.Parameter]()
+        def _visit(ctx: ParserRuleContext) -> fab_param.Parameter:
+            if ctx in _visited:
+                return _visited[ctx]
+            param = self.visit(ctx)
+            _visited[ctx] = param
+            return param
+
+        params = []
+        for lh_ctx, rh_ctx in itertools.pairwise(itertools.chain([ctx.arithmetic_expression()], ctx.compare_op_pair())):
+            lh = _visit(lh_ctx.arithmetic_expression())
+            rh = _visit(rh_ctx.arithmetic_expression())
+
+            # HACK: this is a cheap way to get the operator string
+            operator_str: str = rh_ctx.getChild(0).getText()
+            match operator_str:
+                case "<":
+                    param = lh.operation_is_lt(rh)
+                case ">":
+                    param = lh.operation_is_gt(rh)
+                case "<=":
+                    param = lh.operation_is_le(rh)
+                case ">=":
+                    param = lh.operation_is_ge(rh)
+                case "within":
+                    param = lh.operation_is_subset(rh)
+                case _:
+                    # We shouldn't be able to get here with parseable input
+                    raise ValueError(f"Unhandled operator {operator_str}")
+
+            # TODO: should we be reducing here to a series of ANDs?
+            params.append(param)
+
+        return KeyOptMap([KeyOptItem.from_kv(None, p) for p in params])
+
+
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> fab_param.Parameter:
+        range_ = PhysicalValuesMixin.visitLiteral_physical(self, ctx)
+        return fab_param.Parameter(soft_set=range_)
+
+    def visitArithmetic_expression(
+        self, ctx: ap.Arithmetic_expressionContext
+    ) -> fab_param.Parameter:
+        if ctx.OR_OP() or ctx.AND_OP():
+            lh = self.visitArithmetic_expression(ctx.arithmetic_expression())
+            rh = self.visitSum(ctx.sum_())
+
+            if ctx.OR_OP():
+                return lh.operation_or(rh)
+            else:
+                return lh.operation_and(rh)
+
+        return self.visitSum(ctx.sum_())
+
+    def visitSum(self, ctx: ap.SumContext) -> fab_param.Parameter:
+        if ctx.ADD() or ctx.MINUS():
+            lh = self.visitSum(ctx.sum_())
+            rh = self.visitTerm(ctx.term())
+
+            if ctx.ADD():
+                return lh.operation_add(rh)
+            else:
+                return lh.operation_subtract(rh)
+
+        return self.visitTerm(ctx.term())
+
+    def visitTerm(self, ctx: ap.TermContext) -> fab_param.Parameter:
+        if ctx.STAR() or ctx.DIV():
+            lh = self.visitTerm(ctx.term())
+            rh = self.visitPower(ctx.power())
+
+            if ctx.STAR():
+                return lh.operation_multiply(rh)
+            else:
+                return lh.operation_divide(rh)
+
+        return self.visitPower(ctx.power())
+
+    def visitPower(self, ctx: ap.PowerContext) -> fab_param.Parameter:
+        if ctx.POWER():
+            base = self.visitFunctional(ctx.functional())
+            exp = self.visitFunctional(ctx.functional())
+            return base.operation_power(exp)
+
+        return self.visitFunctional(ctx.functional())
+
+    def visitFunctional(self, ctx: ap.FunctionalContext) -> fab_param.Parameter:
+        if ctx.name():
+            raise NotImplementedError
+
+        return self.visitBound(ctx.bound())
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """
@@ -618,55 +770,19 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
         raise NotImplementedError
         return KeyOptMap.empty()
 
-    def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
-        """TODO:"""
-        return self.visit_pin_or_signal_helper(ctx)
+    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
+        """Handle declaration statements."""
+        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
+        if len(assigned_value_ref) > 1:
+            raise errors.AtoSyntaxError.from_ctx(
+                ctx, f"Can't declare fields in a nested object {assigned_value_ref}"
+            )
 
-    def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
-        """TODO:"""
-        return self.visit_pin_or_signal_helper(ctx)
+        assigned_name = assigned_value_ref[0]
 
-    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
-        """
-        Connect interfaces together
-        """
-        raise NotImplementedError
+        # FIXME: how we can mark declarations w/ faebryk core?
+        warnings.warn(f"Declaring {assigned_name} ignored")
 
         return KeyOptMap.empty()
-
-    def visitConnectable(self, ctx: ap.ConnectableContext) -> Instance:
-        """Return the address of the connectable object."""
-        raise NotImplementedError
-        return KeyOptMap.empty()
-
-    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext | Any) -> KeyOptMap:
-        raise NotImplementedError
-        return KeyOptMap.empty()
-
-    def visitImport_stmt(self, ctx: ap.Import_stmtContext | Any) -> KeyOptMap:
-        raise NotImplementedError
-        return KeyOptMap.empty()
-
-    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext | Any) -> KeyOptMap:
-        raise NotImplementedError
-        return KeyOptMap.empty()
-
-    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
-        """Handle assertion statements."""
-        raise NotImplementedError
-        return KeyOptMap.empty()
-
-    def visitArithmetic_expression(
-        self, ctx: ap.Arithmetic_expressionContext
-    ) -> KeyOptMap:
-        """
-        Handle arithmetic expressions, yielding either a numeric value or callable expression
-
-        This sits here because we need to defer these to Roley,
-        with the context of the current instance.
-        """
-        raise NotImplementedError
-        return KeyOptMap.empty()
-
 
 lofty = Lofty()
