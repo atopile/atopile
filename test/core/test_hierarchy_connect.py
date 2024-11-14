@@ -313,7 +313,10 @@ def test_specialize_link():
     # test special link
     class _Link(LinkDirectConditional):
         def __init__(self):
-            super().__init__(lambda path: LinkDirectConditionalFilterResult.FILTER_PASS)
+            super().__init__(
+                lambda path: LinkDirectConditionalFilterResult.FILTER_PASS,
+                needs_only_first_in_path=True,
+            )
 
     mifs = times(3, ModuleInterface)
     mifs_special = times(3, Specialized)

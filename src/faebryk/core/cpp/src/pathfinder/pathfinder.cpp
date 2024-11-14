@@ -17,7 +17,7 @@ GI_refs_weak get_split_children(GI_ref_weak split_point) {
         true, {{Node::Type::get_moduleinterface_type()}}, false);
     GI_refs_weak out;
     for (auto &c : children) {
-        out.push_back(c->get_self_gif().get());
+        out.push_back(c->get_parent_gif().get());
     }
     return out;
 }
@@ -54,10 +54,11 @@ std::optional<PathStackElement> _extend_path_hierarchy_stack(Edge &edge) {
 void _extend_fold_stack(PathStackElement &elem, UnresolvedStack &unresolved_stack,
                         PathStack &split_stack) {
     if (!unresolved_stack.empty() && unresolved_stack.back().match(elem)) {
-        auto split = unresolved_stack.back().split;
-        if (split) {
-            split_stack.push_back(elem);
-        }
+        // TODO why was this here?
+        // auto split = unresolved_stack.back().split;
+        // if (split) {
+        //     split_stack.push_back(elem);
+        // }
         unresolved_stack.pop_back();
     } else {
         bool multi_child = get_split_children(elem.parent_gif).size() > 1;
@@ -325,6 +326,8 @@ bool PathFinder::_build_path_stack_and_handle_splits(BFSPath &p) {
         return true;
     }
 
+    assert(!elem->up);
+
     // handle split
     data.not_complete = true;
 
@@ -342,7 +345,10 @@ bool PathFinder::_build_path_stack_and_handle_splits(BFSPath &p) {
             assert(false);
             return false;
         }
-        p.hibernated = !split_state.waiting;
+        if (!split_state.waiting) {
+            p.hibernated = true;
+            split_state.wait_paths[elem->child_gif].push_back(p.shared_from_this());
+        }
         return true;
     }
 
