@@ -428,8 +428,9 @@ bool PathFinder::_handle_valid_split_branch(BFSPath &p) {
                     // they will check themselves
                     split_state.waiting = true;
                 } else {
+                    auto &back = wait_paths.back();
                     // TODO maybe use queue instead of vector
-                    wait_paths.back()->hibernated = false;
+                    back->hibernated = false;
                     wait_paths.pop_back();
                     p.wake_signal = true;
                 }

@@ -61,8 +61,9 @@ BFSPath::BFSPath(const BFSPath &other, /*const*/ GI_ref_weak new_head)
     assert(!other.filtered);
 }
 
-BFSPath BFSPath::operator+(/*const*/ GI_ref_weak gif) {
-    return BFSPath(*this, gif);
+std::shared_ptr<BFSPath> BFSPath::operator+(/*const*/ GI_ref_weak gif) {
+
+    return std::make_shared<BFSPath>(*this, gif);
 }
 
 PathData &BFSPath::get_path_data_mut() {
@@ -117,11 +118,12 @@ void bfs_visit(/*const*/ GI_ref_weak root, std::function<void(BFSPath &)> visito
 
         if (path->wake_signal) {
             for (auto it = hibernated_paths.begin(); it != hibernated_paths.end();) {
-                if (!it->get()->hibernated) {
-                    open_path_queue.push_back(std::move(*it));
-                    it = hibernated_paths.erase(it);
-                } else if (!it->get()->filtered) {
+                if (!it->get()->filtered) {
                     hibernated_paths.erase(it);
+                } else if (!it->get()->hibernated) {
+                    open_path_queue.push_back(*it);
+                    it = hibernated_paths.erase(it);
+                    //
                 } else {
                     ++it;
                 }
@@ -146,9 +148,9 @@ void bfs_visit(/*const*/ GI_ref_weak root, std::function<void(BFSPath &)> visito
 
         pc_deque_insert.resume();
         if (path->hibernated) {
-            hibernated_paths.push_back(std::move(path));
+            hibernated_paths.push_back(path);
         } else {
-            open_path_queue.push_back(std::move(path));
+            open_path_queue.push_back(path);
         }
         pc_deque_insert.pause();
     };
@@ -177,7 +179,7 @@ void bfs_visit(/*const*/ GI_ref_weak root, std::function<void(BFSPath &)> visito
             pc_check_visited.pause();
 
             pc_new_path.resume();
-            auto new_path = std::make_shared<BFSPath>(*path, neighbour);
+            auto new_path = *path + neighbour;
             pc_new_path.pause();
             pc_search.pause();
             handle_path(new_path);

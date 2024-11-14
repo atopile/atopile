@@ -99,7 +99,7 @@ class BFSPath : public Path, public std::enable_shared_from_this<BFSPath> {
     BFSPath(const BFSPath &other);
     BFSPath(const BFSPath &other, /*const*/ GI_ref_weak new_head);
     BFSPath(BFSPath &&other) = delete;
-    BFSPath operator+(/*const*/ GI_ref_weak gif);
+    std::shared_ptr<BFSPath> operator+(/*const*/ GI_ref_weak gif);
 
     PathData &get_path_data_mut();
     PathData &get_path_data() /*const*/;
