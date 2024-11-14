@@ -1035,7 +1035,7 @@ def debugging() -> bool:
     return debugpy.is_client_connected()
 
 
-class FuncSet[T, H: Hashable](collections.abc.Set[T]):
+class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
     """
     A set by pre-processing the objects with the hasher function.
     """
@@ -1050,6 +1050,13 @@ class FuncSet[T, H: Hashable](collections.abc.Set[T]):
     def add(self, item: T):
         if item not in self._deref[self._hasher(item)]:
             self._deref[self._hasher(item)].append(item)
+
+    def discard(self, item: T):
+        hashed = self._hasher(item)
+        if hashed in self._deref and item in self._deref[hashed]:
+            self._deref[hashed].remove(item)
+            if not self._deref[hashed]:
+                del self._deref[hashed]
 
     def __contains__(self, item: T):
         return item in self._deref[self._hasher(item)]
