@@ -6,45 +6,35 @@ TODO:
 - [ ] Implement a __deepcopy__ method for the Node class to slowly re-walking the AST
 """
 
-import collections
 import importlib
 import itertools
 import logging
-import operator
 import sys
 import warnings
-from collections import defaultdict, deque
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import (
     Any,
     Iterable,
-    Iterator,
-    Self,
     Type,
 )
 
+import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
-import pint
 from antlr4 import ParserRuleContext
 from faebryk.core.trait import Trait
-from faebryk.libs.exceptions import FaebrykException
-from faebryk.libs.util import FuncDict
-import faebryk.core.parameter as fab_param
+from faebryk.libs.units import Quantity, dimensionless
+from faebryk.libs.util import FuncDict, FuncSet
 
-from atopile import address, config, errors, parse_utils
-from atopile.datatypes import KeyOptItem, KeyOptMap, StackList
+from atopile import errors
+from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.front_end import _get_unit_from_ctx
 from atopile.parse import parser
-from atopile.parse_utils import get_src_info_from_ctx
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
-from faebryk.libs.units import Quantity, dimensionless
-
-from atopile.datatypes import Ref
 
 log = logging.getLogger(__name__)
 
@@ -62,12 +52,12 @@ class BasicsMixin:
         """
         return ctx.getText()
 
-    def visitAttr(self, ctx: ap.AttrContext) -> list[str]:
-        return [self.visitName(name) for name in ctx.name()]
+    def visitAttr(self, ctx: ap.AttrContext) -> Ref:
+        return Ref([self.visitName(name) for name in ctx.name()])
 
-    def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> list[str]:
+    def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> Ref:
         if ctx.name():
-            return [self.visitName(ctx.name())]
+            return Ref.from_one(self.visitName(ctx.name()))
         elif ctx.attr():
             return self.visitAttr(ctx.attr())
 
@@ -196,7 +186,7 @@ class NOTHING:
     """A sentinel object to represent a "nothing" return value."""
 
 
-class SequenceMixin(AtopileParserVisitor):
+class SequenceMixin:
     """
     The base translator is responsible for methods common to
     navigating from the top of the AST including how to process
@@ -230,23 +220,25 @@ class SequenceMixin(AtopileParserVisitor):
 
         return KeyOptMap(child_results)
 
-    def visitStmt(self, ctx: ap.StmtContext) -> None:
-        """
-        Ensure consistency of return type.
-        We choose to raise any below exceptions here, because stmts can be nested,
-        and raising exceptions serves as our collection mechanism.
-        """
-        if ctx.simple_stmts():
-            stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
-            return stmt_returns
-        elif ctx.compound_stmt():
-            item = self.visit(ctx.compound_stmt())
-            if item is NOTHING:
-                return KeyOptMap.empty()
-            assert isinstance(item, KeyOptItem)
-            return KeyOptMap.from_item(item)
+    # TODO: remove, this was used to contort dissimilar stmt outputs to the same type
+    # def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
+    #     """
+    #     Ensure consistency of return type.
+    #     We choose to raise any below exceptions here, because stmts can be nested,
+    #     and raising exceptions serves as our collection mechanism.
+    #     """
+    #     if ctx.simple_stmts():
+    #         stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
+    #         return stmt_returns
+    #     elif ctx.compound_stmt():
+    #         item = self.visit(ctx.compound_stmt())
+    #         if item is NOTHING:
+    #             return KeyOptMap.empty()
+    #         assert isinstance(item, KeyOptItem)
+    #         return KeyOptMap.from_item(item)
 
-        raise TypeError("Unexpected statement type")
+    def visitFile_input(self, ctx: ap.File_inputContext) -> KeyOptMap:
+        return self.visit_iterable_helper(ctx.stmt())
 
     def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
         return self.visit_iterable_helper(ctx.simple_stmt())
@@ -267,26 +259,6 @@ class BlockNotFoundError(errors.AtoKeyError):
 
 
 @contextmanager
-def _contextualize_errors(
-    ctx: ParserRuleContext,
-    error_types: tuple[Type[errors.AtoError]] | Type[errors.AtoError],
-):
-    if not isinstance(error_types, tuple):
-        error_types = (error_types,)
-
-    try:
-        yield
-    except error_types as ex:
-        raise type(ex).from_ctx(ctx, *ex.args) from ex
-
-
-def _src_location_str(ctx: ParserRuleContext) -> str:
-    """Return a string representation of a source location."""
-    file, line, col, *_ = get_src_info_from_ctx(ctx)
-    return f"{file}:{line}:{col}"
-
-
-@contextmanager
 def _sys_path_context(path: Path):
     """Add a path to the system path for the duration of the context."""
     sys.path.append(path)
@@ -294,33 +266,6 @@ def _sys_path_context(path: Path):
         yield
     finally:
         sys.path.remove(path)
-
-
-class _DictyModule(collections.abc.Mapping):
-    """A wrapper around a Node that makes it look like a dict."""
-
-    def __init__(self, node: L.Node) -> None:
-        self._node = node
-
-    def __iter__(self) -> Iterator[str]:
-        for child in self._node.get_children(types=L.Node):
-            assert isinstance(child, L.Node)
-            yield child.get_name()
-
-    def __len__(self) -> int:
-        return len(self._node.get_children(types=L.Node))
-
-    def __getitem__(self, key: str) -> L.Node:
-        for child in self._node.get_children(types=L.Node):
-            assert isinstance(child, L.Node)
-            if child.get_name() == key:
-                return child
-
-        raise errors.AtoKeyError(f"No attribute '{key}' found on {self._node}")
-
-    @classmethod
-    def from_module(cls, module: L.Module) -> Self:
-        return cls(module.get_most_special())
 
 
 @dataclass
@@ -338,7 +283,7 @@ class Context:
     refs: dict[Ref, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
 
 
-class Surveyor(AtopileParserVisitor, BasicsMixin, SequenceMixin):
+class Surveyor(BasicsMixin, SequenceMixin, AtopileParserVisitor):
     def visitImport_stmt(
         self, ctx: ap.Import_stmtContext
     ) -> KeyOptMap[Context.ImportPlaceholder]:
@@ -350,7 +295,7 @@ class Surveyor(AtopileParserVisitor, BasicsMixin, SequenceMixin):
             )
             for string in ctx.string()
         ]
-        return KeyOptMap(KeyOptItem(li.ref, li) for li in lazy_imports)
+        return KeyOptMap(KeyOptItem.from_kv(li.ref, li) for li in lazy_imports)
 
     def visitDep_import_stmt(
         self, ctx: ap.Dep_import_stmtContext
@@ -360,11 +305,11 @@ class Surveyor(AtopileParserVisitor, BasicsMixin, SequenceMixin):
             from_path=self.visitString(ctx.string()),
             original_ctx=ctx,
         )
-        return KeyOptMap.from_item(KeyOptItem(lazy_import.ref, lazy_import))
+        return KeyOptMap.from_kv(lazy_import.ref, lazy_import)
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptMap:
-        ref = self.visitName_or_attr(ctx.name())
-        return KeyOptMap.from_item(KeyOptItem(ref, ctx))
+        ref = Ref.from_one(self.visitName(ctx.name()))
+        return KeyOptMap.from_kv(ref, ctx)
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext | Any) -> KeyOptMap:
         if ctx.import_stmt() or ctx.dep_import_stmt():
@@ -395,15 +340,50 @@ class _AtoComponent(L.Module):
         return mif
 
 
-class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixin):
+def _is_int(name: str) -> bool:
+    try:
+        int(name)
+    except ValueError:
+        return False
+    return True
+
+class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
     def __init__(self) -> None:
         super().__init__()
         self._scopes = FuncDict[ParserRuleContext, Context]()
         self._node_stack = StackList[L.Node]()
+        self._promised_params = FuncSet[L.Node]()
+
+    def build_ast(
+        self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
+    ) -> Context:
+        context = self._index_ast(ast, file_path)
+        return self._build(context, ref)
+
+    def build_file(self, path: Path, ref: Ref) -> L.Node:
+        context = self._index_file(path)
+        return self._build(context, ref)
+
+    def _build(self, context: Context, ref: Ref) -> L.Node:
+        if ref not in context.refs:
+            raise errors.AtoKeyError.from_ctx(
+                context.scope_ctx, f"No declaration of {ref} in {context.file_path}"
+            )
+        return self._init_node(context.scope_ctx, ref)
 
     @property
     def _current_node(self) -> L.Node:
         return self._node_stack[-1]
+
+    def _index_ast(
+        self, ast: ap.File_inputContext, file_path: Path | None = None
+    ) -> Context:
+        if ast in self._scopes:
+            return self._scopes[ast]
+
+        context = Surveyor.survey(file_path, ast)
+        self._scopes[ast] = context
+        return context
 
     def _index_file(self, file_path: Path) -> Context:
         ast = parser.get_ast_from_file(file_path)
@@ -472,38 +452,54 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
 
         return item
 
+    @staticmethod
+    def _get_node_attr(node: L.Node, name: str) -> L.Node:
+        if hasattr(node, name):
+            # Build-time attributes are attached as real attributes
+            return getattr(node, name)
+        elif name in node.runtime:
+            # Runtime attributes are attached as runtime attributes
+            return node.runtime[name]
+        else:
+            # Wah wah wah - we don't know what this is
+            raise AttributeError(name=name, obj=node)
+
     def _get_referenced_node(self, ref: Ref, ctx: ParserRuleContext) -> L.Node:
         node = self._current_node
         for i, name in enumerate(ref):
-
             # FIXME: shimming integer names to make valid python identifiers
-            try:
-                int(name)
-            except ValueError:
-                pass
-            else:
+            if _is_int(name):
                 name = f"_{name}"
 
-            if hasattr(node, name):
-                node = getattr(node, name)
-            else:
+            try:
+                node = self._get_node_attr(node, name)
+            except AttributeError as ex:
+                # Wah wah wah - we don't know what this is
                 raise errors.AtoKeyError.from_ctx(
                     ctx, f"{ref[:i]} has no attribute '{name}'"
-                )
+                ) from ex
         return node
+
+    def _try_get_referenced_node(
+        self, ref: Ref, ctx: ParserRuleContext
+    ) -> L.Node | None:
+        try:
+            return self._get_referenced_node(ref, ctx)
+        except errors.AtoKeyError:
+            return None
 
     def _build_ato_node(self, ctx: ap.BlockdefContext) -> L.Node:
         # Find the superclass of the new node, if there's one defined
-        supers_refs = [
-            self.visitName_or_attr(super_ctx) for super_ctx in ctx.name_or_attr()
-        ]
-        if len(supers_refs) > 1:
-            raise errors.AtoNotImplementedError.from_ctx(
-                ctx, f"Can't declare blocks with multiple superclasses {supers_refs}"
-            )
-
-        # Create a base node to build off
-        if supers_refs:
+        if supers_ctxs := ctx.name_or_attr():
+            supers_refs = [
+                self.visitName_or_attr(super_ctx) for super_ctx in supers_ctxs
+            ]
+            if len(supers_refs) > 1:
+                raise errors.AtoNotImplementedError.from_ctx(
+                    ctx,
+                    f"Can't declare blocks with multiple superclasses {supers_refs}",
+                )
+            # Create a base node to build off
             base_node = self._init_node(ctx, supers_refs[0])
         else:
             # Create a shell of base-node to build off
@@ -539,6 +535,17 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
                 stmt_ctx, f"No class or block definition found for {ref}"
             )
 
+    def _ensure_param(
+        self, node: L.Node, name: str, default: fab_param.Parameter | None
+    ) -> fab_param.Parameter:
+        try:
+            node = self._get_node_attr(node, name)
+        except AttributeError:
+            if default is None:
+                default = fab_param.Parameter()
+            node = node.add(default, name=name)
+        return node
+
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Assignment values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
@@ -560,7 +567,10 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
             new_node = self._init_node(ctx, ref)
             self._current_node.add(new_node, name=assigned_name)
 
-        target = self._get_referenced_node(assigned_ref, ctx)
+        if len(assigned_ref) > 1:
+            target = self._get_referenced_node(assigned_ref, ctx)
+        else:
+            target = self._current_node
 
         ########## Handle Reserved Assignments ##########
         # TODO: handle special assignments for reserved names in atopile
@@ -569,16 +579,27 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
 
         ########## Handle Actual Assignments ##########
         if literal_physical_ctx := assignable_ctx.literal_physical():
-            value = self.visitLiteral_physical(literal_physical_ctx)
-            param = fab_param.Parameter(soft_set=value)
-            target.add(param, name=assigned_name)
+            param = (
+                self._try_get_referenced_node(assigned_ref, ctx)
+                or target.add(fab_param.Parameter(), name=assigned_name)
+            )
+            param.within = self.visitLiteral_physical(literal_physical_ctx)
+
         elif arithmetic_expression_ctx := assignable_ctx.arithmetic_expression():
             expr = self.visitArithmetic_expression(arithmetic_expression_ctx)
-            param = fab_param.Parameter()
-            param.alias_is(expr)
-            target.add(param, name=assigned_name)
+            if param := self._try_get_referenced_node(assigned_ref, ctx):
+                if not isinstance(param, fab_param.Parameter):
+                    raise errors.AtoTypeError.from_ctx(
+                        ctx,
+                        f"Can't assign {expr} to {param} because the types are incompatible."
+                    )
+                param.alias_is(expr)
+            else:
+                target.add(expr, name=assigned_name)
+
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             warnings.warn(f"Assigning {assigned_name} ignored")
+
         else:
             raise ValueError(f"Unhandled assignable type {assignable_ctx}")
 
@@ -601,12 +622,12 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
             )
 
         mif = self._current_node.add_pin(name)
-        return KeyOptMap.from_item(KeyOptItem(name, mif))
+        return KeyOptMap.from_item(KeyOptItem.from_kv(name, mif))
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visitName_or_attr(ctx.name())
         mif = self._current_node.add(F.Electrical(), name=name)
-        return KeyOptMap.from_item(KeyOptItem(name, mif))
+        return KeyOptMap.from_item(KeyOptItem.from_kv(name, mif))
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
         """Connect interfaces together"""
@@ -631,9 +652,7 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
         from_, to = map(self.visitName_or_attr, ctx.name_or_attr())
         node = self._get_referenced_node(from_, ctx)
         if not isinstance(node, L.Module):
-            raise errors.AtoTypeError.from_ctx(
-                ctx, f"Can't retype {node}"
-            )
+            raise errors.AtoTypeError.from_ctx(ctx, f"Can't retype {node}")
 
         node.specialize(self._init_node(ctx, to))
         return KeyOptMap.empty()
@@ -659,6 +678,7 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
 
     def visitComparison(self, ctx: ap.ComparisonContext) -> KeyOptMap:
         _visited = FuncDict[ParserRuleContext, fab_param.Parameter]()
+
         def _visit(ctx: ParserRuleContext) -> fab_param.Parameter:
             if ctx in _visited:
                 return _visited[ctx]
@@ -667,7 +687,9 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
             return param
 
         params = []
-        for lh_ctx, rh_ctx in itertools.pairwise(itertools.chain([ctx.arithmetic_expression()], ctx.compare_op_pair())):
+        for lh_ctx, rh_ctx in itertools.pairwise(
+            itertools.chain([ctx.arithmetic_expression()], ctx.compare_op_pair())
+        ):
             lh = _visit(lh_ctx.arithmetic_expression())
             rh = _visit(rh_ctx.arithmetic_expression())
 
@@ -692,11 +714,6 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
             params.append(param)
 
         return KeyOptMap([KeyOptItem.from_kv(None, p) for p in params])
-
-
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> fab_param.Parameter:
-        range_ = PhysicalValuesMixin.visitLiteral_physical(self, ctx)
-        return fab_param.Parameter(soft_set=range_)
 
     def visitArithmetic_expression(
         self, ctx: ap.Arithmetic_expressionContext
@@ -746,9 +763,20 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
 
     def visitFunctional(self, ctx: ap.FunctionalContext) -> fab_param.Parameter:
         if ctx.name():
+            # TODO: implement min/max
             raise NotImplementedError
 
         return self.visitBound(ctx.bound())
+
+    def visitBound(self, ctx: ap.BoundContext) -> fab_param.Parameter:
+        return self.visitAtom(ctx.atom())
+
+    def visitAtom(self, ctx: ap.AtomContext) -> fab_param.Parameter:
+        return super().visitAtom(ctx)
+
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> fab_param.Range:
+        range_ = PhysicalValuesMixin.visitLiteral_physical(self, ctx)
+        return fab_param.Range(range_)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """
@@ -784,5 +812,9 @@ class Lofty(AtopileParserVisitor, BasicsMixin, PhysicalValuesMixin, SequenceMixi
         warnings.warn(f"Declaring {assigned_name} ignored")
 
         return KeyOptMap.empty()
+
+    def visitPass_stmt(self, ctx: ap.Pass_stmtContext) -> KeyOptMap:
+        return KeyOptMap.empty()
+
 
 lofty = Lofty()
