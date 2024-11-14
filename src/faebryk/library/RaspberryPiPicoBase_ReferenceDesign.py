@@ -168,10 +168,14 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         )
 
         # USB
+        resistor_small = []
         terminated_usb = self.rp2040.usb.terminated()
         self.add(terminated_usb)
         terminated_usb.impedance.constrain_subset(
             L.Range.from_center_rel(27.4 * P.ohm, 0.05)
+        )
+        resistor_small.extend(
+            terminated_usb.get_children(direct_only=True, types=F.Resistor)
         )
 
         # Flash
@@ -180,47 +184,65 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         )
 
         # Power rails
-        self.rp2040.power_io.decoupled.decouple().specialize(
-            F.MultiCapacitor(6)
-        ).set_equal_capacitance_each(L.Range.from_center_rel(100 * P.nF, 0.05))
+        cap_100nF = L.Range.from_center_rel(100 * P.nF, 0.05)
+
+        caps_small = []
+        caps_small.extend(
+            self.rp2040.power_io.decoupled.decouple()
+            .specialize(
+                F.MultiCapacitor(6).builder(
+                    lambda mc: mc.set_equal_capacitance_each(cap_100nF)
+                )
+            )
+            .capacitors
+        )
+
         self.rp2040.core_regulator.power_in.decoupled.decouple().capacitance.constrain_subset(
             L.Range.from_center_rel(1 * P.uF, 0.05)
         )
-        self.rp2040.power_adc.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.05)
+        caps_small.append(
+            self.rp2040.power_adc.decoupled.decouple().builder(
+                lambda c: c.capacitance.constrain_subset(cap_100nF)
+            )
         )
-        self.rp2040.power_usb_phy.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.05)
+        caps_small.append(
+            self.rp2040.power_usb_phy.decoupled.decouple().builder(
+                lambda c: c.capacitance.constrain_subset(cap_100nF)
+            )
         )
         power_3v3.get_trait(
             F.is_decoupled
         ).get_capacitor().capacitance.constrain_subset(
             L.Range.from_center_rel(10 * P.uF, 0.05)
         )
-        self.rp2040.power_core.decoupled.decouple().specialize(
-            F.MultiCapacitor(2)
-        ).set_equal_capacitance_each(L.Range.from_center_rel(100 * P.nF, 0.05))
+        caps_small.extend(
+            self.rp2040.power_core.decoupled.decouple()
+            .specialize(
+                F.MultiCapacitor(2).builder(
+                    lambda mc: mc.set_equal_capacitance_each(cap_100nF)
+                )
+            )
+            .capacitors
+        )
         self.rp2040.core_regulator.power_out.decoupled.decouple().capacitance.constrain_subset(
             L.Range.from_center_rel(1 * P.uF, 0.05)
         )
 
-        # TODO
-        # for c in self.get_children_modules(types=F.Capacitor):
-        #    if 100 * P.nF in c.capacitance:
-        #        c.add(F.has_footprint_requirement_defined([("0201", 2)]))
-        #    else:
-        #        c.add(
-        #            F.has_footprint_requirement_defined(
-        #                [("0402", 2), ("0603", 2), ("0805", 2)]
-        #            )
-        #        )
+        for c in self.get_children_modules(types=F.Capacitor):
+            if c in caps_small:
+                c.add(F.has_footprint_requirement_defined([("0201", 2)]))
+            else:
+                c.add(
+                    F.has_footprint_requirement_defined(
+                        [("0402", 2), ("0603", 2), ("0805", 2)]
+                    )
+                )
 
-        # TODO
-        # for r in self.get_children_modules(types=F.Resistor):
-        #    if 27.4 * P.ohm in r.resistance:
-        #        r.add(F.has_footprint_requirement_defined([("0201", 2)]))
-        #    else:
-        #        r.add(F.has_footprint_requirement_defined([("0402", 2)]))
+        for r in self.get_children_modules(types=F.Resistor):
+            if r in resistor_small:
+                r.add(F.has_footprint_requirement_defined([("0201", 2)]))
+            else:
+                r.add(F.has_footprint_requirement_defined([("0402", 2)]))
 
         self.reset_button.add(F.has_descriptive_properties_defined({"LCSC": "C139797"}))
         self.boot_selector.switch.add(
