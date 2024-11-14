@@ -80,3 +80,12 @@ def test_func_set_hash_collision():
     assert len(a) == 2
     assert 1 in a
     assert 2 in a
+
+
+def test_func_set_discard():
+    a = FuncSet((1,2), hasher=lambda x: x)
+    assert 1 in a
+    assert 2 in a
+    a.discard(1)
+    assert 1 not in a
+    assert 2 in a
