@@ -103,6 +103,15 @@ def test_simplify_logic():
     solver.phase_one_no_guess_solving(G)
 
 
+def test_inequality_to_set():
+    p0 = Parameter(units=dimensionless)
+    p0.constrain_le(2 * dimensionless)
+    p0.constrain_ge(1 * dimensionless)
+    G = p0.get_graph()
+    solver = DefaultSolver()
+    solver.phase_one_no_guess_solving(G)
+
+
 def test_remove_obvious_tautologies():
     p0, p1, p2 = (Parameter(units=dimensionless) for _ in range(3))
     p0.alias_is(p1 + p2)
@@ -141,6 +150,13 @@ def test_alias_classes():
     G = p0.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
+
+
+def test_inspect_known_superranges():
+    p0 = Parameter(units=P.V, within=Range(1 * P.V, 10 * P.V))
+    p0.alias_is(Range(1 * P.V, 3 * P.V).op_add_range(Range(4 * P.V, 6 * P.V)))
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_superranges(p0) == Ranges((5 * P.V, 9 * P.V))
 
 
 def test_solve_realworld():
@@ -208,7 +224,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_simplify_logic
+    func = test_inequality_to_set
 
     if "ipykernel" in sys.modules:
         func()

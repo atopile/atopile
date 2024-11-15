@@ -198,7 +198,7 @@ def copy_operand_recursively(
 # units -> base units (dimensionless)
 # within -> constrain is subset
 # scalar to single
-def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable]:
+def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.All]:
     def set_to_base_units(s: Ranges | Range | None) -> Ranges | Range | None:
         if s is None:
             return None
@@ -217,7 +217,7 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable]:
 
     param_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
 
-    repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
+    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
 
     for po in cast(
         Iterable[ParameterOperatable],
@@ -236,6 +236,8 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable]:
             repr_map[po] = new_param
             if po.within is not None:
                 new_param.constrain_subset(set_to_base_units(po.within))
+            if isinstance(po.domain, Numbers) and not po.domain.negative:
+                new_param.constrain_ge(0 * dimensionless)
         elif isinstance(po, Expression):
             new_ops = []
             for op in po.operands:
@@ -251,9 +253,56 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable]:
     return repr_map
 
 
+def inequality_to_set_op(
+    G: Graph,
+) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
+    param_ops = cast(
+        set[LessOrEqual | GreaterOrEqual],
+        GraphFunctions(G).nodes_of_types((LessOrEqual, GreaterOrEqual)),
+    )
+
+    dirty = False
+    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
+
+    for po in cast(
+        Iterable[LessOrEqual | GreaterOrEqual],
+        ParameterOperatable.sort_by_depth(param_ops, ascending=True),
+    ):
+
+        def get_literal(
+            po: ParameterOperatable.All, default: float
+        ) -> tuple[ParameterOperatable.Literal, bool]:
+            if not isinstance(po, ParameterOperatable):
+                return po, True
+            return default * HasUnit.get_units_or_dimensionless(po), False
+
+        if len(po.operatable_operands) == 1:
+            if isinstance(po, LessOrEqual):
+                left, l_literal = get_literal(po.operands[0], float("-inf"))
+                right, r_literal = get_literal(po.operands[1], float("inf"))
+            elif isinstance(po, GreaterOrEqual):
+                left, l_literal = get_literal(po.operands[1], float("-inf"))
+                right, r_literal = get_literal(po.operands[0], float("inf"))
+            copy_po = cast(
+                ParameterOperatable,
+                copy_operand_recursively(po.operatable_operands.pop(), repr_map),
+            )
+            subset = copy_po.operation_is_subset(Range(left, right))
+            if po.constrained:
+                subset.constrain()
+            dirty = True
+            repr_map[po] = subset
+
+    for p in GraphFunctions(G).nodes_of_type(ParameterOperatable):
+        if p not in repr_map:
+            copy_operand_recursively(p, repr_map)
+
+    return repr_map, dirty
+
+
 def resolve_alias_classes(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
     dirty = False
     params_ops = [
         p
@@ -276,7 +325,7 @@ def resolve_alias_classes(
     )
     logger.info(infostr)
 
-    repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
+    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
 
     # Make new param repre for alias classes
     for param_op in ParameterOperatable.sort_by_depth(params_ops, ascending=True):
@@ -375,7 +424,7 @@ def resolve_alias_classes(
         ParameterOperatable.sort_by_depth(exprs | predicates, ascending=True),
     ):
         # filter alias class Is
-        if isinstance(expr, Is):
+        if isinstance(expr, Is) and all(o in repr_map for o in expr.operands):
             continue
 
         assert all(
@@ -389,11 +438,11 @@ def resolve_alias_classes(
 
 def subset_of_literal(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
     dirty = False
     params = GraphFunctions(G).nodes_of_type(Parameter)
     removed = set()
-    repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
+    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
 
     for param in params:
         # TODO we can also propagate is subset from other param: x sub y sub range
@@ -408,7 +457,7 @@ def subset_of_literal(
         ]
         if len(is_subsets) > 1:
             other_sets = [e.get_other_operand(param) for e in is_subsets]
-            intersected = other_sets[0]
+            intersected = Ranges(other_sets[0])
             for s in other_sets[1:]:
                 intersected = intersected.op_intersect_ranges(Ranges(s))
             removed.update(is_subsets)
@@ -436,7 +485,7 @@ def subset_of_literal(
 
 
 def is_replacable(
-    repr_map: dict[ParameterOperatable, ParameterOperatable],
+    repr_map: dict[ParameterOperatable, ParameterOperatable.All],
     e: Expression,
     parent_expr: Expression,
 ) -> bool:
@@ -449,7 +498,7 @@ def is_replacable(
 
 def compress_associative_add_mul_and_or(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
     dirty = False
     add_muls = cast(
         set[Add | Multiply | And | Or],
@@ -460,7 +509,7 @@ def compress_associative_add_mul_and_or(
         e for e in add_muls if type(e) not in {type(n) for n in e.get_operations()}
     }
 
-    repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
+    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
     removed = set()
 
     # (A + B) + C
@@ -520,7 +569,7 @@ def compress_associative_add_mul_and_or(
 
 def compress_associative_sub(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
     logger.info("Compressing Subtracts")
     dirty = False
     subs = cast(set[Subtract], GraphFunctions(G).nodes_of_type(Subtract))
@@ -530,7 +579,7 @@ def compress_associative_sub(
     }
 
     removed = set()
-    repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
+    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
 
     def flatten_sub(
         e: Subtract,
@@ -615,7 +664,7 @@ def compress_associative_sub(
 
 def compress_expressions(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
     dirty = False
     exprs = cast(set[Expression], GraphFunctions(G).nodes_of_type(Expression))
 
@@ -845,7 +894,7 @@ def compress_expressions(
 
 def remove_obvious_tautologies(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
     repr_map = {}
     removed = set()
     dirty = False
@@ -893,11 +942,39 @@ def remove_obvious_tautologies(
 
 
 class DefaultSolver(Solver):
+    # TODO actually use this...
     timeout: int = 1000
+
+    def has_no_solution(
+        self, total_repr_map: dict[ParameterOperatable, ParameterOperatable.All]
+    ) -> bool:
+        # any parameter is/subset literal is empyt (implcit constraint that we forgot)
+        # any constrained expression got mapped to False
+        # any constrained expression literal is False
+        raise NotImplementedError()
 
     def phase_one_no_guess_solving(
         self, g: Graph
-    ) -> dict[ParameterOperatable, ParameterOperatable]:
+    ) -> dict[ParameterOperatable, ParameterOperatable.All]:
+        def concat_repr_maps(
+            *repr_maps: dict[ParameterOperatable, ParameterOperatable.All],
+        ) -> dict[ParameterOperatable, ParameterOperatable.All]:
+            assert len(repr_maps) > 0
+            res = {}
+            keys = repr_maps[0].keys()
+            for k in keys:
+                v = k
+                for m in repr_maps:
+                    if v in m:
+                        v = m[v]
+                    else:
+                        if isinstance(v, ParameterOperatable):
+                            raise ValueError("this should not happen ... I think")
+                        break
+                else:
+                    res[k] = v
+            return res
+
         logger.info(f"Phase 1 Solving: No guesses {'-' * 80}")
 
         # TODO move into comment here
@@ -906,9 +983,9 @@ class DefaultSolver(Solver):
         # Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
 
         logger.info("Phase 0 Solving: normalize graph")
-        repr_map = normalize_graph(g)
-        debug_print(repr_map)
-        graphs = unique_ref(p.get_graph() for p in repr_map.values())
+        total_repr_map = normalize_graph(g)
+        debug_print(total_repr_map)
+        graphs = unique_ref(p.get_graph() for p in total_repr_map.values())
         # TODO assert all new graphs
 
         dirty = True
@@ -918,83 +995,104 @@ class DefaultSolver(Solver):
             iter += 1
             logger.info(f"Iteration {iter}")
             logger.info("Phase 1 Solving: Alias classes")
-            repr_map = {}
+            alias_repr_map = {}
+            alias_dirty = False
             for g in graphs:
-                alias_repr_map, alias_dirty = resolve_alias_classes(g)
-                repr_map.update(alias_repr_map)
-            debug_print(repr_map)
-            graphs = unique_ref(p.get_graph() for p in repr_map.values())
+                repr_map, dirty = resolve_alias_classes(g)
+                alias_repr_map.update(repr_map)
+                alias_dirty = alias_dirty or dirty
+            debug_print(alias_repr_map)
+            graphs = unique_ref(p.get_graph() for p in alias_repr_map.values())
+            # TODO assert all new graphs
+
+            logger.info("Phase 1.5 Solving: Inequality to set")
+            inequality_repr_map = {}
+            inequality_dirty = False
+            for g in graphs:
+                repr_map, dirty = inequality_to_set_op(g)
+                inequality_repr_map.update(repr_map)
+                inequality_dirty = inequality_dirty or dirty
+            debug_print(inequality_repr_map)
+            graphs = unique_ref(p.get_graph() for p in inequality_repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 2a Solving: Add/Mul associative expressions")
-            repr_map = {}
+            assoc_add_mul_repr_map = {}
+            assoc_add_mul_dirty = False
             for g in graphs:
-                assoc_add_mul_repr_map, assoc_add_mul_dirty = (
-                    compress_associative_add_mul_and_or(g)
-                )
-                repr_map.update(assoc_add_mul_repr_map)
-            debug_print(repr_map)
-            graphs = unique_ref(p.get_graph() for p in repr_map.values())
-            # TODO assert all new graphs
-
-            logger.info("Phase 2a Solving: Add/Mul associative expressions")
-            repr_map = {}
-            for g in graphs:
-                assoc_add_mul_repr_map, assoc_add_mul_dirty = (
-                    compress_associative_add_mul_and_or(g)
-                )
-                repr_map.update(assoc_add_mul_repr_map)
-            debug_print(repr_map)
-            graphs = unique_ref(p.get_graph() for p in repr_map.values())
+                repr_map, dirty = compress_associative_add_mul_and_or(g)
+                assoc_add_mul_repr_map.update(repr_map)
+                assoc_add_mul_dirty = assoc_add_mul_dirty or dirty
+            debug_print(assoc_add_mul_repr_map)
+            graphs = unique_ref(p.get_graph() for p in assoc_add_mul_repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 2b Solving: Subtract associative expressions")
-            repr_map = {}
+            assoc_sub_repr_map = {}
+            assoc_sub_dirty = False
             for g in graphs:
-                assoc_sub_repr_map, assoc_sub_dirty = compress_associative_sub(g)
-                repr_map.update(assoc_sub_repr_map)
-            debug_print(repr_map)
-            graphs = unique_ref(p.get_graph() for p in repr_map.values())
+                repr_map, dirty = compress_associative_sub(g)
+                assoc_sub_repr_map.update(repr_map)
+                assoc_sub_dirty = assoc_sub_dirty or dirty
+            debug_print(assoc_sub_repr_map)
+            graphs = unique_ref(p.get_graph() for p in assoc_sub_repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 3 Solving: Arithmetic expressions")
-            repr_map = {}
+            arith_repr_map = {}
+            arith_dirty = False
             for g in graphs:
-                arith_repr_map, arith_dirty = compress_expressions(g)
-                repr_map.update(arith_repr_map)
-            debug_print(repr_map)
-            graphs = unique_ref(p.get_graph() for p in repr_map.values())
+                repr_map, dirty = compress_expressions(g)
+                arith_repr_map.update(repr_map)
+                arith_dirty = arith_dirty or dirty
+            debug_print(arith_repr_map)
+            graphs = unique_ref(p.get_graph() for p in arith_repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 4 Solving: Remove obvious tautologies")
-            repr_map = {}
+            tautology_repr_map = {}
+            tautology_dirty = False
             for g in graphs:
-                tautology_repr_map, tautology_dirty = remove_obvious_tautologies(g)
-                repr_map.update(tautology_repr_map)
-            debug_print(repr_map)
-            graphs = unique_ref(p.get_graph() for p in repr_map.values())
+                repr_map, dirty = remove_obvious_tautologies(g)
+                tautology_repr_map.update(repr_map)
+                tautology_dirty = tautology_dirty or dirty
+            debug_print(tautology_repr_map)
+            graphs = unique_ref(p.get_graph() for p in tautology_repr_map.values())
             # TODO assert all new graphs
 
             logger.info("Phase 5 Solving: Subset of literals")
-            repr_map = {}
+            subset_repr_map = {}
+            subset_dirty = False
             for g in graphs:
-                subset_repr_map, subset_dirty = subset_of_literal(g)
-                repr_map.update(subset_repr_map)
-            debug_print(repr_map)
-            graphs = unique_ref(p.get_graph() for p in repr_map.values())
+                repr_map, dirty = subset_of_literal(g)
+                subset_repr_map.update(repr_map)
+                subset_dirty = subset_dirty or dirty
+            debug_print(subset_repr_map)
+            graphs = unique_ref(p.get_graph() for p in subset_repr_map.values())
             # TODO assert all new graphs
 
             dirty = (
                 alias_dirty
+                or inequality_dirty
                 or assoc_add_mul_dirty
                 or assoc_sub_dirty
                 or arith_dirty
                 or tautology_dirty
                 or subset_dirty
             )
+            total_repr_map = concat_repr_maps(
+                total_repr_map,
+                alias_repr_map,
+                inequality_repr_map,
+                assoc_add_mul_repr_map,
+                assoc_sub_repr_map,
+                arith_repr_map,
+                tautology_repr_map,
+                subset_repr_map,
+            )
 
-        # FIXME repr map should contain map from first to last
-        return repr_map
+        # FIXME: unnormalize parameters, converting back form base units
+        return total_repr_map
 
     def get_any_single(
         self,
@@ -1046,7 +1144,10 @@ class DefaultSolver(Solver):
 
         # check predicates (is, subset, greater, less)
         try:
-            literal = value.get_literal(Is)
+            if isinstance(value, ParameterOperatable):
+                literal = value.get_literal(Is)
+            else:
+                literal = value
             if Parameter.is_number_literal(literal):
                 return Ranges(Single(literal))
             if isinstance(literal, P_Set):
@@ -1058,7 +1159,10 @@ class DefaultSolver(Solver):
             pass
 
         try:
-            literal = value.get_literal(IsSubset)
+            if isinstance(value, ParameterOperatable):
+                literal = value.get_literal(IsSubset)
+            else:
+                literal = value
             if Parameter.is_number_literal(literal):
                 return Ranges(Single(literal))
             if isinstance(literal, P_Set):
@@ -1072,7 +1176,10 @@ class DefaultSolver(Solver):
         # TODO LT, GT
         lower = None
         try:
-            literal = value.get_literal(GreaterOrEqual)
+            if isinstance(value, ParameterOperatable):
+                literal = value.get_literal(GreaterOrEqual)
+            else:
+                literal = value
             if Parameter.is_number_literal(literal):
                 lower = literal
             elif isinstance(literal, P_Set):
@@ -1085,7 +1192,10 @@ class DefaultSolver(Solver):
 
         upper = None
         try:
-            literal = value.get_literal(LessOrEqual)
+            if isinstance(value, ParameterOperatable):
+                literal = value.get_literal(LessOrEqual)
+            else:
+                literal = value
             if Parameter.is_number_literal(literal):
                 upper = literal
             elif isinstance(literal, P_Set):

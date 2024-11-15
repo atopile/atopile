@@ -222,12 +222,20 @@ class ParameterOperatable(Node):
         return self.operation_is_ge(other).constrain()
 
     def constrain_lt(self, other: NumberLike):
+        # makes implementation easier for now
+        # le should be enough
+        raise NotImplementedError()
         return self.operation_is_lt(other).constrain()
 
     def constrain_gt(self, other: NumberLike):
+        # makes implementation easier for now
+        # ge should be enough
+        raise NotImplementedError()
         return self.operation_is_gt(other).constrain()
 
     def constrain_ne(self, other: NumberLike):
+        # want to see when this is useful in practice
+        raise NotImplementedError()
         return self.operation_is_ne(other).constrain()
 
     # Setlike
@@ -360,7 +368,9 @@ class ParameterOperatable(Node):
             op = Is
         iss = self.get_operations(op)
         try:
-            literal_is = find(o for i in iss for o in i.get_literal_operands())
+            literal_is = find(
+                o for i in iss for o in i.get_literal_operands() if i.constrained
+            )
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
                 self, f"Parameter {self} has no literal for op {op}"
