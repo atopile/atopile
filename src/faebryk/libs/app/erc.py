@@ -64,7 +64,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
     """
     logger.info("Checking graph for ERC violations")
 
-    # power short and power with undefined voltage
+    # shorted power
     electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
     logger.info(f"Checking {len(electricpower)} Power")
     for ep in electricpower:
@@ -79,15 +79,6 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
             ]
             if other_sources:
                 raise ERCPowerSourcesShortedError([ep] + other_sources)
-
-    for ep in electricpower:
-        if ep.voltage.inspect_known_max() > voltage_limit:
-
-            def raise_on_limit(x):
-                if x.inspect_known_max() > voltage_limit:
-                    raise ERCFaultElectricPowerUndefinedVoltage(ep)
-
-            ep.voltage.inspect_add_on_solution(raise_on_limit)
 
     # shorted nets
     nets = GraphFunctions(G).nodes_of_type(F.Net)
