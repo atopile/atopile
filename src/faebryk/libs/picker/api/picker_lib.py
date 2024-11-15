@@ -10,6 +10,7 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES, E_SERIES_VALUES
+from faebryk.libs.library import L
 from faebryk.libs.picker.api.api import (
     CapacitorParams,
     DiodeParams,
@@ -176,6 +177,12 @@ def _get_footprint_candidates(module: Module) -> list[FootprintCandidate]:
 def _generate_si_values(
     value: Parameter, solver: Solver, e_series: E_SERIES | None = None
 ) -> list[SIvalue]:
+    if not isinstance(value.domain, L.Domains.Numbers):
+        raise NotImplementedError(f"Parameter {value} is not a number")
+
+    if not solver.inspect_known_supersets_are_few(value):
+        raise NotImplementedError(f"Parameter {value} has too many known supersets")
+
     candidate_ranges = solver.inspect_get_known_superranges(value)
     return generate_si_values(candidate_ranges, e_series=e_series)
 
