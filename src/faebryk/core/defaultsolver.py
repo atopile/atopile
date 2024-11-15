@@ -610,24 +610,18 @@ def compress_associative_sub(
     return repr_map, dirty
 
 
-def compress_logic_expressions(
-    G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
-    pass
-
-
-def compress_arithmetic_expressions(
+def compress_expressions(
     G: Graph,
 ) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
     dirty = False
-    arith_exprs = cast(set[Arithmetic], GraphFunctions(G).nodes_of_type(Arithmetic))
+    exprs = cast(set[Expression], GraphFunctions(G).nodes_of_type(Expression))
 
-    repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
+    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
     removed = set()
 
     for expr in cast(
-        Iterable[Arithmetic],
-        ParameterOperatable.sort_by_depth(arith_exprs, ascending=True),
+        Iterable[Expression],
+        ParameterOperatable.sort_by_depth(exprs, ascending=True),
     ):
         if expr in repr_map or expr in removed:
             continue
@@ -685,6 +679,56 @@ def compress_arithmetic_expressions(
                     removed.add(expr)
                 else:
                     raise ValueError("No operands, should not happen")
+                repr_map[expr] = new_expr
+
+        elif isinstance(expr, Or):
+            const_op_list = list(const_ops)
+            if any(not isinstance(o, bool) for o in const_op_list):
+                raise ValueError("Or with non-boolean operands")
+            if any(o for o in const_op_list):
+                dirty = True
+                repr_map[expr] = True
+                removed.add(expr)
+            elif len(const_op_list) > 0 or any(m > 1 for m in multiplicity.values()):
+                new_operands = [
+                    *(copy_operand_recursively(o, repr_map) for o in multiplicity),
+                    *(
+                        copy_operand_recursively(o, repr_map)
+                        for o in non_replacable_nonconst_ops
+                    ),
+                ]
+                if len(new_operands) > 1:
+                    new_expr = Or(*new_operands)
+                elif len(new_operands) == 1:
+                    new_expr = new_operands[0]
+                    removed.add(expr)
+                else:
+                    new_expr = False
+                repr_map[expr] = new_expr
+
+        elif isinstance(expr, And):
+            const_op_list = list(const_ops)
+            if any(not isinstance(o, bool) for o in const_op_list):
+                raise ValueError("Or with non-boolean operands")
+            if any(not o for o in const_op_list):
+                dirty = True
+                repr_map[expr] = False
+                removed.add(expr)
+            elif len(const_op_list) > 0 or any(m > 1 for m in multiplicity.values()):
+                new_operands = [
+                    *(copy_operand_recursively(o, repr_map) for o in multiplicity),
+                    *(
+                        copy_operand_recursively(o, repr_map)
+                        for o in non_replacable_nonconst_ops
+                    ),
+                ]
+                if len(new_operands) > 1:
+                    new_expr = And(*new_operands)
+                elif len(new_operands) == 1:
+                    new_expr = new_operands[0]
+                    removed.add(expr)
+                else:
+                    new_expr = True
                 repr_map[expr] = new_expr
 
         elif isinstance(expr, Multiply):
@@ -911,7 +955,7 @@ class DefaultSolver(Solver):
             logger.info("Phase 3 Solving: Arithmetic expressions")
             repr_map = {}
             for g in graphs:
-                arith_repr_map, arith_dirty = compress_arithmetic_expressions(g)
+                arith_repr_map, arith_dirty = compress_expressions(g)
                 repr_map.update(arith_repr_map)
             debug_print(repr_map)
             graphs = unique_ref(p.get_graph() for p in repr_map.values())
