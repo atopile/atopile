@@ -51,9 +51,9 @@ class Diode(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        return F.has_simple_value_representation_based_on_params(
-            (self.forward_voltage,),
-            lambda p: p.as_unit("V"),
+        S = F.has_simple_value_representation_based_on_params_chain.Spec
+        return F.has_simple_value_representation_based_on_params_chain(
+            S(self.forward_voltage),
         )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

@@ -6,7 +6,6 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import join_if_non_empty
 
 
 class Inductor(Module):
@@ -43,23 +42,12 @@ class Inductor(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        return F.has_simple_value_representation_based_on_params(
-            (
-                self.inductance,
-                self.self_resonant_frequency,
-                self.max_current,
-                self.dc_resistance,
-            ),
-            lambda inductance,
-            self_resonant_frequency,
-            max_current,
-            dc_resistance: join_if_non_empty(
-                " ",
-                inductance.as_unit_with_tolerance("H"),
-                self_resonant_frequency.as_unit("Hz"),
-                max_current.as_unit("A"),
-                dc_resistance.as_unit("Ω"),
-            ),
+        S = F.has_simple_value_representation_based_on_params_chain.Spec
+        return F.has_simple_value_representation_based_on_params_chain(
+            S(self.inductance, tolerance=True),
+            S(self.self_resonant_frequency),
+            S(self.max_current),
+            S(self.dc_resistance),
         )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

@@ -8,7 +8,6 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import join_if_non_empty
 
 logger = logging.getLogger(__name__)
 
@@ -53,16 +52,9 @@ class Capacitor(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        return F.has_simple_value_representation_based_on_params(
-            (
-                self.capacitance,
-                self.max_voltage,
-                self.temperature_coefficient,
-            ),
-            lambda c, v, t: join_if_non_empty(
-                " ",
-                c.as_unit_with_tolerance("F"),
-                v.as_unit("V"),
-                t.enum_parameter_representation(),
-            ),
+        S = F.has_simple_value_representation_based_on_params_chain.Spec
+        return F.has_simple_value_representation_based_on_params_chain(
+            S(self.capacitance, tolerance=True),
+            S(self.max_voltage),
+            S(self.temperature_coefficient),
         )

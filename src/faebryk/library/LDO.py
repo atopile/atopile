@@ -7,7 +7,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P, quantity
-from faebryk.libs.util import assert_once, join_if_non_empty
+from faebryk.libs.util import assert_once
 
 
 class LDO(Module):
@@ -90,34 +90,15 @@ class LDO(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        return F.has_simple_value_representation_based_on_params(
-            (
-                self.output_polarity,
-                self.output_type,
-                self.output_voltage,
-                self.output_current,
-                self.psrr,
-                self.dropout_voltage,
-                self.max_input_voltage,
-                self.quiescent_current,
-            ),
-            lambda output_polarity,
-            output_type,
-            output_voltage,
-            output_current,
-            psrr,
-            dropout_voltage,
-            max_input_voltage,
-            quiescent_current: "LDO "
-            + join_if_non_empty(
-                " ",
-                output_voltage.as_unit_with_tolerance("V"),
-                output_current.as_unit("A"),
-                psrr.as_unit("dB"),
-                dropout_voltage.as_unit("V"),
-                f"Vin max {max_input_voltage.as_unit("V")}",
-                f"Iq {quiescent_current.as_unit("A")}",
-            ),
+        S = F.has_simple_value_representation_based_on_params_chain.Spec
+        return F.has_simple_value_representation_based_on_params_chain(
+            S(self.output_voltage, tolerance=True),
+            S(self.output_current),
+            S(self.psrr),
+            S(self.dropout_voltage),
+            S(self.max_input_voltage, prefix="Vin max"),
+            S(self.quiescent_current, prefix="Iq"),
+            prefix="LDO",
         )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(

@@ -8,7 +8,7 @@ from faebryk.core.solver import Solver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import has_part_picked_remove
 from faebryk.libs.units import P
-from faebryk.libs.util import join_if_non_empty, once
+from faebryk.libs.util import once
 
 
 class Resistor(Module):
@@ -29,16 +29,10 @@ class Resistor(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        return F.has_simple_value_representation_based_on_params(
-            (
-                self.resistance,
-                self.max_power,
-            ),
-            lambda resistance, max_power: join_if_non_empty(
-                " ",
-                resistance.as_unit_with_tolerance("Ω"),
-                max_power.as_unit("W"),
-            ),
+        S = F.has_simple_value_representation_based_on_params_chain.Spec
+        return F.has_simple_value_representation_based_on_params_chain(
+            S(self.resistance, tolerance=True),
+            S(self.max_power),
         )
 
     def allow_removal_if_zero(self):

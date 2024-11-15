@@ -9,7 +9,7 @@ from faebryk.libs.units import P
 
 class OpAmp(Module):
     bandwidth = L.p_field(units=P.Hz)
-    common_mode_rejection_ratio = L.p_field(units=P.dimensionless)
+    common_mode_rejection_ratio = L.p_field(units=P.dB)
     input_bias_current = L.p_field(units=P.A)
     input_offset_voltage = L.p_field(units=P.V)
     gain_bandwidth_product = L.p_field(units=P.Hz)
@@ -23,33 +23,15 @@ class OpAmp(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        return F.has_simple_value_representation_based_on_params(
-            (
-                self.bandwidth,
-                self.common_mode_rejection_ratio,
-                self.input_bias_current,
-                self.input_offset_voltage,
-                self.gain_bandwidth_product,
-                self.output_current,
-                self.slew_rate,
-            ),
-            lambda bandwidth,
-            common_mode_rejection_ratio,
-            input_bias_current,
-            input_offset_voltage,
-            gain_bandwidth_product,
-            output_current,
-            slew_rate: ", ".join(
-                [
-                    f"{bandwidth.as_unit("Hz")} BW",
-                    f"{common_mode_rejection_ratio} CMRR",
-                    f"{input_bias_current.as_unit("A")} Ib",
-                    f"{input_offset_voltage.as_unit("V")} Vos",
-                    f"{gain_bandwidth_product.as_unit("Hz")} GBW",
-                    f"{output_current.as_unit("A")} Iout",
-                    f"{slew_rate.as_unit("V/s")} SR",
-                ]
-            ),
+        S = F.has_simple_value_representation_based_on_params_chain.Spec
+        return F.has_simple_value_representation_based_on_params_chain(
+            S(self.bandwidth, suffix="BW"),
+            S(self.common_mode_rejection_ratio, suffix="CMRR"),
+            S(self.input_bias_current, suffix="Ib"),
+            S(self.input_offset_voltage, suffix="Vos"),
+            S(self.gain_bandwidth_product, suffix="GBW"),
+            S(self.output_current, suffix="Iout"),
+            S(self.slew_rate, suffix="SR"),
         )
 
     @L.rt_field

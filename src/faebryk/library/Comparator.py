@@ -55,25 +55,13 @@ class Comparator(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        return F.has_simple_value_representation_based_on_params(
-            (
-                self.common_mode_rejection_ratio,
-                self.input_bias_current,
-                self.input_hysteresis_voltage,
-                self.input_offset_voltage,
-                self.propagation_delay,
-            ),
-            lambda cmrr, ib, vhys, vos, tpd: (
-                ", ".join(
-                    [
-                        f"{cmrr} CMRR",
-                        f"{ib.as_unit('A')} Ib",
-                        f"{vhys.as_unit('V')} Vhys",
-                        f"{vos.as_unit('V')} Vos",
-                        f"{tpd.as_unit('s')} tpd",
-                    ]
-                )
-            ),
+        S = F.has_simple_value_representation_based_on_params_chain.Spec
+        return F.has_simple_value_representation_based_on_params_chain(
+            S(self.common_mode_rejection_ratio, suffix="CMRR"),
+            S(self.input_bias_current, suffix="Ib"),
+            S(self.input_hysteresis_voltage, suffix="Vhys"),
+            S(self.input_offset_voltage, suffix="Vos"),
+            S(self.propagation_delay, suffix="tpd"),
         )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
