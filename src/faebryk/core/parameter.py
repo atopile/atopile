@@ -1004,17 +1004,10 @@ class Parameter(ParameterOperatable):
         likely_constrained: bool = False,  # TODO rename expect_constraits or similiar
     ):
         super().__init__()
-        if within is not None and not within.units.is_compatible_with(units):
-            raise ValueError("incompatible units")
-
-        if isinstance(within, Range):
-            within = Ranges(within)
-
-        if isinstance(soft_set, Range):
-            soft_set = Ranges(soft_set)
 
         if not isinstance(units, Unit):
             raise TypeError("units must be a Unit")
+
         self.units = units
         self.within = within
         self._domain = domain
@@ -1022,6 +1015,28 @@ class Parameter(ParameterOperatable):
         self.guess = guess
         self.tolerance_guess = tolerance_guess
         self.likely_constrained = likely_constrained
+
+    @property
+    def within(self) -> Ranges | None:
+        return self._within
+
+    @within.setter
+    def within(self, value: Range | Ranges | None):
+        if value is not None and not value.units.is_compatible_with(self.units):
+            raise ValueError("incompatible units")
+        if isinstance(value, Range):
+            value = Ranges(value)
+        self._within = value
+
+    @property
+    def soft_set(self) -> Ranges | None:
+        return self._soft_set
+
+    @soft_set.setter
+    def soft_set(self, value: Range | Ranges | None):
+        if isinstance(value, Range):
+            value = Ranges(value)
+        self._soft_set = value
 
     # Type forwards
     type All = ParameterOperatable.All
