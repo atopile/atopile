@@ -363,10 +363,10 @@ class ParameterOperatable(Node):
         iss = self.get_operators(Is)
         try:
             literal_is = find(o for i in iss for o in i.get_literal_operands())
-        except KeyErrorNotFound:
+        except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
                 self, f"Parameter {self} has no literal"
-            )
+            ) from e
         return literal_is
 
 

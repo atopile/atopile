@@ -68,7 +68,7 @@ def apply_design_to_pcb(
             try:
                 JLCPCB_DB()
                 for n in modules:
-                    add_jlcpcb_pickers(n, base_prio=-10, solver=solver)
+                    add_jlcpcb_pickers(n, base_prio=-10)
             except FileNotFoundError:
                 logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
         case PickerType.API:

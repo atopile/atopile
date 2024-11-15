@@ -141,7 +141,7 @@ def main():
     try:
         JLCPCB_DB()
         for n in modules:
-            add_jlcpcb_pickers(n, solver=solver, base_prio=-10)
+            add_jlcpcb_pickers(n, base_prio=-10)
     except FileNotFoundError:
         logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
 

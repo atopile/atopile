@@ -25,6 +25,7 @@ from tortoise.models import Model
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
+    Numbers,
     Parameter,
     ParameterOperatable,
 )
@@ -473,7 +474,7 @@ class ComponentQuery:
         # need to pick a range contained in the param to filter
 
         # TODO
-        if not isinstance(param.domain, L.Domains.Numbers):
+        if not isinstance(param.domain, Numbers):
             raise NotImplementedError()
 
         if not solver.inspect_known_supersets_are_few(param):

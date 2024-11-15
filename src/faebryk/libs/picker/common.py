@@ -5,7 +5,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import StrEnum
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -13,7 +13,6 @@ from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Pred
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES, e_series_intersect
 from faebryk.libs.library import L
-from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.lcsc import attach
 from faebryk.libs.picker.picker import (
     PickError,
@@ -22,6 +21,9 @@ from faebryk.libs.picker.picker import (
 )
 from faebryk.libs.units import Quantity, to_si_str
 from faebryk.libs.util import ConfigFlagEnum
+
+if TYPE_CHECKING:
+    from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ class StaticPartPicker(F.has_multi_picker.Picker, ABC):
         return ", ".join(desc) or "<no params>"
 
     @abstractmethod
-    def _find_parts(self, module: Module) -> list[Component]:
+    def _find_parts(self, module: Module) -> list["Component"]:
         pass
 
     def pick(self, module: Module):

@@ -40,7 +40,7 @@ class StaticJLCPCBPartPicker(StaticPartPicker):
         return q.get()
 
 
-def add_jlcpcb_pickers(module: Module, solver: Solver, base_prio: int = 0) -> None:
+def add_jlcpcb_pickers(module: Module, base_prio: int = 0) -> None:
     # check if DB ok
     JLCPCB_DB()
 

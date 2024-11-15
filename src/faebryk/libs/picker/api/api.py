@@ -82,7 +82,7 @@ def try_attach(
             continue
 
         try:
-            part.attach(cmp, mapping, qty, allow_TBD=False)
+            part.attach(cmp, mapping, qty)
             return True
         except (ValueError, Component.ParseError) as e:
             failures.append((part, e))

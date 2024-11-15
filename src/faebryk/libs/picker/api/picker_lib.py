@@ -7,10 +7,9 @@ from typing import Callable, Type
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import Numbers, Parameter
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES, E_SERIES_VALUES
-from faebryk.libs.library import L
 from faebryk.libs.picker.api.api import (
     CapacitorParams,
     DiodeParams,
@@ -177,7 +176,7 @@ def _get_footprint_candidates(module: Module) -> list[FootprintCandidate]:
 def _generate_si_values(
     value: Parameter, solver: Solver, e_series: E_SERIES | None = None
 ) -> list[SIvalue]:
-    if not isinstance(value.domain, L.Domains.Numbers):
+    if not isinstance(value.domain, Numbers):
         raise NotImplementedError(f"Parameter {value} is not a number")
 
     if not solver.inspect_known_supersets_are_few(value):
