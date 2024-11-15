@@ -15,7 +15,7 @@ from rich.progress import Progress
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.parameter import Is, Parameter, ParameterOperatable, Predicate
+from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Predicate
 from faebryk.core.solver import Solver
 from faebryk.libs.util import flatten, not_none
 
@@ -183,11 +183,7 @@ def pick_module_by_params(
             predicates[o] = True
             continue
 
-        anded = predicate_list[0]
-        for p in predicate_list[1:]:
-            anded = anded.operation_and(p)
-
-        predicates[o] = anded
+        predicates[o] = And(*predicate_list)
 
     if len(predicates) == 0:
         raise PickErrorParams(module, list(options))

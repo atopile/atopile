@@ -9,7 +9,7 @@ from typing import Iterable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Predicate
 from faebryk.core.solver import Solver
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.lcsc import attach
@@ -82,8 +82,9 @@ class StaticPartPicker(F.has_multi_picker.Picker, ABC):
             ) from e
 
 
-def _try_merge_params(target: Module, source: Module, solver: Solver) -> bool:
-    raise NotImplementedError
+def _build_compatible_constraint(
+    target: Module, source: Module
+) -> ParameterOperatable.BooleanLike:
     assert type(target) is type(source)
 
     # Override module parameters with picked component parameters
@@ -92,14 +93,23 @@ def _try_merge_params(target: Module, source: Module, solver: Solver) -> bool:
     )
 
     # sort by type to avoid merge conflicts
+    predicates: list[Predicate] = []
     it = module_params.values()
     for p, value in it:
-        if not value.is_subset_of(p):
-            return False
-    for p, value in it:
-        p.alias_is(value)
+        predicates.append(Is(p, value))
 
-    return True
+    return And(*predicates)
+
+
+def _get_compatible_modules(
+    module: Module, cache: list[Module], solver: Solver
+) -> Iterable[Module]:
+    compatible_constraints = [_build_compatible_constraint(module, m) for m in cache]
+    solve_result = solver.assert_any_predicate(
+        list(zip(compatible_constraints, cache)), lock=True
+    )
+    for _, m in solve_result.true_predicates:
+        yield m
 
 
 class CachePicker(F.has_multi_picker.Picker):
@@ -109,9 +119,7 @@ class CachePicker(F.has_multi_picker.Picker):
 
     def pick(self, module: Module, solver: Solver):
         mcache = [m for m in self.cache[type(module)] if m.has_trait(has_part_picked)]
-        for m in mcache:
-            if not _try_merge_params(module, m, solver):
-                continue
+        for m in _get_compatible_modules(module, mcache, solver):
             logger.debug(f"Found compatible part in cache: {module} with {m}")
             module.add(
                 F.has_descriptive_properties_defined(
