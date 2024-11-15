@@ -4,6 +4,7 @@
 import logging
 
 from faebryk.core.module import Module  # noqa: F401
+from faebryk.core.moduleinterface import ModuleInterface  # noqa: F401
 from faebryk.core.node import (  # noqa: F401
     InitVar,
     Node,

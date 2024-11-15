@@ -399,14 +399,14 @@ class Range(P_UnitSet[QuantityT]):
         self.units = units or min_unit or max_unit
         self.range_units = base_units(self.units)
 
-        if isinstance(min, Quantity):
+        if HasUnit.check(min):
             num_min = min.to_base_units().magnitude
             if not (isinstance(num_min, float) or isinstance(num_min, int)):
                 raise ValueError("min must be a float or int quantity")
         else:
             num_min = min
 
-        if isinstance(max, Quantity):
+        if HasUnit.check(max):
             num_max = max.to_base_units().magnitude
             if not (isinstance(num_max, float) or isinstance(num_max, int)):
                 raise ValueError("max must be a float or int quantity")
