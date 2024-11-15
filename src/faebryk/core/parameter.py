@@ -50,6 +50,10 @@ class ParameterOperatable(Node):
 
     operated_on: GraphInterface
 
+    @property
+    def domain(self) -> "Domain":
+        raise NotImplementedError()
+
     def get_operations(self) -> set["Expression"]:
         res = self.operated_on.get_connected_nodes(types=[Expression])
         return cast(set[Expression], res)
@@ -380,8 +384,9 @@ def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
 class Expression(ParameterOperatable):
     operates_on: GraphInterface
 
-    def __init__(self, *operands: ParameterOperatable.All):
+    def __init__(self, domain, *operands: ParameterOperatable.All):
         super().__init__()
+        self._domain = domain
         self.operands = tuple(operands)
         self.operatable_operands = {
             op for op in operands if isinstance(op, ParameterOperatable)
@@ -394,6 +399,10 @@ class Expression(ParameterOperatable):
             if self.operates_on.is_connected_to(op.operated_on):
                 continue
             self.operates_on.connect(op.operated_on)
+
+    @property
+    def domain(self) -> "Domain":
+        return self._domain
 
     def get_operatable_operands(self) -> set[ParameterOperatable]:
         return cast(
@@ -451,7 +460,7 @@ class Expression(ParameterOperatable):
 @abstract
 class ConstrainableExpression(Expression):
     def __init__(self, *operands: ParameterOperatable.All):
-        super().__init__(*operands)
+        super().__init__(Boolean(), *operands)
         self.constrained: bool = False
 
     def _constrain(self, constraint: "Predicate"):
@@ -468,7 +477,7 @@ class Arithmetic(Expression):
         # HasUnit attr
         self.units: Unit = cast(Unit, None)  # checked in postinit
 
-        super().__init__(*operands)
+        super().__init__(Numbers(), *operands)
         types = int, float, Quantity, Unit, Parameter, Arithmetic, Ranges, Range
         if any(not isinstance(op, types) for op in operands):
             raise ValueError(
@@ -657,7 +666,8 @@ class Logic(ConstrainableExpression):
         if any(not isinstance(op, types) for op in operands):
             raise ValueError("operands must be bool, Parameter, Logic, or Predicate")
         if any(
-            param.domain != Boolean or not param.units.is_compatible_with(dimensionless)
+            not isinstance(param.domain, Boolean)
+            or not param.units.is_compatible_with(dimensionless)
             for param in operands
             if isinstance(param, Parameter)
         ):
@@ -689,7 +699,8 @@ class Implies(Logic):
 
 class IfThenElse(Expression):
     def __init__(self, condition, if_true, if_false, preference: bool | None = None):
-        super().__init__(condition)
+        # FIXME domain
+        super().__init__(None, condition)
         self.preference = preference
         self.if_true = if_true
         self.if_false = if_false
@@ -697,7 +708,8 @@ class IfThenElse(Expression):
 
 class Setic(Expression):
     def __init__(self, *operands):
-        super().__init__(*operands)
+        # FIXME domain
+        super().__init__(None, *operands)
         types = [Parameter, ParameterOperatable.Sets]
         if any(type(op) not in types for op in operands):
             raise ValueError("operands must be Parameter or Set")
@@ -951,7 +963,7 @@ class Parameter(ParameterOperatable):
             raise TypeError("units must be a Unit")
         self.units = units
         self.within = within
-        self.domain = domain
+        self._domain = domain
         self.soft_set = soft_set
         self.guess = guess
         self.tolerance_guess = tolerance_guess
@@ -963,6 +975,10 @@ class Parameter(ParameterOperatable):
     type Sets = ParameterOperatable.Sets
     type BooleanLike = ParameterOperatable.BooleanLike
     type Number = ParameterOperatable.Number
+
+    @property
+    def domain(self) -> Domain:
+        return self._domain
 
     def has_implicit_constraint(self) -> bool:
         return False

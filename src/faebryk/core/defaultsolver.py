@@ -13,6 +13,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.graphinterface import GraphInterfaceSelf
 from faebryk.core.parameter import (
     Add,
+    And,
     Arithmetic,
     ConstrainableExpression,
     Divide,
@@ -20,6 +21,7 @@ from faebryk.core.parameter import (
     Is,
     IsSubset,
     Multiply,
+    Or,
     Parameter,
     ParameterOperatable,
     Power,
@@ -61,7 +63,7 @@ def parameter_ops_alias_classes(
     param_ops = {
         p
         for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-        if get_constrained_predicates_involved_in(p)
+        if get_constrained_expressions_involved_in(p)
     }.difference(GraphFunctions(G).nodes_of_type(Predicate))
     full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
 
@@ -93,10 +95,9 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-# FIXME needs to handle logics also
-def get_constrained_predicates_involved_in(
+def get_constrained_expressions_involved_in(
     p: ParameterOperatable,
-) -> set[Predicate]:
+) -> set[ConstrainableExpression]:
     # p.self -> p.operated_on -> e1.operates_on -> e1.self
     dependants = p.bfs_node(
         lambda path: isinstance(path[-1].node, ParameterOperatable)
@@ -115,7 +116,11 @@ def get_constrained_predicates_involved_in(
             )
         )
     )
-    res = {p for p in dependants if isinstance(p, Predicate) and p.constrained}
+    res = {
+        p
+        for p in dependants
+        if isinstance(p, ConstrainableExpression) and p.constrained
+    }
     return res
 
 
@@ -124,7 +129,7 @@ def parameter_dependency_classes(G: Graph) -> list[set[Parameter]]:
     params = [
         p
         for p in GraphFunctions(G).nodes_of_type(Parameter)
-        if get_constrained_predicates_involved_in(p)
+        if get_constrained_expressions_involved_in(p)
     ]
 
     related = EquivalenceClasses[Parameter](params)
@@ -200,6 +205,8 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable]:
     def scalar_to_base_units(q: int | float | Quantity | None) -> Quantity | None:
         if q is None:
             return None
+        if isinstance(q, bool):
+            return q
         if isinstance(q, Quantity):
             return q.to_base_units().magnitude * dimensionless
         return q * dimensionless
@@ -247,12 +254,12 @@ def resolve_alias_classes(
     params_ops = [
         p
         for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-        if get_constrained_predicates_involved_in(p)
+        if get_constrained_expressions_involved_in(p)
     ]
     exprs = GraphFunctions(G).nodes_of_type(Expression)
     predicates = {e for e in exprs if isinstance(e, Predicate)}
     exprs.difference_update(predicates)
-    exprs = {e for e in exprs if get_constrained_predicates_involved_in(e)}
+    exprs = {e for e in exprs if get_constrained_expressions_involved_in(e)}
 
     p_alias_classes = parameter_ops_alias_classes(G)
     dependency_classes = parameter_dependency_classes(G)
@@ -279,17 +286,20 @@ def resolve_alias_classes(
         expr_alias_class = [p for p in alias_class if isinstance(p, Expression)]
 
         # TODO non unit/numeric params, i.e. enums, bools
+        # is dimensionless sufficient?
         # single unit
-        unit_candidates = {HasUnit.get_units(p) for p in alias_class}
+        unit_candidates = {HasUnit.get_units_or_dimensionless(p) for p in alias_class}
         if len(unit_candidates) > 1:
             raise ValueError("Incompatible units in alias class")
+        # single domain
+        domain_candidates = {p.domain for p in alias_class}
+        if len(domain_candidates) > 1:
+            raise ValueError("Incompatible domains in alias class")
+
+        representative = None
+
         if len(param_alias_class) > 0:
             dirty |= len(param_alias_class) > 1
-
-            # single domain
-            domain_candidates = {p.domain for p in param_alias_class}
-            if len(domain_candidates) > 1:
-                raise ValueError("Incompatible domains in alias class")
 
             # intersect ranges
             within_ranges = {
@@ -329,6 +339,7 @@ def resolve_alias_classes(
             likely_constrained = any(p.likely_constrained for p in param_alias_class)
 
             representative = Parameter(
+                domain=domain_candidates.pop(),
                 units=unit_candidates.pop(),
                 within=within,
                 soft_set=soft_set,
@@ -339,9 +350,11 @@ def resolve_alias_classes(
             repr_map.update({p: representative for p in param_alias_class})
         elif len(expr_alias_class) > 1:
             dirty = True
-            representative = Parameter(units=unit_candidates.pop())
+            representative = Parameter(
+                domain=domain_candidates.pop(), units=unit_candidates.pop()
+            )
 
-        if len(expr_alias_class) > 0:
+        if representative is not None:
             for e in expr_alias_class:
                 copy_expr = copy_operand_recursively(e, repr_map)
                 repr_map[e] = (
@@ -427,12 +440,13 @@ def is_replacable(
     return True
 
 
-def compress_associative_add_mul(
+def compress_associative_add_mul_and_or(
     G: Graph,
 ) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
     dirty = False
     add_muls = cast(
-        set[Add | Multiply], GraphFunctions(G).nodes_of_types((Add, Multiply))
+        set[Add | Multiply | And | Or],
+        GraphFunctions(G).nodes_of_types((Add, Multiply, And, Or)),
     )
     # get out deepest expr in compressable tree
     parent_add_muls = {
@@ -448,7 +462,7 @@ def compress_associative_add_mul(
     #    compress(X) -> [A, B]
     # -> [A, B, C]
 
-    def flatten_operands_of_ops_with_same_type[T: Add | Multiply](
+    def flatten_operands_of_ops_with_same_type[T: Add | Multiply | And | Or](
         e: T,
     ) -> tuple[list[T], bool]:
         dirty = False
@@ -468,7 +482,7 @@ def compress_associative_add_mul(
         return out + list(noncomp), dirty
 
     for expr in cast(
-        Iterable[Add | Multiply],
+        Iterable[Add | Multiply | And | Or],
         ParameterOperatable.sort_by_depth(parent_add_muls, ascending=True),
     ):
         operands, sub_dirty = flatten_operands_of_ops_with_same_type(expr)
@@ -795,7 +809,7 @@ def remove_obvious_tautologies(
 
     def known_unconstrained(po: ParameterOperatable) -> bool:
         no_other_constraints = (
-            len(get_constrained_predicates_involved_in(po).difference({pred_is})) == 0
+            len(get_constrained_expressions_involved_in(po).difference({pred_is})) == 0
         )
         return no_other_constraints and not po.has_implicit_constraints_recursive()
 
@@ -881,7 +895,7 @@ class DefaultSolver(Solver):
             repr_map = {}
             for g in graphs:
                 assoc_add_mul_repr_map, assoc_add_mul_dirty = (
-                    compress_associative_add_mul(g)
+                    compress_associative_add_mul_and_or(g)
                 )
                 repr_map.update(assoc_add_mul_repr_map)
             debug_print(repr_map)
@@ -892,7 +906,7 @@ class DefaultSolver(Solver):
             repr_map = {}
             for g in graphs:
                 assoc_add_mul_repr_map, assoc_add_mul_dirty = (
-                    compress_associative_add_mul(g)
+                    compress_associative_add_mul_and_or(g)
                 )
                 repr_map.update(assoc_add_mul_repr_map)
             debug_print(repr_map)

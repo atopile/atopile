@@ -10,7 +10,7 @@ import faebryk.library._F as F
 from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import And, Parameter
 from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.sets import Range, Ranges
@@ -83,6 +83,21 @@ def test_simplify():
     (acc < 11 * dimensionless).constrain()
 
     G = acc.get_graph()
+    solver = DefaultSolver()
+    solver.phase_one_no_guess_solving(G)
+
+
+def test_simplify_logic():
+    class App(Module):
+        p = L.list_field(4, lambda: Parameter(domain=L.Domains.BOOL()))
+
+    app = App()
+    anded = And(app.p[0], True)
+    for p in app.p[1:]:
+        anded = anded & p
+
+    anded.constrain()
+    G = anded.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
 
@@ -192,7 +207,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_remove_obvious_tautologies
+    func = test_simplify_logic
 
     if "ipykernel" in sys.modules:
         func()
