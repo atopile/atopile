@@ -15,7 +15,7 @@ from rich.progress import Progress
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.parameter import Parameter, ParameterOperatable, Predicate
+from faebryk.core.parameter import Is, Parameter, ParameterOperatable, Predicate
 from faebryk.core.solver import Solver
 from faebryk.libs.util import flatten, not_none
 
@@ -176,7 +176,7 @@ def pick_module_by_params(
         for k, v in (o.params or {}).items():
             if not k.startswith("_"):
                 param = params[k]
-                predicate_list.append(param.operation_is_superset(v))
+                predicate_list.append(Is(param, v))
 
         # No predicates, thus always valid option
         if len(predicate_list) == 0:
@@ -196,7 +196,7 @@ def pick_module_by_params(
         [(p, k) for k, p in predicates.items()], lock=True
     )
 
-    # TODO handle failure parameters
+    # FIXME handle failure parameters
 
     # pick first valid option
     _, option = next(iter(solve_result.true_predicates))
@@ -206,13 +206,6 @@ def pick_module_by_params(
 
     option.part.supplier.attach(module, option)
     module.add(has_part_picked_defined(option.part))
-
-    # Shrink solution space that we need to search for
-    # by hinting that option params are biggest possible set we might want to support
-    for k, v in (option.params or {}).items():
-        if k not in params:
-            continue
-        params[k].alias_is(v)
 
     logger.debug(f"Attached {option.part.partno} to {module}")
     return option
