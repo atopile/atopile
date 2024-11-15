@@ -31,9 +31,13 @@ from faebryk.core.parameter import (
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import (
     E_SERIES,
-    e_series_intersect,
 )
 from faebryk.libs.library import L
+from faebryk.libs.picker.common import (
+    PickerESeriesIntersectionError,
+    PickerUnboundedParameterError,
+    generate_si_values,
+)
 from faebryk.libs.picker.lcsc import (
     LCSC_NoDataException,
     LCSC_Part,
@@ -49,7 +53,6 @@ from faebryk.libs.units import (
     P,
     Quantity,
     UndefinedUnitError,
-    to_si_str,
 )
 from faebryk.libs.util import at_exit, cast_assert, once
 
@@ -442,21 +445,18 @@ class ComponentQuery:
         tolerance_requirement: float | None = None,
     ) -> Self:
         assert self.Q
-
-        if value.is_unbounded():
-            return self
         assert not self.results
-        intersection = e_series_intersect(value, e_series)
-        if intersection.is_empty():
-            raise ComponentQuery.ParamError(value, "No intersection with E-series")
-        si_unit = value.units
-        si_vals = [
-            to_si_str(r.min_elem(), si_unit).replace("µ", "u").replace("inf", "∞")
-            for r in intersection
-        ]
+
+        try:
+            si_vals = generate_si_values(value, e_series)
+        except PickerUnboundedParameterError:
+            return self
+        except PickerESeriesIntersectionError as e:
+            raise ComponentQuery.ParamError(value, str(e)) from e
 
         if tolerance_requirement:
             self.filter_by_tolerance(tolerance_requirement)
+
         return self.filter_by_description(*si_vals)
 
     def hint_filter_parameter(

@@ -15,6 +15,7 @@ from pint import DimensionalityError
 from faebryk.core.module import Module
 
 # TODO: replace with API-specific data model
+from faebryk.libs.picker.common import SIvalue
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
 from faebryk.libs.picker.lcsc import LCSC_NoDataException, LCSC_PinmapException
 from faebryk.libs.picker.picker import PickError
@@ -102,9 +103,6 @@ def try_attach(
         )
 
     return False
-
-
-type SIvalue = str
 
 
 @dataclass_json

@@ -26,10 +26,10 @@ from faebryk.libs.picker.api.api import (
 
 # re-use the existing model for components from the jlcparts dataset, but as the data
 # schema diverges over time we'll migrate this to separate models
+from faebryk.libs.picker.common import SIvalue, generate_si_values
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
 from faebryk.libs.picker.picker import DescriptiveProperties, PickError
-from faebryk.libs.units import Quantity
 from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
@@ -38,13 +38,6 @@ client = get_api_client()
 
 # TODO add trait to module that specifies the quantity of the part
 qty: int = 1
-
-
-def generate_si_values(
-    param: Parameter, si_unit: str, e_series: E_SERIES
-) -> list[Quantity]:
-    # FIXME: implement with new params
-    raise NotImplementedError()
 
 
 def find_component_by_lcsc_id(lcsc_id: str, solver: Solver) -> Component:
@@ -80,7 +73,7 @@ def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
 
     # TODO: pass through errors from API
     try:
-        part = find_component_by_lcsc_id(lcsc_pn)
+        part = find_component_by_lcsc_id(lcsc_pn, solver)
     except KeyErrorNotFound as e:
         raise PickError(
             f"Could not find part with LCSC part number {lcsc_pn}", module
@@ -133,7 +126,7 @@ def find_and_attach_by_mfr(module: Module, solver: Solver):
     mfr_pn = properties[DescriptiveProperties.partno]
 
     try:
-        parts = [find_component_by_mfr(mfr, mfr_pn)]
+        parts = [find_component_by_mfr(mfr, mfr_pn, solver)]
     except KeyErrorNotFound as e:
         raise PickError(
             f"Could not find part with manufacturer part number {mfr_pn}", module
@@ -180,6 +173,13 @@ def _get_footprint_candidates(module: Module) -> list[FootprintCandidate]:
     return []
 
 
+def _generate_si_values(
+    value: Parameter, solver: Solver, e_series: E_SERIES | None = None
+) -> list[SIvalue]:
+    candidate_ranges = solver.inspect_get_known_superranges(value)
+    return generate_si_values(candidate_ranges, e_series=e_series)
+
+
 def find_resistor(cmp: Module, solver: Solver):
     """
     Find a resistor with matching parameters
@@ -189,7 +189,9 @@ def find_resistor(cmp: Module, solver: Solver):
 
     parts = client.fetch_resistors(
         ResistorParams(
-            resistances=generate_si_values(cmp.resistance, "Ω", E_SERIES_VALUES.E96),
+            resistances=_generate_si_values(
+                cmp.resistance, solver, E_SERIES_VALUES.E96
+            ),
             footprint_candidates=_get_footprint_candidates(cmp),
             qty=qty,
         ),
@@ -207,7 +209,9 @@ def find_capacitor(cmp: Module, solver: Solver):
 
     parts = client.fetch_capacitors(
         CapacitorParams(
-            capacitances=generate_si_values(cmp.capacitance, "F", E_SERIES_VALUES.E24),
+            capacitances=_generate_si_values(
+                cmp.capacitance, solver, E_SERIES_VALUES.E24
+            ),
             footprint_candidates=_get_footprint_candidates(cmp),
             qty=qty,
         ),
@@ -225,7 +229,9 @@ def find_inductor(cmp: Module, solver: Solver):
 
     parts = client.fetch_inductors(
         InductorParams(
-            inductances=generate_si_values(cmp.inductance, "H", E_SERIES_VALUES.E24),
+            inductances=_generate_si_values(
+                cmp.inductance, solver, E_SERIES_VALUES.E24
+            ),
             footprint_candidates=_get_footprint_candidates(cmp),
             qty=qty,
         ),
@@ -257,9 +263,11 @@ def find_diode(cmp: Module, solver: Solver):
 
     parts = client.fetch_diodes(
         DiodeParams(
-            max_currents=generate_si_values(cmp.max_current, "A", E_SERIES_VALUES.E3),
-            reverse_working_voltages=generate_si_values(
-                cmp.reverse_working_voltage, "V", E_SERIES_VALUES.E3
+            max_currents=_generate_si_values(
+                cmp.max_current, solver, E_SERIES_VALUES.E3
+            ),
+            reverse_working_voltages=_generate_si_values(
+                cmp.reverse_working_voltage, solver, E_SERIES_VALUES.E3
             ),
             footprint_candidates=_get_footprint_candidates(cmp),
             qty=qty,

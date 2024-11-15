@@ -11,6 +11,8 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Predicate
 from faebryk.core.solver import Solver
+from faebryk.libs.e_series import E_SERIES, e_series_intersect
+from faebryk.libs.library import L
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.lcsc import attach
 from faebryk.libs.picker.picker import (
@@ -18,6 +20,7 @@ from faebryk.libs.picker.picker import (
     has_part_picked,
     has_part_picked_defined,
 )
+from faebryk.libs.units import Quantity, to_si_str
 from faebryk.libs.util import ConfigFlagEnum
 
 logger = logging.getLogger(__name__)
@@ -31,6 +34,7 @@ class PickerType(StrEnum):
 DB_PICKER_BACKEND = ConfigFlagEnum(
     PickerType, "PICKER", PickerType.API, "Picker backend to use"
 )
+type SIvalue = str
 
 
 class StaticPartPicker(F.has_multi_picker.Picker, ABC):
@@ -139,3 +143,34 @@ class CachePicker(F.has_multi_picker.Picker):
         picker = CachePicker()
         for m in modules:
             m.add(F.has_multi_picker(prio, picker))
+
+
+class PickerUnboundedParameterError(Exception):
+    pass
+
+
+class PickerESeriesIntersectionError(Exception):
+    pass
+
+
+def generate_si_values(
+    value: L.Ranges[Quantity], e_series: E_SERIES | None = None
+) -> list[SIvalue]:
+    if value.is_unbounded():
+        raise PickerUnboundedParameterError(value)
+
+    intersection = e_series_intersect(value, e_series)
+    if intersection.is_empty():
+        raise PickerESeriesIntersectionError(f"No intersection with E-series: {value}")
+    si_unit = value.units
+
+    def _get_single(single: L.Range):
+        assert single.min_elem() == single.max_elem()
+        return single.min_elem()
+
+    si_vals = [
+        to_si_str(_get_single(r), si_unit).replace("µ", "u").replace("inf", "∞")
+        for r in intersection
+    ]
+
+    return si_vals
