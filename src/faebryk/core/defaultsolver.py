@@ -17,6 +17,7 @@ from faebryk.core.parameter import (
     Arithmetic,
     ConstrainableExpression,
     Divide,
+    Domain,
     Expression,
     Is,
     IsSubset,
@@ -292,9 +293,14 @@ def resolve_alias_classes(
         if len(unit_candidates) > 1:
             raise ValueError("Incompatible units in alias class")
         # single domain
-        domain_candidates = {p.domain for p in alias_class}
-        if len(domain_candidates) > 1:
-            raise ValueError("Incompatible domains in alias class")
+        domain = Domain.get_shared_domain(
+            *(
+                # TODO get domain for constants
+                p.domain
+                for p in alias_class
+                if isinstance(p, ParameterOperatable)
+            )
+        )
 
         representative = None
 
@@ -339,7 +345,7 @@ def resolve_alias_classes(
             likely_constrained = any(p.likely_constrained for p in param_alias_class)
 
             representative = Parameter(
-                domain=domain_candidates.pop(),
+                domain=domain,
                 units=unit_candidates.pop(),
                 within=within,
                 soft_set=soft_set,
@@ -350,9 +356,7 @@ def resolve_alias_classes(
             repr_map.update({p: representative for p in param_alias_class})
         elif len(expr_alias_class) > 1:
             dirty = True
-            representative = Parameter(
-                domain=domain_candidates.pop(), units=unit_candidates.pop()
-            )
+            representative = Parameter(domain=domain, units=unit_candidates.pop())
 
         if representative is not None:
             for e in expr_alias_class:
@@ -663,7 +667,7 @@ def compress_arithmetic_expressions(
                     n: copy_operand_recursively(n, repr_map) for n in multiplicity
                 }
                 nonconst_prod = [
-                    Multiply(copied[n], m) if m > 1 else copied[n]
+                    Multiply(copied[n], m * dimensionless) if m > 1 else copied[n]
                     for n, m in multiplicity.items()
                 ]
                 new_operands = [
@@ -709,7 +713,7 @@ def compress_arithmetic_expressions(
                         n: copy_operand_recursively(n, repr_map) for n in multiplicity
                     }
                     nonconst_power = [
-                        Power(copied[n], m) if m > 1 else copied[n]
+                        Power(copied[n], m * dimensionless) if m > 1 else copied[n]
                         for n, m in multiplicity.items()
                     ]
                     new_operands = [

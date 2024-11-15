@@ -739,20 +739,50 @@ class SymmetricDifference(Setic):
 
 
 class Domain:
-    pass
+    @staticmethod
+    def get_shared_domain(*domains: "Domain") -> "Domain":
+        if len(domains) == 0:
+            raise ValueError("No domains provided")
+        if len(domains) == 1:
+            return domains[0]
+        one = domains[0]
+        two = domains[1]
+        match one:
+            case Boolean():
+                if not isinstance(two, Boolean):
+                    raise ValueError(
+                        "Boolean domain cannot be mixed with other domains"
+                    )
+                shared = Boolean()
+            case EnumDomain():
+                if not isinstance(two, EnumDomain):
+                    raise ValueError("Enum domain cannot be mixed with other domains")
+                if one.enum_t != two.enum_t:
+                    raise ValueError("Enum domains must be of the same type")
+                shared = EnumDomain(one.enum_t)
+            case Numbers():
+                if not isinstance(two, Numbers):
+                    raise ValueError(
+                        "Numbers domain cannot be mixed with other domains"
+                    )
+                if (
+                    isinstance(one, ESeries)
+                    and isinstance(two, ESeries)
+                    and one.series == two.series
+                ):
+                    shared = ESeries(one.series)
+                else:
+                    shared = Numbers(
+                        negative=one.negative and two.negative,
+                        zero_allowed=one.zero_allowed and two.zero_allowed,
+                        integer=one.integer or two.integer,
+                    )
+            case _:
+                raise ValueError("Unsupported domain")
 
-
-class ESeries(Domain):
-    class SeriesType(Enum):
-        E6 = auto()
-        E12 = auto()
-        E24 = auto()
-        E48 = auto()
-        E96 = auto()
-        E192 = auto()
-
-    def __init__(self, series: SeriesType):
-        self.series = series
+        if len(domains) == 2:
+            return shared
+        return Domain.get_shared_domain(shared, *domains[2:])
 
 
 class Numbers(Domain):
@@ -763,6 +793,20 @@ class Numbers(Domain):
         self.negative = negative
         self.zero_allowed = zero_allowed
         self.integer = integer
+
+
+class ESeries(Numbers):
+    class SeriesType(Enum):
+        E6 = auto()
+        E12 = auto()
+        E24 = auto()
+        E48 = auto()
+        E96 = auto()
+        E192 = auto()
+
+    def __init__(self, series: SeriesType):
+        super().__init__(negative=False, zero_allowed=False, integer=False)
+        self.series = series
 
 
 class Boolean(Domain):
