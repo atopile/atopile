@@ -26,7 +26,7 @@ import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from antlr4 import ParserRuleContext
 from faebryk.core.trait import Trait
-from faebryk.libs.units import Quantity, dimensionless
+from faebryk.libs.units import Quantity, dimensionless, Unit
 from faebryk.libs.util import FuncDict
 
 from atopile import errors
@@ -35,6 +35,7 @@ from atopile.front_end import _get_unit_from_ctx
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
+from pint import UndefinedUnitError
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +80,17 @@ class BasicsMixin:
 
 
 class PhysicalValuesMixin:
+    @staticmethod
+    def _get_unit_from_ctx(ctx: ParserRuleContext) -> Unit:
+        """Return a pint unit from a context."""
+        unit_str = ctx.getText()
+        try:
+            return Unit(unit_str)
+        except UndefinedUnitError as ex:
+            raise errors.AtoUnknownUnitError.from_ctx(
+                ctx, f"Unknown unit '{unit_str}'"
+            ) from ex
+
     def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> L.Range:
         """Yield a physical value from a physical context."""
         if ctx.quantity():
