@@ -329,14 +329,18 @@ class Surveyor(BasicsMixin, SequenceMixin, AtopileParserVisitor):
         return context
 
 
-class _AtoComponent(L.Module):
+class AtoComponent(L.Module):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.pinmap = {}
+
     @L.rt_field
     def attach_to_footprint(self):
-        return F.can_attach_to_footprint_via_pinmap({})
+        return F.can_attach_to_footprint_via_pinmap(self.pinmap)
 
     def add_pin(self, name: str) -> F.Electrical:
         mif = self.add(F.Electrical(), name=name)
-        self.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap[name] = mif
+        self.pinmap[name] = mif
         return mif
 
 
@@ -352,17 +356,23 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         super().__init__()
         self._scopes = FuncDict[ParserRuleContext, Context]()
         self._node_stack = StackList[L.Node]()
-        self._promised_params = FuncSet[L.Node]()
+        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
     ) -> Context:
         context = self._index_ast(ast, file_path)
-        return self._build(context, ref)
+        try:
+            return self._build(context, ref)
+        finally:
+            self._finish()
 
     def build_file(self, path: Path, ref: Ref) -> L.Node:
         context = self._index_file(path)
-        return self._build(context, ref)
+        try:
+            return self._build(context, ref)
+        finally:
+            self._finish()
 
     def _build(self, context: Context, ref: Ref) -> L.Node:
         if ref not in context.refs:
@@ -370,6 +380,14 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
                 context.scope_ctx, f"No declaration of {ref} in {context.file_path}"
             )
         return self._init_node(context.scope_ctx, ref)
+
+    def _finish(self):
+        if self._promised_params:
+            raise ExceptionGroup("Attributes referenced, but never assigned", [
+                errors.AtoKeyError.from_ctx(ctx, f"Attribute {param} referenced, but never assigned")
+                for param, ctxs in self._promised_params.items()
+                for ctx in ctxs
+            ])
 
     @property
     def _current_node(self) -> L.Node:
@@ -453,7 +471,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         return item
 
     @staticmethod
-    def _get_node_attr(node: L.Node, name: str) -> L.Node:
+    def get_node_attr(node: L.Node, name: str) -> L.Node:
         if hasattr(node, name):
             # Build-time attributes are attached as real attributes
             return getattr(node, name)
@@ -472,7 +490,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
                 name = f"_{name}"
 
             try:
-                node = self._get_node_attr(node, name)
+                node = self.get_node_attr(node, name)
             except AttributeError as ex:
                 # Wah wah wah - we don't know what this is
                 raise errors.AtoKeyError.from_ctx(
@@ -490,17 +508,10 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
     def _build_ato_node(self, ctx: ap.BlockdefContext) -> L.Node:
         # Find the superclass of the new node, if there's one defined
-        if supers_ctxs := ctx.name_or_attr():
-            supers_refs = [
-                self.visitName_or_attr(super_ctx) for super_ctx in supers_ctxs
-            ]
-            if len(supers_refs) > 1:
-                raise errors.AtoNotImplementedError.from_ctx(
-                    ctx,
-                    f"Can't declare blocks with multiple superclasses {supers_refs}",
-                )
+        if super_ctx := ctx.name_or_attr():
+            super_ref = self.visitName_or_attr(super_ctx)
             # Create a base node to build off
-            base_node = self._init_node(ctx, supers_refs[0])
+            base_node = self._init_node(ctx, super_ref)
         else:
             # Create a shell of base-node to build off
             block_type = ctx.blocktype()
@@ -508,7 +519,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
             if block_type.INTERFACE():
                 base_node = L.ModuleInterface()
             elif block_type.COMPONENT():
-                base_node = _AtoComponent()
+                base_node = AtoComponent()
             elif block_type.MODULE():
                 base_node = L.Module()
             else:
@@ -536,15 +547,24 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
             )
 
     def _ensure_param(
-        self, node: L.Node, name: str, default: fab_param.Parameter | None
+        self, node: L.Node, name: str, default: fab_param.Parameter | None, src_ctx: ParserRuleContext
     ) -> fab_param.Parameter:
         try:
-            node = self._get_node_attr(node, name)
+            return self.get_node_attr(node, name)
         except AttributeError:
             if default is None:
                 default = fab_param.Parameter()
-            node = node.add(default, name=name)
-        return node
+            param = node.add(default, name=name)
+            self._promised_params.setdefault(param, []).append(src_ctx)
+            return param
+
+    @staticmethod
+    def _attach_range_to_param(param: fab_param.Parameter, range: fab_param.Range):
+        param.within = range
+
+    def _fufill_param_promise(self, param: fab_param.Parameter):
+        if param in self._promised_params:
+            del self._promised_params[param]
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Assignment values and create new instance of things."""
@@ -553,6 +573,16 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         assigned_name: str = assigned_ref[-1]
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
+
+        if len(assigned_ref) > 1:
+            target = self._get_referenced_node(assigned_ref, ctx)
+        else:
+            target = self._current_node
+
+        ########## Handle Reserved Assignments ##########
+        # TODO: handle special assignments for reserved names in atopile
+        # TODO: shim "value" property, rated_xyz etc...
+        # TODO: shim mpn / LCSC id etc...
 
         ########## Handle New Statements ##########
         if new_stmt_ctx := assignable_ctx.new_stmt():
@@ -567,48 +597,39 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
             new_node = self._init_node(ctx, ref)
             self._current_node.add(new_node, name=assigned_name)
 
-        if len(assigned_ref) > 1:
-            target = self._get_referenced_node(assigned_ref, ctx)
-        else:
-            target = self._current_node
-
-        ########## Handle Reserved Assignments ##########
-        # TODO: handle special assignments for reserved names in atopile
-        # TODO: shim "value" property, rated_xyz etc...
-        # TODO: shim mpn / LCSC id etc...
-
-        ########## Handle Actual Assignments ##########
-        if literal_physical_ctx := assignable_ctx.literal_physical():
-            param = (
-                self._try_get_referenced_node(assigned_ref, ctx)
-                or target.add(fab_param.Parameter(), name=assigned_name)
-            )
-            param.within = self.visitLiteral_physical(literal_physical_ctx)
+        ########## Handle Regular Assignments ##########
+        elif literal_physical_ctx := assignable_ctx.literal_physical():
+            param = self._ensure_param(target, assigned_name, None, ctx)
+            within = self.visitLiteral_physical(literal_physical_ctx)
+            self._attach_range_to_param(param, within)
+            self._fufill_param_promise(param)
 
         elif arithmetic_expression_ctx := assignable_ctx.arithmetic_expression():
             expr = self.visitArithmetic_expression(arithmetic_expression_ctx)
-            if param := self._try_get_referenced_node(assigned_ref, ctx):
+            param = self._ensure_param(target, assigned_name, expr, ctx)
+            self._fufill_param_promise(param)
+            if param is not expr:
+                # Check the type's compatibility
                 if not isinstance(param, fab_param.Parameter):
                     raise errors.AtoTypeError.from_ctx(
                         ctx,
                         f"Can't assign {expr} to {param} because the types are incompatible."
                     )
+
                 param.alias_is(expr)
-            else:
-                target.add(expr, name=assigned_name)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             warnings.warn(f"Assigning {assigned_name} ignored")
 
         else:
-            raise ValueError(f"Unhandled assignable type {assignable_ctx}")
+            raise ValueError(f"Unhandled assignable type {assignable_ctx.getText()}")
 
         return KeyOptMap.empty()
 
     def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
         # TODO: something useful with the pin mapping
         if ctx.name():
-            name = self.visitName_or_attr(ctx.name())
+            name = self.visitName(ctx.name())
         elif ctx.totally_an_integer():
             name = f"_{ctx.totally_an_integer().getText()}"
         elif ctx.string():
@@ -616,7 +637,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         else:
             raise ValueError(f"Unhandled pin name type {ctx}")
 
-        if not isinstance(self._current_node, _AtoComponent):
+        if not isinstance(self._current_node, AtoComponent):
             raise errors.AtoTypeError.from_ctx(
                 ctx, f"Can't declare pins on components of type {self._current_node}"
             )
@@ -625,7 +646,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         return KeyOptMap.from_item(KeyOptItem.from_kv(name, mif))
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
-        name = self.visitName_or_attr(ctx.name())
+        name = self.visitName(ctx.name())
         mif = self._current_node.add(F.Electrical(), name=name)
         return KeyOptMap.from_item(KeyOptItem.from_kv(name, mif))
 
@@ -758,25 +779,42 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
             base = self.visitFunctional(ctx.functional())
             exp = self.visitFunctional(ctx.functional())
             return base.operation_power(exp)
-
-        return self.visitFunctional(ctx.functional())
+        else:
+            return self.visitFunctional(ctx.functional(0))
 
     def visitFunctional(self, ctx: ap.FunctionalContext) -> fab_param.Parameter:
         if ctx.name():
             # TODO: implement min/max
             raise NotImplementedError
-
-        return self.visitBound(ctx.bound())
+        else:
+            return self.visitBound(ctx.bound(0))
 
     def visitBound(self, ctx: ap.BoundContext) -> fab_param.Parameter:
         return self.visitAtom(ctx.atom())
 
     def visitAtom(self, ctx: ap.AtomContext) -> fab_param.Parameter:
-        return super().visitAtom(ctx)
+        if ctx.name_or_attr():
+            ref = self.visitName_or_attr(ctx.name_or_attr())
+            if len(ref) > 1:
+                target = self._get_referenced_node(ref[:-1], ctx)
+            else:
+                target = self._current_node
+            return self._ensure_param(target, ref[-1], None, ctx)
+
+        elif ctx.literal_physical():
+            param = fab_param.Parameter()
+            range_ = self.visitLiteral_physical(ctx.literal_physical())
+            self._attach_range_to_param(param, range_)
+            return param
+
+        elif group_ctx := ctx.arithmetic_group():
+            assert isinstance(group_ctx, ap.Arithmetic_groupContext)
+            return self.visitArithmetic_expression(group_ctx.arithmetic_expression())
+
+        raise ValueError(f"Unhandled atom type {ctx}")
 
     def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> fab_param.Range:
-        range_ = PhysicalValuesMixin.visitLiteral_physical(self, ctx)
-        return fab_param.Range(range_)
+        return PhysicalValuesMixin.visitLiteral_physical(self, ctx)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """
