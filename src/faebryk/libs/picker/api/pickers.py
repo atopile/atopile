@@ -30,9 +30,9 @@ class StaticApiPartPicker(StaticPartPicker):
     def _find_parts(self, module: Module, solver: Solver) -> list[Component]:
         match self.mfr, self.mfr_pn, self.lcsc_pn:
             case (mfr, mfr_pn, None) if mfr is not None and mfr_pn is not None:
-                return [picker_lib.find_component_by_mfr(mfr, mfr_pn, solver)]
+                return [picker_lib._find_component_by_mfr(mfr, mfr_pn)]
             case (None, None, lcsc_pn) if lcsc_pn is not None:
-                return [picker_lib.find_component_by_lcsc_id(lcsc_pn, solver)]
+                return [picker_lib._find_component_by_lcsc_id(lcsc_pn)]
             case (None, None, None):
                 raise PickError("No parameters provided", module)
         return []

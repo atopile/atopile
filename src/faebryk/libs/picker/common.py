@@ -5,6 +5,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import StrEnum
+from textwrap import indent
 from typing import TYPE_CHECKING, Iterable
 
 import faebryk.library._F as F
@@ -13,17 +14,17 @@ from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Pred
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES, e_series_intersect
 from faebryk.libs.library import L
-from faebryk.libs.picker.lcsc import attach
+from faebryk.libs.picker.lcsc import LCSC_NoDataException, LCSC_PinmapException, attach
 from faebryk.libs.picker.picker import (
     PickError,
     has_part_picked,
     has_part_picked_defined,
 )
 from faebryk.libs.units import Quantity, to_si_str
-from faebryk.libs.util import ConfigFlagEnum
+from faebryk.libs.util import ConfigFlagEnum, cast_assert
 
 if TYPE_CHECKING:
-    from faebryk.libs.picker.jlcpcb.jlcpcb import Component
+    from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
 
 logger = logging.getLogger(__name__)
 
@@ -176,3 +177,107 @@ def generate_si_values(
     ]
 
     return si_vals
+
+
+def try_attach(
+    module: Module,
+    parts: Iterable["Component"],
+    mapping: list["MappingParameterDB"],
+    qty: int,
+):
+    # TODO remove ignore_exceptions
+    # was used to handle TBDs
+
+    failures = []
+    for c in parts:
+        try:
+            c.attach(module, mapping, qty, ignore_exceptions=False)
+            return
+        except (ValueError, Component.ParseError) as e:
+            failures.append((c, e))
+        except LCSC_NoDataException as e:
+            failures.append((c, e))
+        except LCSC_PinmapException as e:
+            failures.append((c, e))
+
+    if failures:
+        fail_str = indent(
+            "\n" + f"{'\n'.join(f'{c}: {e}' for c, e in failures)}", " " * 4
+        )
+
+        raise PickError(
+            f"Failed to attach any components to module {module}: {len(failures)}"
+            f" {fail_str}",
+            module,
+        )
+
+    raise PickError(
+        "No components found that match the parameters and that can be attached",
+        module,
+    )
+
+
+def check_compatible_parameters(
+    module: Module, c: "Component", mapping: list["MappingParameterDB"], solver: Solver
+) -> bool:
+    """
+    Check if the parameters of a component are compatible with the module
+    """
+    # Nothing to check
+    if not mapping:
+        return True
+
+    range_mapping, exceptions = c.get_literal_for_mappings(mapping)
+
+    if exceptions:  # TODO
+        return False
+
+    param_mapping = [
+        (
+            cast_assert(ParameterOperatable, getattr(module, m.param_name)),
+            c_range,
+        )
+        for m, c_range in range_mapping.items()
+    ]
+
+    known_incompatible = False
+
+    # check for any param that has few supersets whether the component's range
+    # is compatible already instead of waiting for the solver
+    for m_param, c_range in param_mapping:
+        if not solver.inspect_known_supersets_are_few(m_param):
+            continue
+
+        known_superset = L.Ranges(*solver.inspect_get_known_superranges(m_param))
+        if not known_superset.is_superset_of(L.Ranges(c_range)):
+            known_incompatible = True
+            break
+
+    # check for every param whether the candidate component's range is
+    # compatible by querying the solver
+    if not known_incompatible:
+        anded = True
+        for m_param, c_range in param_mapping:
+            anded &= m_param.operation_is_superset(c_range)
+
+        result = solver.assert_any_predicate([(anded, None)], lock=False)
+        if not result.true_predicates:
+            known_incompatible = True
+
+    # debug
+    if known_incompatible:
+        logger.debug(
+            f"Component {c.lcsc} doesn't match: "
+            f"{[p for p, v in range_mapping.items()]}"
+        )
+        return False
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"Found part {c.lcsc:8} "
+            f"Basic: {bool(c.basic)}, Preferred: {bool(c.preferred)}, "
+            f"Price: ${c.get_price(1):2.4f}, "
+            f"{c.description:15},"
+        )
+
+    return True

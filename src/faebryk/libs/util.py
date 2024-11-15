@@ -1381,3 +1381,25 @@ def consume(iter: Iterable, n: int) -> list:
     assert n >= 0
     out = list(itertools.islice(iter, n))
     return out if len(out) == n else []
+
+
+def closest_base_class(cls: type, base_classes: list[type]) -> type:
+    """
+    Find the most specific (closest) base class from a list of potential base classes.
+
+    Args:
+        cls: The class to find the closest base class for
+        base_classes: List of potential base classes to check
+
+    Returns:
+        The most specific base class from the list that cls inherits from
+
+    Raises:
+        ValueError: If cls doesn't inherit from any of the base classes
+    """
+    # Get all base classes in method resolution order (most specific first)
+    mro = cls.__mro__
+
+    # Find the first (most specific) base class that appears in the provided list
+    sort = sorted(base_classes, key=lambda x: mro.index(x))
+    return sort[0]

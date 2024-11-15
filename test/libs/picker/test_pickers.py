@@ -19,6 +19,7 @@ from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.picker import has_part_picked, pick_part_recursively
+from faebryk.libs.util import groupby
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -55,17 +56,25 @@ pickers = [
 ]
 
 
+def _make_id(p: PickerTestCase, m: ComponentTestCase):
+    picker_name = p.add_pickers_fn.__name__.split("_")[1]
+    if m.override_test_name:
+        module_name = m.override_test_name
+    else:
+        module_name = type(m.module).__name__
+        gouped_by_type = groupby(components_to_test, lambda c: type(c.module))
+        group_for_module = gouped_by_type[type(m.module)]
+        if len(group_for_module) > 1:
+            module_name += f"[{group_for_module.index(m)}]"
+
+    return f"{picker_name}-{module_name}"
+
+
 @pytest.mark.skipif(components_to_test is None, reason="Failed to load components")
 @pytest.mark.parametrize(
     "case,picker",
     [(m, p) for p in pickers for m in components_to_test],
-    ids=[
-        f"{p.add_pickers_fn.__name__.split('_')[1]}"
-        "-"
-        f"{type(m.module).__name__}[{components_to_test.index(m)}]"
-        for p in pickers
-        for m in components_to_test
-    ],
+    ids=[_make_id(p, m) for p in pickers for m in components_to_test],
 )
 def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
     picker.check_skip()

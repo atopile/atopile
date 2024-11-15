@@ -3,32 +3,30 @@
 
 import logging
 import re
-from typing import Callable, Type
+from typing import Callable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Numbers, Parameter
 from faebryk.core.solver import Solver
-from faebryk.libs.e_series import E_SERIES, E_SERIES_VALUES
+from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.picker.api.api import (
     CapacitorParams,
     DiodeParams,
-    FootprintCandidate,
     InductorParams,
     LDOParams,
     LEDParams,
     MOSFETParams,
     ResistorParams,
     TVSParams,
+    api_filter_by_module_params_and_attach,
+    api_generate_si_values,
     get_api_client,
-    try_attach,
+    get_footprint_candidates,
 )
 
 # re-use the existing model for components from the jlcparts dataset, but as the data
 # schema diverges over time we'll migrate this to separate models
-from faebryk.libs.picker.common import SIvalue, generate_si_values
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
-from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
 from faebryk.libs.picker.picker import DescriptiveProperties, PickError
 from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
@@ -40,7 +38,7 @@ client = get_api_client()
 qty: int = 1
 
 
-def find_component_by_lcsc_id(lcsc_id: str, solver: Solver) -> Component:
+def _find_component_by_lcsc_id(lcsc_id: str) -> Component:
     def extract_numeric_id(lcsc_id: str) -> int:
         match = re.match(r"C(\d+)", lcsc_id)
         if match is None:
@@ -60,38 +58,7 @@ def find_component_by_lcsc_id(lcsc_id: str, solver: Solver) -> Component:
     return next(iter(parts))
 
 
-def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
-    """
-    Find a part by LCSC part number
-    """
-    if not module.has_trait(F.has_descriptive_properties):
-        raise PickError("Module does not have any descriptive properties", module)
-    if "LCSC" not in module.get_trait(F.has_descriptive_properties).get_properties():
-        raise PickError("Module does not have an LCSC part number", module)
-
-    lcsc_pn = module.get_trait(F.has_descriptive_properties).get_properties()["LCSC"]
-
-    # TODO: pass through errors from API
-    try:
-        part = find_component_by_lcsc_id(lcsc_pn, solver)
-    except KeyErrorNotFound as e:
-        raise PickError(
-            f"Could not find part with LCSC part number {lcsc_pn}", module
-        ) from e
-    except KeyErrorAmbiguous as e:
-        raise PickError(
-            f"Found no exact match for LCSC part number {lcsc_pn}", module
-        ) from e
-
-    if part.stock < qty:
-        raise PickError(
-            f"Part with LCSC part number {lcsc_pn} has insufficient stock",
-            module,
-        )
-    part.attach(module, [])
-
-
-def find_component_by_mfr(mfr: str, mfr_pn: str, solver: Solver) -> Component:
+def _find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
     parts = client.fetch_part_by_mfr(mfr, mfr_pn)
 
     if len(parts) < 1:
@@ -107,13 +74,45 @@ def find_component_by_mfr(mfr: str, mfr_pn: str, solver: Solver) -> Component:
     return next(iter(parts))
 
 
+def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
+    """
+    Find a part by LCSC part number
+    """
+    if not module.has_trait(F.has_descriptive_properties):
+        raise PickError("Module does not have any descriptive properties", module)
+    properties = module.get_trait(F.has_descriptive_properties).get_properties()
+
+    if "LCSC" not in properties:
+        raise PickError("Module does not have an LCSC part number", module)
+
+    lcsc_pn = properties["LCSC"]
+
+    # TODO: pass through errors from API
+    try:
+        part = _find_component_by_lcsc_id(lcsc_pn)
+    except KeyErrorNotFound as e:
+        raise PickError(
+            f"Could not find part with LCSC part number {lcsc_pn}", module
+        ) from e
+    except KeyErrorAmbiguous as e:
+        raise PickError(
+            f"Found no exact match for LCSC part number {lcsc_pn}", module
+        ) from e
+
+    if part.stock < qty:
+        raise PickError(
+            f"Part with LCSC part number {lcsc_pn} has insufficient stock",
+            module,
+        )
+    api_filter_by_module_params_and_attach(module, [part], solver)
+
+
 def find_and_attach_by_mfr(module: Module, solver: Solver):
     """
     Find a part by manufacturer and manufacturer part number
     """
     if not module.has_trait(F.has_descriptive_properties):
         raise PickError("Module does not have any descriptive properties", module)
-
     properties = module.get_trait(F.has_descriptive_properties).get_properties()
 
     if DescriptiveProperties.manufacturer not in properties:
@@ -126,7 +125,7 @@ def find_and_attach_by_mfr(module: Module, solver: Solver):
     mfr_pn = properties[DescriptiveProperties.partno]
 
     try:
-        parts = [find_component_by_mfr(mfr, mfr_pn, solver)]
+        parts = [_find_component_by_mfr(mfr, mfr_pn)]
     except KeyErrorNotFound as e:
         raise PickError(
             f"Could not find part with manufacturer part number {mfr_pn}", module
@@ -134,56 +133,7 @@ def find_and_attach_by_mfr(module: Module, solver: Solver):
     except KeyErrorAmbiguous as e:
         parts = e.duplicates
 
-    for part in parts:
-        try:
-            part.attach(module, [])
-            return
-        except ValueError as e:
-            logger.warning(f"Failed to attach component: {e}")
-            continue
-
-    raise PickError(
-        f"Could not attach any part with manufacturer part number {mfr_pn}", module
-    )
-
-
-def _filter_by_module_params_and_attach(
-    cmp: Module, component_type: Type[Module], parts: list[Component]
-):
-    """
-    Find a component with matching parameters
-    """
-    mapping = _MAPPINGS_BY_TYPE[component_type]
-
-    if not try_attach(cmp, parts, mapping, qty):
-        raise PickError(
-            "No components found that match the parameters and that can be attached",
-            cmp,
-        )
-
-
-def _get_footprint_candidates(module: Module) -> list[FootprintCandidate]:
-    if module.has_trait(F.has_footprint_requirement):
-        return [
-            FootprintCandidate(footprint, pin_count)
-            for footprint, pin_count in module.get_trait(
-                F.has_footprint_requirement
-            ).get_footprint_requirement()
-        ]
-    return []
-
-
-def _generate_si_values(
-    value: Parameter, solver: Solver, e_series: E_SERIES | None = None
-) -> list[SIvalue]:
-    if not isinstance(value.domain, Numbers):
-        raise NotImplementedError(f"Parameter {value} is not a number")
-
-    if not solver.inspect_known_supersets_are_few(value):
-        raise NotImplementedError(f"Parameter {value} has too many known supersets")
-
-    candidate_ranges = solver.inspect_get_known_superranges(value)
-    return generate_si_values(candidate_ranges, e_series=e_series)
+    api_filter_by_module_params_and_attach(module, parts, solver)
 
 
 def find_resistor(cmp: Module, solver: Solver):
@@ -195,15 +145,15 @@ def find_resistor(cmp: Module, solver: Solver):
 
     parts = client.fetch_resistors(
         ResistorParams(
-            resistances=_generate_si_values(
+            resistances=api_generate_si_values(
                 cmp.resistance, solver, E_SERIES_VALUES.E96
             ),
-            footprint_candidates=_get_footprint_candidates(cmp),
+            footprint_candidates=get_footprint_candidates(cmp),
             qty=qty,
         ),
     )
 
-    _filter_by_module_params_and_attach(cmp, F.Resistor, parts)
+    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_capacitor(cmp: Module, solver: Solver):
@@ -215,15 +165,15 @@ def find_capacitor(cmp: Module, solver: Solver):
 
     parts = client.fetch_capacitors(
         CapacitorParams(
-            capacitances=_generate_si_values(
+            capacitances=api_generate_si_values(
                 cmp.capacitance, solver, E_SERIES_VALUES.E24
             ),
-            footprint_candidates=_get_footprint_candidates(cmp),
+            footprint_candidates=get_footprint_candidates(cmp),
             qty=qty,
         ),
     )
 
-    _filter_by_module_params_and_attach(cmp, F.Capacitor, parts)
+    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_inductor(cmp: Module, solver: Solver):
@@ -235,15 +185,15 @@ def find_inductor(cmp: Module, solver: Solver):
 
     parts = client.fetch_inductors(
         InductorParams(
-            inductances=_generate_si_values(
+            inductances=api_generate_si_values(
                 cmp.inductance, solver, E_SERIES_VALUES.E24
             ),
-            footprint_candidates=_get_footprint_candidates(cmp),
+            footprint_candidates=get_footprint_candidates(cmp),
             qty=qty,
         ),
     )
 
-    _filter_by_module_params_and_attach(cmp, F.Inductor, parts)
+    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_tvs(cmp: Module, solver: Solver):
@@ -254,10 +204,10 @@ def find_tvs(cmp: Module, solver: Solver):
         raise PickError("Module is not a TVS diode", cmp)
 
     parts = client.fetch_tvs(
-        TVSParams(footprint_candidates=_get_footprint_candidates(cmp), qty=qty),
+        TVSParams(footprint_candidates=get_footprint_candidates(cmp), qty=qty),
     )
 
-    _filter_by_module_params_and_attach(cmp, F.TVS, parts)
+    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_diode(cmp: Module, solver: Solver):
@@ -269,18 +219,18 @@ def find_diode(cmp: Module, solver: Solver):
 
     parts = client.fetch_diodes(
         DiodeParams(
-            max_currents=_generate_si_values(
+            max_currents=api_generate_si_values(
                 cmp.max_current, solver, E_SERIES_VALUES.E3
             ),
-            reverse_working_voltages=_generate_si_values(
+            reverse_working_voltages=api_generate_si_values(
                 cmp.reverse_working_voltage, solver, E_SERIES_VALUES.E3
             ),
-            footprint_candidates=_get_footprint_candidates(cmp),
+            footprint_candidates=get_footprint_candidates(cmp),
             qty=qty,
         ),
     )
 
-    _filter_by_module_params_and_attach(cmp, F.Diode, parts)
+    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_led(cmp: Module, solver: Solver):
@@ -291,10 +241,10 @@ def find_led(cmp: Module, solver: Solver):
         raise PickError("Module is not an LED", cmp)
 
     parts = client.fetch_leds(
-        LEDParams(footprint_candidates=_get_footprint_candidates(cmp), qty=qty)
+        LEDParams(footprint_candidates=get_footprint_candidates(cmp), qty=qty)
     )
 
-    _filter_by_module_params_and_attach(cmp, F.LED, parts)
+    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_mosfet(cmp: Module, solver: Solver):
@@ -306,10 +256,10 @@ def find_mosfet(cmp: Module, solver: Solver):
         raise PickError("Module is not a MOSFET", cmp)
 
     parts = client.fetch_mosfets(
-        MOSFETParams(footprint_candidates=_get_footprint_candidates(cmp), qty=qty)
+        MOSFETParams(footprint_candidates=get_footprint_candidates(cmp), qty=qty)
     )
 
-    _filter_by_module_params_and_attach(cmp, F.MOSFET, parts)
+    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_ldo(cmp: Module, solver: Solver):
@@ -321,10 +271,10 @@ def find_ldo(cmp: Module, solver: Solver):
         raise PickError("Module is not a LDO", cmp)
 
     parts = client.fetch_ldos(
-        LDOParams(footprint_candidates=_get_footprint_candidates(cmp), qty=qty)
+        LDOParams(footprint_candidates=get_footprint_candidates(cmp), qty=qty)
     )
 
-    _filter_by_module_params_and_attach(cmp, F.LDO, parts)
+    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 TYPE_SPECIFIC_LOOKUP: dict[type[Module], Callable[[Module, Solver], None]] = {

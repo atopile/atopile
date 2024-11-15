@@ -19,6 +19,7 @@ class ComponentTestCase:
     module: Module
     footprint: list[tuple[str, int]]
     descriptive_properties: dict[str, str] = field(default_factory=dict)
+    override_test_name: str | None = None
 
     def __post_init__(self):
         if self.descriptive_properties:
@@ -45,6 +46,7 @@ mfr_parts = [
             DescriptiveProperties.partno: "LMV321IDBVR",
             DescriptiveProperties.manufacturer: "Texas Instruments",
         },
+        override_test_name="MFR_TI_LMV321IDBVR",
     )
 ]
 
@@ -63,6 +65,7 @@ lcsc_id_parts = [
         ),
         footprint=[("SOT-23-5", 5)],
         descriptive_properties={"LCSC": "C7972"},
+        override_test_name="LCSC_ID_C7972",
     )
 ]
 

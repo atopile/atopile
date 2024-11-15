@@ -9,7 +9,7 @@ import math
 import os
 import struct
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import indent
 from typing import Any, Callable, Generator, Self, Sequence
@@ -37,17 +37,16 @@ from faebryk.libs.library import L
 from faebryk.libs.picker.common import (
     PickerESeriesIntersectionError,
     PickerUnboundedParameterError,
+    check_compatible_parameters,
     generate_si_values,
+    try_attach,
 )
 from faebryk.libs.picker.lcsc import (
-    LCSC_NoDataException,
     LCSC_Part,
-    LCSC_PinmapException,
     attach,
 )
 from faebryk.libs.picker.picker import (
     DescriptiveProperties,
-    PickError,
     has_part_picked_defined,
 )
 from faebryk.libs.units import (
@@ -55,7 +54,7 @@ from faebryk.libs.units import (
     Quantity,
     UndefinedUnitError,
 )
-from faebryk.libs.util import at_exit, cast_assert, once
+from faebryk.libs.util import at_exit, once
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +73,7 @@ class JLCPCB_Part(LCSC_Part):
 @dataclass(frozen=True)
 class MappingParameterDB:
     param_name: str
-    attr_keys: list[str]
+    attr_keys: list[str] = field(hash=False)
     attr_tolerance_key: str | None = None
     transform_fn: Callable[[str], ParameterOperatable.Literal] | None = None
     ignore_at: bool = True
@@ -336,7 +335,7 @@ class Component(Model):
         for m in mapping:
             try:
                 params[m] = self.get_literal(m)
-            except LookupError | ValueError | AssertionError as e:
+            except (LookupError, ValueError, AssertionError) as e:
                 exceptions[m] = e
         return params, exceptions
 
@@ -587,62 +586,8 @@ class ComponentQuery:
 
         # iterate through all candidate components
         for c in self.get():
-            range_mapping, exceptions = c.get_literal_for_mappings(mapping)
-
-            if exceptions:  # TODO
-                continue
-
-            param_mapping = [
-                (
-                    cast_assert(ParameterOperatable, getattr(module, m.param_name)),
-                    c_range,
-                )
-                for m, c_range in range_mapping.items()
-            ]
-
-            known_incompatible = False
-
-            # check for any param that has few supersets whether the component's range
-            # is compatible already instead of waiting for the solver
-            for m_param, c_range in param_mapping:
-                if not solver.inspect_known_supersets_are_few(m_param):
-                    continue
-
-                known_superset = L.Ranges(
-                    *solver.inspect_get_known_superranges(m_param)
-                )
-                if not known_superset.is_superset_of(L.Ranges(c_range)):
-                    known_incompatible = True
-                    break
-
-            # check for every param whether the candidate component's range is
-            # compatible by querying the solver
-            if not known_incompatible:
-                anded = True
-                for m_param, c_range in param_mapping:
-                    anded &= m_param.operation_is_superset(c_range)
-
-                result = solver.assert_any_predicate([(anded, None)], lock=False)
-                if not result.true_predicates:
-                    known_incompatible = True
-
-            # debug
-            if known_incompatible:
-                logger.debug(
-                    f"Component {c.lcsc} doesn't match: "
-                    f"{[p for p, v in range_mapping.items()]}"
-                )
-                continue
-
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"Found part {c.lcsc:8} "
-                    f"Basic: {bool(c.basic)}, Preferred: {bool(c.preferred)}, "
-                    f"Price: ${c.get_price(1):2.4f}, "
-                    f"{c.description:15},"
-                )
-
-            yield c
+            if check_compatible_parameters(module, c, mapping, solver):
+                yield c
 
     def filter_by_module_params_and_attach(
         self,
@@ -651,35 +596,11 @@ class ComponentQuery:
         solver: Solver,
         qty: int = 1,
     ):
-        # TODO remove ignore_exceptions
-        # was used to handle TBDs
-
-        failures = []
-        for c in self.filter_by_module_params(module, mapping, solver):
-            try:
-                c.attach(module, mapping, qty, ignore_exceptions=False)
-                return self
-            except (ValueError, Component.ParseError) as e:
-                failures.append((c, e))
-            except LCSC_NoDataException as e:
-                failures.append((c, e))
-            except LCSC_PinmapException as e:
-                failures.append((c, e))
-
-        if failures:
-            fail_str = indent(
-                "\n" + f"{'\n'.join(f'{c}: {e}' for c, e in failures)}", " " * 4
-            )
-
-            raise PickError(
-                f"Failed to attach any components to module {module}: {len(failures)}"
-                f" {fail_str}",
-                module,
-            )
-
-        raise PickError(
-            "No components found that match the parameters and that can be attached",
+        try_attach(
             module,
+            self.filter_by_module_params(module, mapping, solver),
+            mapping,
+            qty,
         )
 
 

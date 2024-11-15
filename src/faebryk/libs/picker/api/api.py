@@ -4,22 +4,32 @@
 import functools
 import json
 import logging
-import textwrap
 from dataclasses import dataclass
-from typing import Iterable
 
 import requests
 from dataclasses_json import dataclass_json
-from pint import DimensionalityError
 
 from faebryk.core.module import Module
 
 # TODO: replace with API-specific data model
-from faebryk.libs.picker.common import SIvalue
-from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
-from faebryk.libs.picker.lcsc import LCSC_NoDataException, LCSC_PinmapException
-from faebryk.libs.picker.picker import PickError
-from faebryk.libs.util import ConfigFlagString, try_or
+from faebryk.core.parameter import Numbers, Parameter
+from faebryk.core.solver import Solver
+from faebryk.libs.e_series import E_SERIES
+from faebryk.libs.picker.common import (
+    SIvalue,
+    check_compatible_parameters,
+    generate_si_values,
+    try_attach,
+)
+from faebryk.libs.picker.jlcpcb.jlcpcb import Component
+from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
+from faebryk.libs.util import (
+    ConfigFlagString,
+    KeyErrorAmbiguous,
+    KeyErrorNotFound,
+    closest_base_class,
+    find,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,63 +56,54 @@ class ApiHTTPError(ApiError):
         return f"{super().__str__()}: {status_code} {detail}"
 
 
-def check_compatible_parameters(
-    module: Module, component: Component, mapping: list[MappingParameterDB]
-) -> bool:
+def api_filter_by_module_params_and_attach(
+    cmp: Module, parts: list[Component], solver: Solver
+):
     """
-    Check if the parameters of a component are compatible with the module
+    Find a component with matching parameters
     """
-    # TODO: serialize the module and check compatibility in the backend
+    try:
+        mapping = find(_MAPPINGS_BY_TYPE.items(), lambda m: isinstance(cmp, m[0]))[1]
+    except KeyErrorAmbiguous as e:
+        mapping = _MAPPINGS_BY_TYPE[
+            closest_base_class(type(cmp), [k for k, _ in e.duplicates])
+        ]
+    except KeyErrorNotFound:
+        mapping = []
 
-    params = component.get_params(mapping)
-    param_matches = [
-        try_or(
-            lambda: p.is_subset_of(getattr(module, m.param_name)),
-            default=False,
-            catch=DimensionalityError,
-        )
-        for p, m in zip(params, mapping)
-    ]
+    parts_gen = (
+        part
+        for part in parts
+        if check_compatible_parameters(cmp, part, mapping, solver)
+    )
 
-    if not (is_compatible := all(param_matches)):
-        logger.debug(
-            f"Component {component.lcsc} doesn't match: "
-            f"{[p for p, v in zip(params, param_matches) if not v]}"
-        )
-
-    return is_compatible
+    try_attach(cmp, parts_gen, mapping, qty=1)
 
 
-def try_attach(
-    cmp: Module, parts: Iterable[Component], mapping: list[MappingParameterDB], qty: int
-) -> bool:
-    failures = []
-    for part in parts:
-        if not check_compatible_parameters(cmp, part, mapping):
-            continue
+def get_footprint_candidates(module: Module) -> list["FootprintCandidate"]:
+    import faebryk.library._F as F
 
-        try:
-            part.attach(cmp, mapping, qty)
-            return True
-        except (ValueError, Component.ParseError) as e:
-            failures.append((part, e))
-        except LCSC_NoDataException as e:
-            failures.append((part, e))
-        except LCSC_PinmapException as e:
-            failures.append((part, e))
+    if module.has_trait(F.has_footprint_requirement):
+        return [
+            FootprintCandidate(footprint, pin_count)
+            for footprint, pin_count in module.get_trait(
+                F.has_footprint_requirement
+            ).get_footprint_requirement()
+        ]
+    return []
 
-    if failures:
-        fail_str = textwrap.indent(
-            "\n" + f"{'\n'.join(f'{c}: {e}' for c, e in failures)}", " " * 4
-        )
 
-        raise PickError(
-            f"Failed to attach any components to module {cmp}: {len(failures)}"
-            f" {fail_str}",
-            cmp,
-        )
+def api_generate_si_values(
+    value: Parameter, solver: Solver, e_series: E_SERIES | None = None
+) -> list[SIvalue]:
+    if not isinstance(value.domain, Numbers):
+        raise NotImplementedError(f"Parameter {value} is not a number")
 
-    return False
+    if not solver.inspect_known_supersets_are_few(value):
+        raise NotImplementedError(f"Parameter {value} has too many known supersets")
+
+    candidate_ranges = solver.inspect_get_known_superranges(value)
+    return generate_si_values(candidate_ranges, e_series=e_series)
 
 
 @dataclass_json
