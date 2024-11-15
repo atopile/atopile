@@ -795,8 +795,11 @@ def remove_obvious_tautologies(
         pred_is = cast(Is, pred_is)
         left = pred_is.operands[0]
         right = pred_is.operands[1]
+        left_const = not isinstance(left, ParameterOperatable)
+        right_const = not isinstance(right, ParameterOperatable)
         if (
-            left is right  # TODO obv eq
+            left is right
+            or (left_const and right_const and left == right)  # TODO obv eq
             and not has_implicit_constraints_recursive(left)
             and not has_implicit_constraints_recursive(right)
         ):
