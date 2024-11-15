@@ -28,7 +28,7 @@ from faebryk.core.parameter import (
     has_implicit_constraints_recursive,
 )
 from faebryk.core.solver import Solver
-from faebryk.libs.sets import Range, Ranges
+from faebryk.libs.sets import P_Set, Range, Ranges
 from faebryk.libs.units import HasUnit, Quantity, dimensionless
 from faebryk.libs.util import EquivalenceClasses, unique_ref
 
@@ -381,7 +381,8 @@ def subset_of_literal(
             e
             for e in param.get_operations()
             if isinstance(e, IsSubset)
-            # FIXME should just be constrained ones, then considere which ones can be removed
+            # FIXME should just be constrained ones, then considere which ones
+            # can be removed
             and len(e.get_operations()) == 0
             and not isinstance(e.get_other_operand(param), ParameterOperatable)
         ]
@@ -962,4 +963,34 @@ class DefaultSolver(Solver):
         raise NotImplementedError()
 
     def find_and_lock_solution(self, G: Graph) -> Solver.SolveResultAll:
+        raise NotImplementedError()
+
+    # TODO implement
+    def inspect_known_min(
+        self, value: ParameterOperatable.NumberLike
+    ) -> ParameterOperatable.Number:
+        raise NotImplementedError()
+
+    def inspect_known_max(
+        self, value: ParameterOperatable.NumberLike
+    ) -> ParameterOperatable.Number:
+        raise NotImplementedError()
+
+    def inspect_known_values(
+        self, value: ParameterOperatable.BooleanLike
+    ) -> P_Set[bool]:
+        raise NotImplementedError()
+
+    # Could be exponentially many
+    def inspect_known_supersets_are_few(self, value: ParameterOperatable.Sets) -> bool:
+        raise NotImplementedError()
+
+    def inspect_get_known_supersets(
+        self, value: ParameterOperatable.Sets
+    ) -> Iterable[P_Set]:
+        raise NotImplementedError()
+
+    def inspect_get_known_superranges(
+        self, value: ParameterOperatable.NumberLike
+    ) -> Iterable[Ranges]:
         raise NotImplementedError()

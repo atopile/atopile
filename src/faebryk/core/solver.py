@@ -3,7 +3,7 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Iterable, Protocol
 
 from faebryk.core.graph import Graph
 from faebryk.core.parameter import (
@@ -11,6 +11,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
+from faebryk.libs.sets import P_Set, Ranges
 
 logger = logging.getLogger(__name__)
 
@@ -97,3 +98,28 @@ class Solver(Protocol):
 
     # run deferred work
     def find_and_lock_solution(self, G: Graph) -> SolveResultAll: ...
+
+    def inspect_known_min(
+        self, value: ParameterOperatable.NumberLike
+    ) -> ParameterOperatable.Number: ...
+
+    def inspect_known_max(
+        self, value: ParameterOperatable.NumberLike
+    ) -> ParameterOperatable.Number: ...
+
+    def inspect_known_values(
+        self, value: ParameterOperatable.BooleanLike
+    ) -> P_Set[bool]: ...
+
+    # Could be exponentially many
+    def inspect_known_supersets_are_few(
+        self, value: ParameterOperatable.Sets
+    ) -> bool: ...
+
+    def inspect_get_known_supersets(
+        self, value: ParameterOperatable.Sets
+    ) -> Iterable[P_Set]: ...
+
+    def inspect_get_known_superranges(
+        self, value: ParameterOperatable.NumberLike
+    ) -> Iterable[Ranges]: ...

@@ -200,19 +200,6 @@ class ParameterOperatable(Node):
     def operation_is_superset(self, other: Sets):
         return IsSuperset(left=self, right=other)
 
-    # TODO implement
-    def inspect_known_min(self: NumberLike) -> Number:
-        return HasUnit.get_units_or_dimensionless(self) * float("-inf")
-        # raise NotImplementedError()
-
-    def inspect_known_max(self: NumberLike) -> Number:
-        return HasUnit.get_units_or_dimensionless(self) * float("inf")
-        # raise NotImplementedError()
-
-    def inspect_known_values(self: BooleanLike) -> P_Set[bool]:
-        raise Exception("not implemented")
-        # raise NotImplementedError()
-
     # Run by the solver on finalization
     inspect_solution: Callable[[Self], None] = lambda _: None
 
@@ -224,16 +211,6 @@ class ParameterOperatable(Node):
             fun(self2)
 
         self.inspect_solution = new
-
-    # Could be exponentially many
-    def inspect_known_supersets_are_few(self) -> bool:
-        raise Exception("not implemented")
-
-    def inspect_get_known_supersets(self) -> Iterable[P_Set]:
-        raise Exception("not implemented")
-
-    def inspect_get_known_superranges(self: NumberLike) -> Iterable[Ranges]:
-        raise Exception("not implemented")
 
     # ----------------------------------------------------------------------------------
     # Generic

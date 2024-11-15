@@ -24,7 +24,7 @@ from tortoise.models import Model
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import ParameterOperatable
+from faebryk.core.parameter import ParameterOperableHasNoLiteral, ParameterOperatable
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import (
     E_SERIES,
@@ -42,7 +42,12 @@ from faebryk.libs.picker.picker import (
     PickError,
     has_part_picked_defined,
 )
-from faebryk.libs.units import P, Quantity, UndefinedUnitError, to_si_str
+from faebryk.libs.units import (
+    P,
+    Quantity,
+    UndefinedUnitError,
+    to_si_str,
+)
 from faebryk.libs.util import at_exit, cast_assert, once
 
 logger = logging.getLogger(__name__)
@@ -430,7 +435,6 @@ class ComponentQuery:
     def filter_by_si_values(
         self,
         value: L.Ranges[Quantity],
-        si_unit: str,
         e_series: E_SERIES | None = None,
         tolerance_requirement: float | None = None,
     ) -> Self:
@@ -442,6 +446,7 @@ class ComponentQuery:
         intersection = e_series_intersect(value, e_series)
         if intersection.is_empty():
             raise ComponentQuery.ParamError(value, "No intersection with E-series")
+        si_unit = value.units
         si_vals = [
             to_si_str(r.min_elem(), si_unit).replace("µ", "u").replace("inf", "∞")
             for r in intersection
@@ -452,8 +457,17 @@ class ComponentQuery:
         return self.filter_by_description(*si_vals)
 
     def hint_filter_parameter(
-        self, param: ParameterOperatable, si_unit: str, e_series: E_SERIES | None = None
+        self,
+        param: ParameterOperatable,
+        solver: Solver,
+        e_series: E_SERIES | None = None,
     ) -> Self:
+        try:
+            lit = param.get_literal()
+            return self.filter_by_si_values(lit, e_series)
+        except ParameterOperableHasNoLiteral:
+            pass
+
         # TODO implement
         # param will in the general case consist of multiple ranges
         # we have to pick some range or make a new one to pre_filter our candidates
@@ -586,10 +600,12 @@ class ComponentQuery:
             # check for any param that has few supersets whether the component's range
             # is compatible already instead of waiting for the solver
             for m_param, c_range in param_mapping:
-                if not m_param.inspect_known_supersets_are_few():
+                if not solver.inspect_known_supersets_are_few(m_param):
                     continue
 
-                known_superset = L.Ranges(*m_param.inspect_get_known_superranges())
+                known_superset = L.Ranges(
+                    *solver.inspect_get_known_superranges(m_param)
+                )
                 if not known_superset.is_superset_of(L.Ranges(c_range)):
                     known_incompatible = True
                     break
