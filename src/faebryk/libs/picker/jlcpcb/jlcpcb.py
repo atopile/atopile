@@ -64,7 +64,7 @@ class MappingParameterDB:
     param_name: str
     attr_keys: list[str]
     attr_tolerance_key: str | None = None
-    transform_fn: Callable[[str], L.Range] | None = None
+    transform_fn: Callable[[str], ParameterOperatable.Literal] | None = None
     ignore_at: bool = True
 
 
@@ -257,7 +257,7 @@ class Component(Model):
 
         return L.Range.from_center_rel(value, tolerance)
 
-    def get_range(self, m: MappingParameterDB) -> L.Range[Quantity]:
+    def get_literal(self, m: MappingParameterDB) -> ParameterOperatable.Literal:
         """
         Transform a component attribute to a parameter
 
@@ -313,16 +313,17 @@ class Component(Model):
             attr_key, tolerance_search_key is not None, m.ignore_at
         )
 
-    def get_range_for_mappings(
+    def get_literal_for_mappings(
         self, mapping: list[MappingParameterDB]
     ) -> tuple[
-        dict[MappingParameterDB, L.Range[Quantity]], dict[MappingParameterDB, Exception]
+        dict[MappingParameterDB, ParameterOperatable.Literal],
+        dict[MappingParameterDB, Exception],
     ]:
         params = {}
         exceptions = {}
         for m in mapping:
             try:
-                params[m] = self.get_range(m)
+                params[m] = self.get_literal(m)
             except LookupError | ValueError | AssertionError as e:
                 exceptions[m] = e
         return params, exceptions
@@ -334,7 +335,7 @@ class Component(Model):
         qty: int = 1,
         ignore_exceptions: bool = False,
     ):
-        params, exceptions = self.get_range_for_mappings(mapping)
+        params, exceptions = self.get_literal_for_mappings(mapping)
 
         if not ignore_exceptions and exceptions:
             params_str = indent(
@@ -567,7 +568,7 @@ class ComponentQuery:
 
         # iterate through all candidate components
         for c in self.get():
-            range_mapping, exceptions = c.get_range_for_mappings(mapping)
+            range_mapping, exceptions = c.get_literal_for_mappings(mapping)
 
             if exceptions:  # TODO
                 continue
