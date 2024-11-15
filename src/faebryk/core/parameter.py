@@ -13,9 +13,19 @@ from faebryk.core.node import Node, f_field
 from faebryk.core.trait import Trait
 from faebryk.libs.sets import P_Set, Range, Ranges
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
-from faebryk.libs.util import abstract, cast_assert, find
+from faebryk.libs.util import KeyErrorNotFound, abstract, cast_assert, find
 
 logger = logging.getLogger(__name__)
+
+
+class ParameterOperableException(Exception):
+    def __init__(self, parameter: "ParameterOperatable", msg: str):
+        self.parameter = parameter
+        super().__init__(msg)
+
+
+class ParameterOperableHasNoLiteral(ParameterOperableException):
+    pass
 
 
 # When we make this generic, two types, type T of elements, and type S of known subsets
@@ -374,7 +384,12 @@ class ParameterOperatable(Node):
 
     def get_literal(self) -> Literal:
         iss = self.get_operators(Is)
-        literal_is = find(o for i in iss for o in i.get_literal_operands())
+        try:
+            literal_is = find(o for i in iss for o in i.get_literal_operands())
+        except KeyErrorNotFound:
+            raise ParameterOperableHasNoLiteral(
+                self, f"Parameter {self} has no literal"
+            )
         return literal_is
 
 

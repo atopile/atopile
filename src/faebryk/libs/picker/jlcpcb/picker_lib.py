@@ -4,7 +4,7 @@ from typing import Callable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import EnumDomain, Parameter, ParameterOperableHasNoLiteral
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.library import L
@@ -17,7 +17,8 @@ from faebryk.libs.picker.picker import (
     DescriptiveProperties,
     PickError,
 )
-from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, cast_assert
+from faebryk.libs.sets import P_Set
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -50,24 +51,22 @@ def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], L.PlainSet[T]]:
 
 
 def enum_to_str(x: Parameter, force: bool = True) -> set[str]:
-    # FIXME
-    raise NotImplementedError()
-    val = x.get_most_narrow()
-    if isinstance(val, F.Constant):
-        val = F.Set([val])
-
-    if not isinstance(val, F.Set) or not all(
-        isinstance(inner, F.Constant) for inner in val.params
-    ):
+    assert isinstance(x.domain, EnumDomain)
+    try:
+        val = x.get_literal()
+    except ParameterOperableHasNoLiteral:
         if force:
-            raise ValueError(f"Expected a constant or set of constants, got {val}")
-        else:
-            return set()
+            raise
+        return set()
 
-    return {
-        cast_assert(Enum, cast_assert(F.Constant, inner).value).name
-        for inner in val.params
-    }
+    if isinstance(val, x.domain.enum_t):
+        return {val.value}
+
+    if isinstance(val, P_Set):
+        # TODO handle sets
+        raise NotImplementedError()
+
+    raise ValueError(f"Expected an enum, got {val}")
 
 
 _MAPPINGS_BY_TYPE: dict[type[Module], list[MappingParameterDB]] = {
@@ -501,8 +500,7 @@ def find_led(cmp: Module, solver: Solver):
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
-        # TODO
-        # .filter_by_attribute_mention(list(enum_to_str(cmp.color, force=False)))
+        .filter_by_attribute_mention(list(enum_to_str(cmp.color, force=False)))
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )

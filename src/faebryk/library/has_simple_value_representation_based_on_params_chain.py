@@ -4,10 +4,16 @@
 from dataclasses import dataclass
 
 import faebryk.library._F as F
-from faebryk.core.parameter import Boolean, EnumDomain, Numbers, Parameter
+from faebryk.core.parameter import (
+    Boolean,
+    EnumDomain,
+    Numbers,
+    Parameter,
+    ParameterOperableHasNoLiteral,
+)
 from faebryk.libs.sets import P_Set, Range
 from faebryk.libs.units import Quantity, Unit, to_si_str
-from faebryk.libs.util import KeyErrorNotFound, join_if_non_empty
+from faebryk.libs.util import join_if_non_empty
 
 
 class has_simple_value_representation_based_on_params_chain(
@@ -32,7 +38,7 @@ class has_simple_value_representation_based_on_params_chain(
         def _get_value(self) -> str:
             try:
                 value = self.param.get_literal()
-            except KeyErrorNotFound:
+            except ParameterOperableHasNoLiteral:
                 if self.default is not None:
                     return self.default
                 raise
