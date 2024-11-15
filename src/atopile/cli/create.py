@@ -82,7 +82,9 @@ def create(
     """
     Create a new ato project or build configuration.
     """
-    type = rich.prompt.Prompt.ask("What do you want to create", choices=["project", "build"])
+    type = rich.prompt.Prompt.ask(
+        "What do you want to create", choices=["project", "build"]
+    )
 
     if type == "build":
         create_build()
@@ -194,9 +196,9 @@ def create(
         try:
             robustly_rm_dir(repo_obj.git_dir)
         except (PermissionError, OSError) as ex:
-            errors.AtoError(
-                f"Failed to remove .git directory: {repr(ex)}"
-            ).log(log, logging.WARNING)
+            errors.AtoError(f"Failed to remove .git directory: {repr(ex)}").log(
+                log, logging.WARNING
+            )
         if not _in_git_repo(Path(repo_obj.working_dir).parent):
             # If we've created this project OUTSIDE an existing git repo
             # then re-init the repo so it has a clean history
@@ -210,7 +212,7 @@ def create(
         jlcpcb=False,
         link=True,
         upgrade=True,
-        path=repo_obj.working_tree_dir
+        path=repo_obj.working_tree_dir,
     )
 
     do_install(
@@ -218,7 +220,7 @@ def create(
         jlcpcb=False,
         link=False,
         upgrade=True,
-        path=repo_obj.working_tree_dir
+        path=repo_obj.working_tree_dir,
     )
 
     # Wew! New repo created!
@@ -239,21 +241,29 @@ def create_build():
         layout_path = project_context.layout_path
         src_path = project_context.src_path
     except FileNotFoundError:
-        raise errors.AtoError("Could not find the project directory, are you within an ato project?")
+        raise errors.AtoError(
+            "Could not find the project directory, are you within an ato project?"
+        )
 
     # Get user input for the entry file and module name
     rich.print("We will create a new ato file and add the entry to the ato.yaml")
-    entry = rich.prompt.Prompt.ask("What would you like to call the entry file? (e.g., psuDebug)")
+    entry = rich.prompt.Prompt.ask(
+        "What would you like to call the entry file? (e.g., psuDebug)"
+    )
 
     target_layout_path = layout_path / build_name
     with tempfile.TemporaryDirectory() as tmpdirname:
         try:
             git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname)
         except git.GitCommandError as ex:
-            raise errors.AtoError(f"Failed to clone layout template from {PROJECT_TEMPLATE}: {repr(ex)}")
+            raise errors.AtoError(
+                f"Failed to clone layout template from {PROJECT_TEMPLATE}: {repr(ex)}"
+            )
         source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
         if not source_layout_path.exists():
-            raise errors.AtoError(f"The specified layout path {source_layout_path} does not exist.")
+            raise errors.AtoError(
+                f"The specified layout path {source_layout_path} does not exist."
+            )
         else:
             target_layout_path.mkdir(parents=True, exist_ok=True)
             shutil.copytree(source_layout_path, target_layout_path, dirs_exist_ok=True)
@@ -264,7 +274,9 @@ def create_build():
         ato_yaml_path = top_level_path / config.CONFIG_FILENAME
         # Check if ato.yaml exists
         if not ato_yaml_path.exists():
-            print(f"ato.yaml not found in {top_level_path}. Please ensure the file exists before proceeding.")
+            print(
+                f"ato.yaml not found in {top_level_path}. Please ensure the file exists before proceeding."
+            )
         else:
             # Load the existing YAML configuration
             yaml = ruamel.yaml.YAML()
@@ -285,12 +297,13 @@ def create_build():
             with ato_yaml_path.open("w") as file:
                 yaml.dump(ato_config, file)
 
-
         # create a new ato file with the entry file and module
         ato_file = src_path / entry_file
         ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
 
-        rich.print(f":sparkles: Successfully created a new build configuration for {build_name}! :sparkles:")
+        rich.print(
+            f":sparkles: Successfully created a new build configuration for {build_name}! :sparkles:"
+        )
 
 
 @dev.command()

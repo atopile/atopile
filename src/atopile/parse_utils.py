@@ -1,6 +1,7 @@
 """
 Utils related to handling the parse tree
 """
+
 from pathlib import Path
 from typing import Any, Optional
 
@@ -19,10 +20,16 @@ def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
     return input_stream.name, token.line, token.column
 
 
-def get_src_info_from_ctx(ctx: ParserRuleContext) -> tuple[str | Path, int, int, int, int]:
+def get_src_info_from_ctx(
+    ctx: ParserRuleContext,
+) -> tuple[str | Path, int, int, int, int]:
     """Get the source path, line, and column from a context"""
     token: Token = ctx.start
-    return *get_src_info_from_token(token), ctx.stop.line, ctx.stop.column + len(ctx.stop.text)
+    return (
+        *get_src_info_from_token(token),
+        ctx.stop.line,
+        ctx.stop.column + len(ctx.stop.text),
+    )
 
 
 def format_src_info(ctx: ParserRuleContext) -> str:

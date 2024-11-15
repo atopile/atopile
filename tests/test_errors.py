@@ -1,6 +1,6 @@
 import pytest
 
-from atopile.errors import AtoError, iter_through_errors, ExceptionAccumulator
+from atopile.errors import AtoError, ExceptionAccumulator, iter_through_errors
 
 
 def test_ExceptionAccumulator():

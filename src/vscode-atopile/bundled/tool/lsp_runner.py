@@ -31,7 +31,7 @@ update_sys_path(
 
 # pylint: disable=wrong-import-position,import-error
 import lsp_jsonrpc as jsonrpc  # noqa: E402
-import lsp_utils as utils  # noqa: E402 
+import lsp_utils as utils  # noqa: E402
 
 RPC = jsonrpc.create_json_rpc(sys.stdin.buffer, sys.stdout.buffer)
 

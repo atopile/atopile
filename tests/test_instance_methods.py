@@ -1,5 +1,6 @@
-from atopile import instance_methods
 from unittest.mock import MagicMock
+
+from atopile import instance_methods
 
 
 def test_common_children():
@@ -19,4 +20,6 @@ def test_common_children():
     assert r_c == (a.children["c"], a.children["c"])
 
     b = MagicMock(children={"a": MagicMock(children={})})
-    assert list(instance_methods._common_children(a, b)) == [(a.children["a"], b.children["a"])]
+    assert list(instance_methods._common_children(a, b)) == [
+        (a.children["a"], b.children["a"])
+    ]

@@ -138,8 +138,9 @@ def install_kicad_plugin(quiet: bool) -> None:
         with plugin_loader_path.open("w", encoding="utf-8") as f:
             f.write(plugin_loader_content)
 
-
-    for p in Path("~/Documents/KiCad/").expanduser().absolute().glob("*/scripting/plugins"):
+    for p in (
+        Path("~/Documents/KiCad/").expanduser().absolute().glob("*/scripting/plugins")
+    ):
         try:
             _write_plugin(p)
         except FileNotFoundError:

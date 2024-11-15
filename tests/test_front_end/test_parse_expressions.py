@@ -1,6 +1,6 @@
 from antlr4 import InputStream
 
-from atopile.expressions import RangedValue, Expression, Symbol
+from atopile.expressions import Expression, RangedValue, Symbol
 from atopile.front_end import Roley
 from atopile.parse import make_parser
 from atopile.parser.AtopileParser import AtopileParser

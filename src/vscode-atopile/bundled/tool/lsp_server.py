@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 """Implementation of tool support over LSP."""
+
 from __future__ import annotations
 
 import copy
@@ -11,9 +12,9 @@ import os
 import pathlib
 import sys
 import traceback
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
-from collections import defaultdict
 
 import atopile.address
 import atopile.config
@@ -28,7 +29,10 @@ import atopile.parse_utils
 # **********************************************************
 
 _line_to_def_block: dict[Path, list[Optional[atopile.address.AddrStr]]] = {}
-_error_accumulators: dict[Path, atopile.errors.ExceptionAccumulator] = defaultdict(atopile.errors.ExceptionAccumulator)
+_error_accumulators: dict[Path, atopile.errors.ExceptionAccumulator] = defaultdict(
+    atopile.errors.ExceptionAccumulator
+)
+
 
 def _reset_caches(file: Path):
     """Remove a file from the cache."""
@@ -66,8 +70,8 @@ def _index_class_defs_by_line(file: Path):
             # code w/ the front-end so much
             try:
                 cls_def = atopile.front_end.scoop.get_obj_def(addr)
-                _, start_line, _, stop_line, _ = atopile.parse_utils.get_src_info_from_ctx(
-                    cls_def.src_ctx.block()
+                _, start_line, _, stop_line, _ = (
+                    atopile.parse_utils.get_src_info_from_ctx(cls_def.src_ctx.block())
                 )
             except AttributeError:
                 continue
@@ -77,7 +81,9 @@ def _index_class_defs_by_line(file: Path):
             stop_line_index = stop_line - 1
 
             if stop_line_index >= len(_line_to_def_block[file]):
-                _line_to_def_block[file].extend([None] * (stop_line_index - len(_line_to_def_block[file]) + 1))
+                _line_to_def_block[file].extend(
+                    [None] * (stop_line_index - len(_line_to_def_block[file]) + 1)
+                )
 
             for i in range(start_line - 1, stop_line_index):
                 _line_to_def_block[file][i] = cls_def.address
@@ -161,7 +167,7 @@ class URIProtocol(Protocol):
     text_document: TextDocument
 
 
-def project_context(default_factory_if_unprocessable = lambda: None):
+def project_context(default_factory_if_unprocessable=lambda: None):
     def wrapper(func):
         @functools.wraps(func)
         def new_func(params: URIProtocol):
@@ -170,9 +176,13 @@ def project_context(default_factory_if_unprocessable = lambda: None):
             try:
                 atopile.config.get_project_context()
             except ValueError:
-                atopile.config.set_project_context(atopile.config.ProjectContext.from_path(file))
+                atopile.config.set_project_context(
+                    atopile.config.ProjectContext.from_path(file)
+                )
             return func(params)
+
         return new_func
+
     return wrapper
 
 
@@ -188,7 +198,12 @@ def publish_errors(uri: str):
     error_diagnostics = []
     processed_errors = set()
     for error in _error_accumulators[file].errors:
-        if isinstance(error, atopile.errors._BaseAtoError) and error.src_path and error.src_col and error.src_line:
+        if (
+            isinstance(error, atopile.errors._BaseAtoError)
+            and error.src_path
+            and error.src_col
+            and error.src_line
+        ):
             # don't duplicate errors
             if error.get_frozen() in processed_errors:
                 continue
@@ -199,17 +214,18 @@ def publish_errors(uri: str):
             # stop properly if we have information, but we don't always,
             # so default to the first column of the next line
             if error.src_stop_line and error.src_stop_col:
-                stop_position = lsp.Position(error.src_stop_line - 1, error.src_stop_col)
+                stop_position = lsp.Position(
+                    error.src_stop_line - 1, error.src_stop_col
+                )
             else:
                 stop_position = lsp.Position(error.src_line - 1, 0)
 
             diagnostic = lsp.Diagnostic(
                 range=lsp.Range(
-                    lsp.Position(error.src_line - 1, error.src_col),
-                    stop_position
+                    lsp.Position(error.src_line - 1, error.src_col), stop_position
                 ),
                 severity=lsp.DiagnosticSeverity.Error,
-                message=message
+                message=message,
             )
             error_diagnostics.append(diagnostic)
 
@@ -241,7 +257,10 @@ def publish_errors_decorator(func):
 #  Pylint: https://github.com/microsoft/vscode-pylint/blob/main/bundled/tool
 
 
-@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_COMPLETION, lsp.CompletionOptions(trigger_characters=["."]),)
+@LSP_SERVER.feature(
+    lsp.TEXT_DOCUMENT_COMPLETION,
+    lsp.CompletionOptions(trigger_characters=["."]),
+)
 @project_context(lambda: lsp.CompletionList(is_incomplete=False, items=[]))
 @publish_errors_decorator
 def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
@@ -260,10 +279,18 @@ def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
         pass
     else:
         for child, assignment in instance.assignments.items():
-            items.append(lsp.CompletionItem(label=child, kind=lsp.CompletionItemKind.Property, detail=assignment[0].given_type))
+            items.append(
+                lsp.CompletionItem(
+                    label=child,
+                    kind=lsp.CompletionItemKind.Property,
+                    detail=assignment[0].given_type,
+                )
+            )
 
         for child in instance.children:
-            items.append(lsp.CompletionItem(label=child, kind=lsp.CompletionItemKind.Method))
+            items.append(
+                lsp.CompletionItem(label=child, kind=lsp.CompletionItemKind.Method)
+            )
 
     # Class Defs
     # FIXME: this is a hack to check whether something could not be class-def
@@ -278,14 +305,24 @@ def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
                 closure_contexts.extend(class_ctx.closure)
 
             for closure_ctx in closure_contexts:
-
                 for cls_ref in closure_ctx.local_defs:
-                    items.append(lsp.CompletionItem(label=cls_ref[0], kind=lsp.CompletionItemKind.Class))
+                    items.append(
+                        lsp.CompletionItem(
+                            label=cls_ref[0], kind=lsp.CompletionItemKind.Class
+                        )
+                    )
 
                 for imp_ref in closure_ctx.imports:
-                    items.append(lsp.CompletionItem(label=imp_ref[0], kind=lsp.CompletionItemKind.Class))
+                    items.append(
+                        lsp.CompletionItem(
+                            label=imp_ref[0], kind=lsp.CompletionItemKind.Class
+                        )
+                    )
 
-    return lsp.CompletionList(is_incomplete=False, items=items,)
+    return lsp.CompletionList(
+        is_incomplete=False,
+        items=items,
+    )
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_HOVER)
@@ -305,7 +342,9 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
         return None
 
     try:
-        word = word[:word.index(".", params.position.character - range_.start.character)]
+        word = word[
+            : word.index(".", params.position.character - range_.start.character)
+        ]
     except ValueError:
         pass
     word = utils.remove_special_character(word)
@@ -321,11 +360,11 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
         # TODO: deal with assignments made to super
         output_str += f"**class**: {str(atopile.address.get_name(instance.supers[0].address))}\n\n"
         for key, assignment in instance.assignments.items():
-            output_str += "**"+key+"**: "
-            if (assignment[0] is None):
-                output_str += 'not assigned\n\n'
+            output_str += "**" + key + "**: "
+            if assignment[0] is None:
+                output_str += "not assigned\n\n"
             else:
-                output_str += str(assignment[0].value) +'\n\n'
+                output_str += str(assignment[0].value) + "\n\n"
 
     # check if it is an assignment
     # FIXME: this is broken, because ClassLayers no longer have assignments attached
@@ -334,16 +373,21 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
     #     output_str = str(class_assignments.value)
 
     if output_str:
-        return lsp.Hover(contents=lsp.MarkupContent(
-                        kind=lsp.MarkupKind.Markdown,
-                        value=output_str.strip(),
-                    ))
+        return lsp.Hover(
+            contents=lsp.MarkupContent(
+                kind=lsp.MarkupKind.Markdown,
+                value=output_str.strip(),
+            )
+        )
     return None
+
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 @project_context(lambda: None)
 @publish_errors_decorator
-def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[lsp.Location]:
+def goto_definition(
+    params: Optional[lsp.DefinitionParams] = None,
+) -> Optional[lsp.Location]:
     """Handler for goto definition."""
     document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
     file = Path(document.path)
@@ -354,7 +398,9 @@ def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[l
 
     word, range_ = utils.cursor_word_and_range(document, params.position)
     try:
-        word = word[:word.index(".", params.position.character - range_.start.character)]
+        word = word[
+            : word.index(".", params.position.character - range_.start.character)
+        ]
     except ValueError:
         pass
     word = utils.remove_special_character(word)
@@ -374,14 +420,16 @@ def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[l
         src_ctx = atopile.front_end.scoop.get_obj_def(
             atopile.front_end.lookup_class_in_closure(
                 atopile.front_end.scoop.get_obj_def(class_addr),
-                atopile.datatypes.Ref(word.split("."))
+                atopile.datatypes.Ref(word.split(".")),
             )
         ).src_ctx
     except (KeyError, atopile.errors.AtoError, AttributeError):
         pass
 
     try:
-        file_path, start_line, start_col, stop_line, stop_col = atopile.parse_utils.get_src_info_from_ctx(src_ctx)
+        file_path, start_line, start_col, stop_line, stop_col = (
+            atopile.parse_utils.get_src_info_from_ctx(src_ctx)
+        )
     except AttributeError:
         return
     else:
@@ -389,8 +437,8 @@ def goto_definition(params: Optional[lsp.DefinitionParams] = None) -> Optional[l
             "file://" + str(file_path),
             lsp.Range(
                 lsp.Position(start_line - 1, start_col),
-                lsp.Position(stop_line - 1, stop_col)
-            )
+                lsp.Position(stop_line - 1, stop_col),
+            ),
         )
 
 
@@ -407,9 +455,9 @@ def did_change(params: lsp.DidChangeTextDocumentParams) -> None:
             line_classes = _line_to_def_block[file]
             insertion_line = event.range.start.line
             _line_to_def_block[file] = (
-                line_classes[:insertion_line + 1] +
-                line_classes[insertion_line:insertion_line + 1] * newlines +
-                line_classes[insertion_line + 1:]
+                line_classes[: insertion_line + 1]
+                + line_classes[insertion_line : insertion_line + 1] * newlines
+                + line_classes[insertion_line + 1 :]
             )
 
 
@@ -453,7 +501,6 @@ def _get_severity(*_codes: list[str]) -> lsp.DiagnosticSeverity:
     # TODO: All reported issues from linter are treated as warning.
     # change it as appropriate for your linter.
     return lsp.DiagnosticSeverity.Error
-
 
 
 # **********************************************************

@@ -63,7 +63,9 @@ def generate_module_map(build_ctx: config.BuildContext) -> None:
 
     laid_out_modules = _find_module_layouts()
     for module_instance in filter(match_modules, all_descendants(build_ctx.entry)):
-        module_super = find_matching_super(module_instance, list(laid_out_modules.keys()))
+        module_super = find_matching_super(
+            module_instance, list(laid_out_modules.keys())
+        )
         if not module_super:
             continue
 
@@ -104,5 +106,7 @@ def generate_module_map(build_ctx: config.BuildContext) -> None:
             "uuid_map": uuid_map,
         }
 
-    with open(build_ctx.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8") as f:
+    with open(
+        build_ctx.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8"
+    ) as f:
         json.dump(module_map, f)

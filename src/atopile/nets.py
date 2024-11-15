@@ -1,25 +1,25 @@
 from collections import defaultdict
 from typing import Iterable, Optional
-from toolz import groupby
-from attr import define
 
+from attr import define
+from toolz import groupby
+
+import atopile.instance_methods
 from atopile import address, errors
-from atopile.address import AddrStr
+from atopile.address import AddrStr, add_instance, get_name
 from atopile.datatypes import Ref
 from atopile.instance_methods import (
     all_descendants,
     get_children,
     get_links,
-    iter_parents,
     get_parent,
+    iter_parents,
     match_interfaces,
+    match_modules,
     match_pins_and_signals,
     match_signals,
-    match_modules,
 )
-import atopile.instance_methods
 from atopile.loop_soup import LoopSoup
-from atopile.address import get_name, add_instance
 
 
 def get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
@@ -37,12 +37,14 @@ def get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
                     if match_pins_and_signals(int_pin):
                         net_soup.join(int_pin, add_instance(target, get_name(int_pin)))
                     else:
-                        raise errors.AtoNotImplementedError("Cannot nest interfaces yet.")
+                        raise errors.AtoNotImplementedError(
+                            "Cannot nest interfaces yet."
+                        )
             elif match_interfaces(source) or match_interfaces(target):
                 # If only one of the nodes is an interface, then we need to throw an error
                 raise errors.AtoTypeError.from_ctx(
                     link.src_ctx,
-                    f"Cannot connect an interface to a non-interface: {source} ~ {target}"
+                    f"Cannot connect an interface to a non-interface: {source} ~ {target}",
                 )
             elif match_pins_and_signals(source) and match_pins_and_signals(target):
                 net_soup.join(source, target)
@@ -50,7 +52,7 @@ def get_nets(root: AddrStr) -> Iterable[Iterable[str]]:
                 # If only one of the nodes is an pin or signal, then we need to throw an error
                 raise errors.AtoTypeError.from_ctx(
                     link.src_ctx,
-                    f"Cannot connect a signal or pin to a non-connectable: {source} ~ {target}"
+                    f"Cannot connect a signal or pin to a non-connectable: {source} ~ {target}",
                 )
     return net_soup.groups()
 
@@ -86,7 +88,9 @@ class _Net:
         for signal in filter(match_signals, self.nodes_on_net):
             min_depth = min(min_depth, len(list(iter_parents(signal))))
             try:
-                override_net_name.add(atopile.instance_methods.get_data(signal, "override_net_name"))
+                override_net_name.add(
+                    atopile.instance_methods.get_data(signal, "override_net_name")
+                )
             except errors.AtoKeyError:
                 pass
 
@@ -105,7 +109,7 @@ class _Net:
             name = get_name(signal).lower()
             # only rank signals at highest level
             if min_depth == len(list(iter_parents(signal))):
-                if name in ['p1', 'p2']:
+                if name in ["p1", "p2"]:
                     # Ignore 2 pin component signals
                     name_candidates[name] = 0
                 else:

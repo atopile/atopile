@@ -1,5 +1,6 @@
 import pytest
-from atopile.generic_methods import dfs_postorder, bfs
+
+from atopile.generic_methods import bfs, dfs_postorder
 
 
 class Node:

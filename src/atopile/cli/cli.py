@@ -46,8 +46,20 @@ def atopile_src_path(ctx, param, value):
 @click.option("--non-interactive", is_flag=True, envvar="ATO_NON_INTERACTIVE")
 @click.option("--debug", is_flag=True)
 @click.option("-v", "--verbose", count=True)
-@click.option("--python-path", is_flag=True, callback=python_interpreter_path, expose_value=False, hidden=True)
-@click.option("--atopile-path", is_flag=True, callback=atopile_src_path, expose_value=False, hidden=True)
+@click.option(
+    "--python-path",
+    is_flag=True,
+    callback=python_interpreter_path,
+    expose_value=False,
+    hidden=True,
+)
+@click.option(
+    "--atopile-path",
+    is_flag=True,
+    callback=atopile_src_path,
+    expose_value=False,
+    hidden=True,
+)
 @click.pass_context  # This decorator makes the context available to the command.
 def cli(ctx, non_interactive: bool, debug: bool, verbose: int):
     """Base CLI group."""

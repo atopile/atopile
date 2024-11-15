@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 """Light-weight JSON-RPC over standard IO."""
 
-
 import atexit
 import io
 import json

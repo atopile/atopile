@@ -20,7 +20,7 @@ def _parser(src: str):
         "a = 1",
         "assert 1 within 2",
         "b = 1kV +/- 10% + (2V - 1V)",
-    ]
+    ],
 )
 def test_reconstructor_simple_stmt(txt: str):
     """Ensure we can faithfully re-construct the source code from a parse tree"""
@@ -28,13 +28,16 @@ def test_reconstructor_simple_stmt(txt: str):
 
 
 def test_get_comments():
-    module = atopile.parse.parse_text_as_file(textwrap.dedent(
-        """
+    module = atopile.parse.parse_text_as_file(
+        textwrap.dedent(
+            """
         # Test
         module Test:
             a = 1  # A is a variable
 
-        """))
+        """
+        )
+    )
 
     token_stream: TokenStream = module.parser.getTokenStream()
 

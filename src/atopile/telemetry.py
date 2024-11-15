@@ -143,7 +143,9 @@ def get_current_git_hash() -> Optional[str]:
     """Get the current git commit hash."""
     try:
         return (
-            subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
+            )
             .decode("ascii")
             .strip()
         )

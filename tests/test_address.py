@@ -4,9 +4,9 @@ from atopile.address import (
     add_instance,
     add_instances,
     get_file,
+    get_instance_names,
     get_instance_section,
     get_parent_instance_addr,
-    get_instance_names,
 )
 
 
@@ -52,7 +52,9 @@ def test_get_instance_section():
     assert get_instance_section("C:/path/to/file.txt:a::b.c") == "b.c"
 
     # Test with an address containing a Windows drive letter
-    assert get_instance_section("C:/path/to/file-with-special-chars.txt:a::b.c") == "b.c"
+    assert (
+        get_instance_section("C:/path/to/file-with-special-chars.txt:a::b.c") == "b.c"
+    )
 
 
 def test_add_instance():
