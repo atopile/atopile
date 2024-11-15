@@ -174,8 +174,12 @@ addopts = [
     "--self-contained-html",
     "--numprocesses=auto",
 ]
-filterwarnings = ["ignore:.*:DeprecationWarning"]
+filterwarnings = [
+    "ignore:.*:DeprecationWarning",
+]
 testpaths = ["test", "tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 88         # Same as Black.
