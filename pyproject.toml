@@ -194,6 +194,7 @@ exclude = [
     "src/atopile/parser/AtopileParserVisitor.py",
     "src/atopile/kicad_plugin",
     "docs/",
+    "sandbox/",
 ]
 
 [tool.ruff.format]
