@@ -27,7 +27,7 @@ import faebryk.libs.library.L as L
 from antlr4 import ParserRuleContext
 from faebryk.core.trait import Trait
 from faebryk.libs.units import Quantity, dimensionless
-from faebryk.libs.util import FuncDict, FuncSet
+from faebryk.libs.util import FuncDict
 
 from atopile import errors
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
@@ -220,23 +220,6 @@ class SequenceMixin:
 
         return KeyOptMap(child_results)
 
-    # TODO: remove, this was used to contort dissimilar stmt outputs to the same type
-    # def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
-    #     """
-    #     Ensure consistency of return type.
-    #     We choose to raise any below exceptions here, because stmts can be nested,
-    #     and raising exceptions serves as our collection mechanism.
-    #     """
-    #     if ctx.simple_stmts():
-    #         stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
-    #         return stmt_returns
-    #     elif ctx.compound_stmt():
-    #         item = self.visit(ctx.compound_stmt())
-    #         if item is NOTHING:
-    #             return KeyOptMap.empty()
-    #         assert isinstance(item, KeyOptItem)
-    #         return KeyOptMap.from_item(item)
-
     def visitFile_input(self, ctx: ap.File_inputContext) -> KeyOptMap:
         return self.visit_iterable_helper(ctx.stmt())
 
@@ -329,6 +312,11 @@ class Surveyor(BasicsMixin, SequenceMixin, AtopileParserVisitor):
         return context
 
 
+# type
+# mpn
+# footprint
+# package
+# lcsc
 class AtoComponent(L.Module):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -350,6 +338,31 @@ def _is_int(name: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+class ShimResistor(F.Resistor):
+    """Temporary shim to translate `value` to `resistance`."""
+
+    @property
+    def value(self) -> L.Range:
+        return self.resistance
+
+    @value.setter
+    def value(self, value: L.Range):
+        self.resistance = value
+
+
+class ShimCapacitor(F.Capacitor):
+    """Temporary shim to translate `value` to `capacitance`."""
+
+    @property
+    def value(self) -> L.Range:
+        return self.capacitance
+
+    @value.setter
+    def value(self, value: L.Range):
+        self.capacitance = value
+
 
 class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
     def __init__(self) -> None:
@@ -383,11 +396,16 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
     def _finish(self):
         if self._promised_params:
-            raise ExceptionGroup("Attributes referenced, but never assigned", [
-                errors.AtoKeyError.from_ctx(ctx, f"Attribute {param} referenced, but never assigned")
-                for param, ctxs in self._promised_params.items()
-                for ctx in ctxs
-            ])
+            raise ExceptionGroup(
+                "Attributes referenced, but never assigned",
+                [
+                    errors.AtoKeyError.from_ctx(
+                        ctx, f"Attribute {param} referenced, but never assigned"
+                    )
+                    for param, ctxs in self._promised_params.items()
+                    for ctx in ctxs
+                ],
+            )
 
     @property
     def _current_node(self) -> L.Node:
@@ -415,6 +433,13 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
     def _import_item(
         self, context: Context, item: Context.ImportPlaceholder
     ) -> Type[L.Node] | ap.BlockdefContext:
+        shim_map: dict[tuple[str, Ref], Type[L.Node]] = {
+            ("generics/resistors.ato", Ref.from_one("Resistor")): ShimResistor,
+            ("generics/capacitors.ato", Ref.from_one("Capacitor")): ShimCapacitor,
+        }
+        if (item.from_path, item.ref[-1]) in shim_map:
+            return shim_map[(item.from_path, item.ref[-1])]
+
         from_path = Path(item.from_path)
 
         if from_path.suffix == ".py":
@@ -547,7 +572,11 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
             )
 
     def _ensure_param(
-        self, node: L.Node, name: str, default: fab_param.Parameter | None, src_ctx: ParserRuleContext
+        self,
+        node: L.Node,
+        name: str,
+        default: fab_param.Parameter | None,
+        src_ctx: ParserRuleContext,
     ) -> fab_param.Parameter:
         try:
             return self.get_node_attr(node, name)
@@ -579,11 +608,6 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         else:
             target = self._current_node
 
-        ########## Handle Reserved Assignments ##########
-        # TODO: handle special assignments for reserved names in atopile
-        # TODO: shim "value" property, rated_xyz etc...
-        # TODO: shim mpn / LCSC id etc...
-
         ########## Handle New Statements ##########
         if new_stmt_ctx := assignable_ctx.new_stmt():
             if len(assigned_ref) > 1:
@@ -596,30 +620,35 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
             new_node = self._init_node(ctx, ref)
             self._current_node.add(new_node, name=assigned_name)
+            return KeyOptMap.empty()
 
         ########## Handle Regular Assignments ##########
-        elif literal_physical_ctx := assignable_ctx.literal_physical():
+        value = self.visit(assignable_ctx)
+        if assignable_ctx.literal_physical():
             param = self._ensure_param(target, assigned_name, None, ctx)
-            within = self.visitLiteral_physical(literal_physical_ctx)
-            self._attach_range_to_param(param, within)
+            self._attach_range_to_param(param, value)
             self._fufill_param_promise(param)
 
-        elif arithmetic_expression_ctx := assignable_ctx.arithmetic_expression():
-            expr = self.visitArithmetic_expression(arithmetic_expression_ctx)
-            param = self._ensure_param(target, assigned_name, expr, ctx)
+        elif assignable_ctx.arithmetic_expression():
+            param = self._ensure_param(target, assigned_name, value, ctx)
             self._fufill_param_promise(param)
-            if param is not expr:
+            if param is not value:
                 # Check the type's compatibility
                 if not isinstance(param, fab_param.Parameter):
                     raise errors.AtoTypeError.from_ctx(
                         ctx,
-                        f"Can't assign {expr} to {param} because the types are incompatible."
+                        f"Can't assign {value} to {param} because the types are incompatible.",
                     )
 
-                param.alias_is(expr)
+                param.alias_is(value)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
-            warnings.warn(f"Assigning {assigned_name} ignored")
+            if hasattr(target, assigned_name):
+                setattr(target, assigned_name, value)
+            else:
+                errors.AtoError.from_ctx(
+                    ctx, f"Can't assign {value} to {assigned_name} on {target}"
+                ).log(to_level=logging.WARNING)
 
         else:
             raise ValueError(f"Unhandled assignable type {assignable_ctx.getText()}")
