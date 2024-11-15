@@ -1,10 +1,11 @@
-name: Continuous Integration
+name: project-regression
 
 on:
   push:
     branches: [main]  # Adjust this if your default branch has a different name
   pull_request:
     branches: [main]  # This will run on PRs targeting your main branch
+  workflow_dispatch:  # Add manual trigger capability
 
 jobs:
   regression_tests:
