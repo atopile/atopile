@@ -51,18 +51,11 @@ class ParameterOperatable(Node):
     operated_on: GraphInterface
 
     @property
-    def domain(self) -> "Domain":
-        raise NotImplementedError()
+    def domain(self) -> "Domain": ...
 
-    def get_operations(self) -> set["Expression"]:
-        res = self.operated_on.get_connected_nodes(types=[Expression])
-        return cast(set[Expression], res)
+    def has_implicit_constraint(self) -> bool: ...
 
-    def has_implicit_constraint(self) -> bool:
-        raise NotImplementedError()
-
-    def has_implicit_constraints_recursive(self) -> bool:
-        raise NotImplementedError()
+    def has_implicit_constraints_recursive(self) -> bool: ...
 
     @staticmethod
     def sort_by_depth(
@@ -354,24 +347,31 @@ class ParameterOperatable(Node):
     # ) -> None: ...
 
     # ----------------------------------------------------------------------------------
-
-    def get_operators[T: "Expression"](self, types: type[T] | None = None) -> list[T]:
+    def get_operations[T: "Expression"](self, types: type[T] | None = None) -> set[T]:
         if types is None:
             types = Expression  # type: ignore
         types = cast(type[T], types)
         assert issubclass(types, Expression)
 
-        return cast(list[T], self.operated_on.get_connected_nodes(types=[types]))
+        return cast(set[T], self.operated_on.get_connected_nodes(types=[types]))
 
-    def get_literal(self) -> Literal:
-        iss = self.get_operators(Is)
+    def get_literal(self, op: type["Expression"] | None = None) -> Literal:
+        if op is None:
+            op = Is
+        iss = self.get_operations(op)
         try:
             literal_is = find(o for i in iss for o in i.get_literal_operands())
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
-                self, f"Parameter {self} has no literal"
+                self, f"Parameter {self} has no literal for op {op}"
             ) from e
         return literal_is
+
+    # type checks
+
+    @staticmethod
+    def is_number_literal(value: Any) -> bool:
+        return isinstance(value, (int, float, Unit, Quantity))
 
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:

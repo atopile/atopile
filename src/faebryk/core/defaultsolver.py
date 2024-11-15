@@ -14,16 +14,19 @@ from faebryk.core.graphinterface import GraphInterfaceSelf
 from faebryk.core.parameter import (
     Add,
     And,
-    Arithmetic,
     ConstrainableExpression,
     Divide,
     Domain,
     Expression,
+    GreaterOrEqual,
     Is,
     IsSubset,
+    LessOrEqual,
     Multiply,
+    Numbers,
     Or,
     Parameter,
+    ParameterOperableHasNoLiteral,
     ParameterOperatable,
     Power,
     Predicate,
@@ -31,7 +34,7 @@ from faebryk.core.parameter import (
     has_implicit_constraints_recursive,
 )
 from faebryk.core.solver import Solver
-from faebryk.libs.sets import P_Set, Range, Ranges
+from faebryk.libs.sets import P_Set, Range, Ranges, Single
 from faebryk.libs.units import HasUnit, Quantity, dimensionless
 from faebryk.libs.util import EquivalenceClasses, unique_ref
 
@@ -892,7 +895,9 @@ def remove_obvious_tautologies(
 class DefaultSolver(Solver):
     timeout: int = 1000
 
-    def phase_one_no_guess_solving(self, g: Graph) -> None:
+    def phase_one_no_guess_solving(
+        self, g: Graph
+    ) -> dict[ParameterOperatable, ParameterOperatable]:
         logger.info(f"Phase 1 Solving: No guesses {'-' * 80}")
 
         # TODO move into comment here
@@ -988,6 +993,9 @@ class DefaultSolver(Solver):
                 or subset_dirty
             )
 
+        # FIXME repr map should contain map from first to last
+        return repr_map
+
     def get_any_single(
         self,
         operatable: ParameterOperatable,
@@ -995,15 +1003,6 @@ class DefaultSolver(Solver):
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
     ) -> Any:
-        raise NotImplementedError()
-
-    def assert_any_predicate[ArgType](
-        self,
-        predicates: list["Solver.PredicateWithInfo[ArgType]"],
-        lock: bool,
-        suppose_constraint: Predicate | None = None,
-        minimize: Expression | None = None,
-    ) -> Solver.SolveResultAny[ArgType]:
         raise NotImplementedError()
 
     def find_and_lock_solution(self, G: Graph) -> Solver.SolveResultAll:
@@ -1025,16 +1024,85 @@ class DefaultSolver(Solver):
     ) -> P_Set[bool]:
         raise NotImplementedError()
 
-    # Could be exponentially many
-    def inspect_known_supersets_are_few(self, value: ParameterOperatable.Sets) -> bool:
-        raise NotImplementedError()
-
     def inspect_get_known_supersets(
         self, value: ParameterOperatable.Sets
     ) -> Iterable[P_Set]:
         raise NotImplementedError()
 
-    def inspect_get_known_superranges(
-        self, value: ParameterOperatable.NumberLike
-    ) -> Ranges:
+    # IMPORTANT ------------------------------------------------------------------------
+
+    # Could be exponentially many
+    def inspect_known_supersets_are_few(self, value: ParameterOperatable.Sets) -> bool:
+        return True
+
+    def inspect_get_known_superranges(self, value: ParameterOperatable) -> Ranges:
+        if not isinstance(value.domain, Numbers):
+            raise ValueError(f"Ranges only defined for numbers not {value.domain}")
+
+        # run phase 1 solver
+        # TODO caching
+        repr_map = self.phase_one_no_guess_solving(value.get_graph())
+        value = repr_map[value]
+
+        # check predicates (is, subset, greater, less)
+        try:
+            literal = value.get_literal(Is)
+            if Parameter.is_number_literal(literal):
+                return Ranges(Single(literal))
+            if isinstance(literal, P_Set):
+                if isinstance(literal, Range):
+                    return Ranges(literal)
+                if isinstance(literal, Ranges):
+                    return literal
+        except ParameterOperableHasNoLiteral:
+            pass
+
+        try:
+            literal = value.get_literal(IsSubset)
+            if Parameter.is_number_literal(literal):
+                return Ranges(Single(literal))
+            if isinstance(literal, P_Set):
+                if isinstance(literal, Range):
+                    return Ranges(literal)
+                if isinstance(literal, Ranges):
+                    return literal
+        except ParameterOperableHasNoLiteral:
+            pass
+
+        # TODO LT, GT
+        lower = None
+        try:
+            literal = value.get_literal(GreaterOrEqual)
+            if Parameter.is_number_literal(literal):
+                lower = literal
+            elif isinstance(literal, P_Set):
+                if isinstance(literal, Range):
+                    lower = literal.max_elem()
+                elif isinstance(literal, Ranges):
+                    lower = literal.max_elem()
+        except ParameterOperableHasNoLiteral:
+            lower = float("-inf") * HasUnit.get_units(value)
+
+        upper = None
+        try:
+            literal = value.get_literal(LessOrEqual)
+            if Parameter.is_number_literal(literal):
+                upper = literal
+            elif isinstance(literal, P_Set):
+                if isinstance(literal, Range):
+                    upper = literal.min_elem()
+                elif isinstance(literal, Ranges):
+                    upper = literal.min_elem()
+        except ParameterOperableHasNoLiteral:
+            upper = float("inf") * HasUnit.get_units(value)
+
+        return Ranges(Range(lower, upper))
+
+    def assert_any_predicate[ArgType](
+        self,
+        predicates: list["Solver.PredicateWithInfo[ArgType]"],
+        lock: bool,
+        suppose_constraint: Predicate | None = None,
+        minimize: Expression | None = None,
+    ) -> Solver.SolveResultAny[ArgType]:
         raise NotImplementedError()

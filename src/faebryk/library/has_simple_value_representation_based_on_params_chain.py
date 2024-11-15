@@ -69,7 +69,7 @@ class has_simple_value_representation_based_on_params_chain(
 
             if isinstance(domain, Numbers):
                 unit = self.unit if self.unit is not None else self.param.units
-                if isinstance(value, (int, float, Unit, Quantity)):
+                if Parameter.is_number_literal(value):
                     # TODO If tolerance, maybe hint that it's weird there isn't any
                     return to_si_str(value, unit, 2)
                 if isinstance(value, P_Set):

@@ -10,7 +10,7 @@ import faebryk.library._F as F
 from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.core.parameter import And, Or, Parameter
+from faebryk.core.parameter import And, Parameter
 from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.sets import Range, Ranges
