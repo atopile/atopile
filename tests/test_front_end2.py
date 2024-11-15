@@ -116,3 +116,28 @@ def test_nested_nodes(lofty: Lofty):
         node = lofty.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
+
+
+def test_resistor(lofty: Lofty):
+    text = dedent(
+        """
+        from "generics/resistors.ato" import Resistor
+
+        component ResistorB from Resistor:
+            footprint = "R0805"
+
+        module A:
+            r1 = new ResistorB
+        """
+    )
+
+    with errors.log_ato_errors():
+        tree = parse_text_as_file(text)
+        node = lofty.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    r1 = Lofty.get_node_attr(node, "r1")
+    assert r1.get_trait(F.has_footprint_requirement).get_footprint_requirement() == [
+        ("0805", 2)
+    ]

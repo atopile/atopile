@@ -272,11 +272,11 @@ class Surveyor(BasicsMixin, SequenceMixin, AtopileParserVisitor):
     ) -> KeyOptMap[Context.ImportPlaceholder]:
         lazy_imports = [
             Context.ImportPlaceholder(
-                ref=self.visitName_or_attr(ctx.name_or_attr()),
-                from_path=self.visitString(string),
+                ref=self.visitName_or_attr(name_or_attr),
+                from_path=self.visitString(ctx.string()),
                 original_ctx=ctx,
             )
-            for string in ctx.string()
+            for name_or_attr in ctx.name_or_attr()
         ]
         return KeyOptMap(KeyOptItem.from_kv(li.ref, li) for li in lazy_imports)
 
@@ -312,26 +312,6 @@ class Surveyor(BasicsMixin, SequenceMixin, AtopileParserVisitor):
         return context
 
 
-# type
-# mpn
-# footprint
-# package
-# lcsc
-class AtoComponent(L.Module):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.pinmap = {}
-
-    @L.rt_field
-    def attach_to_footprint(self):
-        return F.can_attach_to_footprint_via_pinmap(self.pinmap)
-
-    def add_pin(self, name: str) -> F.Electrical:
-        mif = self.add(F.Electrical(), name=name)
-        self.pinmap[name] = mif
-        return mif
-
-
 def _is_int(name: str) -> bool:
     try:
         int(name)
@@ -340,7 +320,52 @@ def _is_int(name: str) -> bool:
     return True
 
 
-class ShimResistor(F.Resistor):
+class AtoComponent(L.Module):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+    @L.rt_field
+    def kicad_footprint(self):
+        return F.has_kicad_manual_footprint("", {})
+
+    def add_pin(self, name: str) -> F.Electrical:
+        mif = self.add(F.Electrical(), name=name)
+        self.kicad_footprint.pinmap[name] = mif
+        return mif
+
+    @property
+    def footprint(self) -> str:
+        return self.kicad_footprint.str
+
+    @footprint.setter
+    def footprint(self, value: str):
+        self.kicad_footprint.str = value
+
+    @property
+    def mpn(self) -> str:
+        raise AttributeError("mpn is write-only")
+
+    @mpn.setter
+    def mpn(self, value: str):
+        # handles duplicates gracefully
+        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+
+
+class _FPPackageMixin:
+    @property
+    def package(self) -> str:
+        raise AttributeError("package is write-only")
+
+    @package.setter
+    def package(self, value: str):
+        reqs = [(value, 2)]  # package, pin-count
+        if fp_req := self.try_get_trait(F.has_footprint_requirement):
+            fp_req.reqs = reqs
+        else:
+            self.add(F.has_footprint_requirement_defined(reqs))
+
+
+class ShimResistor(_FPPackageMixin, F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
 
     @property
@@ -351,8 +376,18 @@ class ShimResistor(F.Resistor):
     def value(self, value: L.Range):
         self.resistance = value
 
+    @property
+    def footprint(self) -> str:
+        raise AttributeError("footprint is write-only")
 
-class ShimCapacitor(F.Capacitor):
+    @footprint.setter
+    def footprint(self, value: str):
+        if value.startswith("R"):
+            value = value[1:]
+        self.package = value
+
+
+class ShimCapacitor(_FPPackageMixin, F.Capacitor):
     """Temporary shim to translate `value` to `capacitance`."""
 
     @property
@@ -362,6 +397,16 @@ class ShimCapacitor(F.Capacitor):
     @value.setter
     def value(self, value: L.Range):
         self.capacitance = value
+
+    @property
+    def footprint(self) -> str:
+        raise AttributeError("footprint is write-only")
+
+    @footprint.setter
+    def footprint(self, value: str):
+        if value.startswith("C"):
+            value = value[1:]
+        self.package = value
 
 
 class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
@@ -437,8 +482,9 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
             ("generics/resistors.ato", Ref.from_one("Resistor")): ShimResistor,
             ("generics/capacitors.ato", Ref.from_one("Capacitor")): ShimCapacitor,
         }
-        if (item.from_path, item.ref[-1]) in shim_map:
-            return shim_map[(item.from_path, item.ref[-1])]
+        ref = (item.from_path, item.ref)
+        if ref in shim_map:
+            return shim_map[ref]
 
         from_path = Path(item.from_path)
 
@@ -558,7 +604,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
     def _init_node(self, stmt_ctx: ParserRuleContext, ref: Ref) -> L.Node:
         if item := self._get_referenced_class(stmt_ctx, ref):
-            if isinstance(item, L.Node):
+            if isinstance(item, type) and issubclass(item, L.Node):
                 return item()
             elif isinstance(item, ap.BlockdefContext):
                 new_node = self._build_ato_node(item)
@@ -643,7 +689,12 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
                 param.alias_is(value)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
-            if hasattr(target, assigned_name):
+            # Check if it's a property or attribute that can be set
+            if hasattr(target, assigned_name) or (
+                hasattr(type(target), assigned_name)
+                and isinstance(getattr(type(target), assigned_name), property)
+                and getattr(type(target), assigned_name).fset is not None
+            ):
                 setattr(target, assigned_name, value)
             else:
                 errors.AtoError.from_ctx(
