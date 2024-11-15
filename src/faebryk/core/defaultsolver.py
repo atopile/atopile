@@ -93,6 +93,7 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
+# FIXME needs to handle logics also
 def get_constrained_predicates_involved_in(
     p: ParameterOperatable,
 ) -> set[Predicate]:
@@ -375,10 +376,12 @@ def subset_of_literal(
     repr_map: dict[ParameterOperatable, ParameterOperatable] = {}
 
     for param in params:
+        # TODO we can also propagate is subset from other param: x sub y sub range
         is_subsets = [
             e
             for e in param.get_operations()
             if isinstance(e, IsSubset)
+            # FIXME should just be constrained ones, then considere which ones can be removed
             and len(e.get_operations()) == 0
             and not isinstance(e.get_other_operand(param), ParameterOperatable)
         ]
@@ -586,6 +589,12 @@ def compress_associative_sub(
         repr_map[o] = copy_o
 
     return repr_map, dirty
+
+
+def compress_logic_expressions(
+    G: Graph,
+) -> tuple[dict[ParameterOperatable, ParameterOperatable], bool]:
+    pass
 
 
 def compress_arithmetic_expressions(
