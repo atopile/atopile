@@ -851,28 +851,10 @@ class DefaultSolver(Solver):
     def phase_one_no_guess_solving(self, g: Graph) -> None:
         logger.info(f"Phase 1 Solving: No guesses {'-' * 80}")
 
+        # TODO move into comment here
         # strategies
-        # https://miro.com/app/board/uXjVLV3O2BQ=/
-        # compress expressions inside alias classes
-        #   x / y => x / x
-        # associativity
-        #   (x + a) + b => x + a + b [for +,*]
-        # compress expressions that are using literals
-        #   x + 1 + 5 => x + 6
-        #   x + 0 => x
-        #   x * 1 => x
-        #   x * 0 => 0
-        #   x / 1 => x
-        # compress calculatable expressions
-        #   x / x => 1
-        #   x + x => 2*x
-        #   x - x => 0
-        #   x * x => x^2
-        #   k*x + l*x => (k+l)*x
-        #   sqrt(x^2) => abs(x)
-        #   sqrt(x) * sqrt(x) => x
-
-        # as long as progress iterate
+        # https://www.notion.so/
+        # Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
 
         logger.info("Phase 0 Solving: normalize graph")
         repr_map = normalize_graph(g)

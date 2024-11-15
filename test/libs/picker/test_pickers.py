@@ -113,6 +113,7 @@ def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
     for param in params:
         # Test if all params are aliased to Literal
         param.get_literal()
+        # FIXME this is not correct, since some picks won't have all params picked
     # TODO check that part params are equal (alias_is) to module params
 
     # Check footprint
