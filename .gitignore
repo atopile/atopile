@@ -8,6 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -47,6 +48,7 @@ nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
+*,cover
 .hypothesis/
 .pytest_cache/
 cover/
@@ -167,6 +169,7 @@ cython_debug/
 
 # ide
 .vscode/
+.aider*
 
 # generic outputs
 artifacts
@@ -175,3 +178,8 @@ artifacts
 .parcel-cache/
 dist/
 node_modules/
+
+_local
+.local
+
+.envrc

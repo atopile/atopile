@@ -1,0 +1,8 @@
+# Migrate code style to Black
+62b92558e887b97ac43e2feafa011cca094a8d68
+# Add black as pre-commit hook and rerun
+94fc4f83209d85eb6f7987a083a17a68a5acaedd
+# isort & autoflake
+406891587843ad51d856922cde2b8dc79c0c406a
+# Faebryk merger
+1129da0d727f3589d7d2ea3112aa94667fcb1488

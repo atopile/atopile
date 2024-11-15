@@ -35,12 +35,12 @@ def _get_mpn(addr: address.AddrStr) -> str | None:
         if atopile.instance_methods.get_data(addr, "exclude_from_bom") is True:
             return None
     except errors.AtoKeyError:
-            pass
+        pass
 
     return errors.downgrade(
         components.get_mpn,
         (components.MissingData, components.NoMatchingComponent),
-        "?"
+        "?",
     )(addr)
 
 
@@ -52,28 +52,22 @@ def _get_footprint(addr: address.AddrStr) -> str:
     Then it attempts to use the package
     Finally, it'll fallback to a question mark "?"
     """
-    if value := errors.downgrade(
-        components.get_package,
-        components.MissingData
-    )(addr):
+    if value := errors.downgrade(components.get_package, components.MissingData)(addr):
         return value
 
-    if value := errors.downgrade(
-        components.get_footprint,
-        components.MissingData
-    )(addr):
+    if value := errors.downgrade(components.get_footprint, components.MissingData)(
+        addr
+    ):
         return value
 
     return "?"
+
 
 def _get_price(addr: address.AddrStr) -> str:
     """
     Get the price of a component, in the context of a BoM.
     """
-    if value := errors.downgrade(
-        components.get_price,
-        components.MissingData
-    )(addr):
+    if value := errors.downgrade(components.get_price, components.MissingData)(addr):
         return value
 
     return "?"
@@ -82,15 +76,15 @@ def _get_price(addr: address.AddrStr) -> str:
 def _get_value(addr: address.AddrStr) -> str:
     value = errors.downgrade(
         components.get_user_facing_value,
-        (components.MissingData, components.NoMatchingComponent)
+        (components.MissingData, components.NoMatchingComponent),
     )(addr)
 
     if value is not None:
         return value
 
-    value = str(errors.downgrade(
-        components.get_specd_value, components.MissingData
-    )(addr))
+    value = str(
+        errors.downgrade(components.get_specd_value, components.MissingData)(addr)
+    )
 
     if value is not None:
         return value

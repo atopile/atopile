@@ -145,6 +145,7 @@ class Assignment(Base):
 @define
 class SumCumulativeAssignment(Assignment):
     """Represents a sum-cumulative assignment statement."""
+
     value: expressions.Expression | RangedValue
     value_is_derived: bool = True
 
@@ -152,6 +153,7 @@ class SumCumulativeAssignment(Assignment):
 @define
 class SetCumulativeAssignment(Assignment):
     """Represents a set-cumulative assignment statement."""
+
     value: expressions.Expression | RangedValue
     oring: expressions.Expression | RangedValue | None
     anding: expressions.Expression | RangedValue | None
@@ -326,6 +328,7 @@ class HandlesPrimaries(AtopileParserVisitor):
     """
     This class is a mixin to be used with the translator classes.
     """
+
     def visit_ref_helper(
         self,
         ctx: (
@@ -427,8 +430,10 @@ class HandlesPrimaries(AtopileParserVisitor):
 
             # In this case, life's a little easier, and we can simply multiply the nominal
             value = RangedValue(
-                val_a=nominal_quantity.min_val - (nominal_quantity.min_val * tol_num / tol_divider),
-                val_b=nominal_quantity.max_val + (nominal_quantity.max_val * tol_num / tol_divider),
+                val_a=nominal_quantity.min_val
+                - (nominal_quantity.min_val * tol_num / tol_divider),
+                val_b=nominal_quantity.max_val
+                + (nominal_quantity.max_val * tol_num / tol_divider),
                 unit=nominal_quantity.unit,
                 str_rep=parse_utils.reconstruct(ctx),
             )
@@ -439,7 +444,9 @@ class HandlesPrimaries(AtopileParserVisitor):
         if tol_ctx.name():
             # In this case there's a named unit on the tolerance itself
             # We need to make sure it's dimensionally compatible with the nominal
-            tol_quantity = RangedValue(-tol_num, tol_num, _get_unit_from_ctx(tol_ctx.name()), tol_ctx)
+            tol_quantity = RangedValue(
+                -tol_num, tol_num, _get_unit_from_ctx(tol_ctx.name()), tol_ctx
+            )
 
             # If the nominal has no unit, then we take the unit's tolerance for the nominal
             if nominal_quantity.unit == pint.Unit(""):
@@ -516,7 +523,9 @@ class HandlesPrimaries(AtopileParserVisitor):
 
 
 class HandlesGetTypeInfo:
-    def _get_type_info(self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext) -> Optional[ClassLayer | pint.Unit]:
+    def _get_type_info(
+        self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext
+    ) -> Optional[ClassLayer | pint.Unit]:
         """Return the type information from a type_info context."""
         if type_ctx := ctx.type_info():
             return type_ctx.name_or_attr().getText()
@@ -617,6 +626,7 @@ class Roley(HandlesPrimaries):
 
     Roley's also builds expressions.
     """
+
     def __init__(self, addr: AddrStr) -> None:
         self.addr = addr
         super().__init__()
@@ -642,9 +652,7 @@ class Roley(HandlesPrimaries):
 
         return self.visit(ctx.sum_())
 
-    def visitSum(
-        self, ctx: ap.SumContext
-    ) -> expressions.NumericishTypes:
+    def visitSum(self, ctx: ap.SumContext) -> expressions.NumericishTypes:
         if ctx.ADD():
             return expressions.defer_operation_factory(
                 operator.add,
@@ -1062,7 +1070,9 @@ class Dizzy(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         )
 
         if strainer:
-            raise RuntimeError(f"Unexpected items in ClassLayer locals: {', '.join(strainer)}")
+            raise RuntimeError(
+                f"Unexpected items in ClassLayer locals: {', '.join(strainer)}"
+            )
 
         return obj
 
@@ -1170,9 +1180,16 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
             # If there's no current scope, we're at a global level where the check might not be applicable
             return
         if name in current_scope.children:
-            raise errors.AtoError(f"Name '{name}' is already used in this scope. Address: {current_scope.addr}")
+            raise errors.AtoError(
+                f"Name '{name}' is already used in this scope. Address: {current_scope.addr}"
+            )
 
-    def build_instance(self, new_addr: AddrStr, super_obj: ClassLayer, src_ctx: Optional[ParserRuleContext] = None) -> None:
+    def build_instance(
+        self,
+        new_addr: AddrStr,
+        super_obj: ClassLayer,
+        src_ctx: Optional[ParserRuleContext] = None,
+    ) -> None:
         """Create an instance from a reference and a super object layer."""
 
         if self._instance_addr_stack:
@@ -1186,10 +1203,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         self.check_name_uniqueness(instance_name, parent_instance)
 
         new_instance = Instance.from_super(
-            new_addr,
-            super_obj,
-            parent=parent_instance,
-            src_ctx=src_ctx
+            new_addr, super_obj, parent=parent_instance, src_ctx=src_ctx
         )
         self._output_cache[new_addr] = new_instance
 
@@ -1200,9 +1214,13 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         try:
             with ExitStack() as stack:
                 stack.enter_context(self._instance_addr_stack.enter(new_addr))
-                stack.enter_context(self.apply_replacements_from_objs(new_instance.supers))
+                stack.enter_context(
+                    self.apply_replacements_from_objs(new_instance.supers)
+                )
                 for super_obj_ in reversed(new_instance.supers):
-                    stack.enter_context(self._class_addr_stack.enter(super_obj_.address))
+                    stack.enter_context(
+                        self._class_addr_stack.enter(super_obj_.address)
+                    )
                     if super_obj_.src_ctx is None:
                         # FIXME: this is currently the case for the builtins
                         continue
@@ -1237,9 +1255,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
         new_class_ref = self.visitName_or_attr(new_stmt.name_or_attr())
 
-        new_addr = address.add_instance(
-            self._instance_addr_stack.top, assigned_name
-        )
+        new_addr = address.add_instance(self._instance_addr_stack.top, assigned_name)
 
         # Figure out what class to create the new instance from
         if new_addr in self._known_replacements:
@@ -1249,9 +1265,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 current_obj_def = self.obj_layer_getter(
                     self._class_addr_stack.top
                 ).obj_def
-                new_class_addr = lookup_class_in_closure(
-                    current_obj_def, new_class_ref
-                )
+                new_class_addr = lookup_class_in_closure(current_obj_def, new_class_ref)
             except KeyError as ex:
                 raise errors.AtoKeyError.from_ctx(
                     ctx, f"Couldn't find '{new_class_ref}'"
@@ -1275,7 +1289,9 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 f"Can't declare fields in a nested object {assigned_value_ref}"
             )
         assigned_name = assigned_value_ref[0]
-        assignements = self._output_cache[self._instance_addr_stack.top].assignments[assigned_name]
+        assignements = self._output_cache[self._instance_addr_stack.top].assignments[
+            assigned_name
+        ]
         if assignements and assignements[0].value is not None:
             errors.AtoError.from_ctx(
                 ctx, f"Field '{assigned_name}' already declared. Ignoring..."
@@ -1321,12 +1337,15 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         given_type = self._get_type_info(ctx)
 
         # TODO: enforce this more strongly: https://github.com/atopile/atopile/issues/433
-        if len(assigned_ref) > 1 and assigned_name not in instance_assigned_to.assignments:
+        if (
+            len(assigned_ref) > 1
+            and assigned_name not in instance_assigned_to.assignments
+        ):
             # Raise a warning for now. Enforce this strongly if it's a real issue.
             errors.ImplicitDeclarationFutureDeprecationWarning.from_ctx(
                 ctx,
                 f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
-                " Declaring implicitly for now, but in the future this may become an error..."
+                " Declaring implicitly for now, but in the future this may become an error...",
             ).log(to_level=logging.WARNING)
 
         assignment = Assignment(
@@ -1367,7 +1386,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         elif len(assigned_ref) > 1:
             raise errors.AtoError.from_ctx(
                 ctx,
-                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
+                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}.",
             )
         else:
             old_assignment = None
@@ -1379,7 +1398,10 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 new_value = assignable
             elif ctx.cum_operator().SUB_ASSIGN():
                 new_value = expressions.defer_operation_factory(
-                    operator.sub, RangedValue(0, 0, assignable.unit), assignable, src_ctx=ctx
+                    operator.sub,
+                    RangedValue(0, 0, assignable.unit),
+                    assignable,
+                    src_ctx=ctx,
                 )
             else:
                 raise ValueError("Unexpected cumulative operator")
@@ -1442,7 +1464,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         elif len(assigned_ref) > 1:
             raise errors.AtoError.from_ctx(
                 ctx,
-                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
+                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}.",
             )
         else:
             old_assignment = None
@@ -1462,9 +1484,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
         else:
             # No existing value
-            if not isinstance(
-                old_assignment, SetCumulativeAssignment
-            ):
+            if not isinstance(old_assignment, SetCumulativeAssignment):
                 raise errors.AtoError.from_ctx(
                     ctx,
                     f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
@@ -1494,7 +1514,9 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
                 raise ValueError("Unexpected cumulative operator")
 
         if anding and oring:
-            new_value = expressions.defer_operation_factory(operator.and_, anding, oring, src_ctx=ctx)
+            new_value = expressions.defer_operation_factory(
+                operator.and_, anding, oring, src_ctx=ctx
+            )
         elif anding:
             new_value = anding
         elif oring:
@@ -1712,6 +1734,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
         # check the instance is either a signal, pin or interface
         from atopile.instance_methods import match_interfaces, match_pins_and_signals
+
         if not match_interfaces(addr) and not match_pins_and_signals(addr):
             raise errors.AtoError.from_ctx(
                 ctx,
@@ -1730,6 +1753,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
     def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext | Any):
         return KeyOptMap.empty()
+
     #########
 
     def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
@@ -1741,9 +1765,7 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
         operators = []
 
         def _add_expr_from_context(ctx: ap.Arithmetic_expressionContext):
-            expr = expressions.Expression.from_numericish(
-                roley.visit(ctx)
-            )
+            expr = expressions.Expression.from_numericish(roley.visit(ctx))
             # TODO: this shouldn't be attached to the expression like this
             # as the only means to pretty-print them
             expr.src_ctx = ctx
@@ -1769,12 +1791,15 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
         assert len(expressions_) == len(operators) + 1
 
-        assertions_ = [Assertion(
-            src_ctx=ctx,
-            lhs=expressions_[i],
-            operator=operators[i],
-            rhs=expressions_[i+1],
-        ) for i in range(len(operators))]
+        assertions_ = [
+            Assertion(
+                src_ctx=ctx,
+                lhs=expressions_[i],
+                operator=operators[i],
+                rhs=expressions_[i + 1],
+            )
+            for i in range(len(operators))
+        ]
 
         self._current_instance.assertions.extend(assertions_)
 

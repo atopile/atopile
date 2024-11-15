@@ -5,10 +5,11 @@ Addresses go by other names in various files for historical reasons - but should
 
 This file provides utilities for working with addresses.
 """
-from typing import Optional, Iterable
+
 from functools import wraps
 from os import PathLike
 from pathlib import Path
+from typing import Iterable, Optional
 
 
 class AddrStr(str):
@@ -74,7 +75,9 @@ def get_relative_addr_str(address: AddrStr, base_path: PathLike) -> AddrStr:
     using these relative addresses. We should codify them
     """
     rel_file = Path(get_file(address)).relative_to(base_path)
-    return from_parts(str(rel_file), get_entry_section(address), get_instance_section(address))
+    return from_parts(
+        str(rel_file), get_entry_section(address), get_instance_section(address)
+    )
 
 
 def get_entry(address: AddrStr) -> AddrStr:

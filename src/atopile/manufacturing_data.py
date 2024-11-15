@@ -9,7 +9,7 @@ import subprocess
 import sys
 import zipfile
 from functools import cache
-from os import getenv, PathLike
+from os import PathLike, getenv
 from pathlib import Path
 from time import time
 from typing import Optional
@@ -53,7 +53,8 @@ def find_kicad_cli() -> PathLike:
         return "kicad-cli"  # assume it's on the PATH
     elif sys.platform.startswith("win"):
         kicad_cli_candidates = list(
-            (Path(getenv("ProgramFiles")) / "KiCad").glob("**/kicad-cli.exe"))
+            (Path(getenv("ProgramFiles")) / "KiCad").glob("**/kicad-cli.exe")
+        )
 
         def _get_cli_version(path: Path) -> semver.Version:
             try:
@@ -123,6 +124,8 @@ def _get_short_githash(project_path: Path) -> str:
 
 # FIXME: can't use a regular cached function here because build_ctx is mutable
 _ensure_modded_kicad_pcb_cache = {}
+
+
 def _ensure_modded_kicad_pcb(build_ctx: config.BuildContext) -> Path:
     """Ensure the KiCAD PCB file has been modified for manufacturing."""
     # First, check if the build_ctx is in the cache

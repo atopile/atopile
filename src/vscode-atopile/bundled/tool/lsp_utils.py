@@ -1,25 +1,28 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 """Utility functions and classes for use with running tools over LSP."""
+
 from __future__ import annotations
 
 import contextlib
 import io
 import os
 import os.path
+import re
 import runpy
 import site
 import subprocess
 import sys
 import threading
-import re
 from typing import Any, Callable, List, Sequence, Tuple, Union
-from pygls.workspace import Document
+
 import lsprotocol.types as lsp_types
+from pygls.workspace import Document
 
 # Save the working directory used when loading this module
 SERVER_CWD = os.getcwd()
 CWD_LOCK = threading.Lock()
+
 
 def document_line(document: Document, line: int, keepends: bool = False) -> str:
     """Return the line of the document."""
@@ -28,6 +31,7 @@ def document_line(document: Document, line: int, keepends: bool = False) -> str:
     except IndexError:
         return ""
     return line_str
+
 
 def range_from_coords(x: tuple[int, int], y: tuple[int, int]) -> lsp_types.Range:
     """Helper function to create a range from coordinates.
@@ -38,9 +42,13 @@ def range_from_coords(x: tuple[int, int], y: tuple[int, int]) -> lsp_types.Range
         end=lsp_types.Position(line=max(0, y[0]), character=max(0, y[1])),
     )
 
-def cursor_line(document: Document, position: lsp_types.Position, keepends: bool = False) -> str:
+
+def cursor_line(
+    document: Document, position: lsp_types.Position, keepends: bool = False
+) -> str:
     """Return the line the cursor is on."""
     return document_line(document, position.line, keepends=keepends)
+
 
 def cursor_word(
     document: Document, position: lsp_types.Position, include_all: bool = True
@@ -68,8 +76,10 @@ def cursor_word_and_range(
             return word
     return None
 
+
 def remove_special_character(word: str) -> str:
     return "".join(e for e in word if e not in "(){}")
+
 
 def as_list(content: Union[Any, List[Any], Tuple[Any]]) -> Union[List[Any], Tuple[Any]]:
     """Ensures we always get a list"""

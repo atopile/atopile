@@ -1,0 +1,508 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+import logging
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    Optional,
+    Sequence,
+)
+
+from typing_extensions import Self
+
+from faebryk.core.graphinterface import GraphInterface
+from faebryk.core.node import Node
+from faebryk.core.trait import Trait
+from faebryk.libs.units import Quantity, UnitsContainer
+from faebryk.libs.util import (
+    Tree,
+    TwistArgs,
+    cast_assert,
+    is_type_pair,
+    try_avoid_endless_recursion,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _resolved[PV, O](
+    func: Callable[["Parameter", "Parameter"], O],
+) -> Callable[
+    [
+        "PV | set | tuple[PV, PV] | Parameter",
+        "PV | set | tuple[PV, PV] | Parameter",
+    ],
+    O,
+]:
+    def wrap(*args):
+        args = [Parameter.from_literal(arg).get_most_narrow() for arg in args]
+        return func(*args)
+
+    return wrap
+
+
+def _resolved_self[PV, O, **P](
+    func: Callable[Concatenate["Parameter", P], O],
+) -> Callable[Concatenate["PV | set | tuple[PV, PV] | Parameter", P], O]:
+    def wrap(
+        p: "PV | set | tuple[PV, PV] | Parameter",
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ):
+        return func(Parameter.from_literal(p).get_most_narrow(), *args, **kwargs)
+
+    return wrap
+
+
+class Parameter(Node):
+    type PV = Any
+    type LIT = PV | set | tuple[PV, PV]
+    type LIT_OR_PARAM = LIT | "Parameter"
+
+    class TraitT(Trait): ...
+
+    narrowed_by: GraphInterface
+    narrows: GraphInterface
+
+    class MergeException(Exception): ...
+
+    class SupportsSetOps:
+        def __contains__(self, other: "Parameter.LIT_OR_PARAM") -> bool: ...
+
+        @staticmethod
+        def check(other: "Parameter.LIT_OR_PARAM") -> bool:
+            return hasattr(other, "__contains__")
+
+    class is_dynamic(TraitT):
+        def execute(self) -> None: ...
+
+    def try_compress(self) -> "Parameter":
+        return self
+
+    @classmethod
+    def from_literal(cls, value: LIT_OR_PARAM) -> '"Parameter"':
+        from faebryk.library.Constant import Constant
+        from faebryk.library.Range import Range
+        from faebryk.library.Set import Set
+
+        if isinstance(value, Parameter):
+            return value
+        elif isinstance(value, set):
+            return Set(value)
+        elif isinstance(value, tuple):
+            return Range(*value)
+        else:
+            return Constant(value)
+
+    def _merge(self, other: "Parameter") -> "Parameter":
+        from faebryk.library.ANY import ANY
+        from faebryk.library.Operation import Operation
+        from faebryk.library.Set import Set
+        from faebryk.library.TBD import TBD
+
+        def _is_pair[T, U](type1: type[T], type2: type[U]) -> Optional[tuple[T, U]]:
+            return is_type_pair(self, other, type1, type2)
+
+        if self is other:
+            return self
+
+        try:
+            if self == other:
+                return self
+        except ValueError:
+            ...
+
+        if pair := _is_pair(Parameter, TBD):
+            return pair[0]
+
+        if pair := _is_pair(Parameter, ANY):
+            return pair[0]
+
+        # TODO remove as soon as possible
+        if pair := _is_pair(Parameter, Operation):
+            # TODO make MergeOperation that inherits from Operation
+            # and return that instead, application can check if result is MergeOperation
+            # if it was checking mergeability
+            raise self.MergeException("cant merge range with operation")
+
+        if any(Parameter.SupportsSetOps.check(x) for x in (self, other)):
+            pair = (self, other)
+            # if pair := _is_pair(Parameter, Parameter.SupportsSetOps):
+            out = self.intersect(*pair)
+            if isinstance(out, Operation):
+                raise self.MergeException("not resolvable")
+            if out == Set([]) and not pair[0] == pair[1] == Set([]):
+                raise self.MergeException(
+                    f"conflicting sets/ranges: {self!r} {other!r}"
+                )
+            return out
+
+        raise NotImplementedError
+
+    def _narrowed(self, other: "Parameter"):
+        if self is other:
+            return
+
+        if self.narrowed_by.is_connected_to(other.narrows):
+            return
+        self.narrowed_by.connect(other.narrows)
+
+    @_resolved
+    def is_mergeable_with(self: "Parameter", other: "Parameter") -> bool:
+        try:
+            self._merge(other)
+            return True
+        except self.MergeException:
+            return False
+        except NotImplementedError:
+            return False
+
+    @_resolved
+    def is_subset_of(self: "Parameter", other: "Parameter") -> bool:
+        from faebryk.library.ANY import ANY
+        from faebryk.library.Operation import Operation
+        from faebryk.library.TBD import TBD
+
+        lhs = self
+        rhs = other
+
+        def is_either_instance(t: type["Parameter"]):
+            return isinstance(lhs, t) or isinstance(rhs, t)
+
+        # Not resolveable
+        if isinstance(rhs, ANY):
+            return True
+        if isinstance(lhs, ANY):
+            return False
+        if is_either_instance(TBD):
+            return False
+        if is_either_instance(Operation):
+            return False
+
+        # Sets
+        return lhs & rhs == lhs
+
+    @_resolved
+    def merge(self: "Parameter", other: "Parameter") -> "Parameter":
+        if self is other:
+            return self
+        out = self._merge(other)
+
+        self._narrowed(out)
+        other._narrowed(out)
+
+        return out
+
+    @_resolved
+    def override(self: "Parameter", other: "Parameter") -> "Parameter":
+        if not other.is_subset_of(self):
+            raise self.MergeException("override not possible")
+
+        self._narrowed(other)
+        return other
+
+    # TODO: replace with graph-based
+    @staticmethod
+    def arithmetic_op(op1: "Parameter", op2: "Parameter", op: Callable) -> "Parameter":
+        from faebryk.library.ANY import ANY
+        from faebryk.library.Constant import Constant
+        from faebryk.library.Operation import Operation
+        from faebryk.library.Range import Range
+        from faebryk.library.Set import Set
+        from faebryk.library.TBD import TBD
+
+        def _is_pair[T, U](
+            type1: type[T], type2: type[U]
+        ) -> Optional[tuple[T, U, Callable]]:
+            if isinstance(op1, type1) and isinstance(op2, type2):
+                return op1, op2, op
+            if isinstance(op1, type2) and isinstance(op2, type1):
+                return op2, op1, TwistArgs(op)
+
+            return None
+
+        if pair := _is_pair(Constant, Constant):
+            return Constant(op(pair[0].value, pair[1].value))
+
+        if pair := _is_pair(Range, Range):
+            try:
+                p0_min, p0_max = pair[0].min, pair[0].max
+                p1_min, p1_max = pair[1].min, pair[1].max
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+            return Range(
+                *(
+                    op(lhs, rhs)
+                    for lhs, rhs in [
+                        (p0_min, p1_min),
+                        (p0_max, p1_max),
+                        (p0_min, p1_max),
+                        (p0_max, p1_min),
+                    ]
+                )
+            )
+
+        if pair := _is_pair(Constant, Range):
+            sop = pair[2]
+            try:
+                return Range(*(sop(pair[0], bound) for bound in pair[1].bounds))
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+
+        if pair := _is_pair(Parameter, ANY):
+            sop = pair[2]
+            return Operation(pair[:2], sop)
+
+        if pair := _is_pair(Parameter, Operation):
+            sop = pair[2]
+            return Operation(pair[:2], sop)
+
+        if pair := _is_pair(Parameter, TBD):
+            sop = pair[2]
+            return Operation(pair[:2], sop)
+
+        if pair := _is_pair(Parameter, Set):
+            sop = pair[2]
+            return Set(
+                Parameter.arithmetic_op(nested, pair[0], sop)
+                for nested in pair[1].params
+            )
+
+        raise NotImplementedError
+
+    @staticmethod
+    def intersect(op1: "Parameter", op2: "Parameter") -> "Parameter":
+        from faebryk.library.Constant import Constant
+        from faebryk.library.Operation import Operation
+        from faebryk.library.Range import Range
+        from faebryk.library.Set import Set
+
+        if op1 == op2:
+            return op1
+
+        def _is_pair[T, U](
+            type1: type[T], type2: type[U]
+        ) -> Optional[tuple[T, U, Callable]]:
+            if isinstance(op1, type1) and isinstance(op2, type2):
+                return op1, op2, op
+            if isinstance(op1, type2) and isinstance(op2, type1):
+                return op2, op1, TwistArgs(op)
+
+            return None
+
+        def op(a, b):
+            return a & b
+
+        # same types
+        if pair := _is_pair(Constant, Constant):
+            return Set([])
+        if pair := _is_pair(Set, Set):
+            return Set(pair[0].params.intersection(pair[1].params))
+        if pair := _is_pair(Range, Range):
+            try:
+                min_ = max(pair[0].min, pair[1].min)
+                max_ = min(pair[0].max, pair[1].max)
+                if min_ > max_:
+                    return Set([])
+                if min_ == max_:
+                    return Constant(min_)
+                return Range(max_, min_)
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+
+        # diff types
+        if pair := _is_pair(Constant, Range):
+            try:
+                if pair[0] in pair[1]:
+                    return pair[0]
+                else:
+                    return Set([])
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+        if pair := _is_pair(Constant, Set):
+            if pair[0] in pair[1]:
+                return pair[0]
+            else:
+                return Set([])
+        if pair := _is_pair(Range, Set):
+            try:
+                return Set(i for i in pair[1].params if i in pair[0])
+            except Range.MinMaxError:
+                return Operation(pair[:2], op)
+
+        return Operation((op1, op2), op)
+
+    @_resolved
+    def __add__(self: "Parameter", other: "Parameter"):
+        return self.arithmetic_op(self, other, lambda a, b: a + b)
+
+    @_resolved
+    def __radd__(self: "Parameter", other: "Parameter"):
+        return self.arithmetic_op(self, other, lambda a, b: b + a)
+
+    @_resolved
+    def __sub__(self: "Parameter", other: "Parameter"):
+        return self.arithmetic_op(self, other, lambda a, b: a - b)
+
+    @_resolved
+    def __rsub__(self: "Parameter", other: "Parameter"):
+        return self.arithmetic_op(self, other, lambda a, b: b - a)
+
+    # TODO PV | float
+    @_resolved
+    def __mul__(self: "Parameter", other: "Parameter"):
+        return self.arithmetic_op(self, other, lambda a, b: a * b)
+
+    @_resolved
+    def __rmul__(self: "Parameter", other: "Parameter"):
+        return self.arithmetic_op(self, other, lambda a, b: b * a)
+
+    # TODO PV | float
+    @_resolved
+    def __truediv__(self: "Parameter", other: "Parameter"):
+        return self.arithmetic_op(self, other, lambda a, b: a / b)
+
+    @_resolved
+    def __rtruediv__(self: "Parameter", other: "Parameter"):
+        return self.arithmetic_op(self, other, lambda a, b: b / a)
+
+    @_resolved
+    def __pow__(self: "Parameter", other: "Parameter") -> "Parameter":
+        return self.arithmetic_op(self, other, lambda a, b: a**b)
+
+    @_resolved
+    def __rpow__(self: "Parameter", other: "Parameter") -> "Parameter":
+        return self.arithmetic_op(self, other, lambda a, b: b**a)
+
+    @_resolved
+    def __and__(self: "Parameter", other: "Parameter") -> "Parameter":
+        return self.intersect(self, other)
+
+    @_resolved
+    def __rand__(self: "Parameter", other: "Parameter") -> "Parameter":
+        return self.intersect(other, self)
+
+    def get_most_narrow(self) -> "Parameter":
+        out = self.get_narrowing_chain()[-1]
+
+        com = out.try_compress()
+        if com is not out:
+            com = com.get_most_narrow()
+            out._narrowed(com)
+            out = com
+
+        return out
+
+    @staticmethod
+    def resolve_all(params: "Sequence[Parameter]") -> "Parameter":
+        from faebryk.library.TBD import TBD
+
+        params_set = list(params)
+        if not params_set:
+            return TBD()
+        it = iter(params_set)
+        most_specific = next(it)
+        for param in it:
+            most_specific = most_specific.merge(param)
+
+        return most_specific
+
+    @try_avoid_endless_recursion
+    def __str__(self) -> str:
+        narrowest = self.get_most_narrow()
+        if narrowest is self:
+            return super().__str__()
+        return str(narrowest)
+
+    # @try_avoid_endless_recursion
+    # def __repr__(self) -> str:
+    #    narrowest = self.get_most_narrow()
+    #    if narrowest is self:
+    #        return super().__repr__()
+    #    # return f"{super().__repr__()} -> {repr(narrowest)}"
+    #    return repr(narrowest)
+
+    def get_narrowing_chain(self) -> list["Parameter"]:
+        out: list[Parameter] = [self]
+        narrowers = self.narrowed_by.get_connected_nodes([Parameter])
+        if narrowers:
+            assert len(narrowers) == 1, "Narrowing tree diverged"
+            out += cast_assert(Parameter, next(iter(narrowers))).get_narrowing_chain()
+            assert id(self) not in map(id, out[1:]), "Narrowing tree cycle"
+        return out
+
+    def get_narrowed_siblings(self) -> set["Parameter"]:
+        return self.narrows.get_connected_nodes([Parameter])  # type: ignore
+
+    def __copy__(self) -> Self:
+        return type(self)()
+
+    def __deepcopy__(self, memo) -> Self:
+        return self.__copy__()
+
+    def get_tree_param(self, include_root: bool = True) -> Tree["Parameter"]:
+        out = Tree[Parameter](
+            {p: p.get_tree_param() for p in self.get_narrowed_siblings()}
+        )
+        if include_root:
+            out = Tree[Parameter]({self: out})
+        return out
+
+    # util functions -------------------------------------------------------------------
+    @_resolved_self
+    def enum_parameter_representation(self: "Parameter", required: bool = False) -> str:
+        return self._enum_parameter_representation(required=required)
+
+    def _enum_parameter_representation(self, required: bool = False) -> str:
+        return self.as_unit("", required=required)
+
+    @_resolved_self
+    def as_unit(
+        self: "Parameter",
+        unit: UnitsContainer,
+        base: int = 1000,
+        required: bool = False,
+    ) -> str:
+        if base != 1000:
+            raise NotImplementedError("Only base 1000 supported")
+
+        return self._as_unit(unit, base=base, required=required)
+
+    def _as_unit(self, unit: UnitsContainer, base: int, required: bool) -> str:
+        raise ValueError(f"Unsupported {self}")
+
+    @_resolved_self
+    def as_unit_with_tolerance(
+        self: "Parameter",
+        unit: UnitsContainer,
+        base: int = 1000,
+        required: bool = False,
+    ) -> str:
+        return self._as_unit_with_tolerance(unit, base=base, required=required)
+
+    def _as_unit_with_tolerance(
+        self, unit: UnitsContainer, base: int, required: bool
+    ) -> str:
+        return self._as_unit(unit, base=base, required=required)
+
+    @_resolved_self
+    def get_max(self: "Parameter") -> PV:
+        return self._max()
+
+    def _max(self):
+        raise ValueError(f"Can't get max for {self}")
+
+    def with_same_unit(
+        self: "Quantity | float | int | LIT_OR_PARAM",
+        to_convert: float | int,
+    ):
+        from faebryk.library.Constant import Constant
+
+        if isinstance(self, Constant) and isinstance(self.value, Quantity):
+            return Quantity(to_convert, self.value.units)
+        if isinstance(self, Quantity):
+            return Quantity(to_convert, self.units)
+        if isinstance(self, (float, int)):
+            return to_convert
+        raise NotImplementedError(f"Unsupported {self=}")

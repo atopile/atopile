@@ -56,7 +56,9 @@ class ErrorComputingAssertion(AssertionException):
 
 class AssertionTable(Table):
     def __init__(self) -> None:
-        super().__init__(show_header=True, header_style="bold green", title="Assertions")
+        super().__init__(
+            show_header=True, header_style="bold green", title="Assertions"
+        )
 
         self.add_column("Status")
         self.add_column("Assertion")
@@ -99,13 +101,19 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                         context[symbol] = instance_methods.get_data(symbol)
 
                     for symbol in assertion.lhs.symbols | assertion.rhs.symbols:
-                        assert symbol.key in context, f"Symbol {symbol} not found in context"
+                        assert (
+                            symbol.key in context
+                        ), f"Symbol {symbol} not found in context"
 
                     assertion_str = parse_utils.reconstruct(assertion.src_ctx)
 
                     instance_src = instance_addr
                     if instance.src_ctx:
-                        instance_src += "\n (^ defined" + parse_utils.format_src_info(instance.src_ctx) + ")"
+                        instance_src += (
+                            "\n (^ defined"
+                            + parse_utils.format_src_info(instance.src_ctx)
+                            + ")"
+                        )
 
                     try:
                         a = assertion.lhs(context)
@@ -124,9 +132,11 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                     assert isinstance(a, RangedValue)
                     assert isinstance(b, RangedValue)
                     numeric = (
-                        a.pretty_str(format_="bound") +
-                        " " + assertion.operator +
-                        " " + b.pretty_str(format_="bound")
+                        a.pretty_str(format_="bound")
+                        + " "
+                        + assertion.operator
+                        + " "
+                        + b.pretty_str(format_="bound")
                     )
                     if passes:
                         table.add_row(
@@ -141,7 +151,7 @@ def generate_assertion_report(build_ctx: config.BuildContext):
                                 assertion: {assertion_str}
                                 numeric: {numeric}
                             """).strip(),
-                            extra={"markup": True}
+                            extra={"markup": True},
                         )
                     else:
                         table.add_row(
@@ -192,7 +202,7 @@ def _check_assertion(assertion: Assertion, context: dict) -> bool:
             raise errors.AtoTypeError.from_ctx(
                 assertion.src_ctx,
                 f"Dimensionality mismatch in assertion"
-                f" ({ex.units1} incompatible with {ex.units2})"
+                f" ({ex.units1} incompatible with {ex.units2})",
             ) from ex
         raise errors.AtoTypeError(
             f"Dimensionality mismatch in assertion"
@@ -281,7 +291,9 @@ def solve_assertions(build_ctx: config.BuildContext):
     table.add_column("Value")
     row_count = 0
 
-    for error_collector, assertion_group in errors.iter_through_errors(assertion_groups.items()):
+    for error_collector, assertion_group in errors.iter_through_errors(
+        assertion_groups.items()
+    ):
         group_vars, assertions = assertion_group
         with error_collector():
             log.debug("Solving for group %s", group_vars)
@@ -402,7 +414,9 @@ def solve_assertions(build_ctx: config.BuildContext):
                 # FIXME: Do we want to mutate the model here?
                 # FIXME: Creating Assignment object here is annoying
                 parent.assignments[name].appendleft(
-                    Assignment(name, value=val, given_type="None", value_is_derived=True)
+                    Assignment(
+                        name, value=val, given_type="None", value_is_derived=True
+                    )
                 )
 
     # Solved for assertion values
@@ -506,7 +520,9 @@ def _constraint_factory(assertion: Assertion, translator):
             {"type": "ineq", "fun": _brrr},
         ]
 
-    def greater_than(a: expressions.Expression, b: expressions.Expression) -> list[dict]:
+    def greater_than(
+        a: expressions.Expression, b: expressions.Expression
+    ) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (
@@ -518,7 +534,9 @@ def _constraint_factory(assertion: Assertion, translator):
             {"type": "ineq", "fun": _brrr},
         ]
 
-    def lower_than_eq(a: expressions.Expression, b: expressions.Expression) -> list[dict]:
+    def lower_than_eq(
+        a: expressions.Expression, b: expressions.Expression
+    ) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (
@@ -530,7 +548,9 @@ def _constraint_factory(assertion: Assertion, translator):
             {"type": "ineq", "fun": _brrr},
         ]
 
-    def greater_than_eq(a: expressions.Expression, b: expressions.Expression) -> list[dict]:
+    def greater_than_eq(
+        a: expressions.Expression, b: expressions.Expression
+    ) -> list[dict]:
         def _brrr(x):
             ctx = translator(x)
             return (

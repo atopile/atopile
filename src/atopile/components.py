@@ -7,9 +7,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 import requests
-from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
-
+from urllib3.util.retry import Retry
 
 from atopile import address, config, errors, expressions, instance_methods
 from atopile.address import AddrStr
@@ -60,6 +59,8 @@ class NoMatchingComponent(errors.AtoError):
 
 
 _component_cache: Optional[dict[str, Any]] = None
+
+
 def get_component_cache() -> dict[str, Any]:
     """Return the component cache."""
     global _component_cache
@@ -71,7 +72,9 @@ def get_component_cache() -> dict[str, Any]:
 def configure_cache():
     """Configure the cache to be used by the component module."""
     global _component_cache
-    cache_file_path = config.get_project_context().project_path / ".ato/component_cache.json"
+    cache_file_path = (
+        config.get_project_context().project_path / ".ato/component_cache.json"
+    )
     if cache_file_path.exists():
         with open(cache_file_path, "r") as cache_file:
             try:
@@ -85,9 +88,12 @@ def configure_cache():
     else:
         _component_cache = {}
 
+
 def save_cache():
     """Saves the current state of the cache to a file."""
-    cache_file_path = config.get_project_context().project_path / ".ato/component_cache.json"
+    cache_file_path = (
+        config.get_project_context().project_path / ".ato/component_cache.json"
+    )
     cache_file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(cache_file_path, "w") as cache_file:
         # Convert the ChainMap to a regular dictionary
@@ -95,7 +101,9 @@ def save_cache():
         json.dump(serializable_cache, cache_file)
 
 
-def get_component_from_cache(component_addr: AddrStr, current_data: dict) -> Optional[dict]:
+def get_component_from_cache(
+    component_addr: AddrStr, current_data: dict
+) -> Optional[dict]:
     """Retrieve a component from the cache, if available, not stale, and unchanged."""
     # Check the cache age
     cached_entry = get_component_cache().get(component_addr)
@@ -141,6 +149,8 @@ def clean_cache():
 
 
 _db_session = None
+
+
 def get_db_session():
     """Return the database session."""
     global _db_session
@@ -181,18 +191,22 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     specd_data = instance_methods.get_data_dict(component_addr)
 
     specd_data_dict = {
-        k: v.to_dict() if isinstance(v, RangedValue) else v for k, v in specd_data.items()
+        k: v.to_dict() if isinstance(v, RangedValue) else v
+        for k, v in specd_data.items()
     }
     for k, v in specd_data_dict.items():
         if isinstance(v, expressions.Expression):
-            raise errors.AtoValueError(f"{k} is an unresolved expression. This is typically caused by one of the values in the expression being unresolved")
+            raise errors.AtoValueError(
+                f"{k} is an unresolved expression. This is typically caused by one of the values in the expression being unresolved"
+            )
 
     # check if there are any Physical objects in the specd_data, if not, throw a warning
     if specd_data:  # Check that specd_data is not empty
         if not any(isinstance(v, RangedValue) for v in specd_data.values()):
             log.warning(
                 "Component %s is under-constrained, does not have any Physical types (e.g., value = 10kohm +/- 10%%).",
-                component_addr)
+                component_addr,
+            )
     else:
         log.warning("No specification data provided for %s.", component_addr)
 
@@ -211,7 +225,6 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
             specd_data_dict["package"] = specd_data_dict["footprint"][1:]
             del specd_data_dict["footprint"]
 
-
     cached_component = get_component_from_cache(component_addr, specd_data_dict)
     if cached_component:
         log.debug("Using cache for %s", component_addr)
@@ -221,14 +234,18 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
     headers = {"accept": "application/json", "Content-Type": "application/json"}
     try:
         db_sessions = get_db_session()
-        response = db_sessions.post(url, json=specd_data_dict, timeout=20, headers=headers)
+        response = db_sessions.post(
+            url, json=specd_data_dict, timeout=20, headers=headers
+        )
         response.raise_for_status()
     except requests.HTTPError as ex:
         if ex.response.status_code == 404:
-            friendly_dict = " && ".join(f"{k} == {v}" for k, v in specd_data_dict.items())
+            friendly_dict = " && ".join(
+                f"{k} == {v}" for k, v in specd_data_dict.items()
+            )
             raise NoMatchingComponent(
                 f"No valid component found for spec {friendly_dict}: please check the part specs above, if they look right, we probably dont have it yet, we are working on it!",
-                addr=component_addr
+                addr=component_addr,
             ) from ex
 
         raise errors.AtoInfraError(
@@ -238,12 +255,11 @@ def _get_generic_from_db(component_addr: str) -> dict[str, Any]:
             Response status code: {ex.response.status_code}
             Response text: {ex.response.text}
             """,
-            addr=component_addr
+            addr=component_addr,
         ) from ex
     except requests.RequestException as ex:
         raise errors.AtoInfraError(
-            f"Error connecting to database: {str(ex)}",
-            addr=component_addr
+            f"Error connecting to database: {str(ex)}", addr=component_addr
         ) from ex
 
     response_data = response.json() or {}
@@ -295,9 +311,7 @@ def get_specd_value(addr: AddrStr) -> str:
             # it's cool if there's no value for non-generics
             return ""
         raise MissingData(
-            "$addr has no value spec'd",
-            title="No value",
-            addr=addr
+            "$addr has no value spec'd", title="No value", addr=addr
         ) from ex
 
 
@@ -377,8 +391,7 @@ def get_footprint(addr: AddrStr) -> str:
                 footprint = footprint + db_data.get("package", "")
         except KeyError as ex:
             raise errors.AtoInfraError(
-                "db component for $addr has no footprint",
-                addr=addr
+                "db component for $addr has no footprint", addr=addr
             ) from ex
         return footprint
 
@@ -403,6 +416,7 @@ def get_package(addr: AddrStr) -> str:
         return instance_methods.get_data(addr, "footprint")
     except KeyError as ex:
         raise MissingData("$addr has no package", title="No Package", addr=addr) from ex
+
 
 @cache
 def get_price(addr: AddrStr) -> str:
@@ -434,9 +448,12 @@ class DesignatorManager:
 
         # FIXME: add lock-file data
         # first pass: grab all the designators from the lock data
-        for err_handler, component in errors.iter_through_errors(filter(
-            instance_methods.match_components, instance_methods.all_descendants(root)
-        )):
+        for err_handler, component in errors.iter_through_errors(
+            filter(
+                instance_methods.match_components,
+                instance_methods.all_descendants(root),
+            )
+        ):
             with err_handler():
                 try:
                     designator = instance_methods.get_data(component, "designator")

@@ -1,0 +1,26 @@
+name: 🔮 Feature Request
+description: File a feature request
+title: "<title>"
+labels: ["⭐ goal: addition"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for sharing your amazing idea with us! Please fill in the following form in detail.
+  - type: textarea
+    id: feature
+    attributes:
+      label: Feature Request
+      description: Describe your great idea.
+      placeholder: Tell us all about it!
+      value: "Add an interactive method to connect components to eachother"
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](/atopile/atopile/blob/main/docs/CODE_OF_CONDUCT.md)
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
