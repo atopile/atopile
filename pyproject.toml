@@ -31,7 +31,7 @@ dependencies = [
     "sexpdata==1.0.2",
     "black~=24.4.2",
     "typing-extensions>=4.6.3,<5.0.0",
-    "easyeda2kicad~=0.8.0",
+    "easyeda2kicad @ git+https://github.com/atopile/easyeda2kicad.py.git",
     "shapely~=2.0.1",
     "freetype-py~=2.4.0",
     "kicadcliwrapper~=1.0.0",
