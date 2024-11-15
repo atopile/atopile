@@ -992,5 +992,5 @@ class DefaultSolver(Solver):
 
     def inspect_get_known_superranges(
         self, value: ParameterOperatable.NumberLike
-    ) -> Iterable[Ranges]:
+    ) -> Ranges:
         raise NotImplementedError()

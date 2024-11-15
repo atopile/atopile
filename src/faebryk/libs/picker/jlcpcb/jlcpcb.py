@@ -24,7 +24,10 @@ from tortoise.models import Model
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import ParameterOperableHasNoLiteral, ParameterOperatable
+from faebryk.core.parameter import (
+    Parameter,
+    ParameterOperatable,
+)
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import (
     E_SERIES,
@@ -458,25 +461,26 @@ class ComponentQuery:
 
     def hint_filter_parameter(
         self,
-        param: ParameterOperatable,
+        param: Parameter,
         solver: Solver,
         e_series: E_SERIES | None = None,
     ) -> Self:
-        try:
-            lit = param.get_literal()
-            return self.filter_by_si_values(lit, e_series)
-        except ParameterOperableHasNoLiteral:
-            pass
-
-        # TODO implement
         # param will in the general case consist of multiple ranges
         # we have to pick some range or make a new one to pre_filter our candidates
         # we can try making a new range with inspect_min and max to filter out
         # everything we already know won't fit
         # then we can check the cardinality of the remaining candidates to see if we
         # need to pick a range contained in the param to filter
-        raise NotImplementedError()
-        return self
+
+        # TODO
+        if not isinstance(param.domain, L.Domains.Numbers):
+            raise NotImplementedError()
+
+        if not solver.inspect_known_supersets_are_few(param):
+            raise NotImplementedError()
+
+        candidate_ranges = solver.inspect_get_known_superranges(param)
+        return self.filter_by_si_values(candidate_ranges, e_series)
 
     def filter_by_tolerance(self, tolerance: float) -> Self:
         assert self.Q
