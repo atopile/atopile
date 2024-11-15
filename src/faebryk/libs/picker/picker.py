@@ -42,7 +42,7 @@ class DescriptiveProperties(StrEnum):
 @dataclass(frozen=True)
 class PickerOption:
     part: Part
-    params: dict[str, ParameterOperatable.NonParamSet] | None = None
+    params: dict[str, ParameterOperatable.SetLiteral] | None = None
     """
     Parameters that need to be matched for this option to be valid.
 

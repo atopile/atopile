@@ -3,13 +3,14 @@
 
 from bisect import bisect
 from collections.abc import Generator, Iterable, Iterator
-from typing import Any, Protocol, Type, TypeVar, cast
+from typing import Any, Protocol, Type, TypeVar, cast, runtime_checkable
 
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
 
 # Protocols ----------------------------------------------------------------------------
 
 
+@runtime_checkable
 class P_Set[T](Protocol):
     def is_empty(self) -> bool: ...
 
@@ -440,6 +441,13 @@ class Range(P_UnitSet[QuantityT]):
             max=Quantity(range._max, base_units(units)),
             units=units,
         )
+
+    def as_center_tuple(self, relative: bool = False) -> tuple[QuantityT, QuantityT]:
+        center = (self.min_elem() + self.max_elem()) / 2
+        delta = (self.max_elem() - self.min_elem()) / 2
+        if relative:
+            delta /= center
+        return center, delta
 
     def base_to_units(self, value: NumericT) -> Quantity:
         return Quantity(value, self.range_units).to(self.units)

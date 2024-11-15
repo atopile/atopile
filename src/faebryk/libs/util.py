@@ -121,7 +121,9 @@ class KeyErrorAmbiguous[T](KeyError):
         self.duplicates = duplicates
 
 
-def find[T](haystack: Iterable[T], needle: Callable[[T], Any]) -> T:
+def find[T](haystack: Iterable[T], needle: Callable[[T], Any] | None = None) -> T:
+    if needle is None:
+        needle = lambda x: x is not None  # noqa: E731
     results = [x for x in haystack if needle(x)]
     if not results:
         raise KeyErrorNotFound()

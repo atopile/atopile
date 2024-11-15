@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # re-exporting Quantity in-case we ever want to change it
-from typing import Any
+from typing import Any, cast
 
 from pint import Quantity as _Quantity  # noqa: F401
 from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
@@ -12,7 +12,7 @@ from faebryk.libs.util import cast_assert
 
 P = UnitRegistry()
 
-UnitsContainer = _UnitsContainer | str
+UnitsContainer = _UnitsContainer | str | _Quantity | Unit
 Quantity = P.Quantity
 dimensionless = cast_assert(Unit, P.dimensionless)
 
@@ -51,7 +51,8 @@ def to_si_str(
     from faebryk.libs.util import round_str
 
     if isinstance(value, Quantity):
-        out = f"{value.to(unit).to_compact(unit):.{num_decimals}f~#P}"
+        compacted = value.to(unit).to_compact(cast(_UnitsContainer, unit))
+        out = f"{compacted:.{num_decimals}f~#P}"
     else:
         out = f"{round_str(value, num_decimals)} {unit}"
     m, u = out.split(" ")

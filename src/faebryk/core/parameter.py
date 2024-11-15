@@ -13,7 +13,7 @@ from faebryk.core.node import Node, f_field
 from faebryk.core.trait import Trait
 from faebryk.libs.sets import P_Set, Range, Ranges
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
-from faebryk.libs.util import abstract, cast_assert
+from faebryk.libs.util import abstract, cast_assert, find
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +26,16 @@ class ParameterOperatable(Node):
     type QuantityLike = Quantity | Unit | NotImplementedType
     type Number = int | float | QuantityLike
 
-    type NonParamNumber = Number | P_Set[Number]
-    type NumberLike = ParameterOperatable | NonParamNumber
-    type NonParamBoolean = bool | P_Set[bool]
-    type BooleanLike = ParameterOperatable | NonParamBoolean
-    type NonParamEnum = Enum | P_Set[Enum]
-    type EnumLike = ParameterOperatable | NonParamEnum
+    type NumberLiteral = Number | P_Set[Number]
+    type NumberLike = ParameterOperatable | NumberLiteral
+    type BooleanLiteral = bool | P_Set[bool]
+    type BooleanLike = ParameterOperatable | BooleanLiteral
+    type EnumLiteral = Enum | P_Set[Enum]
+    type EnumLike = ParameterOperatable | EnumLiteral
+    type SetLiteral = NumberLiteral | BooleanLiteral | EnumLiteral
 
     type All = NumberLike | BooleanLike | EnumLike
-    type NonParamSet = NonParamNumber | NonParamBoolean | NonParamEnum
+    type Literal = NumberLiteral | BooleanLiteral | EnumLiteral | SetLiteral
     type Sets = All
 
     operated_on: GraphInterface
@@ -361,6 +362,21 @@ class ParameterOperatable(Node):
     #    cases: list[tuple[?, Callable[[], Any]]],
     # ) -> None: ...
 
+    # ----------------------------------------------------------------------------------
+
+    def get_operators[T: "Expression"](self, types: type[T] | None = None) -> list[T]:
+        if types is None:
+            types = Expression  # type: ignore
+        types = cast(type[T], types)
+        assert issubclass(types, Expression)
+
+        return cast(list[T], self.operated_on.get_connected_nodes(types=[types]))
+
+    def get_literal(self) -> Literal:
+        iss = self.get_operators(Is)
+        literal_is = find(o for i in iss for o in i.get_literal_operands())
+        return literal_is
+
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     if isinstance(po, ParameterOperatable):
@@ -392,6 +408,9 @@ class Expression(ParameterOperatable):
             set[ParameterOperatable],
             self.operates_on.get_connected_nodes(types=[ParameterOperatable]),
         )
+
+    def get_literal_operands(self) -> list[ParameterOperatable.Literal]:
+        return [o for o in self.operands if not isinstance(o, ParameterOperatable)]
 
     def depth(self) -> int:
         if hasattr(self, "_depth"):
