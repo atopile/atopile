@@ -140,7 +140,7 @@ allow-direct-references = true
 #dependencies = ["faebryk[dev]"]
 
 [tool.hatch.envs.test]
-dependencies = ["faebryk[test]"]
+dependencies = ["atopile[test]"]
 
 # Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
