@@ -17,10 +17,17 @@ from typing import Any, Callable, Generator, Self, Sequence
 import patoolib
 import requests
 from pint import DimensionalityError
-from rich.progress import track
+from rich.progress import Progress, track
 from tortoise import Tortoise
 from tortoise.expressions import Q
-from tortoise.fields import CharField, DatetimeField, IntField, JSONField, TextField
+from tortoise.fields import (
+    CharField,
+    DatetimeField,
+    FloatField,
+    IntField,
+    JSONField,
+    TextField,
+)
 from tortoise.models import Model
 
 import faebryk.library._F as F
@@ -154,6 +161,7 @@ class Component(Model):
     flag = IntField()
     last_on_stock = DatetimeField()
     preferred = IntField()
+    price_100 = FloatField(null=True)
 
     class Meta:
         table = "components"
@@ -412,10 +420,14 @@ class ComponentQuery:
 
         self.Q: Q | None = Q()
         self.results: list[Component] | None = None
+        self.sorted_by_price: bool = False
 
     async def exec(self) -> list[Component]:
         queryset = Component.filter(self.Q)
-        logger.debug(f"Query results: {await queryset.count()}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Query results: {await queryset.count()}")
+        if self.sorted_by_price:
+            queryset = queryset.order_by("price_100")
         self.results = await queryset
         self.Q = None
         return self.results
@@ -512,8 +524,10 @@ class ComponentQuery:
 
         return out
 
-    def sort_by_price(self, qty: int = 1) -> Self:
-        self.get().sort(key=lambda x: x.get_price(qty))
+    def sort_by_price(self, qty: int = 100) -> Self:
+        assert self.Q
+        self.Q &= Q(price_100__isnull=False)
+        self.sorted_by_price = True
         return self
 
     def filter_by_lcsc_pn(self, partnumber: str) -> Self:
@@ -756,6 +770,37 @@ class JLCPCB_DB:
         ans = input(prompt + " [y/N]:").lower()
         return ans == "y"
 
+    async def add_column_if_not_exist(self, column_name: str, column_type: str):
+        res = await Tortoise.get_connection("default").execute_query(
+            f"SELECT COUNT(*) FROM pragma_table_info('components') WHERE name = '{column_name}';"
+        )
+        if res[1][0][0] == 0:
+            await Tortoise.get_connection("default").execute_query(
+                f"ALTER TABLE components ADD COLUMN {column_name} {column_type};"
+            )
+
+    async def set_price(self):
+        await self.add_column_if_not_exist("price_100", "FLOAT")
+
+        with Progress() as progress:
+            Q = Component.all().filter(price_100__isnull=True)
+            count = await Q.count()
+            logger.info(f"Extracting price for {count} comps")
+            task = progress.add_task("[cyan]Processing data...", total=count)
+            comps = []
+            for c in await Q:
+                progress.update(task, advance=1)
+                for p in c.price:
+                    if p["qFrom"] <= 100 <= (p["qTo"] or float("inf")):
+                        c.price_100 = p["price"]
+                        comps.append({"lcsc": c.lcsc, "price_100": p["price"]})
+        logger.info(f"Updating {len(comps)} components")
+        await Component.bulk_update(
+            [Component(**c) for c in comps],
+            fields=["price_100"],
+            batch_size=1000,
+        )
+
     async def post_process_db(self):
         return
         # Ignoring all OOS components isn't a good idea, since there are many
@@ -764,6 +809,9 @@ class JLCPCB_DB:
         # TODO: consider another approach to optimize the DB, eg. partitioning
         logger.info("Deleting out-of-stock components from DB")
         await Component.filter(stock__lt=1).delete()
+
+        logger.info("Extracting prices")
+        await self.set_price()
 
         logger.info("Vacuuming DB")
         await Tortoise.get_connection("default").execute_query("VACUUM;")
