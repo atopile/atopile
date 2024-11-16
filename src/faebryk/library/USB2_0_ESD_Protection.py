@@ -23,8 +23,10 @@ class USB2_0_ESD_Protection(Module):
     # ----------------------------------------
     usb = L.list_field(2, F.USB2_0)
 
-    vbus_esd_protection: F.TBD
-    data_esd_protection: F.TBD
+    vbus_esd_protection = L.p_field(domain=L.Domains.BOOL())
+    data_esd_protection = L.p_field(domain=L.Domains.BOOL())
+
+    no_pick: has_part_picked_remove
 
     # ----------------------------------------
     #                 traits
@@ -42,12 +44,15 @@ class USB2_0_ESD_Protection(Module):
         #           connections
         # ------------------------------------
         self.usb[0].connect(self.usb[1])
+        self.usb[0].usb_if.buspower.connect(self.usb[1].usb_if.buspower)
         self.usb[0].usb_if.buspower.decoupled.decouple()
 
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.usb[0].usb_if.buspower.voltage.merge(F.Range(4.75 * P.V, 5.25 * P.V))
+        self.usb[0].usb_if.buspower.voltage.constrain_subset(
+            L.Range(4.75 * P.V, 5.25 * P.V)
+        )
 
         # TODO remove if adding any child modules
         has_part_picked_remove.mark_no_pick_needed(self)

@@ -4,8 +4,8 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.module import Module, ModuleException
-from faebryk.core.parameter import Parameter
+from faebryk.core.module import Module
+from faebryk.core.parameter import ParameterOperatable
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.heuristic_decoupling import Params
 from faebryk.exporters.pcb.layout.next_to import LayoutNextTo
@@ -26,8 +26,8 @@ class Diodes_Incorporated_AP2552W6_7(Module):
     """
 
     @assert_once
-    def set_current_limit(self, current: Parameter) -> F.Resistor:
-        self.current_limit.merge(current)
+    def set_current_limit(self, current: ParameterOperatable.NumberLike) -> F.Resistor:
+        self.current_limit.alias_is(current)
 
         current_limit_setting_resistor = self.ilim.add(F.Resistor())
 
@@ -42,16 +42,14 @@ class Diodes_Incorporated_AP2552W6_7(Module):
         # Rlim_max = (20.08 / (self.current_limit * P.mA)) ^ (1 / 0.904) * P.kohm
 
         # Rlim = Range(Rlim_min, Rlim_max)
-        Rlim = F.Range.from_center_rel(
-            51 * P.kohm, 0.01
-        )  # TODO: remove: ~0.52A typical current limit
-        if not Rlim.is_subset_of(F.Range(10 * P.kohm, 210 * P.kohm)):
-            raise ModuleException(
-                self,
-                f"Rlim must be in the range 10kOhm to 210kOhm but is {Rlim.get_most_narrow()}",  # noqa: E501
-            )
+        # Rlim = 51 * P.kohm  # TODO: remove: ~0.52A typical current limit
+        # if not Rlim.is_subset_of(L.Range(10 * P.kohm, 210 * P.kohm)):
+        #    raise ModuleException(
+        #        self,
+        #        f"Rlim must be in the range 10kOhm to 210kOhm but is {Rlim.get_most_narrow()}",  # noqa: E501
+        #    )
 
-        current_limit_setting_resistor.resistance.merge(Rlim)
+        # current_limit_setting_resistor.resistance.constrain_subset(Rlim)
 
         return current_limit_setting_resistor
 
@@ -64,7 +62,12 @@ class Diodes_Incorporated_AP2552W6_7(Module):
     fault: F.ElectricLogic
     ilim: F.SignalElectrical
 
-    current_limit: F.TBD
+    current_limit = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(100 * P.mA, 2.1 * P.A),
+        tolerance_guess=10 * P.percent,
+    )
     # ----------------------------------------
     #                 traits
     # ----------------------------------------

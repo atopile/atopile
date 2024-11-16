@@ -3,6 +3,7 @@ import logging
 import faebryk.library._F as F
 import faebryk.libs.picker.jlcpcb.picker_lib as P
 from faebryk.core.module import Module
+from faebryk.core.solver import Solver
 from faebryk.libs.picker.common import StaticPartPicker
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB, ComponentQuery
 from faebryk.libs.picker.picker import PickError
@@ -11,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class JLCPCBPicker(F.has_multi_picker.FunctionPicker):
-    def pick(self, module: Module):
+    def pick(self, module: Module, solver: Solver):
         try:
-            super().pick(module)
+            super().pick(module, solver)
         except ComponentQuery.ParamError as e:
             raise PickError(e.args[0], module) from e
         except ComponentQuery.Error as e:
@@ -52,5 +53,8 @@ def add_jlcpcb_pickers(module: Module, base_prio: int = 0) -> None:
     prio = base_prio + 1
 
     F.has_multi_picker.add_pickers_by_type(
-        module, P.TYPE_SPECIFIC_LOOKUP, JLCPCBPicker, prio
+        module,
+        P.TYPE_SPECIFIC_LOOKUP,
+        JLCPCBPicker,
+        prio,
     )

@@ -87,7 +87,7 @@ class CH344Q_ReferenceDesign(Module):
         # ------------------------------------
         self.usb_uart_converter.power.decoupled.decouple().specialize(
             F.MultiCapacitor(4)
-        ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
+        ).set_equal_capacitance_each(L.Range.from_center_rel(100 * P.nF, 0.05))
         self.usb.usb_if.buspower.connect_via(self.ldo, pwr_3v3)
 
         self.usb.usb_if.d.connect(self.usb_uart_converter.usb)
@@ -116,40 +116,38 @@ class CH344Q_ReferenceDesign(Module):
         # ------------------------------------
         self.usb_uart_converter.enable_status_or_modem_signals()
 
-        self.oscillator.crystal.frequency.merge(
-            F.Range.from_center_rel(8 * P.MHz, 0.001)
+        self.oscillator.crystal.frequency.constrain_subset(
+            L.Range.from_center_rel(8 * P.MHz, 0.001)
         )
-        self.oscillator.crystal.frequency_tolerance.merge(
-            F.Range.upper_bound(40 * P.ppm)
-        )
-        self.oscillator.crystal.load_capacitance.merge(
-            F.Range.from_center(8 * P.pF, 10 * P.pF)
+        self.oscillator.crystal.frequency_tolerance.constrain_le(40 * P.ppm)
+        self.oscillator.crystal.load_capacitance.constrain_subset(
+            L.Range.from_center(8 * P.pF, 10 * P.pF)
         )  # TODO: should be property of crystal when picked
-        self.oscillator.current_limiting_resistor.resistance.merge(
-            F.Constant(0 * P.ohm)
+        self.oscillator.current_limiting_resistor.resistance.constrain_subset(0 * P.ohm)
+
+        self.ldo.power_in.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
+        )
+        self.ldo.power_out.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
         )
 
-        self.ldo.power_in.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.1)
-        )
-        self.ldo.power_out.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.1)
-        )
+        # self.usb.usb_if.buspower.max_current.constrain_subset(
+        #    L.Range.from_center_rel(500 * P.mA, 0.1)
+        # )
 
-        self.usb.usb_if.buspower.max_current.merge(
-            F.Range.from_center_rel(500 * P.mA, 0.1)
+        self.ldo.output_current.constrain_ge(500 * P.mA)
+        self.ldo.output_voltage.constrain_subset(
+            L.Range.from_center_rel(3.3 * P.V, 0.05)
         )
-
-        self.ldo.output_current.merge(F.Range.lower_bound(500 * P.mA))
-        self.ldo.output_voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
 
         # reset lowpass
-        self.reset_lowpass.response.merge(F.Filter.Response.LOWPASS)
-        self.reset_lowpass.cutoff_frequency.merge(
-            F.Range.from_center_rel(100 * P.Hz, 0.1)
+        self.reset_lowpass.response.constrain_subset(F.Filter.Response.LOWPASS)
+        self.reset_lowpass.cutoff_frequency.constrain_subset(
+            L.Range.from_center_rel(100 * P.Hz, 0.1)
         )
 
         # Specialize
         special = self.reset_lowpass.specialize(F.FilterElectricalRC())
         # Construct
-        special.get_trait(F.has_construction_dependency).construct()
+        special.build_lowpass()

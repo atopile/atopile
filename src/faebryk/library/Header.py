@@ -6,6 +6,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 
@@ -32,19 +33,39 @@ class Header(Module):
         self._vertical_pin_count = vertical_pin_count
 
     def __preinit__(self):
-        self.pin_count_horizonal.merge(self._horizontal_pin_count)
-        self.pin_count_vertical.merge(self._vertical_pin_count)
+        self.pin_count_horizonal.alias_is(self._horizontal_pin_count)
+        self.pin_count_vertical.alias_is(self._vertical_pin_count)
 
-    pin_pitch: F.TBD
-    mating_pin_lenght: F.TBD
-    conection_pin_lenght: F.TBD
-    spacer_height: F.TBD
-    pin_type: F.TBD
-    pad_type: F.TBD
-    angle: F.TBD
+    pin_pitch = L.p_field(
+        units=P.mm,
+        likely_constrained=True,
+        domain=L.Domains.Numbers.REAL(),
+        soft_set=L.Range(1 * P.mm, 10 * P.mm),
+    )
+    pin_type = L.p_field(
+        domain=L.Domains.ENUM(PinType),
+    )
+    pad_type = L.p_field(
+        domain=L.Domains.ENUM(PadType),
+    )
+    angle = L.p_field(
+        domain=L.Domains.ENUM(Angle),
+    )
+    pin_count_horizonal = L.p_field(
+        domain=L.Domains.Numbers.NATURAL(),
+        soft_set=L.Range(2, 100),
+    )
+    pin_count_vertical = L.p_field(
+        domain=L.Domains.Numbers.NATURAL(),
+        soft_set=L.Range(2, 100),
+    )
 
-    pin_count_horizonal: F.TBD
-    pin_count_vertical: F.TBD
+    mating_pin_length = L.p_field(
+        units=P.mm,
+        likely_constrained=True,
+        domain=L.Domains.Numbers.REAL(),
+        soft_set=L.Range(1 * P.mm, 10 * P.mm),
+    )
 
     @L.rt_field
     def contact(self):
