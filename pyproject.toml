@@ -140,7 +140,7 @@ allow-direct-references = true
 #dependencies = ["faebryk[dev]"]
 
 [tool.hatch.envs.test]
-dependencies = ["faebryk[test]"]
+dependencies = ["atopile[test]"]
 
 # Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
@@ -180,6 +180,8 @@ filterwarnings = [
 testpaths = ["test"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+log_file_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
+# log_file_level = "DEBUG"  # <-- you can set this in a PR if you want to debug tests in CI
 
 [tool.ruff]
 line-length = 88         # Same as Black.
