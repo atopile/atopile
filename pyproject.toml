@@ -89,6 +89,7 @@ Homepage = "https://github.com/atopile/atopile"
 
 [project.optional-dependencies]
 dev = [
+    "atopile[test]",
     "debugpy",
     "antlr4-tools",
     "pre-commit>=2.20,<4.0",
