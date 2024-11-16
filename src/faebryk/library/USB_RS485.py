@@ -45,10 +45,12 @@ class USB_RS485(Module):
             self.uart_rs485.power.lv,
         )
 
-        self.termination.resistance.merge(F.Range.from_center(150 * P.ohm, 1.5 * P.ohm))
-        self.polarization[0].resistance.merge(
-            F.Range.from_center(680 * P.ohm, 6.8 * P.ohm)
+        self.termination.resistance.constrain_subset(
+            L.Range.from_center(150 * P.ohm, 1.5 * P.ohm)
         )
-        self.polarization[1].resistance.merge(
-            F.Range.from_center(680 * P.ohm, 6.8 * P.ohm)
+        self.polarization[0].resistance.constrain_subset(
+            L.Range.from_center(680 * P.ohm, 6.8 * P.ohm)
+        )
+        self.polarization[1].resistance.constrain_subset(
+            L.Range.from_center(680 * P.ohm, 6.8 * P.ohm)
         )

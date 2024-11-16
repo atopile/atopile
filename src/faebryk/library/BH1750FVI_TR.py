@@ -13,12 +13,14 @@ logger = logging.getLogger(__name__)
 
 class BH1750FVI_TR(Module):
     class _bh1750_esphome_config(F.has_esphome_config.impl()):
-        update_interval: F.TBD
+        update_interval = L.p_field(
+            units=P.s,
+            soft_set=L.Range(100 * P.ms, 1 * P.day),
+            guess=1 * P.s,
+            tolerance_guess=0,
+        )
 
         def get_config(self) -> dict:
-            val = self.update_interval.get_most_narrow()
-            assert isinstance(val, F.Constant), "No update interval set!"
-
             obj = self.obj
             assert isinstance(obj, BH1750FVI_TR)
 
@@ -31,7 +33,7 @@ class BH1750FVI_TR(Module):
                         "name": "BH1750 Illuminance",
                         "address": "0x23",
                         "i2c_id": i2c.get_trait(F.is_esphome_bus).get_bus_id(),
-                        "update_interval": f"{val.value.to('s')}",
+                        "update_interval": self.update_interval,
                     }
                 ]
             }
@@ -59,19 +61,25 @@ class BH1750FVI_TR(Module):
     esphome_config: _bh1750_esphome_config
 
     def __preinit__(self):
-        self.dvi_capacitor.capacitance.merge(1 * P.uF)
-        self.dvi_resistor.resistance.merge(1 * P.kohm)
+        self.dvi_capacitor.capacitance.constrain_subset(
+            L.Range.from_center_rel(1 * P.uF, 0.1)
+        )
+        self.dvi_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(1 * P.kohm, 0.1)
+        )
 
         self.i2c.terminate()
 
-        self.i2c.frequency.merge(
+        self.i2c.frequency.constrain_le(
             F.I2C.define_max_frequency_capability(F.I2C.SpeedMode.fast_speed)
         )
 
         # set constraints
-        self.power.voltage.merge(F.Range(2.4 * P.V, 3.6 * P.V))
+        self.power.voltage.constrain_subset(L.Range(2.4 * P.V, 3.6 * P.V))
 
-        self.power.decoupled.decouple().capacitance.merge(100 * P.nF)
+        self.power.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
+        )
         # TODO: self.dvi.low_pass(self.dvi_capacitor, self.dvi_resistor)
         self.dvi.signal.connect_via(self.dvi_capacitor, self.power.lv)
         self.dvi.signal.connect_via(self.dvi_resistor, self.power.hv)

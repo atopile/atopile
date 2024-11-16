@@ -37,6 +37,7 @@ using Graph_ref = std::shared_ptr<Graph>;
 using GI_refs_weak = std::vector<GI_ref_weak>;
 using HierarchicalNodeRef = std::pair<Node_ref, std::string>;
 using Link_weak_ref = Link *;
+class Path;
 
 class LinkExists : public std::runtime_error {
   private:
@@ -127,6 +128,8 @@ class Node {
                  std::optional<std::vector<nb::type_object>> types = {},
                  bool include_root = true,
                  std::function<bool(Node_ref)> f_filter = nullptr, bool sort = true);
+
+    std::unordered_set<Node_ref> bfs_node(std::function<bool(Path)> filter);
 };
 
 class GraphInterface {

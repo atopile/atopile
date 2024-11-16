@@ -2,14 +2,42 @@
 # SPDX-License-Identifier: MIT
 
 # re-exporting Quantity in-case we ever want to change it
+from typing import Any, cast
+
 from pint import Quantity as _Quantity  # noqa: F401
 from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
 from pint.util import UnitsContainer as _UnitsContainer
 
+from faebryk.libs.util import cast_assert
+
 P = UnitRegistry()
 
-UnitsContainer = _UnitsContainer | str
+UnitsContainer = _UnitsContainer | str | _Quantity | Unit
 Quantity = P.Quantity
+dimensionless = cast_assert(Unit, P.dimensionless)
+
+
+def quantity(value: float | int, unit: UnitsContainer | Unit | Quantity) -> Quantity:
+    return P.Quantity(value, unit)
+
+
+class HasUnit:
+    units: Unit
+
+    @staticmethod
+    def check(obj: Any) -> bool:
+        return hasattr(obj, "units") or isinstance(obj, Unit)
+
+    @staticmethod
+    def get_units(obj: Any) -> Unit:
+        assert HasUnit.check(obj)
+        return obj.units
+
+    @staticmethod
+    def get_units_or_dimensionless(obj: Any) -> Unit:
+        if isinstance(obj, Unit):
+            return obj
+        return obj.units if HasUnit.check(obj) else dimensionless
 
 
 def to_si_str(
@@ -23,7 +51,8 @@ def to_si_str(
     from faebryk.libs.util import round_str
 
     if isinstance(value, Quantity):
-        out = f"{value.to(unit).to_compact(unit):.{num_decimals}f~#P}"
+        compacted = value.to(unit).to_compact(cast(_UnitsContainer, unit))
+        out = f"{compacted:.{num_decimals}f~#P}"
     else:
         out = f"{round_str(value, num_decimals)} {unit}"
     m, u = out.split(" ")

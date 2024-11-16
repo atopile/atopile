@@ -16,7 +16,8 @@ from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import StrEnum
-from itertools import chain
+from genericpath import commonprefix
+from itertools import chain, pairwise
 from pathlib import Path
 from textwrap import indent
 from typing import (
@@ -120,7 +121,9 @@ class KeyErrorAmbiguous[T](KeyError):
         self.duplicates = duplicates
 
 
-def find[T](haystack: Iterable[T], needle: Callable[[T], Any]) -> T:
+def find[T](haystack: Iterable[T], needle: Callable[[T], Any] | None = None) -> T:
+    if needle is None:
+        needle = lambda x: x is not None  # noqa: E731
     results = [x for x in haystack if needle(x)]
     if not results:
         raise KeyErrorNotFound()
@@ -1155,6 +1158,140 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
         return default
 
 
+def dict_map_values(d: dict, function: Callable[[Any], Any]) -> dict:
+    """recursively map all values in a dict"""
+
+    result = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            result[key] = dict_map_values(value, function)
+        elif isinstance(value, list):
+            result[key] = [dict_map_values(v, function) for v in value]
+        else:
+            result[key] = function(value)
+    return result
+
+
+def merge_dicts(*dicts: dict) -> dict:
+    """merge a list of dicts into a single dict,
+    if same key is present and value is list, lists are merged
+    if same key is dict, dicts are merged recursively
+    """
+    result = {}
+    for d in dicts:
+        for k, v in d.items():
+            if k in result:
+                if isinstance(v, list):
+                    assert isinstance(
+                        result[k], list
+                    ), f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    result[k] += v
+                elif isinstance(v, dict):
+                    assert isinstance(result[k], dict)
+                    result[k] = merge_dicts(result[k], v)
+                else:
+                    result[k] = v
+            else:
+                result[k] = v
+    return result
+
+
+def abstract[T: type](cls: T) -> T:
+    """
+    Mark a class as abstract.
+    """
+
+    old_new = cls.__new__
+
+    def _new(cls_, *args, **kwargs):
+        if cls_ is cls:
+            raise TypeError(f"{cls.__name__} is abstract and cannot be instantiated")
+        return old_new(cls_, *args, **kwargs)
+
+    cls.__new__ = _new
+    return cls
+
+
+def typename(x: object | type) -> str:
+    if not isinstance(x, type):
+        x = type(x)
+    return x.__name__
+
+
+def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
+    for k, v in list(d.items()):
+        if isinstance(v, dict):
+            dict_value_visitor(v, visitor)
+        else:
+            d[k] = visitor(k, v)
+
+
+class DefaultFactoryDict[T, U](dict[T, U]):
+    def __init__(self, factory: Callable[[T], U], *args, **kwargs):
+        self.factory = factory
+        super().__init__(*args, **kwargs)
+
+    def __missing__(self, key: T) -> U:
+        res = self.factory(key)
+        self[key] = res
+        return res
+
+
+class EquivalenceClasses[T: Hashable]:
+    def __init__(self, base: Iterable[T] | None = None):
+        self.classes: dict[T, set[T]] = DefaultFactoryDict(lambda k: {k})
+        for elem in base or []:
+            self.classes[elem]
+
+    def add_eq(self, *values: T):
+        if len(values) < 2:
+            return
+        val1 = values[0]
+        for val in values[1:]:
+            self.classes[val1].update(self.classes[val])
+            for v in self.classes[val]:
+                self.classes[v] = self.classes[val1]
+
+    def get(self) -> list[set[T]]:
+        sets = {id(s): s for s in self.classes.values()}
+        return list(sets.values())
+
+
+def common_prefix_to_tree(iterable: list[str]) -> Iterable[str]:
+    """
+    Turns:
+
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.max_current|Parameter
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.voltage|Parameter
+    <760>|RP2040.adc[1]|ADC.reference|ElectricPower.max_current|Parameter
+    <760>|RP2040.adc[1]|ADC.reference|ElectricPower.voltage|Parameter
+
+    Into:
+
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.max_current|Parameter
+    -----------------------------------------------.voltage|Parameter
+    -----------------1]|ADC.reference|ElectricPower.max_current|Parameter
+    -----------------------------------------------.voltage|Parameter
+
+    Notes:
+        Recommended to sort the iterable first.
+    """
+    yield iterable[0]
+
+    for s1, s2 in pairwise(iterable):
+        prefix = commonprefix([s1, s2])
+        prefix_length = len(prefix)
+        yield "-" * prefix_length + s2[prefix_length:]
+
+
+def ind[T: str | list[str]](lines: T) -> T:
+    prefix = "    "
+    if isinstance(lines, str):
+        return indent(lines, prefix=prefix)
+    if isinstance(lines, list):
+        return [f"{prefix}{line}" for line in lines]  # type: ignore
+
+
 def run_live(
     *args,
     logger: logging.Logger = logger,
@@ -1240,24 +1377,29 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
         lock_file_path.unlink(missing_ok=True)
 
 
-def typename(x: object | type) -> str:
-    if not isinstance(x, type):
-        x = type(x)
-    return x.__name__
-
-
 def consume(iter: Iterable, n: int) -> list:
     assert n >= 0
     out = list(itertools.islice(iter, n))
     return out if len(out) == n else []
 
 
-class DefaultFactoryDict[T, U](dict[T, U]):
-    def __init__(self, factory: Callable[[T], U], *args, **kwargs):
-        self.factory = factory
-        super().__init__(*args, **kwargs)
+def closest_base_class(cls: type, base_classes: list[type]) -> type:
+    """
+    Find the most specific (closest) base class from a list of potential base classes.
 
-    def __missing__(self, key: T) -> U:
-        res = self.factory(key)
-        self[key] = res
-        return res
+    Args:
+        cls: The class to find the closest base class for
+        base_classes: List of potential base classes to check
+
+    Returns:
+        The most specific base class from the list that cls inherits from
+
+    Raises:
+        ValueError: If cls doesn't inherit from any of the base classes
+    """
+    # Get all base classes in method resolution order (most specific first)
+    mro = cls.__mro__
+
+    # Find the first (most specific) base class that appears in the provided list
+    sort = sorted(base_classes, key=lambda x: mro.index(x))
+    return sort[0]

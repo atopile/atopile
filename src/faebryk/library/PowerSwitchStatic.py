@@ -24,4 +24,4 @@ class PowerSwitchStatic(F.PowerSwitch):
         else:
             self.logic_in.reference.lv.connect(self.power_in.lv)
             self.logic_in.signal.connect(self.power_in.hv)
-        self.logic_in.reference.voltage.merge(self.power_in.voltage)
+        self.logic_in.reference.voltage.constrain_subset(self.power_in.voltage)

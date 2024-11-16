@@ -9,14 +9,13 @@ import math
 import os
 import struct
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import indent
 from typing import Any, Callable, Generator, Self, Sequence
 
 import patoolib
 import requests
-from pint import DimensionalityError
 from rich.progress import track
 from tortoise import Tortoise
 from tortoise.expressions import Q
@@ -25,20 +24,37 @@ from tortoise.models import Model
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import (
+    Numbers,
+    Parameter,
+    ParameterOperatable,
+)
+from faebryk.core.solver import Solver
+from faebryk.libs.e_series import (
+    E_SERIES,
+)
+from faebryk.libs.library import L
+from faebryk.libs.picker.common import (
+    PickerESeriesIntersectionError,
+    PickerUnboundedParameterError,
+    check_compatible_parameters,
+    generate_si_values,
+    try_attach,
+)
 from faebryk.libs.picker.lcsc import (
-    LCSC_NoDataException,
     LCSC_Part,
-    LCSC_PinmapException,
     attach,
 )
 from faebryk.libs.picker.picker import (
     DescriptiveProperties,
-    PickError,
     has_part_picked_defined,
 )
-from faebryk.libs.units import P, UndefinedUnitError
-from faebryk.libs.util import at_exit, once, try_or
+from faebryk.libs.units import (
+    P,
+    Quantity,
+    UndefinedUnitError,
+)
+from faebryk.libs.util import at_exit, once
 
 logger = logging.getLogger(__name__)
 
@@ -46,34 +62,20 @@ logger = logging.getLogger(__name__)
 BUILD_FOLDER = Path("./build")
 CACHE_FOLDER = BUILD_FOLDER / Path("cache")
 
+INSPECT_KNOWN_SUPERSETS_LIMIT = 100
+
 
 class JLCPCB_Part(LCSC_Part):
     def __init__(self, partno: str) -> None:
         super().__init__(partno=partno)
 
 
-class TBD_ParseError(F.TBD):
-    """
-    Wrapper for TBD that behaves exactly like TBD for the core and picker
-    But gives us the possibility to attach parser errors to it for deferred
-    error logging
-    """
-
-    def __init__(self, e: Exception, msg: str):
-        self.e = e
-        self.msg = msg
-        super().__init__()
-
-    def __repr__(self):
-        return f"{super().__repr__()}({self.msg}: {self.e})"
-
-
-@dataclass
+@dataclass(frozen=True)
 class MappingParameterDB:
     param_name: str
-    attr_keys: list[str]
+    attr_keys: list[str] = field(hash=False)
     attr_tolerance_key: str | None = None
-    transform_fn: Callable[[str], Parameter] | None = None
+    transform_fn: Callable[[str], ParameterOperatable.Literal] | None = None
     ignore_at: bool = True
 
 
@@ -205,9 +207,9 @@ class Component(Model):
         assert isinstance(self.extra, dict)
         return self.extra
 
-    def attribute_to_parameter(
+    def attribute_to_range(
         self, attribute_name: str, use_tolerance: bool = False, ignore_at: bool = True
-    ) -> Parameter:
+    ) -> L.Range[Quantity]:
         """
         Convert a component value in the extra['attributes'] dict to a parameter
 
@@ -236,7 +238,7 @@ class Component(Model):
             values = value_field.split("~")
             if len(values) != 2:
                 raise ValueError(f"Invalid range from value '{value_field}'")
-            return F.Range(*(P.Quantity(v) for v in values))
+            return L.Range(*(P.Quantity(v) for v in values))
 
         # unit hacks
 
@@ -246,7 +248,7 @@ class Component(Model):
             raise ValueError(f"Could not parse value field '{value_field}'") from e
 
         if not use_tolerance:
-            return F.Constant(value)
+            return L.Single(value)
 
         if "Tolerance" not in self.extra_["attributes"]:
             raise ValueError(f"No Tolerance field in component (lcsc: {self.lcsc})")
@@ -264,9 +266,9 @@ class Component(Model):
                 f"'{self.extra_['attributes']['Tolerance']}'"
             )
 
-        return F.Range.from_center_rel(value, tolerance)
+        return L.Range.from_center_rel(value, tolerance)
 
-    def get_parameter(self, m: MappingParameterDB) -> Parameter:
+    def get_literal(self, m: MappingParameterDB) -> ParameterOperatable.Literal:
         """
         Transform a component attribute to a parameter
 
@@ -318,54 +320,45 @@ class Component(Model):
         if parser is not None:
             return parser(self.extra_["attributes"][attr_key])
 
-        return self.attribute_to_parameter(
+        return self.attribute_to_range(
             attr_key, tolerance_search_key is not None, m.ignore_at
         )
 
-    def get_params(self, mapping: list[MappingParameterDB]) -> list[Parameter]:
-        return [
-            try_or(
-                lambda: self.get_parameter(m),
-                default_f=lambda e: TBD_ParseError(
-                    e, f"Failed to parse {m.param_name}"
-                ),
-                catch=(LookupError, ValueError, AssertionError),
-            )
-            for m in mapping
-        ]
+    def get_literal_for_mappings(
+        self, mapping: list[MappingParameterDB]
+    ) -> tuple[
+        dict[MappingParameterDB, ParameterOperatable.Literal],
+        dict[MappingParameterDB, Exception],
+    ]:
+        params = {}
+        exceptions = {}
+        for m in mapping:
+            try:
+                params[m] = self.get_literal(m)
+            except (LookupError, ValueError, AssertionError) as e:
+                exceptions[m] = e
+        return params, exceptions
 
     def attach(
         self,
         module: Module,
         mapping: list[MappingParameterDB],
         qty: int = 1,
-        allow_TBD: bool = False,
+        ignore_exceptions: bool = False,
     ):
-        params = self.get_params(mapping)
+        params, exceptions = self.get_literal_for_mappings(mapping)
 
-        if not allow_TBD and any(isinstance(p, TBD_ParseError) for p in params):
+        if not ignore_exceptions and exceptions:
             params_str = indent(
-                "\n"
-                + "\n".join(repr(p) for p in params if isinstance(p, TBD_ParseError)),
+                "\n" + "\n".join(repr(e) for e in exceptions.values()),
                 " " * 4,
             )
             raise Component.ParseError(
                 f"Failed to parse parameters for component {self.partno}: {params_str}"
             )
 
-        # Override module parameters with picked component parameters
-        # sort by type to avoid merge conflicts
-        module_params: list[tuple[Parameter, Parameter]] = [
-            (getattr(module, name), value)
-            for name, value in zip([m.param_name for m in mapping], params)
-        ]
-        types_sort = [F.ANY, F.TBD, F.Constant, F.Range, F.Set, F.Operation]
-        for p, value in sorted(
-            module_params, key=lambda x: types_sort.index(type(x[0].get_most_narrow()))
-        ):
-            p.override(value)
-
         attach(module, self.partno)
+
         module.add(
             F.has_descriptive_properties_defined(
                 {
@@ -382,6 +375,10 @@ class Component(Model):
         )
 
         module.add(has_part_picked_defined(JLCPCB_Part(self.partno)))
+
+        for name, value in params.items():
+            getattr(module, name.param_name).alias_is(value)
+
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Attached component {self.partno} to module {module}: \n"
@@ -401,7 +398,7 @@ class ComponentQuery:
     class Error(Exception): ...
 
     class ParamError(Error):
-        def __init__(self, param: Parameter, msg: str):
+        def __init__(self, param: L.P_UnitSet, msg: str):
             self.param = param
             self.msg = msg
             super().__init__(f"{msg} for parameter {param!r}")
@@ -443,38 +440,47 @@ class ComponentQuery:
 
     def filter_by_si_values(
         self,
-        value: Parameter,
-        si_vals: list[str],
+        value: L.Ranges[Quantity],
+        e_series: E_SERIES | None = None,
         tolerance_requirement: float | None = None,
     ) -> Self:
         assert self.Q
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"Filtering by value:\n{indent(value.get_tree_param().pretty(), ' '*4)}"
-            )
-            logger.debug(f"Possible values: {si_vals}")
-
-        if tolerance_requirement is not None:
-            cmp = value.get_parent_of_type(Module)
-            assert cmp
-            value = value.get_most_narrow()
-            if not isinstance(value, F.Range):
-                raise PickError(f"Can only pick ranges, not: {value}", cmp)
-            tol = value.as_center_tuple(relative=True)[1]
-            if tol < tolerance_requirement:  # type: ignore
-                raise PickError(
-                    f"Tolerance not supported: {value}, "
-                    f"expected at least {tolerance_requirement}, but is {tol}",
-                    cmp,
-                )
-            self.filter_by_tolerance(tolerance_requirement)
-
-        if isinstance(value, F.ANY):
-            return self
         assert not self.results
 
+        try:
+            si_vals = generate_si_values(value, e_series)
+        except PickerUnboundedParameterError:
+            return self
+        except PickerESeriesIntersectionError as e:
+            raise ComponentQuery.ParamError(value, str(e)) from e
+
+        if tolerance_requirement:
+            self.filter_by_tolerance(tolerance_requirement)
+
         return self.filter_by_description(*si_vals)
+
+    def hint_filter_parameter(
+        self,
+        param: Parameter,
+        solver: Solver,
+        e_series: E_SERIES | None = None,
+    ) -> Self:
+        # param will in the general case consist of multiple ranges
+        # we have to pick some range or make a new one to pre_filter our candidates
+        # we can try making a new range with inspect_min and max to filter out
+        # everything we already know won't fit
+        # then we can check the cardinality of the remaining candidates to see if we
+        # need to pick a range contained in the param to filter
+
+        # TODO
+        if not isinstance(param.domain, Numbers):
+            raise NotImplementedError()
+
+        if not solver.inspect_known_supersets_are_few(param):
+            raise NotImplementedError()
+
+        candidate_ranges = solver.inspect_get_known_superranges(param)
+        return self.filter_by_si_values(candidate_ranges, e_series)
 
     def filter_by_tolerance(self, tolerance: float) -> Self:
         assert self.Q
@@ -561,6 +567,7 @@ class ComponentQuery:
         self,
         module: Module,
         mapping: list[MappingParameterDB],
+        solver: Solver,
     ) -> Generator[Component, None, None]:
         """
         Filter the results by the parameters of the module
@@ -577,70 +584,23 @@ class ComponentQuery:
         :return: The first component that matches the parameters
         """
 
+        # iterate through all candidate components
         for c in self.get():
-            params = c.get_params(mapping)
-
-            if not all(
-                pm := [
-                    try_or(
-                        lambda: p.is_subset_of(getattr(module, m.param_name)),
-                        default=False,
-                        catch=DimensionalityError,
-                    )
-                    for p, m in zip(params, mapping)
-                ]
-            ):
-                if logger.isEnabledFor(logging.DEBUG):
-                    unmatch = [
-                        f"({m.param_name}: {p} <!=> "
-                        f"{getattr(module, m.param_name).get_most_narrow()})"
-                        for p, v, m in zip(params, pm, mapping)
-                        if not v
-                    ]
-                    logger.debug(f"Component {c.lcsc} doesn't match: [{unmatch}]")
-                continue
-
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"Found part {c.lcsc:8} "
-                    f"Basic: {bool(c.basic)}, Preferred: {bool(c.preferred)}, "
-                    f"Price: ${c.get_price(1):2.4f}, "
-                    f"{c.description:15},"
-                )
-
-            yield c
+            if check_compatible_parameters(module, c, mapping, solver):
+                yield c
 
     def filter_by_module_params_and_attach(
-        self, module: Module, mapping: list[MappingParameterDB], qty: int = 1
+        self,
+        module: Module,
+        mapping: list[MappingParameterDB],
+        solver: Solver,
+        qty: int = 1,
     ):
-        # TODO if no modules without TBD, rerun with TBD allowed
-
-        failures = []
-        for c in self.filter_by_module_params(module, mapping):
-            try:
-                c.attach(module, mapping, qty, allow_TBD=False)
-                return self
-            except (ValueError, Component.ParseError) as e:
-                failures.append((c, e))
-            except LCSC_NoDataException as e:
-                failures.append((c, e))
-            except LCSC_PinmapException as e:
-                failures.append((c, e))
-
-        if failures:
-            fail_str = indent(
-                "\n" + f"{'\n'.join(f'{c}: {e}' for c, e in failures)}", " " * 4
-            )
-
-            raise PickError(
-                f"Failed to attach any components to module {module}: {len(failures)}"
-                f" {fail_str}",
-                module,
-            )
-
-        raise PickError(
-            "No components found that match the parameters and that can be attached",
+        try_attach(
             module,
+            self.filter_by_module_params(module, mapping, solver),
+            mapping,
+            qty,
         )
 
 

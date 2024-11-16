@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,8 @@ class ResistorVoltageDivider(Module):
 
     node = L.list_field(3, F.Electrical)
 
-    ratio: F.TBD
-    max_current: F.TBD
+    ratio = L.p_field(units=P.dimensionless)
+    max_current = L.p_field(units=P.A)
 
     @L.rt_field
     def can_bridge(self):

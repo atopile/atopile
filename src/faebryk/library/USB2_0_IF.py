@@ -17,8 +17,8 @@ class USB2_0_IF(ModuleInterface):
             )
 
         def __preinit__(self):
-            self.single_electric_reference.get_reference().voltage.merge(
-                F.Range(0 * P.V, 3.6 * P.V)
+            self.single_electric_reference.get_reference().voltage.constrain_subset(
+                L.Range(0 * P.V, 3.6 * P.V)
             )
 
     d: Data
