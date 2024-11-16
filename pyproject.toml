@@ -13,7 +13,7 @@ description = "A toolchain bringing the best of software development to the real
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dynamic = ["version"]
-license = { file = "LICENSE"}
+license = { file = "LICENSE" }
 authors = [
     { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
     { name = "Ioannis Papamanoglou", email = "ioannis@atopile.io" },
@@ -86,6 +86,7 @@ dependencies = [
 Homepage = "https://github.com/atopile/atopile"
 "Bug Tracker" = "https://github.com/atopile/atopile/issues"
 
+
 [project.optional-dependencies]
 dev = [
     "debugpy",
@@ -111,11 +112,7 @@ test = [
     "nanobind~=2.2.0",
 ]
 
-docs = [
-    "mkdocs",
-    "mkdocs-material",
-    "mkdocs-drawio-file >= 1.5.2",
-]
+docs = ["mkdocs", "mkdocs-material", "mkdocs-drawio-file >= 1.5.2"]
 
 
 [project.scripts]
@@ -144,9 +141,7 @@ dependencies = ["atopile[test]"]
 
 # Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
-artifacts = [
-    "**/viewer/dist",
-]
+artifacts = ["**/viewer/dist"]
 # packages = ["src/faebryk"]  # TODO: remove - I don't believe this is required
 
 [tool.hatch.build.targets.wheel.hooks.scikit-build]
@@ -154,9 +149,7 @@ experimental = true
 cmake.source-dir = "src/faebryk/core/cpp"
 
 [tool.hatch.build.targets.sdist]
-artifacts = [
-    "**/viewer/dist",
-]
+artifacts = ["**/viewer/dist"]
 
 [tool.hatch.version]
 source = "vcs"
@@ -174,9 +167,7 @@ addopts = [
     "--self-contained-html",
     "--numprocesses=auto",
 ]
-filterwarnings = [
-    "ignore:.*:DeprecationWarning",
-]
+filterwarnings = ["ignore:.*:DeprecationWarning"]
 testpaths = ["test"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -222,7 +213,7 @@ select = [
 ]
 ignore = [
     # Line too long
-    "E501",  # TODO: get the repo back on the same page to 88 characters
+    "E501", # TODO: get the repo back on the same page to 88 characters
 ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
@@ -305,10 +296,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.pylint.main]
 # TODO: consider removing pylint as a dep. ruff's mostly better
-ignore-paths = [
-    "tests",
-    "src/atopile/parser/",
-]
+ignore-paths = ["tests", "src/atopile/parser/"]
 
 [tool.black]
 line-length = 88
