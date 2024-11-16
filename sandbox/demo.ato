@@ -1,0 +1,8 @@
+from "generics/resistors.ato" import Resistor
+
+component ResistorB from Resistor:
+    footprint = "R0805"
+
+module A:
+    r1 = new ResistorB
+    r1.value = 100Ω

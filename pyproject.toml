@@ -51,7 +51,7 @@ dependencies = [
 
     # Extra dependencies
     # TODO:
-    "antlr4-python3-runtime==4.13.0",
+    "antlr4-python3-runtime==4.13.2",
     "attrs>=23.2.0",
     "case-converter>=1.1.0",
     "cattrs>=23.2.3",
