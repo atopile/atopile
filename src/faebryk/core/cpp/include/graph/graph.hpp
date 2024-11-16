@@ -144,7 +144,7 @@ class GraphInterface {
 
     template <typename T> static std::shared_ptr<T> factory();
     std::unordered_set<GI_ref_weak> get_gif_edges();
-    std::unordered_map<GI_ref_weak, Link_ref> &get_edges();
+    Map<GI_ref_weak, Link_ref> &get_edges();
     std::optional<Link_ref> is_connected(GI_ref_weak to);
     Graph_ref get_graph();
     std::unordered_set<Node_ref> get_connected_nodes(std::vector<nb::type_object> types);
@@ -200,23 +200,28 @@ class Path {
   public:
     Path(/*const*/ GI_ref_weak path_head);
     Path(std::vector<GI_ref_weak> path);
+    Path(std::vector<GI_ref_weak> path, GI_ref_weak head);
     Path(const Path &other);
     Path(Path &&other);
     ~Path();
 
-    std::vector</*const*/ GI_ref_weak> path;
+    const std::vector</*const*/ GI_ref_weak> path;
 
-    /*const*/ Link_weak_ref get_link(Edge edge) /*const*/;
-    std::optional<Edge> last_edge() /*const*/;
-    std::optional<TriEdge> last_tri_edge() /*const*/;
-    /*const*/ GI_ref_weak last() /*const*/;
-    /*const*/ GI_ref_weak first() /*const*/;
-    /*const*/ GI_ref_weak operator[](int idx) /*const*/;
-    size_t size() /*const*/;
-    bool contains(/*const*/ GI_ref_weak gif) /*const*/;
-    void iterate_edges(std::function<bool(Edge &)> visitor) /*const*/;
-    /*const*/ std::vector</*const*/ GI_ref_weak> &get_path() /*const*/;
-    size_t index(/*const*/ GI_ref_weak gif) /*const*/;
+    /*const*/ Link_weak_ref get_link(Edge edge) const;
+    std::optional<Edge> last_edge() const;
+    std::optional<TriEdge> last_tri_edge() const;
+    /*const*/ GI_ref_weak last() const;
+    /*const*/ GI_ref_weak first() const;
+    /*const*/ GI_ref_weak operator[](int idx) const;
+    size_t size() const;
+    bool contains(/*const*/ GI_ref_weak gif) const;
+    void iterate_edges(std::function<bool(Edge &)> visitor) const;
+    const std::vector</*const*/ GI_ref_weak> &get_path() const;
+    std::vector</*const*/ GI_ref_weak> get_path_mut() const;
+    size_t index(/*const*/ GI_ref_weak gif) const;
+
+    bool operator==(const Path &other) const;
+    bool starts_with(const Path &other) const;
 
     std::string str() const;
 };
@@ -237,7 +242,7 @@ class Graph {
     static Graph_ref merge_graphs(Graph_ref g1, Graph_ref g2);
 
     std::unordered_set<GI_ref_weak> get_gif_edges(GI_ref_weak from);
-    std::unordered_map<GI_ref_weak, Link_ref> &get_edges(GI_ref_weak from);
+    Map<GI_ref_weak, Link_ref> &get_edges(GI_ref_weak from);
 
     Graph();
     ~Graph();
