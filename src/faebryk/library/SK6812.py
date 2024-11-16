@@ -72,4 +72,4 @@ class SK6812(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range(3.3 * P.V, 5.5 * P.V))
+        self.power.voltage.constrain_subset(L.Range(3.3 * P.V, 5.5 * P.V))

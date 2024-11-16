@@ -75,4 +75,4 @@ class CH344(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
+        self.power.voltage.constrain_subset(L.Range.from_center_rel(3.3 * P.V, 0.1))

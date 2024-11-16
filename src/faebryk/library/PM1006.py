@@ -26,12 +26,9 @@ class PM1006(Module):
     """
 
     class _pm1006_esphome_config(F.has_esphome_config.impl()):
-        update_interval: F.TBD
+        update_interval = L.p_field(units=P.s, tolerance_guess=0)
 
         def get_config(self) -> dict:
-            val = self.update_interval.get_most_narrow()
-            assert isinstance(val, F.Constant), "No update interval set!"
-
             obj = self.obj
             assert isinstance(obj, PM1006), "This is not an PM1006!"
 
@@ -41,7 +38,7 @@ class PM1006(Module):
                 "sensor": [
                     {
                         "platform": "pm1006",
-                        "update_interval": f"{val.value.to('s')}",
+                        "update_interval": self.update_interval,
                         "uart_id": uart.get_trait(F.is_esphome_bus).get_bus_id(),
                     }
                 ]
@@ -61,5 +58,5 @@ class PM1006(Module):
     # ---------------------------------------------------------------------
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range.from_center(5, 0.2))
-        self.data.baud.merge(F.Constant(9600 * P.baud))
+        self.power.voltage.constrain_subset(L.Range.from_center(5 * P.V, 0.2 * P.V))
+        self.data.baud.constrain_subset(9600 * P.baud)

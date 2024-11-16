@@ -94,5 +94,5 @@ class ISO1540(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.non_iso.power.voltage.merge(F.Range(3.0 * P.V, 5.5 * P.V))
-        self.iso.power.voltage.merge(F.Range(3.0 * P.V, 5.5 * P.V))
+        self.non_iso.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5.5 * P.V))
+        self.iso.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5.5 * P.V))
