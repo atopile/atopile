@@ -26,7 +26,7 @@ jobs:
         - name: Run pytest
           id: pytest
           continue-on-error: true
-          run: hatch run test:test
+          run: hatch run test:pytest
         - name: Upload all test logs
           if: steps.pytest.outcome == 'failure'
           uses: actions/upload-artifact@v4
