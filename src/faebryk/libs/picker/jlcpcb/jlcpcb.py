@@ -739,8 +739,14 @@ class JLCPCB_DB:
             },  # Use __name__ to refer to the current module
         )
         self.connected = True
+
+        had_price = await self.add_column_if_not_exist("price_100", "FLOAT")
+
         if self.fresh_db:
             await self.post_process_db()
+        # backwards compatible
+        elif not had_price:
+            await self.set_price()
 
     async def _close_db(self):
         from tortoise.log import logger as tortoise_logger
@@ -774,14 +780,14 @@ class JLCPCB_DB:
         res = await Tortoise.get_connection("default").execute_query(
             f"SELECT COUNT(*) FROM pragma_table_info('components') WHERE name = '{column_name}';"
         )
-        if res[1][0][0] == 0:
+        column_exists = res[1][0][0] != 0
+        if not column_exists:
             await Tortoise.get_connection("default").execute_query(
                 f"ALTER TABLE components ADD COLUMN {column_name} {column_type};"
             )
+        return column_exists
 
     async def set_price(self):
-        await self.add_column_if_not_exist("price_100", "FLOAT")
-
         with Progress() as progress:
             Q = Component.all().filter(price_100__isnull=True)
             count = await Q.count()
