@@ -1,0 +1,34 @@
+# a minimal Dockerfile for CI
+FROM kicad/kicad:8.0.1
+
+# We use root for this container, despite the permission-turds
+# since it's all Github actions currently supports.
+# In the future we might consider creating a distinct github-actions
+# container to reconcile this with other more standard CI systems.
+USER root
+
+COPY --chown=kicad:kicad dist/atopile-*.tar.gz /tmp/atopile.tar.gz
+
+RUN sudo apt-get update \
+    && sudo apt-get install -y \
+        python3-pip \
+        python3-venv \
+    # Create a user-owned venv for atopile
+    # Ubuntu doesn't seem to support pip-installing modules globally
+    && sudo mkdir -p /opt/atopile \
+    && sudo chown -R kicad:kicad /opt/atopile \
+    && python3 -m venv /opt/atopile \
+    && . /opt/atopile/bin/activate \
+    # Install atopile
+    && pip3 install --upgrade pip \
+    && pip3 install "/tmp/atopile.tar.gz[dev,test,docs]" \
+    # Add the ato CLI to something on PATH
+    && sudo cp /opt/atopile/bin/ato /usr/local/bin/ato
+
+# Set envionment variables to build all targets
+ENV ATO_TARGET="all"
+ENV ATO_NON_INTERACTIVE=1
+
+# We need to set the github workspace as a safe directory according
+# to git so we can get version information like the githash from it
+ENTRYPOINT [ "bash", "-c", "git config --global --add safe.directory /github/workspace && ato install && ato build" ]

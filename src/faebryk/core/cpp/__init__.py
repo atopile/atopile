@@ -17,7 +17,7 @@ PRINTF_DEBUG = ConfigFlag("CPP_PRINTF_DEBUG", default=False)
 
 # Check if installed as editable
 def is_editable_install():
-    distro = Distribution.from_name("faebryk")
+    distro = Distribution.from_name("atopile")
     return (
         json.loads(distro.read_text("direct_url.json") or "")
         .get("dir_info", {})

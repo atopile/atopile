@@ -1,171 +1,136 @@
+<h1 align="center">
+    <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/atopile/atopile/assets/9785003/00f19584-18a2-4b5f-9ce4-1248798974dd">
+    <source media="(prefers-color-scheme: light)" src="https://github.com/atopile/atopile/assets/9785003/d38941c1-d7c1-42e6-9b94-a62a0996bc19">
+    <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="https://github.com/atopile/atopile/assets/9785003/d38941c1-d7c1-42e6-9b94-a62a0996bc19">
+    </picture>
+</h1>
+
 <div align="center">
-
-# faebryk
-
-### \[fˈɛbɹɪk\]
-
-<a href="https://github.com/atopile/faebryk">
-<img height=300 width=300 src="./faebryk_logo.png"/>
-</a>
-<br/>
-
-Open-source software-defined EDA tool
-
-[![Version](https://img.shields.io/github/v/tag/atopile/faebryk)](https://github.com/atopile/faebryk/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/atopile/faebryk/blob/main/LICENSE) [![Pull requests open](https://img.shields.io/github/issues-pr/atopile/faebryk)](https://github.com/atopile/faebryk/pulls) [![Issues open](https://img.shields.io/github/issues/atopile/faebryk)](https://github.com/atopile/faebryk/issues)
-[![Discord](https://img.shields.io/discord/1022538123915300865?label=Discord)](https://discord.com/channels/1022538123915300865) [![PyPI - Downloads](https://img.shields.io/pypi/dm/faebryk?label=PyPi%20Downloads)](https://pypi.org/project/faebryk/) [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/atopile/faebryk)](https://github.com/atopile/faebryk/commits/main)
-
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
+    <a href="#">
+        <img src="https://img.shields.io/pypi/v/atopile.svg" alt="Version" style="vertical-align:top; margin:6px 4px">
+    </a>
+    <a href="#">
+        <img src="https://img.shields.io/github/license/atopile/atopile.svg" alt="License" style="vertical-align:top; margin:6px 4px">
+    </a>
+    <a href="#">
+        <img src="https://github.com/atopile/atopile/actions/workflows/ci.yml/badge.svg" alt="Build status" style="vertical-align:top; margin:6px 4px">
+    </a>
 </div>
+<h1 align="center">
+    <br>
+        <img src="docs/assets/images/code-layout-pcb.png" alt="Logo atopile" title="Logo atopile" />
+    <br>
+</h1>
 
-In short faebryk is a python library that allows you to design ready-to-order electronics (PCBs, schematics, etc) in code. It aims to reduce the entry-barrier for hardware design by bridging the gap between software and hardware design.
+## 📖 What Is `atopile`?
+`atopile` is a tool to build electronic circuit boards with code.
 
----
+## 🗣️ Join Us On Discord
+What's your story in electronics? What would you like us to build? Come talk on discord.
 
+[![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)](https://discord.gg/nr5V3QRUd3)
 
-## Using faebryk
+## ⚡️`ato` Code Examples
 
-```bash
-> pip install faebryk
-```
-
-
+### A simple voltage divider
 ```python
-import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.buildutil import apply_design_to_pcb
+from "generics/resistors.ato" import Resistor
+from "generics/interfaces.ato" import Power, Pair
 
-class App(Module):
-    led : F.PoweredLED
-    battery : F.Battery
+module VDiv: #this name needs to match the name in the ato.yaml config file
+    power = new Power
+    output = new Pair
 
-    def __preinit__(self) -> None:
-        self.led.power.connect(self.battery.power)
+    r_top = new Resistor
+    r_top.package = "0402"
 
-        # Parametrize
-        self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
-        self.led.led.brightness.constrain_subset(
-            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
-        )
+    r_bottom = new Resistor
+    r_bottom.package = "0402"
 
+    power.vcc ~ r_top.p1; r_top.p2 ~ output.io
+    output.io ~ r_bottom.p1; r_bottom.p2 ~ power.gnd; power.gnd ~ output.gnd
 
-apply_design_to_pcb(App())
+    v_in: voltage
+    v_out: voltage
+    i_q: current
+
+    assert v_in * r_bottom.value / (r_top.value + r_bottom.value) within v_out
+    assert v_in / (r_bottom.value + r_top.value) within i_q
+
+    v_in = 3.3V +/- 2%
+    v_out = 1.8V +/- 5%
+    i_q = 1mA +/- 10%
 ```
 
-<div align="center">
+### The classic "Blinky" circuit
 
-![](docs/img/demo.gif)
+Define your design with **ato code**
+```python
+import RP2040Kit from "rp2040/RP2040Kit.ato" # run `ato install rp2040` to install
+import LEDIndicatorRed from "generics/leds.ato"
+import LV2842Kit from "lv2842xlvddcr/lv2842kit.ato" # run `ato install lv2842xlvddcr` to install
+import USBCConn from "usb-connectors/usb-connectors.ato" # run `ato install usb-connectors` to install
 
-</div>
+module Blinky:
+    micro_controller = new RP2040Kit
+    led_indicator = new LEDIndicatorRed
+    voltage_regulator = new LV2842Kit
+    usb_c_connector = new USBCConn
 
-## Get stared with your own project
-```bash
-> pip install faebryk
-> faebryk project <name> local
+    usb_c_connector.power ~ voltage_regulator.power_in
+    voltage_regulator.power_out ~ micro_controller.power
+    micro_controller.gpio13 ~ led_indicator.input
+    micro_controller.power.gnd ~ led_indicator.gnd
 
-# if that doesn't work because faebryk is not in your PATH
-> python -m faebryk project <name> local
+    led_indicator.v_in = 3.3volt +/-10%
 ```
+Generate a **block diagram** from code
+<h1 align="center">
+    <picture>
+    <img alt="Schematics example" src="docs/assets/images/block_diagram_example.png" style="width: 80%;">
+    </picture>
+</h1>
 
-For more details checkout the [project template](https://github.com/faebryk/project-template).
+Produce **schematics** for documentation
+<h1 align="center">
+    <picture>
+    <img alt="Schematics example" src="docs/assets/images/schematic_example.png" style="width: 80%;">
+    </picture>
+</h1>
 
----
+### Discover Full Projects
 
-## About
+Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) or the [swoop motion controller](https://github.com/atopile/swoop).
 
-### What \[is faebryk\]
+## 🔨 Getting Started
 
-faebryk is an open-source software-defined electronic design automation (EDA) tool.
-Think of it like the evolution from EDA tools like KiCAD, Altium, Eagle...
-in the way those were the next step from designing electronic circuits on paper.
-The main idea of faebryk is to **describe your product on the highest level** possible and then iteratively refining the description to arrive on a complete and detailed implementation.
-In comparison to classic EDA and design tools which use GUIs, faebryk uses code (Python) to create designs.
-While the main focus is on the EDA part currently, faebryk aims to become a holistic system design tool.
+Find our [documentation](https://atopile.io/), [installation video](https://www.youtube.com/watch?v=XqFhFs-FhQ0) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
 
-### How \[does designing with faebryk work\]
+`atopile` is on pypi.org: https://pypi.org/project/atopile/
 
-faebryk itself is just a **python library** that you include in your project. It is providing you with all the tools to describe and design your system and to export that design into something useful like for example a netlist, a devicetree, gerbers etc, which you then can use in the next steps of your project. Key concepts of faebryk are the graph, importers, exporters, the library and the user application.
-To understand how to use faebryk in your project see [using faebryk](#using-faebryk).
+### Most Basic Installation
 
-### Who \[is faebryk\]
+`atopile` requires *python3.11* or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
 
-faebryk is a community driven project. That means faebryk does not only consist out of core developers but also users, external contributors, moderators and you! It is founded by a group of embedded, electrical, product design and software engineers with a love for making.
+Then just `pipx install atopile` and you're good to go!
 
-### Why \[do we make faebryk\]
+## ❓ Why Atopile?
 
-We noticed that the innovations of software engineering that make fast, scalable, robust solutions possible have not found their way into hardware design. Furthermore there is a lot of duplicate work done. Think of determining the pinout of a SoC and then having to translate that exact pinout into software again or having to constantly adapt designs for supply chain issues.
-Additionally, hardware design has quite a big barrier of entry for makers, but we don't think it has to.
-Currently hardware design is also quite labor intensive with very little automation.
-faebryk aims to tackle all those issues and also opens up some exciting possibilities, such as benefiting from the version management and collaboration tools that are used in modern software development.
+The objective of atopile is to help push forward these paradigms from the software world to hardware, mainly these points:
 
-### When \[is faebryk being developed\]
+* **Intelligent Design Capture**: Define hardware specifications like ratios and tolerances in code, enabling precise control and easy reuse of designs.
+* **Version Control Integration**: Use git to manage design changes, facilitating collaboration and ensuring each iteration is thoroughly reviewed and validated.
+* **Continuous Integration (CI)**: Implement CI to guarantee high-quality, compliant designs with every commit, represented by a green checkmark for assurance.
 
-faebryk is being continuously developed.
-The core team focuses on core functionality and features of faebryk, as well as the general direction of the project.
-The strength of the community can really shine with the development of importers, exporters, libraries, and projects, but everyone is welcome to [help](#community-support) out where they can.
+Describing hardware with code might seem odd at first glance. But once you realize it introduces software development paradigms and toolchains to hardware design, you'll be hooked, just like we've become.
 
-### Where \[do we develop faebryk\]
+Code can **capture the intelligence** you put into your work. Imagine configuring not the resistance values of a voltage divider, but its ratio and total resistance, all using **physical units** and **tolerances**. You can do this because someone before you described precisely what this module is and described the relationships between the values of the components and the function you care about. Now instead imagine what you can gain from **reusing** a buck design you can merely **configure** the target voltage and ripple of. Now imagine **installing** a [servo drive](https://github.com/atopile/spin-servo-drive) the same way you might numpy.
 
-faebryk is being developed completely in the open on Github.
-All the information you need to start using and contributing to faebryk will be in or linked to from [this repository](https://github.com/atopile/faebryk).
-If you have any questions you can ask them on our [Discord](https://discord.gg/nr5V3QRUd3).
-For pull requests and bug-reports, see our [contributing guidelines](docs/CONTRIBUTING.md).
+Version controlling your designs using **git** means you can deeply **validate** and **review** changes a feature at a time, **isolated** from impacting others' work. It means you can detangle your organisation and **collaborate** on an unprecedented scale. We can forgo half-baked "releases" in favor of stamping a simple git-hash on our prototypes, providing an anchor off which to **associate test data** and expectations.
 
----
+Implementing CI to **test** our work ensures both **high-quality** and **compliance**, all summarised in a green check mark, emboldening teams to target excellence.
 
-## Development
+## 🔍 Discover what people build
 
-### Installing from source
-Setup
-
-```bash
-> git clone https://github.com/atopile/faebryk.git
-> cd faebryk
->
-> poetry install
-```
-
-Running examples
-
-```bash
-> poetry shell
-> python ./examples/<sample_name>.py
-```
-
-### Versioning
-
-faebryk uses [semantic versioning](https://semver.org/) in the [releases](https://github.com/atopile/faebryk/releases).
-
-As feabryk is still in the early stages of development new releases will have a lot of (breaking) changes in them.
-Our [roadmap](#versioning)(TODO) will show you where the project is going to and what you can expect in future releases.
-
-### Contributing
-
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md)
-
-To get inspiration on things to work on check out the issues.
-
-#### Running your own examples/Making samples
-
-First follow the steps in get running from source.
-Then add a file in examples/ (you can use one of the examples as template).
-Call your file with `python3 examples/<yourfile>.py`.
-
-#### Running tests
-
-Run
-
-```bash
-> pytest test
-```
-
-## Community Support
-
-Community support is provided via Discord; see the Resources below for details.
-
-### Resources
-
-- Source Code: <https://github.com/atopile/faebryk>
-- Chat: Real-time chat happens in atopile's Discord Server. Use this Discord [Invite](https://discord.gg/nr5V3QRUd3) to register
-- Issues: <https://github.com/atopile/faebryk/issues>
+Browse and submit your modules at [packages.atopile.io](https://packages.atopile.io)

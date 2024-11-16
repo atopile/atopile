@@ -1,0 +1,63 @@
+// See https://go.microsoft.com/fwlink/?LinkId=733558
+// for the documentation about the tasks.json format
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "vscode-extension: watch",
+            "type": "npm",
+            "script": "watch",
+            "problemMatcher": ["$ts-webpack-watch", "$tslint-webpack-watch"],
+            "isBackground": true,
+            "presentation": {
+                "reveal": "never",
+                "group": "watchers"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/src/vscode-atopile"
+            }
+        },
+        {
+            "label": "vscode-extension: watch-tests",
+            "type": "npm",
+            "script": "watch-tests",
+            "problemMatcher": "$tsc-watch",
+            "isBackground": true,
+            "presentation": {
+                "reveal": "never",
+                "group": "watchers"
+            },
+            "group": "build",
+            "options": {
+                "cwd": "${workspaceFolder}/src/vscode-atopile"
+            }
+        },
+        {
+            "label": "tasks: watch-tests",
+            "dependsOn": ["vscode-extension: watch", "vscode-extension: watch-tests"],
+            "problemMatcher": []
+        },
+        {
+            "label": "viewer: dev",
+            "type": "npm",
+            "script": "dev",
+            "problemMatcher": ["$ts-webpack-watch", "$tslint-webpack-watch"],
+            "isBackground": true,
+            "presentation": {
+                "reveal": "never",
+                "group": "watchers"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/src/atopile/viewer"
+            }
+        },
+    ]
+}

@@ -1,0 +1,139 @@
+site_name: atopile
+site_url: https://atopile.io
+site_description: >-
+  atopile is a language and toolchain to describe electronic circuit boards with code.
+  By replacing the point and click schematic interface with code, we introduce software
+  development workflows like reuse, validation and automation to the world of electronics.
+  Join us in this adventure!
+
+nav:
+- Docs:
+  - index.md
+  - first_project.md
+  - config.md
+  - building.md
+  - install.md
+  - import.md
+  - types.md
+  - class.md
+  - maths.md
+  - component_selection.md
+  - doc-strings.md
+  - how-to.md
+  - View your project:
+    - view.md
+  - Layout on kicad:
+    - kicad.md
+  - Version control / Manufacturing:
+    - git.md
+    - ci.md
+- Development:
+  - development.md
+  - roadmap.md
+- Packages: https://packages.atopile.io
+- Example Projects:
+  - spin.md
+  - swoop.md
+- Blog:
+  - blog/index.md
+plugins:
+- drawio_file
+- blog
+- search
+repo_name: atopile/atopile
+repo_url: https://github.com/atopile/atopile
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: squidfunk
+      repo: mkdocs-material
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/mkdocs.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+theme:
+  features:
+  - navigation.tabs
+  - navigation.sections
+  - toc.follow
+  - navigation.footer
+  - header.autohide
+  - announce.dismiss
+  icon:
+    repo: fontawesome/brands/git-alt
+  name: material
+  custom_dir: docs/overrides
+  logo: assets/logo/ato_logo_256x256.png
+  favicon: assets/logo/emblem.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/link
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off
+        name: Switch to system preference
+
+extra:
+  social:
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/XQ34te6NZN
+    - icon: fontawesome/brands/github
+      link: https://github.com/atopile/atopile
+    - icon: fontawesome/solid/paper-plane
+      link: "mailto:tim@atopile.io,matt@atopile.io,narayan@atopile.io"
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/atopile_io
+  generator: false

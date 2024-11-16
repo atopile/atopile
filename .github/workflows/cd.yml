@@ -1,0 +1,124 @@
+name: Continuous Delivery
+
+on:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/atopile/
+
+    permissions:
+      contents: read  # Otherwise we override the default value of `read` and get no access at all
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Required due to a bug in the checkout action
+      # https://github.com/actions/checkout/issues/1471
+      - run: git fetch --prune --unshallow --tags
+
+      -
+        name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      -
+        name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '19.5.0'
+
+      -
+        name: Build Web Application
+        run: |
+          npm ci
+          npm run build
+        working-directory: ./src/atopile/viewer
+      -
+        name: Make python package
+        run: |
+          pip install build twine
+          python -m build
+
+      -
+        name: Upload Python Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist
+
+      -
+        name: Publish package distributions to PyPI
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+        uses: pypa/gh-action-pypi-publish@897895f1e160c830e369f9779632ebc134688e1b
+        with:
+          skip-existing: true  # Helpful while we're migrating
+
+  docker:
+    runs-on: ubuntu-latest
+
+    needs: python
+
+    strategy:
+      matrix:
+        include:
+          - dockerfile: "Dockerfile.kicad"
+            image: "atopile-kicad"
+
+    # Sets the permissions granted to the `GITHUB_TOKEN`
+    # for the actions in this job.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      -
+        name: Download python-package
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: dist
+
+      -
+        name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/atopile/${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      -
+        name: Log in to the Container registry
+        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      -
+        name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: dockerfiles/${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

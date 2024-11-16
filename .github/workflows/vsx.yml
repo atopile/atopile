@@ -1,0 +1,45 @@
+name: Release VSCode Extension
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release'
+        required: true
+        type: string
+
+jobs:
+  vsx-extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/vscode-atopile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      # Set the version in package.json from a workflow dispatch input
+      - run: npm version --no-git-tag-version ${{ inputs.version }}
+        if: github.event_name == 'workflow_dispatch'
+      # Otherwise use the tag name
+      - run: npm version --no-git-tag-version ${{ github.ref_name }}
+        if: github.event_name == 'push'
+
+      - name: Publish to VS Code Marketplace
+        # Skip duplicate here to allow manual triggering
+        run: npx vsce publish --skip-duplicate
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        run: npx ovsx publish --skip-duplicate
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

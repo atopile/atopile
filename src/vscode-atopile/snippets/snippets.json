@@ -1,0 +1,43 @@
+{
+	"generics": {
+		"scope": "ato",
+		"prefix": "from \"generics\"",
+		"body": "from \"generics/${1|buttons.ato,capacitors.ato,connectors.ato,diodes.ato,filters.ato,inductors.ato,interfaces.ato,leds.ato,mosfets.ato,opamps.ato,oscillators.ato,regulators.ato,resistors.ato,transistors.ato,vdivs.ato|}\" import ${2}"
+	},
+	"module": {
+		"scope": "ato",
+		"prefix": "module",
+		"body": ["\"\"\"",
+				"module description",
+				"\"\"\"",
+				"module ${1}:"
+				]
+	},
+	"component": {
+		"scope": "ato",
+		"prefix": "component",
+		"body": ["component ${1}:",
+				"\tfootprint = \"${2}\"",
+				"\tmpn = \"${3}\""
+				]
+	},
+	"resistor": {
+		"description": "Resistor common options",
+		"scope": "ato",
+		"prefix": "resistor",
+		"body": ["${1} = new Resistor",
+				"${1}.value = ${2}${3|ohm,kohm,mohm,gohm|} +/- ${4|1,5,10|}%",
+				"${1}.footprint = ${5|\"R01005\",\"R0201\",\"R0402\",\"R0603\",\"R0805\"|}"
+				]
+	},
+	"capacitor": {
+		"description": "Capacitor common options",
+		"scope": "ato",
+		"prefix": "capacitor",
+		"body": ["${1} = new Capacitor",
+				"${1}.value = ${2}${3|pF,nF,uF,F|} +/- ${4|10,20|}%",
+				"${1}.voltage = ${5|\"6V\",\"10V\",\"16V\",\"25V\",\"50V\",\"100V\"|}",
+				"${1}.footprint = ${6|\"C01005\",\"C0201\",\"C0402\",\"C0603\",\"C0805\",\"C1206\"|}"
+				]
+	}
+}

@@ -1,0 +1,88 @@
+interface Power:
+    signal vcc
+    signal gnd
+
+    voltage: voltage
+    current_budget += 0mA
+    capacitance += 0uF
+    assert current_budget >= 0mA
+
+
+module SomeDevice:
+    power_in = new Power
+    power_in.voltage &= 2.5 to 5.5V
+    power_in.current_budget -= 10uA to 12mA
+
+
+module SomeOtherDevice:
+    power_in = new Power
+    power_in.voltage &= 3.3V +/- 10%
+    power_in.current_budget -= 10uA to 234mA
+    assert power_in.capacitance >= 1uF
+
+
+component AMS1117:
+    signal in
+    signal out
+    signal gnd
+
+
+component Resistor:
+    pin 1
+    pin 2
+    resistance: resistance
+
+
+component Capacitor:
+    pin 1
+    pin 2
+    capacitance: capacitance
+
+    power = new Power
+    power.vcc ~ pin 1
+    power.gnd ~ pin 2
+    power.capacitance += capacitance
+
+
+module AdjustableLDO:
+    signal _gnd
+    power_in = new Power
+    power_in.gnd ~ _gnd
+
+    power_out = new Power
+    power_out.gnd ~ _gnd
+
+    assert power_in.voltage within 0V to 15V
+    assert power_in.voltage > power_out.voltage
+
+    ic = new AMS1117
+    ic.gnd ~ _gnd
+    power_in.vcc ~ ic.in
+    ic.out ~ power_out.vcc
+
+    r_top = new Resistor
+    r_bot = new Resistor
+
+    _v_ref = 1.25V
+    _i_adj = 50uA
+    r_bot.resistance = 1kΩ +/- 1%
+
+    assert _v_ref * (1 + r_top.resistance / r_bot.resistance) + _i_adj * r_bot.resistance within power_out.voltage
+
+    power_out.current_budget += 200mA
+
+
+module SomeModule:
+    supply = new AdjustableLDO
+    # supply.power_out.voltage = 3.3V +/- 10%
+    supply.power_in.voltage = 5V +/- 5%
+
+    device_a = new SomeDevice
+    supply.power_out ~ device_a.power_in
+
+    device_b = new SomeOtherDevice
+    supply.power_out ~ device_b.power_in
+
+    c = new Capacitor
+    c.capacitance = 4.7uF to 10uF
+    c.power ~ supply.power_out

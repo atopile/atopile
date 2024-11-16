@@ -1,11 +1,11 @@
 # Coding guidelines
 
 ## Formatting, Linting, ...
-Make sure to install all development requirements by running 
+Make sure to install all development requirements by running
 ```
-pip install -r requirements.txt
+pip install -e ."[dev]"
 ```
-Install pre-commit into your faebryk repository:
+Install pre-commit into your repository:
 ```
 pre-commit install
 ```

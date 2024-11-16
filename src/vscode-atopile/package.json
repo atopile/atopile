@@ -1,0 +1,220 @@
+{
+    "name": "atopile",
+    "displayName": "atopile",
+    "icon": "ato_logo_256x256.png",
+    "description": "IDE support for atopile.",
+    "version": "0.2.30",
+    "preview": false,
+    "serverInfo": {
+        "name": "atopile",
+        "module": "atopile"
+    },
+    "publisher": "atopile",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/atopile/atopile",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/atopile/atopile.git",
+        "directory": "src/vscode-atopile/"
+    },
+    "bugs": {
+        "url": "https://github.com/atopile/atopile/issues"
+    },
+    "keywords": [
+        "atopile"
+    ],
+    "engines": {
+        "vscode": "^1.78.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Linters",
+        "Formatters",
+        "Snippets"
+    ],
+    "extensionDependencies": [
+        "ms-python.python"
+    ],
+    "capabilities": {
+        "virtualWorkspaces": {
+            "supported": false,
+            "description": "Virtual Workspaces are not supported with atopile."
+        },
+        "hoverProvider" : "true"
+    },
+    "activationEvents": [
+        "onLanguage:atopile",
+        "workspaceContains:*.ato"
+    ],
+    "main": "./dist/extension.js",
+    "scripts": {
+        "vscode:prepublish": "npm run package",
+        "compile": "webpack",
+        "watch": "webpack --watch",
+        "package": "webpack --mode production --devtool source-map --config ./webpack.config.js",
+        "compile-tests": "tsc -p . --outDir out",
+        "watch-tests": "tsc -p . -w --outDir out",
+        "pretest": "npm run compile-tests && npm run compile && npm run lint",
+        "lint": "eslint src --ext ts",
+        "format-check": "prettier --check 'src/**/*.ts' 'build/**/*.yml' '.github/**/*.yml'",
+        "test": "node ./out/test/runTest.js"
+    },
+    "contributes": {
+        "snippets": [
+            {
+                "language": "ato",
+                "path": "./snippets/snippets.json"
+            }
+        ],
+        "configuration": {
+            "properties": {
+                "atopile.args": {
+                    "default": [],
+                    "description": "Arguments passed in. Each argument is a separate item in the array.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "scope": "resource",
+                    "type": "array"
+                },
+                "atopile.path": {
+                    "default": [],
+                    "description": "When set to a path to atopile binary, extension will use that. NOTE: Using this option may slowdown server response time.",
+                    "scope": "resource",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "atopile.importStrategy": {
+                    "default": "fromEnvironment",
+                    "description": "Defines where `atopile` is imported from. This setting may be ignored if `atopile.path` is set.",
+                    "enum": [
+                        "useBundled",
+                        "fromEnvironment"
+                    ],
+                    "enumDescriptions": [
+                        "Always use the bundled version of `atopile`.",
+                        "Use `atopile` from environment, fallback to bundled version only if `atopile` not available in the environment."
+                    ],
+                    "scope": "window",
+                    "type": "string"
+                },
+                "atopile.interpreter": {
+                    "default": [],
+                    "description": "When set to a path to python executable, extension will use that to launch the server and any subprocess.",
+                    "scope": "resource",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "atopile.showNotifications": {
+                    "default": "off",
+                    "description": "Controls when notifications are shown by this extension.",
+                    "enum": [
+                        "off",
+                        "onError",
+                        "onWarning",
+                        "always"
+                    ],
+                    "enumDescriptions": [
+                        "All notifications are turned off, any errors or warning are still available in the logs.",
+                        "Notifications are shown only in the case of an error.",
+                        "Notifications are shown for errors and warnings.",
+                        "Notifications are show for anything that the server chooses to show."
+                    ],
+                    "scope": "machine",
+                    "type": "string"
+                }
+            }
+        },
+        "commands": [
+            {
+                "title": "Restart Server",
+                "category": "atopile",
+                "command": "atopile.restart"
+            },
+            {
+                "command": "atopile.create",
+                "title": "Ato Create",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.build",
+                "title": "Build",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.install",
+                "title": "Install JLCPCB Component",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.install_package",
+                "title": "Install Package",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.choose_build",
+                "title": "Choose build target",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.launch_kicad",
+                "title": "Launches KiCAD PCB Editor with the current board",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            }
+        ],
+        "languages": [
+            {
+                "id": "ato",
+                "aliases": [
+                    "atopile",
+                    "ato"
+                ],
+                "extensions": [
+                    ".ato"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "ato",
+                "scopeName": "source.ato",
+                "path": "./syntaxes/ato.tmLanguage.json"
+            }
+        ]
+    },
+    "dependencies": {
+        "@vscode/python-extension": "^1.0.5",
+        "fs-extra": "^11.2.0",
+        "ovsx": "^0.9.1",
+        "vscode-languageclient": "^8.1.0"
+    },
+    "devDependencies": {
+        "@types/fs-extra": "^11.0.4",
+        "@types/glob": "^8.1.0",
+        "@types/js-yaml": "^4.0.9",
+        "@types/node": "16.x",
+        "@types/vscode": "1.78.0",
+        "@typescript-eslint/eslint-plugin": "^7.0.0",
+        "@typescript-eslint/parser": "^7.11.0",
+        "@vscode/test-electron": "^2.4.0",
+        "@vscode/vsce": "^2.26.1",
+        "eslint": "^8.57.0",
+        "glob": "^10.4.2",
+        "prettier": "^3.2.5",
+        "ts-loader": "^9.5.1",
+        "typescript": "^5.4.5",
+        "webpack": "^5.91.0",
+        "webpack-cli": "^5.1.4"
+    }
+}

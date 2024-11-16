@@ -12,7 +12,5 @@
 # This should make it easy to add new rules without breaking existing ones.
 
 # Global rule:
-*       @IoannisP-ITENG
-
-# Documentation:
-*.md    @ruben-iteng
+*       @iopapamanoglou
+*       @mawildoer
