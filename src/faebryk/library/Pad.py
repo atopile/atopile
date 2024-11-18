@@ -4,15 +4,19 @@
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.reference import reference
 from faebryk.libs.util import not_none
 
 
 class Pad(ModuleInterface):
+    # FIXME: can net this become a reference instead?
     net: F.Electrical
     pcb: ModuleInterface
+    interface = reference(F.Electrical, optional=True)
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)
+        self.interface = intf
         intf.add(F.has_linked_pad_defined(self))
 
     @staticmethod

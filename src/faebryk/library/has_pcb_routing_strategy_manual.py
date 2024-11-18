@@ -58,9 +58,11 @@ class has_pcb_routing_strategy_manual(F.has_pcb_routing_strategy.impl()):
             for net_or_mifs, path in self.paths_rel
             if (
                 route := get_route_for_mifs_in_net(
-                    nets[net_or_mifs]
-                    if isinstance(net_or_mifs, F.Net)
-                    else net_or_mifs,
+                    (
+                        nets[net_or_mifs]
+                        if isinstance(net_or_mifs, F.Net)
+                        else net_or_mifs
+                    ),
                     path,
                 )
             )

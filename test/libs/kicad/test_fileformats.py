@@ -30,14 +30,15 @@ TEST_DIR = find(
     Path(__file__).parents,
     lambda p: p.name == "test" and (p / "common/resources").is_dir(),
 )
-TEST_FILES = TEST_DIR / "common/resources"
+LIB_DIR = TEST_DIR / "common" / "libs"
+TEST_FILES = TEST_DIR / "common" / "resources"
 PRJFILE = TEST_FILES / "test.kicad_pro"
 PCBFILE = TEST_FILES / "test.kicad_pcb"
 FPFILE = TEST_FILES / "test.kicad_mod"
 NETFILE = TEST_FILES / "test_e.net"
 FPLIBFILE = TEST_FILES / "fp-lib-table"
 SCHFILE = TEST_FILES / "test.kicad_sch"
-SYMFILE = TEST_FILES / "test.kicad_sym"
+SYMFILE = LIB_DIR / "test.kicad_sym"
 
 DUMP = ConfigFlag("DUMP", descr="dump load->save into /tmp")
 
@@ -191,11 +192,23 @@ def test_empty_enum_positional():
         (C_kicad_sym_file, SYMFILE),
     ],
 )
-def test_dump_load_equality(parser: type[SEXP_File | JSON_File], path: Path):
+def test_dump_load_equality(
+    parser: type[SEXP_File | JSON_File],
+    path: Path,
+    tmp_path: Path,
+):
+    # Load original file
     loaded = parser.loads(path)
-    dump = loaded.dumps(Path("/tmp") / path.name if DUMP else None)
+
+    # Dump to temp file if DUMP flag set
+    dump_path = tmp_path / path.name if DUMP else None
+    dump = loaded.dumps(dump_path)
+
+    # Load dumped content and dump again
     loaded_dump = parser.loads(dump)
     dump2 = loaded_dump.dumps()
+
+    # Verify dumps match
     assert dump == dump2
 
 

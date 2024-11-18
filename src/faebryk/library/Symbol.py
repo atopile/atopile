@@ -7,8 +7,7 @@ from faebryk.core.trait import Trait
 
 class Symbol(Module):
     """
-    Symbols represent a symbol instance and are bi-directionally
-    linked with the module they represent via the `has_linked` trait.
+    A symbolic representation of a component.
     """
 
     class Pin(ModuleInterface):
@@ -50,10 +49,10 @@ class Symbol(Module):
         component.add(cls.has_symbol(sym))
 
         sym.pins = {}
-        for pin_name, e_pin in pin_map.items():
+        for pin_number, e_pin in pin_map.items():
             pin = cls.Pin()
             pin.represents = e_pin
             e_pin.add(cls.Pin.has_pin(pin))
-            sym.pins[pin_name] = pin
+            sym.pins[pin_number] = pin
 
         return sym

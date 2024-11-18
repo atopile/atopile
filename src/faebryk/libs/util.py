@@ -1206,6 +1206,37 @@ def run_live(
     return "\n".join(stdout), process
 
 
+class CouldntOSOpen(Exception):
+    """Raised when we can't open a file."""
+
+
+def os_open(path: os.PathLike):
+    """Open a file in the operating system's default application for that file type."""
+    path = str(path)
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+
+    match sys.platform:
+        case "win32":
+            try:
+                os.startfile(path)
+            except OSError as ex:
+                raise CouldntOSOpen(f"Can't open {path} on Windows") from ex
+        case "darwin":
+            try:
+                subprocess.run(["open", path])
+            except subprocess.CalledProcessError as ex:
+                raise CouldntOSOpen(f"Can't open {path} on macOS") from ex
+        case "linux":
+            try:
+                subprocess.run(["xdg-open", path])
+            except subprocess.CalledProcessError as ex:
+                raise CouldntOSOpen(f"Can't open {path} on Linux") from ex
+        case _:
+            raise CouldntOSOpen(f"Unsupported platform {sys.platform}")
+
+
 @contextmanager
 def global_lock(lock_file_path: Path, timeout_s: float | None = None):
     # TODO consider using filelock instead

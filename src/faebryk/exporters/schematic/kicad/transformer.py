@@ -1,26 +1,31 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import hashlib
 import logging
 import pprint
+from collections import Counter
 from copy import deepcopy
-from functools import singledispatch
-from itertools import chain, groupby
+from dataclasses import is_dataclass
+from functools import singledispatchmethod
+from itertools import chain
 from os import PathLike
 from pathlib import Path
-from typing import Any, List, Protocol
+from typing import TYPE_CHECKING, Any, List, Protocol, Unpack
 
-# import numpy as np
-# from shapely import Polygon
+import rich
+import rich.table
+
+import faebryk.exporters.schematic.kicad.skidl.bboxes as skidl_bboxes
+import faebryk.exporters.schematic.kicad.skidl.constants as skidl_constants
+import faebryk.exporters.schematic.kicad.skidl.geometry as skidl_geometry
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.exporters.schematic.kicad.skidl import shims
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.geometry.basic import Geometry
-from faebryk.libs.kicad.fileformats import (
-    C_kicad_fp_lib_table_file,
-)
 from faebryk.libs.kicad.fileformats import (
     gen_uuid as _gen_uuid,
 )
@@ -31,20 +36,23 @@ from faebryk.libs.kicad.fileformats_sch import (
     C_circle,
     C_kicad_sch_file,
     C_kicad_sym_file,
+    C_lib_symbol,
     C_polyline,
     C_property,
     C_rect,
     C_stroke,
 )
-from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
+    FuncDict,
     cast_assert,
-    find,
-    get_key,
     not_none,
     once,
 )
+
+if TYPE_CHECKING:
+    import faebryk.exporters.schematic.kicad.skidl.node as skidl_node
+
 
 logger = logging.getLogger(__name__)
 
@@ -58,42 +66,35 @@ Point = Geometry.Point
 Point2D = Geometry.Point2D
 
 Justify = C_effects.C_justify.E_justify
-Alignment = tuple[Justify, Justify, Justify]
-Alignment_Default = (Justify.center_horizontal, Justify.center_vertical, Justify.normal)
-
-
-def gen_uuid(mark: str = "") -> UUID:
-    return _gen_uuid(mark)
-
-
-def is_marked(uuid: UUID, mark: str):
-    suffix = mark.encode().hex()
-    return uuid.replace("-", "").endswith(suffix)
 
 
 class _HasUUID(Protocol):
     uuid: UUID
 
 
-# TODO: consider common transformer base
-class SchTransformer:
-    class has_linked_sch_symbol(Module.TraitT):
-        symbol: SCH.C_symbol_instance
+class _HasPropertys(Protocol):
+    propertys: dict[str, C_property]
 
-    class has_linked_sch_symbol_defined(has_linked_sch_symbol.impl()):
+
+def mm_to_mil(mm: float) -> float:
+    return mm * 1000 / 25.4
+
+
+# TODO: consider common transformer base
+class Transformer:
+    class has_linked_sch_symbol(F.Symbol.TraitT.decless()):
         def __init__(self, symbol: SCH.C_symbol_instance) -> None:
             super().__init__()
             self.symbol = symbol
 
-    class has_linked_pins(F.Symbol.Pin.TraitT):
-        pins: list[SCH.C_symbol_instance.C_pin]
-
-    class has_linked_pins_defined(has_linked_pins.impl()):
+    class has_linked_sch_pins(F.Symbol.Pin.TraitT.decless()):
         def __init__(
             self,
             pins: list[SCH.C_symbol_instance.C_pin],
+            symbol: SCH.C_symbol_instance,
         ) -> None:
             super().__init__()
+            self.symbol = symbol
             self.pins = pins
 
     def __init__(
@@ -102,27 +103,26 @@ class SchTransformer:
         self.sch = sch
         self.graph = graph
         self.app = app
-        self._symbol_files_index: dict[str, Path] = {}
+        self._symbol_files_index: dict[str, Path] | None = None
 
-        self.missing_lib_symbols: list[SCH.C_lib_symbols.C_symbol] = []
+        self.missing_symbols: list[F.Symbol] = []
 
         self.dimensions = None
 
-        FONT_SCALE = 8
+        FONT_SCALE_MM = 1.27
         FONT = Font(
-            size=C_wh(1 / FONT_SCALE, 1 / FONT_SCALE),
-            thickness=0.15 / FONT_SCALE,
+            size=C_wh(FONT_SCALE_MM, FONT_SCALE_MM),
         )
         self.font = FONT
 
-        # TODO: figure out what to do with cleanup
-        # self.cleanup()
+        if cleanup:
+            self.cleanup()
         self.attach()
 
     def attach(self):
         """This function matches and binds symbols to their symbols"""
         # reference (eg. C3) to symbol (eg. "Capacitor_SMD:C_0402")
-        symbols = {
+        sch_symbols = {
             (f.propertys["Reference"].value, f.lib_id): f for f in self.sch.symbols
         }
         for node, sym_trait in GraphFunctions(self.graph).nodes_with_trait(
@@ -131,208 +131,294 @@ class SchTransformer:
             # FIXME: I believe this trait is used as a proxy for being a component
             # since, names are replaced with designators during typical pipelines
             if not node.has_trait(F.has_overriden_name):
+                # These names are typically generated by the netlist transformer
+                logger.warning(f"Symbol {sym_trait.reference} has no overriden name")
                 continue
 
-            symbol = sym_trait.reference
+            f_symbol = sym_trait.reference
 
-            if not symbol.has_trait(F.Symbol.has_kicad_symbol):
+            if not f_symbol.has_trait(F.Symbol.has_kicad_symbol):
+                # KiCAD symbols are typically generated by the lcsc picker
+                logger.warning(f"Symbol {f_symbol} has no kicad symbol")
+                # TODO: generate a bug instead of skipping
                 continue
 
             sym_ref = node.get_trait(F.has_overriden_name).get_name()
-            sym_name = symbol.get_trait(F.Symbol.has_kicad_symbol).symbol_name
+            sym_name = f_symbol.get_trait(F.Symbol.has_kicad_symbol).symbol_name
 
-            try:
-                sym = symbols[(sym_ref, sym_name)]
-            except KeyError:
-                # TODO: add diag
-                self.missing_lib_symbols.append(symbol)
+            if (sym_ref, sym_name) not in sch_symbols:
+                self.missing_symbols.append(f_symbol)
                 continue
 
-            self.attach_symbol(node, sym)
+            self.attach_symbol(f_symbol, sch_symbols[(sym_ref, sym_name)])
 
         # Log what we were able to attach
         attached = {
             n: t.symbol
             for n, t in GraphFunctions(self.graph).nodes_with_trait(
-                SchTransformer.has_linked_sch_symbol
+                self.has_linked_sch_symbol
             )
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
-
-        if self.missing_lib_symbols:
-            # TODO: just go look for the symbols instead
-            raise ExceptionGroup(
-                "Missing lib symbols",
-                [
-                    f"Symbol {sym.name} not found in symbols dictionary"
-                    for sym in self.missing_lib_symbols
-                ],
-            )
-
-    def attach_symbol(self, node: Node, symbol: SCH.C_symbol_instance):
-        """Bind the module and symbol together on the graph"""
-        graph_sym = node.get_trait(F.Symbol.has_symbol).reference
-
-        graph_sym.add(self.has_linked_sch_symbol_defined(symbol))
-
-        # Attach the pins on the symbol to the module interface
-        for pin_name, pins in groupby(symbol.pins, key=lambda p: p.name):
-            graph_sym.pins[pin_name].add(SchTransformer.has_linked_pins_defined(pins))
+        logger.debug(f"Missing: {pprint.pformat(self.missing_symbols)}")
 
     def cleanup(self):
-        """Delete faebryk-created objects in schematic."""
+        """Remove everything we generated in the past."""
 
-        # find all objects with path_len 2 (direct children of a list in pcb)
-        candidates = [o for o in dataclass_dfs(self.sch) if len(o[1]) == 2]
-        for obj, path, _ in candidates:
-            if not self.is_marked(obj):
+        def _filter(obj) -> bool:
+            if self.check_mark(obj):
+                logger.debug(f"Removing marked {obj.uuid}")
+                return True
+            return False
+
+        self.sch.symbols = list(filter(_filter, self.sch.symbols))
+        self.sch.wires = list(filter(_filter, self.sch.wires))
+
+    def attach_symbol(self, f_symbol: F.Symbol, sym_inst: SCH.C_symbol_instance):
+        """Bind the module and symbol together on the graph"""
+        f_symbol.add(self.has_linked_sch_symbol(sym_inst))
+
+        # Attach the pins on the symbol to the module interface
+        for pin in sym_inst.pins:
+            if pin.number not in f_symbol.pins:
                 continue
 
-            # delete object by removing it from the container they are in
-            holder = path[-1]
-            if isinstance(holder, list):
-                holder.remove(obj)
-            elif isinstance(holder, dict):
-                del holder[get_key(obj, holder)]
+            f_symbol.pins[pin.number].add(
+                Transformer.has_linked_sch_pins([pin], sym_inst)
+            )
 
     def index_symbol_files(
-        self, fp_lib_tables: PathLike | list[PathLike], load_globals: bool = True
+        self,
+        symbol_lib_paths: PathLike | list[PathLike],
+        load_globals: bool = False,
     ) -> None:
-        if isinstance(fp_lib_tables, (str, Path)):
-            fp_lib_table_paths = [Path(fp_lib_tables)]
-        else:
-            fp_lib_table_paths = [Path(p) for p in fp_lib_tables]
-
-        # non-local lib, search in kicad global lib
+        """
+        Index the symbol files in the given library tables
+        """
         if load_globals:
-            fp_lib_table_paths += [GLOBAL_FP_LIB_PATH]
+            # TODO: this should work like GLOBAL_FP_LIB_PATH,
+            # then pass the sym-lib-table files
+            raise NotImplementedError("Loading global symbol libraries not implemented")
 
-        for lib_path in fp_lib_table_paths:
-            for lib in C_kicad_fp_lib_table_file.loads(lib_path).fp_lib_table.libs:
-                resolved_lib_dir = Path(
-                    lib.uri.replace("${KIPRJMOD}", str(lib_path.parent)).replace(
-                        "${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH)
-                    )
-                )
-                for path in resolved_lib_dir.glob("*.kicad_sym"):
-                    if path.stem not in self._symbol_files_index:
-                        self._symbol_files_index[path.stem] = path
+        if self._symbol_files_index is None:
+            self._symbol_files_index = {}
+
+        if isinstance(symbol_lib_paths, (str, Path)):
+            symbol_lib_paths = [Path(symbol_lib_paths)]
+        else:
+            symbol_lib_paths = [Path(p) for p in symbol_lib_paths]
+
+        sym_paths = [p.glob("*.kicad_sym") for p in symbol_lib_paths] + [
+            symbol_lib_paths
+        ]
+
+        for path in chain.from_iterable(sym_paths):
+            assert isinstance(path, Path)
+            if not path.exists() or not path.is_file():
+                continue
+
+            try:
+                self.get_symbol_file(path)
+            except Exception:
+                continue
+
+            self._symbol_files_index[path.stem] = path
 
     @staticmethod
     def flipped[T](input_list: list[tuple[T, int]]) -> list[tuple[T, int]]:
         return [(x, (y + 180) % 360) for x, y in reversed(input_list)]
 
-    @staticmethod
-    def gen_uuid(mark: bool = False):
-        return gen_uuid(mark="FBRK" if mark else "")
-
-    @staticmethod
-    def is_marked(obj) -> bool:
-        if not hasattr(obj, "uuid"):
-            return False
-        return is_marked(obj.uuid, "FBRK")
-
     # Getter ---------------------------------------------------------------------------
-    @staticmethod
-    def get_symbol(cmp: Node) -> F.Symbol:
-        return not_none(cmp.get_trait(SchTransformer.has_linked_sch_symbol)).symbol
+    @classmethod
+    def get_symbol(cls, cmp: Node) -> F.Symbol:
+        return not_none(cmp.get_trait(cls.has_linked_sch_symbol)).symbol
 
     def get_all_symbols(self) -> List[tuple[Module, F.Symbol]]:
         return [
             (cast_assert(Module, cmp), t.symbol)
             for cmp, t in GraphFunctions(self.graph).nodes_with_trait(
-                SchTransformer.has_linked_sch_symbol
+                self.has_linked_sch_symbol
             )
         ]
 
     @once
-    def get_symbol_file(self, lib_name: str) -> C_kicad_sym_file:
-        # primary caching handled by @once
-        if lib_name not in self._symbol_files_index:
-            raise FaebrykException(f"Symbol file {lib_name} not found")
-
-        path = self._symbol_files_index[lib_name]
+    def get_symbol_file(self, path: Path) -> C_kicad_sym_file:
         return C_kicad_sym_file.loads(path)
 
+    @once
+    def get_symbol_by_name(self, lib_name: str) -> C_kicad_sym_file:
+        # primary caching handled by @once
+        if self._symbol_files_index is None:
+            raise ValueError("Symbol files index not indexed")
+
+        if lib_name not in self._symbol_files_index:
+            raise FaebrykException(f'Symbol file "{lib_name}" not found')
+
+        path = self._symbol_files_index[lib_name]
+        return self.get_symbol_file(path)
+
     @staticmethod
-    def get_related_lib_sym_units(
-        lib_sym: SCH.C_lib_symbols.C_symbol,
-    ) -> dict[int, list[SCH.C_lib_symbols.C_symbol.C_symbol]]:
+    def get_sub_syms(
+        lib_sym: C_lib_symbol,
+        unit: int | None,
+        body_style: int = 1,
+    ) -> list[C_lib_symbol.C_symbol]:
         """
-        Figure out units.
-        This seems to be purely based on naming convention.
-        There are two suffixed numbers on the end eg. _0_0, _0_1
-        They're in two sets of groups:
-            1. subunit. used to represent graphical vs. pin objects within a unit
-            2. unit. eg, a single op-amp in a package with 4
-        We need to lump the subunits together for further processing.
+        This is purely based on naming convention.
+        There are two suffixed numbers on the end: <name>_<x>_<y>, eg "LED_0_1"
+        The first number is the "unit" and the second is "body style"
+        Index 0 for either unit or body-style indicates "draw for all"
 
-        That is, we group them by the last number.
+        References:
+        - ^1 Parser:
+            https://gitlab.com/kicad/code/kicad/-/blob/b043f334de6183595fda935175d2e2635daa379c/eeschema/sch_io/kicad_sexpr/sch_io_kicad_sexpr_parser.cpp#L455-476
+        - ^2 Note on unit index meanings:
+            https://gitlab.com/kicad/code/kicad/-/blob/2c99bc6c6d0f548f590d4681e20868e8ddb5b9c7/eeschema/eeschema_jobs_handler.cpp#L702
         """
-        groups = groupby(lib_sym.symbols.items(), key=lambda item: int(item[0][-1]))
-        return {k: [v[1] for v in vs] for k, vs in groups}
 
-    @singledispatch
-    def get_lib_symbol(self, sym) -> SCH.C_lib_symbols.C_symbol:
-        raise NotImplementedError(f"Don't know how to get lib symbol for {type(sym)}")
+        # kept body_style as an arg because I expect it will come up sooner than I like
+        # apparently body_style == 2 is comes from some option "de morgen?"
+        # don't need it now, but leaving this here for some poor sod later
+        if body_style != 1:
+            raise NotImplementedError("Only body style 1 is supported")
 
-    @get_lib_symbol.register
-    def _(self, sym: F.Symbol) -> SCH.C_lib_symbols.C_symbol:
-        lib_id = sym.get_trait(F.Symbol.has_kicad_symbol).symbol_name
-        return self._ensure_lib_symbol(lib_id)
+        sub_syms: list[C_lib_symbol.C_symbol] = []
+        for name, sym in lib_sym.symbols.items():
+            *_, sub_sym_unit, sub_sym_body_style = name.split("_")
+            sub_sym_unit = int(sub_sym_unit)
+            sub_sym_body_style = int(sub_sym_body_style)
 
-    @get_lib_symbol.register
-    def _(self, sym: SCH.C_symbol_instance) -> SCH.C_lib_symbols.C_symbol:
-        return self.sch.lib_symbols.symbols[sym.lib_id]
+            if sub_sym_unit == unit or sub_sym_unit == 0 or unit is None:
+                if sub_sym_body_style == body_style or sub_sym_body_style == 0:
+                    sub_syms.append(sym)
 
-    @singledispatch
-    def get_lib_pin(self, pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
-        raise NotImplementedError(f"Don't know how to get lib pin for {type(pin)}")
+        return sub_syms
 
-    @get_lib_pin.register
-    def _(self, pin: F.Symbol.Pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
-        graph_symbol, _ = pin.get_parent()
-        assert isinstance(graph_symbol, Node)
-        lib_sym = self.get_lib_symbol(graph_symbol)
-        units = self.get_related_lib_sym_units(lib_sym)
-        sym = graph_symbol.get_trait(SchTransformer.has_linked_sch_symbol).symbol
+    @staticmethod
+    def get_unit_count(lib_sym: C_lib_symbol) -> int:
+        def _get_unit(name: str) -> int:
+            *_, unit, _ = name.split("_")
+            return int(unit)
 
-        def _name_filter(sch_pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin):
-            return sch_pin.name in {
-                p.name for p in pin.get_trait(self.has_linked_pins).pins
-            }
+        return max(_get_unit(name) for name in lib_sym.symbols.keys()) or 1
 
-        lib_pin = find(
-            chain.from_iterable(u.pins for u in units[sym.unit]),
-            _name_filter,
-        )
-        return lib_pin
+    # Marking -------------------------------------------------------------------------
+    """
+    There are two methods to mark objects in the schematic:
+    1. For items with propertys, add a property with a hash of the contents of
+        itself, minus the mark property. This is used to detect changes to things
+        such as position that the user may have nudged externally.
+    2. For items without propertys, generate the uuid with the mark.
+
+    Anything generated by this transformer is marked.
+    """
+
+    MARK_NAME = "faebryk_mark"
+
+    @classmethod
+    def _get_hash_contents(cls, obj_to_hash: Any) -> dict[tuple[str, ...], Any]:
+        """
+        Helper to get the contents of an object which belongs in it's mark
+        This is a separate function for validation purposes
+        """
+        content_to_hash = {}
+
+        for obj, _, name_path in dataclass_dfs(obj_to_hash):
+            # Covnert the name path to a tuple, so it's hashable
+            name_path = tuple(name_path)
+
+            # Skip certain unstable things (like the mark we're about to add)
+            if isinstance(obj, C_property) and obj.name == cls.MARK_NAME:
+                continue
+
+            if f"['{cls.MARK_NAME}']" in name_path:
+                continue
+
+            if name_path and name_path[-1] == ".uuid":
+                continue
+
+            # Skip collections, their children will be added if relevant
+            if isinstance(obj, (list, dict, tuple)) or is_dataclass(obj):
+                continue
+
+            # Tweak properties to be more stable
+            # Convert all numbers to 2 decimal place floating points
+            if isinstance(obj, (int, float)):
+                obj = round(float(obj), 2)
+
+            content_to_hash[name_path] = obj
+
+        return dict(sorted(content_to_hash.items(), key=lambda x: x[0]))
+
+    @classmethod
+    def hash_contents(cls, obj_to_hash: Any) -> str:
+        """Hash the contents of an object, minus the mark"""
+        content_to_hash = cls._get_hash_contents(obj_to_hash)
+
+        hasher = hashlib.blake2b()
+        for name, value in content_to_hash.items():
+            hasher.update(f"{name}: {value}".encode())
+
+        return hasher.hexdigest()
+
+    @classmethod
+    def check_mark(cls, obj: _HasUUID | _HasPropertys) -> bool:
+        """
+        Return True if an object is validly marked
+
+        Items that have the capacity to be marked
+        via propertys are only considered marked
+        if they have the property and it's valid,
+        despite their uuid
+        """
+        if hasattr(obj, "propertys"):
+            if cls.MARK_NAME in obj.propertys:
+                prop = obj.propertys[cls.MARK_NAME]
+                assert isinstance(prop, C_property)
+                return prop.value == cls.hash_contents(obj)
+
+            return False
+
+        if hasattr(obj, "uuid"):
+            assert isinstance(obj.uuid, str)
+            suffix = cls.hash_contents(obj).encode().hex()
+            uuid = obj.uuid.replace("-", "")
+            return uuid == suffix[: len(uuid)]
+
+        return False
+
+    @classmethod
+    def _mark[R: _HasUUID | _HasPropertys](cls, obj: R) -> R:
+        """Mark the property if possible, otherwise ensure the uuid is marked"""
+
+        hashed_contents = cls.hash_contents(obj)
+
+        if hasattr(obj, "propertys"):
+            obj.propertys[cls.MARK_NAME] = C_property(
+                name=cls.MARK_NAME, value=hashed_contents, effects=C_effects(hide=True)
+            )
+            return obj
+
+        elif hasattr(obj, "uuid"):
+            obj.uuid = _gen_uuid(hashed_contents)
+
+        else:
+            raise TypeError(f"Object {obj} has no propertys or uuid")
+
+        return obj
+
+    @classmethod
+    def mark[R: _HasUUID | _HasPropertys](cls, obj: R) -> R:
+        """Mark the property if possible, otherwise ensure the uuid is marked"""
+
+        # If there's already a valid mark, do nothing
+        # This is important to maintain consistent UUID marking
+        if cls.check_mark(obj):
+            return obj
+
+        return cls._mark(obj)
 
     # Insert ---------------------------------------------------------------------------
-    @staticmethod
-    def mark[R: _HasUUID](node: R) -> R:
-        if hasattr(node, "uuid"):
-            node.uuid = SchTransformer.gen_uuid(mark=True)  # type: ignore
-
-        return node
-
-    def _get_list_field[R](self, node: R, prefix: str = "") -> list[R]:
-        root = self.sch
-        key = prefix + type(node).__name__.removeprefix("C_") + "s"
-
-        assert hasattr(root, key)
-
-        target = getattr(root, key)
-        assert isinstance(target, list)
-        assert all(isinstance(x, type(node)) for x in target)
-        return target
-
-    def _insert(self, obj: Any, prefix: str = ""):
-        obj = SchTransformer.mark(obj)
-        self._get_list_field(obj, prefix=prefix).append(obj)
-
-    def _delete(self, obj: Any, prefix: str = ""):
-        self._get_list_field(obj, prefix=prefix).remove(obj)
 
     def insert_wire(
         self,
@@ -345,39 +431,105 @@ class SchTransformer:
                 SCH.C_wire(
                     pts=C_pts(xys=[C_xy(*coord) for coord in section]),
                     stroke=stroke or C_stroke(),
+                    uuid=_gen_uuid(),
                 )
             )
+
+    def insert_junction(
+        self,
+        coord: Geometry.Point2D,
+    ):
+        self.sch.junctions.append(
+            SCH.C_junction(
+                at=C_xy(coord[0], coord[1]),
+            )
+        )
+
+    @staticmethod
+    def _build_justify(
+        justify: Justify | list[Justify] | None,
+    ) -> list[C_effects.C_justify.E_justify]:
+        """
+        Without any alignment, the text defaults to center alignment,
+        which beyond looking shit, also locks rotation to 0 or 90 degrees
+
+        Weird!
+        """
+        if justify is None:
+            justify = [C_effects.C_justify.E_justify.right]
+        elif isinstance(justify, Justify):
+            justify = [justify]
+
+        return [C_effects.C_justify(justifys=just) for just in justify]
 
     def insert_text(
         self,
         text: str,
         at: C_xyr,
-        font: Font,
-        alignment: Alignment | None = None,
+        font: Font | None = None,
+        text_alignment: Justify | list[Justify] | None = None,
     ):
+        if font is None:
+            font = self.font
+
+        justifys = self._build_justify(text_alignment)
+
         self.sch.texts.append(
             SCH.C_text(
                 text=text,
                 at=at,
                 effects=C_effects(
                     font=font,
-                    justify=alignment,
+                    justifys=justifys,
                 ),
-                uuid=self.gen_uuid(mark=True),
+                uuid=_gen_uuid(),
+            )
+        )
+
+    def insert_global_label(
+        self,
+        text: str,
+        shape: SCH.C_global_label.E_shape,
+        at: C_xyr,
+        font: Font | None = None,
+        text_alignment: Justify | list[Justify] | None = None,
+    ):
+        if font is None:
+            font = self.font
+
+        # The rotation dictates the text alignment
+        # If the alignment is wrong, the rotation is sacrificed
+        if 0 < at.r <= 90:
+            text_alignment = [C_effects.C_justify.E_justify.left]
+        else:
+            text_alignment = [C_effects.C_justify.E_justify.right]
+
+        justifys = self._build_justify(text_alignment)
+
+        self.sch.global_labels.append(
+            SCH.C_global_label(
+                shape=shape,
+                text=text,
+                at=at,
+                effects=C_effects(
+                    font=font,
+                    justifys=justifys,
+                ),
+                uuid=_gen_uuid(),
             )
         )
 
     def _ensure_lib_symbol(
         self,
         lib_id: str,
-    ) -> SCH.C_lib_symbols.C_symbol:
+    ) -> C_lib_symbol:
         """Ensure a symbol is in the schematic library, and return it"""
         if lib_id in self.sch.lib_symbols.symbols:
             return self.sch.lib_symbols.symbols[lib_id]
 
         lib_name, symbol_name = lib_id.split(":")
         lib_sym = deepcopy(
-            self.get_symbol_file(lib_name).kicad_symbol_lib.symbols[symbol_name]
+            self.get_symbol_by_name(lib_name).kicad_symbol_lib.symbols[symbol_name]
         )
         lib_sym.name = lib_id
         self.sch.lib_symbols.symbols[lib_id] = lib_sym
@@ -404,27 +556,38 @@ class SchTransformer:
         lib_sym = self._ensure_lib_symbol(lib_id)
 
         # insert all units
-        for unit_key, unit_objs in self.get_related_lib_sym_units(lib_sym).items():
-            pins = []
+        if self.get_unit_count(lib_sym) > 1:
+            # problems today:
+            # - F.Symbol -> Module mapping
+            # - has_linked_sch_symbol mapping is currently 1:1
+            # - has_kicad_symbol mapping is currently 1:1
+            raise NotImplementedError("Multiple units not implemented")
 
+        for unit_key in range(1, self.get_unit_count(lib_sym) + 1):
+            unit_objs = self.get_sub_syms(lib_sym, unit_key)
+
+            pins = []
             for subunit in unit_objs:
                 for pin in subunit.pins:
                     pins.append(
                         SCH.C_symbol_instance.C_pin(
-                            name=pin.name.name,
-                            uuid=self.gen_uuid(mark=True),
+                            number=pin.number.number,
+                            uuid=_gen_uuid(),
                         )
                     )
 
             unit_instance = SCH.C_symbol_instance(
                 lib_id=lib_id,
-                unit=unit_key + 1,  # yes, these are indexed from 1...
+                unit=unit_key,
                 at=C_xyr(at[0], at[1], rotation),
                 in_bom=True,
                 on_board=True,
                 pins=pins,
-                uuid=self.gen_uuid(mark=True),
+                uuid=_gen_uuid(),
             )
+
+            # It's one of ours, until it's modified in KiCAD
+            self.mark(unit_instance)
 
             # Add a C_property for the reference based on the override name
             if reference_name := module.get_trait(F.has_overriden_name).get_name():
@@ -434,8 +597,853 @@ class SchTransformer:
                 )
             else:
                 # TODO: handle not having an overriden name better
-                raise Exception(f"Module {module} has no overriden name")
+                raise ValueError(f"Module {module} has no overriden name")
 
-            self.attach_symbol(module, unit_instance)
+            self.attach_symbol(symbol, unit_instance)
 
             self.sch.symbols.append(unit_instance)
+
+    # Bounding boxes ----------------------------------------------------------------
+    type BoundingBox = tuple[Geometry.Point2D, Geometry.Point2D]
+
+    @singledispatchmethod
+    @staticmethod
+    def get_bbox(obj) -> BoundingBox | None:
+        """
+        Get the bounding box of the object in it's reference frame
+        This means that for things like pins, which know their own position,
+        the bbox returned will include the offset of the pin.
+        """
+        raise NotImplementedError(f"Don't know how to get bbox for {type(obj)}")
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_arc) -> BoundingBox:
+        return Geometry.bbox(
+            list(
+                chain.from_iterable(
+                    Geometry.approximate_arc(
+                        (obj.start.x, obj.start.y),
+                        (obj.mid.x, obj.mid.y),
+                        (obj.end.x, obj.end.y),
+                    )
+                )
+            ),
+            tolerance=obj.stroke.width,
+        )
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_polyline) -> BoundingBox | None:
+        if len(obj.pts.xys) == 0:
+            return None
+
+        return Geometry.bbox(
+            [(pt.x, pt.y) for pt in obj.pts.xys],
+            tolerance=obj.stroke.width,
+        )
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_rect) -> BoundingBox | None:
+        return Geometry.bbox(
+            [
+                (obj.start.x, obj.start.y),
+                (obj.end.x, obj.end.y),
+            ],
+            tolerance=obj.stroke.width,
+        )
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_circle) -> BoundingBox:
+        if obj.radius is None:
+            radius = Geometry.distance_euclid(
+                Point([obj.center.x, obj.center.y]),
+                Point([obj.end.x, obj.end.y]),
+            )
+        elif obj.end is None:
+            radius = obj.radius
+        else:
+            raise ValueError("Circle has both radius and end")
+
+        return Geometry.bbox(
+            [
+                (obj.center.x - radius, obj.center.y - radius),
+                (obj.center.x + radius, obj.center.y + radius),
+            ],
+            tolerance=obj.stroke.width,
+        )
+
+    @get_bbox.register
+    @staticmethod
+    def _(obj: C_lib_symbol.C_symbol.C_pin) -> BoundingBox:
+        # TODO: include the name and number in the bbox
+        connection_point = (obj.at.x, obj.at.y)
+        pin_padding = 2 * skidl_constants.GRID * skidl_geometry.mms_per_mil
+        start = (obj.at.x - pin_padding, obj.at.y)
+        points = Geometry.rotate(
+            connection_point,
+            [start, (obj.at.x + obj.length, obj.at.y)],
+            obj.at.r,
+        )
+        return Geometry.bbox(points)
+
+    @get_bbox.register
+    @classmethod
+    def _(cls, obj: C_lib_symbol.C_symbol) -> BoundingBox | None:
+        all_geos = list(
+            chain(
+                obj.arcs,
+                obj.polylines,
+                obj.circles,
+                obj.rectangles,
+                obj.pins,
+            )
+        )
+
+        bboxes = []
+        for geo in all_geos:
+            if (new_bboxes := cls.get_bbox(geo)) is not None:
+                bboxes.extend(new_bboxes)
+
+        if len(bboxes) == 0:
+            return None
+
+        return Geometry.bbox(bboxes)
+
+    @get_bbox.register
+    @classmethod
+    def _(cls, obj: C_lib_symbol) -> BoundingBox:
+        sub_points = list(
+            chain.from_iterable(
+                bboxes
+                for unit in obj.symbols.values()
+                if (bboxes := cls.get_bbox(unit)) is not None
+            )
+        )
+        assert len(sub_points) > 0
+        return Geometry.bbox(sub_points)
+
+    @get_bbox.register
+    @classmethod
+    def _(cls, obj: list) -> BoundingBox:
+        return Geometry.bbox(
+            list(chain.from_iterable(cls.get_bbox(item) for item in obj))
+        )
+
+    def _add_missing_symbols(self):
+        """
+        Add symbols to the schematic that are missing based on the fab graph
+        """
+        for f_symbol in self.missing_symbols:
+            self.insert_symbol(f_symbol.represents)
+        self.missing_symbols = []
+
+    @staticmethod
+    def _get_pwr_or_gnd(interface: F.Electrical) -> tuple[bool, bool]:
+        if fab_power_if := interface.get_parent_of_type(F.ElectricPower):
+            return fab_power_if.hv, fab_power_if.lv
+        return False, False
+
+    def _build_shim_circuit(self) -> shims.Circuit:
+        """Does what it says on the tin."""
+        # TODO: add existing wire locations
+        from faebryk.exporters.schematic.kicad.skidl.geometry import BBox, Point
+
+        # 1.1 create hollow circuits to append to
+        circuit = shims.Circuit()
+        circuit.parts = []
+        circuit.nets = []
+
+        # 1.2 create maps to short-cut access between fab and sch
+        sch_to_fab_pin_map: FuncDict[
+            SCH.C_symbol_instance.C_pin, F.Symbol.Pin | None
+        ] = FuncDict()
+        sch_to_fab_sym_map: FuncDict[SCH.C_symbol_instance, F.Symbol | None] = (
+            FuncDict()
+        )
+        # for each sch_symbol / (fab_symbol | None) pair, create a shim part
+        # we need to shim sym object which aren't even in the graph to avoid colliding
+        for _, f_sym_trait in GraphFunctions(self.graph).nodes_with_trait(
+            F.Symbol.has_symbol
+        ):
+            if sch_sym_trait := f_sym_trait.reference.try_get_trait(
+                Transformer.has_linked_sch_symbol
+            ):
+                sch_to_fab_sym_map[sch_sym_trait.symbol] = f_sym_trait.reference
+        for sch_sym_inst in self.sch.symbols:
+            f_symbol = sch_to_fab_sym_map.setdefault(sch_sym_inst, None)
+            for sch_pin_inst in sch_sym_inst.pins:
+                sch_to_fab_pin_map[sch_pin_inst] = (
+                    f_symbol.pins.get(sch_pin_inst.number) if f_symbol else None
+                )
+
+        # 2. create shim objects
+        # 2.1 make nets
+        sch_to_shim_pin_map: FuncDict[SCH.C_symbol_instance.C_pin, shims.Pin] = (
+            FuncDict()
+        )
+        fab_nets = GraphFunctions(self.graph).nodes_of_type(F.Net)
+        for net in fab_nets:
+            shim_net = shims.Net()
+            shim_net.name = net.get_trait(F.has_overriden_name).get_name()
+            shim_net.netio = ""  # TODO: isn't this more a pin property?
+            shim_net.stub = False  # TODO:
+            shim_net._is_implicit = not net.get_trait(
+                F.has_overriden_name
+            ).is_explicit()
+
+            # make partial net-oriented pins
+            shim_net.pins = []
+
+            mif_class_counter = Counter()
+
+            for mif in net.get_connected_interfaces():
+                if has_fab_pin := mif.try_get_trait(F.Symbol.Pin.has_pin):
+                    if has_sch_pin := has_fab_pin.reference.try_get_trait(
+                        Transformer.has_linked_sch_pins
+                    ):
+                        for sch_pin_inst in has_sch_pin.pins:
+                            shim_pin = shims.Pin()
+                            shim_pin.net = shim_net
+                            shim_net.pins.append(shim_pin)
+                            sch_to_shim_pin_map[sch_pin_inst] = shim_pin
+
+                mif_class_counter[Transformer._get_pwr_or_gnd(mif)] += 1
+
+            if most_common := mif_class_counter.most_common(1):
+                # If over half the things on the net are power or gnd, we'll
+                # use that as the net class
+                # TODO: should that be configurable?
+                if most_common[0][1] / mif_class_counter.total() > 0.5:
+                    _is_pwr, _is_gnd = most_common[0][0]
+                    shim_net.fab_is_pwr = _is_pwr
+                    shim_net.fab_is_gnd = _is_gnd
+
+            # set is_connected for all pins on net if len(net.pins) > 0
+            is_connected = len(shim_net.pins) > 0
+            for pin in shim_net.pins:
+                pin._is_connected = is_connected
+
+            circuit.nets.append(shim_net)
+
+        # 2.2 make parts
+        def _hierarchy(module: Module) -> str:
+            """
+            Make a string representation of the module's hierarchy
+            using the best name for each part we have.
+
+            NOTE: The hierarchy is used to determine whether parts
+            live in the same module.
+            - Top level should be unnamed, eg ""
+            - Subsequent levels should be named and dot-separated
+            - Part's ref should not be included at the end eg, don't do "led.U1"
+            """
+
+            def _best_name(module: Module) -> str:
+                if name_trait := module.try_get_trait(F.has_overriden_name):
+                    return name_trait.get_name()
+                return module.get_name()
+
+            # skip the root module, because it's name is just "*"
+            hierarchy = [h[0] for h in module.get_hierarchy()][1:-1]
+            return "." + ".".join(_best_name(n) for n in hierarchy)
+
+        # for each sch_symbol, create a shim part
+        for sch_sym_inst, f_symbol in sch_to_fab_sym_map.items():
+            lib_sym = self._ensure_lib_symbol(sch_sym_inst.lib_id)
+            sch_lib_symbol_units = self.get_sub_syms(lib_sym, sch_sym_inst.unit)
+            shim_part = shims.Part()
+            shim_part.ref = sch_sym_inst.propertys["Reference"].value
+            # if we don't have a fab symbol, place the part at the top of the hierarchy
+            shim_part.hierarchy = _hierarchy(f_symbol.represents) if f_symbol else ""
+            shim_part.unit = {}  # TODO: support units
+            shim_part.fab_symbol = f_symbol
+            shim_part.sch_symbol = sch_sym_inst
+            shim_part.bare_bbox = BBox(
+                *[
+                    Point(mm_to_mil(pts[0]), mm_to_mil(pts[1]))
+                    for pts in Transformer.get_bbox(sch_lib_symbol_units)
+                ]
+            )
+            shim_part.hints = (
+                f_symbol.represents.try_get_trait(F.has_schematic_hints)
+                or F.has_schematic_hints()
+            )
+            shim_part.pins = []
+
+            # 2.3 finish making pins, this time from a part-orientation
+            all_sch_lib_pins = [p for u in sch_lib_symbol_units for p in u.pins]
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    f"Symbol {sch_sym_inst.propertys['Reference'].value=}"
+                    f" {sch_sym_inst.uuid=}"
+                )
+                pins = rich.table.Table("pin.name=", "pin.number=")
+                for pin in all_sch_lib_pins:
+                    pins.add_row(pin.name.name, pin.number.number)
+                rich.print(pins)
+
+            for sch_pin_inst in sch_sym_inst.pins:
+                # Using get here because it's okay in an error case to end up with None
+                fab_pin = sch_to_fab_pin_map.get(sch_pin_inst)
+
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Pin {sch_pin_inst.number=} {fab_pin=}")
+
+                lib_sch_pins = [
+                    p
+                    for p in all_sch_lib_pins
+                    if str(p.number.number) == str(sch_pin_inst.number)
+                ]
+
+                if len(lib_sch_pins) == 0:
+                    # KiCAD seems to make a full duplication of all the symbol objects
+                    # despite not displaying them unless they're relevant to the current
+                    # unit. Do our best to make sure it's at least a pin the symbol
+                    # overall has (ignoring the unit)
+                    lib_sym_pins_all_units = [
+                        p.number.number
+                        for sym in self.get_sub_syms(lib_sym, None)
+                        for p in sym.pins
+                    ]
+                    if sch_pin_inst.number in lib_sym_pins_all_units:
+                        continue
+                    logger.warning(
+                        f"Pin {sch_pin_inst.number} not found in any unit of"
+                        f" symbol {sch_sym_inst.propertys['Reference'].value}"
+                    )
+                if len(lib_sch_pins) > 1:
+                    logger.warning(
+                        f"Pin {sch_pin_inst.number} has multiple instances in symbol"
+                        f" {sch_sym_inst.propertys['Reference'].value}. "
+                        "This is a bit weird, but we'll roll with the punches"
+                    )
+
+                for lib_sch_pin in lib_sch_pins:
+                    assert isinstance(lib_sch_pin, C_lib_symbol.C_symbol.C_pin)
+
+                    if sch_pin_inst in sch_to_shim_pin_map:
+                        shim_pin = sch_to_shim_pin_map[sch_pin_inst]
+                    else:
+                        shim_pin = shims.Pin()
+                        # Since this pin wasn't created earlier while cycling nets,
+                        # it'll be missing it's net attribute
+                        shim_pin.net = shims.Net.null_net()
+                        # Add the pin to the map so we can find it later
+                        sch_to_shim_pin_map[sch_pin_inst] = shim_pin
+
+                    shim_pin.name = sch_pin_inst.number
+                    shim_pin.num = lib_sch_pin.number
+                    shim_pin.orientation = shims.angle_to_orientation(lib_sch_pin.at.r)
+                    shim_pin.part = shim_part
+
+                    # If the pin in question is part of a power interface, use that
+                    # to determine if it's a power or gnd pin. Otherwise, pull from
+                    # the net.
+                    # TODO: ideas:
+                    # - stub powery things
+                    # - override from symbol layout info trait
+                    shim_pin.stub = False
+                    if fab_pin is not None and fab_pin.represents is not None:
+                        shim_pin.fab_is_pwr, shim_pin.fab_is_gnd = (
+                            Transformer._get_pwr_or_gnd(fab_pin.represents)
+                        )
+                        # shim_pin.stub = shim_pin.fab_is_gnd or shim_pin.fab_is_pwr
+                    else:
+                        shim_pin.fab_is_gnd = shim_pin.net.fab_is_gnd
+                        shim_pin.fab_is_pwr = shim_pin.net.fab_is_pwr
+
+                    shim_pin.x = mm_to_mil(lib_sch_pin.at.x)
+                    shim_pin.y = mm_to_mil(lib_sch_pin.at.y)
+                    shim_pin.fab_pin = fab_pin
+                    shim_pin.sch_pin = sch_pin_inst
+
+                    shim_part.pins.append(shim_pin)
+
+            circuit.parts.append(shim_part)
+
+        # 2.4 generate similarity matrix
+        def similarity(part: "shims.Part", other: "shims.Part", **options) -> float:
+            """
+            NOTE: Straight outta skidl
+            Return a measure of how similar two parts are.
+
+            Args:
+                part (Part): The part to compare to for similarity.
+                options (dict): Dictionary of options and settings affecting
+                    similarity computation.
+
+            Returns:
+                Float value for similarity (larger means more similar).
+            """
+
+            def score_pins():
+                pin_score = 0
+                if len(part.pins) == len(other.pins):
+                    for p_self, p_other in zip(part.ordered_pins, other.ordered_pins):
+                        if p_self.is_attached(p_other):
+                            pin_score += 1
+                return pin_score
+
+            # Every part starts off somewhat similar to another.
+            score = 1
+
+            if part.description == other.description:
+                score += 5
+            if part.name == other.name:
+                score += 5
+                if part.value == other.value:
+                    score += 2
+                score += score_pins()
+            elif part.ref_prefix == other.ref_prefix:
+                score += 3
+                if part.value == other.value:
+                    score += 2
+                score += score_pins()
+
+            return score / 3
+
+        similarities: dict[tuple[int, int], float] = {}
+        for part in circuit.parts:
+            part._similarites = {}
+
+            for other in circuit.parts:
+                if part is other:
+                    continue
+
+                key = tuple(sorted((hash(part), hash(other))))
+
+                if key not in similarities:
+                    # TODO: actually compute similarity
+                    # similarities[key] = similarity(part, other)
+                    similarities[key] = 10
+
+                part._similarites[other] = similarities[key]
+
+        # 2.-1 run audit on circuit
+        circuit.audit()
+        return circuit
+
+    @staticmethod
+    def calc_sheet_tx(bbox: skidl_bboxes.BBox) -> skidl_geometry.Tx:
+        """Compute the page size and positioning for this sheet."""
+        # Sizes of EESCHEMA schematic pages from smallest to largest
+        # Dimensions in mils
+        A_sizes = {
+            "A4": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(11693, 8268)
+            ),
+            "A3": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(16535, 11693)
+            ),
+            "A2": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(23386, 16535)
+            ),
+            "A1": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(33110, 23386)
+            ),
+            "A0": skidl_bboxes.BBox(
+                skidl_geometry.Point(0, 0), skidl_geometry.Point(46811, 33110)
+            ),
+        }
+
+        def get_A_size(bbox: skidl_bboxes.BBox) -> str:
+            """Return the A-size page needed to fit the given bounding box."""
+            width = bbox.w
+            height = bbox.h * 1.25  # HACK: why 1.25?
+            for A_size, page in A_sizes.items():
+                if width < page.w and height < page.h:
+                    return A_size
+            return "A0"  # Nothing fits, so use the largest available.
+
+        A_size = get_A_size(bbox)
+        page_bbox = bbox * skidl_geometry.Tx(d=-1)
+        move_to_ctr = A_sizes[A_size].ctr.snap(
+            skidl_constants.GRID
+        ) - page_bbox.ctr.snap(skidl_constants.GRID)
+        move_tx = skidl_geometry.Tx(d=-1).move(move_to_ctr)
+        return move_tx
+
+    @staticmethod
+    def calc_pin_dir(pin: shims.Pin) -> str:
+        """Calculate pin direction accounting for part transformation matrix."""
+
+        # Copy the part trans. matrix, but remove the translation vector,
+        # leaving only scaling/rotation stuff.
+        tx = pin.part.tx
+        tx = skidl_geometry.Tx(a=tx.a, b=tx.b, c=tx.c, d=tx.d)
+
+        # Use the pin orientation to compute the pin direction vector.
+        pin_vector = {
+            "U": skidl_geometry.Point(0, 1),
+            "D": skidl_geometry.Point(0, -1),
+            "L": skidl_geometry.Point(-1, 0),
+            "R": skidl_geometry.Point(1, 0),
+        }[pin.orientation]
+
+        # Rotate the direction vector using the part rotation matrix.
+        pin_vector = pin_vector * tx
+
+        # Create an integer tuple from the rotated direction vector.
+        pin_vector = (int(round(pin_vector.x)), int(round(pin_vector.y)))
+
+        # Return the pin orientation based on its rotated direction vector.
+        return {
+            (0, 1): "U",
+            (0, -1): "D",
+            (-1, 0): "L",
+            (1, 0): "R",
+        }[pin_vector]
+
+    def _apply_shim_sch_node(
+        self,
+        node: "skidl_node.SchNode",
+        sheet_tx: skidl_geometry.Tx = skidl_geometry.Tx(),
+    ):
+        if node.flattened:
+            # This almost certainly shouldn't be hit any more because we've already
+            # flattened the node.
+            raise RuntimeError("Cannot apply flattened node")
+
+        flattened_bbox = node.internal_bbox()
+        tx = Transformer.calc_sheet_tx(flattened_bbox) * skidl_geometry.mms_per_mil
+
+        # TODO: Put flattened node into hierarchical block
+
+        for part in node.parts:
+            ## 2 add global labels
+            part_tx = part.tx * tx
+            if isinstance(part, shims.NetTerminal):
+                assert isinstance(tx, skidl_geometry.Tx)
+                pin = part.pins[0]
+                pt = pin.pt * part_tx
+                rotation = {
+                    "R": 0,
+                    "D": 90,
+                    "L": 180,
+                    "U": 270,
+                }[Transformer.calc_pin_dir(pin)]
+                self.insert_global_label(
+                    pin.net.name,
+                    at=C_xyr(x=pt.x, y=pt.y, r=rotation),
+                    shape=SCH.C_global_label.E_shape.input,
+                )
+            else:
+                ## 3. modify parts
+                # unlike Skidl, we're working under the assumption that all the parts
+                # are already in the schematic, we just need to move them
+                part.sch_symbol.at.x = part_tx.origin.x
+                part.sch_symbol.at.y = part_tx.origin.y
+
+                # The allowed mirrors are dependent on the rotation of the part
+                flip_rot_conversions: dict[
+                    tuple[bool, int], tuple[SCH.C_symbol_instance.E_mirror, int]
+                ] = {
+                    (False, 0): (None, 0),
+                    (True, 0): (SCH.C_symbol_instance.E_mirror.y, 0),
+                    (False, 90): (None, 90),
+                    (True, 90): (SCH.C_symbol_instance.E_mirror.x, 90),
+                    (False, 180): (None, 180),
+                    (True, 180): (SCH.C_symbol_instance.E_mirror.x, 0),
+                    (False, 270): (None, 270),
+                    (True, 270): (SCH.C_symbol_instance.E_mirror.x, 270),
+                }
+                part.sch_symbol.mirror, part.sch_symbol.at.r = flip_rot_conversions[
+                    part.tx.find_orientation()
+                ]
+
+        # 4. draw wires and junctions
+        for wire in node.wires.values():
+            for seg in wire:
+                skild_seg_points = [p * tx for p in [seg.p1, seg.p2]]
+                seg_points = [(p.x, p.y) for p in skild_seg_points]
+                self.insert_wire(seg_points)
+
+        for _, junctions in node.junctions.items():
+            for junc in junctions:
+                pt = junc * tx
+                self.insert_junction((pt.x, pt.y))
+
+        # 5. TODO: pin labels for stubbed nets
+
+    def apply_shim_sch_node(self, circuit: "skidl_node.SchNode"):
+        def dfs(node: "skidl_node.SchNode"):
+            yield node
+            for child in node.children.values():
+                yield from dfs(child)
+
+        for node in dfs(circuit):
+            self._apply_shim_sch_node(node)
+
+    @staticmethod
+    def _ideal_part_rotation(part: shims.Part) -> tuple[float, float]:
+        # Tally what rotation would make each pwr/gnd pin point up or down.
+        def is_pwr(pin: shims.Pin) -> bool:
+            return pin.fab_is_pwr
+
+        def is_gnd(pin: shims.Pin) -> bool:
+            return pin.fab_is_gnd
+
+        def rotation_for(start: str, finish: str) -> float:
+            seq = ["L", "U", "R", "D"] * 2
+            start_idx = seq.index(start)
+            finish_idx = seq.index(finish, start_idx)
+            return (finish_idx - start_idx) * 90
+
+        rotation_tally = Counter()
+        for pin in part.pins:
+            if is_pwr(pin):
+                rotation_tally[rotation_for("D", pin.orientation)] += 1
+            elif is_gnd(pin):
+                rotation_tally[rotation_for("U", pin.orientation)] += 1
+            # TODO: add support for IO pins left and right
+
+        # Rotate the part unit in the direction with the most tallies.
+        if most_common := rotation_tally.most_common(1):
+            assert len(most_common) == 1
+            return most_common[0][0], most_common[0][1] / rotation_tally.total()
+
+        return 0, 0
+
+    @staticmethod
+    def preprocess_circuit(
+        circuit: shims.Circuit, **options: Unpack[shims.Options]
+    ) -> None:
+        """Add stuff to parts & nets for doing placement and routing of schematics."""
+
+        def units(part: shims.Part) -> list[shims.PartUnit | shims.Part]:
+            if len(part.unit) == 0:
+                return [part]
+            else:
+                return part.unit.values()
+
+        def initialize(part: shims.Part):
+            """Initialize part or its part units."""
+
+            # Initialize the units of the part, or the part itself if it has no units.
+            pin_limit = options.get("orientation_pin_limit", 44)
+            for part_unit in units(part):
+                # Initialize transform matrix.
+                if part_unit.hints.symbol_rotation is not None:
+                    symtx = "".join(
+                        ["R"] * (part_unit.hints.symbol_rotation % 360 // 90)
+                    )
+                    part_unit.tx = skidl_geometry.Tx.from_symtx(symtx)
+                else:
+                    part_unit.tx = skidl_geometry.Tx()
+
+                # Lock part orientation if symtx was specified. Also lock parts with a
+                #  lot of pins since they're typically drawn the way they're supposed to
+                #  be oriented. And also lock single-pin parts because these are usually
+                #  power/ground and they shouldn't be flipped around.
+                num_pins = len(part_unit.pins)
+                part_unit.orientation_locked = (
+                    part_unit.hints.symbol_rotation is not None
+                    or not (1 < num_pins <= pin_limit)
+                )
+
+                # Assign pins from the parent part to the part unit.
+                part_unit.grab_pins()
+
+                # Initialize pin attributes used for generating schematics.
+                for pin in part_unit:
+                    pin.pt = skidl_geometry.Point(pin.x, pin.y)
+                    pin.routed = False
+
+        def rotate_power_pins(part: shims.Part):
+            """Rotate a part based on the direction of its power pins.
+
+            This function is to make sure that voltage sources face up and gnd pins
+            face down.
+            """
+
+            # Don't rotate parts that are already explicitly rotated/flipped.
+            # FIXME: this was the inverted in SKiDL
+            if part.hints.symbol_rotation is not None:
+                return
+
+            dont_rotate_pin_cnt = options.get("dont_rotate_pin_count", 10000)
+
+            for part_unit in units(part):
+                # Don't rotate parts with too many pins.
+                if len(part_unit) > dont_rotate_pin_cnt:
+                    return
+
+                rotation, certainty = Transformer._ideal_part_rotation(part_unit)
+                if certainty:
+                    part_unit.tx = part_unit.tx.rot_ccw(rotation)
+
+                    if certainty >= part_unit.hints.lock_rotation_certainty:
+                        part_unit.orientation_locked = True
+
+        def calc_part_bbox(part: shims.Part):
+            """Calculate the labeled bounding boxes and store it in the part."""
+            # Find part/unit bounding boxes excluding any net labels on pins.
+            # TODO: part.lbl_bbox could be substituted for part.bbox.
+            # TODO: Part ref and value should be updated before calculating bounding box
+
+            for part_unit in units(part):
+                assert isinstance(part_unit, (shims.PartUnit, shims.Part))
+                assert isinstance(part_unit.bare_bbox, shims.BBox)
+
+                # Expand the bounding box if it's too small in either dimension.
+                resize_wh = skidl_geometry.Vector(0, 0)
+                if part_unit.bare_bbox.w < 100:
+                    resize_wh.x = (100 - part_unit.bare_bbox.w) / 2
+                if part_unit.bare_bbox.h < 100:
+                    resize_wh.y = (100 - part_unit.bare_bbox.h) / 2
+                part_unit.bare_bbox = part_unit.bare_bbox.resize(resize_wh)
+
+                # Find expanded bounding box that includes any
+                # hier labels attached to pins.
+                part_unit.lbl_bbox = skidl_geometry.BBox()
+                part_unit.lbl_bbox.add(part_unit.bare_bbox)
+                for pin in part_unit:
+                    if pin.stub:
+                        # Find bounding box for net stub label attached to pin.
+                        hlbl_bbox = skidl_bboxes.calc_hier_label_bbox(
+                            pin.net.name, pin.orientation
+                        )
+                        # Move the label bbox to the pin location.
+                        hlbl_bbox *= skidl_geometry.Tx().move(pin.pt)
+                        # Update the bbox for the labelled part with this pin label.
+                        part_unit.lbl_bbox.add(hlbl_bbox)
+
+                # Set the active bounding box to the labeled version.
+                part_unit.bbox = part_unit.lbl_bbox
+
+        # Pre-process parts
+        for part in circuit.parts:
+            # Initialize part attributes used for generating schematics.
+            initialize(part)
+
+            # Rotate parts.  Power pins should face up. GND pins should face down.
+            rotate_power_pins(part)
+
+            # Compute bounding boxes around parts
+            calc_part_bbox(part)
+
+    def finalize_parts_and_nets(
+        circuit: shims.Circuit, **options: Unpack[shims.Options]
+    ) -> None:
+        """Restore parts and nets after place & route is done."""
+
+        # Remove any NetTerminals that were added.
+        circuit.parts = [
+            p for p in circuit.parts if not isinstance(p, shims.NetTerminal)
+        ]
+
+        # Return pins from the part units to their parent part.
+        for part in circuit.parts:
+            part.grab_pins()
+
+        # Remove some stuff added to parts during schematic generation process.
+        shims.rmv_attr(circuit.parts, ("force", "bbox", "lbl_bbox", "tx"))
+
+    def generate_schematic(
+        self, **options: Unpack[shims.Options]
+    ) -> tuple["skidl_node.SchNode", C_kicad_sch_file]:
+        """Does what it says on the tin."""
+        import faebryk.exporters.schematic.kicad.skidl.place as skidl_place
+        import faebryk.exporters.schematic.kicad.skidl.route as skidl_route
+        from faebryk.exporters.schematic.kicad.skidl.node import SchNode
+
+        _options = shims.Options(
+            # draw_global_routing=True,
+            # draw_pin_names=True,
+            # draw_placement=True,
+            # draw_routing_channels=True,
+            # draw_routing=True,
+            # draw_switchbox_boundary=True,
+            # draw_switchbox_routing=True,
+            # fanout_attenuation=True,
+            # remove_high_fanout=True,
+            # remove_power=True,
+            align_parts=True,
+            allow_jumps=True,
+            compress_before_place=True,
+            flatness=1.0,
+            net_normalize=True,
+            normalize=True,
+            pin_normalize=True,
+            pt_to_pt_mult=5,
+            remove_overlaps=True,
+            retries=3,
+            rotate_parts=True,
+            slip_and_slide=True,
+            trim_anchor_pull_pins=True,
+            use_optimizer=True,
+            use_push_pull=True,
+            title="Faebryk Generated Schematic",
+            top_name="Schematic",
+        )
+
+        _options.update(options)
+        options = _options
+
+        # 1. add missing symbols
+        logger.debug("Adding missing symbols")
+        self._add_missing_symbols()
+
+        # Try to place & route one or more times.
+        logger.debug("Generating schematic layout and routing")
+        expansion_factor = 1.0  # Start with default routing area.
+        errors: list[Exception] = []
+        for attempt_idx in range(options["retries"]):
+            logger.debug("Building shim circuit")
+            circuit = self._build_shim_circuit()
+
+            logger.debug(f"Attempting placement and routing {attempt_idx+1}")
+            logger.debug("Preprocessing circuit")
+            Transformer.preprocess_circuit(circuit, **options)
+
+            sch = SchNode(
+                circuit,
+                ".",
+                options["top_name"],
+                options["title"],
+                options["flatness"],
+            )
+
+            try:
+                # Place parts.
+                logger.debug("Placing parts")
+                sch.place(expansion_factor=expansion_factor, **options)
+
+                # Route parts.
+                logger.debug("Routing parts")
+                sch.route(**options)
+
+            except skidl_place.PlacementFailure as e:
+                # Placement failed, so try again.
+                logger.debug("Placement failed, trying again")
+                Transformer.finalize_parts_and_nets(circuit, **options)
+                errors.append(e)
+                continue
+
+            except skidl_route.RoutingFailure as e:
+                # Routing failed, so expand routing area ...
+                expansion_factor *= 1.5  # HACK: Ad-hoc increase of expansion factor.
+                # ... and try again.
+                logger.debug("Routing failed, trying again")
+                Transformer.finalize_parts_and_nets(circuit, **options)
+                errors.append(e)
+                continue
+
+            # Place & route was successful if we got here, so exit.
+            logger.debug("Placement and routing successful")
+            break
+
+        else:
+            # Exited the loop without successful routing.
+            raise ExceptionGroup("Placement and routing failed", errors)
+
+        # 4. transform sch according to skidl
+        logger.debug("Transforming schematic according to skidl")
+        self.apply_shim_sch_node(sch)
+
+        # 5. save
+        return circuit, sch

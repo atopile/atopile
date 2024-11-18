@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from enum import auto
 from typing import Optional
 
-from faebryk.exporters.pcb.kicad.transformer import gen_uuid
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
     C_effects,
@@ -27,6 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 def uuid_field():
+    def gen_uuid():
+        # TODO: wtf? This is one heck of a circular import defense
+        from faebryk.exporters.pcb.kicad.transformer import gen_uuid
+
+        return gen_uuid()
+
     return field(default_factory=gen_uuid)
 
 
@@ -69,9 +74,10 @@ class C_stroke:
 @dataclass(kw_only=True)
 class C_circle:
     center: C_xy
-    end: C_xy
     stroke: C_stroke
     fill: C_fill
+    radius: Optional[float] = None
+    end: Optional[C_xy] = None
 
 
 @dataclass(kw_only=True)
@@ -99,6 +105,97 @@ class C_polyline:
 
 
 @dataclass
+class C_lib_symbol:
+    @dataclass
+    class C_pin_names:
+        offset: float
+
+    @dataclass
+    class C_symbol:
+        @dataclass
+        class C_pin:
+            class E_type(SymEnum):
+                # sorted alphabetically
+                bidirectional = "bidirectional"
+                free = "free"
+                input = "input"
+                no_connect = "no_connect"
+                open_collector = "open_collector"
+                open_emitter = "open_emitter"
+                output = "output"
+                passive = "passive"
+                power_in = "power_in"
+                power_out = "power_out"
+                tri_state = "tri_state"
+                unspecified = "unspecified"
+
+            class E_style(SymEnum):
+                # sorted alphabetically
+                clock = "clock"
+                clock_low = "clock_low"
+                edge_clock_high = "edge_clock_high"
+                input_low = "input_low"
+                inverted = "inverted"
+                inverted_clock = "inverted_clock"
+                line = "line"
+                non_logic = "non_logic"
+                output_low = "output_low"
+
+            @dataclass
+            class C_name:
+                name: str = field(**sexp_field(positional=True))
+                effects: C_effects = field(default_factory=C_effects)
+
+            @dataclass
+            class C_number:
+                number: str = field(**sexp_field(positional=True))
+                effects: C_effects = field(default_factory=C_effects)
+
+            at: C_xyr
+            length: float
+            type: E_type = field(**sexp_field(positional=True))
+            style: E_style = field(**sexp_field(positional=True))
+            name: C_name = field(default_factory=C_name)
+            number: C_number = field(default_factory=C_number)
+
+        name: str = field(**sexp_field(positional=True))
+        polylines: list[C_polyline] = field(
+            **sexp_field(multidict=True), default_factory=list
+        )
+        circles: list[C_circle] = field(
+            **sexp_field(multidict=True), default_factory=list
+        )
+        rectangles: list[C_rect] = field(
+            **sexp_field(multidict=True), default_factory=list
+        )
+        arcs: list[C_arc] = field(**sexp_field(multidict=True), default_factory=list)
+        pins: list[C_pin] = field(**sexp_field(multidict=True), default_factory=list)
+
+    class E_hide(SymEnum):
+        hide = "hide"
+
+    @dataclass
+    class C_power:
+        pass
+
+    name: str = field(**sexp_field(positional=True))
+    power: Optional[C_power] = None
+    propertys: dict[str, C_property] = field(
+        **sexp_field(multidict=True, key=lambda x: x.name),
+        default_factory=dict,
+    )
+    pin_numbers: Optional[E_hide] = None
+    pin_names: Optional[C_pin_names] = None
+    in_bom: Optional[bool] = None
+    on_board: Optional[bool] = None
+    symbols: dict[str, C_symbol] = field(
+        **sexp_field(multidict=True, key=lambda x: x.name),
+        default_factory=dict,
+    )
+    convert: Optional[int] = None
+
+
+@dataclass
 class C_kicad_sch_file(SEXP_File):
     """
     When in doubt check: kicad/eeschema/sch_io/kicad_sexpr/sch_io_kicad_sexpr_parser.cpp
@@ -115,101 +212,7 @@ class C_kicad_sch_file(SEXP_File):
 
         @dataclass
         class C_lib_symbols:
-            @dataclass
-            class C_symbol:
-                @dataclass
-                class C_pin_names:
-                    offset: float
-
-                @dataclass
-                class C_symbol:
-                    @dataclass
-                    class C_pin:
-                        class E_type(SymEnum):
-                            # sorted alphabetically
-                            bidirectional = "bidirectional"
-                            free = "free"
-                            input = "input"
-                            no_connect = "no_connect"
-                            open_collector = "open_collector"
-                            open_emitter = "open_emitter"
-                            output = "output"
-                            passive = "passive"
-                            power_in = "power_in"
-                            power_out = "power_out"
-                            tri_state = "tri_state"
-                            unspecified = "unspecified"
-
-                        class E_style(SymEnum):
-                            # sorted alphabetically
-                            clock = "clock"
-                            clock_low = "clock_low"
-                            edge_clock_high = "edge_clock_high"
-                            input_low = "input_low"
-                            inverted = "inverted"
-                            inverted_clock = "inverted_clock"
-                            line = "line"
-                            non_logic = "non_logic"
-                            output_low = "output_low"
-
-                        @dataclass
-                        class C_name:
-                            name: str = field(**sexp_field(positional=True))
-                            effects: C_effects = field(default_factory=C_effects)
-
-                        @dataclass
-                        class C_number:
-                            number: str = field(**sexp_field(positional=True))
-                            effects: C_effects = field(default_factory=C_effects)
-
-                        at: C_xyr
-                        length: float
-                        type: E_type = field(**sexp_field(positional=True))
-                        style: E_style = field(**sexp_field(positional=True))
-                        name: C_name = field(default_factory=C_name)
-                        number: C_number = field(default_factory=C_number)
-
-                    name: str = field(**sexp_field(positional=True))
-                    polylines: list[C_polyline] = field(
-                        **sexp_field(multidict=True), default_factory=list
-                    )
-                    circles: list[C_circle] = field(
-                        **sexp_field(multidict=True), default_factory=list
-                    )
-                    rectangles: list[C_rect] = field(
-                        **sexp_field(multidict=True), default_factory=list
-                    )
-                    arcs: list[C_arc] = field(
-                        **sexp_field(multidict=True), default_factory=list
-                    )
-                    pins: list[C_pin] = field(
-                        **sexp_field(multidict=True), default_factory=list
-                    )
-
-                class E_hide(SymEnum):
-                    hide = "hide"
-
-                @dataclass
-                class C_power:
-                    pass
-
-                name: str = field(**sexp_field(positional=True))
-                power: Optional[C_power] = None
-                propertys: dict[str, C_property] = field(
-                    **sexp_field(multidict=True, key=lambda x: x.name),
-                    default_factory=dict,
-                )
-                pin_numbers: Optional[E_hide] = None
-                pin_names: Optional[C_pin_names] = None
-                in_bom: Optional[bool] = None
-                on_board: Optional[bool] = None
-                symbols: dict[str, C_symbol] = field(
-                    **sexp_field(multidict=True, key=lambda x: x.name),
-                    default_factory=dict,
-                )
-                convert: Optional[int] = None
-
-            symbols: dict[str, C_symbol] = field(
+            symbols: dict[str, C_lib_symbol] = field(
                 **sexp_field(multidict=True, key=lambda x: x.name), default_factory=dict
             )
 
@@ -222,8 +225,17 @@ class C_kicad_sch_file(SEXP_File):
 
             @dataclass
             class C_pin:
-                name: str = field(**sexp_field(positional=True))
+                number: str = field(**sexp_field(positional=True))
                 uuid: UUID = uuid_field()
+
+            class E_mirror(SymEnum):
+                """
+                Mirroring is applied about the X or Y axes
+                The allowed mirrors are dependent on the rotation of the part
+                """
+
+                x = "x"
+                y = "y"
 
             lib_id: str
             at: C_xyr
@@ -232,6 +244,7 @@ class C_kicad_sch_file(SEXP_File):
             on_board: bool = False
             uuid: UUID = uuid_field()
             fields_autoplaced: bool = True
+            mirror: Optional[E_mirror] = None
             propertys: dict[str, C_property] = field(
                 **sexp_field(multidict=True, key=lambda x: x.name),
                 default_factory=dict,
@@ -244,8 +257,9 @@ class C_kicad_sch_file(SEXP_File):
         @dataclass
         class C_junction:
             at: C_xy
-            diameter: float
-            color: tuple[int, int, int, int]
+            diameter: float = 0  # 0 indicates default diameter
+            # (0,0,0,0) indicates KiCAD default color
+            color: tuple[int, int, int, int] = (0, 0, 0, 0)
             uuid: UUID = uuid_field()
 
         @dataclass
@@ -345,7 +359,7 @@ class C_kicad_sch_file(SEXP_File):
             stroke: C_stroke
             uuid: UUID = uuid_field()
 
-        version: int = field(**sexp_field(assert_value=20211123))
+        version: int
         generator: str
         paper: str
         uuid: UUID = uuid_field()
@@ -384,6 +398,16 @@ class C_kicad_sch_file(SEXP_File):
 
     kicad_sch: C_kicad_sch
 
+    @classmethod
+    def skeleton(cls) -> "C_kicad_sch_file":
+        return cls(
+            kicad_sch=cls.C_kicad_sch(
+                version=20211123,
+                generator="faebryk",
+                paper="A4",
+            )
+        )
+
 
 @dataclass
 class C_kicad_sym_file(SEXP_File):
@@ -395,8 +419,18 @@ class C_kicad_sym_file(SEXP_File):
     class C_kicad_symbol_lib:
         version: int
         generator: str
-        symbols: dict[str, C_kicad_sch_file.C_kicad_sch.C_lib_symbols.C_symbol] = field(
+        symbols: dict[str, C_lib_symbol] = field(
             **sexp_field(multidict=True, key=lambda x: x.name), default_factory=dict
         )
 
     kicad_symbol_lib: C_kicad_symbol_lib
+
+    @classmethod
+    def skeleton(cls) -> "C_kicad_sym_file":
+        return cls(
+            kicad_symbol_lib=cls.C_kicad_symbol_lib(
+                version=20211123,
+                generator="faebryk",
+                symbols={},
+            )
+        )

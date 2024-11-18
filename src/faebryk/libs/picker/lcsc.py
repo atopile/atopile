@@ -5,6 +5,7 @@ import json
 import logging
 from pathlib import Path
 
+import sexpdata
 from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
 from easyeda2kicad.easyeda.easyeda_importer import (
     Easyeda3dModelImporter,
@@ -18,11 +19,16 @@ from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVe
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.libs.kicad.fileformats_sch import (
+    C_kicad_sym_file,
+    C_lib_symbol,
+)
 from faebryk.libs.picker.picker import (
     Part,
     PickerOption,
     Supplier,
 )
+from faebryk.libs.sexp import dataclass_sexp
 from faebryk.libs.util import ConfigFlag
 
 logger = logging.getLogger(__name__)
@@ -133,8 +139,6 @@ def download_easyeda_info(partno: str, get_model: bool = True):
 
     # export to kicad ---------------------------------------------------------
     ki_footprint = ExporterFootprintKicad(easyeda_footprint)
-    ki_symbol = ExporterSymbolKicad(easyeda_symbol, KicadVersion.v6)
-
     _fix_3d_model_offsets(ki_footprint)
 
     easyeda_model = Easyeda3dModelImporter(
@@ -173,9 +177,24 @@ def download_easyeda_info(partno: str, get_model: bool = True):
             model_3d_path=kicad_model_path,
         )
 
-    if not sym_base_path.exists():
-        logger.debug(f"Exporting symbol {sym_base_path}")
-        ki_symbol.export(str(sym_base_path))
+    # for some ungodly reason, the symbol and
+    # footprint exporters work very differently
+    logger.debug(f"Exporting symbol {sym_base_path}")
+    if sym_base_path.exists():
+        sym_file = C_kicad_sym_file.loads(sym_base_path)
+    else:
+        sym_file = C_kicad_sym_file.skeleton()
+
+    exporter = ExporterSymbolKicad(symbol=easyeda_symbol, kicad_version=KicadVersion.v6)
+
+    # first, I tried to do this with a skeleton file and the exporter
+    # from easyeda2kicad, but it didn't work out, so fuck it, we have the tools
+    data = sexpdata.loads(exporter.export("lcsc"))
+    # clip of the first token, which is the fact that this is a symbol
+    lib_sym = dataclass_sexp.loads(data[1:], C_lib_symbol)
+    sym_file.kicad_symbol_lib.symbols[lib_sym.name] = lib_sym
+
+    sym_file.dumps(sym_base_path)
 
     return ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol
 
@@ -212,7 +231,7 @@ def attach(component: Module, partno: str, get_model: bool = True):
         download_easyeda_info(partno, get_model=get_model)
     )
 
-    # symbol
+    # footprint
     if not component.has_trait(F.has_footprint):
         if not component.has_trait(F.can_attach_to_footprint):
             if not component.has_trait(F.has_pin_association_heuristic):
@@ -236,15 +255,42 @@ def attach(component: Module, partno: str, get_model: bool = True):
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
             component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
 
-            sym = F.Symbol.with_component(component, pinmap)
-            sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_footprint.info.name}"))
-
-        # footprint
         fp = F.KicadFootprint(
             f"lcsc:{easyeda_footprint.info.name}",
             [p.number for p in easyeda_footprint.pads],
         )
         component.get_trait(F.can_attach_to_footprint).attach(fp)
+
+    # symbol
+    if not component.has_trait(F.Symbol.has_symbol):
+        # FIXME: generalise this for other schematic tools
+
+        # these traits are fucking hard to follow... I mean, geez there's like 15 of
+        # them interacting through as many files to figure out which pads are attached
+        # to which pin names
+        # We're assuming the thing we're handling is guaranteed to have a footprint,
+        # based on the above works
+        # We're also assuming that has a KiCAD footprint because, as of writing, it's
+        # the only output supported
+        pads = (
+            component.get_trait(F.has_footprint)
+            .get_footprint()
+            .get_trait(F.has_kicad_footprint)
+            .get_pin_names()
+        )
+
+        # FIXME: figure out what's up with duplicates
+        # Map from pin name -> interface the pad is electrically
+        # connected to in our code-based definition
+        pinmap = {
+            pin_number: pad.interface
+            for pad, pin_number in pads.items()
+            if pad.interface is not None
+        }
+
+        sym = F.Symbol.with_component(component, pinmap)
+        sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_symbol.info.name}"))
+        component.add(F.Symbol.has_symbol(sym))
 
     component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
 
