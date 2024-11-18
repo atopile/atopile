@@ -5,7 +5,8 @@
 from typing import Any, cast
 
 from pint import Quantity as _Quantity  # noqa: F401
-from pint import UndefinedUnitError, UnitRegistry  # noqa: F401
+from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
+from pint._typing import Scalar as _Scalar  # noqa: F401
 from pint.util import UnitsContainer as _UnitsContainer
 
 from faebryk.libs.util import cast_assert
@@ -14,12 +15,20 @@ P = UnitRegistry()
 
 UnitsContainer = _UnitsContainer | str | _Quantity | Unit
 Quantity = P.Quantity
-Unit = P.Unit
 dimensionless = cast_assert(Unit, P.dimensionless)
 
+# int, float, Decimal, Fraction, np.number
+type Number = _Scalar
+# int, float, Decimal, Fraction, Quantity, Unit
+type Scalar_ = Number | _Quantity | Unit
 
-def quantity(value: float | int, unit: UnitsContainer | Unit | Quantity) -> Quantity:
-    return P.Quantity(value, unit)
+assert issubclass(Quantity, _Quantity)
+
+
+def quantity(
+    value: Number | str, unit: UnitsContainer | Quantity | None = None
+) -> Quantity:
+    return P.Quantity(value, unit)  # type: ignore
 
 
 class HasUnit:
