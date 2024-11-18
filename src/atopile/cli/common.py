@@ -58,7 +58,9 @@ def project_options(f):
             )
 
         try:
-            project_config = atopile.config.get_project_config_from_addr(str(entry_arg_file_path))
+            project_config = atopile.config.get_project_config_from_addr(
+                str(entry_arg_file_path)
+            )
         except FileNotFoundError as ex:
             # FIXME: this raises an exception when the entry is not in a project
             raise errors.AtoBadParameterError(
@@ -123,11 +125,11 @@ def project_options(f):
                     for build_name in build_names
                 ]
             else:
-                build_ctxs = [atopile.config.BuildContext.from_config(
-                    "default",
-                    atopile.config.ProjectBuildConfig(),
-                    project_ctx
-                )]
+                build_ctxs = [
+                    atopile.config.BuildContext.from_config(
+                        "default", atopile.config.ProjectBuildConfig(), project_ctx
+                    )
+                ]
 
         for build_ctx in build_ctxs:
             if entry_addr_override is not None:
@@ -148,7 +150,9 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
     """
     with errors.handle_ato_errors():
         dependency_cfgs = (
-            errors.downgrade(atopile.config.get_project_config_from_path, FileNotFoundError)(p)
+            errors.downgrade(
+                atopile.config.get_project_config_from_path, FileNotFoundError
+            )(p)
             for p in Path(config.location).glob("*")
         )
 

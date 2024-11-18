@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "lcsc")(type "KiCad")(uri "${KIPRJMOD}/../libs/footprints/lcsc.pretty")(options "")(descr ""))
+)

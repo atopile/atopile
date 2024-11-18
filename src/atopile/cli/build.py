@@ -1,4 +1,5 @@
 """CLI command definition for `ato build`."""
+
 import itertools
 import json
 import logging
@@ -48,8 +49,12 @@ def build(build_ctxs: list[BuildContext]):
             manifest["version"] = "2.0"
             for ctx in build_ctxs:
                 if ctx.layout_path:
-                    by_layout_manifest = manifest.setdefault("by-layout", {}).setdefault(str(ctx.layout_path), {})
-                    by_layout_manifest["layouts"] = str(ctx.output_base.with_suffix(".layouts.json"))
+                    by_layout_manifest = manifest.setdefault(
+                        "by-layout", {}
+                    ).setdefault(str(ctx.layout_path), {})
+                    by_layout_manifest["layouts"] = str(
+                        ctx.output_base.with_suffix(".layouts.json")
+                    )
 
             manifest_path = project_context.project_path / "build" / "manifest.json"
             manifest_path.parent.mkdir(exist_ok=True, parents=True)
@@ -102,7 +107,9 @@ def _do_build(build_ctx: BuildContext) -> None:
                 muster.targets[target_name](build_ctx)
             built_targets.append(target_name)
 
-    log.info(f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
+    log.info(
+        f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config"
+    )
 
 
 TargetType = Callable[[BuildContext], None]
@@ -116,7 +123,9 @@ class Muster:
         self.do_by_default = []
         self.log = logger or logging.getLogger(__name__)
 
-    def add_target(self, func: TargetType, name: Optional[str] = None, default: bool = True):
+    def add_target(
+        self, func: TargetType, name: Optional[str] = None, default: bool = True
+    ):
         """Register a function as a target."""
         name = name or func.__name__
         self.targets[name] = func
@@ -214,7 +223,10 @@ def clone_footprints(build_args: BuildContext) -> None:
 
     for component in all_components:
         log.debug("Cloning footprint for %s", component)
-        download_footprint(component, footprint_dir=build_args.build_path / "footprints/footprints.pretty")
+        download_footprint(
+            component,
+            footprint_dir=build_args.build_path / "footprints/footprints.pretty",
+        )
 
 
 @muster.register("layout-module-map")

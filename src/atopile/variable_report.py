@@ -61,7 +61,10 @@ def generate(build_ctx: config.BuildContext):
             for assignment in assignments:
                 if hasattr(assignment, "src_ctx"):
                     if assignment.src_ctx:
-                        comment = parse_utils.get_comment_from_token(assignment.src_ctx.stop) or ""
+                        comment = (
+                            parse_utils.get_comment_from_token(assignment.src_ctx.stop)
+                            or ""
+                        )
                     break
 
             k_addr = address.get_instance_section(address.add_instance(addr, key))

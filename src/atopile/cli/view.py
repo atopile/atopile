@@ -3,6 +3,7 @@
 """
 `ato view`
 """
+
 import logging
 import textwrap
 from enum import Enum
@@ -43,6 +44,7 @@ async def send_viewer_data():
 
 class DiagramType(str, Enum):
     """The type of diagram."""
+
     block = "block"
     schematic = "schematic"
 
@@ -51,9 +53,7 @@ class DiagramType(str, Enum):
 @validate_request(Pose)
 @validate_response(Pose, 201)
 async def save_pose(
-    diagram_type: str | DiagramType,
-    addr: str,
-    data: Pose
+    diagram_type: str | DiagramType, addr: str, data: Pose
 ) -> tuple[Pose, int]:
     """Save the pose of an element."""
     diagram_type = DiagramType(diagram_type)
@@ -70,7 +70,9 @@ async def save_pose(
     else:
         lock_data = {}
 
-    lock_data.setdefault("poses", {}).setdefault(diagram_type.name, {})[addr] = data.model_dump()
+    lock_data.setdefault("poses", {}).setdefault(diagram_type.name, {})[addr] = (
+        data.model_dump()
+    )
 
     with lock_path.open("w") as lock_file:
         yaml.safe_dump(lock_data, lock_file)
@@ -112,10 +114,7 @@ async def startup():
     build_ctx: BuildContext = app.config["build_ctx"]
 
     # Monitor the project for changes to reset caches
-    app.add_background_task(
-        monitor_changes,
-        build_ctx.project_context.project_path
-    )
+    app.add_background_task(monitor_changes, build_ctx.project_context.project_path)
 
     # Pre-build the entry point
     atopile.instance_methods.get_instance(build_ctx.entry)
@@ -130,11 +129,13 @@ def view(build_ctxs: list[BuildContext]):
     log.info("Spinning up the viewer")
 
     if len(build_ctxs) != 1:
-        log.info(textwrap.dedent("""
+        log.info(
+            textwrap.dedent("""
             You need to select what you want to view.
             - If you use the `--build` option, you will view the entry point of the build.
             - If you add an argument for the address, you'll view that.
-        """))
+        """)
+        )
         raise errors.AtoNotImplementedError("Multiple build configs not yet supported.")
 
     build_ctx = build_ctxs[0]

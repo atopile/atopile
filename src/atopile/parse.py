@@ -15,8 +15,11 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-def error_factory(e: Exception, msg: str, offendingSymbol, line, column) -> AtoSyntaxError:
+def error_factory(
+    e: Exception, msg: str, offendingSymbol, line, column
+) -> AtoSyntaxError:
     from atopile.parse_utils import get_src_info_from_token
+
     error = AtoSyntaxError(f"{str(e)} '{msg}'")
 
     src_path, src_line, src_col = get_src_info_from_token(offendingSymbol)

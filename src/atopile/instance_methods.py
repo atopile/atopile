@@ -2,7 +2,7 @@ from typing import Any, Callable, Iterable, Optional
 
 from atopile import address, errors
 from atopile.address import AddrStr
-from atopile.front_end import ClassLayer, Link, lofty, Instance, Assignment
+from atopile.front_end import Assignment, ClassLayer, Instance, Link, lofty
 
 
 def get_children(addr: str) -> Iterable[AddrStr]:

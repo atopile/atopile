@@ -12,7 +12,6 @@ import atopile.instance_methods
 from atopile.address import AddrStr
 from atopile.expressions import RangedValue
 
-
 __all__ = ["build", "Model", "Interface", "Component", "RangedValue"]
 
 
@@ -54,10 +53,9 @@ class Component(Model):
 
 def _match_interfacey(addr: AddrStr) -> bool:
     """Return True if the address is an interface."""
-    return (
-        atopile.instance_methods.match_interfaces(addr)
-        or atopile.instance_methods.match_pins_and_signals(addr)
-    )
+    return atopile.instance_methods.match_interfaces(
+        addr
+    ) or atopile.instance_methods.match_pins_and_signals(addr)
 
 
 def build(addr: AddrStr) -> Model:
@@ -74,8 +72,12 @@ def build(addr: AddrStr) -> Model:
     atopile.config.set_project_context(project_ctx)
     build_names = list(project_config.builds)
     if not build_names:
-        raise NotImplementedError("There must be SOME build config in your ato configuration file.")
-    build_ctx = atopile.config.BuildContext.from_config_name(project_config, build_names[0])
+        raise NotImplementedError(
+            "There must be SOME build config in your ato configuration file."
+        )
+    build_ctx = atopile.config.BuildContext.from_config_name(
+        project_config, build_names[0]
+    )
     build_ctx.entry = addr
 
     # Execute general build steps
@@ -105,12 +107,7 @@ def _construct_model(addr: AddrStr) -> Model:
     else:
         base_class = Model
 
-    obj = base_class(
-        addr,
-        children,
-        interfaces,
-        attrs
-    )
+    obj = base_class(addr, children, interfaces, attrs)
 
     if set(children) & set(interfaces) & set(attrs):
         raise ValueError("The children and interfaces of an object must be disjoint.")

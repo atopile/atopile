@@ -8,15 +8,15 @@ This CLI command provides the `ato install` command to:
 
 import logging
 import subprocess
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
 import click
 import requests
 import ruamel.yaml
-from git import InvalidGitRepositoryError, NoSuchPathError, Repo, GitCommandError
+from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 import atopile.config
 from atopile import errors, version
@@ -99,9 +99,9 @@ def do_install(
             try:
                 robustly_rm_dir(abs_path / ".git")
             except (PermissionError, OSError, FileNotFoundError) as ex:
-                errors.AtoError(
-                    f"Failed to remove .git directory: {repr(ex)}"
-                ).log(log, logging.WARNING)
+                errors.AtoError(f"Failed to remove .git directory: {repr(ex)}").log(
+                    log, logging.WARNING
+                )
 
         if dependency.version_spec is None and installed_version:
             # If the user didn't specify a version, we'll
@@ -125,7 +125,9 @@ def do_install(
                     dependency.path = abs_path.relative_to(ctx.project_path)
 
                     try:
-                        installed_version = install_dependency(dependency, upgrade, abs_path)
+                        installed_version = install_dependency(
+                            dependency, upgrade, abs_path
+                        )
                     except GitCommandError as ex:
                         if "already exists and is not an empty directory" in ex.stderr:
                             # FIXME: shouldn't `--upgrade` do this already?
@@ -149,7 +151,9 @@ def get_package_repo_from_registry(module_name: str) -> str:
             timeout=10,
         )
     except requests.exceptions.ReadTimeout as ex:
-        raise errors.AtoInfraError(f"Request to registry timed out for package '{module_name}'") from ex
+        raise errors.AtoInfraError(
+            f"Request to registry timed out for package '{module_name}'"
+        ) from ex
 
     if response.status_code == 500:
         raise errors.AtoError(f"Could not find package '{module_name}' in registry.")
@@ -163,9 +167,7 @@ def get_package_repo_from_registry(module_name: str) -> str:
 
 
 def install_dependency(
-    dependency: atopile.config.Dependency,
-    upgrade: bool,
-    abs_path: Path
+    dependency: atopile.config.Dependency, upgrade: bool, abs_path: Path
 ) -> Optional[str]:
     """
     Install a dependency of the name "module_name"
@@ -261,10 +263,16 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
     if not component_id.startswith("C") or not component_id[1:].isdigit():
         raise errors.AtoError(f"Component id {component_id} is invalid. Aborting.")
 
-    footprints_dir = top_level_path / atopile.config.get_project_config_from_path(top_level_path).paths.footprints
+    footprints_dir = (
+        top_level_path
+        / atopile.config.get_project_config_from_path(top_level_path).paths.footprints
+    )
     footprints_dir.mkdir(parents=True, exist_ok=True)
 
-    ato_src_dir = top_level_path / atopile.config.get_project_config_from_path(top_level_path).paths.src
+    ato_src_dir = (
+        top_level_path
+        / atopile.config.get_project_config_from_path(top_level_path).paths.src
+    )
     ato_src_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Footprints directory: {footprints_dir}")

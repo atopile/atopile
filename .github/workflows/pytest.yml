@@ -1,0 +1,46 @@
+name: pytest
+
+on:
+    push:
+
+jobs:
+    pytest:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+        - name: Set up Python
+          uses: actions/setup-python@v5
+          with:
+            python-version: '3.12'
+            #cache: 'hatch'
+        - name: Install dependencies
+          run: |
+            python -m pip install hatch --upgrade pip
+            hatch env create test
+        - name: Lint with Ruff
+          run: hatch run ruff check --output-format=github .
+          #continue-on-error: true
+        - name: Setup cmake
+          uses: jwlawson/actions-setup-cmake@v2
+        - name: Run pytest
+          id: pytest
+          continue-on-error: true
+          run: hatch run test:pytest
+        - name: Upload all test logs
+          if: steps.pytest.outcome == 'failure'
+          uses: actions/upload-artifact@v4
+          with:
+            name: test-logs
+            path: artifacts/**/*.log
+            if-no-files-found: warn
+        - run: tree .
+        - name: Upload all test report
+          if: steps.pytest.outcome == 'failure'
+          uses: actions/upload-artifact@v4
+          with:
+            name: test-report
+            path: artifacts/test-report.html
+        - name: Check pytest status
+          if: steps.pytest.outcome == 'failure'
+          run: exit 1

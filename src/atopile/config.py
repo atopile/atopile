@@ -115,7 +115,9 @@ class ProjectConfig:
         """Sanitise the keys of a dictionary to be valid python identifiers."""
         data = copy.deepcopy(d)
         data["ato-version"] = data.pop("ato_version")
-        del data["location"]  # The location is saved by the literal location of the file
+        del data[
+            "location"
+        ]  # The location is saved by the literal location of the file
         return data
 
     @classmethod
@@ -138,7 +140,9 @@ class ProjectConfig:
         # find a hook to callback to a "conflict-resolver" or the likes
         # and the exceptions don't have sufficient information to easily find them
         original_deps_by_name = {d.name: d for d in original_cfg.dependencies}
-        original_dep_indicies = {d.name: i for i, d in enumerate(original_cfg.dependencies)}
+        original_dep_indicies = {
+            d.name: i for i, d in enumerate(original_cfg.dependencies)
+        }
         for d in self.dependencies:
             if d.name in original_deps_by_name and d != original_deps_by_name[d.name]:
                 del original["dependencies"][original_dep_indicies[d.name]]
@@ -153,10 +157,7 @@ class ProjectConfig:
         delta = deepdiff.Delta(diff)
         return original + delta
 
-    def save_changes(
-        self,
-        location: Optional[Path] = None
-    ) -> None:
+    def save_changes(self, location: Optional[Path] = None) -> None:
         """
         Save the changes to the config object
         """
@@ -189,7 +190,9 @@ class ProjectConfig:
 
 _converter.register_structure_hook(
     str | Dependency,
-    lambda d, _: Dependency.from_str(d) if isinstance(d, str) else _converter.structure(d, Dependency),
+    lambda d, _: Dependency.from_str(d)
+    if isinstance(d, str)
+    else _converter.structure(d, Dependency),
 )
 
 ##
@@ -199,7 +202,7 @@ def get_project_dir_from_path(path: Path) -> Path:
     """
     Resolve the project directory from the specified path.
     """
-    #TODO: when provided with the "." path, it doesn't find the config in parent directories
+    # TODO: when provided with the "." path, it doesn't find the config in parent directories
     path = Path(path)
     for p in [path] + list(path.parents):
         clean_path = p.resolve().absolute()
@@ -283,10 +286,7 @@ def find_layout(layout_base: Path) -> Optional[Path]:
         return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
     elif layout_base.is_dir():
         layout_candidates = list(
-            filter(
-                match_user_layout,
-                layout_base.glob("*.kicad_pcb")
-            )
+            filter(match_user_layout, layout_base.glob("*.kicad_pcb"))
         )
 
         if len(layout_candidates) == 1:
@@ -302,6 +302,7 @@ def find_layout(layout_base: Path) -> Optional[Path]:
 @define
 class BuildContext:
     """A class to hold the arguments to a build."""
+
     project_context: ProjectContext
 
     name: str
@@ -323,7 +324,7 @@ class BuildContext:
         cls,
         config_name: str,
         build_config: ProjectBuildConfig,
-        project_context: ProjectContext
+        project_context: ProjectContext,
     ) -> "BuildContext":
         """Create a BuildArgs object from a Config object."""
         abs_entry = address.AddrStr(project_context.project_path / build_config.entry)
@@ -338,7 +339,9 @@ class BuildContext:
             exclude_targets=build_config.exclude_targets,
             fail_on_drcs=build_config.fail_on_drcs,
             dont_solve_equations=build_config.dont_solve_equations,
-            layout_path=find_layout(project_context.project_path / project_context.layout_path / config_name),
+            layout_path=find_layout(
+                project_context.project_path / project_context.layout_path / config_name
+            ),
             lock_file_path=project_context.project_path / LOCK_FILE_NAME,
             build_path=build_path,
             output_base=build_path / config_name,

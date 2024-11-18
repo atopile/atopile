@@ -1,0 +1,60 @@
+name: 🐞 Bug Report
+description: File a bug report
+title: "<title>"
+labels: ["🛠 goal: bug fix"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please fill in the following form in detail.
+  - type: textarea
+    id: current_behaviour
+    attributes:
+      label: Current Behaviour
+      description: Describe what went wrong including the steps to reproduce this bug.
+      placeholder: Tell us what you see!
+      value: "An exeption occured at line 201 in faebryk/exporters/netlist/kicad/netlist.py when running samples/experiment.py"
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behaviour
+    attributes:
+      label: Expected Behaviour
+      description: What did you expect to happen?
+      placeholder: Tell us what you see!
+      value: "The program exited with all checks \"ok\""
+    validations:
+      required: true
+  - type: textarea
+    id: possible_solution
+    attributes:
+      label: Possible Solution
+      description: What might be a solution to this bug?
+      placeholder: Tell us if you know a solution or have a pr!
+      value: "#pr number"
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version/branch/pr of our software are you running?
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](/atopile/atopile/blob/main/docs/CODE_OF_CONDUCT.md)
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

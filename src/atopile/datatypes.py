@@ -136,6 +136,7 @@ class Strainer(list[T]):
 
 class StackList(list[T]):
     """Manages context while compiling ato code."""
+
     def __init__(self) -> None:
         super().__init__([])
 
@@ -166,7 +167,10 @@ class DotDict(dict):
 
 class IDdSet(collections.abc.MutableSet, Generic[T]):
     """A set that determines uniquenss by an ID function."""
-    def __init__(self, __data__: Iterable[T] | None = None, id_func: Callable[[T], Hashable] = id) -> None:
+
+    def __init__(
+        self, __data__: Iterable[T] | None = None, id_func: Callable[[T], Hashable] = id
+    ) -> None:
         self.id_func = id_func
         self.__data__ = {self.id_func(x): x for x in (__data__ or [])}
 

@@ -53,8 +53,14 @@ _pretty_unit_map = {
 }
 
 
-pretty_unit_map = {lm + lu: sm + su for lm, sm in _multiplier_map.items() for lu, su in  _pretty_unit_map.items()}
-favorite_units_map = {pint.Unit(k).dimensionality: pint.Unit(k) for k in _pretty_unit_map}
+pretty_unit_map = {
+    lm + lu: sm + su
+    for lm, sm in _multiplier_map.items()
+    for lu, su in _pretty_unit_map.items()
+}
+favorite_units_map = {
+    pint.Unit(k).dimensionality: pint.Unit(k) for k in _pretty_unit_map
+}
 
 
 def _convert_to_favorite_unit(qty: pint.Quantity) -> pint.Quantity:
@@ -76,7 +82,9 @@ def _best_units(qty_a: pint.Quantity, qty_b: pint.Quantity) -> PlainUnit:
 
     # If converting b to a's units results in a shorter representation, use a's units
     # Otherwise, use b's units
-    if len(str(qty_b.to(a_fav.units).magnitude)) < len(str(qty_a.to(b_fav.units).magnitude)):
+    if len(str(qty_b.to(a_fav.units).magnitude)) < len(
+        str(qty_a.to(b_fav.units).magnitude)
+    ):
         return a_fav.units
     return b_fav.units
 
@@ -154,6 +162,7 @@ class RangedValue:
         format_: Optional[str] = None,
     ) -> str:
         """Return a pretty string representation of the RangedValue."""
+
         def _f(val: float):
             if max_decimals is None:
                 return str(val)
@@ -164,8 +173,7 @@ class RangedValue:
 
         # Single-ended
         if self.tolerance == 0 or (
-            self.tolerance_pct and
-            self.tolerance_pct * 1e4 < pow(10, -max_decimals)
+            self.tolerance_pct and self.tolerance_pct * 1e4 < pow(10, -max_decimals)
         ):
             nom, unit = pretty_unit(self.nominal * self.unit)
             return f"{_f(nom)}{unit}"
@@ -490,9 +498,13 @@ class Expression:
         # Create a new lambda function with the substitutions
         def _new_lambda(context):
             if overwritten_vars := set(context) & set(constants):
-                if unequal_vars := {v for v in overwritten_vars if context[v] != constants[v]}:
+                if unequal_vars := {
+                    v for v in overwritten_vars if context[v] != constants[v]
+                }:
                     friendly_unequal_vars = "', '".join(unequal_vars)
-                    raise ValueError(f"Constants '{friendly_unequal_vars}' are being overwritten")
+                    raise ValueError(
+                        f"Constants '{friendly_unequal_vars}' are being overwritten"
+                    )
             new_context = {**context, **constants}
             for symbol, func in callables.items():
                 new_context[symbol] = func(new_context)
@@ -548,6 +560,7 @@ def defer_operation_factory(
     def _make_callable(not_callable):
         def _now_its_callable(_):
             return not_callable
+
         return _now_its_callable
 
     partials = [arg if callable(arg) else _make_callable(arg) for arg in args]
@@ -564,7 +577,7 @@ def defer_operation_factory(
 
 
 def simplify_expression_pool(
-    pool: Mapping[str, NumericishTypes]
+    pool: Mapping[str, NumericishTypes],
 ) -> Mapping[str, NumericishTypes]:
     """
     Simplify an expression, based on additional context we can give it.
@@ -623,11 +636,10 @@ def simplify_expression_pool(
 
     def _visit(key: str, stack: list) -> NumericishTypes:
         if key in stack:
-            loop = [key] + stack[:stack.index(key) + 1]
+            loop = [key] + stack[: stack.index(key) + 1]
             loop = [address.get_instance_section(addr) for addr in loop]
             raise errors.AtoError(
-                f"{' references '.join(loop)}",
-                title="Circular dependency detected"
+                f"{' references '.join(loop)}", title="Circular dependency detected"
             )
 
         if key in touched:
@@ -684,6 +696,10 @@ def simplify_expression(
     Simplify a single expression.
     This will only work if the context is already in its simplest forms.
     """
-    substitutions = {symbol: context[symbol.key] for symbol in expression.symbols if symbol.key in context}
+    substitutions = {
+        symbol: context[symbol.key]
+        for symbol in expression.symbols
+        if symbol.key in context
+    }
     expression = expression.substitute(substitutions)
     return expression

@@ -1,42 +1,56 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = [
+    "hatchling",
+    "scikit-build-core==0.9.2",
+    "nanobind~=2.2.0",
+    "hatch-vcs",
+]
 build-backend = "hatchling.build"
-
-# Add the built viewer to the python package
-[tool.hatch.build.targets.wheel]
-artifacts = [
-    "**/viewer/dist",
-]
-
-[tool.hatch.build.targets.sdist]
-artifacts = [
-    "**/viewer/dist",
-]
 
 [project]
 name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
-license = { file = "LICENSE"}
+requires-python = ">=3.12,<3.13"
+dynamic = ["version"]
+license = { file = "LICENSE" }
 authors = [
     { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
-    { name = "Timothee Peter", email = "timothee.peter@mac.com" },
+    { name = "Ioannis Papamanoglou", email = "ioannis@atopile.io" },
     { name = "Narayan Powderly", email = "napowderly@gmail.com" },
 ]
 classifiers = [
-    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python",
-    "Typing :: Typed",
-    "Development Status :: 2 - Pre-Alpha",
-    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
 ]
 dependencies = [
+    # Faebryk minimal dependencies
+    "numpy>=1.24.3,<3.0.0",
+    "matplotlib~=3.7.1",
+    "sexpdata==1.0.2",
+    "black~=24.4.2",
+    "typing-extensions>=4.6.3,<5.0.0",
+    "easyeda2kicad~=0.8.0",
+    "shapely~=2.0.1",
+    "freetype-py~=2.4.0",
+    "kicadcliwrapper~=1.0.0",
+    "dataclasses-json~=0.6.7",
+    "patool~=2.3.0",
+    "requests~=2.32.3",
+    "tortoise-orm~=0.21.3",
+    "rich~=13.7.1",
+    "typer>=0.12,<0.13",
+    "isort~=5.6.4",
+    "ruff>=0.6.4,<0.7.0",
+    # Waiting for a new release that works on python 3.13
+    "pint @ git+https://github.com/hgrecco/pint.git@a8bcb6ee1d0d61278bf17e332bc1aa473672e273",
+    "deprecated~=1.2.14",
+    "more-itertools~=10.4.0",
+    "psutil~=6.0.0",
+
+    # Extra dependencies
+    # TODO:
     "antlr4-python3-runtime==4.13.0",
     "attrs>=23.2.0",
     "case-converter>=1.1.0",
@@ -54,12 +68,10 @@ dependencies = [
     "networkx>=3.2.1",
     "packaging>=23.2",
     "pandas>=2.1.4",
-    "pint>=0.23",
     "pygls>=1.3.0",
     "quart-cors>=0.7.0",
     "quart-schema[pydantic]>=0.20.0",
     "quart>=0.19.9",
-    "rich>=13.7.0",
     "ruamel.yaml>=0.18.5",
     "schema>=0.7.5",
     "scipy>=1.12.0",
@@ -69,35 +81,76 @@ dependencies = [
     "uvicorn[standard]>=0.25.0",
     "watchfiles>=0.21.0",
 ]
-dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/atopile/atopile"
+"Bug Tracker" = "https://github.com/atopile/atopile/issues"
+
 
 [project.optional-dependencies]
+dev = [
+    "atopile[test]",
+    "debugpy",
+    "antlr4-tools",
+    "pre-commit>=2.20,<4.0",
+    "pytest>=7.1.3,<9.0.0",
+    "viztracer~=0.16.3",
+    "pyinstrument~=4.7.1",
+    "gprof2dot~=2024.6.6",
+    "pytest-xdist~=3.6.1",
+    "dash~=2.18.1",
+    "dash_cytoscape~=1.0.2",
+    "nanobind~=2.2.0",
+]
+
 test = [
-    "pytest",
+    "pytest>=7.1.3,<9.0.0",
     "pytest-html",
     "pytest-datafiles",
     "pytest-asyncio!=0.23.3",
     "requests",
+    "pytest-xdist~=3.6.1",
+    "nanobind~=2.2.0",
 ]
 
-docs = [
-    "mkdocs",
-    "mkdocs-material",
-    "mkdocs-drawio-file >= 1.5.2",
-]
+docs = ["mkdocs", "mkdocs-material", "mkdocs-drawio-file >= 1.5.2"]
 
-dev = [
-    "ruff",
-    "black",
-    "debugpy",
-    "antlr4-tools",
-]
 
 [project.scripts]
 ato = "atopile.cli.cli:cli"
+faebryk = "faebryk.tools.main:__main__"
+
+[tool.hatch]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.env]
+#requires = ["hatch-pip-compile"]
+
+
+[tool.hatch.envs.default]
+#type = "pip-compile"
+#pip-compile-resolver = "uv"
+#pip-compile-installer = "uv"
+#lock-filename = "locks/hatch.lock"
+#pip-compile-verbose = true
+#dependencies = ["faebryk[dev]"]
+
+[tool.hatch.envs.test]
+dependencies = ["atopile[test]"]
+
+# Add the built viewer to the python package
+[tool.hatch.build.targets.wheel]
+artifacts = ["**/viewer/dist"]
+# packages = ["src/faebryk"]  # TODO: remove - I don't believe this is required
+
+[tool.hatch.build.targets.wheel.hooks.scikit-build]
+experimental = true
+cmake.source-dir = "src/faebryk/core/cpp"
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["**/viewer/dist"]
 
 [tool.hatch.version]
 source = "vcs"
@@ -107,14 +160,25 @@ profile = "black"
 known_third_party = []
 
 
+[tool.pytest]
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",
     "--html=artifacts/test-report.html",
     "--self-contained-html",
+    "--numprocesses=auto",
 ]
+filterwarnings = ["ignore:.*:DeprecationWarning"]
+testpaths = ["test"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+log_file_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
+# log_file_level = "DEBUG"  # <-- you can set this in a PR if you want to debug tests in CI
 
 [tool.ruff]
+line-length = 88         # Same as Black.
+target-version = "py312"
+
 exclude = [
     "src/atopile/parser/AtopileLexer.py",
     "src/atopile/parser/AtopileLexerBase.py",
@@ -124,20 +188,118 @@ exclude = [
     "src/atopile/parser/AtopileParserVisitor.py",
     "src/atopile/kicad_plugin",
     "docs/",
+    "sandbox/",
 ]
 
-lint.ignore = [
-    "E501",  # line too long (ignore for the minute)
-    "C901",  # too complex
+[tool.ruff.format]
+exclude = ["_F.py"]
+
+[tool.ruff.lint]
+# Enable recommended set of rules
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I001", # isort
+    #"B",    # flake8-bugbear
+    #"C4",   # flake8-comprehensions
+    #"PL",   # Pylint
+    #"RUF",  # Ruff-specific rules
+    #"UP",   # pyupgrade
+    #"N",    # pep8-naming
+    #"SIM",  # flake8-simplify
+    #"TCH",  # flake8-type-checking
+    #"ARG",  # flake8-unused-arguments
+    #"PTH",  # flake8-use-pathlib
 ]
+ignore = [
+    # Line too long
+    "E501", # TODO: get the repo back on the same page to 88 characters
+]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = [
+    "A",   # flake8-builtins
+    "B",   # flake8-bugbear
+    "C",   # flake8-comprehensions
+    "D",   # pydocstyle
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "G",   # flake8-logging-format
+    "I",   # isort
+    "N",   # pep8-naming
+    "Q",   # flake8-quotes
+    "S",   # flake8-bandit
+    "T",   # flake8-print
+    "W",   # pycodestyle warnings
+    "ANN", # flake8-annotations
+    "ARG", # flake8-unused-arguments
+    "BLE", # flake8-blind-except
+    "COM", # flake8-commas
+    "DJ",  # flake8-django
+    "DTZ", # flake8-datetimez
+    "EM",  # flake8-errmsg
+    "ERA", # eradicate
+    "EXE", # flake8-executable
+    "FBT", # flake8-boolean-trap
+    "ICN", # flake8-import-conventions
+    "INP", # flake8-no-pep420
+    "ISC", # flake8-implicit-str-concat
+    "NPY", # NumPy-specific rules
+    "PD",  # pandas-vet
+    "PGH", # pygrep-hooks
+    "PIE", # flake8-pie
+    "PL",  # Pylint
+    "PT",  # flake8-pytest-style
+    "PTH", # flake8-use-pathlib
+    "PYI", # flake8-pyi
+    "RET", # flake8-return
+    "RSE", # flake8-raise
+    "RUF", # Ruff-specific rules
+    "SIM", # flake8-simplify
+    "SLF", # flake8-self
+    "TCH", # flake8-type-checking
+    "TID", # flake8-tidy-imports
+    "TRY", # tryceratops
+    "UP",  # pyupgrade
+    "YTT", # flake8-2020
+]
+unfixable = []
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+per-file-ignores = {}
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.pylint.main]
-ignore-paths = [
-    "tests",
-    "src/atopile/parser/",
-]
+# TODO: consider removing pylint as a dep. ruff's mostly better
+ignore-paths = ["tests", "src/atopile/parser/"]
 
 [tool.black]
 line-length = 88
-target-version = ['py311']
+target-version = ['py312']
 extend-exclude = "atopile/parser/"
