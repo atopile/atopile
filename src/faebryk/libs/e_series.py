@@ -8,10 +8,9 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     Quantity_Set_Discrete,
     Quantity_Set_Empty,
-    QuantityLikeR,
 )
-from faebryk.libs.units import Quantity, Unit, dimensionless
-from faebryk.libs.util import cast_assert, once
+from faebryk.libs.units import Quantity, Unit
+from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
 
@@ -490,7 +489,7 @@ def e_series_intersect(
             exp_range=range(floor(log10(min_val)), ceil(log10(max_val)) + 1),
             unit=cast(Unit, min_val_q.units),
         )
-        out = out.op_union_intervals(e_series_values.op_intersect_interval(sub_range))
+        out |= e_series_values & sub_range
     return out
 
 
@@ -532,17 +531,11 @@ def e_series_ratio(
     Can be used for a resistive divider.
     """
 
-    rh_factor = output_input_ratio.op_invert().op_subtract_intervals(
-        Quantity_Set_Discrete(cast_assert(QuantityLikeR, 1.0 * dimensionless))
-    )
+    rh_factor = output_input_ratio.op_invert() - 1
 
-    rh = Quantity_Interval_Disjoint(RH).op_intersect_intervals(
-        rh_factor.op_mul_intervals(Quantity_Interval_Disjoint(RL))
-    )
+    rh = RH & (rh_factor * RL)
     rh_e = e_series_intersect(rh, e_values)
-    rl = Quantity_Interval_Disjoint(RL).op_intersect_intervals(
-        rh_factor.op_invert().op_mul_intervals(Quantity_Interval_Disjoint(rh_e))
-    )
+    rl = RL & (rh_e / rh_factor)
     rl_e = e_series_intersect(rl, e_values)
 
     target_ratio = (

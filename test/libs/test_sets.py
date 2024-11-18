@@ -10,13 +10,13 @@ from faebryk.libs.util import cast_assert
 
 def test_interval_intersection_simple():
     x = Range(0, 10)
-    y = x.op_intersect_interval(Range(5, 15))
+    y = x & Range(5, 15)
     assert y == Range(5, 10)
 
 
 def test_interval_intersection_empty():
     x = Range(0, 10)
-    y = x.op_intersect_interval(Range(15, 20))
+    y = x & Range(15, 20)
     assert y == EmptySet(dimensionless)
 
 
@@ -114,54 +114,46 @@ def test_union_empty():
 
 
 def test_add_empty():
-    assert (
-        EmptySet(dimensionless).op_add_intervals(RangeWithGaps((0, 1)))
-    ) == EmptySet(dimensionless)
+    assert EmptySet(dimensionless) + RangeWithGaps((0, 1)) == EmptySet(dimensionless)
 
 
 def test_addition():
-    assert Range(0, 1).op_add_interval(Range(2, 3)) == Range(2, 4)
-    assert Range(0, 1).op_add_interval(Single(2)) == Range(2, 3)
-    assert RangeWithGaps(Single(2), Single(3)).op_add_intervals(
-        RangeWithGaps((0, 1))
-    ) == Range(2, 4)
-    assert RangeWithGaps(Single(10), Range(20, 21)).op_add_intervals(
-        RangeWithGaps((0, 1), (100, 101))
+    assert Range(0, 1) + Range(2, 3) == Range(2, 4)
+    assert Range(0, 1) + Single(2) == Range(2, 3)
+    assert RangeWithGaps(Single(2), Single(3)) + RangeWithGaps((0, 1)) == Range(2, 4)
+    assert RangeWithGaps(Single(10), Range(20, 21)) + RangeWithGaps(
+        (0, 1), (100, 101)
     ) == RangeWithGaps((10, 11), (110, 111), (20, 22), (120, 122))
 
 
 def test_addition_unit():
-    assert Range(0 * P.V, 1 * P.V).op_add_interval(Range(2 * P.V, 3 * P.V)) == Range(
-        2 * P.V, 4 * P.V
-    )
+    assert Range(0 * P.V, 1 * P.V) + Range(2 * P.V, 3 * P.V) == Range(2 * P.V, 4 * P.V)
 
 
 def test_subtraction():
-    assert Range(0, 1).op_subtract_interval(Range(2, 3)) == Range(-3, -1)
-    assert Range(0, 1).op_subtract_interval(Single(2)) == Range(-2, -1)
+    assert Range(0, 1) - Range(2, 3) == Range(-3, -1)
+    assert Range(0, 1) - Single(2) == Range(-2, -1)
 
 
 def test_subtraction_unit():
-    assert Range(0 * P.V, 1 * P.V).op_subtract_interval(
-        Range(2 * P.V, 3 * P.V)
-    ) == Range(-3 * P.V, -1 * P.V)
+    assert Range(0 * P.V, 1 * P.V) - Range(2 * P.V, 3 * P.V) == Range(
+        -3 * P.V, -1 * P.V
+    )
 
 
 def test_multiplication():
-    assert Range(0, 2).op_mul_interval(Range(2, 3)) == Range(0, 6)
-    assert Range(0, 1).op_mul_interval(Single(2)) == Range(0, 2)
-    assert Range(0, 1).op_mul_interval(Single(-2)) == Range(-2, 0)
-    assert Range(-1, 1).op_mul_interval(Range(2, 4)) == Range(-4, 4)
-    assert DiscreteSet(0, 1).op_mul_intervals(DiscreteSet(2, 3)) == DiscreteSet(0, 2, 3)
-    assert DiscreteSet(0, 1).op_mul_intervals(DiscreteSet(2, 3)).op_mul_intervals(
-        RangeWithGaps((-1, 0))
+    assert Range(0, 2) * Range(2, 3) == Range(0, 6)
+    assert Range(0, 1) * Single(2) == Range(0, 2)
+    assert Range(0, 1) * Single(-2) == Range(-2, 0)
+    assert Range(-1, 1) * Range(2, 4) == Range(-4, 4)
+    assert DiscreteSet(0, 1) * DiscreteSet(2, 3) == DiscreteSet(0, 2, 3)
+    assert DiscreteSet(0, 1) * DiscreteSet(2, 3) * RangeWithGaps(
+        (-1, 0)
     ) == RangeWithGaps((0, 0), (-2, 0), (-3, 0))
 
 
 def test_multiplication_unit():
-    assert Range(0 * P.V, 2 * P.V).op_mul_interval(Range(2 * P.A, 3 * P.A)) == Range(
-        0 * P.W, 6 * P.W
-    )
+    assert Range(0 * P.V, 2 * P.V) * Range(2 * P.A, 3 * P.A) == Range(0 * P.W, 6 * P.W)
 
 
 def test_invert():
@@ -180,11 +172,11 @@ def test_invert_unit():
 
 
 def test_division():
-    assert Range(0, 1).op_div_interval(Range(2, 3)) == Range(0, 0.5)
-    assert Range(0, 1).op_div_interval(Range(0, 3)) == Range(min=0.0)
+    assert Range(0, 1) / Range(2, 3) == Range(0, 0.5)
+    assert Range(0, 1) / Range(0, 3) == Range(min=0.0)
 
 
 def test_division_unit():
-    assert Range(0 * P.V, 1 * P.V).op_div_interval(Range(2 * P.A, 3 * P.A)) == Range(
+    assert Range(0 * P.V, 1 * P.V) / Range(2 * P.A, 3 * P.A) == Range(
         0 * P.ohm, 1 / 2 * P.ohm
     )

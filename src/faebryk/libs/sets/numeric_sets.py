@@ -175,6 +175,27 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def __repr__(self) -> str:
         return f"_interval({self._min}, {self._max})"
 
+    def __add__(self, other: "Numeric_Interval[NumericT]"):
+        return self.op_add_interval(other)
+
+    def __sub__(self, other: "Numeric_Interval[NumericT]"):
+        return self.op_subtract_interval(other)
+
+    def __neg__(self):
+        return self.op_negate()
+
+    def __mul__(self, other: "Numeric_Interval[NumericT]"):
+        return self.op_mul_interval(other)
+
+    def __truediv__(self: "Numeric_Interval[float]", other: "Numeric_Interval[float]"):
+        return self.op_div_interval(other)
+
+    def __and__(self, other: "Numeric_Interval[NumericT]"):
+        return self.op_intersect_interval(other)
+
+    def __or__(self, other: "Numeric_Interval[NumericT]"):
+        return self.maybe_merge_interval(other)
+
 
 def Numeric_Singleton(value: NumericT) -> Numeric_Interval[NumericT]:
     """
@@ -358,6 +379,36 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
 
     def __iter__(self) -> Generator["Numeric_Interval[NumericT]"]:
         yield from self.intervals
+
+    # operators
+    def __add__(self, other: "Numeric_Interval_Disjoint[NumericT]"):
+        return self.op_add_intervals(other)
+
+    def __sub__(self, other: "Numeric_Interval_Disjoint[NumericT]"):
+        return self.op_subtract_intervals(other)
+
+    def __neg__(self):
+        return self.op_negate()
+
+    def __mul__(self, other: "Numeric_Interval_Disjoint[NumericT]"):
+        return self.op_mul_intervals(other)
+
+    def __truediv__(
+        self: "Numeric_Interval_Disjoint[float]",
+        other: "Numeric_Interval_Disjoint[float]",
+    ):
+        return self.op_div_intervals(other)
+
+    def __and__(
+        self,
+        other: "Numeric_Interval_Disjoint[NumericT] | Numeric_Interval[NumericT]",
+    ):
+        if isinstance(other, Numeric_Interval):
+            return self.op_intersect_interval(other)
+        return self.op_intersect_intervals(other)
+
+    def __or__(self, other: "Numeric_Interval_Disjoint[NumericT]"):
+        return self.op_union_intervals(other)
 
 
 class Numeric_Set_Discrete(Numeric_Interval_Disjoint[NumericT]):

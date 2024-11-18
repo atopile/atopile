@@ -484,9 +484,7 @@ def subset_of_literal(
             other_sets = [e.get_other_operand(param) for e in is_subsets]
             intersected = Quantity_Interval_Disjoint(other_sets[0])
             for s in other_sets[1:]:
-                intersected = intersected.op_intersect_intervals(
-                    Quantity_Interval_Disjoint(s)
-                )
+                intersected = intersected & Quantity_Interval_Disjoint(s)
             removed.update(is_subsets)
             new_param = copy_param(param)
             new_param.constrain_subset(intersected)

@@ -16,6 +16,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import StrEnum
+from functools import wraps
 from genericpath import commonprefix
 from itertools import chain, pairwise
 from pathlib import Path
@@ -35,6 +36,7 @@ from typing import (
     SupportsInt,
     Type,
     get_origin,
+    get_type_hints,
     overload,
 )
 
@@ -1428,3 +1430,30 @@ def closest_base_class(cls: type, base_classes: list[type]) -> type:
     # Find the first (most specific) base class that appears in the provided list
     sort = sorted(base_classes, key=lambda x: mro.index(x))
     return sort[0]
+
+
+def operator_type_check[**P, T](method: Callable[P, T]) -> Callable[P, T]:
+    @wraps(method)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        hints = get_type_hints(
+            method, include_extras=True
+        )  # This resolves string annotations
+        sig = inspect.signature(method)
+        param_hints = {name: hint for name, hint in hints.items() if name != "return"}
+
+        bound_args = sig.bind(*args, **kwargs)
+        bound_args.apply_defaults()
+
+        for name, value in bound_args.arguments.items():
+            if name not in param_hints:
+                continue
+            expected_type = param_hints[name]
+            # Handle Union, Optional, etc.
+            if hasattr(expected_type, "__origin__"):
+                expected_type = expected_type.__origin__
+            if not isinstance(value, expected_type):
+                return NotImplemented
+
+        return method(*args, **kwargs)
+
+    return wrapper
