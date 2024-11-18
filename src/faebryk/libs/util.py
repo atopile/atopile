@@ -35,6 +35,7 @@ from typing import (
     SupportsInt,
     Type,
     get_origin,
+    overload,
 )
 
 import psutil
@@ -290,7 +291,31 @@ def not_none(x):
     return x
 
 
-def cast_assert[T](t: type[T], obj) -> T:
+@overload
+def cast_assert[T](t: type[T], obj) -> T: ...
+
+
+@overload
+def cast_assert[T1, T2](t: tuple[type[T1], type[T2]], obj) -> T1 | T2: ...
+
+
+@overload
+def cast_assert[T1, T2, T3](
+    t: tuple[type[T1], type[T2], type[T3]], obj
+) -> T1 | T2 | T3: ...
+
+
+@overload
+def cast_assert[T1, T2, T3, T4](
+    t: tuple[type[T1], type[T2], type[T3], type[T4]], obj
+) -> T1 | T2 | T3 | T4: ...
+
+
+def cast_assert(t, obj):
+    """
+    Assert that obj is an instance of type t and return it with proper type hints.
+    t can be either a single type or a tuple of types.
+    """
     assert isinstance(obj, t)
     return obj
 

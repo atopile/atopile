@@ -30,10 +30,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
 )
 from faebryk.core.solver import Solver
-from faebryk.libs.e_series import (
-    E_SERIES,
-)
-from faebryk.libs.library import L
+from faebryk.libs.e_series import E_SERIES
 from faebryk.libs.picker.common import (
     PickerESeriesIntersectionError,
     PickerUnboundedParameterError,
@@ -49,11 +46,13 @@ from faebryk.libs.picker.picker import (
     DescriptiveProperties,
     has_part_picked_defined,
 )
-from faebryk.libs.units import (
-    P,
-    Quantity,
-    UndefinedUnitError,
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval,
+    Quantity_Interval_Disjoint,
+    Quantity_Singleton,
 )
+from faebryk.libs.sets.sets import P_UnitSet
+from faebryk.libs.units import UndefinedUnitError, quantity
 from faebryk.libs.util import at_exit, once
 
 logger = logging.getLogger(__name__)
@@ -209,7 +208,7 @@ class Component(Model):
 
     def attribute_to_range(
         self, attribute_name: str, use_tolerance: bool = False, ignore_at: bool = True
-    ) -> L.Range[Quantity]:
+    ) -> Quantity_Interval:
         """
         Convert a component value in the extra['attributes'] dict to a parameter
 
@@ -238,17 +237,18 @@ class Component(Model):
             values = value_field.split("~")
             if len(values) != 2:
                 raise ValueError(f"Invalid range from value '{value_field}'")
-            return L.Range(*(P.Quantity(v) for v in values))
+            low, high = map(quantity, values)
+            return Quantity_Interval(low, high)
 
         # unit hacks
 
         try:
-            value = P.Quantity(value_field)
+            value = quantity(value_field)
         except UndefinedUnitError as e:
             raise ValueError(f"Could not parse value field '{value_field}'") from e
 
         if not use_tolerance:
-            return L.Single(value)
+            return Quantity_Singleton(value)
 
         if "Tolerance" not in self.extra_["attributes"]:
             raise ValueError(f"No Tolerance field in component (lcsc: {self.lcsc})")
@@ -266,7 +266,7 @@ class Component(Model):
                 f"'{self.extra_['attributes']['Tolerance']}'"
             )
 
-        return L.Range.from_center_rel(value, tolerance)
+        return Quantity_Interval.from_center_rel(value, tolerance)
 
     def get_literal(self, m: MappingParameterDB) -> ParameterOperatable.Literal:
         """
@@ -398,7 +398,7 @@ class ComponentQuery:
     class Error(Exception): ...
 
     class ParamError(Error):
-        def __init__(self, param: L.P_UnitSet, msg: str):
+        def __init__(self, param: P_UnitSet, msg: str):
             self.param = param
             self.msg = msg
             super().__init__(f"{msg} for parameter {param!r}")
@@ -411,6 +411,7 @@ class ComponentQuery:
         self.results: list[Component] | None = None
 
     async def exec(self) -> list[Component]:
+        assert self.Q
         queryset = Component.filter(self.Q)
         logger.debug(f"Query results: {await queryset.count()}")
         self.results = await queryset
@@ -440,7 +441,7 @@ class ComponentQuery:
 
     def filter_by_si_values(
         self,
-        value: L.Ranges[Quantity],
+        value: Quantity_Interval_Disjoint,
         e_series: E_SERIES | None = None,
         tolerance_requirement: float | None = None,
     ) -> Self:

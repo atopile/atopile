@@ -17,7 +17,7 @@ from faebryk.libs.picker.picker import (
     DescriptiveProperties,
     PickError,
 )
-from faebryk.libs.sets import P_Set
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
 logger = logging.getLogger(__name__)

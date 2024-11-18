@@ -5,13 +5,18 @@ import logging
 from collections.abc import Iterable
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Self, cast, override
+from typing import Any, Callable, Self, Sequence, TypeGuard, cast, override
 
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.node import Node, f_field
 from faebryk.core.trait import Trait
-from faebryk.libs.sets import P_Set, Range, Ranges
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval,
+    Quantity_Interval_Disjoint,
+    QuantityLikeR,
+)
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
 from faebryk.libs.util import KeyErrorNotFound, abstract, cast_assert, find
 
@@ -369,7 +374,10 @@ class ParameterOperatable(Node):
         iss = self.get_operations(op)
         try:
             literal_is = find(
-                o for i in iss for o in i.get_literal_operands() if i.constrained
+                o
+                for i in iss
+                for o in i.get_literal_operands()
+                if isinstance(i, ConstrainableExpression) and i.constrained
             )
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
@@ -377,11 +385,17 @@ class ParameterOperatable(Node):
             ) from e
         return literal_is
 
+    def try_get_literal(self, op: type["Expression"] | None = None) -> Literal | None:
+        try:
+            return self.get_literal(op)
+        except ParameterOperableHasNoLiteral:
+            return None
+
     # type checks
 
     @staticmethod
-    def is_number_literal(value: Any) -> bool:
-        return isinstance(value, (int, float, Unit, Quantity))
+    def is_number_literal(value: Any) -> TypeGuard[QuantityLike]:
+        return isinstance(value, QuantityLikeR)
 
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
@@ -488,7 +502,16 @@ class Arithmetic(Expression):
         self.units: Unit = cast(Unit, None)  # checked in postinit
 
         super().__init__(Numbers(), *operands)
-        types = int, float, Quantity, Unit, Parameter, Arithmetic, Ranges, Range
+        types = (
+            int,
+            float,
+            Quantity,
+            Unit,
+            Parameter,
+            Arithmetic,
+            Quantity_Interval,
+            Quantity_Interval_Disjoint,
+        )
         if any(not isinstance(op, types) for op in operands):
             raise ValueError(
                 "operands must be int, float, Quantity, Parameter, or Expression"
@@ -512,6 +535,13 @@ class Additive(Arithmetic):
         self.units = units[0]
         if not all(u.is_compatible_with(self.units) for u in units):
             raise ValueError("All operands must have compatible units")
+
+    @staticmethod
+    def sum(operands: Sequence[ParameterOperatable.NumberLike]) -> "Additive":
+        # Else assert not correct
+        if not len(operands):
+            raise ValueError("at least one operand is required")
+        return cast_assert(Additive, sum(operands))
 
 
 class Add(Additive):
@@ -991,10 +1021,10 @@ class Parameter(ParameterOperatable):
         *,
         units: Unit | Quantity | None = dimensionless,
         # hard constraints
-        within: Ranges | Range | None = None,
+        within: Quantity_Interval_Disjoint | Quantity_Interval | None = None,
         domain: Domain = Numbers(negative=False),
         # soft constraints
-        soft_set: Ranges | Range | None = None,
+        soft_set: Quantity_Interval_Disjoint | Quantity_Interval | None = None,
         guess: Quantity
         | int
         | float
@@ -1007,11 +1037,11 @@ class Parameter(ParameterOperatable):
         if within is not None and not within.units.is_compatible_with(units):
             raise ValueError("incompatible units")
 
-        if isinstance(within, Range):
-            within = Ranges(within)
+        if isinstance(within, Quantity_Interval):
+            within = Quantity_Interval_Disjoint(within)
 
-        if isinstance(soft_set, Range):
-            soft_set = Ranges(soft_set)
+        if isinstance(soft_set, Quantity_Interval):
+            soft_set = Quantity_Interval_Disjoint(soft_set)
 
         if not isinstance(units, Unit):
             raise TypeError("units must be a Unit")

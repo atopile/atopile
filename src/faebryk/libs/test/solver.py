@@ -5,7 +5,7 @@ from faebryk.core.graph import Graph
 from faebryk.core.node import Node
 from faebryk.core.parameter import ParameterOperatable
 from faebryk.core.solver import Solver
-from faebryk.libs.sets import PlainSet
+from faebryk.libs.sets.sets import PlainSet
 
 
 def solves_to(stmt: ParameterOperatable, result: bool, solver: Solver):

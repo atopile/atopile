@@ -11,7 +11,8 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
-from faebryk.libs.sets import P_Set, Ranges
+from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
+from faebryk.libs.sets.sets import P_Set
 
 logger = logging.getLogger(__name__)
 
@@ -122,4 +123,4 @@ class Solver(Protocol):
 
     def inspect_get_known_superranges(
         self, value: ParameterOperatable.NumberLike
-    ) -> Ranges: ...
+    ) -> Quantity_Interval_Disjoint: ...
