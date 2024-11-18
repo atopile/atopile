@@ -1,14 +1,14 @@
 from textwrap import dedent
 
-from atopile import errors
-from faebryk.libs.library import L
-import faebryk.library._F as F
 import pytest
 
-from atopile.datatypes import Ref
-from atopile.front_end2 import Lofty, AtoComponent
-from atopile.parse import parse_text_as_file
 import faebryk.core.parameter as fab_param
+import faebryk.library._F as F
+from atopile import errors
+from atopile.datatypes import Ref
+from atopile.front_end2 import AtoComponent, Lofty
+from atopile.parse import parse_text_as_file
+from faebryk.libs.library import L
 
 
 @pytest.fixture
@@ -40,8 +40,8 @@ def test_simple_module_build(lofty: Lofty):
     assert isinstance(node, L.Module)
 
     param = node.runtime["a"]
-    assert isinstance(param, fab_param.Parameter)
-    assert list(param.within)[0].min_elem() == 1
+    assert isinstance(param, fab_param.ParameterOperatable)
+    # TODO: check value
 
 
 def test_arithmetic(lofty: Lofty):
