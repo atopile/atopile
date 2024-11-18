@@ -281,8 +281,8 @@ def find_and_attach_by_lcsc_id(module: Module):
         ) from e
 
     if part.stock < qty:
-        raise PickError(
-            f"Part with LCSC part number {lcsc_pn} has insufficient stock", module
+        logger.warning(
+            f"Part for {repr(module)} with LCSC part number {lcsc_pn} has insufficient stock",
         )
 
     try:
@@ -355,6 +355,11 @@ def find_and_attach_by_mfr(module: Module):
     for part in parts:
         try:
             part.attach(module, try_get_param_mapping(module), allow_TBD=True)
+            if part.stock < qty:
+                logger.warning(
+                    f"Part for {repr(module)} with {mfr=} {mfr_pn=} has insufficient stock",
+                )
+
             return
         except ValueError as e:
             logger.warning(f"Failed to attach component: {e}")
