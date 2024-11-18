@@ -15,7 +15,7 @@ jobs:
             python-version: '3.12'
             #cache: 'hatch'
         - name: Install dependencies
-          run: | 
+          run: |
             python -m pip install hatch --upgrade pip
             hatch env create test
         - name: Lint with Ruff
@@ -24,11 +24,23 @@ jobs:
         - name: Setup cmake
           uses: jwlawson/actions-setup-cmake@v2
         - name: Run pytest
+          id: pytest
+          continue-on-error: true
           run: hatch run test:pytest
-        #- name: Upload pytest test results
-        #  uses: actions/upload-artifact@v4
-        #  with:
-        #    name: pytest-results-${{ matrix.python-version }}
-        #    path: junit/test-results-${{ matrix.python-version }}.xml
-        #  # Use always() to always run this step to publish test results when there are test failures
-        #  if: ${{ always() }}
+        - name: Upload all test logs
+          if: steps.pytest.outcome == 'failure'
+          uses: actions/upload-artifact@v4
+          with:
+            name: test-logs
+            path: artifacts/**/*.log
+            if-no-files-found: warn
+        - run: tree .
+        - name: Upload all test report
+          if: steps.pytest.outcome == 'failure'
+          uses: actions/upload-artifact@v4
+          with:
+            name: test-report
+            path: artifacts/test-report.html
+        - name: Check pytest status
+          if: steps.pytest.outcome == 'failure'
+          run: exit 1

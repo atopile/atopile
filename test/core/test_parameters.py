@@ -10,11 +10,17 @@ import faebryk.library._F as F
 from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.core.parameter import And, Parameter
+from faebryk.core.parameter import (
+    Additive,
+    And,
+    Parameter,
+    ParameterOperatable,
+    Subtract,
+)
 from faebryk.libs.library import L
+from faebryk.libs.library.L import Range, RangeWithGaps
 from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.sets import Range, Ranges
-from faebryk.libs.units import P, dimensionless
+from faebryk.libs.units import P, dimensionless, quantity
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -68,9 +74,11 @@ def test_simplify():
     # (((((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7)
     #  + I + 8) + J + 9) - 3) - 4) < 11
     # => (H + I + J + 17) < 11
-    constants = [c * dimensionless for c in range(0, 10)]
+    constants: list[ParameterOperatable.NumberLike] = [
+        quantity(c, dimensionless) for c in range(0, 10)
+    ]
     constants[5] = app.ops[0] - app.ops[0]
-    constants[9] = Ranges(Range(0 * dimensionless, 1 * dimensionless))
+    constants[9] = RangeWithGaps(Range(0 * dimensionless, 1 * dimensionless))
     acc = app.ops[0]
     for i, p in enumerate(app.ops[1:3]):
         acc += p + constants[i]
@@ -79,8 +87,9 @@ def test_simplify():
     for i, p in enumerate(app.ops[7:]):
         acc += p + constants[i + 7]
 
-    acc = (acc - 3 * dimensionless) - 4 * dimensionless
-    (acc < 11 * dimensionless).constrain()
+    acc = (acc - quantity(3, dimensionless)) - quantity(4, dimensionless)
+    assert isinstance(acc, Subtract)
+    (acc < quantity(11, dimensionless)).constrain()
 
     G = acc.get_graph()
     solver = DefaultSolver()
@@ -154,9 +163,9 @@ def test_alias_classes():
 
 def test_inspect_known_superranges():
     p0 = Parameter(units=P.V, within=Range(1 * P.V, 10 * P.V))
-    p0.alias_is(Range(1 * P.V, 3 * P.V).op_add_range(Range(4 * P.V, 6 * P.V)))
+    p0.alias_is(Range(1 * P.V, 3 * P.V).op_add_interval(Range(4 * P.V, 6 * P.V)))
     solver = DefaultSolver()
-    assert solver.inspect_get_known_superranges(p0) == Ranges((5 * P.V, 9 * P.V))
+    assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
 
 
 def test_solve_realworld():
@@ -199,7 +208,7 @@ def test_visualize_chain():
     params = times(10, Parameter)
     sums = [p1 + p2 for p1, p2 in pairwise(params)]
     products = [p1 * p2 for p1, p2 in pairwise(sums)]
-    bigsum = sum(products)
+    bigsum = Additive.sum(products)
 
     predicates = [bigsum <= 100]
     for p in predicates:

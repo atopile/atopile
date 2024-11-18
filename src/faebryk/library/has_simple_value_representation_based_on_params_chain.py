@@ -11,7 +11,8 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperableHasNoLiteral,
 )
-from faebryk.libs.sets import P_Set, Range
+from faebryk.libs.sets.quantity_sets import Quantity_Interval
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import Quantity, Unit, to_si_str
 from faebryk.libs.util import join_if_non_empty
 
@@ -69,11 +70,12 @@ class has_simple_value_representation_based_on_params_chain(
 
             if isinstance(domain, Numbers):
                 unit = self.unit if self.unit is not None else self.param.units
+                # TODO If tolerance, maybe hint that it's weird there isn't any
                 if Parameter.is_number_literal(value):
-                    # TODO If tolerance, maybe hint that it's weird there isn't any
+                    assert not isinstance(value, Unit)
                     return to_si_str(value, unit, 2)
                 if isinstance(value, P_Set):
-                    if isinstance(value, Range):
+                    if isinstance(value, Quantity_Interval):
                         center, tolerance = value.as_center_tuple(relative=True)
                         center_str = to_si_str(center, unit, 2)
                         assert isinstance(tolerance, Quantity)

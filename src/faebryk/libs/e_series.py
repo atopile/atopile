@@ -3,9 +3,13 @@ from collections.abc import Sequence
 from math import ceil, floor, log10
 from typing import Tuple, TypeVar, cast
 
-from faebryk.libs.library import L
-from faebryk.libs.sets import Range, Ranges
-from faebryk.libs.units import Quantity, Unit, dimensionless
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval,
+    Quantity_Interval_Disjoint,
+    Quantity_Set_Discrete,
+    Quantity_Set_Empty,
+)
+from faebryk.libs.units import Quantity, Unit
 from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
@@ -436,14 +440,14 @@ QuantityT = TypeVar("QuantityT", int, float, Quantity)
 
 
 def repeat_set_over_base(
-    values: set[float],
+    values: frozenset[float],
     base: int,
     exp_range: Sequence[int],
     unit: Unit,
     n_decimals: int = 13,
-) -> L.Singles[QuantityT]:
+) -> Quantity_Set_Discrete:
     assert all(v >= 1 and v < base for v in values)
-    return L.Singles[QuantityT](
+    return Quantity_Set_Discrete(
         *(
             round(val * base**exp, n_decimals) * unit
             for val in values
@@ -454,14 +458,14 @@ def repeat_set_over_base(
 
 @once
 def e_series_intersect(
-    value_set: Range[QuantityT] | Ranges[QuantityT],
+    value_set: Quantity_Interval_Disjoint | Quantity_Interval,
     e_series: E_SERIES | None = None,
-) -> L.Ranges[QuantityT]:
+) -> Quantity_Interval_Disjoint:
     if e_series is None:
         e_series = E_SERIES_VALUES.E_ALL
 
-    if isinstance(value_set, Range):
-        value_set = Ranges(value_set)
+    if isinstance(value_set, Quantity_Interval):
+        value_set = Quantity_Interval_Disjoint(value_set)
 
     if (
         value_set.is_empty()
@@ -470,7 +474,7 @@ def e_series_intersect(
     ):
         raise ValueError("Need positive finite set")
 
-    out = L.Empty(value_set.units)
+    out = Quantity_Set_Empty(value_set.units)
 
     for sub_range in value_set:
         min_val_q = sub_range.min_elem().to_compact()
@@ -483,28 +487,31 @@ def e_series_intersect(
             values=e_series,
             base=10,
             exp_range=range(floor(log10(min_val)), ceil(log10(max_val)) + 1),
-            unit=min_val_q.units,
+            unit=cast(Unit, min_val_q.units),
         )
-        out = out.op_union_ranges(e_series_values.op_intersect_range(sub_range))
+        out |= e_series_values & sub_range
     return out
 
 
 def e_series_discretize_to_nearest(
-    value: Range[Quantity], e_series: E_SERIES = E_SERIES_VALUES.E_ALL
+    value: Quantity_Interval, e_series: E_SERIES = E_SERIES_VALUES.E_ALL
 ) -> Quantity:
     target = cast(Quantity, (value.min_elem() + value.max_elem())) / 2
 
     e_series_values = repeat_set_over_base(
-        e_series, 10, range(floor(log10(target)), ceil(log10(target)) + 1), target.units
+        e_series,
+        10,
+        range(floor(log10(target)), ceil(log10(target)) + 1),
+        cast(Unit, target.units),
     )
 
-    return min(e_series_values, key=lambda x: abs(x - target))
+    return min(e_series_values.iter_singles(), key=lambda x: abs(x - target))
 
 
 def e_series_ratio(
-    RH: Range[float],
-    RL: Range[float],
-    output_input_ratio: Range[float],
+    RH: Quantity_Interval,
+    RL: Quantity_Interval,
+    output_input_ratio: Quantity_Interval,
     e_values: E_SERIES = E_SERIES_VALUES.E_ALL,
 ) -> Tuple[float, float]:
     """
@@ -524,15 +531,11 @@ def e_series_ratio(
     Can be used for a resistive divider.
     """
 
-    rh_factor = output_input_ratio.op_invert().op_subtract_ranges(
-        L.Singles(1.0 * dimensionless)
-    )
+    rh_factor = output_input_ratio.op_invert() - 1
 
-    rh = Ranges(RH).op_intersect_ranges(rh_factor.op_mul_ranges(Ranges(RL)))
+    rh = RH & (rh_factor * RL)
     rh_e = e_series_intersect(rh, e_values)
-    rl = Ranges(RL).op_intersect_ranges(
-        rh_factor.op_invert().op_mul_ranges(Ranges(rh_e))
-    )
+    rl = RL & (rh_e / rh_factor)
     rl_e = e_series_intersect(rl, e_values)
 
     target_ratio = (

@@ -5,7 +5,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Iterable
 from statistics import median
-from typing import Any, cast
+from typing import Any, cast, overload
 
 from more_itertools import partition
 
@@ -26,7 +26,6 @@ from faebryk.core.parameter import (
     Numbers,
     Or,
     Parameter,
-    ParameterOperableHasNoLiteral,
     ParameterOperatable,
     Power,
     Predicate,
@@ -34,9 +33,16 @@ from faebryk.core.parameter import (
     has_implicit_constraints_recursive,
 )
 from faebryk.core.solver import Solver
-from faebryk.libs.sets import P_Set, Range, Ranges, Single
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval,
+    Quantity_Interval_Disjoint,
+    Quantity_Singleton,
+    QuantityLike,
+    QuantityLikeR,
+)
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import HasUnit, Quantity, dimensionless
-from faebryk.libs.util import EquivalenceClasses, unique_ref
+from faebryk.libs.util import EquivalenceClasses, not_none, unique_ref
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +53,7 @@ def debug_print(repr_map: dict[ParameterOperatable, ParameterOperatable]):
     if getattr(sys, "gettrace", lambda: None)():
         log = print
     else:
-        log = logger.info
+        log = logger.debug
     for s, d in repr_map.items():
         if isinstance(d, Expression):
             if isinstance(s, Expression):
@@ -199,14 +205,27 @@ def copy_operand_recursively(
 # within -> constrain is subset
 # scalar to single
 def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.All]:
-    def set_to_base_units(s: Ranges | Range | None) -> Ranges | Range | None:
+    def set_to_base_units(
+        s: Quantity_Interval_Disjoint | Quantity_Interval | None,
+    ) -> Quantity_Interval_Disjoint | Quantity_Interval | None:
         if s is None:
             return None
-        if isinstance(s, Ranges):
-            return Ranges._from_ranges(s._ranges, dimensionless)
-        return Range._from_range(s._range, dimensionless)
+        if isinstance(s, Quantity_Interval_Disjoint):
+            return Quantity_Interval_Disjoint._from_intervals(
+                s._intervals, dimensionless
+            )
+        return Quantity_Interval._from_interval(s._interval, dimensionless)
 
-    def scalar_to_base_units(q: int | float | Quantity | None) -> Quantity | None:
+    @overload
+    def scalar_to_base_units(q: QuantityLike) -> Quantity: ...
+
+    @overload
+    def scalar_to_base_units(q: None) -> None: ...
+
+    @overload
+    def scalar_to_base_units(q: bool) -> bool: ...
+
+    def scalar_to_base_units(q):
         if q is None:
             return None
         if isinstance(q, bool):
@@ -235,7 +254,7 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.A
             )
             repr_map[po] = new_param
             if po.within is not None:
-                new_param.constrain_subset(set_to_base_units(po.within))
+                new_param.constrain_subset(not_none(set_to_base_units(po.within)))
             if isinstance(po.domain, Numbers) and not po.domain.negative:
                 new_param.constrain_ge(0 * dimensionless)
         elif isinstance(po, Expression):
@@ -244,9 +263,13 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.A
                 if isinstance(op, ParameterOperatable):
                     assert op in repr_map
                     new_ops.append(repr_map[op])
-                elif isinstance(op, int | float | Quantity):
+                elif isinstance(op, QuantityLikeR):
                     new_ops.append(scalar_to_base_units(op))
                 else:
+                    # FIXME: I don't think this is correct
+                    assert isinstance(
+                        op, (Quantity_Interval_Disjoint, Quantity_Interval)
+                    )
                     new_ops.append(set_to_base_units(op))
             repr_map[po] = create_new_expr(po, *new_ops)
 
@@ -287,7 +310,7 @@ def inequality_to_set_op(
                 ParameterOperatable,
                 copy_operand_recursively(po.operatable_operands.pop(), repr_map),
             )
-            subset = copy_po.operation_is_subset(Range(left, right))
+            subset = copy_po.operation_is_subset(Quantity_Interval(left, right))
             if po.constrained:
                 subset.constrain()
             dirty = True
@@ -360,12 +383,14 @@ def resolve_alias_classes(
             dirty |= len(param_alias_class) > 1
 
             # intersect ranges
-            within_ranges = {
+            within_intervals = {
                 p.within for p in param_alias_class if p.within is not None
             }
             within = None
-            if within_ranges:
-                within = Ranges.op_intersect_ranges(*within_ranges)
+            if within_intervals:
+                within = Quantity_Interval_Disjoint.op_intersect_intervals(
+                    *within_intervals
+                )
 
             # heuristic:
             # intersect soft sets
@@ -374,7 +399,7 @@ def resolve_alias_classes(
             }
             soft_set = None
             if soft_sets:
-                soft_set = Ranges.op_intersect_ranges(*soft_sets)
+                soft_set = Quantity_Interval_Disjoint.op_intersect_intervals(*soft_sets)
 
             # heuristic:
             # get median
@@ -457,9 +482,9 @@ def subset_of_literal(
         ]
         if len(is_subsets) > 1:
             other_sets = [e.get_other_operand(param) for e in is_subsets]
-            intersected = Ranges(other_sets[0])
+            intersected = Quantity_Interval_Disjoint(other_sets[0])
             for s in other_sets[1:]:
-                intersected = intersected.op_intersect_ranges(Ranges(s))
+                intersected = intersected & Quantity_Interval_Disjoint(s)
             removed.update(is_subsets)
             new_param = copy_param(param)
             new_param.constrain_subset(intersected)
@@ -985,7 +1010,11 @@ class DefaultSolver(Solver):
         logger.info("Phase 0 Solving: normalize graph")
         total_repr_map = normalize_graph(g)
         debug_print(total_repr_map)
-        graphs = unique_ref(p.get_graph() for p in total_repr_map.values())
+        graphs = unique_ref(
+            p.get_graph()
+            for p in total_repr_map.values()
+            if isinstance(p, ParameterOperatable)
+        )
         # TODO assert all new graphs
 
         dirty = True
@@ -1133,80 +1162,69 @@ class DefaultSolver(Solver):
     def inspect_known_supersets_are_few(self, value: ParameterOperatable.Sets) -> bool:
         return True
 
-    def inspect_get_known_superranges(self, value: ParameterOperatable) -> Ranges:
+    def inspect_get_known_superranges(
+        self, value: ParameterOperatable
+    ) -> Quantity_Interval_Disjoint:
         if not isinstance(value.domain, Numbers):
             raise ValueError(f"Ranges only defined for numbers not {value.domain}")
 
         # run phase 1 solver
         # TODO caching
+        pre_val = value
         repr_map = self.phase_one_no_guess_solving(value.get_graph())
         value = repr_map[value]
 
-        # check predicates (is, subset, greater, less)
-        try:
-            if isinstance(value, ParameterOperatable):
-                literal = value.get_literal(Is)
-            else:
-                literal = value
+        if not isinstance(value, ParameterOperatable):
+            literal = value
             if Parameter.is_number_literal(literal):
-                return Ranges(Single(literal))
+                return Quantity_Interval_Disjoint(Quantity_Singleton(literal))
             if isinstance(literal, P_Set):
-                if isinstance(literal, Range):
-                    return Ranges(literal)
-                if isinstance(literal, Ranges):
+                if isinstance(literal, Quantity_Interval):
+                    return Quantity_Interval_Disjoint(literal)
+                if isinstance(literal, Quantity_Interval_Disjoint):
                     return literal
-        except ParameterOperableHasNoLiteral:
-            pass
+            raise ValueError(f"incompatible literal {literal}")
 
-        try:
-            if isinstance(value, ParameterOperatable):
-                literal = value.get_literal(IsSubset)
-            else:
-                literal = value
+        # check predicates (is, subset)
+        literal = value.try_get_literal(Is)
+        if literal is None:
+            literal = value.try_get_literal(IsSubset)
+
+        logger.info(f"{pre_val=} {value=} {literal=}")
+        if literal is not None:
             if Parameter.is_number_literal(literal):
-                return Ranges(Single(literal))
+                return Quantity_Interval_Disjoint(Quantity_Singleton(literal))
             if isinstance(literal, P_Set):
-                if isinstance(literal, Range):
-                    return Ranges(literal)
-                if isinstance(literal, Ranges):
+                if isinstance(literal, Quantity_Interval):
+                    return Quantity_Interval_Disjoint(literal)
+                if isinstance(literal, Quantity_Interval_Disjoint):
                     return literal
-        except ParameterOperableHasNoLiteral:
-            pass
+            raise ValueError(f"incompatible literal {literal}")
 
-        # TODO LT, GT
+        # check predicates (greater, less)
         lower = None
-        try:
-            if isinstance(value, ParameterOperatable):
-                literal = value.get_literal(GreaterOrEqual)
-            else:
-                literal = value
+        literal = value.try_get_literal(GreaterOrEqual)
+        if literal is not None:
             if Parameter.is_number_literal(literal):
                 lower = literal
             elif isinstance(literal, P_Set):
-                if isinstance(literal, Range):
+                if isinstance(literal, (Quantity_Interval, Quantity_Interval_Disjoint)):
                     lower = literal.max_elem()
-                elif isinstance(literal, Ranges):
-                    lower = literal.max_elem()
-        except ParameterOperableHasNoLiteral:
+        else:
             lower = float("-inf") * HasUnit.get_units(value)
 
         upper = None
-        try:
-            if isinstance(value, ParameterOperatable):
-                literal = value.get_literal(LessOrEqual)
-            else:
-                literal = value
+        literal = value.try_get_literal(LessOrEqual)
+        if literal is not None:
             if Parameter.is_number_literal(literal):
                 upper = literal
             elif isinstance(literal, P_Set):
-                if isinstance(literal, Range):
+                if isinstance(literal, (Quantity_Interval, Quantity_Interval_Disjoint)):
                     upper = literal.min_elem()
-                elif isinstance(literal, Ranges):
-                    upper = literal.min_elem()
-        except ParameterOperableHasNoLiteral:
+        else:
             upper = float("inf") * HasUnit.get_units(value)
 
-        return Ranges(Range(lower, upper))
+        return Quantity_Interval_Disjoint(Quantity_Interval(lower, upper))
 
     def assert_any_predicate[ArgType](
         self,

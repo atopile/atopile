@@ -13,14 +13,17 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Predicate
 from faebryk.core.solver import Solver
 from faebryk.libs.e_series import E_SERIES, e_series_intersect
-from faebryk.libs.library import L
 from faebryk.libs.picker.lcsc import LCSC_NoDataException, LCSC_PinmapException, attach
 from faebryk.libs.picker.picker import (
     PickError,
     has_part_picked,
     has_part_picked_defined,
 )
-from faebryk.libs.units import Quantity, to_si_str
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval_Disjoint,
+    Quantity_Singleton,
+)
+from faebryk.libs.units import to_si_str
 from faebryk.libs.util import ConfigFlagEnum, cast_assert
 
 if TYPE_CHECKING:
@@ -157,7 +160,7 @@ class PickerESeriesIntersectionError(Exception):
 
 
 def generate_si_values(
-    value: L.Ranges[Quantity], e_series: E_SERIES | None = None
+    value: Quantity_Interval_Disjoint, e_series: E_SERIES | None = None
 ) -> list[SIvalue]:
     if value.is_unbounded():
         raise PickerUnboundedParameterError(value)
@@ -167,12 +170,10 @@ def generate_si_values(
         raise PickerESeriesIntersectionError(f"No intersection with E-series: {value}")
     si_unit = value.units
 
-    def _get_single(single: L.Range):
-        assert single.min_elem() == single.max_elem()
-        return single.min_elem()
-
     si_vals = [
-        to_si_str(_get_single(r), si_unit).replace("µ", "u").replace("inf", "∞")
+        to_si_str(Quantity_Singleton.cast(r).get_value(), si_unit)
+        .replace("µ", "u")
+        .replace("inf", "∞")
         for r in intersection
     ]
 
@@ -248,8 +249,10 @@ def check_compatible_parameters(
         if not solver.inspect_known_supersets_are_few(m_param):
             continue
 
-        known_superset = L.Ranges(*solver.inspect_get_known_superranges(m_param))
-        if not known_superset.is_superset_of(L.Ranges(c_range)):
+        known_superset = Quantity_Interval_Disjoint(
+            *solver.inspect_get_known_superranges(m_param)
+        )
+        if not known_superset.is_superset_of(Quantity_Interval_Disjoint(c_range)):
             known_incompatible = True
             break
 
