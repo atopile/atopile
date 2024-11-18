@@ -198,35 +198,32 @@ def module(
         noname = [k for k, v in sorted(noname, key=lambda x: int(x[0]))]
         noname_mapping = {pin_num: i for i, pin_num in enumerate(noname)}
 
-        interface_names = {
-            pin_name: sanitize_name(pin_name)
-            for _, pin_name in sorted(pins, key=lambda x: x[1])
+        interface_names_by_pin_name = {
+            pin_name: sanitize_name(pin_name) for _, pin_name in pins
         }
 
         nodes.append(
             "#TODO: Change auto-generated interface types to actual high level types"
         )
         nodes += [
-            f"{pin_name}: F.Electrical" for pin_name in set(interface_names.values())
+            f"{pin_name}: F.Electrical"
+            for pin_name in set(interface_names_by_pin_name.values())
         ]
         if noname:
             nodes.append(f"unnamed = L.list_field({len(noname)}, F.Electrical)")
 
         traits.append(f"""
             @L.rt_field
-            def pin_association_heuristic(self):
-                return F.has_pin_association_heuristic_lookup_table(
-                    mapping={{
-                        {", ".join([f"self.{interface_names[pin_name]}: ['{pin_name}']"
-                                    for pin_name in sorted(
-                                        {pin_name for _, pin_name in pins})]
+            def attach_via_pinmap(self):
+                return F.can_attach_to_footprint_via_pinmap(
+                    {{
+                        {", ".join([f"'{pin_number}': {f'self.{interface_names_by_pin_name[pin_name]}'}"
+                                    for pin_number, pin_name in sorted(pins)]
                                     + [
-                                        f"self.unnamed[{i}]: ['{pin_num}']"
+                                        f"'{pin_num}': self.unnamed[{i}]"
                                         for pin_num, i in noname_mapping.items()
                                     ])}
-                    }},
-                    accept_prefix=False,
-                    case_sensitive=False,
+                    }}
                 )
         """)
 
