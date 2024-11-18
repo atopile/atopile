@@ -1,6 +1,12 @@
 # pylint: disable=too-few-public-methods
 
-"""Schema and utils for atopile config files."""
+"""
+Schema and utils for atopile config files.
+
+Requirements for the config files include:
+- Structured + typed access
+- Preservation of structure and comments
+"""
 
 import copy
 import fnmatch

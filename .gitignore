@@ -183,3 +183,7 @@ _local
 .local
 
 .envrc
+
+# ANTLR generated files
+.antlr/
+**/.antlr/
