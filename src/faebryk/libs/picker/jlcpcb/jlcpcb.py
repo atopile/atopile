@@ -396,6 +396,9 @@ class Component(Model):
         except AttributeError:
             return asyncio.run(Manufacturers().get_from_id(self.manufacturer_id))
 
+    def __repr__(self):
+        return f"Component(lcsc={self.lcsc}, mfr={self.mfr}, mfr_pn={self.partno}, attributes={self.extra_['attributes']})"
+
 
 class ComponentQuery:
     class Error(Exception): ...

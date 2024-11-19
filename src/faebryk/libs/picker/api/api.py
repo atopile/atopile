@@ -21,6 +21,7 @@ from faebryk.libs.picker.picker import PickError
 from faebryk.libs.util import ConfigFlagString, try_or
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 DEFAULT_API_URL = "https://components.atopileapi.com"
 DEFAULT_API_TIMEOUT_SECONDS = 30
@@ -53,6 +54,7 @@ def check_compatible_parameters(
     """
     # TODO: serialize the module and check compatibility in the backend
 
+    logger.debug("Checking component: %s", component)
     params = component.get_params(mapping)
     param_matches = [
         try_or(
@@ -63,10 +65,19 @@ def check_compatible_parameters(
         for p, m in zip(params, mapping)
     ]
 
+    for p, m, matches in zip(params, mapping, param_matches):
+        if not matches:
+            logger.debug(
+                "%s doesn't match: want %s, got %s",
+                m.param_name,
+                getattr(module, m.param_name),
+                p,
+            )
+
     if not (is_compatible := all(param_matches)):
         logger.debug(
             f"Component {component.lcsc} doesn't match: "
-            f"{[p for p, v in zip(params, param_matches) if not v]}"
+            f"{[f'{m.param_name}: {p}' for p, m, v in zip(params, mapping, param_matches) if not v]}"
         )
 
     return is_compatible
@@ -81,6 +92,7 @@ def try_attach(
             continue
 
         try:
+            logger.debug("Trying to attach: %s", part)
             part.attach(cmp, mapping, qty, allow_TBD=False)
             return True
         except (ValueError, Component.ParseError) as e:
@@ -186,6 +198,7 @@ class ApiClient:
         self._client.headers["Authorization"] = f"Bearer {self.config.api_key}"
 
     def _get(self, url: str, timeout: float = 10) -> requests.Response:
+        logger.debug(f"GET {url}")
         try:
             response = self._client.get(f"{self.config.api_url}{url}", timeout=timeout)
             response.raise_for_status()
@@ -197,6 +210,7 @@ class ApiClient:
     def _post(
         self, url: str, data: dict, timeout: float = DEFAULT_API_TIMEOUT_SECONDS
     ) -> requests.Response:
+        logger.debug(f"POST {url} {data}")
         try:
             response = self._client.post(
                 f"{self.config.api_url}{url}", json=data, timeout=timeout
