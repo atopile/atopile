@@ -757,6 +757,11 @@ class JLCPCB_DB:
         return ans == "y"
 
     async def post_process_db(self):
+        return
+        # Ignoring all OOS components isn't a good idea, since there are many
+        # parts you may want to explicitly include in your BoM, even when OOS
+        # eg. most ICs, micros
+        # TODO: consider another approach to optimize the DB, eg. partitioning
         logger.info("Deleting out-of-stock components from DB")
         await Component.filter(stock__lt=1).delete()
 
