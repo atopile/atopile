@@ -180,16 +180,23 @@ def module(
         docstring = f"{docstring}\n\n{partdoc}"
 
         # pins --------------------------------
-        pins = [
-            (pin.settings.spice_pin_number, pin.name.text)
-            for pin in easyeda_symbol.pins
-        ]
-        pins, noname = partition(lambda x: re.match(r"[0-9]+", x[1]), pins)
+        pins, noname = (
+            list(x)
+            for x in partition(
+                lambda x: re.match(r"^[0-9]+$", x[1]),
+                (
+                    (pin.settings.spice_pin_number, pin.name.text)
+                    for unit in easyeda_symbol.units
+                    for pin in unit.pins
+                ),
+            )
+        )
+
         pins = sorted(pins, key=lambda x: x[0])
-        noname = list(noname)
+
         assert all(k == v for k, v in noname)
         noname = [k for k, v in sorted(noname, key=lambda x: int(x[0]))]
-        noname = {pin_num: i for i, pin_num in enumerate(noname)}
+        noname_mapping = {pin_num: i for i, pin_num in enumerate(noname)}
 
         interface_names = {
             pin_name: sanitize_name(pin_name)
@@ -215,7 +222,7 @@ def module(
                                         {pin_name for _, pin_name in pins})]
                                     + [
                                         f"self.unnamed[{i}]: ['{pin_num}']"
-                                        for pin_num, i in noname.items()
+                                        for pin_num, i in noname_mapping.items()
                                     ])}
                     }},
                     accept_prefix=False,

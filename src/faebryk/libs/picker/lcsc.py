@@ -226,7 +226,8 @@ def attach(component: Module, partno: str, get_model: bool = True):
             # TODO make this a trait
             pins = [
                 (pin.settings.spice_pin_number, pin.name.text)
-                for pin in easyeda_symbol.pins
+                for unit in easyeda_symbol.units
+                for pin in unit.pins
             ]
             try:
                 pinmap = component.get_trait(F.has_pin_association_heuristic).get_pins(
