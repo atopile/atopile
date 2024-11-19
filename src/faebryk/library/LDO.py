@@ -19,6 +19,7 @@ class LDO(Module):
     class OutputType(Enum):
         FIXED = auto()
         ADJUSTABLE = auto()
+        UNKNOWN = "null"
 
     class OutputPolarity(Enum):
         POSITIVE = auto()

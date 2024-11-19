@@ -214,7 +214,7 @@ _MAPPINGS_BY_TYPE: dict[type[Module], list[MappingParameterDB]] = {
         ),
         MappingParameterDB(
             "output_current",
-            ["Output Current"],
+            ["Output Current", "MAX Output Current"],
         ),
         MappingParameterDB(
             "dropout_voltage",
