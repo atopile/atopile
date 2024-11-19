@@ -57,7 +57,6 @@ dependencies = [
     "cattrs>=23.2.3",
     "click>=8.1.7",
     "DeepDiff>=6.7.1",
-    "easyeda2ato>=0.2.7",
     "eseries>=1.2.1",
     "fake-useragent>=1.4.0",
     "fastapi>=0.109.0",
