@@ -5,41 +5,12 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
 class Net(Module):
     part_of: F.Electrical
-
-    @L.rt_field
-    def overriden_name(self):
-        class _(F.has_overriden_name.impl()):
-            def get_name(_self):
-                from faebryk.exporters.netlist.graph import (
-                    can_represent_kicad_footprint,
-                )
-
-                name = "-".join(
-                    sorted(
-                        (
-                            t := fp.get_trait(can_represent_kicad_footprint)
-                        ).get_name_and_value()[0]
-                        + "-"
-                        + t.get_pin_name(pad)
-                        for pad, fp in self.get_fps().items()
-                        if fp.has_trait(can_represent_kicad_footprint)
-                    )
-                )
-
-                # kicad can't handle long net names
-                if len(name) > 255:
-                    name = name[:200] + "..." + name[-52:]
-
-                return name
-
-        return _()
 
     def get_fps(self):
         return {
