@@ -8,7 +8,7 @@ import yaml
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import Parameter
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.units import Quantity
 from faebryk.libs.util import cast_assert, dict_value_visitor, merge_dicts
 

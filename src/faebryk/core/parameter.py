@@ -63,9 +63,9 @@ class ParameterOperatable(Node):
     def has_implicit_constraints_recursive(self) -> bool: ...
 
     @staticmethod
-    def sort_by_depth(
-        exprs: Iterable["ParameterOperatable"], ascending: bool
-    ) -> list["ParameterOperatable"]:
+    def sort_by_depth[T: ParameterOperatable](
+        exprs: Iterable[T], ascending: bool
+    ) -> list[T]:
         def key(e: ParameterOperatable):
             if isinstance(e, Expression):
                 return e.depth()
@@ -119,13 +119,13 @@ class ParameterOperatable(Node):
         return Add(self, other)
 
     def operation_subtract(self: NumberLike, other: NumberLike):
-        return Subtract(minuend=self, subtrahend=other)
+        return Subtract(self, other)
 
     def operation_multiply(self, other: NumberLike):
         return Multiply(self, other)
 
     def operation_divide(self: NumberLike, other: NumberLike):
-        return Divide(numerator=self, denominator=other)
+        return Divide(self, other)
 
     def operation_power(self, other: NumberLike):
         return Power(base=self, exponent=other)
@@ -176,7 +176,7 @@ class ParameterOperatable(Node):
         return Not(self)
 
     def operation_xor(self, other: BooleanLike):
-        return Xor(left=self, right=other)
+        return Xor(self, other)
 
     def operation_implies(self, other: BooleanLike):
         return Implies(condition=self, implication=other)
@@ -493,6 +493,7 @@ class ConstrainableExpression(Expression):
     # shortcuts
     def constrain(self):
         self.constrained = True
+        return self
 
 
 @abstract
@@ -523,6 +524,9 @@ class Arithmetic(Expression):
         ):
             raise ValueError("parameters must have domain Numbers or ESeries")
 
+        # TODO enforce
+        self.operands = cast(tuple[ParameterOperatable.NumberLike, ...], operands)
+
     def __postinit__(self):
         assert self.units is not None
 
@@ -547,6 +551,7 @@ class Additive(Arithmetic):
 class Add(Additive):
     def __init__(self, *operands):
         super().__init__(*operands)
+        self.bla = 5
 
     # TODO caching
     @override
@@ -566,8 +571,8 @@ class Add(Additive):
 
 
 class Subtract(Additive):
-    def __init__(self, minuend, subtrahend):
-        super().__init__(minuend, subtrahend)
+    def __init__(self, minuend, *subtrahend):
+        super().__init__(minuend, *subtrahend)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -599,11 +604,18 @@ class Multiply(Arithmetic):
 
 
 class Divide(Arithmetic):
-    def __init__(self, numerator, denominator):
-        super().__init__(numerator, denominator)
-        self.units = HasUnit.get_units_or_dimensionless(
-            numerator
-        ) / HasUnit.get_units_or_dimensionless(denominator)  # type: ignore
+    def __init__(self, numerator, *denominator):
+        super().__init__(numerator, *denominator)
+
+        frac_unit = dimensionless
+        for d in denominator:
+            frac_unit = cast_assert(
+                Unit, frac_unit * HasUnit.get_units_or_dimensionless(d)
+            )
+
+        self.units = cast_assert(
+            Unit, HasUnit.get_units_or_dimensionless(numerator) / frac_unit
+        )
 
     def has_implicit_constraint(self) -> bool:
         return True  # denominator not zero
@@ -728,8 +740,8 @@ class Not(Logic):
 
 
 class Xor(Logic):
-    def __init__(self, left, right):
-        super().__init__(left, right)
+    def __init__(self, *operands):
+        super().__init__(*operands)
 
 
 class Implies(Logic):
@@ -750,9 +762,9 @@ class Setic(Expression):
     def __init__(self, *operands):
         # FIXME domain
         super().__init__(None, *operands)
-        types = [Parameter, ParameterOperatable.Sets]
-        if any(type(op) not in types for op in operands):
-            raise ValueError("operands must be Parameter or Set")
+        # types = (Parameter, ParameterOperatable.Sets)
+        # if any(not isinstance(op, types) for op in operands):
+        #    raise ValueError("operands must be Parameter or Set")
         units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
         self.units = units[0]
         for u in units[1:]:
@@ -866,7 +878,10 @@ class Predicate(ConstrainableExpression):
         l_units = HasUnit.get_units_or_dimensionless(left)
         r_units = HasUnit.get_units_or_dimensionless(right)
         if not l_units.is_compatible_with(r_units):
-            raise ValueError("operands must have compatible units")
+            raise ValueError(
+                "operands must have compatible units "
+                f"'{l_units}' incompatible with '{r_units}'"
+            )
 
     def __bool__(self):
         raise ValueError("Predicate cannot be converted to bool")

@@ -19,12 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Netlists --------------------------------------------------------------------
 def _test_netlist_graph():
-    resistor1 = F.Resistor().builder(
-        lambda r: r.resistance.constrain_subset(100 * P.ohm)
-    )
-    resistor2 = F.Resistor().builder(
-        lambda r: r.resistance.constrain_subset(200 * P.ohm)
-    )
+    resistor1 = F.Resistor().builder(lambda r: r.resistance.alias_is(100 * P.ohm))
+    resistor2 = F.Resistor().builder(lambda r: r.resistance.alias_is(200 * P.ohm))
     power = F.ElectricPower()
 
     # net labels

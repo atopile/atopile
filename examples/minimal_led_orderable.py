@@ -11,8 +11,8 @@ from pathlib import Path
 import typer
 
 import faebryk.library._F as F
-from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.module import Module
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.documentation.datasheets import export_datasheets
 from faebryk.exporters.pcb.kicad.artifacts import export_svg
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer

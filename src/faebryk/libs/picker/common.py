@@ -10,8 +10,15 @@ from typing import TYPE_CHECKING, Iterable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Predicate
-from faebryk.core.solver import Solver
+from faebryk.core.parameter import (
+    And,
+    Is,
+    Numbers,
+    Parameter,
+    ParameterOperatable,
+    Predicate,
+)
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.e_series import E_SERIES, e_series_intersect
 from faebryk.libs.picker.lcsc import LCSC_NoDataException, LCSC_PinmapException, attach
 from faebryk.libs.picker.picker import (
@@ -188,6 +195,7 @@ def try_attach(
 ):
     # TODO remove ignore_exceptions
     # was used to handle TBDs
+    from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 
     failures = []
     for c in parts:
@@ -247,6 +255,10 @@ def check_compatible_parameters(
     # is compatible already instead of waiting for the solver
     for m_param, c_range in param_mapping:
         if not solver.inspect_known_supersets_are_few(m_param):
+            continue
+
+        # TODO
+        if not isinstance(m_param.domain, Numbers):
             continue
 
         known_superset = Quantity_Interval_Disjoint(

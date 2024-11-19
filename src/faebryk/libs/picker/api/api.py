@@ -13,7 +13,7 @@ from faebryk.core.module import Module
 
 # TODO: replace with API-specific data model
 from faebryk.core.parameter import Numbers, Parameter
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.e_series import E_SERIES
 from faebryk.libs.picker.common import (
     SIvalue,

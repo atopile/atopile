@@ -12,9 +12,9 @@ import pytest
 
 import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
-from faebryk.core.defaultsolver import DefaultSolver
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers

@@ -4,7 +4,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Is
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import has_part_picked_remove
 from faebryk.libs.units import P
@@ -36,6 +36,8 @@ class Resistor(Module):
         )
 
     def allow_removal_if_zero(self):
+        # FIXME: enable as soon as solver works
+        return
         import faebryk.library._F as F
 
         @once
