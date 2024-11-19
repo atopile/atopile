@@ -7,7 +7,7 @@ from typing import Callable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.picker.api.api import (
     CapacitorParams,

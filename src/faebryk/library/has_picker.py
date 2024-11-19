@@ -4,7 +4,7 @@
 from abc import abstractmethod
 
 from faebryk.core.module import Module
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 
 
 class has_picker(Module.TraitT):

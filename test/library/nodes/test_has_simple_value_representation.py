@@ -7,9 +7,9 @@ from enum import Enum
 
 import pytest
 
+from faebryk.core.parameter import ParameterOperableHasNoLiteral
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,8 @@ def test_repr_chain_no_literal():
     m = TestModule()
 
     pytest.raises(
-        KeyErrorNotFound, m.get_trait(F.has_simple_value_representation).get_value
+        ParameterOperableHasNoLiteral,
+        m.get_trait(F.has_simple_value_representation).get_value,
     )
 
     m.param1.alias_is(10 * P.V)

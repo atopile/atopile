@@ -29,7 +29,7 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.e_series import E_SERIES
 from faebryk.libs.picker.common import (
     PickerESeriesIntersectionError,

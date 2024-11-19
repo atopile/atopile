@@ -35,6 +35,7 @@ from typing import (
     SupportsFloat,
     SupportsInt,
     Type,
+    TypeGuard,
     get_origin,
     get_type_hints,
     overload,
@@ -1457,3 +1458,21 @@ def operator_type_check[**P, T](method: Callable[P, T]) -> Callable[P, T]:
         return method(*args, **kwargs)
 
     return wrapper
+
+
+@overload
+def partition[Y, T](
+    pred: Callable[[T], TypeGuard[Y]], iterable: Iterable[T]
+) -> tuple[Iterable[T], Iterable[Y]]: ...
+
+
+@overload
+def partition[T](
+    pred: Callable[[T], bool], iterable: Iterable[T]
+) -> tuple[Iterable[T], Iterable[T]]: ...
+
+
+def partition(pred, iterable):  # type: ignore
+    from more_itertools import partition as p
+
+    return p(pred, iterable)

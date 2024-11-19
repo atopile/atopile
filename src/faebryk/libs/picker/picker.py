@@ -16,7 +16,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Predicate
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import flatten, not_none
 
 logger = logging.getLogger(__name__)
@@ -195,6 +195,9 @@ def pick_module_by_params(
     # FIXME handle failure parameters
 
     # pick first valid option
+    if not solve_result.true_predicates:
+        raise PickErrorParams(module, list(options))
+
     _, option = next(iter(solve_result.true_predicates))
 
     if option.pinmap:

@@ -9,7 +9,7 @@ from typing import Callable, Mapping
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.core.trait import TraitImpl
 from faebryk.libs.picker.picker import PickError
 

@@ -3,7 +3,7 @@ import logging
 import faebryk.library._F as F
 import faebryk.libs.picker.jlcpcb.picker_lib as P
 from faebryk.core.module import Module
-from faebryk.core.solver import Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.picker.common import StaticPartPicker
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB, ComponentQuery
 from faebryk.libs.picker.picker import PickError
