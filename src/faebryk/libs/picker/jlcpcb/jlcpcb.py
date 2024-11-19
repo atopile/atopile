@@ -812,8 +812,8 @@ class JLCPCB_DB:
         # parts you may want to explicitly include in your BoM, even when OOS
         # eg. most ICs, micros
         # TODO: consider another approach to optimize the DB, eg. partitioning
-        #logger.info("Deleting out-of-stock components from DB")
-        #await Component.filter(stock__lt=1).delete()
+        # logger.info("Deleting out-of-stock components from DB")
+        # await Component.filter(stock__lt=1).delete()
 
         logger.info("Extracting prices")
         await self.set_price()
