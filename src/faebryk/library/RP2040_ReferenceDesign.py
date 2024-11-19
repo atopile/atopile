@@ -84,10 +84,10 @@ class RP2040_ReferenceDesign(Module):
         # LDO
         self.ldo.output_current.merge(F.Range.from_center_rel(600 * P.mA, 0.05))
         self.ldo.power_in.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
+            F.Range.from_center_rel(10 * P.uF, 0.20)
         )
         self.ldo.power_out.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
+            F.Range.from_center_rel(10 * P.uF, 0.20)
         )
 
         # XTAL
