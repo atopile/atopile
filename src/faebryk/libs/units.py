@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # re-exporting Quantity in-case we ever want to change it
-from typing import Any, cast
+from typing import Any, Iterable, Sequence, cast
 
 from pint import Quantity as _Quantity  # noqa: F401
 from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
@@ -84,16 +84,16 @@ class UnitCompatibilityError(FaebrykException):
     Incompatible units.
     """
 
-    def __init__(self, *args, incompatible_items: list[Unit], **kwargs):
+    def __init__(self, *args, incompatible_items: Iterable, **kwargs):
         super().__init__(*args, **kwargs)
-        self.incompatible_items = incompatible_items
+        self.incompatible_items = list(incompatible_items)
 
 
-def assert_compatible_units(items: list[HasUnit]) -> Unit:
+def assert_compatible_units(items: Sequence) -> Unit:
     if not items:
         raise ValueError("At least one item is required")
 
-    units = [HasUnit.get_units(item) for item in items]
+    units = [HasUnit.get_units_or_dimensionless(item) for item in items]
     u0 = units[0]
 
     if len(items) == 1:

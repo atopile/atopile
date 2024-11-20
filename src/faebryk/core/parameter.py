@@ -24,6 +24,7 @@ from faebryk.libs.units import (
     UnitCompatibilityError,
     assert_compatible_units,
     dimensionless,
+    quantity,
 )
 from faebryk.libs.util import KeyErrorNotFound, abstract, cast_assert, find
 
@@ -73,6 +74,14 @@ class ParameterOperatable(Node):
     def sort_by_depth[T: ParameterOperatable](
         exprs: Iterable[T], ascending: bool
     ) -> list[T]:
+        """
+        Ascending:
+        ```
+        (A + B) + (C + D)
+        -> [(A+B), (C+D), (A+B)+(C+D)]
+        ```
+        """
+
         def key(e: ParameterOperatable):
             if isinstance(e, Expression):
                 return e.depth()
@@ -145,6 +154,12 @@ class ParameterOperatable(Node):
 
     def operation_abs(self):
         return Abs(self)
+
+    def operation_negate(self):
+        return Multiply(self, quantity(-1))
+
+    def operation_invert(self):
+        return Power(self, -1)
 
     def operation_floor(self):
         return Floor(self)
@@ -291,6 +306,9 @@ class ParameterOperatable(Node):
 
     def __abs__(self):
         return self.operation_abs()
+
+    def __neg__(self):
+        return self.operation_negate()
 
     def __round__(self):
         return self.operation_round()
@@ -445,6 +463,20 @@ class Expression(ParameterOperatable):
         return [o for o in self.operands if not isinstance(o, ParameterOperatable)]
 
     def depth(self) -> int:
+        """
+        Returns depth of longest expression tree from this expression.
+        ```
+        ((A + B) + (C + D)) * 5
+            ^    ^    ^     ^
+            0    1    0     2
+
+        a = (X + (Y + Z))
+        (a + 1) + a
+         ^ ^    ^ ^
+         1 2    3 1
+        ```
+        """
+        # FIXME this does not work (if expressions are added afterwards in the tree)
         if hasattr(self, "_depth"):
             return self._depth
         self._depth = 1 + max(
@@ -530,6 +562,8 @@ class Arithmetic(Expression):
             if isinstance(param, Parameter)
         ):
             raise ValueError("parameters must have domain Numbers or ESeries")
+
+        # FIXME: convert to Quantity
 
         # TODO enforce
         self.operands = cast(tuple[ParameterOperatable.NumberLike, ...], operands)
@@ -635,16 +669,16 @@ class Sqrt(Arithmetic):
 
 
 class Power(Arithmetic):
-    def __init__(self, base, exponent: int):
+    def __init__(self, base, exponent):
         super().__init__(base, exponent)
-        if HasUnit.check(exponent) and not HasUnit.get_units(
-            exponent
-        ).is_compatible_with(dimensionless):
+
+        exp_unit = HasUnit.get_units_or_dimensionless(exponent)
+        if not exp_unit.is_compatible_with(dimensionless):
             raise UnitCompatibilityError(
                 "exponent must have dimensionless unit",
                 incompatible_items=[exponent],
             )
-        units = HasUnit.get_units_or_dimensionless(base) ** exponent
+        units = HasUnit.get_units_or_dimensionless(base) ** exp_unit
         assert isinstance(units, Unit)
         self.units = units
 

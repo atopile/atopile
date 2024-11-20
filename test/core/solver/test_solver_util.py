@@ -11,6 +11,7 @@ from faebryk.core.parameter import (
     Divide,
     Expression,
     Intersection,
+    Is,
     Logic,
     Multiply,
     Or,
@@ -81,14 +82,15 @@ def test_mutator_no_graph_merge():
 
     p3 = Parameter(units=P.V)
 
-    G = p0.get_graph()
     mutator = Mutator()
-    p0_new = mutator.mutate_parameter(p0)
-    p3_new = mutator.mutate_parameter(p3)
-    alias_new = mutator.mutate_expression_with_operand_mapper(alias)
+    p0_new = cast_assert(Parameter, mutator.get_copy(p0))
+    p3_new = cast_assert(Parameter, mutator.get_copy(p3))
+    alias_new = cast_assert(Is, mutator.get_copy(alias))
+
+    G = p0.get_graph()
     G_new = p0_new.get_graph()
 
     assert G is not G_new
     assert alias_new.get_graph() is G_new
     assert p3_new.get_graph() is not G_new
-    assert cast_assert(Parameter, mutator.get_mutated(p2)).get_graph() is G_new
+    assert cast_assert(Parameter, mutator.get_mutated(p1)).get_graph() is G_new

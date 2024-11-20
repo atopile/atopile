@@ -2,10 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 
-# FIXME: remove this
-# ignore ruff errors in this file:
-# ruff: noqa: F821, F841
-
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -46,7 +42,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
 )
-from faebryk.libs.units import HasUnit, dimensionless
+from faebryk.libs.units import HasUnit, dimensionless, quantity
 from faebryk.libs.util import partition
 
 logger = logging.getLogger(__name__)
@@ -54,14 +50,14 @@ logger = logging.getLogger(__name__)
 
 def inequality_to_set_op(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
+) -> tuple[Mutator.REPR_MAP, bool]:
     param_ops = cast(
         set[LessOrEqual | GreaterOrEqual],
         GraphFunctions(G).nodes_of_types((LessOrEqual, GreaterOrEqual)),
     )
 
     dirty = False
-    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
+    repr_map: Mutator.REPR_MAP = {}
 
     for po in cast(
         Iterable[LessOrEqual | GreaterOrEqual],
@@ -103,7 +99,7 @@ def inequality_to_set_op(
 
 def resolve_alias_classes(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
+) -> tuple[Mutator.REPR_MAP, bool]:
     dirty = False
     params_ops = [
         p
@@ -126,7 +122,7 @@ def resolve_alias_classes(
     )
     logger.info(infostr)
 
-    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
+    repr_map: Mutator.REPR_MAP = {}
 
     # Make new param repre for alias classes
     for param_op in ParameterOperatable.sort_by_depth(params_ops, ascending=True):
@@ -241,11 +237,11 @@ def resolve_alias_classes(
 
 def subset_of_literal(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
+) -> tuple[Mutator.REPR_MAP, bool]:
     dirty = False
     params = GraphFunctions(G).nodes_of_type(Parameter)
     removed = set()
-    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
+    repr_map: Mutator.REPR_MAP = {}
 
     mutator = Mutator(repr_map)
 
@@ -361,9 +357,9 @@ def flatten_associative[T: Associative](
     return out
 
 
-def compress_fully_associative(
+def compress_associative(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
+) -> tuple[Mutator.REPR_MAP, bool]:
     """
     Makes
     ```
@@ -390,110 +386,85 @@ def compress_fully_associative(
         res = flatten_associative(expr, partial(is_replacable, mutator.repr_map))
         if not res.destroyed_operations:
             continue
-        removed.update(res.destroyed_operations)
+
+        removed |= res.destroyed_operations
         dirty = True
-        copy_operands = [
-            mutator._copy_operand_recursively(o) for o in res.extracted_operands
-        ]
 
         mutator.mutate_expression(
             expr,
-            *copy_operands,
+            operands=res.extracted_operands,
         )
 
     # copy other param ops
-    other_param_op = ParameterOperatable.sort_by_depth(
-        (
-            p
-            for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-            if not mutator.has_been_mutated(p) and p not in removed
-        ),
-        ascending=True,
-    )
-    for o in other_param_op:
-        mutator._copy_operand_recursively(o)
+    mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
 
     return mutator.repr_map, dirty
 
 
-def compress_associative_sub(
+def convert_to_canonical_operations(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
-    logger.info("Compressing Subtracts")
-    dirty = False
-    subs = cast(set[Subtract], GraphFunctions(G).nodes_of_type(Subtract))
-    # get out deepest expr in compressable tree
-    parent_subs = {
-        e for e in subs if type(e) not in {type(n) for n in e.get_operations()}
-    }
+) -> tuple[Mutator.REPR_MAP, bool]:
+    """
+    Transforms Sub-Add to Add-Add
+    ```
+    A - B -> A + (-B)
+    A / B -> A * B^-1
+    ```
 
-    removed = set()
-    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
+    For:
+    - (Add,Subtract,Negate)
+    - (Multiply,Divide,Invert)
+    """
 
-    for expr in cast(
-        Iterable[Subtract],
-        ParameterOperatable.sort_by_depth(parent_subs, ascending=True),
-    ):
-        res = flatten_associative(expr, partial(is_replacable, repr_map))
+    # def OnlyIfNestedInTargetType(o):
+    #    return all(isinstance(o, Target) for o in e.get_operations())
 
-        if (
-            isinstance(minuend, Add)
-            and is_replacable(repr_map, minuend, expr)
-            and len(const_subtrahends) > 0
-        ):
-            copy_minuend = Add(
-                *(
-                    Mutator.copy_operand_recursively(s, repr_map)
-                    for s in minuend.operands
-                ),
-                *(-1 * c for c in const_subtrahends),
-            )
-            repr_map[expr] = copy_minuend
-            const_subtrahends = []
-            sub_dirty = True
-        elif sub_dirty:
-            copy_minuend = Mutator.copy_operand_recursively(minuend, repr_map)
-        if sub_dirty:
-            dirty = True
-            copy_subtrahends = [
-                Mutator.copy_operand_recursively(s, repr_map)
-                for s in nonconst_subtrahends + const_subtrahends
-            ]
-            if len(copy_subtrahends) > 0:
-                new_expr = Subtract(
-                    copy_minuend,
-                    Add(*copy_subtrahends),
-                )
-            else:
-                new_expr = copy_minuend
-                removed.add(expr)
-            repr_map[expr] = new_expr
-            logger.info(f"REPRMAP {expr} -> {new_expr}")
-
-    # copy other param ops
-    other_param_op = ParameterOperatable.sort_by_depth(
+    MirroredExpressions = [
         (
-            p
-            for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-            if p not in repr_map and p not in removed
+            Add,
+            Subtract,
+            lambda o: Multiply(o, quantity(-1)),
+            lambda _: True,
         ),
-        ascending=True,
-    )
-    for o in other_param_op:
-        copy_o = Mutator.copy_operand_recursively(o, repr_map)
-        logger.info(f"REMAINING {o} -> {copy_o}")
-        repr_map[o] = copy_o
+        (
+            Multiply,
+            Divide,
+            lambda o: Power(o, quantity(-1)),
+            lambda _: True,
+        ),
+    ]
 
-    return repr_map, dirty
+    mutator = Mutator()
+    dirty = False
+
+    for Target, Convertible, Converter, Filter in MirroredExpressions:
+        convertible = {
+            e for e in GraphFunctions(G).nodes_of_type(Convertible) if Filter(e)
+        }
+
+        for expr in ParameterOperatable.sort_by_depth(convertible, ascending=True):
+            mutator.mutate_expression_with_op_map(
+                expr,
+                # negate subtrahends
+                operand_mutator=lambda i, operand: Converter(operand)
+                if i > 0
+                else operand,
+                # convert to add
+                expression_factory=Target,
+            )
+
+    mutator.copy_unmutated(G)
+
+    return mutator.repr_map, dirty
 
 
 def compress_expressions(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
+) -> tuple[Mutator.REPR_MAP, bool]:
     dirty = False
     exprs = cast(set[Expression], GraphFunctions(G).nodes_of_type(Expression))
 
-    repr_map: dict[ParameterOperatable, ParameterOperatable.All] = {}
+    repr_map: Mutator.REPR_MAP = {}
     removed = set()
 
     for expr in cast(
@@ -727,7 +698,7 @@ def compress_expressions(
 
 def remove_obvious_tautologies(
     G: Graph,
-) -> tuple[dict[ParameterOperatable, ParameterOperatable.All], bool]:
+) -> tuple[Mutator.REPR_MAP, bool]:
     repr_map = {}
     removed = set()
     dirty = False

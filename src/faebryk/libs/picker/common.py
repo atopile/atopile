@@ -243,7 +243,7 @@ def check_compatible_parameters(
 
     param_mapping = [
         (
-            cast_assert(ParameterOperatable, getattr(module, m.param_name)),
+            cast_assert(Parameter, getattr(module, m.param_name)),
             c_range,
         )
         for m, c_range in range_mapping.items()

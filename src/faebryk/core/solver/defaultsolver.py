@@ -18,8 +18,9 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.analytical import (
+    compress_associative,
     compress_expressions,
-    compress_fully_associative,
+    convert_to_canonical_operations,
     inequality_to_set_op,
     remove_obvious_tautologies,
     resolve_alias_classes,
@@ -28,7 +29,7 @@ from faebryk.core.solver.analytical import (
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
     Mutator,
-    NumericLiteral,
+    NumericLiteralR,
     debug_print,
     get_graphs,
     literal_to_base_units,
@@ -66,15 +67,17 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.A
         # Expression
         elif isinstance(po, Expression):
 
-            def mutate(operand: ParameterOperatable.All) -> ParameterOperatable.All:
-                if isinstance(operand, NumericLiteral):
+            def mutate(
+                i: int, operand: ParameterOperatable.All
+            ) -> ParameterOperatable.All:
+                if isinstance(operand, NumericLiteralR):
                     return literal_to_base_units(operand)
 
                 # FIXME: I don't think this is correct
                 assert isinstance(operand, ParameterOperatable)
                 return operand
 
-            mutator.mutate_expression_with_operand_mapper(po, mutate)
+            mutator.mutate_expression_with_op_map(po, mutate)
 
     return mutator.repr_map
 
@@ -116,12 +119,12 @@ class DefaultSolver(Solver):
 
             algorithms = [
                 ("1", "Alias classes", resolve_alias_classes),
-                ("1.5", "Inequality to set", inequality_to_set_op),
-                ("2a", "Associative expressions Full", compress_fully_associative),
-                # ("2b", "Associative expressions Sub", compress_associative_sub),
-                ("3", "Arithmetic expressions", compress_expressions),
-                ("4", "Remove obvious tautologies", remove_obvious_tautologies),
-                ("5", "Subset of literals", subset_of_literal),
+                ("2", "Inequality to set", inequality_to_set_op),
+                ("3", "Canonical expression form", convert_to_canonical_operations),
+                ("4", "Associative expressions Full", compress_associative),
+                ("5", "Arithmetic expressions", compress_expressions),
+                ("6", "Remove obvious tautologies", remove_obvious_tautologies),
+                ("7", "Subset of literals", subset_of_literal),
             ]
 
             algos_dirty = {}
@@ -194,7 +197,7 @@ class DefaultSolver(Solver):
         return True
 
     def inspect_get_known_superranges(
-        self, value: ParameterOperatable
+        self, value: Parameter
     ) -> Quantity_Interval_Disjoint:
         if not isinstance(value.domain, Numbers):
             raise ValueError(f"Ranges only defined for numbers not {value.domain}")
@@ -202,9 +205,11 @@ class DefaultSolver(Solver):
         # run phase 1 solver
         # TODO caching
         pre_val = value
-        # FIXME: enable this again
-        # repr_map = self.phase_one_no_guess_solving(value.get_graph())
-        # value = repr_map[value]
+        repr_map = self.phase_one_no_guess_solving(value.get_graph())
+        if value not in repr_map:
+            return Quantity_Interval_Disjoint(Quantity_Interval(units=value.units))
+
+        value = repr_map[value]
 
         if not isinstance(value, ParameterOperatable):
             literal = value

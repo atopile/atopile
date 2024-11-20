@@ -6,6 +6,8 @@ import logging
 from collections import defaultdict
 from typing import Callable, Iterable, cast
 
+from deprecated import deprecated
+
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.graphinterface import GraphInterfaceSelf
 from faebryk.core.parameter import (
@@ -33,6 +35,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
     QuantityLike,
+    QuantityLikeR,
 )
 from faebryk.libs.units import Quantity, Unit, dimensionless
 from faebryk.libs.util import EquivalenceClasses, unique_ref
@@ -177,6 +180,7 @@ def get_graphs(values: Iterable) -> list[Graph]:
 
 
 NumericLiteral = QuantityLike | Quantity_Interval_Disjoint | Quantity_Interval
+NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
 
 def literal_to_base_units[T: NumericLiteral | None](q: T) -> T:
@@ -197,10 +201,32 @@ def literal_to_base_units[T: NumericLiteral | None](q: T) -> T:
 
 # TODO use Mutator everywhere instead of repr_maps
 class Mutator:
+    type REPR_MAP = dict[ParameterOperatable, ParameterOperatable.All]
+
     def __init__(
         self, repr_map: dict[ParameterOperatable, ParameterOperatable.All] | None = None
     ) -> None:
         self.repr_map = repr_map or {}
+
+    def has_been_mutated(self, po: ParameterOperatable) -> bool:
+        return po in self.repr_map
+
+    def get_mutated(self, po: ParameterOperatable) -> ParameterOperatable.All:
+        return self.repr_map[po]
+
+    def _mutate[T: ParameterOperatable.All](
+        self, po: ParameterOperatable, new_po: T
+    ) -> T:
+        """
+        Low-level mutation function, you are on your own.
+        Consider using mutate_parameter or mutate_expression instead.
+        """
+        if self.has_been_mutated(po):
+            if self.get_mutated(po) is not new_po:
+                raise ValueError("already mutated")
+
+        self.repr_map[po] = new_po
+        return new_po
 
     def mutate_parameter(
         self,
@@ -227,7 +253,7 @@ class Mutator:
             else param.likely_constrained,
         )
 
-        self.repr_map[param] = new_param
+        new_param = self._mutate(param, new_param)
 
         # TODO remove (make part of param)
         if new_param.within is not None:
@@ -237,99 +263,95 @@ class Mutator:
 
         return new_param
 
-    def has_been_mutated(self, po: ParameterOperatable) -> bool:
-        return po in self.repr_map
-
-    def get_mutated(self, po: ParameterOperatable) -> ParameterOperatable.All:
-        return self.repr_map[po]
-
-    # TODO make part of Expression class
     def mutate_expression(
-        self, expr: Expression, *operands: ParameterOperatable.All
+        self,
+        expr: Expression,
+        operands: Iterable[ParameterOperatable.All] | None = None,
+        expression_factory: Callable[..., Expression] | None = None,
     ) -> Expression:
-        new_expr = type(expr)(*operands)
-        for op in operands:
+        if expression_factory is None:
+            expression_factory = type(expr)
+
+        if operands is None:
+            operands = expr.operands
+
+        new_operands = [self.get_copy(op) for op in operands]
+        new_expr = expression_factory(*new_operands)
+
+        for op in new_operands:
             if isinstance(op, ParameterOperatable):
                 assert op.get_graph() == new_expr.get_graph()
         if isinstance(expr, ConstrainableExpression):
             cast(ConstrainableExpression, new_expr).constrained = expr.constrained
 
-        self.repr_map[expr] = new_expr
-        return new_expr
+        return self._mutate(expr, new_expr)
 
-    def mutate_expression_with_operand_mapper(
+    def mutate_expression_with_op_map(
         self,
         expr: Expression,
-        operand_mutator: Callable[[ParameterOperatable], ParameterOperatable.All]
-        | None = None,
+        operand_mutator: Callable[[int, ParameterOperatable], ParameterOperatable.All],
+        expression_factory: Callable[..., Expression] | None = None,
     ) -> Expression:
-        if operand_mutator is None:
-            operand_mutator = lambda op: op  # noqa: E731
+        """
+        operand_mutator: Only allowed to return old Graph objects
+        """
+        return self.mutate_expression(
+            expr,
+            operands=[operand_mutator(i, op) for i, op in enumerate(expr.operands)],
+            expression_factory=expression_factory,
+        )
 
-        def apply_mutator(op: ParameterOperatable.All) -> ParameterOperatable.All:
-            out = operand_mutator(op)
+    def get_copy(self, obj: ParameterOperatable.All) -> ParameterOperatable.All:
+        if self.has_been_mutated(obj):
+            return self.get_mutated(obj)
 
-            if isinstance(op, ParameterOperatable):
-                if out is op:
-                    if self.has_been_mutated(op):
-                        return self.get_mutated(op)
-                    else:
-                        return self._copy_operand_recursively(op)
-
-                self.repr_map[op] = out
-
-            return out
-
-        operands = [apply_mutator(op) for op in expr.operands]
-        return self.mutate_expression(expr, *operands)
-
-    def _copy_operand_recursively(
-        self,
-        o: ParameterOperatable.All,
-    ) -> ParameterOperatable.All:
-        if self.has_been_mutated(o):
-            return self.get_mutated(o)
-
-        if isinstance(o, Expression):
-            new_ops = []
-            for op in o.operands:
-                new_op = self._copy_operand_recursively(op)
-                if isinstance(op, ParameterOperatable):
-                    self.repr_map[op] = new_op
-                new_ops.append(new_op)
-            expr = self.mutate_expression(o, *new_ops)
-            return expr
-        elif isinstance(o, Parameter):
-            param = self.mutate_parameter(o)
-            return param
+        if isinstance(obj, Expression):
+            return self.mutate_expression(obj)
+        elif isinstance(obj, Parameter):
+            return self.mutate_parameter(obj)
         else:
-            return o
+            return obj
 
     # TODO remove
+    @deprecated
     @staticmethod
     def copy_operand_recursively(
         o: ParameterOperatable.All,
         repr_map: dict[ParameterOperatable, ParameterOperatable.All],
     ) -> ParameterOperatable.All:
-        return Mutator(repr_map)._copy_operand_recursively(o)
+        return Mutator(repr_map).get_copy(o)
+
+    def copy_unmutated(
+        self,
+        G: Graph,
+        exclude_filter: Callable[[ParameterOperatable], bool] | None = None,
+    ):
+        if exclude_filter is None:
+            exclude_filter = lambda _: False  # noqa: E731
+
+        # TODO might not need to sort
+        other_param_op = ParameterOperatable.sort_by_depth(
+            (
+                p
+                for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
+                if not self.has_been_mutated(p) and not exclude_filter(p)
+            ),
+            ascending=True,
+        )
+        for o in other_param_op:
+            self.get_copy(o)
 
     # TODO move to Mutator
     @staticmethod
-    def concat_repr_maps(
-        *repr_maps: dict[ParameterOperatable, ParameterOperatable.All],
-    ) -> dict[ParameterOperatable, ParameterOperatable.All]:
-        assert len(repr_maps) > 0
-        res = {}
-        keys = repr_maps[0].keys()
-        for k in keys:
-            v = k
+    def concat_repr_maps(*repr_maps: REPR_MAP) -> REPR_MAP:
+        assert repr_maps
+        concatenated = {}
+        for original_obj in repr_maps[0].keys():
+            chain_end = original_obj
             for m in repr_maps:
-                if v in m:
-                    v = m[v]
-                else:
-                    if isinstance(v, ParameterOperatable):
-                        raise ValueError("this should not happen ... I think")
+                if chain_end not in m:
                     break
+                chain_end = m[chain_end]
             else:
-                res[k] = v
-        return res
+                concatenated[original_obj] = chain_end
+        return concatenated

@@ -8,6 +8,7 @@ from typing import Any, Iterable, Protocol
 from faebryk.core.graph import Graph
 from faebryk.core.parameter import (
     Expression,
+    Parameter,
     ParameterOperatable,
     Predicate,
 )
@@ -122,5 +123,5 @@ class Solver(Protocol):
     ) -> Iterable[P_Set]: ...
 
     def inspect_get_known_superranges(
-        self, value: ParameterOperatable.NumberLike
+        self, value: Parameter
     ) -> Quantity_Interval_Disjoint: ...

@@ -72,9 +72,6 @@ class Quantity_Interval(Quantity_Set):
         max: QuantityLike | None = None,
         units: Unit | None = None,
     ):
-        if min is None and max is None:
-            raise ValueError("must provide at least one of min or max")
-
         min_unit = None
         if min is not None:
             min_unit = HasUnit.get_units_or_dimensionless(min)
@@ -110,14 +107,13 @@ class Quantity_Interval(Quantity_Set):
         else:
             num_max = max
 
-        is_float = isinstance(num_min, float) or isinstance(num_max, float)
-        if is_float:
-            num_min = float(num_min) if num_min is not None else float("-inf")
-            num_max = float(num_max) if num_max is not None else float("inf")
-        else:
-            assert isinstance(num_min, int) or isinstance(num_max, int)
+        is_int = isinstance(num_min, int) or isinstance(num_max, int)
+        if is_int:
             if num_min is None or num_max is None:
                 raise ValueError("min and max must be provided for ints")
+        else:
+            num_min = float(num_min) if num_min is not None else float("-inf")
+            num_max = float(num_max) if num_max is not None else float("inf")
 
         self._interval = Numeric_Interval(num_min, num_max)
 
