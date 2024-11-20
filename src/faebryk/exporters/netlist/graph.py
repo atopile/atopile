@@ -3,12 +3,17 @@
 
 import logging
 from abc import abstractmethod
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Generator, Iterable
 
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
+from faebryk.core.node import NodeNoParent
 from faebryk.exporters.netlist.netlist import T2Netlist
-from faebryk.libs.util import KeyErrorAmbiguous
+from faebryk.libs.library import L
+from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +129,135 @@ def attach_nets_and_kicad_info(G: Graph):
             continue
         fp.add(can_represent_kicad_footprint_via_attached_component(n, G))
 
+    nets = []
     for fp in node_fps.values():
         for mif in fp.get_children(direct_only=True, types=F.Pad):
-            add_or_get_net(mif.net)
+            nets.append(add_or_get_net(mif.net))
+
+    generate_net_names(nets)
+
+
+@dataclass
+class _NetName:
+    base_name: str | None = None
+    prefix: str | None = None
+    suffix: int | None = None
+
+    @property
+    def name(self) -> str:
+        """
+        Get the name of the net.
+        Net names should take the form of: <prefix>-<base_name>-<suffix>
+        There must always be some base, and if it's not provided, it's just 'net'
+        Prefixes and suffixes are joined with a "-" if they exist.
+        """
+        return "-".join(
+            str(n)
+            for n in [self.prefix, self.base_name or "net", self.suffix]
+            if n is not None
+        )
+
+
+def _lowest_common_ancestor(nodes: Iterable[L.Node]) -> tuple[L.Node, str] | None:
+    """
+    Finds the deepest common ancestor of the given nodes.
+
+    Args:
+        nodes: Iterable of Node objects to find common ancestor for
+
+    Returns:
+        Tuple of (node, name) for the deepest common ancestor, or None if no common ancestor exists
+    """
+    nodes = list(nodes)  # Convert iterable to list to ensure multiple iterations
+    if not nodes:
+        return None
+
+    # Get hierarchies for all nodes
+    hierarchies = [list(n.get_hierarchy()) for n in nodes]
+    min_length = min(len(h) for h in hierarchies)
+
+    # Find the last matching ancestor
+    last_match = None
+    for i in range(min_length):
+        ref_node, ref_name = hierarchies[0][i]
+        if any(h[i][0] is not ref_node for h in hierarchies[1:]):
+            break
+        last_match = (ref_node, ref_name)
+
+    return last_match
+
+
+def _conflicts(names: dict[F.Net, _NetName]) -> Generator[Iterable[F.Net], None, None]:
+    for items in groupby(names.items(), lambda it: it[1].name).values():
+        if len(items) > 1:
+            yield [net for net, _ in items]
+
+
+def _shit_name(name: str) -> bool:
+    if name in {"p1", "p2"}:
+        return True
+
+    if "unnamed" in name:
+        return True
+
+    return False
+
+
+def generate_net_names(nets: list[F.Net]) -> None:
+    """`
+    Generate good net names, assuming that we're passed all the nets in a design
+    """
+
+    # Ignore nets with names already
+    nets = filter(lambda n: not n.has_trait(F.has_overriden_name), nets)
+
+    names = FuncDict[F.Net, _NetName]()
+
+    # First generate candidate base names
+    def _decay(depth: int) -> float:
+        return 1 / (depth + 1)
+
+    for net in nets:
+        name_candidates = defaultdict(float)
+        for mif in net.get_connected_interfaces():
+            # lower case so we are not case sensitive
+            try:
+                name = mif.get_name().lower()
+            except NodeNoParent:
+                # Skip no names
+                continue
+
+            if _shit_name(name):
+                # Skip ranking shitty names
+                continue
+
+            depth = len(mif.get_hierarchy())
+            if mif.get_parent_of_type(L.ModuleInterface):
+                # Give interfaces on the same level a fighting chance
+                depth -= 1
+
+            name_candidates[name] += _decay(depth)
+
+        names[net] = _NetName()
+        if name_candidates:
+            names[net].base_name = max(name_candidates, key=name_candidates.get)
+
+    # Resolve as many conflict as possible by prefixing on the lowest common node's full name
+    for conflict_nets in _conflicts(names):
+        for net in conflict_nets:
+            if lcn := _lowest_common_ancestor(net.get_connected_interfaces()):
+                names[net].prefix = lcn[0].get_full_name()
+
+    # Resolve remaining conflicts by suffixing on a number
+    for conflict_nets in _conflicts(names):
+        for i, net in enumerate(conflict_nets):
+            names[net].suffix = i
+
+    # Override the net names we've derived
+    for net, name in names.items():
+        # Limit name length to 255 chars
+        if len(name.name) > 255:
+            name_str = name.name[:200] + "..." + name.name[-50:]
+        else:
+            name_str = name.name
+        net.add(F.has_overriden_name_defined(name_str))
