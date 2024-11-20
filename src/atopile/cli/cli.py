@@ -97,6 +97,7 @@ def cli(
         configure.do_configure_if_needed()
 
 
+app.command()(configure.configure)
 
 
 def main():
