@@ -11,7 +11,7 @@ import typer
 import atopile.config
 from atopile import errors
 from atopile.cli.common import create_build_contexts
-from atopile.config import BuildContext
+from atopile.config import BuildContext, BuildType
 from atopile.errors import ExceptionAccumulator
 
 log = logging.getLogger(__name__)
@@ -40,7 +40,11 @@ def build(
         for build_ctx in build_ctxs:
             log.info("Building %s", build_ctx.name)
             with accumulator.collect():
-                _do_build(build_ctx)
+                match build_ctx.build_type:
+                    case BuildType.ATO:
+                        _do_ato_build(build_ctx)
+                    case BuildType.PYTHON:
+                        _do_python_build(build_ctx)
 
         with accumulator.collect():
             project_context = atopile.config.get_project_context()
@@ -74,8 +78,13 @@ def do_prebuild(build_ctx: BuildContext) -> None:
             )
 
 
-def _do_build(build_ctx: BuildContext) -> None:
-    """Execute a specific build."""
+def _do_python_build(build_ctx: BuildContext) -> None:
+    """Execute a specific .py build."""
+    raise errors.AtoNotImplementedError("Python builds are not implemented yet")
+
+
+def _do_ato_build(build_ctx: BuildContext) -> None:
+    """Execute a specific .ato build."""
     do_prebuild(build_ctx)
 
     with ExceptionAccumulator() as accumulator:

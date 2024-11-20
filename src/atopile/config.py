@@ -9,6 +9,7 @@ Requirements for the config files include:
 """
 
 import copy
+from enum import Enum
 import fnmatch
 import logging
 from pathlib import Path
@@ -305,6 +306,11 @@ def find_layout(layout_base: Path) -> Optional[Path]:
             )
 
 
+class BuildType(Enum):
+    ATO = "ato"
+    PYTHON = "python"
+
+
 @define
 class BuildContext:
     """A class to hold the arguments to a build."""
@@ -324,6 +330,27 @@ class BuildContext:
     build_path: Path  # eg. path/to/project/build/<build-name>
 
     output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
+
+    @property
+    def build_type(self) -> BuildType:
+        """
+        Determine build type from the entry.
+
+        **/*.ato:* -> BuildType.ATO
+        **/*.py:* -> BuildType.PYTHON
+        """
+        path, _ = self.entry.rsplit(":", 1)
+        suffix = Path(path).suffix
+
+        match suffix:
+            case ".ato":
+                return BuildType.ATO
+            case ".py":
+                return BuildType.PYTHON
+            case _:
+                raise atopile.errors.AtoError(
+                    f"Unknown entry suffix: {suffix} for {self.entry}"
+                )
 
     @classmethod
     def from_config(
