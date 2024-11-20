@@ -97,6 +97,7 @@ def cli(
         configure.do_configure_if_needed()
 
 
+app.command(no_args_is_help=True)(install.install)
 app.command()(configure.configure)
 
 

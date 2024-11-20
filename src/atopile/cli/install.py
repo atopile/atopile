@@ -10,13 +10,13 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 from urllib.parse import urlparse
 
-import click
 import requests
 import ruamel.yaml
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+import typer
 
 import atopile.config
 from atopile import errors, version
@@ -28,19 +28,20 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-@click.command("install")
-@click.argument("to_install", required=False)
-@click.option("--jlcpcb", is_flag=True, help="JLCPCB component ID")
-@click.option("--link", is_flag=True, help="Keep this dependency linked to the source")
-@click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
 @errors.muffle_fatalities()
 @errors.log_ato_errors()
 def install(
-    to_install: str,
-    jlcpcb: bool,
-    link: bool,
-    upgrade: bool,
-    path: Optional[Path] = None,
+    to_install: Annotated[str, typer.Argument()],
+    jlcpcb: Annotated[
+        bool, typer.Option("--jlcpcb", help="JLCPCB component ID")
+    ] = False,
+    link: Annotated[
+        bool, typer.Option("--link", help="Keep this dependency linked to the source")
+    ] = False,
+    upgrade: Annotated[
+        bool, typer.Option("--upgrade", help="Upgrade dependencies")
+    ] = False,
+    path: Annotated[Path | None, typer.Argument()] = None,
 ):
     """
     Install atopile packages or components from jlcpcb.com/parts
@@ -53,7 +54,7 @@ def do_install(
     jlcpcb: bool,
     link: bool,
     upgrade: bool,
-    path: Optional[Path] = None,
+    path: Path | None,
 ):
     """
     Actually do the installation of the dependencies.
