@@ -14,8 +14,12 @@ from antlr4 import ParserRuleContext, Token
 
 from atopile import address, telemetry
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
+from faebryk.libs.util import ConfigFlag
 
 log = logging.getLogger(__name__)
+
+
+IMMEDIATE_RAISE = ConfigFlag("IMMEDIATE_RAISE", False, "Raise errors immediately")
 
 
 class _BaseAtoError(Exception):
@@ -401,13 +405,18 @@ class ExceptionAccumulator:
 
     @contextmanager
     def collect(self, ctx: Optional[ParserRuleContext] = None):
-        try:
+        if IMMEDIATE_RAISE:
+            # Do nothing with the exceptions
             yield
-        except* self.accumulate_types as ex:
-            for e in ex.exceptions:
-                if ctx and hasattr(e, "set_src_from_ctx"):
-                    e.set_src_from_ctx(ctx)
-            self.add_errors(ex)
+        else:
+            try:
+                yield
+            except* self.accumulate_types as ex:
+                for e in ex.exceptions:
+                    if ctx and hasattr(e, "set_src_from_ctx"):
+                        e.set_src_from_ctx(ctx)
+
+                self.add_errors(ex)
 
     def add_errors(self, ex: ExceptionGroup):
         self.errors.extend(ex.exceptions)
@@ -500,8 +509,11 @@ def log_ato_errors():
     """
     Decorator / context to log ato errors.
     """
-    try:
+    if IMMEDIATE_RAISE:
         yield
-    except* AtoError as ex:
-        _log_ato_errors(ex, log)
-        raise
+    else:
+        try:
+            yield
+        except* AtoError as ex:
+            _log_ato_errors(ex, log)
+            raise

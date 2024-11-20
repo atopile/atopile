@@ -13,6 +13,7 @@ from itertools import chain
 from pathlib import Path
 from typing import (
     Any,
+    Callable,
     Iterable,
     Type,
 )
@@ -28,8 +29,11 @@ from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
+from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
-from faebryk.libs.units import Quantity, Unit, dimensionless
+from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.units import Quantity, Unit, UnitCompatibilityError, dimensionless
 from faebryk.libs.util import FuncDict
 
 log = logging.getLogger(__name__)
@@ -113,9 +117,10 @@ class PhysicalValuesMixin:
 
         if unit_ctx := ctx.name():
             unit = self._get_unit_from_ctx(unit_ctx)
-            return value * unit
         else:
-            return value * dimensionless
+            unit = dimensionless
+
+        return Quantity(value, unit)
 
     def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> L.Range:
         """Yield a physical value from a bilateral quantity context."""
@@ -327,35 +332,141 @@ def _is_int(name: str) -> bool:
     return True
 
 
+@contextmanager
+def ato_error_converter():
+    try:
+        yield
+    except NodeException as ex:
+        if from_dsl_ := ex.node.try_get_trait(from_dsl):
+            raise errors.AtoError.from_ctx(from_dsl_.src_ctx, str(ex)) from ex
+        else:
+            raise ex
+    except FaebrykException as ex:
+        # TODO: consolidate faebryk exceptions
+        raise ex
+
+
+def has_attr_or_property(obj: object, attr: str) -> bool:
+    return hasattr(obj, attr) or (
+        hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property)
+    )
+
+
+def try_set_attr(obj: object, attr: str, value: Any) -> bool:
+    if hasattr(obj, attr) or (
+        hasattr(type(obj), attr)
+        and isinstance(getattr(type(obj), attr), property)
+        and getattr(type(obj), attr).fset is not None
+    ):
+        setattr(obj, attr, value)
+        return True
+    else:
+        return False
+
+
+def _write_only_property(func: Callable):
+    def raise_write_only(*args, **kwargs):
+        raise AttributeError(f"{func.__name__} is write-only")
+
+    return property(
+        fget=raise_write_only,
+        fset=func,
+    )
+
+
+class _has_kicad_footprint_name_defined(F.has_footprint_impl):
+    """
+    This trait defers footprint creation until it's needed,
+    which means we can construct the underlying pin map
+    """
+
+    def __init__(self, lib_reference: str, pinmap: dict[str, F.Electrical]):
+        super().__init__()
+        self.lib_reference = lib_reference
+        self.pinmap = pinmap
+
+    def _try_get_footprint(self) -> F.Footprint | None:
+        if fps := self.obj.get_children(direct_only=True, types=F.Footprint):
+            return next(iter(fps))
+        else:
+            return None
+
+    def get_footprint(self) -> F.Footprint:
+        if fps := self._try_get_footprint():
+            return fps
+        else:
+            fp = F.KicadFootprint(
+                self.lib_reference,
+                pin_names=list(self.pinmap.keys()),
+            )
+            self.get_trait(F.can_attach_to_footprint).attach(fp)
+            self.set_footprint(fp)
+            return fp
+
+    def handle_duplicate(
+        self, old: "_has_kicad_footprint_name_defined", node: fab_param.Node
+    ) -> bool:
+        if old._try_get_footprint():
+            raise RuntimeError("Too late to set footprint")
+
+        # Update the existing trait...
+        old.lib_reference = self.lib_reference
+        old.pinmap.update(self.pinmap)
+        # ... and we don't need to attach the new
+        return False
+
+
 class AtoComponent(L.Module):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.pinmap = {}
 
     @L.rt_field
-    def kicad_footprint(self):
-        return F.has_kicad_manual_footprint("", {})
+    def attach_to_footprint(self):
+        return F.can_attach_to_footprint_via_pinmap(self.pinmap)
+
+    @L.rt_field
+    def has_designator_prefix(self):
+        return F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
 
     def add_pin(self, name: str) -> F.Electrical:
-        mif = self.add(F.Electrical(), name=name)
-        self.kicad_footprint.pinmap[name] = mif
+        if _is_int(name):
+            py_name = f"_{name}"
+        else:
+            py_name = name
+
+        mif = self.add(F.Electrical(), name=py_name)
+        self.pinmap[name] = mif
         return mif
 
-    @property
-    def footprint(self) -> str:
-        return self.kicad_footprint.str
-
-    @footprint.setter
+    @_write_only_property
     def footprint(self, value: str):
-        self.kicad_footprint.str = value
+        self.add(_has_kicad_footprint_name_defined(value, self.pinmap))
 
-    @property
-    def mpn(self) -> str:
-        raise AttributeError("mpn is write-only")
-
-    @mpn.setter
-    def mpn(self, value: str):
+    @_write_only_property
+    def lcsc_id(self, value: str):
         # handles duplicates gracefully
         self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+
+    @_write_only_property
+    def manufacturer(self, value: str):
+        # handles duplicates gracefully
+        self.add(
+            F.has_descriptive_properties_defined(
+                {DescriptiveProperties.manufacturer: value}
+            )
+        )
+
+    @_write_only_property
+    def mpn(self, value: str):
+        # handles duplicates gracefully
+        self.add(
+            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
+        )
+
+    @_write_only_property
+    def designator(self, value: str):
+        self.add(F.has_designator_prefix_defined(value))
 
 
 class ShimResistor(F.Resistor):
@@ -367,29 +478,42 @@ class ShimResistor(F.Resistor):
 
     @value.setter
     def value(self, value: L.Range):
-        self.resistance = value
+        self.resistance.alias_is(value)
 
-    @property
-    def footprint(self) -> str:
-        raise AttributeError("footprint is write-only")
-
-    @footprint.setter
+    @_write_only_property
     def footprint(self, value: str):
         if value.startswith("R"):
             value = value[1:]
         self.package = value
 
-    @property
-    def package(self) -> str:
-        raise AttributeError("package is write-only")
-
-    @package.setter
+    @_write_only_property
     def package(self, value: str):
         reqs = [(value, 2)]  # package, pin-count
         if fp_req := self.try_get_trait(F.has_footprint_requirement):
             fp_req.reqs = reqs
         else:
             self.add(F.has_footprint_requirement_defined(reqs))
+
+    @_write_only_property
+    def lcsc_id(self, value: str):
+        # handles duplicates gracefully
+        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+
+    @_write_only_property
+    def manufacturer(self, value: str):
+        # handles duplicates gracefully
+        self.add(
+            F.has_descriptive_properties_defined(
+                {DescriptiveProperties.manufacturer: value}
+            )
+        )
+
+    @_write_only_property
+    def mpn(self, value: str):
+        # handles duplicates gracefully
+        self.add(
+            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
+        )
 
 
 class ShimCapacitor(F.Capacitor):
@@ -401,29 +525,42 @@ class ShimCapacitor(F.Capacitor):
 
     @value.setter
     def value(self, value: L.Range):
-        self.capacitance = value
+        self.capacitance.alias_is(value)
 
-    @property
-    def footprint(self) -> str:
-        raise AttributeError("footprint is write-only")
-
-    @footprint.setter
+    @_write_only_property
     def footprint(self, value: str):
         if value.startswith("C"):
             value = value[1:]
         self.package = value
 
-    @property
-    def package(self) -> str:
-        raise AttributeError("package is write-only")
-
-    @package.setter
+    @_write_only_property
     def package(self, value: str):
         reqs = [(value, 2)]  # package, pin-count
         if fp_req := self.try_get_trait(F.has_footprint_requirement):
             fp_req.reqs = reqs
         else:
             self.add(F.has_footprint_requirement_defined(reqs))
+
+    @_write_only_property
+    def lcsc_id(self, value: str):
+        # handles duplicates gracefully
+        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+
+    @_write_only_property
+    def manufacturer(self, value: str):
+        # handles duplicates gracefully
+        self.add(
+            F.has_descriptive_properties_defined(
+                {DescriptiveProperties.manufacturer: value}
+            )
+        )
+
+    @_write_only_property
+    def mpn(self, value: str):
+        # handles duplicates gracefully
+        self.add(
+            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
+        )
 
 
 class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
@@ -438,7 +575,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
-    ) -> Context:
+    ) -> L.Node:
         context = self._index_ast(ast, file_path)
         try:
             return self._build(context, ref)
@@ -462,7 +599,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
     def _finish(self):
         with errors.ExceptionAccumulator() as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():
-                with ex_acc.collect():
+                with ex_acc.collect(), ato_error_converter():
                     if value is None:
                         raise errors.AtoKeyError.from_ctx(
                             ctx, f"Parameter {param} never assigned"
@@ -470,7 +607,10 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
                     # Set final value of parameter
                     param.add(from_dsl(ctx))
-                    param.alias_is(value)
+                    try:
+                        param.alias_is(value)
+                    except UnitCompatibilityError as ex:
+                        raise errors.AtoTypeError.from_ctx(ctx, str(ex)) from ex
 
             for param, ctxs in self._promised_params.items():
                 for ctx in ctxs:
@@ -570,7 +710,10 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
     @staticmethod
     def get_node_attr(node: L.Node, name: str) -> L.Node:
-        if hasattr(node, name):
+        if _is_int(name):
+            name = f"_{name}"
+
+        if has_attr_or_property(node, name):
             # Build-time attributes are attached as real attributes
             return getattr(node, name)
         elif name in node.runtime:
@@ -675,7 +818,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         assert isinstance(assignable_ctx, ap.AssignableContext)
 
         if len(assigned_ref) > 1:
-            target = self._get_referenced_node(assigned_ref, ctx)
+            target = self._get_referenced_node(assigned_ref[:-1], ctx)
         else:
             target = self._current_node
 
@@ -702,13 +845,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
-            if hasattr(target, assigned_name) or (
-                hasattr(type(target), assigned_name)
-                and isinstance(getattr(type(target), assigned_name), property)
-                and getattr(type(target), assigned_name).fset is not None
-            ):
-                setattr(target, assigned_name, value)
-            else:
+            if not try_set_attr(target, assigned_name, value):
                 errors.AtoError.from_ctx(
                     ctx,
                     f"Ignoring assignment of {value} to {assigned_name} on {target}",
@@ -720,11 +857,10 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         return KeyOptMap.empty()
 
     def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
-        # TODO: something useful with the pin mapping
         if ctx.name():
             name = self.visitName(ctx.name())
         elif ctx.totally_an_integer():
-            name = f"_{ctx.totally_an_integer().getText()}"
+            name = f"{ctx.totally_an_integer().getText()}"
         elif ctx.string():
             name = self.visitString(ctx.string())
         else:
@@ -761,6 +897,11 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         elif name_or_attr_ctx := ctx.name_or_attr():
             ref = self.visitName_or_attr(name_or_attr_ctx)
             return self._get_referenced_node(ref, ctx)
+        elif numerical_ctx := ctx.numerical_pin_ref():
+            pin_name = numerical_ctx.getText()
+            return self.get_node_attr(self._current_node, pin_name)
+        else:
+            raise ValueError(f"Unhandled connectable type {ctx}")
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext) -> KeyOptMap:
         from_, to = map(self.visitName_or_attr, ctx.name_or_attr())
@@ -940,7 +1081,8 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
         if assigned_name in self._param_assignments:
             errors.AtoKeyError.from_ctx(
-                ctx, f"Ignoring declaration of {assigned_name} because it's already defined"
+                ctx,
+                f"Ignoring declaration of {assigned_name} because it's already defined",
             ).log(to_level=logging.WARNING)
 
         else:
