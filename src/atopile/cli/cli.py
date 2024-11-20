@@ -101,6 +101,7 @@ app.command()(build.build)
 app.command()(create.create)
 app.command(no_args_is_help=True)(install.install)
 app.command()(configure.configure)
+app.command()(inspect.inspect)
 
 
 def main():

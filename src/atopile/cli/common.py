@@ -137,7 +137,7 @@ def create_build_contexts(
 
     # add custom config overrides
     if option:
-        raise NotImplementedError(
+        raise errors.AtoNotImplementedError(
             "Custom config overrides have been removed in a refactor. "
             "It's planned to re-add them in a future release. "
             "If this is a blocker for you, please raise an issue. "
