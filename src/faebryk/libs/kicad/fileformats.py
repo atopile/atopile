@@ -922,7 +922,7 @@ class C_kicad_pcb_file(SEXP_File):
             # NOTE: if zones is both front and back Cu layer then layer="F&B.Cu"
             # else layer="F.Cu" "B.Cu" "In1.Cu" ...
             uuid: UUID
-            name: str
+            name: Optional[str] = None
             locked: Optional[bool] = None
             hatch: C_hatch
             priority: Optional[int] = None
