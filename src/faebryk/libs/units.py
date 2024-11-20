@@ -9,6 +9,7 @@ from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
 from pint._typing import Scalar as _Scalar  # noqa: F401
 from pint.util import UnitsContainer as _UnitsContainer
 
+from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.util import cast_assert
 
 P = UnitRegistry()
@@ -76,3 +77,32 @@ def to_si_str(
 
 def Scalar(value: float):
     return Quantity(value)
+
+
+class UnitCompatibilityError(FaebrykException):
+    """
+    Incompatible units.
+    """
+
+    def __init__(self, *args, incompatible_items: list[Unit], **kwargs):
+        super().__init__(*args, **kwargs)
+        self.incompatible_items = incompatible_items
+
+
+def assert_compatible_units(items: list[HasUnit]) -> Unit:
+    if not items:
+        raise ValueError("At least one item is required")
+
+    units = [HasUnit.get_units(item) for item in items]
+    u0 = units[0]
+
+    if len(items) == 1:
+        return u0
+
+    if not all(u0.is_compatible_with(u) for u in units[1:]):
+        raise UnitCompatibilityError(
+            f"Operands {items} have incompatible units {units}",
+            incompatible_items=items,
+        )
+
+    return u0

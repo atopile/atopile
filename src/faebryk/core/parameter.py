@@ -17,7 +17,14 @@ from faebryk.libs.sets.quantity_sets import (
     QuantityLikeR,
 )
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless
+from faebryk.libs.units import (
+    HasUnit,
+    Quantity,
+    Unit,
+    UnitCompatibilityError,
+    assert_compatible_units,
+    dimensionless,
+)
 from faebryk.libs.util import KeyErrorNotFound, abstract, cast_assert, find
 
 logger = logging.getLogger(__name__)
@@ -535,10 +542,7 @@ class Arithmetic(Expression):
 class Additive(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
-        units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
-        self.units = units[0]
-        if not all(u.is_compatible_with(self.units) for u in units):
-            raise ValueError("All operands must have compatible units")
+        self.units = assert_compatible_units(operands)
 
     @staticmethod
     def sum(operands: Sequence[ParameterOperatable.NumberLike]) -> "Additive":
@@ -636,7 +640,10 @@ class Power(Arithmetic):
         if HasUnit.check(exponent) and not HasUnit.get_units(
             exponent
         ).is_compatible_with(dimensionless):
-            raise ValueError("exponent must have dimensionless unit")
+            raise UnitCompatibilityError(
+                "exponent must have dimensionless unit",
+                incompatible_items=[exponent],
+            )
         units = HasUnit.get_units_or_dimensionless(base) ** exponent
         assert isinstance(units, Unit)
         self.units = units
@@ -874,14 +881,7 @@ class EnumDomain(Domain):
 class Predicate(ConstrainableExpression):
     def __init__(self, left, right):
         super().__init__(left, right)
-        left, right = self.operands
-        l_units = HasUnit.get_units_or_dimensionless(left)
-        r_units = HasUnit.get_units_or_dimensionless(right)
-        if not l_units.is_compatible_with(r_units):
-            raise ValueError(
-                "operands must have compatible units "
-                f"'{l_units}' incompatible with '{r_units}'"
-            )
+        assert_compatible_units(self.operands)
 
     def __bool__(self):
         raise ValueError("Predicate cannot be converted to bool")
