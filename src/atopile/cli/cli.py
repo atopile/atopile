@@ -26,7 +26,6 @@ logging.basicConfig(
 )
 
 app = typer.Typer(no_args_is_help=True)
-state = {"non_interactive": False, "debug": False, "verbose": 0}
 
 
 def python_interpreter_path(ctx: typer.Context, value: bool):
@@ -71,10 +70,6 @@ def cli(
         typer.Option("--version", callback=version_callback, is_eager=True),
     ] = None,
 ):
-    state["non_interactive"] = non_interactive
-    state["debug"] = debug
-    state["verbose"] = verbose
-
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
 
