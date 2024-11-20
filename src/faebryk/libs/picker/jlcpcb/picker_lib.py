@@ -77,18 +77,18 @@ _MAPPINGS_BY_TYPE: dict[type[Module], list[MappingParameterDB]] = {
             "Tolerance",
         ),
         MappingParameterDB(
-            "rated_power",
+            "max_power",
             ["Power(Watts)"],
         ),
         MappingParameterDB(
-            "rated_voltage",
+            "max_voltage",
             ["Overload Voltage (Max)"],
         ),
     ],
     F.Capacitor: [
         MappingParameterDB("capacitance", ["Capacitance"], "Tolerance"),
         MappingParameterDB(
-            "rated_voltage",
+            "max_voltage",
             ["Voltage Rated"],
         ),
         MappingParameterDB(
