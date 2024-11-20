@@ -4,6 +4,7 @@
 
 import logging
 from collections import defaultdict
+from statistics import median
 from typing import Callable, Iterable, cast
 
 from deprecated import deprecated
@@ -21,7 +22,6 @@ from faebryk.core.parameter import (
     Intersection,
     Is,
     Multiply,
-    Numbers,
     Or,
     Parameter,
     ParameterOperatable,
@@ -50,16 +50,21 @@ LeftAssociative = Subtract | Divide | Difference
 Associative = FullyAssociative | LeftAssociative
 
 
-def parameter_ops_alias_classes(
+def parameter_ops_eq_classes(
     G: Graph,
-) -> dict[ParameterOperatable, set[ParameterOperatable]]:
-    # TODO just get passed
-    param_ops = {
-        p
-        for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-        if get_constrained_expressions_involved_in(p)
-    }.difference(GraphFunctions(G).nodes_of_type(Predicate))
-    full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
+) -> dict[ParameterOperatable, set[ParameterOperatable.All]]:
+    """
+    Return for dict[key, set[parameter_operatable]]
+    which maps from each obj to its alias/eq class
+    Note: if eq class only single obj, it is still included
+    """
+
+    non_predicate_objs = (
+        GraphFunctions(G)
+        .nodes_of_type(ParameterOperatable)
+        .difference(GraphFunctions(G).nodes_of_type(Predicate))
+    )
+    full_eq = EquivalenceClasses[ParameterOperatable.All](non_predicate_objs)
 
     is_exprs = [e for e in GraphFunctions(G).nodes_of_type(Is) if e.constrained]
 
@@ -67,18 +72,19 @@ def parameter_ops_alias_classes(
         full_eq.add_eq(*is_expr.operands)
 
     obvious_eq = defaultdict(list)
-    for p in param_ops:
+    for p in non_predicate_objs:
         obvious_eq[p.obviously_eq_hash()].append(p)
-    logger.info(f"obvious eq: {obvious_eq}")
 
     for candidates in obvious_eq.values():
-        if len(candidates) > 1:
-            logger.debug(f"#obvious eq candidates: {len(candidates)}")
-            for i, p in enumerate(candidates):
-                for q in candidates[:i]:
-                    if p.obviously_eq(q):
-                        full_eq.add_eq(p, q)
-                        break
+        if len(candidates) <= 1:
+            continue
+        logger.debug(f"#obvious eq candidates: {len(candidates)}")
+        for i, p in enumerate(candidates):
+            for q in candidates[:i]:
+                if p.obviously_eq(q):
+                    full_eq.add_eq(p, q)
+                    break
+
     return full_eq.classes
 
 
@@ -123,17 +129,15 @@ def debug_print(repr_map: dict[ParameterOperatable, ParameterOperatable]):
     if getattr(sys, "gettrace", lambda: None)():
         log = print
     else:
-        log = logger.debug
+        log = logger.info
     for s, d in repr_map.items():
         if isinstance(d, Expression):
             if isinstance(s, Expression):
-                log(f"{s}[{s.operands}] -> {d}[{d.operands} | G {d.get_graph()!r}]")
+                log(f"{s}[{s.operands}] -> {d}[{d.operands}")
             else:
-                log(f"{s} -> {d}[{d.operands} | G {d.get_graph()!r}]")
+                log(f"{s} -> {d}[{d.operands}")
         else:
-            log(f"{s} -> {d} | G {d.get_graph()!r}")
-    graphs = unique_ref(p.get_graph() for p in repr_map.values())
-    log(f"{len(graphs)} graphs")
+            log(f"{s} -> {d}")
 
 
 def get_params_for_expr(expr: Expression) -> set[Parameter]:
@@ -199,6 +203,47 @@ def literal_to_base_units[T: NumericLiteral | None](q: T) -> T:
     raise ValueError(f"unknown literal type {type(q)}")
 
 
+def merge_parameters(params: Iterable[Parameter]) -> Parameter:
+    params = list(params)
+
+    domain = Domain.get_shared_domain(*(p.domain for p in params))
+    # intersect ranges
+
+    # heuristic:
+    # intersect soft sets
+    soft_sets = {p.soft_set for p in params if p.soft_set is not None}
+    soft_set = None
+    if soft_sets:
+        soft_set = Quantity_Interval_Disjoint.op_intersect_intervals(*soft_sets)
+
+    # heuristic:
+    # get median
+    guesses = {p.guess for p in params if p.guess is not None}
+    guess = None
+    if guesses:
+        guess = median(guesses)  # type: ignore
+
+    # heuristic:
+    # max tolerance guess
+    tolerance_guesses = {
+        p.tolerance_guess for p in params if p.tolerance_guess is not None
+    }
+    tolerance_guess = None
+    if tolerance_guesses:
+        tolerance_guess = max(tolerance_guesses)
+
+    likely_constrained = any(p.likely_constrained for p in params)
+
+    return Parameter(
+        domain=domain,
+        # In stage-0 removed: within, units
+        soft_set=soft_set,
+        guess=guess,
+        tolerance_guess=tolerance_guess,
+        likely_constrained=likely_constrained,
+    )
+
+
 # TODO use Mutator everywhere instead of repr_maps
 class Mutator:
     type REPR_MAP = dict[ParameterOperatable, ParameterOperatable.All]
@@ -232,7 +277,6 @@ class Mutator:
         self,
         param: Parameter,
         units: Unit | Quantity | None = None,
-        within: Quantity_Interval_Disjoint | Quantity_Interval | None = None,
         domain: Domain | None = None,
         soft_set: Quantity_Interval_Disjoint | Quantity_Interval | None = None,
         guess: Quantity | int | float | None = None,
@@ -241,7 +285,7 @@ class Mutator:
     ) -> Parameter:
         new_param = Parameter(
             units=units if units is not None else param.units,
-            within=within if within is not None else param.within,
+            within=None,
             domain=domain if domain is not None else param.domain,
             soft_set=soft_set if soft_set is not None else param.soft_set,
             guess=guess if guess is not None else param.guess,
@@ -253,15 +297,7 @@ class Mutator:
             else param.likely_constrained,
         )
 
-        new_param = self._mutate(param, new_param)
-
-        # TODO remove (make part of param)
-        if new_param.within is not None:
-            new_param.constrain_subset(new_param.within)
-        if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
-            new_param.constrain_ge(0 * new_param.units)
-
-        return new_param
+        return self._mutate(param, new_param)
 
     def mutate_expression(
         self,
@@ -348,10 +384,23 @@ class Mutator:
         concatenated = {}
         for original_obj in repr_maps[0].keys():
             chain_end = original_obj
+            chain_interrupted = False
             for m in repr_maps:
+                if not isinstance(chain_end, ParameterOperatable):
+                    break
                 if chain_end not in m:
+                    chain_interrupted = True
                     break
                 chain_end = m[chain_end]
-            else:
+            if not chain_interrupted:
                 concatenated[original_obj] = chain_end
         return concatenated
+
+    # TODO make this a method
+    # check either repr_map empty or given flag
+    # if not dirty, return copied repr_map else run copy_unmutated
+    @staticmethod
+    def no_mutations(G: Graph) -> REPR_MAP:
+        return {po: po for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)}
+
+    # TODO add .remove (for see above)

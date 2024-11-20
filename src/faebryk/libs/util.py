@@ -1476,3 +1476,31 @@ def partition(pred, iterable):  # type: ignore
     from more_itertools import partition as p
 
     return p(pred, iterable)
+
+
+def times_out(seconds: float):
+    def decorator[**P, T](func: Callable[P, T]) -> Callable[P, T]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            import signal
+
+            def timeout_handler(signum, frame):
+                raise TimeoutError(
+                    f"Function {func.__name__} exceeded time limit of {seconds}s"
+                )
+
+            # Set up the signal handler
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            # Set alarm to trigger after specified seconds
+            signal.setitimer(signal.ITIMER_REAL, seconds)
+
+            try:
+                return func(*args, **kwargs)
+            finally:
+                # Cancel the alarm and restore the old signal handler
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, old_handler)
+
+        return wrapper
+
+    return decorator

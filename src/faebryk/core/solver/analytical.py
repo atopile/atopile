@@ -3,25 +3,25 @@
 
 
 import logging
-from collections.abc import Iterable
+from collections import Counter
 from dataclasses import dataclass
 from functools import partial
-from statistics import median
 from typing import Callable, TypeGuard, cast
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import (
     Add,
-    And,
     Divide,
     Domain,
     Expression,
     GreaterOrEqual,
+    GreaterThan,
     Is,
     IsSubset,
+    IsSuperset,
     LessOrEqual,
+    LessThan,
     Multiply,
-    Or,
     Parameter,
     ParameterOperatable,
     Power,
@@ -29,259 +29,211 @@ from faebryk.core.parameter import (
     Subtract,
     has_implicit_constraints_recursive,
 )
+from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
     Associative,
     FullyAssociative,
     Mutator,
     get_constrained_expressions_involved_in,
     is_replacable,
-    parameter_dependency_classes,
-    parameter_ops_alias_classes,
+    merge_parameters,
+    parameter_ops_eq_classes,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
 )
-from faebryk.libs.units import HasUnit, dimensionless, quantity
+from faebryk.libs.units import quantity
 from faebryk.libs.util import partition
 
 logger = logging.getLogger(__name__)
 
 
-def inequality_to_set_op(
+def convert_inequality_to_subset(
     G: Graph,
 ) -> tuple[Mutator.REPR_MAP, bool]:
-    param_ops = cast(
-        set[LessOrEqual | GreaterOrEqual],
-        GraphFunctions(G).nodes_of_types((LessOrEqual, GreaterOrEqual)),
-    )
+    """
+    A >= 5 -> A in [5, inf)
+    5 >= A -> A in (-inf, 5]
+    """
 
-    dirty = False
-    repr_map: Mutator.REPR_MAP = {}
+    ge_exprs = {
+        e
+        for e in GraphFunctions(G).nodes_of_type(GreaterOrEqual)
+        # Look for expressions with only one non-literal operand
+        if len(e.operatable_operands) == 1
+    }
 
-    for po in cast(
-        Iterable[LessOrEqual | GreaterOrEqual],
-        ParameterOperatable.sort_by_depth(param_ops, ascending=True),
-    ):
+    mutator = Mutator()
 
-        def get_literal(
-            po: ParameterOperatable.All, default: float
-        ) -> tuple[ParameterOperatable.Literal, bool]:
-            if not isinstance(po, ParameterOperatable):
-                return po, True
-            return default * HasUnit.get_units_or_dimensionless(po), False
+    for ge in ParameterOperatable.sort_by_depth(ge_exprs, ascending=True):
+        is_left = ge.operands[0] is next(iter(ge.operatable_operands))
 
-        if len(po.operatable_operands) == 1:
-            if isinstance(po, LessOrEqual):
-                left, l_literal = get_literal(po.operands[0], float("-inf"))
-                right, r_literal = get_literal(po.operands[1], float("inf"))
-            elif isinstance(po, GreaterOrEqual):
-                left, l_literal = get_literal(po.operands[1], float("-inf"))
-                right, r_literal = get_literal(po.operands[0], float("inf"))
-            copy_po = cast(
-                ParameterOperatable,
-                Mutator.copy_operand_recursively(
-                    po.operatable_operands.pop(), repr_map
-                ),
-            )
-            subset = copy_po.operation_is_subset(Quantity_Interval(left, right))
-            if po.constrained:
-                subset.constrain()
-            dirty = True
-            repr_map[po] = subset
+        if is_left:
+            param = ge.operands[0]
+            interval = Quantity_Interval(min=ge.operands[1])
+        else:
+            param = ge.operands[1]
+            interval = Quantity_Interval(max=ge.operands[0])
 
-    for p in GraphFunctions(G).nodes_of_type(ParameterOperatable):
-        if p not in repr_map:
-            Mutator.copy_operand_recursively(p, repr_map)
+        mutator.mutate_expression(
+            ge,
+            operands=[param, interval],
+            expression_factory=IsSubset,
+        )
 
-    return repr_map, dirty
+    if not mutator.repr_map:
+        return Mutator.no_mutations(G), False
+
+    mutator.copy_unmutated(G)
+
+    return mutator.repr_map, True
+
+
+def remove_unconstrained(
+    G: Graph,
+) -> tuple[Mutator.REPR_MAP, bool]:
+    """
+    Remove all parameteroperables that are not involved in any constrained predicates
+    """
+    mutator = Mutator()
+
+    objs = GraphFunctions(G).nodes_of_type(ParameterOperatable)
+    remove = [o for o in objs if not get_constrained_expressions_involved_in(o)]
+
+    if not remove:
+        assert not mutator.repr_map
+        return Mutator.no_mutations(G), False
+
+    mutator.copy_unmutated(G, exclude_filter=lambda p: p in remove)
+    return mutator.repr_map, True
 
 
 def resolve_alias_classes(
     G: Graph,
 ) -> tuple[Mutator.REPR_MAP, bool]:
+    """
+    Resolve alias classes
+    Ignores literals
+    ```
+    A alias B
+    B alias C
+    C alias D + E
+    D + E < 5
+    -> A,B,C => R, R alias D + E, R < 5
+    ```
+    """
+
     dirty = False
-    params_ops = [
-        p
-        for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-        if get_constrained_expressions_involved_in(p)
-    ]
     exprs = GraphFunctions(G).nodes_of_type(Expression)
     predicates = {e for e in exprs if isinstance(e, Predicate)}
     exprs.difference_update(predicates)
-    exprs = {e for e in exprs if get_constrained_expressions_involved_in(e)}
 
-    p_alias_classes = parameter_ops_alias_classes(G)
-    dependency_classes = parameter_dependency_classes(G)
+    p_eq_classes = parameter_ops_eq_classes(G)
 
-    infostr = (
-        f"{len(params_ops)} parametersoperable"
-        f"\n    {len(p_alias_classes)} alias classes"
-        f"\n    {len(dependency_classes)} dependency classes"
-        "\n"
-    )
-    logger.info(infostr)
-
-    repr_map: Mutator.REPR_MAP = {}
+    mutator = Mutator()
 
     # Make new param repre for alias classes
-    for param_op in ParameterOperatable.sort_by_depth(params_ops, ascending=True):
-        if param_op in repr_map or param_op not in p_alias_classes:
+    for eq_class in p_eq_classes.values():
+        if len(eq_class) <= 1:
             continue
 
-        alias_class = p_alias_classes[param_op]
+        alias_class_p_ops = [p for p in eq_class if isinstance(p, ParameterOperatable)]
+        alias_class_params = [p for p in alias_class_p_ops if isinstance(p, Parameter)]
+        alias_class_exprs = [p for p in alias_class_p_ops if isinstance(p, Expression)]
 
-        # TODO short-cut if len() == 1 ?
-        param_alias_class = [p for p in alias_class if isinstance(p, Parameter)]
-        expr_alias_class = [p for p in alias_class if isinstance(p, Expression)]
+        if len(alias_class_p_ops) <= 1:
+            continue
+        dirty = True
 
         # TODO non unit/numeric params, i.e. enums, bools
-        # is dimensionless sufficient?
-        # single unit
-        unit_candidates = {HasUnit.get_units_or_dimensionless(p) for p in alias_class}
-        if len(unit_candidates) > 1:
-            raise ValueError("Incompatible units in alias class")
+
         # single domain
-        domain = Domain.get_shared_domain(
-            *(
-                # TODO get domain for constants
-                p.domain
-                for p in alias_class
-                if isinstance(p, ParameterOperatable)
-            )
-        )
+        # TODO check domain for literals
+        domain = Domain.get_shared_domain(*(p.domain for p in alias_class_p_ops))
 
-        representative = None
+        # Merge param alias classes
+        if len(alias_class_params) > 0:
+            representative = merge_parameters(alias_class_params)
 
-        if len(param_alias_class) > 0:
-            dirty |= len(param_alias_class) > 1
+            for p in alias_class_params:
+                mutator._mutate(p, representative)
+        # If not params in class, create a new param as representative for expressions
+        else:
+            representative = Parameter(domain=domain)
 
-            # intersect ranges
-            within_intervals = {
-                p.within for p in param_alias_class if p.within is not None
-            }
-            within = None
-            if within_intervals:
-                within = Quantity_Interval_Disjoint.op_intersect_intervals(
-                    *within_intervals
-                )
+        for e in alias_class_exprs:
+            copy_expr = mutator.mutate_expression(e)
+            # TODO make sure this makes sense
+            mutator.repr_map[e] = representative
+            copy_expr.alias_is(representative)
 
-            # heuristic:
-            # intersect soft sets
-            soft_sets = {
-                p.soft_set for p in param_alias_class if p.soft_set is not None
-            }
-            soft_set = None
-            if soft_sets:
-                soft_set = Quantity_Interval_Disjoint.op_intersect_intervals(*soft_sets)
+    if not dirty:
+        assert not mutator.repr_map
+        return Mutator.no_mutations(G), dirty
 
-            # heuristic:
-            # get median
-            guesses = {p.guess for p in param_alias_class if p.guess is not None}
-            guess = None
-            if guesses:
-                guess = median(guesses)  # type: ignore
+    # remove eq_class Is
+    removed = {
+        e
+        for e in GraphFunctions(G).nodes_of_type(Is)
+        if all(mutator.has_been_mutated(operand) for operand in e.operands)
+    }
+    mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
 
-            # heuristic:
-            # max tolerance guess
-            tolerance_guesses = {
-                p.tolerance_guess
-                for p in param_alias_class
-                if p.tolerance_guess is not None
-            }
-            tolerance_guess = None
-            if tolerance_guesses:
-                tolerance_guess = max(tolerance_guesses)
-
-            likely_constrained = any(p.likely_constrained for p in param_alias_class)
-
-            representative = Parameter(
-                domain=domain,
-                units=unit_candidates.pop(),
-                within=within,
-                soft_set=soft_set,
-                guess=guess,
-                tolerance_guess=tolerance_guess,
-                likely_constrained=likely_constrained,
-            )
-            repr_map.update({p: representative for p in param_alias_class})
-        elif len(expr_alias_class) > 1:
-            dirty = True
-            representative = Parameter(domain=domain, units=unit_candidates.pop())
-
-        if representative is not None:
-            for e in expr_alias_class:
-                copy_expr = Mutator.copy_operand_recursively(e, repr_map)
-                repr_map[e] = (
-                    representative  # copy_expr TODO make sure this makes sense
-                )
-                Is(copy_expr, representative).constrain()
-
-    # replace parameters in expressions and predicates
-    for expr in cast(
-        Iterable[Expression],
-        ParameterOperatable.sort_by_depth(exprs | predicates, ascending=True),
-    ):
-        # filter alias class Is
-        if isinstance(expr, Is) and all(o in repr_map for o in expr.operands):
-            continue
-
-        assert all(
-            o in repr_map or not isinstance(o, ParameterOperatable)
-            for o in expr.operands
-        )
-        repr_map[expr] = Mutator.copy_operand_recursively(expr, repr_map)
-
-    return repr_map, dirty
+    return mutator.repr_map, dirty
 
 
-def subset_of_literal(
+def merge_intersect_subsets(
     G: Graph,
 ) -> tuple[Mutator.REPR_MAP, bool]:
-    dirty = False
-    params = GraphFunctions(G).nodes_of_type(Parameter)
-    removed = set()
-    repr_map: Mutator.REPR_MAP = {}
+    """
+    A subset L1
+    A subset L2
+    -> A subset (L1 & L2)
 
-    mutator = Mutator(repr_map)
+    x = A subset L1
+    y = A subset L2
+    Z = x and y -> Z = x & y
+    -> A subset (L1 & L2)
+    """
+
+    params = GraphFunctions(G).nodes_of_type(Parameter)
+    mutator = Mutator()
 
     for param in params:
         # TODO we can also propagate is subset from other param: x sub y sub range
-        is_subsets = [
+        constrained_subset_ops_with_literal = [
             e
-            for e in param.get_operations()
-            if isinstance(e, IsSubset)
-            # FIXME should just be constrained ones, then considere which ones
-            # can be removed
-            and len(e.get_operations()) == 0
-            and not isinstance(e.get_other_operand(param), ParameterOperatable)
+            for e in param.get_operations(types=IsSubset)
+            if e.constrained and Parameter.is_literal(e.get_other_operand(param))
         ]
-        if len(is_subsets) > 1:
-            other_sets = [e.get_other_operand(param) for e in is_subsets]
-            intersected = Quantity_Interval_Disjoint(other_sets[0])
-            for s in other_sets[1:]:
-                intersected = intersected & Quantity_Interval_Disjoint(s)
-            removed.update(is_subsets)
-            new_param = mutator.mutate_parameter(param)
-            new_param.constrain_subset(intersected)
-            dirty = True
-        else:
-            mutator.mutate_parameter(param)
+        if len(constrained_subset_ops_with_literal) <= 1:
+            continue
 
-    exprs = (
-        ParameterOperatable.sort_by_depth(  # TODO, do we need the sort here? same above
-            (
-                p
-                for p in GraphFunctions(G).nodes_of_type(Expression)
-                if p not in repr_map and p not in removed
-            ),
-            ascending=True,
-        )
-    )
-    for expr in exprs:
-        Mutator.copy_operand_recursively(expr, repr_map)
+        literal_subsets = [
+            e.get_other_operand(param) for e in constrained_subset_ops_with_literal
+        ]
+        # intersect
+        intersected = Quantity_Interval_Disjoint.from_value(literal_subsets[0])
+        for s in literal_subsets[1:]:
+            intersected &= Quantity_Interval_Disjoint.from_value(s)
 
-    return repr_map, dirty
+        # TODO this should be somewhere else
+        # What we are doing here is mark this predicate as satisfied
+        # because another predicate exists that will always imply this one
+        for e in constrained_subset_ops_with_literal:
+            mutator._mutate(e, True)
+
+        mutator.mutate_parameter(param).constrain_subset(intersected)
+
+    dirty = len(mutator.repr_map) > 0
+    if not dirty:
+        assert not mutator.repr_map
+        return Mutator.no_mutations(G), False
+
+    mutator.copy_unmutated(G)
+
+    return mutator.repr_map, dirty
 
 
 def flatten_associative[T: Associative](
@@ -395,6 +347,10 @@ def compress_associative(
             operands=res.extracted_operands,
         )
 
+    if not dirty:
+        assert not mutator.repr_map
+        return Mutator.no_mutations(G), False
+
     # copy other param ops
     mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
 
@@ -409,307 +365,121 @@ def convert_to_canonical_operations(
     ```
     A - B -> A + (-B)
     A / B -> A * B^-1
+    A <= B -> B >= A
+    A < B -> B > A
+    A superset B -> B subset A
     ```
-
-    For:
-    - (Add,Subtract,Negate)
-    - (Multiply,Divide,Invert)
     """
-
-    # def OnlyIfNestedInTargetType(o):
-    #    return all(isinstance(o, Target) for o in e.get_operations())
 
     MirroredExpressions = [
         (
             Add,
             Subtract,
-            lambda o: Multiply(o, quantity(-1)),
-            lambda _: True,
+            lambda operands: [operands[0]]
+            + [Multiply(o, quantity(-1)) for o in operands[1:]],
         ),
         (
             Multiply,
             Divide,
-            lambda o: Power(o, quantity(-1)),
-            lambda _: True,
+            lambda operands: [operands[0]]
+            + [Power(o, quantity(-1)) for o in operands[1:]],
+        ),
+        (
+            GreaterOrEqual,
+            LessOrEqual,
+            lambda operands: list(reversed(operands)),
+        ),
+        (
+            GreaterThan,
+            LessThan,
+            lambda operands: list(reversed(operands)),
+        ),
+        (
+            IsSubset,
+            IsSuperset,
+            lambda operands: list(reversed(operands)),
         ),
     ]
 
     mutator = Mutator()
-    dirty = False
 
-    for Target, Convertible, Converter, Filter in MirroredExpressions:
-        convertible = {
-            e for e in GraphFunctions(G).nodes_of_type(Convertible) if Filter(e)
-        }
+    for Target, Convertible, Converter in MirroredExpressions:
+        convertible = {e for e in GraphFunctions(G).nodes_of_type(Convertible)}
 
         for expr in ParameterOperatable.sort_by_depth(convertible, ascending=True):
-            mutator.mutate_expression_with_op_map(
-                expr,
-                # negate subtrahends
-                operand_mutator=lambda i, operand: Converter(operand)
-                if i > 0
-                else operand,
-                # convert to add
-                expression_factory=Target,
+            mutator.mutate_expression(
+                expr, Converter(expr.operands), expression_factory=Target
             )
+
+    dirty = len(mutator.repr_map) > 0
+    if not dirty:
+        return Mutator.no_mutations(G), False
 
     mutator.copy_unmutated(G)
 
     return mutator.repr_map, dirty
 
 
-def compress_expressions(
+def fold_literals(
     G: Graph,
 ) -> tuple[Mutator.REPR_MAP, bool]:
     dirty = False
-    exprs = cast(set[Expression], GraphFunctions(G).nodes_of_type(Expression))
+    exprs = GraphFunctions(G).nodes_of_type(Expression)
 
-    repr_map: Mutator.REPR_MAP = {}
+    mutator = Mutator()
     removed = set()
 
-    for expr in cast(
-        Iterable[Expression],
-        ParameterOperatable.sort_by_depth(exprs, ascending=True),
-    ):
-        if expr in repr_map or expr in removed:
+    for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+        if mutator.has_been_mutated(expr) or expr in removed:
             continue
 
         operands = expr.operands
-        const_ops, nonconst_ops = partition(
-            lambda o: isinstance(o, ParameterOperatable), operands
+        p_operands, literal_operands = partition(
+            lambda o: ParameterOperatable.is_literal(o), operands
         )
         non_replacable_nonconst_ops, replacable_nonconst_ops = partition(
-            lambda o: o not in repr_map, nonconst_ops
+            lambda o: not mutator.has_been_mutated(o), p_operands
         )
+        multiplicity = Counter(replacable_nonconst_ops)
+
         # TODO, obviously_eq offers additional possibilites,
         # must be replacable, no implicit constr
-        multiplicity = {}
-        for n in replacable_nonconst_ops:
-            if n in multiplicity:
-                multiplicity[n] += 1
-            else:
-                multiplicity[n] = 1
-
-        if isinstance(expr, Add):
-            try:
-                const_sum = [next(const_ops)]
-                for c in const_ops:
-                    dirty = True
-                    const_sum[0] += c
-                # TODO make work with all the types
-                if const_sum[0] == 0 * expr.units:
-                    dirty = True
-                    const_sum = []
-            except StopIteration:
-                const_sum = []
-            if any(m > 1 for m in multiplicity.values()):
-                dirty = True
-            if dirty:
-                copied = {
-                    n: Mutator.copy_operand_recursively(n, repr_map)
-                    for n in multiplicity
-                }
-                nonconst_prod = [
-                    Multiply(copied[n], m * dimensionless) if m > 1 else copied[n]
-                    for n, m in multiplicity.items()
-                ]
-                new_operands = [
-                    *nonconst_prod,
-                    *const_sum,
-                    *(
-                        Mutator.copy_operand_recursively(o, repr_map)
-                        for o in non_replacable_nonconst_ops
-                    ),
-                ]
-                if len(new_operands) > 1:
-                    new_expr = Add(*new_operands)
-                elif len(new_operands) == 1:
-                    new_expr = new_operands[0]
-                    removed.add(expr)
-                else:
-                    raise ValueError("No operands, should not happen")
-                repr_map[expr] = new_expr
-
-        elif isinstance(expr, Or):
-            const_op_list = list(const_ops)
-            if any(not isinstance(o, bool) for o in const_op_list):
-                raise ValueError("Or with non-boolean operands")
-            if any(o for o in const_op_list):
-                dirty = True
-                repr_map[expr] = True
-                removed.add(expr)
-            elif len(const_op_list) > 0 or any(m > 1 for m in multiplicity.values()):
-                new_operands = [
-                    *(
-                        Mutator.copy_operand_recursively(o, repr_map)
-                        for o in multiplicity
-                    ),
-                    *(
-                        Mutator.copy_operand_recursively(o, repr_map)
-                        for o in non_replacable_nonconst_ops
-                    ),
-                ]
-                if len(new_operands) > 1:
-                    new_expr = Or(*new_operands)
-                elif len(new_operands) == 1:
-                    new_expr = new_operands[0]
-                    removed.add(expr)
-                else:
-                    new_expr = False
-                repr_map[expr] = new_expr
-
-        elif isinstance(expr, And):
-            const_op_list = list(const_ops)
-            if any(not isinstance(o, bool) for o in const_op_list):
-                raise ValueError("Or with non-boolean operands")
-            if any(not o for o in const_op_list):
-                dirty = True
-                repr_map[expr] = False
-                removed.add(expr)
-            elif len(const_op_list) > 0 or any(m > 1 for m in multiplicity.values()):
-                new_operands = [
-                    *(
-                        Mutator.copy_operand_recursively(o, repr_map)
-                        for o in multiplicity
-                    ),
-                    *(
-                        Mutator.copy_operand_recursively(o, repr_map)
-                        for o in non_replacable_nonconst_ops
-                    ),
-                ]
-                if len(new_operands) > 1:
-                    new_expr = And(*new_operands)
-                elif len(new_operands) == 1:
-                    new_expr = new_operands[0]
-                    removed.add(expr)
-                else:
-                    new_expr = True
-                repr_map[expr] = new_expr
-
-        elif isinstance(expr, Multiply):
-            try:
-                const_prod = [next(const_ops)]
-                for c in const_ops:
-                    dirty = True
-                    const_prod[0] *= c
-                if (
-                    const_prod[0] == 1 * dimensionless
-                ):  # TODO make work with all the types
-                    dirty = True
-                    const_prod = []
-            except StopIteration:
-                const_prod = []
-            if (
-                len(const_prod) == 1 and const_prod[0].magnitude == 0
-            ):  # TODO make work with all the types
-                dirty = True
-                repr_map[expr] = 0 * expr.units
-            else:
-                if any(m > 1 for m in multiplicity.values()):
-                    dirty = True
-                if dirty:
-                    copied = {
-                        n: Mutator.copy_operand_recursively(n, repr_map)
-                        for n in multiplicity
-                    }
-                    nonconst_power = [
-                        Power(copied[n], m * dimensionless) if m > 1 else copied[n]
-                        for n, m in multiplicity.items()
-                    ]
-                    new_operands = [
-                        *nonconst_power,
-                        *const_prod,
-                        *(
-                            Mutator.copy_operand_recursively(o, repr_map)
-                            for o in non_replacable_nonconst_ops
-                        ),
-                    ]
-                    if len(new_operands) > 1:
-                        new_expr = Multiply(*new_operands)
-                    elif len(new_operands) == 1:
-                        new_expr = new_operands[0]
-                        removed.add(expr)
-                    else:
-                        raise ValueError("No operands, should not happen")
-                    repr_map[expr] = new_expr
-        elif isinstance(expr, Subtract):
-            if sum(1 for _ in const_ops) == 2:
-                dirty = True
-                repr_map[expr] = expr.operands[0] - expr.operands[1]
-                removed.add(expr)
-            elif expr.operands[0] is expr.operands[1]:  # TODO obv eq, replacable
-                dirty = True
-                repr_map[expr] = 0 * expr.units
-                removed.add(expr)
-            elif expr.operands[1] == 0 * expr.operands[1].units:
-                dirty = True
-                repr_map[expr.operands[0]] = repr_map.get(
-                    expr.operands[0],
-                    Mutator.copy_operand_recursively(expr.operands[0], repr_map),
-                )
-                repr_map[expr] = repr_map[expr.operands[0]]
-                removed.add(expr)
-            else:
-                repr_map[expr] = Mutator.copy_operand_recursively(expr, repr_map)
-        elif isinstance(expr, Divide):
-            if sum(1 for _ in const_ops) == 2:
-                if not expr.operands[1].magnitude == 0:
-                    dirty = True
-                    repr_map[expr] = expr.operands[0] / expr.operands[1]
-                    removed.add(expr)
-                else:
-                    # no valid solution but might not matter e.g. [phi(a,b,...)
-                    # OR a/0 == b]
-                    repr_map[expr] = Mutator.copy_operand_recursively(expr, repr_map)
-            elif expr.operands[1] is expr.operands[0]:  # TODO obv eq, replacable
-                dirty = True
-                repr_map[expr] = 1 * dimensionless
-                removed.add(expr)
-            elif expr.operands[1] == 1 * expr.operands[1].units:
-                dirty = True
-                repr_map[expr.operands[0]] = repr_map.get(
-                    expr.operands[0],
-                    Mutator.copy_operand_recursively(expr.operands[0], repr_map),
-                )
-                repr_map[expr] = repr_map[expr.operands[0]]
-                removed.add(expr)
-            else:
-                repr_map[expr] = Mutator.copy_operand_recursively(expr, repr_map)
-        else:
-            repr_map[expr] = Mutator.copy_operand_recursively(expr, repr_map)
-
-    other_param_op = (
-        ParameterOperatable.sort_by_depth(  # TODO, do we need the sort here? same above
-            (
-                p
-                for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-                if p not in repr_map and p not in removed
-            ),
-            ascending=True,
+        dirty |= fold(
+            expr,
+            literal_operands,
+            multiplicity,
+            non_replacable_nonconst_ops,
+            mutator.repr_map,
+            removed,
         )
-    )
-    for o in other_param_op:
-        Mutator.copy_operand_recursively(o, repr_map)
 
-    return {
-        k: v for k, v in repr_map.items() if isinstance(v, ParameterOperatable)
-    }, dirty
+    if not dirty:
+        return Mutator.no_mutations(G), False
+
+    mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
+
+    return mutator.repr_map, dirty
 
 
 def remove_obvious_tautologies(
     G: Graph,
 ) -> tuple[Mutator.REPR_MAP, bool]:
-    repr_map = {}
+    """
+    Remove tautologies like:
+     - A == A
+     - A == B | A or B unconstrained
+     - Lit1 == Lit2 | Lit1 and Lit2 are equal literals
+    """
+
+    mutator = Mutator()
+
     removed = set()
-    dirty = False
 
     def remove_is(pred_is: Is):
         if len(pred_is.get_operations()) == 0:
             removed.add(pred_is)
         else:
-            repr_map[pred_is] = True
-        nonlocal dirty
-        dirty = True
+            mutator._mutate(pred_is, True)
 
     def known_unconstrained(po: ParameterOperatable) -> bool:
         no_other_constraints = (
@@ -717,20 +487,21 @@ def remove_obvious_tautologies(
         )
         return no_other_constraints and not po.has_implicit_constraints_recursive()
 
-    for pred_is in ParameterOperatable.sort_by_depth(
-        GraphFunctions(G).nodes_of_type(Is), ascending=True
-    ):
-        pred_is = cast(Is, pred_is)
-        left = pred_is.operands[0]
-        right = pred_is.operands[1]
-        left_const = not isinstance(left, ParameterOperatable)
-        right_const = not isinstance(right, ParameterOperatable)
+    is_predicates = GraphFunctions(G).nodes_of_type(Is)
+
+    for pred_is in ParameterOperatable.sort_by_depth(is_predicates, ascending=True):
+        left, right = pred_is.operands
+        left_is_literal = not isinstance(left, ParameterOperatable)
+        right_is_literal = not isinstance(right, ParameterOperatable)
+
         if (
             left is right
-            or (left_const and right_const and left == right)  # TODO obv eq
+            or (left_is_literal and right_is_literal and left == right)  # TODO obv eq
             and not has_implicit_constraints_recursive(left)
             and not has_implicit_constraints_recursive(right)
         ):
+            # A == A
+            # L1 == L2
             remove_is(pred_is)
         elif (
             isinstance(left, Parameter)
@@ -738,8 +509,20 @@ def remove_obvious_tautologies(
             or isinstance(right, Parameter)
             and known_unconstrained(right)
         ):
+            # A == B | A or B unconstrained
             remove_is(pred_is)
-    for p in GraphFunctions(G).nodes_of_type(ParameterOperatable):
-        if p not in removed and p not in repr_map:
-            repr_map[p] = Mutator.copy_operand_recursively(p, repr_map)
-    return repr_map, dirty
+
+            # TODO remove hack
+            # This is here so superranges can see this literal
+            if left_is_literal:
+                mutator._mutate(right, left)
+            elif right_is_literal:
+                mutator._mutate(left, right)
+
+    dirty = len(removed) > 0 or len(mutator.repr_map) > 0
+    if not dirty:
+        return Mutator.no_mutations(G), False
+
+    mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
+
+    return mutator.repr_map, dirty

@@ -3,6 +3,8 @@
 
 import logging
 
+import pytest
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
@@ -145,11 +147,15 @@ def test_alias_classes():
     solver.phase_one_no_guess_solving(G)
 
 
-def test_inspect_known_superranges():
+@pytest.mark.parametrize("i", list(range(20)))
+def test_inspect_known_superranges(i: int):
     p0 = Parameter(units=P.V, within=Range(1 * P.V, 10 * P.V))
-    p0.alias_is(Range(1 * P.V, 3 * P.V).op_add_interval(Range(4 * P.V, 6 * P.V)))
+    p0.alias_is(Range(1 * P.V, 3 * P.V) + Range(4 * P.V, 6 * P.V))
     solver = DefaultSolver()
     assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
+    # assert solver.inspect_get_known_superranges(p0) == RangeWithGaps(
+    #    (quantity(5), quantity(9))
+    # )
 
 
 def test_solve_realworld():

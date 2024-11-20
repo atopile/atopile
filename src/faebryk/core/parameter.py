@@ -422,6 +422,10 @@ class ParameterOperatable(Node):
     def is_number_literal(value: Any) -> TypeGuard[QuantityLike]:
         return isinstance(value, QuantityLikeR)
 
+    @staticmethod
+    def is_literal(value: Any) -> TypeGuard[Literal]:
+        return not isinstance(value, ParameterOperatable)
+
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     if isinstance(po, ParameterOperatable):
@@ -437,7 +441,7 @@ class Expression(ParameterOperatable):
         super().__init__()
         self._domain = domain
         self.operands = tuple(operands)
-        self.operatable_operands = {
+        self.operatable_operands: set[ParameterOperatable] = {
             op for op in operands if isinstance(op, ParameterOperatable)
         }
 
@@ -1068,7 +1072,7 @@ class Parameter(ParameterOperatable):
     def __init__(
         self,
         *,
-        units: Unit | Quantity | None = dimensionless,
+        units: Unit | Quantity = dimensionless,
         # hard constraints
         within: Quantity_Interval_Disjoint | Quantity_Interval | None = None,
         domain: Domain = Numbers(negative=False),

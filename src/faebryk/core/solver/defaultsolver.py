@@ -19,12 +19,13 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.analytical import (
     compress_associative,
-    compress_expressions,
+    convert_inequality_to_subset,
     convert_to_canonical_operations,
-    inequality_to_set_op,
+    fold_literals,
+    merge_intersect_subsets,
     remove_obvious_tautologies,
+    remove_unconstrained,
     resolve_alias_classes,
-    subset_of_literal,
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
@@ -41,14 +42,32 @@ from faebryk.libs.sets.quantity_sets import (
 )
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import HasUnit, dimensionless
+from faebryk.libs.util import times_out
 
 logger = logging.getLogger(__name__)
 
 
-# units -> base units (dimensionless)
-# within -> constrain is subset
-# scalar to single
-def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.All]:
+def constrain_within_and_domain(G: Graph) -> Mutator.REPR_MAP:
+    mutator = Mutator()
+
+    for param in GraphFunctions(G).nodes_of_type(Parameter):
+        new_param = mutator.mutate_parameter(param)
+        if new_param.within is not None:
+            new_param.constrain_subset(new_param.within)
+        if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
+            new_param.constrain_ge(0 * new_param.units)
+
+    mutator.copy_unmutated(G)
+    return mutator.repr_map
+
+
+def strip_units(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.All]:
+    """
+    units -> base units (dimensionless)
+    within -> constrain is subset
+    scalar to single
+    """
+
     param_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
 
     mutator = Mutator()
@@ -59,7 +78,6 @@ def normalize_graph(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.A
             mutator.mutate_parameter(
                 po,
                 units=dimensionless,
-                within=literal_to_base_units(po.within),
                 soft_set=literal_to_base_units(po.soft_set),
                 guess=literal_to_base_units(po.guess),
             )
@@ -94,61 +112,80 @@ class DefaultSolver(Solver):
         # any constrained expression literal is False
         raise NotImplementedError()
 
+    @times_out(5)
     def phase_one_no_guess_solving(
         self, g: Graph
     ) -> dict[ParameterOperatable, ParameterOperatable.All]:
-        logger.info(f"Phase 1 Solving: No guesses {'-' * 80}")
+        logger.info("Phase 1 Solving: No guesses".ljust(80, "="))
 
         # TODO move into comment here
         # strategies
         # https://www.notion.so/
         # Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
 
-        logger.info("Phase 1.0: normalize graph")
-        total_repr_map = normalize_graph(g)
-        debug_print(total_repr_map)
-        graphs = get_graphs(total_repr_map.values())
         # TODO assert all new graphs
 
         algo_dirty = True
         iterno = 0
+        algos_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
+
+        init_algorithms = [
+            ("Constrain within and domain", constrain_within_and_domain),
+            # TODO re-enable and re-attach units
+            ("Strip units", strip_units),
+        ]
+        iterative_algorithms = [
+            ("Remove unconstrained", remove_unconstrained),
+            ("Alias classes", resolve_alias_classes),
+            ("Remove obvious tautologies", remove_obvious_tautologies),
+            ("Inequality to set", convert_inequality_to_subset),
+            ("Canonical expression form", convert_to_canonical_operations),
+            ("Associative expressions Full", compress_associative),
+            ("Arithmetic expressions", fold_literals),
+            ("Subset of literals", merge_intersect_subsets),
+        ]
+
+        graphs = [g]
+
+        logger.info(f"Iteration {iterno} ".ljust(80, "-"))
+        for phase_name, (algo_name, algo) in enumerate(init_algorithms):
+            repr_map = {}
+            for g in graphs:
+                repr_map = algo(g)
+                repr_map.update(repr_map)
+            graphs = get_graphs(repr_map.values())
+            algos_repr_maps[(iterno, algo_name)] = repr_map
+            logger.info(
+                f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+            )
 
         while algo_dirty and len(graphs) > 0:
             iterno += 1
-            logger.info(f"Iteration {iterno}")
-
-            algorithms = [
-                ("1", "Alias classes", resolve_alias_classes),
-                ("2", "Inequality to set", inequality_to_set_op),
-                ("3", "Canonical expression form", convert_to_canonical_operations),
-                ("4", "Associative expressions Full", compress_associative),
-                ("5", "Arithmetic expressions", compress_expressions),
-                ("6", "Remove obvious tautologies", remove_obvious_tautologies),
-                ("7", "Subset of literals", subset_of_literal),
-            ]
+            logger.info(f"Iteration {iterno} ".ljust(80, "-"))
 
             algos_dirty = {}
-            algos_repr_maps = {}
-            for phase_name, algo_name, algo in algorithms:
-                logger.info(f"Phase 1.{phase_name}: {algo_name}")
+            for phase_name, (algo_name, algo) in enumerate(iterative_algorithms):
                 repr_map = {}
                 algo_dirty = False
                 for g in graphs:
                     repr_map, graph_dirty = algo(g)
                     repr_map.update(repr_map)
                     algo_dirty |= graph_dirty
-                debug_print(repr_map)
+                if algo_dirty:
+                    logger.info(
+                        f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+                    )
+                    debug_print(repr_map)
                 graphs = get_graphs(repr_map.values())
                 algos_dirty[algo_name] = algo_dirty
-                algos_repr_maps[algo_name] = repr_map
+                algos_repr_maps[(iterno, algo_name)] = repr_map
                 # TODO assert all new graphs
 
             algo_dirty = any(algos_dirty.values())
 
-            total_repr_map = Mutator.concat_repr_maps(
-                total_repr_map,
-                *algos_repr_maps.values(),
-            )
+        total_repr_map = Mutator.concat_repr_maps(
+            *algos_repr_maps.values(),
+        )
 
         # FIXME: unnormalize parameters, converting back form base units
         return total_repr_map
@@ -204,9 +241,9 @@ class DefaultSolver(Solver):
 
         # run phase 1 solver
         # TODO caching
-        pre_val = value
         repr_map = self.phase_one_no_guess_solving(value.get_graph())
         if value not in repr_map:
+            logger.warning(f"Parameter {value} not in repr_map")
             return Quantity_Interval_Disjoint(Quantity_Interval(units=value.units))
 
         value = repr_map[value]
@@ -227,7 +264,6 @@ class DefaultSolver(Solver):
         if literal is None:
             literal = value.try_get_literal(IsSubset)
 
-        logger.info(f"{pre_val=} {value=} {literal=}")
         if literal is not None:
             if Parameter.is_number_literal(literal):
                 return Quantity_Interval_Disjoint(Quantity_Singleton(literal))
