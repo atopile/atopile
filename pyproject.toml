@@ -55,7 +55,6 @@ dependencies = [
     "attrs>=23.2.0",
     "case-converter>=1.1.0",
     "cattrs>=23.2.3",
-    "click>=8.1.7",
     "DeepDiff>=6.7.1",
     "eseries>=1.2.1",
     "fake-useragent>=1.4.0",
@@ -116,7 +115,7 @@ docs = ["mkdocs", "mkdocs-material", "mkdocs-drawio-file >= 1.5.2"]
 
 
 [project.scripts]
-ato = "atopile.cli.cli:cli"
+ato = "atopile.cli.cli:main"
 faebryk = "faebryk.tools.main:__main__"
 
 [tool.hatch]
