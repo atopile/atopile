@@ -141,12 +141,6 @@ class DefaultSolver(Solver):
         # https://www.notion.so/
         # Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
 
-        # TODO assert all new graphs
-
-        algo_dirty = True
-        iterno = 0
-        algos_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
-
         pre_algorithms = [
             ("Constrain within and domain", constrain_within_and_domain),
             # ("Strip units", strip_units),
@@ -166,10 +160,12 @@ class DefaultSolver(Solver):
             # ("Re-attach units", re_attach_units),
         ]
 
+        algo_dirty = True
+        iterno = 0
+        algos_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
         graphs = [g]
 
         while algo_dirty and len(graphs) > 0:
-            iterno += 1
             logger.info(f"Iteration {iterno} ".ljust(80, "-"))
 
             if iterno == 0:
@@ -193,6 +189,7 @@ class DefaultSolver(Solver):
                 # TODO assert all new graphs
 
             algo_dirty = any(algos_dirty.values())
+            iterno += 1
 
         total_repr_map = Mutators.concat_repr_maps(
             *algos_repr_maps.values(),
