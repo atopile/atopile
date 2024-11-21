@@ -131,26 +131,33 @@ def _do_python_build(build_ctx: BuildContext) -> None:
 
     # TODO: add a mechanism to override the following with custom build machinery
 
-    log.info("Filling unspecified parameters")
-    replace_tbd_with_any(app, recursive=True)
+    try:
+        log.info("Filling unspecified parameters")
+        replace_tbd_with_any(app, recursive=True)
 
-    log.info("Picking parts")
-    modules = {
-        n.get_most_special() for n in app.get_children(direct_only=False, types=Module)
-    }
-    for n in modules:
-        # TODO: make configurable
-        add_api_pickers(n, base_prio=10)
-    pick_part_recursively(app)
+        log.info("Picking parts")
+        modules = {
+            n.get_most_special()
+            for n in app.get_children(direct_only=False, types=Module)
+        }
+        for n in modules:
+            # TODO: make configurable
+            add_api_pickers(n, base_prio=10)
+        pick_part_recursively(app)
 
-    log.info("Make graph")
-    G = app.get_graph()
+        log.info("Make graph")
+        G = app.get_graph()
 
-    log.info("Running checks")
-    run_checks(app, G)
+        log.info("Running checks")
+        run_checks(app, G)
 
-    log.info("Make netlist & pcb")
-    apply_design(build_ctx.layout_path, build_ctx.netlist_path, G, app, transform=None)
+        log.info("Make netlist & pcb")
+        apply_design(
+            build_ctx.layout_path, build_ctx.netlist_path, G, app, transform=None
+        )
+
+    except Exception as e:
+        raise errors.AtoError(f"Error building {build_ctx.name}: {e}") from e
 
     if build_ctx.export_manufacturing_artifacts:
         export_pcba_artifacts(build_ctx.output_base, build_ctx.layout_path, app)
