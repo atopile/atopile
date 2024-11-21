@@ -9,9 +9,9 @@ Requirements for the config files include:
 """
 
 import copy
-from enum import Enum
 import fnmatch
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
