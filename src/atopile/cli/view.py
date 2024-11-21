@@ -125,9 +125,13 @@ log.setLevel(logging.INFO)
 
 def view(
     entry: Annotated[str | None, typer.Argument()] = None,
-    build: Annotated[list[str], typer.Option(envvar="ATO_BUILD")] = [],
-    target: Annotated[list[str], typer.Option(envvar="ATO_TARGET")] = [],
-    option: Annotated[list[str], typer.Option(envvar="ATO_OPTION")] = [],
+    build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],
+    target: Annotated[
+        list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+    ] = [],
+    option: Annotated[
+        list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
+    ] = [],
 ):
     """
     View a block diagram or schematic of your project.

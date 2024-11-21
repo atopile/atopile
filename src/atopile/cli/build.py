@@ -35,9 +35,13 @@ log = logging.getLogger(__name__)
 @errors.log_ato_errors()
 def build(
     entry: Annotated[str | None, typer.Argument()] = None,
-    build: Annotated[list[str], typer.Option(envvar="ATO_BUILD")] = [],
-    target: Annotated[list[str], typer.Option(envvar="ATO_TARGET")] = [],
-    option: Annotated[list[str], typer.Option(envvar="ATO_OPTION")] = [],
+    build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],
+    target: Annotated[
+        list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+    ] = [],
+    option: Annotated[
+        list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
+    ] = [],
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.

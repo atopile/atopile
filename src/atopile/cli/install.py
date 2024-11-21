@@ -33,13 +33,14 @@ log.setLevel(logging.INFO)
 def install(
     to_install: Annotated[str | None, typer.Argument()] = None,
     jlcpcb: Annotated[
-        bool, typer.Option("--jlcpcb", help="JLCPCB component ID")
+        bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID")
     ] = False,
     link: Annotated[
-        bool, typer.Option("--link", help="Keep this dependency linked to the source")
+        bool,
+        typer.Option("--link", "-l", help="Keep this dependency linked to the source"),
     ] = False,
     upgrade: Annotated[
-        bool, typer.Option("--upgrade", help="Upgrade dependencies")
+        bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
     ] = False,
     path: Annotated[Path | None, typer.Argument()] = None,
 ):

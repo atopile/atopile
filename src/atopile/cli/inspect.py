@@ -156,15 +156,23 @@ even_greyed_row = "on grey15 grey0"
 @errors.log_ato_errors()
 def inspect(
     entry: Annotated[str | None, typer.Argument()] = None,
-    build: Annotated[list[str], typer.Option(envvar="ATO_BUILD")] = [],
-    target: Annotated[list[str], typer.Option(envvar="ATO_TARGET")] = [],
-    option: Annotated[list[str], typer.Option(envvar="ATO_OPTION")] = [],
+    build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],
+    target: Annotated[
+        list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+    ] = [],
+    option: Annotated[
+        list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
+    ] = [],
     inspect: str | None = None,
     context: Annotated[
-        str | None, typer.Option(help="The context from which to inspect the module")
+        str | None,
+        typer.Option(
+            "--context", "-c", help="The context from which to inspect the module"
+        ),
     ] = None,
     dump_csv: Annotated[
-        str | None, typer.Option(help="Output the inspection to a CSV file")
+        str | None,
+        typer.Option("--dump-csv", "-d", help="Output the inspection to a CSV file"),
     ] = None,
 ):
     """
