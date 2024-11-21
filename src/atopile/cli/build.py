@@ -6,6 +6,7 @@ import json
 import logging
 import shutil
 import sys
+import uuid
 from typing import Annotated, Callable, Optional
 
 import typer
@@ -93,7 +94,8 @@ def import_from_path(file_path):
     # setting to a sequence (and not None) indicates that the module is a package, which lets us use relative imports for submodules
     submodule_search_locations = []
 
-    module_name = "abc"
+    # custom unique name to avoid collisions
+    module_name = str(uuid.uuid4())
 
     spec = importlib.util.spec_from_file_location(
         module_name, file_path, submodule_search_locations=submodule_search_locations
