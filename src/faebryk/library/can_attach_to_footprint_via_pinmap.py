@@ -5,7 +5,7 @@ import faebryk.library._F as F
 
 
 class can_attach_to_footprint_via_pinmap(F.can_attach_to_footprint.impl()):
-    def __init__(self, pinmap: dict[str, F.Electrical]) -> None:
+    def __init__(self, pinmap: dict[str, F.Electrical | None]) -> None:
         super().__init__()
         self.pinmap = pinmap
 

@@ -218,20 +218,13 @@ def module(
 
         if no_name:
             nodes.append(f"unnamed = L.list_field({len(no_name)}, F.Electrical)")
-        if no_connection:
-            nodes.append(
-                f"no_connection = L.list_field({len(no_connection)}, F.Electrical)"
-            )
 
         pin_lines = (
             [
                 f'"{pin_num}": self.{interface_name},'
                 for pin_num, interface_name in interface_names_by_pin_num.items()
             ]
-            + [
-                f'"{pin_num}": self.no_connection[{i}],'
-                for i, pin_num in enumerate(no_connection)
-            ]
+            + [f'"{pin_num}": None,' for pin_num in no_connection]
             + [f'"{pin_num}": self.unnamed[{i}],' for i, pin_num in enumerate(no_name)]
         )
         traits.append(
