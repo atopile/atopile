@@ -1,4 +1,5 @@
 import collections.abc
+import contextlib
 import logging
 import sys
 import textwrap
@@ -10,6 +11,7 @@ from types import ModuleType
 from typing import Callable, ContextManager, Iterable, Optional, Self, Type, TypeVar
 
 import rich
+import typer
 from antlr4 import ParserRuleContext, Token
 
 from atopile import address, telemetry
@@ -368,7 +370,8 @@ def muffle_fatalities():
         do_exit = True
 
     except* Exception as ex:
-        telemetry.telemetry_data.crash += len(ex.exceptions)
+        with contextlib.suppress(Exception):
+            telemetry.telemetry_data.crash += len(ex.exceptions)
         raise ex
 
     finally:
@@ -376,7 +379,7 @@ def muffle_fatalities():
 
     # Raisinng sys.exit here so all exceptions can be raised
     if do_exit:
-        sys.exit(1)
+        typer.Exit(1)
 
 
 class ExceptionAccumulator:
