@@ -8,6 +8,7 @@ from typing import Any, Iterable, Protocol
 from faebryk.core.graph import Graph
 from faebryk.core.parameter import (
     Expression,
+    Logic,
     Parameter,
     ParameterOperatable,
     Predicate,
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class Solver(Protocol):
     # TODO booleanlike is very permissive
-    type PredicateWithInfo[ArgType] = tuple[ParameterOperatable.BooleanLike, ArgType]
+    type PredicateWithInfo[ArgType] = tuple[Predicate | Logic, ArgType]
 
     class SolverError(Exception): ...
 

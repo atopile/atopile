@@ -125,11 +125,25 @@ def resolve_alias_classes(mutator: Mutator):
 
         alias_class_p_ops = [p for p in eq_class if isinstance(p, ParameterOperatable)]
         alias_class_params = [p for p in alias_class_p_ops if isinstance(p, Parameter)]
+        alias_class_exprs = {p for p in alias_class_p_ops if isinstance(p, Expression)}
 
         if len(alias_class_p_ops) <= 1:
             continue
         if not alias_class_params:
             continue
+
+        if len(alias_class_params) == 1:
+            # check if all in eq_class already aliased
+            # Then no need to to create new representative
+            iss = alias_class_params[0].get_operations(Is)
+            iss_exprs = {
+                o
+                for e in iss
+                for o in e.operatable_operands
+                if isinstance(o, Expression)
+            }
+            if alias_class_exprs.issubset(iss_exprs):
+                continue
 
         # Merge param alias classes
         representative = merge_parameters(alias_class_params)
@@ -154,6 +168,9 @@ def resolve_alias_classes(mutator: Mutator):
         domain = Domain.get_shared_domain(*(p.domain for p in alias_class_p_ops))
 
         if alias_class_params:
+            # See len(alias_class_params) == 1 case above
+            if not mutator.has_been_mutated(alias_class_params[0]):
+                continue
             representative = mutator.get_mutated(alias_class_params[0])
         else:
             # If not params or lits in class, create a new param as representative
@@ -258,6 +275,7 @@ def compress_associative(mutator: Mutator):
         )
 
 
+# TODO typealias canonical types
 def convert_to_canonical_operations(mutator: Mutator):
     """
     Transforms Sub-Add to Add-Add
@@ -342,12 +360,13 @@ def fold_literals(mutator: Mutator):
         )
 
 
+# TODO move into fold_alias
 def remove_obvious_tautologies(mutator: Mutator):
     """
     Remove tautologies like:
-     - A == A
-     - A == B | A or B unconstrained
-     - Lit1 == Lit2 | Lit1 and Lit2 are equal literals
+     - A is A
+     - A is B | A or B unconstrained
+     - Lit1 is Lit2 | Lit1 and Lit2 are equal literals
     """
 
     def remove_is(pred_is: Is):
@@ -390,7 +409,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     """
     If any operand in an expression has a subset literal, we can add a subset to the expr
 
-    A + B | A alias B ; never happens
+    A + B | A alias B ; never happens (after eq classes)
     A + B | B alias [1,5] -> (A + B) , (A + B) subset (A + [1,5])
     A + B | B subset [1,5] -> (A + B) , (A + B) subset (A + [1,5])
     A / B | B alias [1,5] -> (A / B) , (A / B) subset (A / [1,5])

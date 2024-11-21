@@ -27,9 +27,11 @@ from faebryk.core.parameter import (
     Union,
 )
 from faebryk.core.solver.utils import (
+    ContradictionByLiteral,
     Mutator,
 )
 from faebryk.libs.units import dimensionless
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +138,8 @@ def fold_multiply(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
+    # FIXME
+    return
     try:
         const_prod = [next(literal_operands)]
         for c in literal_operands:
@@ -183,6 +187,8 @@ def fold_and(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
+    # FIXME
+    return
     const_op_list = list(literal_operands)
     if any(not isinstance(o, bool) for o in const_op_list):
         raise ValueError("Or with non-boolean operands")
@@ -219,6 +225,8 @@ def fold_or(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
+    # FIXME
+    return
     const_op_list = list(literal_operands)
     if any(not isinstance(o, bool) for o in const_op_list):
         raise ValueError("Or with non-boolean operands")
@@ -266,8 +274,31 @@ def fold_alias(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    # TODO implement
-    pass
+    # literal only
+    if len(literal_operands) == 2:
+        if literal_operands[0] == literal_operands[1]:
+            # TODO
+            pass
+        else:
+            raise ContradictionByLiteral(
+                f"{literal_operands[0]} != {literal_operands[1]}"
+            )
+
+    try:
+        as_lits = [ParameterOperatable.try_extract_literal(o) for o in expr.operands]
+    except KeyErrorAmbiguous as e:
+        raise ContradictionByLiteral(
+            f"Duplicate unequal is literals: {e.duplicates}"
+        ) from e
+
+    if None in as_lits:
+        return
+
+    if as_lits[0] == as_lits[1]:
+        # TODO
+        expr.alias_is(True)
+    else:
+        raise ContradictionByLiteral(f"{as_lits[0]} != {as_lits[1]}")
 
 
 def fold_ge(
@@ -337,10 +368,6 @@ def fold(
         # Subtract non-canonical
         if isinstance(expr, Add):
             return fold_add  # type: ignore
-        # FIXME remove
-        elif True:
-            return lambda *args: None
-
         elif isinstance(expr, Multiply):
             return fold_multiply  # type: ignore
         # Divide non-canonical

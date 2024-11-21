@@ -28,6 +28,7 @@ from faebryk.core.solver.analytical import (
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
+    Contradiction,
     Mutator,
     Mutators,
     NumericLiteralR,
@@ -243,18 +244,40 @@ class DefaultSolver(Solver):
         minimize: Expression | None = None,
     ) -> Solver.SolveResultAny[ArgType]:
         if not predicates:
-            return Solver.SolveResultAny(
-                timed_out=False,
-                true_predicates=[],
-                false_predicates=[],
-                unknown_predicates=[],
-            )
+            raise ValueError("No predicates given")
 
-        # FIXME: implement
-        # raise NotImplementedError()
-        return Solver.SolveResultAny(
+        result = Solver.SolveResultAny(
             timed_out=False,
             true_predicates=[],
             false_predicates=[],
-            unknown_predicates=predicates,
+            unknown_predicates=[],
         )
+
+        it = iter(predicates)
+
+        for p in it:
+            pred, _ = p
+            assert not pred.constrained
+            pred.constrained = True
+            try:
+                repr_map = self.phase_one_no_guess_solving(pred.get_graph())
+                lit = repr_map.try_get_literal(pred)
+                if lit is True:
+                    result.true_predicates.append(p)
+                    break
+                elif lit is False:
+                    result.false_predicates.append(p)
+                elif lit is None:
+                    result.unknown_predicates.append(p)
+                else:
+                    assert False
+            except Contradiction:
+                result.false_predicates.append(p)
+            except TimeoutError:
+                result.unknown_predicates.append(p)
+            finally:
+                pred.constrained = False
+
+        result.unknown_predicates.extend(it)
+
+        return result

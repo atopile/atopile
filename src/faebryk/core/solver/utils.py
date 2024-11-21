@@ -513,20 +513,15 @@ class Mutator:
             if s in self.copied:
                 continue
 
-            if isinstance(d, Expression):
-                if isinstance(s, Expression):
-                    log(f"{s}[{s.operands}] -> {d}[{d.operands}")
-                else:
-                    log(f"{s} -> {d}[{d.operands}")
-            elif isinstance(d, Parameter) and isinstance(s, Parameter):
+            if isinstance(d, Parameter) and isinstance(s, Parameter):
                 log(
-                    f"{s}({s.units}, {s.domain}, {s.within}) -> {d}({d.units}, {d.domain}, {s.within})"
+                    f"{s!r}({s.units}, {s.domain}, {s.within}) -> {d!r}({d.units}, {d.domain}, {s.within})"
                 )
             else:
-                log(f"{s} -> {d}")
+                log(f"{s!r} -> {d!r}")
 
         for s in self.removed:
-            log(f"{s} -> removed")
+            log(f"{s!r} -> removed")
 
 
 class Mutators:

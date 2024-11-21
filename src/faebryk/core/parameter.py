@@ -414,17 +414,20 @@ class ParameterOperatable(Node):
             raise ParameterOperableHasNoLiteral(
                 self, f"Parameter {self} has no literal for op {op}"
             ) from e
+        except KeyErrorAmbiguous as e:
+            duplicates = e.duplicates
+            if issubclass(op, Is):
+                if len(set(duplicates)) != 1:
+                    raise
+                return duplicates[0]
+            elif issubclass(op, IsSubset):
+                return Quantity_Interval_Disjoint.intersect_all(*duplicates)
+            else:
+                raise
         return literal_is
 
     def try_get_literal_subset(self) -> Literal | None:
-        out = self.try_get_literal()
-        if out is not None:
-            return out
-        try:
-            return self.try_get_literal(IsSubset)
-        except KeyErrorAmbiguous as e:
-            duplicates = e.duplicates
-            return Quantity_Interval_Disjoint.intersect_all(*duplicates)
+        return self.try_get_literal_for_multiple_ops([Is, IsSubset])
 
     def try_get_literal(self, op: type["Expression"] | None = None) -> Literal | None:
         try:
@@ -442,11 +445,13 @@ class ParameterOperatable(Node):
         return None
 
     @staticmethod
-    def try_extract_literal(po: "ParameterOperatable.All") -> Literal | None:
+    def try_extract_literal(
+        po: "ParameterOperatable.All", op: type["Expression"] | None = None
+    ) -> Literal | None:
         if ParameterOperatable.is_literal(po):
             return po
         assert isinstance(po, ParameterOperatable)
-        return po.try_get_literal()
+        return po.try_get_literal(op)
 
     # type checks
 

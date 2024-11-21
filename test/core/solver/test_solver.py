@@ -12,6 +12,7 @@ from faebryk.core.parameter import (
     Add,
     And,
     Arithmetic,
+    Is,
     IsSubset,
     Multiply,
     Parameter,
@@ -19,7 +20,7 @@ from faebryk.core.parameter import (
     Subtract,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.utils import Contradiction
+from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps
 from faebryk.libs.sets.quantity_sets import (
@@ -185,6 +186,38 @@ def test_symmetric_inequality_uncorrelated():
         solver.phase_one_no_guess_solving(G)
 
 
+def test_obvious_contradiction_by_literal():
+    p0 = Parameter(units=P.V)
+    p1 = Parameter(units=P.V)
+
+    p0.alias_is(Range(0 * P.V, 10 * P.V))
+    p1.alias_is(Range(5 * P.V, 10 * P.V))
+
+    p0.alias_is(p1)
+
+    G = p0.get_graph()
+    solver = DefaultSolver()
+    with pytest.raises(ContradictionByLiteral):
+        solver.phase_one_no_guess_solving(G)
+
+
+def test_less_obvious_contradiction_by_literal():
+    A = Parameter(units=P.V)
+    B = Parameter(units=P.V)
+    C = Parameter(units=P.V)
+
+    A.alias_is(Range(0 * P.V, 10 * P.V))
+
+    C.alias_is(A + B)
+    B.alias_is(Range(5 * P.V, 10 * P.V))
+    C.alias_is(Range(0 * P.V, 15 * P.V))
+
+    G = A.get_graph()
+    solver = DefaultSolver()
+    with pytest.raises(ContradictionByLiteral):
+        solver.phase_one_no_guess_solving(G)
+
+
 def test_symmetric_inequality_correlated():
     p0 = Parameter(units=P.V)
     p1 = Parameter(units=P.V)
@@ -309,10 +342,22 @@ def test_literal_folding_add_multiplicative_2():
     }
 
 
+def test_assert_any_predicate_super_basic():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(Range(0 * P.V, 10 * P.V))
+
+    solver = DefaultSolver()
+    pred = Is(p0, Range(0 * P.V, 10 * P.V))
+    result = solver.assert_any_predicate([(pred, None)], lock=False)
+    assert result.true_predicates == [(pred, None)]
+    assert result.false_predicates == []
+    assert result.unknown_predicates == []
+
+
 if __name__ == "__main__":
     import typer
 
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(lambda: test_simple_literal_folds_arithmetic(Add, (5, 10), 15))
+    typer.run(test_assert_any_predicate_super_basic)
