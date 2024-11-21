@@ -17,19 +17,15 @@ class AddrStr(str):
     Represents address strings
     """
 
-    def _split(self) -> tuple[Path, str]:
-        path, module = self.rsplit(":", 1)
-        return Path(path), module
-
     @property
     def file_path(self) -> Path:
-        path, _ = self._split()
-        return path
+        return Path(get_file(self))
 
     @property
-    def module_path(self) -> str:
-        _, module = self._split()
-        return module
+    def entry_section(self) -> str:
+        if entry_section := get_entry_section(self):
+            return entry_section
+        raise AddressError("No entry section in address")
 
 
 class AddressError(ValueError):
@@ -94,7 +90,7 @@ def get_relative_addr_str(address: AddrStr, base_path: PathLike) -> AddrStr:
     )
 
 
-def get_entry(address: AddrStr) -> AddrStr:
+def get_entry(address: AddrStr) -> str:
     """
     Extract the root path from an address.
     """

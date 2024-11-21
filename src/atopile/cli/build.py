@@ -123,10 +123,10 @@ def _do_python_build(build_ctx: BuildContext) -> None:
         ) from e
 
     try:
-        app_class = getattr(build_module, build_ctx.entry.module_path)
+        app_class = getattr(build_module, build_ctx.entry.entry_section)
     except AttributeError as e:
         raise errors.AtoPythonLoadError(
-            f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.module_path}"
+            f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.entry_section}"
         ) from e
 
     app = app_class()
@@ -157,9 +157,8 @@ def _do_python_build(build_ctx: BuildContext) -> None:
         apply_design(
             build_ctx.layout_path, build_ctx.netlist_path, G, app, transform=None
         )
-
     except Exception as e:
-        raise errors.AtoError(f"Error building {build_ctx.name}: {e}") from e
+        raise errors.AtoError(f"Error building {build_ctx.name}") from e
 
     if build_ctx.export_manufacturing_artifacts:
         export_pcba_artifacts(build_ctx.output_base, build_ctx.layout_path, app)
