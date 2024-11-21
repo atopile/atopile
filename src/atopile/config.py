@@ -287,10 +287,12 @@ def match_user_layout(path: Path) -> bool:
     return True
 
 
-def find_layout(layout_base: Path) -> Optional[Path]:
+def find_layout(layout_base: Path) -> Path:
     """Return the layout associated with a build."""
+
     if layout_base.with_suffix(".kicad_pcb").exists():
         return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
+
     elif layout_base.is_dir():
         layout_candidates = list(
             filter(match_user_layout, layout_base.glob("*.kicad_pcb"))
@@ -304,6 +306,11 @@ def find_layout(layout_base: Path) -> Optional[Path]:
                 "Layout directories must contain only 1 layout,"
                 f" but {len(layout_candidates)} found in {layout_base}"
             )
+
+    else:
+        raise atopile.errors.AtoFileNotFoundError(
+            f"Layout file not found in {layout_base}"
+        )
 
 
 class BuildType(Enum):
@@ -325,7 +332,7 @@ class BuildContext:
     fail_on_drcs: bool
     dont_solve_equations: bool
 
-    layout_path: Optional[Path]  # eg. path/to/project/layouts/default/default.kicad_pcb
+    layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
     lock_file_path: Optional[Path]  # eg. path/to/project/ato-lock.yaml
     build_path: Path  # eg. path/to/project/build/<build-name>
 
