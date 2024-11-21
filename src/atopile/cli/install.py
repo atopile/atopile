@@ -17,7 +17,6 @@ import requests
 import ruamel.yaml
 import typer
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-import typer
 
 import atopile.config
 from atopile import errors, version
