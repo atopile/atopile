@@ -178,6 +178,7 @@ class DefaultSolver(Solver):
                 mutators = Mutators(*graphs)
                 mutators.run(algo)
                 algo_repr_map, algo_graphs, algo_dirty = mutators.close()
+                algos_dirty[(iterno, algo_name)] = algo_dirty
                 if not algo_dirty:
                     continue
                 graphs = algo_graphs
