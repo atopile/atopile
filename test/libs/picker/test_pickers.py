@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from tempfile import mkdtemp
 
+import pytest
+
 import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
@@ -478,6 +480,7 @@ def is_db_available():
     return JLCPCB_DB.config.db_path.exists()
 
 
+@pytest.mark.slow
 @unittest.skipIf(not is_db_available(), reason="Requires large db")
 class TestPickerJlcpcb(TestPickerBase):
     def add_pickers(self, module):
@@ -488,6 +491,7 @@ class TestPickerJlcpcb(TestPickerBase):
         JLCPCB_DB.get().close()
 
 
+@pytest.mark.slow
 @unittest.skipIf(not is_db_available(), reason="Requires large db")
 class TestPickerPerformanceJlcpcb(TestPickerPerformanceBase):
     def add_pickers(self, module):
