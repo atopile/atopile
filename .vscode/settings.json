@@ -4,7 +4,8 @@
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "python.testing.pytestArgs": [
-        "tests",
+        "test",
+        "tests"
     ],
     "python.testing.cwd": "${workspaceFolder}",
     "[typescript]": {
