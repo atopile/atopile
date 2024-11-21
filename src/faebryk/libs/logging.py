@@ -15,7 +15,7 @@ class NodeHighlighter(RegexHighlighter):
     """
     Apply style to anything that looks like an faebryk Node\n
     <*|XOR_with_NANDS.nands[2]|NAND.inputs[0]|Logic> with
-      <*|TI_CD4011BE.nands[2]|ElectricNAND.inputs[0]|ElectricLogic>\n
+    <*|TI_CD4011BE.nands[2]|ElectricNAND.inputs[0]|ElectricLogic>\n
     \t<> = Node\n
     \t|  = Type\n
     \t.  = Parent\n
@@ -43,6 +43,7 @@ theme = Theme(
         "node.Root": "bold yellow",
         "node.Number": "bright_green",
         #   "node.Rest": "bright_black",
+        "logging.level.warning": "yellow",
     }
 )
 
