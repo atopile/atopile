@@ -89,15 +89,17 @@ def do_prebuild(build_ctx: BuildContext) -> None:
             )
 
 
-def import_from_path(module_name, file_path):
+def import_from_path(file_path):
     # setting to a sequence (and not None) indicates that the module is a package, which lets us use relative imports for submodules
     submodule_search_locations = []
+
+    module_name = "abc"
 
     spec = importlib.util.spec_from_file_location(
         module_name, file_path, submodule_search_locations=submodule_search_locations
     )
     if spec is None:
-        raise RuntimeError(f"Failed to load module {module_name} from {file_path}")
+        raise RuntimeError(f"Failed to load {file_path}")
 
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
@@ -111,10 +113,8 @@ def import_from_path(module_name, file_path):
 def _do_python_build(build_ctx: BuildContext) -> None:
     """Execute a specific .py build."""
 
-    sys.path.insert(0, str(build_ctx.entry.file_path.parent.absolute()))
-
     try:
-        build_module = import_from_path(build_ctx.name, build_ctx.entry.file_path)
+        build_module = import_from_path(build_ctx.entry.file_path)
     except ImportError as e:
         raise ValueError(
             f"Cannot import build entry {build_ctx.entry.file_path}"
