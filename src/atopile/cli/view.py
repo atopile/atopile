@@ -10,7 +10,6 @@ from typing import Annotated
 import typer
 
 from atopile import errors
-from atopile.cli.common import create_build_contexts
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -29,6 +28,4 @@ def view(
     """
     View a block diagram or schematic of your project.
     """
-    build_ctxs = create_build_contexts(entry, build, target, option)
-
     raise errors.AtoNotImplementedError("View is not yet implemented.")

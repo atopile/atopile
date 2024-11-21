@@ -15,8 +15,8 @@ from urllib.parse import urlparse
 
 import requests
 import ruamel.yaml
-from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 import typer
+from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 import atopile.config
 from atopile import errors, version
@@ -170,9 +170,7 @@ def install_project_dependencies(
                 dependency.path = abs_path.relative_to(ctx.project_path)
 
                 try:
-                    installed_version = install_dependency(
-                        dependency, upgrade, abs_path
-                    )
+                    install_dependency(dependency, upgrade, abs_path)
                 except GitCommandError as ex:
                     if "already exists and is not an empty directory" in ex.stderr:
                         # FIXME: shouldn't `--upgrade` do this already?

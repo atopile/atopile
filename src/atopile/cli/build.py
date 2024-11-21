@@ -67,7 +67,7 @@ def build(
 
 
 def do_prebuild(build_ctx: BuildContext) -> None:
-    with ExceptionAccumulator() as accumulator:
+    with ExceptionAccumulator() as _:
         if not build_ctx.dont_solve_equations:
             raise errors.AtoNotImplementedError(
                 "Equation solving is not implemented yet"

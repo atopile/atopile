@@ -11,7 +11,6 @@ import typer
 
 from atopile import errors
 from atopile.address import AddrStr
-from atopile.cli.common import create_build_contexts
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -64,6 +63,4 @@ def inspect(
     The context sets the boundary where something is considered connected.
     For example: `--inspect rp2040_micro --context rp2040_micro_ki`
     """
-    build_ctxs = create_build_contexts(entry, build, target, option)
-
     raise errors.AtoNotImplementedError("Inspect is not yet implemented.")
