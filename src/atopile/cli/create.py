@@ -6,8 +6,9 @@ import sys
 import tempfile
 import textwrap
 import webbrowser
+from enum import Enum
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Annotated, Iterator
 
 import caseconverter
 import click
@@ -15,6 +16,7 @@ import git
 import jinja2
 import rich
 import ruamel.yaml
+import typer
 
 from atopile import config, errors
 from atopile.cli.install import do_install
@@ -26,6 +28,8 @@ log.setLevel(logging.INFO)
 
 
 PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
+
+dev_app = typer.Typer()
 
 
 def check_name(name: str) -> bool:
@@ -58,11 +62,6 @@ def _stuck_user_helper() -> Iterator[bool]:
 stuck_user_helper_generator = _stuck_user_helper()
 
 
-@click.group()
-def dev():
-    pass
-
-
 def _in_git_repo(path: Path) -> bool:
     """Check if the current directory is in a git repo."""
     try:
@@ -72,21 +71,24 @@ def _in_git_repo(path: Path) -> bool:
     return True
 
 
-@dev.command()
-@click.argument("name", required=False)
-@click.option("-r", "--repo", default=None)
+class ProjectType(str, Enum):
+    project = "project"
+    build = "build"
+
+
+@dev_app.command()
 def create(
-    name: Optional[str],
-    repo: Optional[str],
+    name: Annotated[str | None, typer.Argument()] = None,
+    repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
+    project_type: Annotated[
+        ProjectType | None,
+        typer.Option("--type", "-t", prompt="What do you want to create"),
+    ] = None,
 ):  # pylint: disable=redefined-builtin
     """
     Create a new ato project or build configuration.
     """
-    type = rich.prompt.Prompt.ask(
-        "What do you want to create", choices=["project", "build"]
-    )
-
-    if type == "build":
+    if project_type == ProjectType.build:
         create_build()
         return
 
@@ -306,9 +308,7 @@ def create_build():
         )
 
 
-@dev.command()
-@click.argument("name")
-@click.argument("repo_path")
+@dev_app.command()
 def configure(name: str, repo_path: str):
     """Command useful in developing templates."""
     do_configure(name, repo_path, debug=True)
@@ -357,4 +357,4 @@ def do_configure(name: str, _repo_path: str, debug: bool):
 
 
 if __name__ == "__main__":
-    dev()  # pylint: disable=no-value-for-parameter
+    dev_app()  # pylint: disable=no-value-for-parameter

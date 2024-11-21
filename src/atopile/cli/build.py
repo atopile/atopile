@@ -4,36 +4,38 @@ import itertools
 import json
 import logging
 import shutil
-from typing import Callable, Optional
+from typing import Annotated, Callable, Optional
 
-import click
+import typer
 
-import atopile.assertions
-import atopile.bom
 import atopile.config
-import atopile.front_end
-import atopile.layout
-import atopile.manufacturing_data
-import atopile.netlist
-import atopile.variable_report
-from atopile.cli.common import project_options
-from atopile.components import download_footprint
+from atopile import errors
+from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext
 from atopile.errors import ExceptionAccumulator
-from atopile.instance_methods import all_descendants, match_components
-from atopile.netlist import get_netlist_as_str
 
 log = logging.getLogger(__name__)
 
 
-@click.command()
-@project_options
-def build(build_ctxs: list[BuildContext]):
+@errors.muffle_fatalities()
+@errors.log_ato_errors()
+def build(
+    entry: Annotated[str | None, typer.Argument()] = None,
+    build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],
+    target: Annotated[
+        list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+    ] = [],
+    option: Annotated[
+        list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
+    ] = [],
+):
     """
     Build the specified --target(s) or the targets specified by the build config.
-    Specify the root source file with the argument SOURCE.
+    Optionally specify a different entrypoint with the argument ENTRY.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
+    build_ctxs = create_build_contexts(entry, build, target, option)
+
     with ExceptionAccumulator() as accumulator:
         for build_ctx in build_ctxs:
             log.info("Building %s", build_ctx.name)
@@ -65,13 +67,11 @@ def build(build_ctxs: list[BuildContext]):
 
 
 def do_prebuild(build_ctx: BuildContext) -> None:
-    with ExceptionAccumulator() as accumulator:
-        # Solve the unknown variables
+    with ExceptionAccumulator() as _:
         if not build_ctx.dont_solve_equations:
-            with accumulator.collect():
-                atopile.assertions.simplify_expressions(build_ctx.entry)
-                atopile.assertions.solve_assertions(build_ctx)
-                atopile.assertions.simplify_expressions(build_ctx.entry)
+            raise errors.AtoNotImplementedError(
+                "Equation solving is not implemented yet"
+            )
 
 
 def _do_build(build_ctx: BuildContext) -> None:
@@ -94,7 +94,7 @@ def _do_build(build_ctx: BuildContext) -> None:
         # Remove targets we don't know about, or are excluded
         excluded_targets = set(build_ctx.exclude_targets)
         known_targets = set(muster.targets.keys())
-        targets = set(targets) - excluded_targets & known_targets
+        targets = list(set(targets) - excluded_targets & known_targets)
 
         # Ensure the output directory exists
         build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
@@ -119,8 +119,8 @@ class Muster:
     """A class to register targets to."""
 
     def __init__(self, logger: Optional[logging.Logger] = None) -> None:
-        self.targets = {}
-        self.do_by_default = []
+        self.targets: dict[str, TargetType] = {}
+        self.do_by_default: list[str] = []
         self.log = logger or logging.getLogger(__name__)
 
     def add_target(
@@ -187,61 +187,60 @@ def consolidate_3dmodels(build_args: BuildContext) -> None:
 @muster.register("netlist")
 def generate_netlist(build_args: BuildContext) -> None:
     """Generate a netlist for the project."""
-    with open(build_args.output_base.with_suffix(".net"), "w", encoding="utf-8") as f:
-        f.write(get_netlist_as_str(build_args.entry))
+    raise errors.AtoNotImplementedError("Netlist generation is not implemented yet")
 
 
 @muster.register("bom")
 def generate_bom(build_args: BuildContext) -> None:
     """Generate a BOM for the project."""
-    with open(build_args.output_base.with_suffix(".csv"), "w", encoding="utf-8") as f:
-        f.write(atopile.bom.generate_bom(build_args.entry))
+    raise errors.AtoNotImplementedError("BOM generation is not implemented yet")
 
 
 @muster.register("designator-map")
 def generate_designator_map(build_args: BuildContext) -> None:
     """Generate a designator map for the project."""
-    atopile.bom.generate_designator_map(build_args.entry)
+    raise errors.AtoNotImplementedError(
+        "Designator map generation is not implemented yet"
+    )
 
 
 @muster.register("mfg-data", default=False)
 def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     """Generate a designator map for the project."""
-    atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
+    raise errors.AtoNotImplementedError(
+        "Manufacturing data generation is not implemented yet"
+    )
 
 
 @muster.register("drc", default=False)
 def generate_drc_report(build_ctx: BuildContext) -> None:
     """Generate a designator map for the project."""
-    atopile.manufacturing_data.generate_drc_report(build_ctx)
+    raise errors.AtoNotImplementedError("DRC report generation is not implemented yet")
 
 
 @muster.register("clone-footprints")
 def clone_footprints(build_args: BuildContext) -> None:
     """Clone the footprints for the project."""
-    all_components = filter(match_components, all_descendants(build_args.entry))
-
-    for component in all_components:
-        log.debug("Cloning footprint for %s", component)
-        download_footprint(
-            component,
-            footprint_dir=build_args.build_path / "footprints/footprints.pretty",
-        )
+    raise errors.AtoNotImplementedError("Footprint cloning is not implemented yet")
 
 
 @muster.register("layout-module-map")
 def generate_module_map(build_args: BuildContext) -> None:
     """Generate a designator map for the project."""
-    atopile.layout.generate_module_map(build_args)
+    raise errors.AtoNotImplementedError("Module map generation is not implemented yet")
 
 
 @muster.register("assertions-report")
 def generate_assertion_report(build_ctx: BuildContext) -> None:
     """Generate a report based on assertions made in the source code."""
-    atopile.assertions.generate_assertion_report(build_ctx)
+    raise errors.AtoNotImplementedError(
+        "Assertion report generation is not implemented yet"
+    )
 
 
 @muster.register("variable-report")
 def generate_variable_report(build_ctx: BuildContext) -> None:
     """Generate a report of all the variable values in the design."""
-    atopile.variable_report.generate(build_ctx)
+    raise errors.AtoNotImplementedError(
+        "Variable report generation is not implemented yet"
+    )
