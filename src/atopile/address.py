@@ -17,6 +17,20 @@ class AddrStr(str):
     Represents address strings
     """
 
+    def _split(self) -> tuple[Path, str]:
+        path, module = self.rsplit(":", 1)
+        return Path(path), module
+
+    @property
+    def file_path(self) -> Path:
+        path, _ = self._split()
+        return path
+
+    @property
+    def module_path(self) -> str:
+        _, module = self._split()
+        return module
+
 
 class AddressError(ValueError):
     """

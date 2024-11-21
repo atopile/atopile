@@ -1,9 +1,11 @@
 """CLI command definition for `ato build`."""
 
+import importlib.util
 import itertools
 import json
 import logging
 import shutil
+import sys
 from typing import Annotated, Callable, Optional
 
 import typer
@@ -13,6 +15,15 @@ from atopile import errors
 from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext, BuildType
 from atopile.errors import ExceptionAccumulator
+from faebryk.core.module import Module
+from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
+from faebryk.exporters.pcb.kicad.artifacts import export_svg
+from faebryk.libs.app.checks import run_checks
+from faebryk.libs.app.manufacturing import export_pcba_artifacts
+from faebryk.libs.app.parameters import replace_tbd_with_any
+from faebryk.libs.app.pcb import apply_design
+from faebryk.libs.picker.api.pickers import add_api_pickers
+from faebryk.libs.picker.picker import pick_part_recursively
 
 log = logging.getLogger(__name__)
 
@@ -78,9 +89,77 @@ def do_prebuild(build_ctx: BuildContext) -> None:
             )
 
 
+def import_from_path(module_name, file_path):
+    # setting to a sequence (and not None) indicates that the module is a package, which lets us use relative imports for submodules
+    submodule_search_locations = []
+
+    spec = importlib.util.spec_from_file_location(
+        module_name, file_path, submodule_search_locations=submodule_search_locations
+    )
+    if spec is None:
+        raise RuntimeError(f"Failed to load module {module_name} from {file_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+
+    assert spec.loader is not None
+
+    spec.loader.exec_module(module)
+    return module
+
+
 def _do_python_build(build_ctx: BuildContext) -> None:
     """Execute a specific .py build."""
-    raise errors.AtoNotImplementedError("Python builds are not implemented yet")
+
+    sys.path.insert(0, str(build_ctx.entry.file_path.parent.absolute()))
+
+    try:
+        build_module = import_from_path(build_ctx.name, build_ctx.entry.file_path)
+    except ImportError as e:
+        raise ValueError(
+            f"Cannot import build entry {build_ctx.entry.file_path}"
+        ) from e
+
+    try:
+        app_class = getattr(build_module, build_ctx.entry.module_path)
+    except AttributeError as e:
+        raise ValueError(
+            f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.module_path}"
+        ) from e
+
+    app = app_class()
+
+    # TODO: add a mechanism to override the following with custom build machinery
+
+    log.info("Filling unspecified parameters")
+    replace_tbd_with_any(app, recursive=True)
+
+    log.info("Picking parts")
+    modules = {
+        n.get_most_special() for n in app.get_children(direct_only=False, types=Module)
+    }
+    for n in modules:
+        # TODO: make configurable
+        add_api_pickers(n, base_prio=10)
+    pick_part_recursively(app)
+
+    log.info("Make graph")
+    G = app.get_graph()
+
+    log.info("Running checks")
+    run_checks(app, G)
+
+    log.info("Make netlist & pcb")
+    apply_design(build_ctx.layout_path, build_ctx.netlist_path, G, app, transform=None)
+
+    if build_ctx.export_manufacturing_artifacts:
+        export_pcba_artifacts(build_ctx.output_base, build_ctx.layout_path, app)
+
+    if build_ctx.export_visuals:
+        export_svg(build_ctx.layout_path, build_ctx.visuals_path)
+
+    if build_ctx.export_parameters:
+        export_parameters_to_file(app, build_ctx.parameters_path)
 
 
 def _do_ato_build(build_ctx: BuildContext) -> None:
