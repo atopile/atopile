@@ -9,10 +9,11 @@ from pathlib import Path
 from textwrap import dedent
 
 import typer
-from more_itertools import partition
+from natsort import natsorted
 
-from faebryk.libs.picker.jlcpcb.jlcpcb import Component
-from faebryk.libs.picker.jlcpcb.picker_lib import (
+from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.picker.api.api import Component
+from faebryk.libs.picker.api.picker_lib import (
     find_component_by_lcsc_id,
     find_component_by_mfr,
 )
@@ -25,7 +26,7 @@ from faebryk.libs.pycodegen import (
     sanitize_name,
 )
 from faebryk.libs.tools.typer import typer_callback
-from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, find
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, find, groupby
 
 # TODO use AST instead of string
 
@@ -66,6 +67,7 @@ def main(ctx: typer.Context, name: str, local: bool = True, overwrite: bool = Fa
     Or python -m faebryk.tools.libadd
     For help invoke command without arguments.
     """
+    setup_basic_logging()
 
     if not local:
         import faebryk.library._F as F
@@ -180,52 +182,69 @@ def module(
         docstring = f"{docstring}\n\n{partdoc}"
 
         # pins --------------------------------
-        pins, noname = (
-            list(x)
-            for x in partition(
-                lambda x: re.match(r"^[0-9]+$", x[1]),
-                (
-                    (pin.settings.spice_pin_number, pin.name.text)
-                    for unit in easyeda_symbol.units
-                    for pin in unit.pins
-                ),
-            )
-        )
+        no_name: list[str] = []
+        no_connection: list[str] = []
+        interface_names_by_pin_num: dict[str, str] = {}
 
-        pins = sorted(pins, key=lambda x: x[0])
-
-        assert all(k == v for k, v in noname)
-        noname = [k for k, v in sorted(noname, key=lambda x: int(x[0]))]
-        noname_mapping = {pin_num: i for i, pin_num in enumerate(noname)}
-
-        interface_names_by_pin_name = {
-            pin_name: sanitize_name(pin_name) for _, pin_name in pins
-        }
+        for unit in easyeda_symbol.units:
+            for pin in unit.pins:
+                pin_num = pin.settings.spice_pin_number
+                pin_name = pin.name.text
+                if re.match(r"^[0-9]+$", pin_name):
+                    no_name.append(pin_num)
+                elif pin_name in ["NC", "nc"]:
+                    no_connection.append(pin_num)
+                else:
+                    pyname = sanitize_name(pin_name)
+                    interface_names_by_pin_num[pin_num] = pyname
 
         nodes.append(
             "#TODO: Change auto-generated interface types to actual high level types"
         )
-        nodes += [
-            f"{pin_name}: F.Electrical"
-            for pin_name in set(interface_names_by_pin_name.values())
-        ]
-        if noname:
-            nodes.append(f"unnamed = L.list_field({len(noname)}, F.Electrical)")
 
-        traits.append(f"""
+        _interface_lines_by_min_pin_num = {}
+        for interface_name, _items in groupby(
+            interface_names_by_pin_num.items(), lambda x: x[1]
+        ).items():
+            pin_nums = [x[0] for x in _items]
+            line = f"{interface_name}: F.Electrical  # {"pin" if len(pin_nums) == 1 else "pins"}: {", ".join(pin_nums)}"
+            _interface_lines_by_min_pin_num[min(pin_nums)] = line
+        nodes.extend(
+            line
+            for _, line in natsorted(
+                _interface_lines_by_min_pin_num.items(), key=lambda x: x[0]
+            )
+        )
+
+        if no_name:
+            nodes.append(f"unnamed = L.list_field({len(no_name)}, F.Electrical)")
+        if no_connection:
+            nodes.append(
+                f"no_connection = L.list_field({len(no_connection)}, F.Electrical)"
+            )
+
+        pin_lines = (
+            [
+                f'"{pin_num}": self.{interface_name},'
+                for pin_num, interface_name in interface_names_by_pin_num.items()
+            ]
+            + [
+                f'"{pin_num}": self.no_connection[{i}],'
+                for i, pin_num in enumerate(no_connection)
+            ]
+            + [f'"{pin_num}": self.unnamed[{i}],' for i, pin_num in enumerate(no_name)]
+        )
+        traits.append(
+            fix_indent(f"""
             @L.rt_field
             def attach_via_pinmap(self):
                 return F.can_attach_to_footprint_via_pinmap(
                     {{
-                        {", ".join([f"'{pin_number}': {f'self.{interface_names_by_pin_name[pin_name]}'}"
-                                    for pin_number, pin_name in sorted(pins)]
-                                    + [
-                                        f"'{pin_num}': self.unnamed[{i}]"
-                                        for pin_num, i in noname_mapping.items()
-                                    ])}
+                        {gen_repeated_block(natsorted(pin_lines))}
                     }}
                 )
         """)
+        )
 
     out = fix_indent(f"""
         # This file is part of the faebryk project
