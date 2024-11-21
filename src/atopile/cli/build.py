@@ -101,7 +101,7 @@ def import_from_path(file_path):
         module_name, file_path, submodule_search_locations=submodule_search_locations
     )
     if spec is None:
-        raise RuntimeError(f"Failed to load {file_path}")
+        raise errors.AtoPythonLoadError(f"Failed to load {file_path}")
 
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
