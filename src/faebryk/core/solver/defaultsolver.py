@@ -32,7 +32,6 @@ from faebryk.core.solver.utils import (
     Mutator,
     Mutators,
     NumericLiteralR,
-    debug_print,
     get_graphs,
     literal_to_base_units,
 )
@@ -186,7 +185,8 @@ class DefaultSolver(Solver):
                 logger.info(
                     f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
                 )
-                debug_print(algo_repr_map)
+                for mutator in mutators:
+                    mutator.debug_print()
                 # TODO assert all new graphs
 
             algo_dirty = any(algos_dirty.values())

@@ -205,23 +205,6 @@ def parameter_dependency_classes(G: Graph) -> list[set[Parameter]]:
     return related.get()
 
 
-def debug_print(repr_map: dict[ParameterOperatable, ParameterOperatable]):
-    import sys
-
-    if getattr(sys, "gettrace", lambda: None)():
-        log = print
-    else:
-        log = logger.info
-    for s, d in repr_map.items():
-        if isinstance(d, Expression):
-            if isinstance(s, Expression):
-                log(f"{s}[{s.operands}] -> {d}[{d.operands}")
-            else:
-                log(f"{s} -> {d}[{d.operands}")
-        else:
-            log(f"{s} -> {d}")
-
-
 def get_params_for_expr(expr: Expression) -> set[Parameter]:
     param_ops = {op for op in expr.operatable_operands if isinstance(op, Parameter)}
     expr_ops = {op for op in expr.operatable_operands if isinstance(op, Expression)}
@@ -338,6 +321,7 @@ class Mutator:
         self.G = G
         self.repr_map = repr_map or {}
         self.removed = set()
+        self.copied = set()
 
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
         return po in self.repr_map
@@ -444,6 +428,9 @@ class Mutator:
         if self.has_been_mutated(obj):
             return self.get_mutated(obj)
 
+        # purely for debug
+        self.copied.add(obj)
+
         if isinstance(obj, Expression):
             return self.mutate_expression(obj)
         elif isinstance(obj, Parameter):
@@ -497,6 +484,33 @@ class Mutator:
             }, False
         self.copy_unmutated()
         return self.repr_map, True
+
+    def debug_print(self):
+        import sys
+
+        if getattr(sys, "gettrace", lambda: None)():
+            log = print
+        else:
+            log = logger.info
+
+        for s, d in self.repr_map.items():
+            if s in self.copied:
+                continue
+
+            if isinstance(d, Expression):
+                if isinstance(s, Expression):
+                    log(f"{s}[{s.operands}] -> {d}[{d.operands}")
+                else:
+                    log(f"{s} -> {d}[{d.operands}")
+            elif isinstance(d, Parameter) and isinstance(s, Parameter):
+                log(
+                    f"{s}({s.units}, {s.domain}, {s.within}) -> {d}({d.units}, {d.domain}, {s.within})"
+                )
+            else:
+                log(f"{s} -> {d}")
+
+        for s in self.removed:
+            log(f"{s} -> removed")
 
 
 class Mutators:

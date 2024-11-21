@@ -881,6 +881,10 @@ class Domain:
             return shared
         return Domain.get_shared_domain(shared, *domains[2:])
 
+    def __repr__(self):
+        # TODO make more informative
+        return f"{type(self).__name__}()"
+
 
 class Numbers(Domain):
     def __init__(
