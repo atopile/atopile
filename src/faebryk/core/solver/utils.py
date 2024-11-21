@@ -134,7 +134,7 @@ def flatten_associative[T: Associative](
 
 def parameter_ops_eq_classes(
     G: Graph,
-) -> dict[ParameterOperatable, set[ParameterOperatable.All]]:
+) -> list[set[ParameterOperatable.All]]:
     """
     Return for dict[key, set[parameter_operatable]]
     which maps from each obj to its alias/eq class
@@ -167,11 +167,11 @@ def parameter_ops_eq_classes(
                     full_eq.add_eq(p, q)
                     break
 
-    return full_eq.classes
+    return full_eq.get()
 
 
 def is_replacable(
-    repr_map: dict[ParameterOperatable, ParameterOperatable.All],
+    repr_map: "Mutator.REPR_MAP",
     to_replace: Expression,
     parent_expr: Expression,
 ) -> bool:
@@ -311,12 +311,12 @@ def merge_parameters(params: Iterable[Parameter]) -> Parameter:
 
 # TODO use Mutator everywhere instead of repr_maps
 class Mutator:
-    type REPR_MAP = dict[ParameterOperatable, ParameterOperatable.All]
+    type REPR_MAP = dict[ParameterOperatable, ParameterOperatable]
 
     def __init__(
         self,
         G: Graph,
-        repr_map: dict[ParameterOperatable, ParameterOperatable.All] | None = None,
+        repr_map: REPR_MAP | None = None,
     ) -> None:
         self.G = G
         self.repr_map = repr_map or {}
@@ -326,12 +326,10 @@ class Mutator:
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
         return po in self.repr_map
 
-    def get_mutated(self, po: ParameterOperatable) -> ParameterOperatable.All:
+    def get_mutated(self, po: ParameterOperatable) -> ParameterOperatable:
         return self.repr_map[po]
 
-    def _mutate[T: ParameterOperatable.All](
-        self, po: ParameterOperatable, new_po: T
-    ) -> T:
+    def _mutate[T: ParameterOperatable](self, po: ParameterOperatable, new_po: T) -> T:
         """
         Low-level mutation function, you are on your own.
         Consider using mutate_parameter or mutate_expression instead.
@@ -342,6 +340,13 @@ class Mutator:
 
         self.repr_map[po] = new_po
         return new_po
+
+    def _override_repr(self, po: ParameterOperatable, new_po: ParameterOperatable):
+        """
+        Do not use this if you don't understand the consequences.
+        Honestly I don't.
+        """
+        self.repr_map[po] = new_po
 
     def mutate_parameter(
         self,
@@ -425,6 +430,9 @@ class Mutator:
         )
 
     def get_copy(self, obj: ParameterOperatable.All) -> ParameterOperatable.All:
+        if not isinstance(obj, ParameterOperatable):
+            return obj
+
         if self.has_been_mutated(obj):
             return self.get_mutated(obj)
 
@@ -435,8 +443,8 @@ class Mutator:
             return self.mutate_expression(obj)
         elif isinstance(obj, Parameter):
             return self.mutate_parameter(obj)
-        else:
-            return obj
+
+        assert False
 
     # TODO remove
     @deprecated

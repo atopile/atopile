@@ -416,6 +416,13 @@ class ParameterOperatable(Node):
         except ParameterOperableHasNoLiteral:
             return None
 
+    @staticmethod
+    def try_extract_literal(po: "ParameterOperatable.All") -> Literal | None:
+        if ParameterOperatable.is_literal(po):
+            return po
+        assert isinstance(po, ParameterOperatable)
+        return po.try_get_literal()
+
     # type checks
 
     @staticmethod
@@ -522,6 +529,9 @@ class Expression(ParameterOperatable):
                     remaining.remove(r)
                     break
         return not remaining
+
+    def __repr__(self) -> str:
+        return f"{super().__repr__()}({self.operands})"
 
 
 @abstract

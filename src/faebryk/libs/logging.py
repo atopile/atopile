@@ -31,6 +31,7 @@ class NodeHighlighter(RegexHighlighter):
         r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",
         r"[?<=*.](?P<Root>(\*))",
         r"[?=\[](?P<Number>([0-9]+))[?=\]]",
+        r"(?P<Quantity>Quantity_Interval(_Disjoint)?\([^)]*\))",
     ]
 
 
@@ -43,6 +44,7 @@ theme = Theme(
         "node.Root": "bold yellow",
         "node.Number": "bright_green",
         #   "node.Rest": "bright_black",
+        "node.Quantity": "bright_yellow",
     }
 )
 

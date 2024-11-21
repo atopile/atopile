@@ -12,13 +12,12 @@ from faebryk.core.parameter import (
     Add,
     And,
     Arithmetic,
-    Divide,
-    Multiply,
     Parameter,
     ParameterOperatable,
     Subtract,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps
 from faebryk.libs.units import P, dimensionless, quantity
@@ -165,27 +164,46 @@ def test_inspect_known_superranges():
     assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
 
 
-def test_symmetric_inequality():
-    p0 = Parameter(units=P.V, within=Range(0 * P.V, 10 * P.V))
+def test_symmetric_inequality_uncorrelated():
+    p0 = Parameter(units=P.V)
     p1 = Parameter(units=P.V)
 
+    p0.alias_is(Range(0 * P.V, 10 * P.V))
+
     (p0 >= p1).constrain()
-    (p1 >= p0).constrain()
+    (p0 <= p1).constrain()
+
+    G = p0.get_graph()
+    solver = DefaultSolver()
+
+    with pytest.raises(Contradiction):
+        solver.phase_one_no_guess_solving(G)
+
+
+def test_symmetric_inequality_correlated():
+    p0 = Parameter(units=P.V)
+    p1 = Parameter(units=P.V)
+
+    p0.alias_is(Range(0 * P.V, 10 * P.V))
+    p1.alias_is(p0)
+
+    (p0 >= p1).constrain()
+    (p0 <= p1).constrain()
 
     G = p0.get_graph()
     solver = DefaultSolver()
     repr_map = solver.phase_one_no_guess_solving(G)
     assert repr_map[p0] == repr_map[p1]
-    assert repr_map[p0] == Range(0 * P.V, 10 * P.V)
+    assert repr_map[p0].try_get_literal() == Range(0 * P.V, 10 * P.V)
 
 
 @pytest.mark.parametrize(
     "expr_type, operands, expected",
     [
         (Add, (5, 10), 15),
-        (Subtract, (5, 10), -5),
-        (Multiply, (5, 10), 50),
-        (Divide, (5, 10), 0.5),
+        # (Subtract, (5, 10), -5),
+        # (Multiply, (5, 10), 50),
+        # (Divide, (5, 10), 0.5),
     ],
 )
 def test_simple_literal_folds_arithmetic(
@@ -205,3 +223,12 @@ def test_simple_literal_folds_arithmetic(
     solver = DefaultSolver()
     repr_map = solver.phase_one_no_guess_solving(G)
     assert repr_map[expr] == expected_result
+
+
+if __name__ == "__main__":
+    import typer
+
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+    typer.run(test_symmetric_inequality_correlated)

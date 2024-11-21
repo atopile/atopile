@@ -142,7 +142,7 @@ class DefaultSolver(Solver):
 
         pre_algorithms = [
             ("Constrain within and domain", constrain_within_and_domain),
-            # ("Strip units", strip_units),
+            ("Strip units", strip_units),
         ]
         iterative_algorithms = [
             ("Remove unconstrained", remove_unconstrained),

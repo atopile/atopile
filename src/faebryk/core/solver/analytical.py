@@ -43,7 +43,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
 from faebryk.libs.units import quantity
-from faebryk.libs.util import partition
+from faebryk.libs.util import not_none, partition
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +52,17 @@ def convert_inequality_to_subset(mutator: Mutator):
     """
     A >= 5 -> A in [5, inf)
     5 >= A -> A in (-inf, 5]
+
+    A >= [1, 10] -> A in [10, inf)
+    [1, 10] >= A -> A in (-inf, 1]
     """
 
     ge_exprs = {
         e
         for e in GraphFunctions(mutator.G).nodes_of_type(GreaterOrEqual)
         # Look for expressions with only one non-literal operand
-        if len(e.operatable_operands) == 1
+        if len(list(op for op in e.operands if isinstance(op, ParameterOperatable)))
+        == 1
     }
 
     for ge in ParameterOperatable.sort_by_depth(ge_exprs, ascending=True):
@@ -66,10 +70,12 @@ def convert_inequality_to_subset(mutator: Mutator):
 
         if is_left:
             param = ge.operands[0]
-            interval = Quantity_Interval(min=ge.operands[1])
+            lit = Quantity_Interval_Disjoint.from_value(ge.operands[1])
+            interval = Quantity_Interval(min=lit.max_elem())
         else:
             param = ge.operands[1]
-            interval = Quantity_Interval(max=ge.operands[0])
+            lit = Quantity_Interval_Disjoint.from_value(ge.operands[0])
+            interval = Quantity_Interval(max=lit.min_elem())
 
         mutator.mutate_expression(
             ge,
@@ -101,6 +107,9 @@ def resolve_alias_classes(mutator: Mutator):
     C alias D + E
     D + E < 5
     -> A,B,C => R, R alias D + E, R < 5
+
+    Careful: Aliases to literals will not be resolved due to loss
+    of correlation information
     ```
     """
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
@@ -110,7 +119,7 @@ def resolve_alias_classes(mutator: Mutator):
     p_eq_classes = parameter_ops_eq_classes(mutator.G)
 
     # Make new param repre for alias classes
-    for eq_class in p_eq_classes.values():
+    for eq_class in p_eq_classes:
         if len(eq_class) <= 1:
             continue
 
@@ -127,23 +136,24 @@ def resolve_alias_classes(mutator: Mutator):
         # TODO check domain for literals
         domain = Domain.get_shared_domain(*(p.domain for p in alias_class_p_ops))
 
-        # Merge param alias classes
-        if len(alias_class_params) > 0:
+        if alias_class_params:
+            # Merge param alias classes
             representative = merge_parameters(alias_class_params)
-
-            for p in alias_class_params:
-                mutator._mutate(p, representative)
-        # If not params in class, create a new param as representative for expressions
         else:
+            # If not params or lits in class, create a new param as representative
+            # for expressions
             representative = Parameter(domain=domain)
+
+        for p in alias_class_params:
+            mutator._mutate(p, representative)
 
         for e in alias_class_exprs:
             copy_expr = mutator.mutate_expression(e)
-            # TODO make sure this makes sense
-            mutator.repr_map[e] = representative
             copy_expr.alias_is(representative)
+            # DANGER!
+            mutator._override_repr(e, representative)
 
-    # remove eq_class Is
+    # remove eq_class Is (for non-literal alias classes)
     removed = {
         e
         for e in GraphFunctions(mutator.G).nodes_of_type(Is)
@@ -171,24 +181,30 @@ def merge_intersect_subsets(mutator: Mutator):
         constrained_subset_ops_with_literal = [
             e
             for e in param.get_operations(types=IsSubset)
-            if e.constrained and Parameter.is_literal(e.get_other_operand(param))
+            if e.constrained
+            and ParameterOperatable.try_extract_literal(e.get_other_operand(param))
+            is not None
         ]
         if len(constrained_subset_ops_with_literal) <= 1:
             continue
 
         literal_subsets = [
-            e.get_other_operand(param) for e in constrained_subset_ops_with_literal
+            not_none(
+                ParameterOperatable.try_extract_literal(e.get_other_operand(param))
+            )
+            for e in constrained_subset_ops_with_literal
         ]
         # intersect
-        intersected = Quantity_Interval_Disjoint.from_value(literal_subsets[0])
-        for s in literal_subsets[1:]:
-            intersected &= Quantity_Interval_Disjoint.from_value(s)
+        intersected = Quantity_Interval_Disjoint.intersect_all(*literal_subsets)
 
-        # TODO this should be somewhere else
+        # If not narrower than all operands, skip
+        if not all(intersected != lit for lit in literal_subsets):
+            continue
+
         # What we are doing here is mark this predicate as satisfied
         # because another predicate exists that will always imply this one
         for e in constrained_subset_ops_with_literal:
-            mutator._mutate(e, True)
+            mutator.mutate_expression(e).alias_is(True)
 
         mutator.mutate_parameter(param).constrain_subset(intersected)
 
@@ -320,7 +336,7 @@ def remove_obvious_tautologies(mutator: Mutator):
         if len(pred_is.get_operations()) == 0:
             mutator.remove(pred_is)
         else:
-            mutator._mutate(pred_is, True)
+            pred_is.alias_is(True)
 
     def known_unconstrained(po: ParameterOperatable) -> bool:
         no_other_constraints = (
@@ -344,18 +360,9 @@ def remove_obvious_tautologies(mutator: Mutator):
             # A == A
             # L1 == L2
             remove_is(pred_is)
-        elif (
-            isinstance(left, Parameter)
-            and known_unconstrained(left)
-            or isinstance(right, Parameter)
-            and known_unconstrained(right)
+        elif not (left_is_literal or right_is_literal) and (
+            (isinstance(left, Parameter) and known_unconstrained(left))
+            or (isinstance(right, Parameter) and known_unconstrained(right))
         ):
             # A == B | A or B unconstrained
             remove_is(pred_is)
-
-            # TODO remove hack
-            # This is here so superranges can see this literal
-            if left_is_literal:
-                mutator._mutate(right, left)
-            elif right_is_literal:
-                mutator._mutate(left, right)

@@ -516,6 +516,15 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return Quantity_Set_Discrete(quantity(other))
         raise ValueError(f"unsupported type: {type(other)}")
 
+    @staticmethod
+    def intersect_all(*obj: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        if not obj:
+            return Quantity_Set_Empty()
+        intersected = Quantity_Interval_Disjoint.from_value(obj[0])
+        for o in obj[1:]:
+            intersected = intersected & Quantity_Interval_Disjoint.from_value(o)
+        return intersected
+
     def __add__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self.op_add_intervals(Quantity_Interval_Disjoint.from_value(other))
 
