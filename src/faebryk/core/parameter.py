@@ -26,7 +26,13 @@ from faebryk.libs.units import (
     dimensionless,
     quantity,
 )
-from faebryk.libs.util import KeyErrorNotFound, abstract, cast_assert, find
+from faebryk.libs.util import (
+    KeyErrorAmbiguous,
+    KeyErrorNotFound,
+    abstract,
+    cast_assert,
+    find,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -410,11 +416,30 @@ class ParameterOperatable(Node):
             ) from e
         return literal_is
 
+    def try_get_literal_subset(self) -> Literal | None:
+        out = self.try_get_literal()
+        if out is not None:
+            return out
+        try:
+            return self.try_get_literal(IsSubset)
+        except KeyErrorAmbiguous as e:
+            duplicates = e.duplicates
+            return Quantity_Interval_Disjoint.intersect_all(*duplicates)
+
     def try_get_literal(self, op: type["Expression"] | None = None) -> Literal | None:
         try:
             return self.get_literal(op)
         except ParameterOperableHasNoLiteral:
             return None
+
+    def try_get_literal_for_multiple_ops(
+        self, ops: list[type["Expression"]]
+    ) -> Literal | None:
+        for op in ops:
+            lits = self.try_get_literal(op)
+            if lits is not None:
+                return lits
+        return None
 
     @staticmethod
     def try_extract_literal(po: "ParameterOperatable.All") -> Literal | None:
@@ -471,7 +496,10 @@ class Expression(ParameterOperatable):
         )
 
     def get_literal_operands(self) -> list[ParameterOperatable.Literal]:
-        return [o for o in self.operands if not isinstance(o, ParameterOperatable)]
+        # TODO not sure its a good idea to do this that recursive
+        if isinstance(self, Is):
+            return [o for o in self.operands if ParameterOperatable.is_literal(o)]
+        return [ParameterOperatable.try_extract_literal(o) for o in self.operands]
 
     def depth(self) -> int:
         """

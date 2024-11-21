@@ -77,11 +77,6 @@ def fold_add(
     A + (B * 2) -> A + (B * 2)
     A + (A * 2) + (A * 3) -> (6 * A)
     A + (A * 2) + ((A *2 ) * 3) -> (3 * A) + (3 * (A * 2))
-
-    #TODO
-    A + B | A alias B ; never happens
-    A + B | B alias [1,5] -> (A + B) , (A + B) subset (A + [1,5])
-    A + B | B subset [1,5] -> (A + B) , (A + B) subset (A + [1,5])
     """
 
     literal_sum = _fold_op(literal_operands, lambda a, b: a + b, 0 * expr.units)  # type: ignore #TODO
@@ -101,7 +96,7 @@ def fold_add(
             continue
         lit = next(o for o in mul.operands if ParameterOperatable.is_literal(o))
         paramop = next(o for o in mul.operands if not ParameterOperatable.is_literal(o))
-        factors[paramop] += lit
+        factors[paramop] += lit  # type: ignore #TODO
         mutator.remove(mul)
         del factors[mul]
 

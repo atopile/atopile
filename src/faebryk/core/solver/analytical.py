@@ -43,7 +43,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
 from faebryk.libs.units import quantity
-from faebryk.libs.util import not_none, partition
+from faebryk.libs.util import cast_assert, not_none, partition
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +125,23 @@ def resolve_alias_classes(mutator: Mutator):
 
         alias_class_p_ops = [p for p in eq_class if isinstance(p, ParameterOperatable)]
         alias_class_params = [p for p in alias_class_p_ops if isinstance(p, Parameter)]
+
+        if len(alias_class_p_ops) <= 1:
+            continue
+        if not alias_class_params:
+            continue
+
+        # Merge param alias classes
+        representative = merge_parameters(alias_class_params)
+
+        for p in alias_class_params:
+            mutator._mutate(p, representative)
+
+    for eq_class in p_eq_classes:
+        if len(eq_class) <= 1:
+            continue
+        alias_class_p_ops = [p for p in eq_class if isinstance(p, ParameterOperatable)]
+        alias_class_params = [p for p in alias_class_p_ops if isinstance(p, Parameter)]
         alias_class_exprs = [p for p in alias_class_p_ops if isinstance(p, Expression)]
 
         if len(alias_class_p_ops) <= 1:
@@ -137,15 +154,11 @@ def resolve_alias_classes(mutator: Mutator):
         domain = Domain.get_shared_domain(*(p.domain for p in alias_class_p_ops))
 
         if alias_class_params:
-            # Merge param alias classes
-            representative = merge_parameters(alias_class_params)
+            representative = mutator.get_mutated(alias_class_params[0])
         else:
             # If not params or lits in class, create a new param as representative
             # for expressions
             representative = Parameter(domain=domain)
-
-        for p in alias_class_params:
-            mutator._mutate(p, representative)
 
         for e in alias_class_exprs:
             copy_expr = mutator.mutate_expression(e)
@@ -174,39 +187,44 @@ def merge_intersect_subsets(mutator: Mutator):
     -> A subset (L1 & L2)
     """
 
-    params = GraphFunctions(mutator.G).nodes_of_type(Parameter)
+    params = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
 
-    for param in params:
+    for param in ParameterOperatable.sort_by_depth(params, ascending=True):
         # TODO we can also propagate is subset from other param: x sub y sub range
         constrained_subset_ops_with_literal = [
             e
             for e in param.get_operations(types=IsSubset)
             if e.constrained
-            and ParameterOperatable.try_extract_literal(e.get_other_operand(param))
-            is not None
+            and e.operands[0] is param
+            and ParameterOperatable.try_extract_literal(e.operands[1]) is not None
         ]
         if len(constrained_subset_ops_with_literal) <= 1:
             continue
 
         literal_subsets = [
-            not_none(
-                ParameterOperatable.try_extract_literal(e.get_other_operand(param))
-            )
+            not_none(ParameterOperatable.try_extract_literal(e.operands[1]))
             for e in constrained_subset_ops_with_literal
         ]
         # intersect
         intersected = Quantity_Interval_Disjoint.intersect_all(*literal_subsets)
 
         # If not narrower than all operands, skip
-        if not all(intersected != lit for lit in literal_subsets):
+        if not all(
+            intersected != e.operands[1] for e in constrained_subset_ops_with_literal
+        ):
             continue
 
         # What we are doing here is mark this predicate as satisfied
         # because another predicate exists that will always imply this one
         for e in constrained_subset_ops_with_literal:
+            # TODO remove e if possible
+            if e.try_get_literal() is True:
+                continue
             mutator.mutate_expression(e).alias_is(True)
 
-        mutator.mutate_parameter(param).constrain_subset(intersected)
+        cast_assert(ParameterOperatable, mutator.get_copy(param)).constrain_subset(
+            intersected
+        )
 
 
 def compress_associative(mutator: Mutator):
@@ -366,3 +384,44 @@ def remove_obvious_tautologies(mutator: Mutator):
         ):
             # A == B | A or B unconstrained
             remove_is(pred_is)
+
+
+def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
+    """
+    If any operand in an expression has a subset literal, we can add a subset to the expr
+
+    A + B | A alias B ; never happens
+    A + B | B alias [1,5] -> (A + B) , (A + B) subset (A + [1,5])
+    A + B | B subset [1,5] -> (A + B) , (A + B) subset (A + [1,5])
+    A / B | B alias [1,5] -> (A / B) , (A / B) subset (A / [1,5])
+    B / A | B alias [1,5] -> (B / A) , (B / A) subset ([1,5] / A)
+    A / B | B alias 0 -> (A / B), (A / B) subset (A / 0)
+    A / B | B alias [-1,1] -> (A / B), (A / B) subset (A / [-1,1])
+    """
+
+    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    for expr in exprs:
+        if isinstance(expr, Predicate):
+            continue
+        pre_is = expr.get_operations(Is)
+        pre_subset = expr.get_operations(IsSubset)
+
+        # TODO this is too strict
+        if pre_is or pre_subset:
+            continue
+
+        operands = []
+        for op in expr.operands:
+            if not isinstance(op, ParameterOperatable):
+                operands.append(op)
+                continue
+            subset_lits = op.try_get_literal_subset()
+            if subset_lits is None:
+                operands.append(op)
+                continue
+            operands.append(subset_lits)
+
+        # Make new expr with subset literals
+        new_expr = type(expr)(*[mutator.get_copy(operand) for operand in operands])
+        # Constrain subset on copy of old expr
+        cast_assert(Expression, mutator.get_copy(expr)).constrain_subset(new_expr)

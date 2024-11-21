@@ -22,6 +22,7 @@ from faebryk.core.parameter import (
     Expression,
     Intersection,
     Is,
+    IsSubset,
     Multiply,
     Or,
     Parameter,
@@ -134,7 +135,7 @@ def flatten_associative[T: Associative](
 
 def parameter_ops_eq_classes(
     G: Graph,
-) -> list[set[ParameterOperatable.All]]:
+) -> list[set[ParameterOperatable]]:
     """
     Return for dict[key, set[parameter_operatable]]
     which maps from each obj to its alias/eq class
@@ -146,12 +147,12 @@ def parameter_ops_eq_classes(
         .nodes_of_type(ParameterOperatable)
         .difference(GraphFunctions(G).nodes_of_type(Predicate))
     )
-    full_eq = EquivalenceClasses[ParameterOperatable.All](non_predicate_objs)
+    full_eq = EquivalenceClasses[ParameterOperatable](non_predicate_objs)
 
     is_exprs = [e for e in GraphFunctions(G).nodes_of_type(Is) if e.constrained]
 
     for is_expr in is_exprs:
-        full_eq.add_eq(*is_expr.operands)
+        full_eq.add_eq(*is_expr.operatable_operands)
 
     obvious_eq = defaultdict(list)
     for p in non_predicate_objs:
@@ -338,6 +339,9 @@ class Mutator:
             if self.get_mutated(po) is not new_po:
                 raise ValueError("already mutated")
 
+        if self.is_removed(po):
+            raise ValueError("Object marked removed")
+
         self.repr_map[po] = new_po
         return new_po
 
@@ -456,6 +460,8 @@ class Mutator:
         return Mutator(None, repr_map).get_copy(o)
 
     def remove(self, *po: ParameterOperatable):
+        if any(p in self.repr_map for p in po):
+            raise ValueError("Object already in repr_map")
         self.removed.update(po)
 
     def is_removed(self, po: ParameterOperatable) -> bool:
@@ -569,9 +575,15 @@ class Mutators:
             self.repr_map = repr_map
 
         def try_get_literal(
-            self, param: ParameterOperatable, e_type: type[Expression] | None = None
+            self, param: ParameterOperatable, e_type: type[Is | IsSubset] | None = None
         ) -> ParameterOperatable.Literal | None:
-            lit = self.repr_map[param].try_get_literal(e_type)
+            if e_type is Is or e_type is None:
+                lit = self.repr_map[param].try_get_literal(e_type)
+            elif e_type is IsSubset:
+                lit = self.repr_map[param].try_get_literal_subset()
+            else:
+                assert False
+
             if lit is None:
                 return None
             if HasUnit.check(param):

@@ -24,6 +24,7 @@ from faebryk.core.solver.analytical import (
     remove_obvious_tautologies,
     remove_unconstrained,
     resolve_alias_classes,
+    upper_estimation_of_expressions_with_subsets,
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
@@ -120,8 +121,9 @@ class DefaultSolver(Solver):
             ("Inequality to set", convert_inequality_to_subset),
             ("Canonical expression form", convert_to_canonical_operations),
             ("Associative expressions Full", compress_associative),
-            ("Arithmetic expressions", fold_literals),
-            ("Subset of literals", merge_intersect_subsets),
+            ("Fold literals", fold_literals),
+            ("Merge intersecting subsets", merge_intersect_subsets),
+            ("Upper estimation", upper_estimation_of_expressions_with_subsets),
         ]
 
         algo_dirty = True
@@ -130,7 +132,12 @@ class DefaultSolver(Solver):
         graphs = [g]
 
         while algo_dirty and len(graphs) > 0:
-            logger.info(f"Iteration {iterno} ".ljust(80, "-"))
+            v_count = sum(g.node_count for g in graphs)
+            logger.info(
+                f"Iteration {iterno} |graphs|: {len(graphs)}, |V|: {v_count}".ljust(
+                    80, "-"
+                )
+            )
 
             if iterno == 0:
                 algos = pre_algorithms
