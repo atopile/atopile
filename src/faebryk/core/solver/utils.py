@@ -38,8 +38,8 @@ from faebryk.libs.sets.quantity_sets import (
     QuantityLike,
     QuantityLikeR,
 )
-from faebryk.libs.units import Quantity, Unit, dimensionless, quantity
-from faebryk.libs.util import EquivalenceClasses, partition, unique_ref
+from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless, quantity
+from faebryk.libs.util import EquivalenceClasses, not_none, partition, unique_ref
 
 logger = logging.getLogger(__name__)
 
@@ -567,13 +567,22 @@ class Mutators:
             self.repr_map = repr_map
 
         def try_get_literal(
-            self, param: Parameter, e_type: type[Expression] | None = None
+            self, param: ParameterOperatable, e_type: type[Expression] | None = None
         ) -> ParameterOperatable.Literal | None:
             lit = self.repr_map[param].try_get_literal(e_type)
             if lit is None:
                 return None
+            if HasUnit.check(param):
+                return Quantity_Interval_Disjoint.from_value(lit) * quantity(
+                    1, HasUnit.get_units(param)
+                )
 
-            return Quantity_Interval_Disjoint.from_value(lit) * quantity(1, param.units)
+            return lit
+
+        def __getitem__(
+            self, param: ParameterOperatable
+        ) -> ParameterOperatable.Literal:
+            return not_none(self.try_get_literal(param))
 
     @staticmethod
     def create_concat_repr_map(*repr_maps: Mutator.REPR_MAP) -> ReprMap:

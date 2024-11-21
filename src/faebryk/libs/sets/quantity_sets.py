@@ -61,6 +61,9 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
     pass
 
 
+QuantitySetLikeR = (Quantity_Set, *QuantityLikeR)
+
+
 class Quantity_Interval(Quantity_Set):
     """
     Continuous interval (min < max) with min, max having the same units.

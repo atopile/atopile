@@ -193,8 +193,8 @@ def test_symmetric_inequality_correlated():
     G = p0.get_graph()
     solver = DefaultSolver()
     repr_map = solver.phase_one_no_guess_solving(G)
-    assert repr_map.try_get_literal(p0) == repr_map.try_get_literal(p1)
-    assert repr_map.try_get_literal(p0) == Range(0 * P.V, 10 * P.V)
+    assert repr_map[p0] == repr_map[p1]
+    assert repr_map[p0] == Range(0 * P.V, 10 * P.V)
 
 
 @pytest.mark.parametrize(

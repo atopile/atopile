@@ -35,7 +35,7 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
-    Quantity_Singleton,
+    QuantitySetLikeR,
 )
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import dimensionless
@@ -215,24 +215,18 @@ class DefaultSolver(Solver):
             logger.warning(f"Parameter {param} not in repr_map")
             return Quantity_Interval_Disjoint(Quantity_Interval(units=param.units))
 
-        # check predicates (is, subset)
+        # check predicates (is, subset), (ge, le covered too)
         literal = repr_map.try_get_literal(param, Is)
         if literal is None:
             literal = repr_map.try_get_literal(param, IsSubset)
 
-        if literal is not None:
-            if Parameter.is_number_literal(literal):
-                return Quantity_Interval_Disjoint(Quantity_Singleton(literal))
-            if isinstance(literal, P_Set):
-                if isinstance(literal, Quantity_Interval):
-                    return Quantity_Interval_Disjoint(literal)
-                if isinstance(literal, Quantity_Interval_Disjoint):
-                    return literal
+        if literal is None:
+            return Quantity_Interval_Disjoint(Quantity_Interval(units=param.units))
+
+        if not isinstance(literal, QuantitySetLikeR):
             raise ValueError(f"incompatible literal {literal}")
 
-        # GE & LE converted to subset
-
-        return Quantity_Interval_Disjoint(Quantity_Interval(units=param.units))
+        return Quantity_Interval_Disjoint.from_value(literal)
 
     def assert_any_predicate[ArgType](
         self,
