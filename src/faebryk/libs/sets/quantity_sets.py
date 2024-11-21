@@ -435,8 +435,6 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def op_mul_intervals(
         self, other: "Quantity_Interval_Disjoint"
     ) -> "Quantity_Interval_Disjoint":
-        if not self.units.is_compatible_with(other.units):
-            raise ValueError("incompatible units")
         _interval = self._intervals.op_mul_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(
             _interval, cast(Unit, self.units * other.units)
@@ -449,8 +447,6 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def op_div_intervals(
         self, other: "Quantity_Interval_Disjoint"
     ) -> "Quantity_Interval_Disjoint":
-        if not self.units.is_compatible_with(other.units):
-            raise ValueError("incompatible units")
         _interval = self._intervals.op_div_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(
             _interval, cast(Unit, self.units / other.units)

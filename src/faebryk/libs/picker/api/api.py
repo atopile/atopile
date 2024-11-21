@@ -103,6 +103,9 @@ def api_generate_si_values(
         raise NotImplementedError(f"Parameter {value} has too many known supersets")
 
     candidate_ranges = solver.inspect_get_known_superranges(value)
+    # TODO api support for unbounded
+    if candidate_ranges.is_unbounded():
+        logger.warning(f"Parameter {value} has unbounded known supersets")
     return generate_si_values(candidate_ranges, e_series=e_series)
 
 

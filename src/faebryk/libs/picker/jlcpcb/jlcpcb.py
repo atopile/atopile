@@ -481,6 +481,8 @@ class ComponentQuery:
             raise NotImplementedError()
 
         candidate_ranges = solver.inspect_get_known_superranges(param)
+        if candidate_ranges.is_unbounded():
+            return self
         return self.filter_by_si_values(candidate_ranges, e_series)
 
     def filter_by_tolerance(self, tolerance: float) -> Self:

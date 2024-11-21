@@ -467,6 +467,9 @@ def e_series_intersect(
     if isinstance(value_set, Quantity_Interval):
         value_set = Quantity_Interval_Disjoint(value_set)
 
+    if value_set.is_unbounded():
+        raise ValueError("Need finite set")
+
     if (
         value_set.is_empty()
         or value_set.min_elem() < 0

@@ -8,10 +8,8 @@ from typing import Any
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import (
     Expression,
-    GreaterOrEqual,
     Is,
     IsSubset,
-    LessOrEqual,
     Numbers,
     Parameter,
     ParameterOperatable,
@@ -32,7 +30,6 @@ from faebryk.core.solver.utils import (
     Mutator,
     Mutators,
     NumericLiteralR,
-    get_graphs,
     literal_to_base_units,
 )
 from faebryk.libs.sets.quantity_sets import (
@@ -41,7 +38,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Singleton,
 )
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.units import HasUnit, dimensionless
+from faebryk.libs.units import dimensionless
 from faebryk.libs.util import times_out
 
 logger = logging.getLogger(__name__)
@@ -91,34 +88,6 @@ def strip_units(mutator: Mutator):
             mutator.mutate_expression_with_op_map(po, mutate)
 
 
-# FIXME doesnt work
-def re_attach_units(G: Graph, total_repr_map: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
-    mutator = Mutator(G)
-
-    v_sorted_by_depth = sorted(
-        total_repr_map.items(),
-        key=lambda x: x[1].depth() if isinstance(x[1], Expression) else 0,
-    )
-
-    repr_map = total_repr_map
-    lit_map = {}
-
-    for k, v in v_sorted_by_depth:
-        logger.info(f"{k} {v}")
-        if isinstance(v, NumericLiteralR):
-            lit_map[k] = v * HasUnit.get_units(k)
-            repr_map[k] = lit_map[k]
-            logger.info(f"{k} {v} {lit_map[k]}")
-        elif isinstance(v, Parameter):
-            mutator.mutate_parameter(v, units=HasUnit.get_units(k))
-        # elif isinstance(v, Expression):
-        #    mutator.mutate_expression_with_op_map(v, lambda _, op: lit_map.get(op, op))
-
-    mutator.copy_unmutated()
-
-    return Mutators.concat_repr_maps(repr_map, mutator.repr_map)
-
-
 class DefaultSolver(Solver):
     # TODO actually use this...
     timeout: int = 1000
@@ -132,7 +101,7 @@ class DefaultSolver(Solver):
         raise NotImplementedError()
 
     @times_out(5)
-    def phase_one_no_guess_solving(self, g: Graph) -> Mutator.REPR_MAP:
+    def phase_one_no_guess_solving(self, g: Graph):
         logger.info("Phase 1 Solving: No guesses".ljust(80, "="))
 
         # TODO move into comment here
@@ -153,10 +122,6 @@ class DefaultSolver(Solver):
             ("Associative expressions Full", compress_associative),
             ("Arithmetic expressions", fold_literals),
             ("Subset of literals", merge_intersect_subsets),
-        ]
-
-        post_algorithms = [
-            # ("Re-attach units", re_attach_units),
         ]
 
         algo_dirty = True
@@ -192,24 +157,7 @@ class DefaultSolver(Solver):
             algo_dirty = any(algos_dirty.values())
             iterno += 1
 
-        total_repr_map = Mutators.concat_repr_maps(
-            *algos_repr_maps.values(),
-        )
-        logger.info(f"Iteration {-1}[{iterno}] ".ljust(80, "-"))
-        for phase_name, (algo_name, algo) in enumerate(post_algorithms):
-            repr_map = {}
-            for g in graphs:
-                repr_map = algo(g, total_repr_map)
-                repr_map.update(repr_map)
-            graphs = get_graphs(repr_map.values())
-            algos_repr_maps[(iterno, algo_name)] = repr_map
-            total_repr_map = repr_map
-            logger.info(
-                f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
-            )
-
-        # FIXME: unnormalize parameters, converting back form base units
-        return total_repr_map
+        return Mutators.create_concat_repr_map(*algos_repr_maps.values())
 
     def get_any_single(
         self,
@@ -255,35 +203,22 @@ class DefaultSolver(Solver):
         return True
 
     def inspect_get_known_superranges(
-        self, value: Parameter
+        self, param: Parameter
     ) -> Quantity_Interval_Disjoint:
-        if not isinstance(value.domain, Numbers):
-            raise ValueError(f"Ranges only defined for numbers not {value.domain}")
+        if not isinstance(param.domain, Numbers):
+            raise ValueError(f"Ranges only defined for numbers not {param.domain}")
 
         # run phase 1 solver
         # TODO caching
-        repr_map = self.phase_one_no_guess_solving(value.get_graph())
-        if value not in repr_map:
-            logger.warning(f"Parameter {value} not in repr_map")
-            return Quantity_Interval_Disjoint(Quantity_Interval(units=value.units))
-
-        value = repr_map[value]
-
-        if not isinstance(value, ParameterOperatable):
-            literal = value
-            if Parameter.is_number_literal(literal):
-                return Quantity_Interval_Disjoint(Quantity_Singleton(literal))
-            if isinstance(literal, P_Set):
-                if isinstance(literal, Quantity_Interval):
-                    return Quantity_Interval_Disjoint(literal)
-                if isinstance(literal, Quantity_Interval_Disjoint):
-                    return literal
-            raise ValueError(f"incompatible literal {literal}")
+        repr_map = self.phase_one_no_guess_solving(param.get_graph())
+        if param not in repr_map.repr_map:
+            logger.warning(f"Parameter {param} not in repr_map")
+            return Quantity_Interval_Disjoint(Quantity_Interval(units=param.units))
 
         # check predicates (is, subset)
-        literal = value.try_get_literal(Is)
+        literal = repr_map.try_get_literal(param, Is)
         if literal is None:
-            literal = value.try_get_literal(IsSubset)
+            literal = repr_map.try_get_literal(param, IsSubset)
 
         if literal is not None:
             if Parameter.is_number_literal(literal):
@@ -295,30 +230,9 @@ class DefaultSolver(Solver):
                     return literal
             raise ValueError(f"incompatible literal {literal}")
 
-        # check predicates (greater, less)
-        lower = None
-        literal = value.try_get_literal(GreaterOrEqual)
-        if literal is not None:
-            if Parameter.is_number_literal(literal):
-                lower = literal
-            elif isinstance(literal, P_Set):
-                if isinstance(literal, (Quantity_Interval, Quantity_Interval_Disjoint)):
-                    lower = literal.max_elem()
-        else:
-            lower = float("-inf") * HasUnit.get_units(value)
+        # GE & LE converted to subset
 
-        upper = None
-        literal = value.try_get_literal(LessOrEqual)
-        if literal is not None:
-            if Parameter.is_number_literal(literal):
-                upper = literal
-            elif isinstance(literal, P_Set):
-                if isinstance(literal, (Quantity_Interval, Quantity_Interval_Disjoint)):
-                    upper = literal.min_elem()
-        else:
-            upper = float("inf") * HasUnit.get_units(value)
-
-        return Quantity_Interval_Disjoint(Quantity_Interval(lower, upper))
+        return Quantity_Interval_Disjoint(Quantity_Interval(units=param.units))
 
     def assert_any_predicate[ArgType](
         self,
