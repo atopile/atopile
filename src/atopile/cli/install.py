@@ -67,7 +67,7 @@ def do_install(
 
     if jlcpcb:
         if to_install is None:
-            raise ValueError("No component ID specified")
+            raise errors.AtoBadParameterError("No component ID specified")
         # eg. "ato install --jlcpcb=C123"
         install_jlcpcb(to_install, top_level_path)
     elif to_install:
