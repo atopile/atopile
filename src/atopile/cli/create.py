@@ -1,4 +1,3 @@
-from enum import Enum
 import itertools
 import logging
 import re
@@ -7,6 +6,7 @@ import sys
 import tempfile
 import textwrap
 import webbrowser
+from enum import Enum
 from pathlib import Path
 from typing import Annotated, Iterator
 

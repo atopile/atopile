@@ -9,24 +9,10 @@ from typing import Annotated, Callable, Optional
 import typer
 
 import atopile.config
-
-# import atopile.assertions
-# import atopile.bom
 from atopile import errors
-
-# import atopile.front_end
-# import atopile.layout
-# import atopile.manufacturing_data
-# import atopile.netlist
-# import atopile.variable_report
 from atopile.cli.common import create_build_contexts
-
-# from atopile.components import download_footprint
 from atopile.config import BuildContext
 from atopile.errors import ExceptionAccumulator
-
-# from atopile.instance_methods import all_descendants, match_components
-# from atopile.netlist import get_netlist_as_str
 
 log = logging.getLogger(__name__)
 
@@ -82,12 +68,7 @@ def build(
 
 def do_prebuild(build_ctx: BuildContext) -> None:
     with ExceptionAccumulator() as accumulator:
-        # Solve the unknown variables
         if not build_ctx.dont_solve_equations:
-            # with accumulator.collect():
-            #     atopile.assertions.simplify_expressions(build_ctx.entry)
-            #     atopile.assertions.solve_assertions(build_ctx)
-            #     atopile.assertions.simplify_expressions(build_ctx.entry)
             raise errors.AtoNotImplementedError(
                 "Equation solving is not implemented yet"
             )
@@ -207,16 +188,12 @@ def consolidate_3dmodels(build_args: BuildContext) -> None:
 def generate_netlist(build_args: BuildContext) -> None:
     """Generate a netlist for the project."""
     raise errors.AtoNotImplementedError("Netlist generation is not implemented yet")
-    # with open(build_args.output_base.with_suffix(".net"), "w", encoding="utf-8") as f:
-    #     f.write(get_netlist_as_str(build_args.entry))
 
 
 @muster.register("bom")
 def generate_bom(build_args: BuildContext) -> None:
     """Generate a BOM for the project."""
     raise errors.AtoNotImplementedError("BOM generation is not implemented yet")
-    # with open(build_args.output_base.with_suffix(".csv"), "w", encoding="utf-8") as f:
-    #     f.write(atopile.bom.generate_bom(build_args.entry))
 
 
 @muster.register("designator-map")
@@ -225,7 +202,6 @@ def generate_designator_map(build_args: BuildContext) -> None:
     raise errors.AtoNotImplementedError(
         "Designator map generation is not implemented yet"
     )
-    # atopile.bom.generate_designator_map(build_args.entry)
 
 
 @muster.register("mfg-data", default=False)
@@ -234,35 +210,24 @@ def generate_manufacturing_data(build_ctx: BuildContext) -> None:
     raise errors.AtoNotImplementedError(
         "Manufacturing data generation is not implemented yet"
     )
-    # atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
 
 
 @muster.register("drc", default=False)
 def generate_drc_report(build_ctx: BuildContext) -> None:
     """Generate a designator map for the project."""
     raise errors.AtoNotImplementedError("DRC report generation is not implemented yet")
-    # atopile.manufacturing_data.generate_drc_report(build_ctx)
 
 
 @muster.register("clone-footprints")
 def clone_footprints(build_args: BuildContext) -> None:
     """Clone the footprints for the project."""
     raise errors.AtoNotImplementedError("Footprint cloning is not implemented yet")
-    # all_components = filter(match_components, all_descendants(build_args.entry))
-
-    # for component in all_components:
-    #     log.debug("Cloning footprint for %s", component)
-    #     download_footprint(
-    #         component,
-    #         footprint_dir=build_args.build_path / "footprints/footprints.pretty",
-    #     )
 
 
 @muster.register("layout-module-map")
 def generate_module_map(build_args: BuildContext) -> None:
     """Generate a designator map for the project."""
     raise errors.AtoNotImplementedError("Module map generation is not implemented yet")
-    # atopile.layout.generate_module_map(build_args)
 
 
 @muster.register("assertions-report")
@@ -271,7 +236,6 @@ def generate_assertion_report(build_ctx: BuildContext) -> None:
     raise errors.AtoNotImplementedError(
         "Assertion report generation is not implemented yet"
     )
-    # atopile.assertions.generate_assertion_report(build_ctx)
 
 
 @muster.register("variable-report")
@@ -280,4 +244,3 @@ def generate_variable_report(build_ctx: BuildContext) -> None:
     raise errors.AtoNotImplementedError(
         "Variable report generation is not implemented yet"
     )
-    # atopile.variable_report.generate(build_ctx)
