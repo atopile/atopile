@@ -138,9 +138,7 @@ from faebryk.library.Potentiometer import Potentiometer
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
-from faebryk.library.is_decoupled_nodes import is_decoupled_nodes
 from faebryk.library.can_be_surge_protected_defined import can_be_surge_protected_defined
-from faebryk.library.can_be_decoupled_defined import can_be_decoupled_defined
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.B0505S_1WR3 import B0505S_1WR3
 from faebryk.library.Battery import Battery

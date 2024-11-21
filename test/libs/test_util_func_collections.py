@@ -83,7 +83,7 @@ def test_func_set_hash_collision():
 
 
 def test_func_set_discard():
-    a = FuncSet((1,2), hasher=lambda x: x)
+    a = FuncSet((1, 2), hasher=lambda x: x)
     assert 1 in a
     assert 2 in a
     a.discard(1)
