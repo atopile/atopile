@@ -8,15 +8,23 @@ from collections.abc import Iterable
 from typing import Callable
 
 from faebryk.core.parameter import (
+    Abs,
     Add,
     And,
-    Divide,
     Expression,
+    GreaterOrEqual,
+    GreaterThan,
+    Intersection,
+    Is,
+    IsSubset,
+    Log,
     Multiply,
     Or,
     ParameterOperatable,
     Power,
-    Subtract,
+    Round,
+    Sin,
+    Union,
 )
 from faebryk.core.solver.utils import (
     Mutator,
@@ -134,71 +142,6 @@ def fold_multiply(
     return dirty
 
 
-def fold_subtract(
-    expr: Subtract,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
-):
-    if sum(1 for _ in const_ops) == 2:
-        dirty = True
-        repr_map[expr] = expr.operands[0] - expr.operands[1]
-        removed.add(expr)
-    elif expr.operands[0] is expr.operands[1]:  # TODO obv eq, replacable
-        dirty = True
-        repr_map[expr] = 0 * expr.units
-        removed.add(expr)
-    elif expr.operands[1] == 0 * expr.operands[1].units:
-        dirty = True
-        repr_map[expr.operands[0]] = repr_map.get(
-            expr.operands[0],
-            Mutator.copy_operand_recursively(expr.operands[0], repr_map),
-        )
-        repr_map[expr] = repr_map[expr.operands[0]]
-        removed.add(expr)
-    else:
-        repr_map[expr] = Mutator.copy_operand_recursively(expr, repr_map)
-
-    return dirty
-
-
-def fold_divide(
-    expr: Divide,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
-):
-    if sum(1 for _ in const_ops) == 2:
-        if not expr.operands[1].magnitude == 0:
-            dirty = True
-            repr_map[expr] = expr.operands[0] / expr.operands[1]
-            removed.add(expr)
-        else:
-            # no valid solution but might not matter e.g. [phi(a,b,...)
-            # OR a/0 == b]
-            repr_map[expr] = Mutator.copy_operand_recursively(expr, repr_map)
-    elif expr.operands[1] is expr.operands[0]:  # TODO obv eq, replacable
-        dirty = True
-        repr_map[expr] = 1 * dimensionless
-        removed.add(expr)
-    elif expr.operands[1] == 1 * expr.operands[1].units:
-        dirty = True
-        repr_map[expr.operands[0]] = repr_map.get(
-            expr.operands[0],
-            Mutator.copy_operand_recursively(expr.operands[0], repr_map),
-        )
-        repr_map[expr] = repr_map[expr.operands[0]]
-        removed.add(expr)
-    else:
-        repr_map[expr] = Mutator.copy_operand_recursively(expr, repr_map)
-
-    return dirty
-
-
 def fold_and(
     expr: And,
     const_ops: Iterable[Literal],
@@ -269,6 +212,78 @@ def fold_or(
     return dirty
 
 
+def fold_pow(
+    expr: Power,
+    const_ops: Iterable[Literal],
+    multiplicity: Counter,
+    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
+    repr_map: Mutator.REPR_MAP,
+    removed: set[ParameterOperatable],
+):
+    # TODO implement
+    return False
+
+
+def fold_alias(
+    expr: Is,
+    const_ops: Iterable[Literal],
+    multiplicity: Counter,
+    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
+    repr_map: Mutator.REPR_MAP,
+    removed: set[ParameterOperatable],
+):
+    # TODO implement
+    return False
+
+
+def fold_ge(
+    expr: GreaterOrEqual,
+    const_ops: Iterable[Literal],
+    multiplicity: Counter,
+    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
+    repr_map: Mutator.REPR_MAP,
+    removed: set[ParameterOperatable],
+):
+    # TODO implement
+    return False
+
+
+def fold_subset(
+    expr: IsSubset,
+    const_ops: Iterable[Literal],
+    multiplicity: Counter,
+    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
+    repr_map: Mutator.REPR_MAP,
+    removed: set[ParameterOperatable],
+):
+    # TODO implement
+    return False
+
+
+def fold_intersect(
+    expr: Intersection,
+    const_ops: Iterable[Literal],
+    multiplicity: Counter,
+    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
+    repr_map: Mutator.REPR_MAP,
+    removed: set[ParameterOperatable],
+):
+    # TODO implement
+    return False
+
+
+def fold_union(
+    expr: Union,
+    const_ops: Iterable[Literal],
+    multiplicity: Counter,
+    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
+    repr_map: Mutator.REPR_MAP,
+    removed: set[ParameterOperatable],
+):
+    # TODO implement
+    return False
+
+
 def fold(
     expr: Expression,
     const_ops: Iterable[Literal],
@@ -290,18 +305,56 @@ def fold(
         ],
         bool,
     ]:
+        # Arithmetic
+        # Subtract non-canonical
         if isinstance(expr, Add):
             return fold_add
-        elif isinstance(expr, Or):
-            return fold_or
-        elif isinstance(expr, And):
-            return fold_and
         elif isinstance(expr, Multiply):
             return fold_multiply
-        elif isinstance(expr, Subtract):
-            return fold_subtract
-        elif isinstance(expr, Divide):
-            return fold_divide
+        # Divide non-canonical
+        # Sqrt non-canonical
+        elif isinstance(expr, Power):
+            return fold_pow
+        elif isinstance(expr, Log):
+            # TODO implement
+            return lambda *args: False
+        elif isinstance(expr, Abs):
+            # TODO implement
+            return lambda *args: False
+        # Cos non-canonical
+        elif isinstance(expr, Sin):
+            # TODO implement
+            return lambda *args: False
+        # Floor non-canonical
+        # Ceil non-canonical
+        elif isinstance(expr, Round):
+            # TODO implement
+            return lambda *args: False
+        # Logic
+        # Xor non-canonical
+        # And non-canonical
+        # Implies non-canonical
+        elif isinstance(expr, Or):
+            return fold_or
+        # TODO make non-canonical
+        elif isinstance(expr, And):
+            return fold_and
+        # Equality / Inequality
+        elif isinstance(expr, Is):
+            return fold_alias
+        # LessOrEqual non-canonical
+        elif isinstance(expr, GreaterOrEqual):
+            return fold_ge
+        elif isinstance(expr, GreaterThan):
+            # TODO implement
+            return lambda *args: False
+        elif isinstance(expr, IsSubset):
+            return fold_subset
+        # Sets
+        elif isinstance(expr, Intersection):
+            return fold_intersect
+        elif isinstance(expr, Union):
+            return fold_union
         return lambda *args: False
 
     return get_func(expr)(

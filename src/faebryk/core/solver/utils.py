@@ -4,8 +4,9 @@
 
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
 from statistics import median
-from typing import Callable, Iterable, cast
+from typing import Callable, Iterable, Iterator, TypeGuard, cast
 
 from deprecated import deprecated
 
@@ -38,7 +39,7 @@ from faebryk.libs.sets.quantity_sets import (
     QuantityLikeR,
 )
 from faebryk.libs.units import Quantity, Unit, dimensionless
-from faebryk.libs.util import EquivalenceClasses, unique_ref
+from faebryk.libs.util import EquivalenceClasses, partition, unique_ref
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,87 @@ Commutative = (
 FullyAssociative = Add | Multiply | And | Or | Xor | Union | Intersection
 LeftAssociative = Subtract | Divide | Difference
 Associative = FullyAssociative | LeftAssociative
+
+
+class Contradiction(Exception):
+    pass
+
+
+class ContradictionByLiteral(Contradiction):
+    pass
+
+
+def flatten_associative[T: Associative](
+    to_flatten: T,  # type: ignore
+    check_destructable: Callable[[Expression, Expression], bool],
+):
+    """
+    Recursively extract operands from nested expressions of the same type.
+
+    ```
+    (A + B) + C + (D + E)
+       Y    Z   X    W
+    flatten(Z) -> flatten(Y) + [C] + flatten(X)
+      flatten(Y) -> [A, B]
+      flatten(X) -> flatten(W) + [D, E]
+      flatten(W) -> [C]
+    -> [A, B, C, D, E] = extracted operands
+    -> {Z, X, W, Y} = destroyed operations
+    ```
+
+    Note: `W` flattens only for right associative operations
+
+    Args:
+    - check_destructable(expr, parent_expr): function to check if an expression is
+        allowed to be flattened (=destructed)
+    """
+
+    @dataclass
+    class Result[T2]:
+        extracted_operands: list[ParameterOperatable.All]
+        """
+        Extracted operands
+        """
+        destroyed_operations: set[T2]
+        """
+        ParameterOperables that got flattened and thus are not used anymore
+        """
+
+    out = Result[T](
+        extracted_operands=[],
+        destroyed_operations=set(),
+    )
+
+    def can_be_flattened(o: ParameterOperatable.All) -> TypeGuard[T]:
+        if not isinstance(to_flatten, Associative):
+            return False
+        if not isinstance(to_flatten, FullyAssociative):
+            if to_flatten.operands[0] is not o:
+                return False
+        return type(o) is type(to_flatten) and check_destructable(o, to_flatten)
+
+    non_compressible_operands, nested_compressible_operations = partition(
+        can_be_flattened,
+        to_flatten.operands,
+    )
+    out.extracted_operands.extend(non_compressible_operands)
+
+    nested_extracted_operands = []
+    for nested_to_flatten in nested_compressible_operations:
+        out.destroyed_operations.add(nested_to_flatten)
+
+        res = flatten_associative(nested_to_flatten, check_destructable)
+        nested_extracted_operands += res.extracted_operands
+        out.destroyed_operations.update(res.destroyed_operations)
+
+    if len(nested_extracted_operands) > 0 and logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"FLATTENED {type(to_flatten).__name__} {to_flatten} -> {nested_extracted_operands}"
+        )
+
+    out.extracted_operands.extend(nested_extracted_operands)
+
+    return out
 
 
 def parameter_ops_eq_classes(
@@ -249,9 +331,13 @@ class Mutator:
     type REPR_MAP = dict[ParameterOperatable, ParameterOperatable.All]
 
     def __init__(
-        self, repr_map: dict[ParameterOperatable, ParameterOperatable.All] | None = None
+        self,
+        G: Graph,
+        repr_map: dict[ParameterOperatable, ParameterOperatable.All] | None = None,
     ) -> None:
+        self.G = G
         self.repr_map = repr_map or {}
+        self.removed = set()
 
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
         return po in self.repr_map
@@ -283,6 +369,17 @@ class Mutator:
         tolerance_guess: float | None = None,
         likely_constrained: bool | None = None,
     ) -> Parameter:
+        if param in self.repr_map:
+            out = self.get_mutated(param)
+            assert isinstance(out, Parameter)
+            assert out.units == units
+            assert out.domain == domain
+            assert out.soft_set == soft_set
+            assert out.guess == guess
+            assert out.tolerance_guess == tolerance_guess
+            assert out.likely_constrained == likely_constrained
+            return out
+
         new_param = Parameter(
             units=units if units is not None else param.units,
             within=None,
@@ -305,6 +402,12 @@ class Mutator:
         operands: Iterable[ParameterOperatable.All] | None = None,
         expression_factory: Callable[..., Expression] | None = None,
     ) -> Expression:
+        if expr in self.repr_map:
+            out = self.get_mutated(expr)
+            assert isinstance(out, Expression)
+            # TODO more checks
+            return out
+
         if expression_factory is None:
             expression_factory = type(expr)
 
@@ -353,23 +456,28 @@ class Mutator:
     @staticmethod
     def copy_operand_recursively(
         o: ParameterOperatable.All,
-        repr_map: dict[ParameterOperatable, ParameterOperatable.All],
+        repr_map: REPR_MAP,
     ) -> ParameterOperatable.All:
-        return Mutator(repr_map).get_copy(o)
+        return Mutator(None, repr_map).get_copy(o)
+
+    def remove(self, *po: ParameterOperatable):
+        self.removed.update(po)
+
+    def is_removed(self, po: ParameterOperatable) -> bool:
+        return po in self.removed
 
     def copy_unmutated(
         self,
-        G: Graph,
         exclude_filter: Callable[[ParameterOperatable], bool] | None = None,
     ):
         if exclude_filter is None:
-            exclude_filter = lambda _: False  # noqa: E731
+            exclude_filter = self.is_removed
 
         # TODO might not need to sort
         other_param_op = ParameterOperatable.sort_by_depth(
             (
                 p
-                for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
+                for p in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
                 if not self.has_been_mutated(p) and not exclude_filter(p)
             ),
             ascending=True,
@@ -377,9 +485,42 @@ class Mutator:
         for o in other_param_op:
             self.get_copy(o)
 
-    # TODO move to Mutator
+    @property
+    def dirty(self) -> bool:
+        return bool(self.removed or self.repr_map)
+
+    def close(self) -> tuple[REPR_MAP, bool]:
+        if not self.dirty:
+            return {
+                po: po
+                for po in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
+            }, False
+        self.copy_unmutated()
+        return self.repr_map, True
+
+
+class Mutators:
+    def __init__(self, *graphs: Graph):
+        self.mutators = [Mutator(g) for g in graphs]
+
+    def close(self) -> tuple[Mutator.REPR_MAP, list[Graph], bool]:
+        if not any(m.dirty for m in self.mutators):
+            return {}, [], False
+
+        repr_map = {}
+        for m in self.mutators:
+            repr_map.update(m.close()[0])
+        return repr_map, get_graphs(repr_map.values()), True
+
+    def run(self, algo: Callable[[Mutator], None]):
+        for m in self.mutators:
+            algo(m)
+
+    def __iter__(self) -> Iterator[Mutator]:
+        return iter(self.mutators)
+
     @staticmethod
-    def concat_repr_maps(*repr_maps: REPR_MAP) -> REPR_MAP:
+    def concat_repr_maps(*repr_maps: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
         assert repr_maps
         concatenated = {}
         for original_obj in repr_maps[0].keys():
@@ -389,18 +530,12 @@ class Mutator:
                 if not isinstance(chain_end, ParameterOperatable):
                     break
                 if chain_end not in m:
+                    logger.warning(
+                        f"chain_end {original_obj} -> {chain_end} interrupted"
+                    )
                     chain_interrupted = True
                     break
                 chain_end = m[chain_end]
             if not chain_interrupted:
                 concatenated[original_obj] = chain_end
         return concatenated
-
-    # TODO make this a method
-    # check either repr_map empty or given flag
-    # if not dirty, return copied repr_map else run copy_unmutated
-    @staticmethod
-    def no_mutations(G: Graph) -> REPR_MAP:
-        return {po: po for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)}
-
-    # TODO add .remove (for see above)

@@ -4,11 +4,10 @@
 
 import logging
 from collections import Counter
-from dataclasses import dataclass
 from functools import partial
-from typing import Callable, TypeGuard, cast
+from typing import cast
 
-from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
     Add,
     Divide,
@@ -31,9 +30,9 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
-    Associative,
     FullyAssociative,
     Mutator,
+    flatten_associative,
     get_constrained_expressions_involved_in,
     is_replacable,
     merge_parameters,
@@ -49,9 +48,7 @@ from faebryk.libs.util import partition
 logger = logging.getLogger(__name__)
 
 
-def convert_inequality_to_subset(
-    G: Graph,
-) -> tuple[Mutator.REPR_MAP, bool]:
+def convert_inequality_to_subset(mutator: Mutator):
     """
     A >= 5 -> A in [5, inf)
     5 >= A -> A in (-inf, 5]
@@ -59,12 +56,10 @@ def convert_inequality_to_subset(
 
     ge_exprs = {
         e
-        for e in GraphFunctions(G).nodes_of_type(GreaterOrEqual)
+        for e in GraphFunctions(mutator.G).nodes_of_type(GreaterOrEqual)
         # Look for expressions with only one non-literal operand
         if len(e.operatable_operands) == 1
     }
-
-    mutator = Mutator()
 
     for ge in ParameterOperatable.sort_by_depth(ge_exprs, ascending=True):
         is_left = ge.operands[0] is next(iter(ge.operatable_operands))
@@ -82,36 +77,21 @@ def convert_inequality_to_subset(
             expression_factory=IsSubset,
         )
 
-    if not mutator.repr_map:
-        return Mutator.no_mutations(G), False
-
-    mutator.copy_unmutated(G)
-
-    return mutator.repr_map, True
+    return mutator
 
 
-def remove_unconstrained(
-    G: Graph,
-) -> tuple[Mutator.REPR_MAP, bool]:
+def remove_unconstrained(mutator: Mutator):
     """
     Remove all parameteroperables that are not involved in any constrained predicates
     """
-    mutator = Mutator()
-
-    objs = GraphFunctions(G).nodes_of_type(ParameterOperatable)
-    remove = [o for o in objs if not get_constrained_expressions_involved_in(o)]
-
-    if not remove:
-        assert not mutator.repr_map
-        return Mutator.no_mutations(G), False
-
-    mutator.copy_unmutated(G, exclude_filter=lambda p: p in remove)
-    return mutator.repr_map, True
+    objs = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
+    for obj in objs:
+        if get_constrained_expressions_involved_in(obj):
+            continue
+        mutator.remove(obj)
 
 
-def resolve_alias_classes(
-    G: Graph,
-) -> tuple[Mutator.REPR_MAP, bool]:
+def resolve_alias_classes(mutator: Mutator):
     """
     Resolve alias classes
     Ignores literals
@@ -123,15 +103,11 @@ def resolve_alias_classes(
     -> A,B,C => R, R alias D + E, R < 5
     ```
     """
-
-    dirty = False
-    exprs = GraphFunctions(G).nodes_of_type(Expression)
+    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     predicates = {e for e in exprs if isinstance(e, Predicate)}
     exprs.difference_update(predicates)
 
-    p_eq_classes = parameter_ops_eq_classes(G)
-
-    mutator = Mutator()
+    p_eq_classes = parameter_ops_eq_classes(mutator.G)
 
     # Make new param repre for alias classes
     for eq_class in p_eq_classes.values():
@@ -144,7 +120,6 @@ def resolve_alias_classes(
 
         if len(alias_class_p_ops) <= 1:
             continue
-        dirty = True
 
         # TODO non unit/numeric params, i.e. enums, bools
 
@@ -168,24 +143,16 @@ def resolve_alias_classes(
             mutator.repr_map[e] = representative
             copy_expr.alias_is(representative)
 
-    if not dirty:
-        assert not mutator.repr_map
-        return Mutator.no_mutations(G), dirty
-
     # remove eq_class Is
     removed = {
         e
-        for e in GraphFunctions(G).nodes_of_type(Is)
+        for e in GraphFunctions(mutator.G).nodes_of_type(Is)
         if all(mutator.has_been_mutated(operand) for operand in e.operands)
     }
-    mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
-
-    return mutator.repr_map, dirty
+    mutator.remove(*removed)
 
 
-def merge_intersect_subsets(
-    G: Graph,
-) -> tuple[Mutator.REPR_MAP, bool]:
+def merge_intersect_subsets(mutator: Mutator):
     """
     A subset L1
     A subset L2
@@ -197,8 +164,7 @@ def merge_intersect_subsets(
     -> A subset (L1 & L2)
     """
 
-    params = GraphFunctions(G).nodes_of_type(Parameter)
-    mutator = Mutator()
+    params = GraphFunctions(mutator.G).nodes_of_type(Parameter)
 
     for param in params:
         # TODO we can also propagate is subset from other param: x sub y sub range
@@ -226,92 +192,8 @@ def merge_intersect_subsets(
 
         mutator.mutate_parameter(param).constrain_subset(intersected)
 
-    dirty = len(mutator.repr_map) > 0
-    if not dirty:
-        assert not mutator.repr_map
-        return Mutator.no_mutations(G), False
 
-    mutator.copy_unmutated(G)
-
-    return mutator.repr_map, dirty
-
-
-def flatten_associative[T: Associative](
-    to_flatten: T,  # type: ignore
-    check_destructable: Callable[[Expression, Expression], bool],
-):
-    """
-    Recursively extract operands from nested expressions of the same type.
-
-    ```
-    (A + B) + C + (D + E)
-       Y    Z   X    W
-    flatten(Z) -> flatten(Y) + [C] + flatten(X)
-      flatten(Y) -> [A, B]
-      flatten(X) -> flatten(W) + [D, E]
-      flatten(W) -> [C]
-    -> [A, B, C, D, E] = extracted operands
-    -> {Z, X, W, Y} = destroyed operations
-    ```
-
-    Note: `W` flattens only for right associative operations
-
-    Args:
-    - check_destructable(expr, parent_expr): function to check if an expression is
-        allowed to be flattened (=destructed)
-    """
-
-    @dataclass
-    class Result[T2]:
-        extracted_operands: list[ParameterOperatable.All]
-        """
-        Extracted operands
-        """
-        destroyed_operations: set[T2]
-        """
-        ParameterOperables that got flattened and thus are not used anymore
-        """
-
-    out = Result[T](
-        extracted_operands=[],
-        destroyed_operations=set(),
-    )
-
-    def can_be_flattened(o: ParameterOperatable.All) -> TypeGuard[T]:
-        if not isinstance(to_flatten, Associative):
-            return False
-        if not isinstance(to_flatten, FullyAssociative):
-            if to_flatten.operands[0] is not o:
-                return False
-        return type(o) is type(to_flatten) and check_destructable(o, to_flatten)
-
-    non_compressible_operands, nested_compressible_operations = partition(
-        can_be_flattened,
-        to_flatten.operands,
-    )
-    out.extracted_operands.extend(non_compressible_operands)
-
-    nested_extracted_operands = []
-    for nested_to_flatten in nested_compressible_operations:
-        out.destroyed_operations.add(nested_to_flatten)
-
-        res = flatten_associative(nested_to_flatten, check_destructable)
-        nested_extracted_operands += res.extracted_operands
-        out.destroyed_operations.update(res.destroyed_operations)
-
-    if len(nested_extracted_operands) > 0 and logger.isEnabledFor(logging.DEBUG):
-        logger.debug(
-            f"FLATTENED {type(to_flatten).__name__} {to_flatten} -> {nested_extracted_operands}"
-        )
-
-    out.extracted_operands.extend(nested_extracted_operands)
-
-    return out
-
-
-def compress_associative(
-    G: Graph,
-) -> tuple[Mutator.REPR_MAP, bool]:
+def compress_associative(mutator: Mutator):
     """
     Makes
     ```
@@ -322,44 +204,27 @@ def compress_associative(
 
     for +, *, and, or, &, |, ^
     """
-
-    dirty = False
     ops = cast(
         set[FullyAssociative],
-        GraphFunctions(G).nodes_of_types(FullyAssociative),
+        GraphFunctions(mutator.G).nodes_of_types(FullyAssociative),
     )
     # get out deepest expr in compressable tree
     root_ops = {e for e in ops if type(e) not in {type(n) for n in e.get_operations()}}
-
-    mutator = Mutator()
-    removed = set()
 
     for expr in ParameterOperatable.sort_by_depth(root_ops, ascending=True):
         res = flatten_associative(expr, partial(is_replacable, mutator.repr_map))
         if not res.destroyed_operations:
             continue
 
-        removed |= res.destroyed_operations
-        dirty = True
+        mutator.remove(*res.destroyed_operations)
 
         mutator.mutate_expression(
             expr,
             operands=res.extracted_operands,
         )
 
-    if not dirty:
-        assert not mutator.repr_map
-        return Mutator.no_mutations(G), False
 
-    # copy other param ops
-    mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
-
-    return mutator.repr_map, dirty
-
-
-def convert_to_canonical_operations(
-    G: Graph,
-) -> tuple[Mutator.REPR_MAP, bool]:
+def convert_to_canonical_operations(mutator: Mutator):
     """
     Transforms Sub-Add to Add-Add
     ```
@@ -368,6 +233,11 @@ def convert_to_canonical_operations(
     A <= B -> B >= A
     A < B -> B > A
     A superset B -> B subset A
+
+    #TODO: floor/ceil -> round(x -/+ 0.5)
+    #TODO: cos(x) -> sin(x + pi/2)
+    #TODO: sqrt -> ^-(2^-1)
+    #TODO: Logic (xor, and, implies) -> Or & Not
     ```
     """
 
@@ -401,36 +271,20 @@ def convert_to_canonical_operations(
         ),
     ]
 
-    mutator = Mutator()
-
     for Target, Convertible, Converter in MirroredExpressions:
-        convertible = {e for e in GraphFunctions(G).nodes_of_type(Convertible)}
+        convertible = {e for e in GraphFunctions(mutator.G).nodes_of_type(Convertible)}
 
         for expr in ParameterOperatable.sort_by_depth(convertible, ascending=True):
             mutator.mutate_expression(
                 expr, Converter(expr.operands), expression_factory=Target
             )
 
-    dirty = len(mutator.repr_map) > 0
-    if not dirty:
-        return Mutator.no_mutations(G), False
 
-    mutator.copy_unmutated(G)
-
-    return mutator.repr_map, dirty
-
-
-def fold_literals(
-    G: Graph,
-) -> tuple[Mutator.REPR_MAP, bool]:
-    dirty = False
-    exprs = GraphFunctions(G).nodes_of_type(Expression)
-
-    mutator = Mutator()
-    removed = set()
+def fold_literals(mutator: Mutator):
+    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
 
     for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
-        if mutator.has_been_mutated(expr) or expr in removed:
+        if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
 
         operands = expr.operands
@@ -444,26 +298,17 @@ def fold_literals(
 
         # TODO, obviously_eq offers additional possibilites,
         # must be replacable, no implicit constr
-        dirty |= fold(
+        fold(
             expr,
             literal_operands,
             multiplicity,
             non_replacable_nonconst_ops,
             mutator.repr_map,
-            removed,
+            mutator.removed,
         )
 
-    if not dirty:
-        return Mutator.no_mutations(G), False
 
-    mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
-
-    return mutator.repr_map, dirty
-
-
-def remove_obvious_tautologies(
-    G: Graph,
-) -> tuple[Mutator.REPR_MAP, bool]:
+def remove_obvious_tautologies(mutator: Mutator):
     """
     Remove tautologies like:
      - A == A
@@ -471,13 +316,9 @@ def remove_obvious_tautologies(
      - Lit1 == Lit2 | Lit1 and Lit2 are equal literals
     """
 
-    mutator = Mutator()
-
-    removed = set()
-
     def remove_is(pred_is: Is):
         if len(pred_is.get_operations()) == 0:
-            removed.add(pred_is)
+            mutator.remove(pred_is)
         else:
             mutator._mutate(pred_is, True)
 
@@ -487,7 +328,7 @@ def remove_obvious_tautologies(
         )
         return no_other_constraints and not po.has_implicit_constraints_recursive()
 
-    is_predicates = GraphFunctions(G).nodes_of_type(Is)
+    is_predicates = GraphFunctions(mutator.G).nodes_of_type(Is)
 
     for pred_is in ParameterOperatable.sort_by_depth(is_predicates, ascending=True):
         left, right = pred_is.operands
@@ -518,11 +359,3 @@ def remove_obvious_tautologies(
                 mutator._mutate(right, left)
             elif right_is_literal:
                 mutator._mutate(left, right)
-
-    dirty = len(removed) > 0 or len(mutator.repr_map) > 0
-    if not dirty:
-        return Mutator.no_mutations(G), False
-
-    mutator.copy_unmutated(G, exclude_filter=lambda p: p in removed)
-
-    return mutator.repr_map, dirty

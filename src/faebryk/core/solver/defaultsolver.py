@@ -30,6 +30,7 @@ from faebryk.core.solver.analytical import (
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
     Mutator,
+    Mutators,
     NumericLiteralR,
     debug_print,
     get_graphs,
@@ -47,30 +48,23 @@ from faebryk.libs.util import times_out
 logger = logging.getLogger(__name__)
 
 
-def constrain_within_and_domain(G: Graph) -> Mutator.REPR_MAP:
-    mutator = Mutator()
-
-    for param in GraphFunctions(G).nodes_of_type(Parameter):
+def constrain_within_and_domain(mutator: Mutator):
+    for param in GraphFunctions(mutator.G).nodes_of_type(Parameter):
         new_param = mutator.mutate_parameter(param)
         if new_param.within is not None:
             new_param.constrain_subset(new_param.within)
         if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
-            new_param.constrain_ge(0 * new_param.units)
-
-    mutator.copy_unmutated(G)
-    return mutator.repr_map
+            new_param.constrain_ge(0.0 * new_param.units)
 
 
-def strip_units(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.All]:
+def strip_units(mutator: Mutator):
     """
     units -> base units (dimensionless)
     within -> constrain is subset
     scalar to single
     """
 
-    param_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
-
-    mutator = Mutator()
+    param_ops = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
 
     for po in ParameterOperatable.sort_by_depth(param_ops, ascending=True):
         # Parameter
@@ -97,7 +91,33 @@ def strip_units(G: Graph) -> dict[ParameterOperatable, ParameterOperatable.All]:
 
             mutator.mutate_expression_with_op_map(po, mutate)
 
-    return mutator.repr_map
+
+# FIXME doesnt work
+def re_attach_units(G: Graph, total_repr_map: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
+    mutator = Mutator(G)
+
+    v_sorted_by_depth = sorted(
+        total_repr_map.items(),
+        key=lambda x: x[1].depth() if isinstance(x[1], Expression) else 0,
+    )
+
+    repr_map = total_repr_map
+    lit_map = {}
+
+    for k, v in v_sorted_by_depth:
+        logger.info(f"{k} {v}")
+        if isinstance(v, NumericLiteralR):
+            lit_map[k] = v * HasUnit.get_units(k)
+            repr_map[k] = lit_map[k]
+            logger.info(f"{k} {v} {lit_map[k]}")
+        elif isinstance(v, Parameter):
+            mutator.mutate_parameter(v, units=HasUnit.get_units(k))
+        # elif isinstance(v, Expression):
+        #    mutator.mutate_expression_with_op_map(v, lambda _, op: lit_map.get(op, op))
+
+    mutator.copy_unmutated()
+
+    return Mutators.concat_repr_maps(repr_map, mutator.repr_map)
 
 
 class DefaultSolver(Solver):
@@ -113,9 +133,7 @@ class DefaultSolver(Solver):
         raise NotImplementedError()
 
     @times_out(5)
-    def phase_one_no_guess_solving(
-        self, g: Graph
-    ) -> dict[ParameterOperatable, ParameterOperatable.All]:
+    def phase_one_no_guess_solving(self, g: Graph) -> Mutator.REPR_MAP:
         logger.info("Phase 1 Solving: No guesses".ljust(80, "="))
 
         # TODO move into comment here
@@ -129,10 +147,9 @@ class DefaultSolver(Solver):
         iterno = 0
         algos_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
 
-        init_algorithms = [
+        pre_algorithms = [
             ("Constrain within and domain", constrain_within_and_domain),
-            # TODO re-enable and re-attach units
-            ("Strip units", strip_units),
+            # ("Strip units", strip_units),
         ]
         iterative_algorithms = [
             ("Remove unconstrained", remove_unconstrained),
@@ -145,47 +162,53 @@ class DefaultSolver(Solver):
             ("Subset of literals", merge_intersect_subsets),
         ]
 
-        graphs = [g]
+        post_algorithms = [
+            # ("Re-attach units", re_attach_units),
+        ]
 
-        logger.info(f"Iteration {iterno} ".ljust(80, "-"))
-        for phase_name, (algo_name, algo) in enumerate(init_algorithms):
-            repr_map = {}
-            for g in graphs:
-                repr_map = algo(g)
-                repr_map.update(repr_map)
-            graphs = get_graphs(repr_map.values())
-            algos_repr_maps[(iterno, algo_name)] = repr_map
-            logger.info(
-                f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
-            )
+        graphs = [g]
 
         while algo_dirty and len(graphs) > 0:
             iterno += 1
             logger.info(f"Iteration {iterno} ".ljust(80, "-"))
 
+            if iterno == 0:
+                algos = pre_algorithms
+            else:
+                algos = iterative_algorithms
+
             algos_dirty = {}
-            for phase_name, (algo_name, algo) in enumerate(iterative_algorithms):
-                repr_map = {}
-                algo_dirty = False
-                for g in graphs:
-                    repr_map, graph_dirty = algo(g)
-                    repr_map.update(repr_map)
-                    algo_dirty |= graph_dirty
-                if algo_dirty:
-                    logger.info(
-                        f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
-                    )
-                    debug_print(repr_map)
-                graphs = get_graphs(repr_map.values())
-                algos_dirty[algo_name] = algo_dirty
-                algos_repr_maps[(iterno, algo_name)] = repr_map
+            for phase_name, (algo_name, algo) in enumerate(algos):
+                mutators = Mutators(*graphs)
+                mutators.run(algo)
+                algo_repr_map, algo_graphs, algo_dirty = mutators.close()
+                if not algo_dirty:
+                    continue
+                graphs = algo_graphs
+                algos_repr_maps[(iterno, algo_name)] = algo_repr_map
+                logger.info(
+                    f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+                )
+                debug_print(algo_repr_map)
                 # TODO assert all new graphs
 
             algo_dirty = any(algos_dirty.values())
 
-        total_repr_map = Mutator.concat_repr_maps(
+        total_repr_map = Mutators.concat_repr_maps(
             *algos_repr_maps.values(),
         )
+        logger.info(f"Iteration {-1}[{iterno}] ".ljust(80, "-"))
+        for phase_name, (algo_name, algo) in enumerate(post_algorithms):
+            repr_map = {}
+            for g in graphs:
+                repr_map = algo(g, total_repr_map)
+                repr_map.update(repr_map)
+            graphs = get_graphs(repr_map.values())
+            algos_repr_maps[(iterno, algo_name)] = repr_map
+            total_repr_map = repr_map
+            logger.info(
+                f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+            )
 
         # FIXME: unnormalize parameters, converting back form base units
         return total_repr_map

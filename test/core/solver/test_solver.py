@@ -2,13 +2,18 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from typing import Iterable
 
 import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
+    Add,
     And,
+    Arithmetic,
+    Divide,
+    Multiply,
     Parameter,
     ParameterOperatable,
     Subtract,
@@ -147,18 +152,56 @@ def test_alias_classes():
     solver.phase_one_no_guess_solving(G)
 
 
-@pytest.mark.parametrize("i", list(range(20)))
-def test_inspect_known_superranges(i: int):
-    p0 = Parameter(units=P.V, within=Range(1 * P.V, 10 * P.V))
-    p0.alias_is(Range(1 * P.V, 3 * P.V) + Range(4 * P.V, 6 * P.V))
-    solver = DefaultSolver()
-    assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
-    # assert solver.inspect_get_known_superranges(p0) == RangeWithGaps(
-    #    (quantity(5), quantity(9))
-    # )
-
-
 def test_solve_realworld():
     app = F.RP2040()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(app.get_graph())
+
+
+def test_inspect_known_superranges():
+    p0 = Parameter(units=P.V, within=Range(1 * P.V, 10 * P.V))
+    p0.alias_is(Range(1 * P.V, 3 * P.V) + Range(4 * P.V, 6 * P.V))
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
+
+
+def test_symmetric_inequality():
+    p0 = Parameter(units=P.V, within=Range(0 * P.V, 10 * P.V))
+    p1 = Parameter(units=P.V)
+
+    (p0 >= p1).constrain()
+    (p1 >= p0).constrain()
+
+    G = p0.get_graph()
+    solver = DefaultSolver()
+    repr_map = solver.phase_one_no_guess_solving(G)
+    assert repr_map[p0] == repr_map[p1]
+    assert repr_map[p0] == Range(0 * P.V, 10 * P.V)
+
+
+@pytest.mark.parametrize(
+    "expr_type, operands, expected",
+    [
+        (Add, (5, 10), 15),
+        (Subtract, (5, 10), -5),
+        (Multiply, (5, 10), 50),
+        (Divide, (5, 10), 0.5),
+    ],
+)
+def test_simple_literal_folds_arithmetic(
+    expr_type: type[Arithmetic], operands: Iterable[float], expected: float
+):
+    expected_result = quantity(float(expected), dimensionless)
+    used_operands = [quantity(float(o), dimensionless) for o in operands]
+
+    p0 = Parameter(units=dimensionless)
+    p1 = Parameter(units=dimensionless)
+    p0.alias_is(used_operands[0])
+    p1.alias_is(used_operands[1])
+
+    expr = expr_type(p0, p1)
+    G = expr.get_graph()
+
+    solver = DefaultSolver()
+    repr_map = solver.phase_one_no_guess_solving(G)
+    assert repr_map[expr] == expected_result
