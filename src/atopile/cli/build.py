@@ -116,14 +116,14 @@ def _do_python_build(build_ctx: BuildContext) -> None:
     try:
         build_module = import_from_path(build_ctx.entry.file_path)
     except ImportError as e:
-        raise ValueError(
+        raise errors.AtoPythonLoadError(
             f"Cannot import build entry {build_ctx.entry.file_path}"
         ) from e
 
     try:
         app_class = getattr(build_module, build_ctx.entry.module_path)
     except AttributeError as e:
-        raise ValueError(
+        raise errors.AtoPythonLoadError(
             f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.module_path}"
         ) from e
 

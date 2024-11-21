@@ -13,7 +13,6 @@ from typing import Callable, ContextManager, Iterable, Optional, Self, Type, Typ
 import rich
 import typer
 from antlr4 import ParserRuleContext, Token
-import typer
 
 from atopile import address, telemetry
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
@@ -208,6 +207,12 @@ class AtoBadParameterError(AtoError):
     """
 
     title = "Bad Parameter"
+
+
+class AtoPythonLoadError(AtoError):
+    """
+    Raised when a Python module couldn't be loaded.
+    """
 
 
 class CountingError(AtoError):
