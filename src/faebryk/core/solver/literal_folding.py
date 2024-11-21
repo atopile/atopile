@@ -4,7 +4,7 @@
 
 import logging
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Sequence
 from typing import Callable
 
 from faebryk.core.parameter import (
@@ -38,330 +38,366 @@ logger = logging.getLogger(__name__)
 Literal = ParameterOperatable.Literal
 
 
+def _fold_op(
+    operands: Sequence[Literal],
+    operator: Callable[[Literal, Literal], Literal],
+    identity: Literal,
+):
+    """
+    Return 'sum' of all literals in the iterable, or empty list if sum is identity.
+    """
+    if not operands:
+        return []
+
+    literal_it = iter(operands)
+    const_sum = [next(literal_it)]
+    for c in literal_it:
+        const_sum[0] = operator(const_sum[0], c)
+
+    # TODO make work with all the types
+    if const_sum[0] == identity:
+        const_sum = []
+
+    return const_sum
+
+
 def fold_add(
     expr: Add,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
-    try:
-        const_sum = [next(const_ops)]
-        for c in const_ops:
-            dirty = True
-            const_sum[0] += c
-        # TODO make work with all the types
-        if const_sum[0] == 0 * expr.units:
-            dirty = True
-            const_sum = []
-    except StopIteration:
-        const_sum = []
-    if any(m > 1 for m in multiplicity.values()):
-        dirty = True
-    if dirty:
-        copied = {
-            n: Mutator.copy_operand_recursively(n, repr_map) for n in multiplicity
-        }
-        nonconst_prod = [
-            Multiply(copied[n], m * dimensionless) if m > 1 else copied[n]
-            for n, m in multiplicity.items()
-        ]
-        new_operands = [
-            *nonconst_prod,
-            *const_sum,
-            *(
-                Mutator.copy_operand_recursively(o, repr_map)
-                for o in non_replacable_nonconst_ops
-            ),
-        ]
-        if len(new_operands) > 1:
-            new_expr = Add(*new_operands)
-        elif len(new_operands) == 1:
-            new_expr = new_operands[0]
-            removed.add(expr)
-        else:
-            raise ValueError("No operands, should not happen")
-        repr_map[expr] = new_expr
+    """
+    A + A + 5 + 10 -> 2*A + 15
+    A + 5 + (-5) -> A
+    A + (-A) + 5 -> Add(5)
+    A + (3 * A) + 5 -> (4 * A) + 5
+    A + (A * B * 2) -> A + (A * B * 2)
+    A + (B * 2) -> A + (B * 2)
+    A + (A * 2) + (A * 3) -> (6 * A)
+    A + (A * 2) + ((A *2 ) * 3) -> (3 * A) + (3 * (A * 2))
 
-    return dirty
+    #TODO
+    A + B | A alias B ; never happens
+    A + B | B alias [1,5] -> (A + B) , (A + B) subset (A + [1,5])
+    A + B | B subset [1,5] -> (A + B) , (A + B) subset (A + [1,5])
+    """
+
+    literal_sum = _fold_op(literal_operands, lambda a, b: a + b, 0 * expr.units)  # type: ignore #TODO
+
+    # collect factors
+    factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
+        replacable_nonliteral_operands.items()
+    )
+    for mul in set(factors.keys()):
+        if not isinstance(mul, Multiply):
+            continue
+        if len(mul.operands) != 2:
+            continue
+        if not any(ParameterOperatable.is_literal(operand) for operand in mul.operands):
+            continue
+        if not any(operand in factors for operand in mul.operands):
+            continue
+        lit = next(o for o in mul.operands if ParameterOperatable.is_literal(o))
+        paramop = next(o for o in mul.operands if not ParameterOperatable.is_literal(o))
+        factors[paramop] += lit
+        mutator.remove(mul)
+        del factors[mul]
+
+    # if no literal folding and non-lit factors all 1, nothing to do
+    if all(m == 1 for m in factors.values()) and len(literal_sum) == len(
+        literal_operands
+    ):
+        return
+
+    # Careful, modifying old graph, but should be ok
+    nonlit_operands = [Multiply(n, m) if m != 1 else n for n, m in factors.items()]
+
+    new_operands = [
+        *nonlit_operands,
+        *literal_sum,
+        *non_replacable_nonliteral_operands,
+    ]
+
+    # unpack if single operand (operatable)
+    if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
+        mutator._mutate(expr, mutator.get_copy(new_operands[0]))
+        return
+
+    new_expr = mutator.mutate_expression(
+        expr, operands=new_operands, expression_factory=Add
+    )
+
+    # if only one literal operand, equal to it
+    if len(new_operands) == 1:
+        new_expr.alias_is(new_operands[0])
 
 
 def fold_multiply(
     expr: Multiply,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
     try:
-        const_prod = [next(const_ops)]
-        for c in const_ops:
-            dirty = True
+        const_prod = [next(literal_operands)]
+        for c in literal_operands:
             const_prod[0] *= c
-        if const_prod[0] == 1 * dimensionless:  # TODO make work with all the types
-            dirty = True
+        if const_prod[0] == 1 * dimensionless:  # TODO make work with all the types``
             const_prod = []
     except StopIteration:
         const_prod = []
 
-    if (
-        len(const_prod) == 1 and const_prod[0].magnitude == 0
-    ):  # TODO make work with all the types
-        dirty = True
-        repr_map[expr] = 0 * expr.units
+    if len(const_prod) == 1 and const_prod[0].magnitude == 0:
+        # TODO make work with all the types
+        mutator.repr_map[expr] = 0 * expr.units
     else:
-        if any(m > 1 for m in multiplicity.values()):
-            dirty = True
-        if dirty:
+        if any(m > 1 for m in replacable_nonliteral_operands.values()):
             copied = {
-                n: Mutator.copy_operand_recursively(n, repr_map) for n in multiplicity
+                n: mutator.copy_operand_recursively(n)
+                for n in replacable_nonliteral_operands
             }
             nonconst_power = [
                 Power(copied[n], m * dimensionless) if m > 1 else copied[n]
-                for n, m in multiplicity.items()
+                for n, m in replacable_nonliteral_operands.items()
             ]
             new_operands = [
                 *nonconst_power,
                 *const_prod,
                 *(
-                    Mutator.copy_operand_recursively(o, repr_map)
-                    for o in non_replacable_nonconst_ops
+                    mutator.copy_operand_recursively(o)
+                    for o in non_replacable_nonliteral_operands
                 ),
             ]
             if len(new_operands) > 1:
                 new_expr = Multiply(*new_operands)
             elif len(new_operands) == 1:
                 new_expr = new_operands[0]
-                removed.add(expr)
+                mutator.remove(expr)
             else:
                 raise ValueError("No operands, should not happen")
-            repr_map[expr] = new_expr
-
-    return dirty
+            mutator.repr_map[expr] = new_expr
 
 
 def fold_and(
     expr: And,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
-    const_op_list = list(const_ops)
+    const_op_list = list(literal_operands)
     if any(not isinstance(o, bool) for o in const_op_list):
         raise ValueError("Or with non-boolean operands")
     if any(not o for o in const_op_list):
-        dirty = True
-        repr_map[expr] = False
-        removed.add(expr)
-    elif len(const_op_list) > 0 or any(m > 1 for m in multiplicity.values()):
+        mutator.repr_map[expr] = False
+        mutator.remove(expr)
+    elif len(const_op_list) > 0 or any(
+        m > 1 for m in replacable_nonliteral_operands.values()
+    ):
         new_operands = [
-            *(Mutator.copy_operand_recursively(o, repr_map) for o in multiplicity),
             *(
-                Mutator.copy_operand_recursively(o, repr_map)
-                for o in non_replacable_nonconst_ops
+                mutator.copy_operand_recursively(o)
+                for o in replacable_nonliteral_operands
+            ),
+            *(
+                mutator.copy_operand_recursively(o)
+                for o in non_replacable_nonliteral_operands
             ),
         ]
         if len(new_operands) > 1:
             new_expr = And(*new_operands)
         elif len(new_operands) == 1:
             new_expr = new_operands[0]
-            removed.add(expr)
+            mutator.remove(expr)
         else:
             new_expr = True
-        repr_map[expr] = new_expr
-
-    return dirty
+        mutator.repr_map[expr] = new_expr
 
 
 def fold_or(
     expr: Or,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
-    const_op_list = list(const_ops)
+    const_op_list = list(literal_operands)
     if any(not isinstance(o, bool) for o in const_op_list):
         raise ValueError("Or with non-boolean operands")
     if any(o for o in const_op_list):
-        dirty = True
-        repr_map[expr] = True
-        removed.add(expr)
-    elif len(const_op_list) > 0 or any(m > 1 for m in multiplicity.values()):
+        mutator.repr_map[expr] = True
+        mutator.remove(expr)
+    elif len(const_op_list) > 0 or any(
+        m > 1 for m in replacable_nonliteral_operands.values()
+    ):
         new_operands = [
-            *(Mutator.copy_operand_recursively(o, repr_map) for o in multiplicity),
             *(
-                Mutator.copy_operand_recursively(o, repr_map)
-                for o in non_replacable_nonconst_ops
+                mutator.copy_operand_recursively(o)
+                for o in replacable_nonliteral_operands
+            ),
+            *(
+                mutator.copy_operand_recursively(o)
+                for o in non_replacable_nonliteral_operands
             ),
         ]
         if len(new_operands) > 1:
             new_expr = Or(*new_operands)
         elif len(new_operands) == 1:
             new_expr = new_operands[0]
-            removed.add(expr)
+            mutator.remove(expr)
         else:
             new_expr = False
-        repr_map[expr] = new_expr
-
-    return dirty
+        mutator.repr_map[expr] = new_expr
 
 
 def fold_pow(
     expr: Power,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
     # TODO implement
-    return False
+    pass
 
 
 def fold_alias(
     expr: Is,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
     # TODO implement
-    return False
+    pass
 
 
 def fold_ge(
     expr: GreaterOrEqual,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
     # TODO implement
-    return False
+    pass
 
 
 def fold_subset(
     expr: IsSubset,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
     # TODO implement
-    return False
+    pass
 
 
 def fold_intersect(
     expr: Intersection,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
     # TODO implement
-    return False
+    pass
 
 
 def fold_union(
     expr: Union,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
 ):
     # TODO implement
-    return False
+    pass
 
 
 def fold(
     expr: Expression,
-    const_ops: Iterable[Literal],
-    multiplicity: Counter,
-    non_replacable_nonconst_ops: Iterable[ParameterOperatable],
-    repr_map: Mutator.REPR_MAP,
-    removed: set[ParameterOperatable],
-):
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
+) -> None:
     def get_func[T: Expression](
         expr: T,
     ) -> Callable[
         [
             T,
-            Iterable[Literal],
-            Counter,
-            Iterable[ParameterOperatable],
-            Mutator.REPR_MAP,
-            set[ParameterOperatable],
+            Sequence[Literal],
+            Counter[ParameterOperatable],
+            Sequence[ParameterOperatable],
+            Mutator,
         ],
-        bool,
+        None,
     ]:
         # Arithmetic
         # Subtract non-canonical
         if isinstance(expr, Add):
-            return fold_add
+            return fold_add  # type: ignore
+        # FIXME remove
+        elif True:
+            return lambda *args: None
+
         elif isinstance(expr, Multiply):
-            return fold_multiply
+            return fold_multiply  # type: ignore
         # Divide non-canonical
         # Sqrt non-canonical
         elif isinstance(expr, Power):
-            return fold_pow
+            return fold_pow  # type: ignore
         elif isinstance(expr, Log):
             # TODO implement
-            return lambda *args: False
+            return lambda *args: None
         elif isinstance(expr, Abs):
             # TODO implement
-            return lambda *args: False
+            return lambda *args: None
         # Cos non-canonical
         elif isinstance(expr, Sin):
             # TODO implement
-            return lambda *args: False
+            return lambda *args: None
         # Floor non-canonical
         # Ceil non-canonical
         elif isinstance(expr, Round):
             # TODO implement
-            return lambda *args: False
+            return lambda *args: None
         # Logic
         # Xor non-canonical
         # And non-canonical
         # Implies non-canonical
         elif isinstance(expr, Or):
-            return fold_or
+            return fold_or  # type: ignore
         # TODO make non-canonical
         elif isinstance(expr, And):
-            return fold_and
+            return fold_and  # type: ignore
         # Equality / Inequality
         elif isinstance(expr, Is):
-            return fold_alias
+            return fold_alias  # type: ignore
         # LessOrEqual non-canonical
         elif isinstance(expr, GreaterOrEqual):
-            return fold_ge
+            return fold_ge  # type: ignore
         elif isinstance(expr, GreaterThan):
             # TODO implement
-            return lambda *args: False
+            return lambda *args: None
         elif isinstance(expr, IsSubset):
-            return fold_subset
+            return fold_subset  # type: ignore
         # Sets
         elif isinstance(expr, Intersection):
-            return fold_intersect
+            return fold_intersect  # type: ignore
         elif isinstance(expr, Union):
-            return fold_union
-        return lambda *args: False
+            return fold_union  # type: ignore
+        return lambda *args: None
 
-    return get_func(expr)(
+    get_func(expr)(
         expr,
-        const_ops,
-        multiplicity,
-        non_replacable_nonconst_ops,
-        repr_map,
-        removed,
+        literal_operands,
+        replacable_nonliteral_operands,
+        non_replacable_nonliteral_operands,
+        mutator,
     )

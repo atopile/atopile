@@ -307,20 +307,20 @@ def fold_literals(mutator: Mutator):
         p_operands, literal_operands = partition(
             lambda o: ParameterOperatable.is_literal(o), operands
         )
-        non_replacable_nonconst_ops, replacable_nonconst_ops = partition(
+        p_operands = cast(list[ParameterOperatable], p_operands)
+        non_replacable_nonliteral_operands, replacable_nonliteral_operands = partition(
             lambda o: not mutator.has_been_mutated(o), p_operands
         )
-        multiplicity = Counter(replacable_nonconst_ops)
+        multiplicity = Counter(replacable_nonliteral_operands)
 
         # TODO, obviously_eq offers additional possibilites,
         # must be replacable, no implicit constr
         fold(
             expr,
-            literal_operands,
-            multiplicity,
-            non_replacable_nonconst_ops,
-            mutator.repr_map,
-            mutator.removed,
+            literal_operands=list(literal_operands),
+            replacable_nonliteral_operands=multiplicity,
+            non_replacable_nonliteral_operands=list(non_replacable_nonliteral_operands),
+            mutator=mutator,
         )
 
 

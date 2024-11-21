@@ -491,6 +491,8 @@ class Mutator:
                 for po in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
             }, False
         self.copy_unmutated()
+
+        assert self.G not in get_graphs(self.repr_map.values())
         return self.repr_map, True
 
     def debug_print(self):

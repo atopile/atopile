@@ -45,7 +45,7 @@ Quantity_Interval_DisjointT = TypeVar(
     "Quantity_Interval_DisjointT", bound="Quantity_Interval_Disjoint"
 )
 
-type QuantitySetLike = Quantity_Set | QuantityLike
+type QuantitySetLike = Quantity_Set | QuantityLike | tuple[QuantityLike, QuantityLike]
 
 # Helpers ------------------------------------------------------------------------------
 
@@ -511,6 +511,8 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return Quantity_Interval_Disjoint(other)
         if isinstance(other, Quantity):
             return Quantity_Set_Discrete(other)
+        if isinstance(other, tuple) and len(other) == 2:
+            return Quantity_Interval_Disjoint(other)
         if isinstance(other, (int, float)):
             return Quantity_Set_Discrete(quantity(other))
         raise ValueError(f"unsupported type: {type(other)}")

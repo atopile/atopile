@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import Iterable
+from typing import Any, Iterable
 
 import pytest
 
@@ -12,6 +12,7 @@ from faebryk.core.parameter import (
     Add,
     And,
     Arithmetic,
+    Multiply,
     Parameter,
     ParameterOperatable,
     Subtract,
@@ -20,6 +21,9 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval_Disjoint,
+)
 from faebryk.libs.units import P, dimensionless, quantity
 
 logger = logging.getLogger(__name__)
@@ -225,10 +229,72 @@ def test_simple_literal_folds_arithmetic(
     assert repr_map[expr] == expected_result
 
 
+@pytest.mark.parametrize(
+    "expr_type, operands, expected",
+    [
+        (Add, (5, 10), 15),
+        (Add, (-5, 15), 10),
+        (Add, ((0, 10), 5), (5, 15)),
+        (Add, ((0, 10), (-10, 0)), (-10, 10)),
+        (Add, (5, 5, 5), 15),
+        # (Subtract, (5, 10), -5),
+        # (Multiply, (5, 10), 50),
+        # (Divide, (5, 10), 0.5),
+    ],
+)
+def test_super_simple_literal_folding(
+    expr_type: type[Arithmetic], operands: Iterable[Any], expected: Any
+):
+    q_operands = [Quantity_Interval_Disjoint.from_value(o) for o in operands]
+    expr = expr_type(*q_operands)
+    solver = DefaultSolver()
+
+    (expr < 100.0).constrain()
+    G = expr.get_graph()
+
+    repr_map = solver.phase_one_no_guess_solving(G)
+    assert repr_map[expr] == Quantity_Interval_Disjoint.from_value(expected)
+
+
+def test_literal_folding_add_multiplicative():
+    A = Parameter(units=dimensionless)
+
+    expr = A + (A * 2) + (5 * A)
+    (expr < 100).constrain()
+
+    G = expr.get_graph()
+    solver = DefaultSolver()
+    repr_map = solver.phase_one_no_guess_solving(G)
+    rep_add = repr_map.repr_map[expr]
+    a_res = repr_map.repr_map[A]
+    assert isinstance(rep_add, Multiply)
+    assert set(rep_add.operands) == {a_res, 8 * dimensionless}
+
+
+def test_literal_folding_add_multiplicative_2():
+    A = Parameter(units=dimensionless)
+    B = Parameter(units=dimensionless)
+
+    expr = A + (A * 2) + 10 + (5 * A) + 0 + B
+    (expr <= 100.0).constrain()
+
+    G = expr.get_graph()
+    solver = DefaultSolver()
+    repr_map = solver.phase_one_no_guess_solving(G)
+    rep_add = repr_map.repr_map[expr]
+    a_res = repr_map.repr_map[A]
+    b_res = repr_map.repr_map[B]
+    assert isinstance(rep_add, Add)
+    a_ops = [op for op in a_res.get_operations() if isinstance(op, Multiply)]
+    assert len(a_ops) == 1
+    mul = next(iter(a_ops))
+    assert set(rep_add.operands) == {b_res, 10 * dimensionless, mul}
+
+
 if __name__ == "__main__":
     import typer
 
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_symmetric_inequality_correlated)
+    typer.run(test_literal_folding_add_multiplicative)
