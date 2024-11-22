@@ -59,6 +59,13 @@ class Contradiction(Exception):
 class ContradictionByLiteral(Contradiction):
     pass
 
+def alias_is_literal(po: ParameterOperatable, literal: ParameterOperatable.Literal):
+    existing = po.try_get_literal()
+    if existing is not None:
+        if existing == literal:
+            return
+        raise ContradictionByLiteral(f"{existing} != {literal}")
+    po.alias_is(literal)
 
 def flatten_associative[T: Associative](
     to_flatten: T,  # type: ignore

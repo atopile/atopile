@@ -32,6 +32,7 @@ from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
     FullyAssociative,
     Mutator,
+    alias_is_literal,
     flatten_associative,
     get_constrained_expressions_involved_in,
     is_replacable,
@@ -235,9 +236,7 @@ def merge_intersect_subsets(mutator: Mutator):
         # because another predicate exists that will always imply this one
         for e in constrained_subset_ops_with_literal:
             # TODO remove e if possible
-            if e.try_get_literal() is True:
-                continue
-            mutator.mutate_expression(e).alias_is(True)
+            alias_is_literal(e, True)
 
         cast_assert(ParameterOperatable, mutator.get_copy(param)).constrain_subset(
             intersected

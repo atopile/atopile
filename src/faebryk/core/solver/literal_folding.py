@@ -29,6 +29,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.utils import (
     ContradictionByLiteral,
     Mutator,
+    alias_is_literal,
 )
 from faebryk.libs.units import dimensionless
 from faebryk.libs.util import KeyErrorAmbiguous
@@ -266,24 +267,14 @@ def fold_pow(
     # TODO implement
     pass
 
+def is_implies_true(pred: Predicate) -> bool:
+    # CONSIDER: when can we remove the expression?
+    if pred.operands[0] is pred.operands[1]:
+        alias_is_literal(pred, True)
+        return True
+    return False
 
-def fold_alias(
-    expr: Is,
-    literal_operands: Sequence[Literal],
-    replacable_nonliteral_operands: Counter[ParameterOperatable],
-    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
-    mutator: Mutator,
-):
-    # literal only
-    if len(literal_operands) == 2:
-        if literal_operands[0] == literal_operands[1]:
-            # TODO
-            pass
-        else:
-            raise ContradictionByLiteral(
-                f"{literal_operands[0]} != {literal_operands[1]}"
-            )
-
+def fold_all_literal(expr: Predicate, fn: Callable[[Literal], bool], fn_false_str: str) -> bool:
     try:
         as_lits = [ParameterOperatable.try_extract_literal(o) for o in expr.operands]
     except KeyErrorAmbiguous as e:
@@ -292,13 +283,28 @@ def fold_alias(
         ) from e
 
     if None in as_lits:
+        return False
+
+    if fn(*as_lits):
+        # CONSIDER: when can we remove the expression?
+        alias_is_literal(expr, True)
+        return True
+    else:
+        raise ContradictionByLiteral(f"{as_lits[0]} {fn_false_str} {as_lits[1]}")
+
+
+def fold_alias(
+    expr: Is,
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
+):
+    if is_implies_true(expr):
         return
 
-    if as_lits[0] == as_lits[1]:
-        # TODO
-        expr.alias_is(True)
-    else:
-        raise ContradictionByLiteral(f"{as_lits[0]} != {as_lits[1]}")
+    if fold_all_literal(expr, lambda a, b: a == b, "!="):
+        return
 
 
 def fold_ge(
@@ -308,8 +314,11 @@ def fold_ge(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    # TODO implement
-    pass
+    if is_implies_true(expr):
+        return
+
+    if fold_all_literal(expr, lambda a, b: a >= b, "<"):
+        return
 
 
 def fold_subset(
@@ -319,8 +328,11 @@ def fold_subset(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    # TODO implement
-    pass
+    if is_implies_true(expr):
+        return
+
+    if fold_all_literal(expr, lambda a, b: a.is_subset_of(b), "not subset of"):
+        return
 
 
 def fold_intersect(
