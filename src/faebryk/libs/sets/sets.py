@@ -23,7 +23,7 @@ class P_Set[T](Protocol):
             Quantity_Interval_Disjoint,
             QuantitySetLikeR,
         )
-        if isinstance(value, QuantitySetLikeR):
+        if isinstance(value, QuantitySetLikeR) and not isinstance(value, bool):
             return Quantity_Interval_Disjoint.from_value(value)
         return PlainSet(value)
 

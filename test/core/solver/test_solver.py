@@ -207,16 +207,47 @@ def test_less_obvious_contradiction_by_literal():
     B = Parameter(units=P.V)
     C = Parameter(units=P.V)
 
-    A.alias_is(Range(0 * P.V, 10 * P.V))
-    B.alias_is(Range(5 * P.V, 10 * P.V))
+    A.alias_is(Range(0.0 * P.V, 10.0 * P.V))
+    B.alias_is(Range(5.0 * P.V, 10.0 * P.V))
     C.alias_is(A + B)
-    C.alias_is(Range(0 * P.V, 15 * P.V))
+    C.alias_is(Range(0.0 * P.V, 15.0 * P.V))
 
     G = A.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
         repr_map = solver.phase_one_no_guess_solving(G)
-        logger.info(repr_map.repr_map[C].get_operations())
+        from faebryk.core.graph import GraphFunctions
+        from faebryk.core.parameter import Expression
+        for op in GraphFunctions(repr_map.repr_map[A].get_graph()).nodes_of_type(ParameterOperatable):
+            logger.info(f"{op!r}")
+    #FIME
+    # <*3548|Parameter> is 5-10               subset 0-inf
+    # <*3158|Parameter> is 5-20 is Add(P)
+    # <*35D8|Parameter> is Add(P, P) is 0-15  subset 0-inf | Add(P,P) subset 3158 is 5-20 SHOULD DETECT CONTRADICTION HERE
+    # <*3668|Parameter> is 0-10               subset 0-inf
+
+    # <*3428|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),))
+    # <*3278|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),))
+    # <*3788|Add>((<*3668|Parameter>, <*3548|Parameter>))
+    # <*3308|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),))
+
+    # <*3938|Is>((<*3668|Parameter>, Quantity_Interval_Disjoint([0.0, 10.0])))
+    # <*C338|Is>((<*35D8|Parameter>, <*3788|Add>((<*3668|Parameter>, <*3548|Parameter>))))
+    # <*3A58|Is>((<*35D8|Parameter>, Quantity_Interval_Disjoint([0.0, 15.0])))
+    # <*3AE8|Is>((<*3158|Parameter>, Quantity_Interval_Disjoint([5.0, 20.0])))
+    # <*3C08|Is>((<*3158|Parameter>, Quantity_Interval_Disjoint([5.0, 20.0])))
+    # <*38A8|Is>((<*3548|Parameter>, Quantity_Interval_Disjoint([5.0, 10.0])))
+    # <*34B8|Is>((<*3428|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),)), <*3158|Parameter>))
+    # <*31E8|Is>((<*3278|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),)), <*3158|Parameter>))
+    # <*3398|Is>((<*3308|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),)), <*3158|Parameter>))
+
+    # <*39C8|IsSubset>((<*3668|Parameter>, Quantity_Interval_Disjoint([0.0, inf])))
+    # <*3B78|IsSubset>((<*3548|Parameter>, Quantity_Interval_Disjoint([0.0, inf])))
+    # <*36F8|IsSubset>((<*35D8|Parameter>, Quantity_Interval_Disjoint([0.0, inf])))
+    # <*3818|IsSubset>((<*3158|Parameter>, <*3158|Parameter>))
+    # <*3C98|IsSubset>((<*3788|Add>((<*3668|Parameter>, <*3548|Parameter>)), <*3158|Parameter>))
+    # <*C218|IsSubset>((<*3788|Add>((<*3668|Parameter>, <*3548|Parameter>)), <*3158|Parameter>))
+    # <*3E48|IsSubset>((<*3788|Add>((<*3668|Parameter>, <*3548|Parameter>)), Quantity_Interval_Disjoint([5.0, 20.0])))
 
 
 def test_symmetric_inequality_correlated():
@@ -262,6 +293,7 @@ def test_simple_literal_folds_arithmetic(
 
     solver = DefaultSolver()
     repr_map = solver.phase_one_no_guess_solving(G)
+    logger.info(f"{repr_map.repr_map}")
     deducted_subset = repr_map.try_get_literal(expr, IsSubset)
     assert deducted_subset == expected_result
 

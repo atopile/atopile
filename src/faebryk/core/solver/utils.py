@@ -36,6 +36,7 @@ from faebryk.core.parameter import (
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
+    Quantity_Set,
     QuantityLike,
     QuantityLikeR,
 )
@@ -563,6 +564,7 @@ class Mutators:
             chain_end = original_obj
             chain_interrupted = False
             for m in repr_maps:
+                # CONSIDER: I think we can assert this
                 if not isinstance(chain_end, ParameterOperatable):
                     break
                 if chain_end not in m:
@@ -592,9 +594,13 @@ class Mutators:
 
             if lit is None:
                 return None
-            return P_Set.from_value(lit)
+            res = P_Set.from_value(lit)
+            if isinstance(res, Quantity_Set):
+                return res *quantity(
+                1, HasUnit.get_units(param)
+            )
+            return res
 
-            return lit
 
         def __getitem__(
             self, param: ParameterOperatable

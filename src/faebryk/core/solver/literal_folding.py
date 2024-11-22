@@ -83,7 +83,7 @@ def fold_add(
     A + (A * 2) + ((A *2 ) * 3) -> (3 * A) + (3 * (A * 2))
     """
 
-    literal_sum = _fold_op(literal_operands, lambda a, b: a + b, 0 * expr.units)  # type: ignore #TODO
+    literal_sum = _fold_op(literal_operands, lambda a, b: a + b, 0.0 * expr.units)  # type: ignore #TODO
 
     # collect factors
     factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
@@ -130,8 +130,7 @@ def fold_add(
 
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        new_expr.alias_is(new_operands[0])
-
+        alias_is_literal(new_expr, new_operands[0])
 
 def fold_multiply(
     expr: Multiply,
@@ -140,47 +139,79 @@ def fold_multiply(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    # FIXME
-    return
+
+    literal_prod = _fold_op(literal_operands, lambda a, b: a * b, 1.0 * expr.units)  # type: ignore #TODO
+
+    # collect factors
+    powers: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
+        replacable_nonliteral_operands.items()
+    )
+    for power in set(powers.keys()):
+        if not isinstance(power, Power):
+            continue
+        lit = power.operands[1]
+        paramop = power.operands[0]
+        if not ParameterOperatable.is_literal(lit):
+            continue
+        if paramop not in powers:
+            continue
+        # not lit >= 0 is not the same as lit < 0
+        if paramop.try_get_literal() == 0.0 * paramop.units and not lit >= 0.0 * dimensionless:
+            continue
+        powers[paramop] += lit  # type: ignore #TODO
+        mutator.remove(power)
+        del powers[power]
+
+    # if no literal folding and non-lit factors all 1, nothing to do
+    if all(m == 1 for m in powers.values()) and len(literal_prod) == len(
+        literal_operands
+    ):
+        return
+
+    # Careful, modifying old graph, but should be ok
+    nonlit_operands = [Power(n, m) if m != 1 else n for n, m in powers.items()]
+
+    new_operands = [
+        *nonlit_operands,
+        *literal_prod,
+        *non_replacable_nonliteral_operands,
+    ]
+
+    zero_operand = any(ParameterOperatable.try_extract_literal(o) == 0.0 * o.units for o in new_operands)
+    if zero_operand:
+        new_operands = [0.0 * expr.units]
+
+    # unpack if single operand (operatable)
+    if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
+        mutator._mutate(expr, mutator.get_copy(new_operands[0]))
+        return
+
+    new_expr = mutator.mutate_expression(
+        expr, operands=new_operands, expression_factory=Multiply
+    )
+
+    # if only one literal operand, equal to it
+    if len(new_operands) == 1:
+        alias_is_literal(new_expr, new_operands[0])
+
+
+def try_extract_all_literals(expr: Predicate, op: type[Expression] | None = None) -> list[Literal] | None:
     try:
-        const_prod = [next(literal_operands)]
-        for c in literal_operands:
-            const_prod[0] *= c
-        if const_prod[0] == 1 * dimensionless:  # TODO make work with all the types``
-            const_prod = []
-    except StopIteration:
-        const_prod = []
+        as_lits = [ParameterOperatable.try_extract_literal(o, op) for o in expr.operands]
+    except KeyErrorAmbiguous as e:
+        raise ContradictionByLiteral(
+            f"Duplicate unequal is literals: {e.duplicates}"
+        ) from e
 
-    if len(const_prod) == 1 and const_prod[0].magnitude == 0:
-        # TODO make work with all the types
-        mutator.repr_map[expr] = 0 * expr.units
-    else:
-        if any(m > 1 for m in replacable_nonliteral_operands.values()):
-            copied = {
-                n: mutator.copy_operand_recursively(n)
-                for n in replacable_nonliteral_operands
-            }
-            nonconst_power = [
-                Power(copied[n], m * dimensionless) if m > 1 else copied[n]
-                for n, m in replacable_nonliteral_operands.items()
-            ]
-            new_operands = [
-                *nonconst_power,
-                *const_prod,
-                *(
-                    mutator.copy_operand_recursively(o)
-                    for o in non_replacable_nonliteral_operands
-                ),
-            ]
-            if len(new_operands) > 1:
-                new_expr = Multiply(*new_operands)
-            elif len(new_operands) == 1:
-                new_expr = new_operands[0]
-                mutator.remove(expr)
-            else:
-                raise ValueError("No operands, should not happen")
-            mutator.repr_map[expr] = new_expr
+    if None in as_lits:
+        return None
+    return as_lits
 
+def raise_alias_is_bool(expr: Predicate, value: bool) -> bool:
+    alias_is_literal(expr, value)
+    if not value and expr.constrained:
+        return True
+    return False
 
 def fold_and(
     expr: And,
@@ -189,35 +220,13 @@ def fold_and(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    # FIXME
-    return
-    const_op_list = list(literal_operands)
-    if any(not isinstance(o, bool) for o in const_op_list):
-        raise ValueError("Or with non-boolean operands")
-    if any(not o for o in const_op_list):
-        mutator.repr_map[expr] = False
-        mutator.remove(expr)
-    elif len(const_op_list) > 0 or any(
-        m > 1 for m in replacable_nonliteral_operands.values()
-    ):
-        new_operands = [
-            *(
-                mutator.copy_operand_recursively(o)
-                for o in replacable_nonliteral_operands
-            ),
-            *(
-                mutator.copy_operand_recursively(o)
-                for o in non_replacable_nonliteral_operands
-            ),
-        ]
-        if len(new_operands) > 1:
-            new_expr = And(*new_operands)
-        elif len(new_operands) == 1:
-            new_expr = new_operands[0]
-            mutator.remove(expr)
-        else:
-            new_expr = True
-        mutator.repr_map[expr] = new_expr
+    #TODO remove true ones
+    lits = try_extract_all_literals(expr)
+    if lits is None:
+        return
+    false_ops = [op for (lit, op) in zip(lits, expr.operands) if lit == False] #TODO sets of bools
+    if raise_alias_is_bool(expr, len(false_ops) == 0):
+        raise ContradictionByLiteral(f"False operands: {false_ops}")
 
 
 def fold_or(
@@ -227,35 +236,13 @@ def fold_or(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    # FIXME
-    return
-    const_op_list = list(literal_operands)
-    if any(not isinstance(o, bool) for o in const_op_list):
-        raise ValueError("Or with non-boolean operands")
-    if any(o for o in const_op_list):
-        mutator.repr_map[expr] = True
-        mutator.remove(expr)
-    elif len(const_op_list) > 0 or any(
-        m > 1 for m in replacable_nonliteral_operands.values()
-    ):
-        new_operands = [
-            *(
-                mutator.copy_operand_recursively(o)
-                for o in replacable_nonliteral_operands
-            ),
-            *(
-                mutator.copy_operand_recursively(o)
-                for o in non_replacable_nonliteral_operands
-            ),
-        ]
-        if len(new_operands) > 1:
-            new_expr = Or(*new_operands)
-        elif len(new_operands) == 1:
-            new_expr = new_operands[0]
-            mutator.remove(expr)
-        else:
-            new_expr = False
-        mutator.repr_map[expr] = new_expr
+    #TODO remove false ones
+    lits = try_extract_all_literals(expr)
+    if lits is None:
+        return
+    true_ops = [op for (lit, op) in zip(lits, expr.operands) if lit == True] #TODO sets of bools
+    if raise_alias_is_bool(expr, len(true_ops) > 0):
+        raise ContradictionByLiteral(f"All false: {expr.operands}")
 
 
 def fold_pow(
@@ -265,8 +252,29 @@ def fold_pow(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    # TODO implement
-    pass
+    if len(literal_operands) == 2:
+        base, exp = literal_operands
+        if exp == 1.0 * dimensionless:
+            alias_is_literal(expr, base)
+            return
+        elif exp == -1.0 * dimensionless:
+            alias_is_literal(expr, 1.0 * dimensionless / base)
+            return
+        else:
+            #FIXME not supported by sets yet
+            alias_is_literal(expr, base ** exp)
+            return
+
+    if not ParameterOperatable.is_literal(expr.operands[1]):
+        return
+
+    exp = literal_operands[-1]
+
+    if exp == 1.0 * dimensionless:
+        mutator._mutate(expr, mutator.get_copy(expr.operands[0]))
+        return
+
+    #TODO handle exp == 0 and base != 0/0 not in base
 
 def is_implies_true(pred: Predicate) -> bool:
     # CONSIDER: when can we remove the expression?
@@ -274,25 +282,6 @@ def is_implies_true(pred: Predicate) -> bool:
         alias_is_literal(pred, True)
         return True
     return False
-
-def fold_all_literal(expr: Predicate, fn: Callable[[Literal], bool], fn_false_str: str) -> bool:
-    try:
-        as_lits = [ParameterOperatable.try_extract_literal(o) for o in expr.operands]
-    except KeyErrorAmbiguous as e:
-        raise ContradictionByLiteral(
-            f"Duplicate unequal is literals: {e.duplicates}"
-        ) from e
-
-    if None in as_lits:
-        return False
-
-    if fn(*as_lits):
-        # CONSIDER: when can we remove the expression?
-        alias_is_literal(expr, True)
-        return True
-    else:
-        raise ContradictionByLiteral(f"{as_lits[0]} {fn_false_str} {as_lits[1]}")
-
 
 def fold_alias(
     expr: Is,
@@ -304,8 +293,12 @@ def fold_alias(
     if is_implies_true(expr):
         return
 
-    if fold_all_literal(expr, lambda a, b: a == b, "!="):
+    lits = try_extract_all_literals(expr)
+    if lits is None:
         return
+    a, b = lits
+    if raise_alias_is_bool(expr, a == b):
+        raise ContradictionByLiteral(f"{a} != {b}")
 
 
 def fold_ge(
@@ -318,8 +311,13 @@ def fold_ge(
     if is_implies_true(expr):
         return
 
-    if fold_all_literal(expr, lambda a, b: a >= b, "<"):
+    lits = try_extract_all_literals(expr)
+    if lits is None:
         return
+    a, b = lits
+    if raise_alias_is_bool(expr, a >= b):
+        raise ContradictionByLiteral(f"{a} not >= {b}")
+
 
 
 def fold_subset(
@@ -332,8 +330,13 @@ def fold_subset(
     if is_implies_true(expr):
         return
 
-    if fold_all_literal(expr, lambda a, b: a.is_subset_of(b), "not subset of"):
+    #FIXME should use op=IsSubset? both?
+    lits = try_extract_all_literals(expr)
+    if lits is None:
         return
+    a, b = lits
+    if raise_alias_is_bool(expr, a.is_subset_of(b)):
+        raise ContradictionByLiteral(f"{a} not subset of {b}")
 
 
 def fold_intersect(
@@ -367,6 +370,7 @@ def fold(
 ) -> None:
     """
     literal_operands must be actual literals, not the literal the operand is aliased to!
+    maybe it would be fine for set literals with one element?
     """
 
     def get_func[T: Expression](

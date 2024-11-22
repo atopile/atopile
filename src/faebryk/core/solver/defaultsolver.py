@@ -38,7 +38,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     QuantitySetLikeR,
 )
-from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.sets.sets import P_Set, PlainSet
 from faebryk.libs.units import dimensionless
 from faebryk.libs.util import times_out
 
@@ -139,15 +139,15 @@ class DefaultSolver(Solver):
                     mutator.debug_print()
             # TODO assert all new graphs
             return algo_repr_map, algo_graphs, algo_dirty
-        algo_dirty = True
+        any_dirty = True
         iterno = 0
-        loop_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
+        total_repr_map: dict[tuple[int, str], Mutator.REPR_MAP] = {}
         param_ops_subset_literals: dict[ParameterOperatable, ParameterOperatable.Literal] = {
             po: po.try_get_literal_subset() for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
         }
         graphs = [g]
 
-        while len(graphs) > 0:
+        while any_dirty and len(graphs) > 0:
             v_count = sum(g.node_count for g in graphs)
             logger.info(
                 f"Iteration {iterno} |graphs|: {len(graphs)}, |V|: {v_count}".ljust(
@@ -170,32 +170,34 @@ class DefaultSolver(Solver):
                 graphs = algo_graphs
                 iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
 
-            algo_dirty = any(iteration_dirty.values())
-            if not algo_dirty:
-                break
+            any_dirty = any(iteration_dirty.values())
 
-            concat_repr_map = Mutators.concat_repr_maps(*iteration_repr_maps.values())
-            loop_repr_maps[(iterno, "concat")] = concat_repr_map
+            total_repr_map = Mutators.concat_repr_maps(*([total_repr_map] if total_repr_map else []), *iteration_repr_maps.values())
 
             subset_dirty = False
-            concat_repr_map_obj = Mutators.create_concat_repr_map(concat_repr_map)
+            total_repr_map_obj = Mutators.create_concat_repr_map(total_repr_map)
+            param_ops_subset_literals = {po: lit for po, lit in param_ops_subset_literals.items() if po in total_repr_map_obj}
             for po in param_ops_subset_literals:
-                if po in concat_repr_map_obj:
-                    new_subset_literal = concat_repr_map_obj.try_get_literal(po, IsSubset)
-                    if new_subset_literal != param_ops_subset_literals[po]:
-                        subset_dirty = True
+                new_subset_literal = total_repr_map_obj.try_get_literal(po, IsSubset)
+                if new_subset_literal != param_ops_subset_literals[po]:
+                    logger.info(f"Subset dirty {param_ops_subset_literals[po]} != {new_subset_literal}")
+                    param_ops_subset_literals[po] = new_subset_literal
+                    subset_dirty = True
 
-            param_ops_subset_literals: dict[ParameterOperatable, ParameterOperatable.Literal] = {
-                po: po.try_get_literal_subset() for po in GraphFunctions(g).nodes_of_type(ParameterOperatable) for g in graphs
-            }
-            if subset_dirty:
+            iteration_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
+            if subset_dirty or iterno == 1:
+                logger.info("Subset dirty, running subset dirty algorithms")
                 for phase_name, (algo_name, algo) in enumerate(subset_dirty_algorithms, start=phase_name):
-                    algo_repr_map, algo_graphs, _ = run_algo(graphs, phase_name, algo_name, algo)
+                    algo_repr_map, algo_graphs, algo_dirty = run_algo(graphs, phase_name, algo_name, algo)
+                    if not algo_dirty:
+                        continue
                     graphs = algo_graphs
-                    loop_repr_maps[(iterno, algo_name)] = algo_repr_map
+                    iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
+
+            total_repr_map = Mutators.concat_repr_maps(*([total_repr_map] if total_repr_map else []), *iteration_repr_maps.values())
             iterno += 1
 
-        return Mutators.create_concat_repr_map(*loop_repr_maps.values())
+        return Mutators.create_concat_repr_map(total_repr_map)
 
     def get_any_single(
         self,
@@ -292,10 +294,10 @@ class DefaultSolver(Solver):
             try:
                 repr_map = self.phase_one_no_guess_solving(pred.get_graph())
                 lit = repr_map.try_get_literal(pred)
-                if lit is True:
+                if lit is True or lit == PlainSet(True):
                     result.true_predicates.append(p)
                     break
-                elif lit is False:
+                elif lit is False or lit == PlainSet(False):
                     result.false_predicates.append(p)
                 elif lit is None:
                     result.unknown_predicates.append(p)
