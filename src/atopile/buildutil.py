@@ -121,7 +121,9 @@ def generate_bom(build_ctx: BuildContext, app: Module) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
-        build_ctx.output_base.with_suffix("_bom.csv"),
+        build_ctx.output_base.with_stem(
+            f"{build_ctx.output_base.stem}_bom"
+        ).with_suffix(".csv"),
     )
 
 
