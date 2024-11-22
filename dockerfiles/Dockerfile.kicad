@@ -31,18 +31,6 @@ chown -R kicad:kicad /opt/atopile
 # We need to set the github workspace as a safe directory according
 # to git so we can get version information like the githash from it
 git config --global --add safe.directory /github/workspace
-
-cat > run.sh <<EOF
-#!/bin/bash
-set -o errexit
-set -o pipefail
-set -o nounset
-
-ato install
-ato build
-EOF
-
-chmod +x run.sh
 EORUN
 
 RUN <<EOF
@@ -54,4 +42,4 @@ COPY --chown=kicad:kicad dist/atopile-*.tar.gz /tmp/atopile.tar.gz
 
 RUN uv pip install "/tmp/atopile.tar.gz[dev,test,docs]"
 
-ENTRYPOINT [ "/opt/atopile/run.sh" ]
+ENTRYPOINT [ "bash", "-c", "ato install && ato build" ]
