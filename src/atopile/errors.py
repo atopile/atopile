@@ -209,6 +209,12 @@ class AtoBadParameterError(AtoError):
     title = "Bad Parameter"
 
 
+class AtoPythonLoadError(AtoError):
+    """
+    Raised when a Python module couldn't be loaded.
+    """
+
+
 class CountingError(AtoError):
     count = None
 

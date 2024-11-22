@@ -11,6 +11,7 @@ Requirements for the config files include:
 import copy
 import fnmatch
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -286,10 +287,12 @@ def match_user_layout(path: Path) -> bool:
     return True
 
 
-def find_layout(layout_base: Path) -> Optional[Path]:
+def find_layout(layout_base: Path) -> Path:
     """Return the layout associated with a build."""
+
     if layout_base.with_suffix(".kicad_pcb").exists():
         return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
+
     elif layout_base.is_dir():
         layout_candidates = list(
             filter(match_user_layout, layout_base.glob("*.kicad_pcb"))
@@ -303,6 +306,16 @@ def find_layout(layout_base: Path) -> Optional[Path]:
                 "Layout directories must contain only 1 layout,"
                 f" but {len(layout_candidates)} found in {layout_base}"
             )
+
+    else:
+        raise atopile.errors.AtoFileNotFoundError(
+            f"Layout file not found in {layout_base}"
+        )
+
+
+class BuildType(Enum):
+    ATO = "ato"
+    PYTHON = "python"
 
 
 @define
@@ -319,11 +332,62 @@ class BuildContext:
     fail_on_drcs: bool
     dont_solve_equations: bool
 
-    layout_path: Optional[Path]  # eg. path/to/project/layouts/default/default.kicad_pcb
+    layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
     lock_file_path: Optional[Path]  # eg. path/to/project/ato-lock.yaml
     build_path: Path  # eg. path/to/project/build/<build-name>
 
     output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
+
+    @property
+    def build_type(self) -> BuildType:
+        """
+        Determine build type from the entry.
+
+        **/*.ato:* -> BuildType.ATO
+        **/*.py:* -> BuildType.PYTHON
+        """
+
+        suffix = self.entry.file_path.suffix
+
+        match suffix:
+            case ".ato":
+                return BuildType.ATO
+            case ".py":
+                return BuildType.PYTHON
+            case _:
+                raise atopile.errors.AtoError(
+                    f"Unknown entry suffix: {suffix} for {self.entry}"
+                )
+
+    @property
+    def netlist_path(self) -> Path:
+        """The path to output the netlist for this build."""
+        return self.output_base / f"{self.name}.net"
+
+    @property
+    def visuals_path(self) -> Path:
+        """The path to output the SVG for this build."""
+        return self.output_base / f"{self.name}.svg"
+
+    @property
+    def parameters_path(self) -> Path:
+        """The path to output the parameter report for this build."""
+        return self.output_base / f"{self.name}.csv"
+
+    @property
+    def export_manufacturing_artifacts(self) -> bool:
+        """Whether to export manufacturing artifacts for this build."""
+        return self.build_type == BuildType.PYTHON
+
+    @property
+    def export_visuals(self) -> bool:
+        """Whether to export visuals for this build."""
+        return self.build_type == BuildType.PYTHON
+
+    @property
+    def export_parameters(self) -> bool:
+        """Whether to export parameters for this build."""
+        return self.build_type == BuildType.PYTHON
 
     @classmethod
     def from_config(
@@ -333,7 +397,9 @@ class BuildContext:
         project_context: ProjectContext,
     ) -> "BuildContext":
         """Create a BuildArgs object from a Config object."""
-        abs_entry = address.AddrStr(project_context.project_path / build_config.entry)
+        abs_entry = address.AddrStr(
+            str((project_context.project_path / (build_config.entry or "")).resolve())
+        )
 
         build_path = Path(project_context.project_path) / BUILD_DIR_NAME
 

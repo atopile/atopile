@@ -17,6 +17,16 @@ class AddrStr(str):
     Represents address strings
     """
 
+    @property
+    def file_path(self) -> Path:
+        return Path(get_file(self))
+
+    @property
+    def entry_section(self) -> str:
+        if entry_section := get_entry_section(self):
+            return entry_section
+        raise AddressError("No entry section in address")
+
 
 class AddressError(ValueError):
     """
@@ -80,7 +90,7 @@ def get_relative_addr_str(address: AddrStr, base_path: PathLike) -> AddrStr:
     )
 
 
-def get_entry(address: AddrStr) -> AddrStr:
+def get_entry(address: AddrStr) -> str:
     """
     Extract the root path from an address.
     """
