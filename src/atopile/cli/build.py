@@ -47,7 +47,7 @@ def build(
                         log.error("Building .ato modules is not currently supported")
                         continue
                     case BuildType.PYTHON:
-                        app = _do_python_build(build_ctx)
+                        app = _init_python_app(build_ctx)
                     case _:
                         raise ValueError(f"Unknown build type: {build_ctx.build_type}")
 
@@ -108,8 +108,8 @@ def import_from_path(file_path):
     return module
 
 
-def _do_python_build(build_ctx: BuildContext) -> Module:
-    """Execute a specific .py build."""
+def _init_python_app(build_ctx: BuildContext) -> Module:
+    """Initialize a specific .py build."""
 
     try:
         build_module = import_from_path(build_ctx.entry.file_path)
@@ -130,7 +130,7 @@ def _do_python_build(build_ctx: BuildContext) -> Module:
     return app
 
 
-def _do_ato_build(build_ctx: BuildContext) -> Module:
-    """Execute a specific .ato build."""
+def _init_ato_app(build_ctx: BuildContext) -> Module:
+    """Initialize a specific .ato build."""
     raise errors.AtoNotImplementedError("ato builds are not implemented yet")
     do_prebuild(build_ctx)
