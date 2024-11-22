@@ -192,6 +192,10 @@ class ApiClient:
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
+        logger.debug(
+            f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"
+        )
+
         return response
 
     def _post(
@@ -204,6 +208,11 @@ class ApiClient:
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
+
+        logger.debug(
+            f"POST {self.config.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
+            f"{json.dumps(response.json(), indent=2)}"
+        )
 
         return response
 
