@@ -349,6 +349,10 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         r.interval_units = base_units(units)
         return r
 
+    @classmethod
+    def unbounded(cls: type[Quantity_Interval_DisjointT], units: Unit) -> Quantity_Interval_DisjointT:
+        return cls(Quantity_Interval(units=units))
+
     def is_empty(self) -> bool:
         return self._intervals.is_empty()
 

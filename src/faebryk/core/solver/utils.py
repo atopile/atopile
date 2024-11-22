@@ -260,19 +260,19 @@ NumericLiteral = QuantityLike | Quantity_Interval_Disjoint | Quantity_Interval
 NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
 
-def literal_to_base_units[T: NumericLiteral | None](q: T) -> T:
+def literal_to_base_units[T: NumericLiteral | None](q: T) -> P_Set:
     if q is None:
         return None  # type: ignore
     if isinstance(q, bool):
         return q
     if isinstance(q, Quantity):
-        return q.to_base_units().magnitude * dimensionless
+        return Quantity_Interval_Disjoint.from_value(q.to_base_units().magnitude * dimensionless)
     if isinstance(q, int | float):
-        return q * dimensionless
+        return Quantity_Interval_Disjoint.from_value(q * dimensionless)
     if isinstance(q, Quantity_Interval_Disjoint):
         return Quantity_Interval_Disjoint._from_intervals(q._intervals, dimensionless)
     if isinstance(q, Quantity_Interval):
-        return Quantity_Interval._from_interval(q._interval, dimensionless)
+        return Quantity_Interval_Disjoint(Quantity_Interval._from_interval(q._interval, dimensionless))
     raise ValueError(f"unknown literal type {type(q)}")
 
 

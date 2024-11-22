@@ -35,7 +35,6 @@ from faebryk.core.solver.utils import (
     literal_to_base_units,
 )
 from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
     Quantity_Interval_Disjoint,
     QuantitySetLikeR,
 )
@@ -221,7 +220,7 @@ class DefaultSolver(Solver):
         repr_map = self.phase_one_no_guess_solving(param.get_graph())
         if param not in repr_map.repr_map:
             logger.warning(f"Parameter {param} not in repr_map")
-            return Quantity_Interval_Disjoint(Quantity_Interval(units=param.units))
+            return Quantity_Interval_Disjoint.unbounded(param.units)
 
         # check predicates (is, subset), (ge, le covered too)
         literal = repr_map.try_get_literal(param, Is)
@@ -229,7 +228,7 @@ class DefaultSolver(Solver):
             literal = repr_map.try_get_literal(param, IsSubset)
 
         if literal is None:
-            return Quantity_Interval_Disjoint(Quantity_Interval(units=param.units))
+            return Quantity_Interval_Disjoint.unbounded(param.units)
 
         if not isinstance(literal, QuantitySetLikeR):
             raise ValueError(f"incompatible literal {literal}")
