@@ -9,7 +9,9 @@ import sys
 import uuid
 from typing import Annotated, Callable, Optional
 
+import rich
 import typer
+from rich.traceback import Traceback
 
 import atopile.config
 from atopile import errors
@@ -158,7 +160,9 @@ def _do_python_build(build_ctx: BuildContext) -> None:
             build_ctx.layout_path, build_ctx.netlist_path, G, app, transform=None
         )
     except Exception as e:
-        raise errors.AtoError(f"Error building {build_ctx.name}") from e
+        tb = Traceback.from_exception(type(e), e, e.__traceback__, show_locals=True)
+        rich.print(tb)
+        raise errors.AtoError(f"Error building {build_ctx.name}: {e}") from e
 
     if build_ctx.export_manufacturing_artifacts:
         export_pcba_artifacts(build_ctx.output_base, build_ctx.layout_path, app)
