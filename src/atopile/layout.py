@@ -13,6 +13,8 @@ import uuid
 from pathlib import Path
 from typing import Iterable
 
+from more_itertools import first
+
 import faebryk.library._F as F
 from atopile import address, config, errors, utils
 from faebryk.core.graph import GraphFunctions
@@ -51,11 +53,11 @@ def _clean_full_name(node: Module, root: Module | None = None) -> str:
     return ".".join(reversed(addr))
 
 
-def _index_module_layouts() -> FuncDict[Module, list[Path]]:
+def _index_module_layouts() -> FuncDict[Module, set[Path]]:
     """Find, tag and return a set of all the modules with layouts."""
     directory = config.get_project_context().project_path
 
-    entries: FuncDict[Module, list[Path]] = FuncDict()
+    entries: FuncDict[Module, set[Path]] = FuncDict()
     for filepath in directory.glob("**/ato.yaml"):
         cfg = config.get_project_config_from_path(filepath)
 
@@ -64,17 +66,9 @@ def _index_module_layouts() -> FuncDict[Module, list[Path]]:
 
             if (class_ := get_module_from_path(ctx.entry.file_path, ctx.entry.entry_section)) is not None:
                 # we only bother to index things we've imported, otherwise we can be sure they weren't used
-                entries.setdefault(class_, []).append(ctx.layout_path)
+                entries.setdefault(class_, set()).add(ctx.layout_path)
 
     return entries
-
-
-def _dfs_pairs(leader: Module, follower: Module) -> Iterable[tuple[Module, Module]]:
-    yield leader, follower
-    follower_children = {c.get_name(): c for c in follower.get_children_modules(direct_only=True, types=Module)}
-    for child in leader.get_children_modules(direct_only=True, types=Module):
-        if (follower_child := follower_children.get(child.get_name())) is not None:
-            yield from _dfs_pairs(child, follower_child)
 
 
 def _cmp_uuid(inst: Module, root: Module) -> str:
@@ -86,6 +80,9 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
     module_map = {}
 
     module_layouts = _index_module_layouts()
+
+    for module, trait in GraphFunctions(app.get_graph()).nodes_with_trait(F.has_reference_layout):
+        module_layouts.setdefault(module, set()).update(trait.paths)
 
     for module_instance in app.get_children_modules(types=Module):
         try:
@@ -105,15 +102,12 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         # Build up a map of UUIDs of the children of the module
         # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout
         uuid_map = {}
-        for inst_child, super_child in _dfs_pairs(module_instance, module_super):
-            if not inst_child.has_trait(F.has_footprint):
-                continue
-
-            uuid_map[_cmp_uuid(inst_child, app)] = _cmp_uuid(super_child, module_super)
+        for inst_child in GraphFunctions(module_instance.get_graph()).nodes_with_trait(F.has_footprint):
+            uuid_map[_cmp_uuid(inst_child, app)] = _cmp_uuid(inst_child, module_instance)
 
         module_map[address.get_instance_section(module_instance)] = {
             "instance_path": module_instance,
-            "layout_path": str(module_layouts[module_super]),
+            "layout_path": str(first(module_layouts[module_super])),
             "uuid_map": uuid_map,
         }
 
