@@ -32,9 +32,8 @@ chown -R kicad:kicad /opt/atopile
 # to git so we can get version information like the githash from it
 git config --global --add safe.directory /github/workspace
 
-echo > run.sh <<EOF
-#! /bin/bash
-
+cat > run.sh <<EOF
+#!/bin/bash
 set -o errexit
 set -o pipefail
 set -o nounset
