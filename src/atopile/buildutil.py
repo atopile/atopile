@@ -79,9 +79,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
                 muster.targets[target_name](build_ctx)
             built_targets.append(target_name)
 
-    logger.info(
-        f"Built '{', '.join(built_targets)}' for '{build_ctx.name}' config"
-    )
+    logger.info(f"Built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
 
 
 TargetType = Callable[[BuildContext, Module], None]
