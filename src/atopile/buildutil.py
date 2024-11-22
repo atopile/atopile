@@ -76,7 +76,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
         for target_name in targets:
             logger.info(f"Building '{target_name}' for '{build_ctx.name}' config")
             with accumulator.collect():
-                muster.targets[target_name](build_ctx)
+                muster.targets[target_name](build_ctx, app)
             built_targets.append(target_name)
 
     logger.info(f"Built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
