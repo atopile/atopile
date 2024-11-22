@@ -421,12 +421,6 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     for expr in exprs:
         if isinstance(expr, Predicate):
             continue
-        pre_is = expr.get_operations(Is)
-        pre_subset = expr.get_operations(IsSubset)
-
-        # TODO this is too strict
-        if pre_is or pre_subset:
-            continue
 
         operands = []
         for op in expr.operands:

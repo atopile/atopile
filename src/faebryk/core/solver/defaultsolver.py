@@ -123,15 +123,32 @@ class DefaultSolver(Solver):
             ("Associative expressions Full", compress_associative),
             ("Fold literals", fold_literals),
             ("Merge intersecting subsets", merge_intersect_subsets),
+        ]
+        subset_dirty_algorithms = [
             ("Upper estimation", upper_estimation_of_expressions_with_subsets),
         ]
 
+        def run_algo(graphs: list[Graph], phase_name: str, algo_name: str, algo: Callable[[Mutator], None]):
+            mutators = Mutators(*graphs)
+            mutators.run(algo)
+            algo_repr_map, algo_graphs, algo_dirty = mutators.close()
+            if algo_dirty:
+                logger.info(
+                    f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+                )
+                for mutator in mutators:
+                    mutator.debug_print()
+            # TODO assert all new graphs
+            return algo_repr_map, algo_graphs, algo_dirty
         algo_dirty = True
         iterno = 0
-        algos_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
+        loop_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
+        param_ops_subset_literals: dict[ParameterOperatable, ParameterOperatable.Literal] = {
+            po: po.try_get_literal_subset() for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+        }
         graphs = [g]
 
-        while algo_dirty and len(graphs) > 0:
+        while len(graphs) > 0:
             v_count = sum(g.node_count for g in graphs)
             logger.info(
                 f"Iteration {iterno} |graphs|: {len(graphs)}, |V|: {v_count}".ljust(
@@ -144,27 +161,42 @@ class DefaultSolver(Solver):
             else:
                 algos = iterative_algorithms
 
-            algos_dirty = {}
+            iteration_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
+            iteration_dirty = {}
             for phase_name, (algo_name, algo) in enumerate(algos):
-                mutators = Mutators(*graphs)
-                mutators.run(algo)
-                algo_repr_map, algo_graphs, algo_dirty = mutators.close()
-                algos_dirty[(iterno, algo_name)] = algo_dirty
+                algo_repr_map, algo_graphs, algo_dirty = run_algo(graphs, phase_name, algo_name, algo)
                 if not algo_dirty:
                     continue
+                iteration_dirty[(iterno, algo_name)] = algo_dirty
                 graphs = algo_graphs
-                algos_repr_maps[(iterno, algo_name)] = algo_repr_map
-                logger.info(
-                    f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
-                )
-                for mutator in mutators:
-                    mutator.debug_print()
-                # TODO assert all new graphs
+                iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
 
-            algo_dirty = any(algos_dirty.values())
+            algo_dirty = any(iteration_dirty.values())
+            if not algo_dirty:
+                break
+
+            concat_repr_map = Mutators.concat_repr_maps(*iteration_repr_maps.values())
+            loop_repr_maps[(iterno, "concat")] = concat_repr_map
+
+            subset_dirty = False
+            concat_repr_map_obj = Mutators.create_concat_repr_map(concat_repr_map)
+            for po in param_ops_subset_literals:
+                if po in concat_repr_map_obj:
+                    new_subset_literal = concat_repr_map_obj.try_get_literal(po, IsSubset)
+                    if new_subset_literal != param_ops_subset_literals[po]:
+                        subset_dirty = True
+
+            param_ops_subset_literals: dict[ParameterOperatable, ParameterOperatable.Literal] = {
+                po: po.try_get_literal_subset() for po in GraphFunctions(g).nodes_of_type(ParameterOperatable) for g in graphs
+            }
+            if subset_dirty:
+                for phase_name, (algo_name, algo) in enumerate(subset_dirty_algorithms, start=phase_name):
+                    algo_repr_map, algo_graphs, _ = run_algo(graphs, phase_name, algo_name, algo)
+                    graphs = algo_graphs
+                    loop_repr_maps[(iterno, algo_name)] = algo_repr_map
             iterno += 1
 
-        return Mutators.create_concat_repr_map(*algos_repr_maps.values())
+        return Mutators.create_concat_repr_map(*loop_repr_maps.values())
 
     def get_any_single(
         self,
