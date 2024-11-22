@@ -51,8 +51,8 @@ def build(
                     case _:
                         raise ValueError(f"Unknown build type: {build_ctx.build_type}")
 
-            # TODO: add a mechanism to override the following with custom build machinery
-            buildutil.build(build_ctx, app)
+                # TODO: add a mechanism to override the following with custom build machinery
+                buildutil.build(build_ctx, app)
 
         with accumulator.collect():
             project_context = atopile.config.get_project_context()

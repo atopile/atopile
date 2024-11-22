@@ -80,7 +80,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
             built_targets.append(target_name)
 
     logger.info(
-        f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config"
+        f"Built '{', '.join(built_targets)}' for '{build_ctx.name}' config"
     )
 
 
@@ -151,13 +151,9 @@ def generate_manufacturing_data(build_ctx: BuildContext, app: Module) -> None:
         pnp_file,
         build_ctx.output_base.with_suffix("_jlcpcb_pick_and_place.csv"),
     )
-    write_bom_jlcpcb(
-        app.get_children_modules(types=Module),
-        build_ctx.output_base.with_suffix("_jlcpcb_bom.csv"),
-    )
 
 
-@muster.register("layout-module-map")
+@muster.register("layout-module-map", default=False)
 def generate_module_map(build_ctx: BuildContext, app: Module) -> None:
     """Generate a designator map for the project."""
     raise errors.AtoNotImplementedError("Module map generation is not implemented yet")
