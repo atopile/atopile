@@ -85,40 +85,40 @@ def check_entry_arg_file_path(
     return entry_addr_override
 
 
+@errors.handle_ato_errors()
 def check_compiler_versions(config: atopile.config.ProjectConfig):
     """
     Check that the compiler version is compatible with the version
     used to build the project.
     """
-    with errors.handle_ato_errors():
-        dependency_cfgs = (
-            errors.downgrade(
-                atopile.config.get_project_config_from_path, FileNotFoundError
-            )(p)
-            for p in Path(config.location or ".").glob("*")
-        )
+    dependency_cfgs = (
+        errors.downgrade(FileNotFoundError)(
+            atopile.config.get_project_config_from_path
+        )(p)
+        for p in Path(config.location or ".").glob("*")
+    )
 
-        for cltr, cfg in errors.iter_through_errors(
-            itertools.chain([config], dependency_cfgs)
-        ):
-            if cfg is None:
-                continue
+    for cltr, cfg in errors.iter_through_errors(
+        itertools.chain([config], dependency_cfgs)
+    ):
+        if cfg is None:
+            continue
 
-            with cltr():
-                semver_str = cfg.ato_version
-                # FIXME: this is a hack to the moment to get around us breaking
-                # the versioning scheme in the ato.yaml files
-                for operator in version.OPERATORS:
-                    semver_str = semver_str.replace(operator, "")
+        with cltr():
+            semver_str = cfg.ato_version
+            # FIXME: this is a hack to the moment to get around us breaking
+            # the versioning scheme in the ato.yaml files
+            for operator in version.OPERATORS:
+                semver_str = semver_str.replace(operator, "")
 
-                built_with_version = version.parse(semver_str)
+            built_with_version = version.parse(semver_str)
 
-                if not version.match_compiler_compatability(built_with_version):
-                    raise version.VersionMismatchError(
-                        f"{cfg.location} ({cfg.ato_version}) can't be"
-                        " built with this version of atopile "
-                        f"({version.get_installed_atopile_version()})."
-                    )
+            if not version.match_compiler_compatability(built_with_version):
+                raise version.VersionMismatchError(
+                    f"{cfg.location} ({cfg.ato_version}) can't be"
+                    " built with this version of atopile "
+                    f"({version.get_installed_atopile_version()})."
+                )
 
 
 def create_build_contexts(
