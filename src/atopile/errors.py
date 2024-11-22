@@ -1,14 +1,12 @@
-import collections.abc
 import contextlib
 import logging
 import sys
 import textwrap
-import traceback
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, ContextManager, Iterable, Optional, Self, Type, TypeVar
+from typing import Callable, ContextManager, Iterable, Optional, Self, Type, cast
 
 import rich
 from antlr4 import ParserRuleContext, Token
@@ -242,14 +240,6 @@ class ImplicitDeclarationFutureDeprecationWarning(CountingError):
     count = 5
 
 
-def get_locals_from_exception_in_class(ex: Exception, class_: Type) -> dict:
-    """Return the locals from the first frame in the traceback that's in the given class."""
-    for tb, _ in list(traceback.walk_tb(ex.__traceback__))[::-1]:
-        if isinstance(tb.f_locals.get("self"), class_):
-            return tb.f_locals
-    return {}
-
-
 def format_error(ex: AtoError, debug: bool = False) -> str:
     """
     Format an error into a string.
@@ -338,7 +328,7 @@ def in_debug_session() -> Optional[ModuleType]:
 
 
 @contextmanager
-def handle_ato_errors(logger: logging.Logger = log) -> None:
+def handle_ato_errors(log_: logging.Logger = log):
     """
     This helper function catches ato exceptions and logs them.
     """
@@ -351,6 +341,10 @@ def handle_ato_errors(logger: logging.Logger = log) -> None:
         # we don't want the logging to potentially obstruct the debugger.
         if debugpy := in_debug_session():
             debugpy.breakpoint()
+
+        # This is here to print out any straggling ato errors that weren't
+        # printed via a lower-level accumulator of the likes
+        _log_ato_errors(ex, log_)
 
         raise AtoFatalError from ex
 
@@ -367,7 +361,7 @@ def muffle_fatalities():
         with handle_ato_errors():
             yield
 
-    except* AtoFatalError:
+    except AtoFatalError:
         if telemetry.telemetry_data is not None:
             telemetry.telemetry_data.ato_error = 1
         rich.print(
@@ -376,16 +370,23 @@ def muffle_fatalities():
         )
         do_exit = True
 
-    except* Exception as ex:
-        with contextlib.suppress(Exception):
-            telemetry.telemetry_data.crash += len(ex.exceptions)
+    except Exception as ex:
+        if isinstance(ex, BaseExceptionGroup):
+            # Rich handles ExceptionGroups poorly, so we do it ourselves here
+            for e in ex.exceptions:
+                log.error(f"Uncaught compiler exception: {e}")
+                tb = Traceback.from_exception(
+                    type(e), e, e.__traceback__, show_locals=True
+                )
+                rich.print(tb)
 
-        for e in ex.exceptions:
-            log.error(f"Uncaught compiler exception: {e}")
-            tb = Traceback.from_exception(type(e), e, e.__traceback__, show_locals=True)
-            rich.print(tb)
+            with contextlib.suppress(Exception):
+                telemetry.telemetry_data.crash += len(ex.exceptions)
+        else:
+            with contextlib.suppress(Exception):
+                telemetry.telemetry_data.crash += 1
 
-        do_exit = True
+        raise
 
     finally:
         telemetry.log_telemetry()
@@ -393,6 +394,80 @@ def muffle_fatalities():
     # Raisinng sys.exit here so all exceptions can be raised
     if do_exit:
         sys.exit(1)
+
+
+class Pacman(contextlib.suppress):
+    """
+    A yellow spherical object that noms up exceptions.
+
+    Similar to `contextlib.suppress`, but does something with the exception.
+    """
+
+    def __init__(
+        self,
+        *exceptions: Type | tuple[Type],
+        default=None,
+    ):
+        self._exceptions = exceptions
+        self.default = default
+
+    def nom_nom_nom(
+        self,
+        exc: BaseException,
+        original_exinfo: tuple[Type[BaseException], BaseException, Traceback],
+    ):
+        """Do something with the exception."""
+        raise NotImplementedError
+
+    # The following methods are copied and modified from contextlib.suppress
+    # type errors are reproduced faithfully
+
+    def __exit__(self, exctype, excinst, exctb):  # type: ignore
+        # Unlike isinstance and issubclass, CPython exception handling
+        # currently only looks at the concrete type hierarchy (ignoring
+        # the instance and subclass checking hooks). While Guido considers
+        # that a bug rather than a feature, it's a fairly hard one to fix
+        # due to various internal implementation details. suppress provides
+        # the simpler issubclass based semantics, rather than trying to
+        # exactly reproduce the limitations of the CPython interpreter.
+        #
+        # See http://bugs.python.org/issue12029 for more details
+        if exctype is None:
+            return
+        if issubclass(exctype, self._exceptions):
+            self.nom_nom_nom(excinst, (exctype, excinst, exctb))  # type: ignore
+            return True
+        if issubclass(exctype, BaseExceptionGroup):
+            excinst = cast(BaseExceptionGroup, excinst)
+            match, rest = excinst.split(self._exceptions)  # type: ignore
+            self.nom_nom_nom(match, (exctype, match, exctb))  # type: ignore
+            if rest is None:
+                return True
+            raise rest
+        return False
+
+    # The following methods are copied and modified from contextlib.ContextDecorator
+
+    def _recreate_cm(self):
+        """Return a recreated instance of self.
+
+        Allows an otherwise one-shot context manager like
+        _GeneratorContextManager to support use as
+        a decorator via implicit recreation.
+
+        This is a private interface just for _GeneratorContextManager.
+        See issue #11647 for details.
+        """
+        return self
+
+    def __call__(self, func):
+        @wraps(func)
+        def inner(*args, **kwds):
+            with self._recreate_cm():
+                return func(*args, **kwds)
+            return self.default
+
+        return inner
 
 
 class ExceptionAccumulator:
@@ -403,7 +478,7 @@ class ExceptionAccumulator:
 
     def __init__(
         self,
-        accumulate_types: Optional[Type[Exception]] = None,
+        *accumulate_types: Type,
         group_message: Optional[str] = None,
     ) -> None:
         self.errors: list[Exception] = []
@@ -412,28 +487,22 @@ class ExceptionAccumulator:
         # NOTE: we don't do this in the function signature because
         # we want the defaults to be the same here as in the iter_through_errors
         # function below
-        self.accumulate_types = accumulate_types or AtoError
+        self.accumulate_types = accumulate_types or (AtoError,)
         self.group_message = group_message or ""
 
-    @contextmanager
-    def collect(self, ctx: Optional[ParserRuleContext] = None):
-        try:
-            yield
-        except* self.accumulate_types as ex:
-            for e in ex.exceptions:
-                if ctx and hasattr(e, "set_src_from_ctx"):
-                    e.set_src_from_ctx(ctx)
-            self.add_errors(ex)
+    def collect(self) -> Pacman:
+        class _Collector(Pacman):
+            def nom_nom_nom(s, exc: BaseException, _):
+                if isinstance(exc, BaseExceptionGroup):
+                    self.errors.extend(exc.exceptions)
+                else:
+                    self.errors.append(exc)
+
+        return _Collector(*self.accumulate_types)
 
     def add_errors(self, ex: ExceptionGroup):
         self.errors.extend(ex.exceptions)
         _log_ato_errors(ex, log)
-
-    def make_collector(self) -> Callable[[Optional[ParserRuleContext]], ContextManager]:
-        """
-        Return a context manager that collects any ato errors raised while executing it.
-        """
-        return self.collect
 
     def raise_errors(self):
         """
@@ -459,12 +528,9 @@ class ExceptionAccumulator:
         self.raise_errors()
 
 
-T = TypeVar("T")
-
-
-def iter_through_errors(
+def iter_through_errors[T](
     gen: Iterable[T],
-    accumulate_types: Optional[Type | tuple[Type]] = None,
+    *accumulate_types: Type,
     group_message: Optional[str] = None,
 ) -> Iterable[tuple[Callable[[], ContextManager], T]]:
     """
@@ -473,42 +539,43 @@ def iter_through_errors(
     - the item from the iterable
     """
 
-    with ExceptionAccumulator(accumulate_types, group_message) as accumulator:
+    with ExceptionAccumulator(
+        *accumulate_types, group_message=group_message
+    ) as accumulator:
         for item in gen:
             # NOTE: we don't create a single context manager for the whole generator
             # because generator context managers are a bit special
             yield accumulator.collect, item
 
 
-C = TypeVar("C", bound=Callable)
-
-
-def downgrade(
-    func: C,
-    exs: Type | tuple[Type],
-    default=None,
-    to_level: int = logging.WARNING,
-    logger: logging.Logger = log,
-) -> C:
+class downgrade[T: Exception](Pacman):
     """
-    Return a wrapped version of your function that catches the given exceptions
-    and logs their contents as warning, instead returning a default value
+    Similar to `contextlib.suppress`, but logs the exception instead.
+    Can be used both as a context manager and as a function decorator.
     """
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except exs as ex:
+    def __init__(
+        self,
+        *exceptions: Type[T],
+        default=None,
+        to_level: int = logging.WARNING,
+        logger: logging.Logger = log,
+    ):
+        super().__init__(exceptions, default=default)
+        self.to_level = to_level
+        self.logger = logger
+
+    def nom_nom_nom(self, exc: T, _):
+        if isinstance(exc, BaseExceptionGroup):
+            exceptions = exc.exceptions
+        else:
+            exceptions = [exc]
+
+        for e in exceptions:
             try:
-                ex.log(logger, to_level)
+                e.log(self.logger, self.to_level)
             except AttributeError:
-                logger.log(to_level, ex)
-            if isinstance(default, collections.abc.Callable):
-                return default(*args, *kwargs)
-            return default
-
-    return wrapper
+                self.logger.log(self.to_level, e)
 
 
 @contextmanager

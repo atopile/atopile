@@ -1,6 +1,13 @@
+from unittest.mock import MagicMock
+
 import pytest
 
-from atopile.errors import AtoError, ExceptionAccumulator, iter_through_errors
+from atopile.errors import (
+    AtoError,
+    ExceptionAccumulator,
+    downgrade,
+    iter_through_errors,
+)
 
 
 def test_ExceptionAccumulator():
@@ -32,3 +39,35 @@ def test_iter_through_errors():
 
     else:
         raise AssertionError("Expected an ExceptionGroup to be raised")
+
+
+def test_downgrade_context():
+    logger = MagicMock()
+    with downgrade(ValueError, logger=logger):
+        raise ValueError()
+
+    logger.log.assert_called_once()
+
+
+def test_downgrade_decorator():
+    logger = MagicMock()
+
+    @downgrade(ValueError, logger=logger)
+    def foo():
+        raise ValueError()
+
+    a = foo()
+    assert a is None
+    logger.log.assert_called_once()
+
+
+def test_downgrade_decorator_with_default():
+    logger = MagicMock()
+
+    @downgrade(ValueError, default=2, logger=logger)
+    def foo():
+        raise ValueError()
+
+    a = foo()
+    assert a == 2
+    logger.log.assert_called_once()
