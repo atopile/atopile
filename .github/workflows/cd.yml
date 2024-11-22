@@ -34,18 +34,6 @@ jobs:
           python-version: '3.11'
 
       -
-        name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '19.5.0'
-
-      -
-        name: Build Web Application
-        run: |
-          npm ci
-          npm run build
-        working-directory: ./src/atopile/viewer
-      -
         name: Make python package
         run: |
           pip install build twine
