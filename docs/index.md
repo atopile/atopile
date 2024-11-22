@@ -62,7 +62,7 @@ __[Getting started with atopile - get setup and build your first project from sc
 
 atopile can be directly installed from [GitHub](https://github.com/atopile/atopile) by cloning the repository into a subfolder of your project root. This could be useful if you want to use the latest version of atopile:
 
-Start by making sure you have `python@2` or later installed on your machine.
+Start by making sure you have `python@3.12` or later installed on your machine.
 
 ??? question "How to install python 3.12 or later"
 
@@ -76,7 +76,7 @@ Start by making sure you have `python@2` or later installed on your machine.
 
 Setup the venv:
 ``` sh
-python3.11 -m venv venv
+python3.12 -m venv venv
 ```
 Activate the venv:
 ``` sh
