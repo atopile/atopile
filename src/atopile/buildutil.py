@@ -121,7 +121,7 @@ def generate_bom(build_ctx: BuildContext, app: Module) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
-        build_ctx.output_base.with_suffix("_bom.csv"),
+        build_ctx.output_base.with_suffix(".bom.csv"),
     )
 
 
@@ -129,25 +129,25 @@ def generate_bom(build_ctx: BuildContext, app: Module) -> None:
 def generate_manufacturing_data(build_ctx: BuildContext, app: Module) -> None:
     """Generate a designator map for the project."""
     export_step(
-        build_ctx.layout_path, step_file=build_ctx.output_base.with_suffix("_pcba.step")
+        build_ctx.layout_path, step_file=build_ctx.output_base.with_suffix(".pcba.step")
     )
     export_glb(
-        build_ctx.layout_path, glb_file=build_ctx.output_base.with_suffix("_pcba.glb")
+        build_ctx.layout_path, glb_file=build_ctx.output_base.with_suffix(".pcba.glb")
     )
     export_dxf(
-        build_ctx.layout_path, dxf_file=build_ctx.output_base.with_suffix("_pcba.dxf")
+        build_ctx.layout_path, dxf_file=build_ctx.output_base.with_suffix(".pcba.dxf")
     )
 
     export_gerber(
         build_ctx.layout_path,
-        gerber_zip_file=build_ctx.output_base.with_suffix("_gerber.zip"),
+        gerber_zip_file=build_ctx.output_base.with_suffix(".gerber.zip"),
     )
 
-    pnp_file = build_ctx.output_base.with_suffix("_pick_and_place.csv")
+    pnp_file = build_ctx.output_base.with_suffix(".pick_and_place.csv")
     export_pick_and_place(build_ctx.layout_path, pick_and_place_file=pnp_file)
     convert_kicad_pick_and_place_to_jlcpcb(
         pnp_file,
-        build_ctx.output_base.with_suffix("_jlcpcb_pick_and_place.csv"),
+        build_ctx.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
     )
 
 
