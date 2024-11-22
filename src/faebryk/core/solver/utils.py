@@ -39,6 +39,7 @@ from faebryk.libs.sets.quantity_sets import (
     QuantityLike,
     QuantityLikeR,
 )
+from faebryk.libs.sets.sets import P_Set, PlainSet
 from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless, quantity
 from faebryk.libs.util import EquivalenceClasses, not_none, partition, unique_ref
 
@@ -554,6 +555,9 @@ class Mutators:
     @staticmethod
     def concat_repr_maps(*repr_maps: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
         assert repr_maps
+        if len(repr_maps) == 1:
+            return repr_maps[0]
+
         concatenated = {}
         for original_obj in repr_maps[0].keys():
             chain_end = original_obj
@@ -588,10 +592,7 @@ class Mutators:
 
             if lit is None:
                 return None
-            if HasUnit.check(param):
-                return Quantity_Interval_Disjoint.from_value(lit) * quantity(
-                    1, HasUnit.get_units(param)
-                )
+            return P_Set.from_value(lit)
 
             return lit
 
@@ -599,6 +600,9 @@ class Mutators:
             self, param: ParameterOperatable
         ) -> ParameterOperatable.Literal:
             return not_none(self.try_get_literal(param))
+
+        def __contains__(self, param: ParameterOperatable) -> bool:
+            return param in self.repr_map
 
     @staticmethod
     def create_concat_repr_map(*repr_maps: Mutator.REPR_MAP) -> ReprMap:

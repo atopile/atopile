@@ -4,7 +4,7 @@
 from collections.abc import Iterable, Iterator
 from typing import Any, Protocol, runtime_checkable
 
-from faebryk.libs.units import Unit
+from faebryk.libs.units import Unit, dimensionless
 
 
 # Protocols ----------------------------------------------------------------------------
@@ -17,6 +17,16 @@ class P_Set[T](Protocol):
 
     def __contains__(self, item: T) -> bool: ...
 
+    @staticmethod
+    def from_value(value) -> "P_Set":
+        from faebryk.libs.sets.quantity_sets import (
+            Quantity_Interval_Disjoint,
+            QuantitySetLikeR,
+        )
+        if isinstance(value, QuantitySetLikeR):
+            return Quantity_Interval_Disjoint.from_value(value)
+        return PlainSet(value)
+
 
 class P_IterableSet[T, IterT](P_Set[T], Iterable[IterT], Protocol): ...
 
@@ -28,8 +38,9 @@ class P_UnitSet[T](P_Set[T], Protocol):
 class P_IterableUnitSet[T, IterT](P_UnitSet[T], Iterable[IterT], Protocol): ...
 
 
-class PlainSet[U](P_IterableSet[U, U]):
+class PlainSet[U](P_IterableUnitSet[U, U]):
     def __init__(self, *elements: U):
+        self.units = dimensionless
         self.elements = set(elements)
 
     def is_empty(self) -> bool:

@@ -122,6 +122,8 @@ def _get_compatible_modules(
     module: Module, cache: list[Module], solver: Solver
 ) -> Iterable[Module]:
     compatible_constraints = [_build_compatible_constraint(module, m) for m in cache]
+    if not compatible_constraints:
+        return
     solve_result = solver.assert_any_predicate(
         list(zip(compatible_constraints, cache)), lock=True
     )

@@ -3,7 +3,7 @@
 
 import logging
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Callable
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import (
@@ -57,7 +57,6 @@ def constrain_within_and_domain(mutator: Mutator):
 def strip_units(mutator: Mutator):
     """
     units -> base units (dimensionless)
-    within -> constrain is subset
     scalar to single
     """
 
@@ -82,8 +81,8 @@ def strip_units(mutator: Mutator):
                 if isinstance(operand, NumericLiteralR):
                     return literal_to_base_units(operand)
 
-                # FIXME: I don't think this is correct
-                assert isinstance(operand, ParameterOperatable)
+                # # FIXME: I don't think this is correct
+                # assert isinstance(operand, ParameterOperatable)
                 return operand
 
             mutator.mutate_expression_with_op_map(po, mutate)
@@ -310,5 +309,9 @@ class DefaultSolver(Solver):
                 pred.constrained = False
 
         result.unknown_predicates.extend(it)
+
+        if lock and result.true_predicates:
+            assert len(result.true_predicates) == 1
+            result.true_predicates[0].constrain()
 
         return result

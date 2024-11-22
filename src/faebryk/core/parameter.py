@@ -725,7 +725,8 @@ class Power(Arithmetic):
                 "exponent must have dimensionless unit",
                 incompatible_items=[exponent],
             )
-        units = HasUnit.get_units_or_dimensionless(base) ** exp_unit
+        exponent = quantity(exponent)
+        units = HasUnit.get_units_or_dimensionless(base) ** exponent.magnitude
         assert isinstance(units, Unit)
         self.units = units
 

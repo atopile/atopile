@@ -22,6 +22,7 @@ from faebryk.core.parameter import (
     Or,
     ParameterOperatable,
     Power,
+    Predicate,
     Round,
     Sin,
     Union,
@@ -364,6 +365,10 @@ def fold(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ) -> None:
+    """
+    literal_operands must be actual literals, not the literal the operand is aliased to!
+    """
+
     def get_func[T: Expression](
         expr: T,
     ) -> Callable[

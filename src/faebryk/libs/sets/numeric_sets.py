@@ -38,6 +38,9 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def is_unbounded(self) -> bool:
         return self._min == float("-inf") and self._max == float("inf")
 
+    def is_finite(self) -> bool:
+        return self._min != float("-inf") and self._max != float("inf")
+
     def min_elem(self) -> NumericT:
         return self._min
 
@@ -243,6 +246,16 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
 
     def is_empty(self) -> bool:
         return len(self.intervals) == 0
+
+    def is_unbounded(self) -> bool:
+        if self.is_empty():
+            return False
+        return self.intervals[0].is_unbounded()
+
+    def is_finite(self) -> bool:
+        if self.is_empty():
+            return True
+        return self.intervals[0].is_finite() and self.intervals[-1].is_finite()
 
     def min_elem(self) -> NumericT:
         if self.is_empty():

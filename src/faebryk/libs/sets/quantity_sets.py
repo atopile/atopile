@@ -167,6 +167,9 @@ class Quantity_Interval(Quantity_Set):
     def is_unbounded(self) -> bool:
         return self._interval.is_unbounded()
 
+    def is_finite(self) -> bool:
+        return self._interval.is_finite()
+
     def op_intersect_interval(
         self, other: "Quantity_Interval"
     ) -> "Quantity_Interval_Disjoint":
@@ -500,9 +503,10 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             yield Quantity_Interval._from_interval(r, self.units)
 
     def is_unbounded(self) -> bool:
-        if self.is_empty():
-            return False
-        return next(iter(self)).is_unbounded()
+        return self._intervals.is_unbounded()
+
+    def is_finite(self) -> bool:
+        return self._intervals.is_finite()
 
     # operators
     @staticmethod
