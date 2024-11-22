@@ -13,6 +13,7 @@ from typing import Callable, ContextManager, Iterable, Optional, Self, Type, Typ
 import rich
 import typer
 from antlr4 import ParserRuleContext, Token
+from rich.traceback import Traceback
 
 from atopile import address, telemetry
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
@@ -368,7 +369,8 @@ def muffle_fatalities():
             yield
 
     except* AtoFatalError:
-        telemetry.telemetry_data.ato_error = 1
+        if telemetry.telemetry_data is not None:
+            telemetry.telemetry_data.ato_error = 1
         rich.print(
             "\n\nUnfortunately errors ^^^ stopped the build. "
             "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
@@ -378,7 +380,11 @@ def muffle_fatalities():
     except* Exception as ex:
         with contextlib.suppress(Exception):
             telemetry.telemetry_data.crash += len(ex.exceptions)
-        raise ex
+
+        for e in ex.exceptions:
+            log.error(f"Uncaught compiler exception: {e}")
+            tb = Traceback.from_exception(type(e), e, e.__traceback__, show_locals=True)
+            rich.print(tb)
 
     finally:
         telemetry.log_telemetry()

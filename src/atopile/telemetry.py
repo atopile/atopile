@@ -39,7 +39,7 @@ class TelemetryData:
     crash: int = 0
 
 
-telemetry_data: TelemetryData
+telemetry_data: TelemetryData | None = None
 start_time: Optional[float] = None
 
 
@@ -52,17 +52,6 @@ def setup_telemetry_data(command: str):
         git_hash=get_current_git_hash(),
         subcommand=command,
     )
-
-
-def log_assertion(assertion: str):
-    assertion_hash = hashlib.sha256(assertion.encode()).hexdigest()
-    if assertion_hash not in telemetry_data.assertions:
-        telemetry_data.assertions.append(assertion_hash)
-    telemetry_data.assertions_checked += 1
-
-
-def log_eqn_vars(num_vars: int):
-    telemetry_data.eqns_vars += num_vars
 
 
 def log_telemetry():
