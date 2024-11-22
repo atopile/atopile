@@ -24,7 +24,7 @@ from faebryk.libs.picker.api.api import (
 
 # re-use the existing model for components from the jlcparts dataset, but as the data
 # schema diverges over time we'll migrate this to separate models
-from faebryk.libs.picker.jlcpcb.jlcpcb import Component
+from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
 from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
 from faebryk.libs.picker.picker import DescriptiveProperties, PickError
 from faebryk.libs.picker.util import generate_si_values
@@ -156,11 +156,20 @@ def _filter_by_module_params_and_attach(
     """
     Find a component with matching parameters
     """
-    mapping = _MAPPINGS_BY_TYPE[component_type]
+    mapping: list[MappingParameterDB] = _MAPPINGS_BY_TYPE[component_type]
 
     if not try_attach(cmp, parts, mapping, qty):
+        try:
+            friendly_params = [
+                f"{p.param_name} within {getattr(cmp, p.param_name, 'unknown')}"
+                for p in mapping
+            ]
+        except Exception:
+            logger.exception("Failed to make a friendly description of the parameters")
+            friendly_params = []
+
         raise PickError(
-            "No components found that match the parameters and that can be attached",
+            f"No components found that match {' and '.join(friendly_params)}",
             cmp,
         )
 
