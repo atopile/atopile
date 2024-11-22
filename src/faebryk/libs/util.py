@@ -1338,3 +1338,29 @@ def import_from_path(file_path: os.PathLike, attr: str | None = None) -> ModuleT
         return module
     else:
         return getattr(module, attr)
+
+
+def has_attr_or_property(obj: object, attr: str) -> bool:
+    """Check if an object has an attribute or property by the name `attr`."""
+    return hasattr(obj, attr) or (
+        hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property)
+    )
+
+
+def try_set_attr(obj: object, attr: str, value: Any) -> bool:
+    """Set an attribute or property if possible, and return whether it was successful."""
+    if hasattr(obj, attr):
+        # If the attribute is only an instance attribute, set it directly
+        if not hasattr(type(obj), attr):
+            setattr(obj, attr, value)
+            return True
+
+        # If the attribute is a property with a setter, set it through the property
+        if (
+            isinstance(getattr(type(obj), attr), property)
+            and getattr(type(obj), attr).fset is not None
+        ):
+            setattr(obj, attr, value)
+            return True
+
+    return False
