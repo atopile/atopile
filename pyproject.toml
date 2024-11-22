@@ -15,9 +15,9 @@ requires-python = ">=3.12,<3.13"
 dynamic = ["version"]
 license = { file = "LICENSE" }
 authors = [
-    { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
+    { name = "Matthew Wildoer", email = "matt@atopile.io" },
     { name = "Ioannis Papamanoglou", email = "ioannis@atopile.io" },
-    { name = "Narayan Powderly", email = "napowderly@gmail.com" },
+    { name = "Narayan Powderly", email = "narayan@atopile.io" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
