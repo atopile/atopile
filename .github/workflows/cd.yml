@@ -34,10 +34,13 @@ jobs:
           python-version: '3.11'
 
       -
+        name: Install Hatch
+        uses: pypa/hatch@install
+
+      -
         name: Make python package
         run: |
-          pip install build twine
-          python -m build
+          hatch build
 
       -
         name: Upload Python Artifact

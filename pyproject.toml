@@ -141,7 +141,7 @@ dependencies = ["atopile[test]"]
 # Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
 artifacts = ["**/viewer/dist"]
-# packages = ["src/faebryk"]  # TODO: remove - I don't believe this is required
+packages = ["src/faebryk", "src/atopile"]
 
 [tool.hatch.build.targets.wheel.hooks.scikit-build]
 experimental = true
