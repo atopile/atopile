@@ -49,7 +49,7 @@ def get_or_set_name_and_value_of_node(c: Module):
             )
         )
 
-    c.add(F.has_descriptive_properties_defined({"faebryk_name": c.get_full_name()}))
+    c.add(F.has_descriptive_properties_defined({"atopile_address": c.get_full_name()}))
 
     return c.get_trait(F.has_overriden_name).get_name(), value
 

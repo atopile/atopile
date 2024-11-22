@@ -231,11 +231,13 @@ class PCB:
                 continue
 
             pcb_comp.propertys["Value"].value = nl_comp.value
-            pcb_comp.propertys["faebryk module name"] = fill_fp_property(
+            pcb_comp.propertys["atopile_address"] = fill_fp_property(
                 fp=pcb_comp,
-                property_name="faebryk module name",
+                property_name="atopile_address",
                 layer="User.9",
-                value=get_property_value(nl_comp, "faebryk_name", "No faebryk_name"),
+                value=get_property_value(
+                    nl_comp, "atopile_address", "No atopile_address"
+                ),
             )
 
             pcb_comp.propertys["LCSC"] = fill_fp_property(
@@ -283,11 +285,11 @@ class PCB:
             # Fill in variables
             footprint.propertys["Reference"].value = comp_name
             footprint.propertys["Value"].value = comp.value
-            footprint.propertys["faebryk module name"] = fill_fp_property(
+            footprint.propertys["atopile_address"] = fill_fp_property(
                 fp=footprint,
-                property_name="faebryk module name",
+                property_name="atopile_address",
                 layer="User.9",
-                value=get_property_value(comp, "faebryk_name", "No faebryk_name"),
+                value=get_property_value(comp, "atopile_address", "No atopile_address"),
             )
             footprint.propertys["LCSC"] = fill_fp_property(
                 fp=footprint,

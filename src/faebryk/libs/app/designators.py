@@ -91,9 +91,9 @@ def load_designators_from_netlist(
     graph: Graph, t2_netlist_comps: dict[str, T2Netlist.Component]
 ):
     designators: dict[str, str] = {
-        comp.properties["faebryk_name"]: comp.name
+        comp.properties["atopile_address"]: comp.name
         for comp in t2_netlist_comps.values()
-        if "faebryk_name" in comp.properties
+        if "atopile_address" in comp.properties
     }
 
     matched_nodes = {
