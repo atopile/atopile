@@ -97,8 +97,10 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
     """Initialize a specific .py build."""
 
     try:
-        app_class = import_from_path(build_ctx.entry.file_path, build_ctx.entry.entry_section)
-    except (FileNotFoundError,ImportError) as e:
+        app_class = import_from_path(
+            build_ctx.entry.file_path, build_ctx.entry.entry_section
+        )
+    except (FileNotFoundError, ImportError) as e:
         raise errors.AtoPythonLoadError(
             f"Cannot import build entry {build_ctx.entry.file_path}"
         ) from e

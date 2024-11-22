@@ -11,23 +11,19 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Iterable
 
 from more_itertools import first
 
 import faebryk.library._F as F
-from atopile import address, config, errors, utils
+from atopile import address, config, errors
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.util import (
     FuncDict,
-    FuncSet,
     KeyErrorAmbiguous,
     KeyErrorNotFound,
     find,
     get_module_from_path,
-    has_attr_or_property,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,7 +60,11 @@ def _index_module_layouts() -> FuncDict[Module, set[Path]]:
         for build_name in cfg.builds:
             ctx = config.BuildContext.from_config_name(cfg, build_name)
 
-            if (class_ := get_module_from_path(ctx.entry.file_path, ctx.entry.entry_section)) is not None:
+            if (
+                class_ := get_module_from_path(
+                    ctx.entry.file_path, ctx.entry.entry_section
+                )
+            ) is not None:
                 # we only bother to index things we've imported, otherwise we can be sure they weren't used
                 entries.setdefault(class_, set()).add(ctx.layout_path)
 
@@ -81,7 +81,9 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
 
     module_layouts = _index_module_layouts()
 
-    for module, trait in GraphFunctions(app.get_graph()).nodes_with_trait(F.has_reference_layout):
+    for module, trait in GraphFunctions(app.get_graph()).nodes_with_trait(
+        F.has_reference_layout
+    ):
         module_layouts.setdefault(module, set()).update(trait.paths)
 
     for module_instance in app.get_children_modules(types=Module):
@@ -102,8 +104,12 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         # Build up a map of UUIDs of the children of the module
         # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout
         uuid_map = {}
-        for inst_child in GraphFunctions(module_instance.get_graph()).nodes_with_trait(F.has_footprint):
-            uuid_map[_cmp_uuid(inst_child, app)] = _cmp_uuid(inst_child, module_instance)
+        for inst_child in GraphFunctions(module_instance.get_graph()).nodes_with_trait(
+            F.has_footprint
+        ):
+            uuid_map[_cmp_uuid(inst_child, app)] = _cmp_uuid(
+                inst_child, module_instance
+            )
 
         module_map[address.get_instance_section(module_instance)] = {
             "instance_path": module_instance,

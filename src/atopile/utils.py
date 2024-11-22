@@ -1,12 +1,9 @@
 import hashlib
-import importlib.util
 import os
 import shutil
 import stat
-import sys
 import uuid
 from pathlib import Path
-from types import ModuleType
 
 
 def _hash_string(path: str) -> str:
