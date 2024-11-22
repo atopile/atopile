@@ -154,18 +154,17 @@ def create_build_contexts(
     atopile.config.set_project_context(project_ctx)
 
     # Make build contexts
-    with errors.handle_ato_errors(), errors.log_ato_errors():
-        if build_names := build or config.builds.keys():
-            build_ctxs: list[atopile.config.BuildContext] = [
-                atopile.config.BuildContext.from_config_name(config, build_name)
-                for build_name in build_names
-            ]
-        else:
-            build_ctxs = [
-                atopile.config.BuildContext.from_config(
-                    "default", atopile.config.ProjectBuildConfig(), project_ctx
-                )
-            ]
+    if build_names := build or config.builds.keys():
+        build_ctxs: list[atopile.config.BuildContext] = [
+            atopile.config.BuildContext.from_config_name(config, build_name)
+            for build_name in build_names
+        ]
+    else:
+        build_ctxs = [
+            atopile.config.BuildContext.from_config(
+                "default", atopile.config.ProjectBuildConfig(), project_ctx
+            )
+        ]
 
     for build_ctx in build_ctxs:
         if entry_addr_override is not None:
