@@ -1,16 +1,7 @@
-import hashlib
 import os
 import shutil
 import stat
-import uuid
 from pathlib import Path
-
-
-def _hash_string(path: str) -> str:
-    """Spits out a uuid in hex from a string"""
-    path_as_bytes = path.encode("utf-8")
-    hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
-    return str(uuid.UUID(bytes=hashed_path))
 
 
 def robustly_rm_dir(path: Path) -> None:
