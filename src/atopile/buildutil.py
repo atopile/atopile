@@ -151,7 +151,7 @@ def generate_manufacturing_data(build_ctx: BuildContext, app: Module) -> None:
     )
 
 
-@muster.register("layout-module-map", default=False)
+@muster.register("layout-module-map")
 def generate_module_map(build_ctx: BuildContext, app: Module) -> None:
     """Generate a designator map for the project."""
     layout.generate_module_map(build_ctx, app)
