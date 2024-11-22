@@ -1,7 +1,7 @@
 import logging
 from typing import Callable, Optional
 
-from atopile import errors
+from atopile import layout
 from atopile.config import BuildContext
 from atopile.errors import ExceptionAccumulator
 from faebryk.core.module import Module
@@ -154,7 +154,7 @@ def generate_manufacturing_data(build_ctx: BuildContext, app: Module) -> None:
 @muster.register("layout-module-map", default=False)
 def generate_module_map(build_ctx: BuildContext, app: Module) -> None:
     """Generate a designator map for the project."""
-    raise errors.AtoNotImplementedError("Module map generation is not implemented yet")
+    layout.generate_module_map(build_ctx, app)
 
 
 @muster.register("variable-report")
