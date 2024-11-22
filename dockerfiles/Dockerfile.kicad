@@ -1,5 +1,13 @@
 # a minimal Dockerfile for CI
-FROM kicad/kicad:8.0.1
+FROM kicad/kicad:8.0.6
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH=/venv/bin:/root/.local/bin:$PATH
+
+# build all targets
+ENV ATO_TARGET="all"
+ENV ATO_NON_INTERACTIVE=1
 
 # We use root for this container, despite the permission-turds
 # since it's all Github actions currently supports.
@@ -7,28 +15,31 @@ FROM kicad/kicad:8.0.1
 # container to reconcile this with other more standard CI systems.
 USER root
 
-COPY --chown=kicad:kicad dist/atopile-*.tar.gz /tmp/atopile.tar.gz
+WORKDIR /opt/atopile
 
-RUN sudo apt-get update \
-    && sudo apt-get install -y \
-        python3-pip \
-        python3-venv \
-    # Create a user-owned venv for atopile
-    # Ubuntu doesn't seem to support pip-installing modules globally
-    && sudo mkdir -p /opt/atopile \
-    && sudo chown -R kicad:kicad /opt/atopile \
-    && python3 -m venv /opt/atopile \
-    && . /opt/atopile/bin/activate \
-    # Install atopile
-    && pip3 install --upgrade pip \
-    && pip3 install "/tmp/atopile.tar.gz[dev,test,docs]" \
-    # Add the ato CLI to something on PATH
-    && sudo cp /opt/atopile/bin/ato /usr/local/bin/ato
+SHELL ["/bin/bash", "-o", "errexit", "-o", "pipefail", "-o", "nounset", "-c"]
 
-# Set envionment variables to build all targets
-ENV ATO_TARGET="all"
-ENV ATO_NON_INTERACTIVE=1
+RUN <<EORUN
+apt-get update
+apt-get install -y --no-install-recommends \
+    curl \
+    build-essential
+rm -rf /var/lib/apt/lists/*
+
+chown -R kicad:kicad /opt/atopile
 
 # We need to set the github workspace as a safe directory according
 # to git so we can get version information like the githash from it
-ENTRYPOINT [ "bash", "-c", "git config --global --add safe.directory /github/workspace && ato install && ato build" ]
+git config --global --add safe.directory /github/workspace
+EORUN
+
+RUN <<EOF
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv --python 3.12 /venv
+EOF
+
+COPY --chown=kicad:kicad dist/atopile-*.tar.gz /tmp/atopile.tar.gz
+
+RUN uv pip install "/tmp/atopile.tar.gz[dev,test,docs]"
+
+ENTRYPOINT [ "bash", "-c", "ato install && ato build" ]

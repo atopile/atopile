@@ -34,22 +34,13 @@ jobs:
           python-version: '3.11'
 
       -
-        name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '19.5.0'
+        name: Install Hatch
+        uses: pypa/hatch@install
 
-      -
-        name: Build Web Application
-        run: |
-          npm ci
-          npm run build
-        working-directory: ./src/atopile/viewer
       -
         name: Make python package
         run: |
-          pip install build twine
-          python -m build
+          hatch build
 
       -
         name: Upload Python Artifact
@@ -99,11 +90,15 @@ jobs:
         with:
           images: |
             ghcr.io/atopile/${{ matrix.image }}
+          # TODO: re-enable @latest tag once main is stable again
+          flavor: |
+            latest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=sha
 
       -
         name: Log in to the Container registry
