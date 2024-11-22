@@ -364,31 +364,6 @@ class BuildContext:
         """The path to output the netlist for this build."""
         return self.output_base / f"{self.name}.net"
 
-    @property
-    def visuals_path(self) -> Path:
-        """The path to output the SVG for this build."""
-        return self.output_base / f"{self.name}.svg"
-
-    @property
-    def parameters_path(self) -> Path:
-        """The path to output the parameter report for this build."""
-        return self.output_base / f"{self.name}.csv"
-
-    @property
-    def export_manufacturing_artifacts(self) -> bool:
-        """Whether to export manufacturing artifacts for this build."""
-        return self.build_type == BuildType.PYTHON
-
-    @property
-    def export_visuals(self) -> bool:
-        """Whether to export visuals for this build."""
-        return self.build_type == BuildType.PYTHON
-
-    @property
-    def export_parameters(self) -> bool:
-        """Whether to export parameters for this build."""
-        return self.build_type == BuildType.PYTHON
-
     @classmethod
     def from_config(
         cls,
