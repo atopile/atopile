@@ -54,7 +54,7 @@ def build(
             with accumulator.collect():
                 match build_ctx.build_type:
                     case BuildType.ATO:
-                        _do_ato_build(build_ctx)
+                        log.error("Building .ato modules is not currently supported")
                     case BuildType.PYTHON:
                         _do_python_build(build_ctx)
 
