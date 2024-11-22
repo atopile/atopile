@@ -17,6 +17,7 @@ from faebryk.core.parameter import (
     Multiply,
     Parameter,
     ParameterOperatable,
+    Predicate,
     Subtract,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -110,8 +111,8 @@ def test_simplify_logic():
 
 def test_inequality_to_set():
     p0 = Parameter(units=dimensionless)
-    p0.constrain_le(2 * dimensionless)
-    p0.constrain_ge(1 * dimensionless)
+    p0.constrain_le(2.)
+    p0.constrain_ge(1.)
     G = p0.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
@@ -120,8 +121,8 @@ def test_inequality_to_set():
 def test_remove_obvious_tautologies():
     p0, p1, p2 = (Parameter(units=dimensionless) for _ in range(3))
     p0.alias_is(p1 + p2)
-    p1.constrain_ge(0)
-    p2.constrain_ge(0)
+    p1.constrain_ge(0.)
+    p2.constrain_ge(0.)
     p2.alias_is(p2)
 
     G = p0.get_graph()
@@ -207,15 +208,15 @@ def test_less_obvious_contradiction_by_literal():
     C = Parameter(units=P.V)
 
     A.alias_is(Range(0 * P.V, 10 * P.V))
-
-    C.alias_is(A + B)
     B.alias_is(Range(5 * P.V, 10 * P.V))
+    C.alias_is(A + B)
     C.alias_is(Range(0 * P.V, 15 * P.V))
 
     G = A.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.phase_one_no_guess_solving(G)
+        repr_map = solver.phase_one_no_guess_solving(G)
+        logger.info(repr_map.repr_map[C].get_operations())
 
 
 def test_symmetric_inequality_correlated():
@@ -304,7 +305,10 @@ def test_literal_folding_add_multiplicative():
     rep_add = repr_map.repr_map[expr]
     a_res = repr_map.repr_map[A]
     assert isinstance(rep_add, Multiply)
-    assert set(rep_add.operands) == {a_res, 8 * dimensionless}
+    assert set(rep_add.operands) == {
+        a_res,
+        Quantity_Interval_Disjoint.from_value(8),
+    }
 
 
 def test_literal_folding_add_multiplicative_2():
@@ -331,7 +335,7 @@ def test_literal_folding_add_multiplicative_2():
     a_ops = [
         op
         for op in a_res.get_operations()
-        if isinstance(op, Multiply) and (8 * dimensionless) in op.operands
+        if isinstance(op, Multiply) and Quantity_Interval_Disjoint.from_value(8) in op.operands
     ]
     assert len(a_ops) == 1
     mul = next(iter(a_ops))
@@ -342,12 +346,19 @@ def test_literal_folding_add_multiplicative_2():
     }
 
 
-def test_assert_any_predicate_super_basic():
+@pytest.mark.parametrize(
+    "predicate_type",
+    [
+        Is,
+        IsSubset,
+    ],
+)
+def test_assert_any_predicate_super_basic(predicate_type: type[Predicate]):
     p0 = Parameter(units=P.V)
     p0.alias_is(Range(0 * P.V, 10 * P.V))
 
     solver = DefaultSolver()
-    pred = Is(p0, Range(0 * P.V, 10 * P.V))
+    pred = predicate_type(p0, Range(0 * P.V, 10 * P.V))
     result = solver.assert_any_predicate([(pred, None)], lock=False)
     assert result.true_predicates == [(pred, None)]
     assert result.false_predicates == []
