@@ -1,5 +1,5 @@
 # a minimal Dockerfile for CI
-FROM kicad/kicad:8.0.1
+FROM kicad/kicad:8.0.6
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
