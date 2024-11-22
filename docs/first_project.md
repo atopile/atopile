@@ -20,7 +20,7 @@ You can create your own project instead of using ato create. Perhaps you will wa
 
 ```{ .no-copy }
 .
-├── venv -> (active) virtual environment with python^3.11 and atopile installed
+├── venv -> (active) virtual environment with python^3.12 and atopile installed
 └── your-project
     ├── ato.yaml --> definition file for your atopile project
     ├── ato-lock.yaml --> file managed by atopile. Used to store automatically selected components + component position in the schematic

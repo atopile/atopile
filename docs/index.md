@@ -12,7 +12,7 @@ The `.ato` files are human readable and can be version controlled, so you can co
 
 2. **Project Setup**: For instructions on creating a new ato project from the command line, refer to [ato create](first_project.md/#with-ato-create-recommended)). Highly recommended to use GitHub to store and version your project.
 
-3. **Install Packages**: For detailed instructions on finding and installing pre-made packages for your project, refer to the [installation guide](install.md). 
+3. **Install Packages**: For detailed instructions on finding and installing pre-made packages for your project, refer to the [installation guide](install.md).
 
 4. **Circuit Design with Code**: Hook up your circuit features using the expressive `ato` language, transforming your design ideas into precise, codified representations.
 
@@ -62,17 +62,17 @@ __[Getting started with atopile - get setup and build your first project from sc
 
 atopile can be directly installed from [GitHub](https://github.com/atopile/atopile) by cloning the repository into a subfolder of your project root. This could be useful if you want to use the latest version of atopile:
 
-Start by making sure you have `python@3.11` or later installed on your machine.
+Start by making sure you have `python@2` or later installed on your machine.
 
-??? question "How to install python 3.11 or later"
+??? question "How to install python 3.12 or later"
 
-    To install python 3.11 or later, you can use [brew](https://brew.sh)
+    To install python 3.12 or later, you can use [brew](https://brew.sh)
 
-    `brew install python@3.11`
+    `brew install python@3.12`
 
     once you create your venv, make sure to run:
 
-    `python3.11 -m venv venv`
+    `python3.12 -m venv venv`
 
 Setup the venv:
 ``` sh
