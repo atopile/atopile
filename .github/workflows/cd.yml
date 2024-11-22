@@ -87,6 +87,9 @@ jobs:
         with:
           images: |
             ghcr.io/atopile/${{ matrix.image }}
+          # TODO: re-enable @latest tag once main is stable again
+          flavor: |
+            latest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
