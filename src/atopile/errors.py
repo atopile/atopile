@@ -11,7 +11,6 @@ from types import ModuleType
 from typing import Callable, ContextManager, Iterable, Optional, Self, Type, TypeVar
 
 import rich
-import typer
 from antlr4 import ParserRuleContext, Token
 from rich.traceback import Traceback
 
@@ -386,12 +385,14 @@ def muffle_fatalities():
             tb = Traceback.from_exception(type(e), e, e.__traceback__, show_locals=True)
             rich.print(tb)
 
+        do_exit = True
+
     finally:
         telemetry.log_telemetry()
 
     # Raisinng sys.exit here so all exceptions can be raised
     if do_exit:
-        typer.Exit(1)
+        sys.exit(1)
 
 
 class ExceptionAccumulator:
