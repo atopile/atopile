@@ -53,7 +53,7 @@ def _test_netlist_graph():
     attach_nets_and_kicad_info(G())
     t2 = make_t2_netlist_from_graph(G())
     for comp in t2.comps:
-        del comp.properties["atopile_address"]
+        del comp.properties["atopile_name"]
     netlist = from_faebryk_t2_netlist(t2)
 
     # test

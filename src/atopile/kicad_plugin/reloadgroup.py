@@ -6,8 +6,8 @@ import pcbnew
 from .common import (
     get_layout_map,
     groups_by_name,
-    get_footprint_uuid,
-    footprints_by_uuid,
+    get_footprint_addr,
+    footprints_by_addr,
 )
 
 log = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class ReloadGroup(pcbnew.ActionPlugin):
         board_path = board.GetFileName()
 
         existing_groups = groups_by_name(board)
-        footprints = footprints_by_uuid(board)
+        footprints = footprints_by_addr(board)
 
         for group_name, group_data in get_layout_map(board_path).items():
             # If the group doesn't yet exist in the layout
@@ -41,15 +41,17 @@ class ReloadGroup(pcbnew.ActionPlugin):
 
             # Make sure all the footprints in the group are up to date
             footprints_in_group = {
-                get_footprint_uuid(fp)
+                addr
                 for fp in g.GetItems()
                 if isinstance(fp, pcbnew.FOOTPRINT)
+                and (addr := get_footprint_addr(fp))
+                and addr in footprints
             }
-            expected_footprints = set(group_data["uuid_map"].keys())
-            for fp_uuid in footprints_in_group - expected_footprints:
-                g.RemoveItem(footprints[fp_uuid])
-            for fp_uuid in expected_footprints - footprints_in_group:
-                g.AddItem(footprints[fp_uuid])
+            expected_footprints = set(group_data["addr_map"].keys())
+            for fp_addr in footprints_in_group - expected_footprints:
+                g.RemoveItem(footprints[fp_addr])
+            for fp_addr in expected_footprints - footprints_in_group:
+                g.AddItem(footprints[fp_addr])
 
 
 ReloadGroup().register()

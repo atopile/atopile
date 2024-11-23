@@ -239,6 +239,14 @@ class PCB:
                     nl_comp, "atopile_address", "No atopile_address"
                 ),
             )
+            pcb_comp.propertys["atopile_name"] = fill_fp_property(
+                fp=pcb_comp,
+                property_name="atopile_name",
+                layer="User.9",
+                value=get_property_value(
+                    nl_comp, "atopile_name", "No atopile_name"
+                ),
+            )
 
             pcb_comp.propertys["LCSC"] = fill_fp_property(
                 fp=pcb_comp,
@@ -290,6 +298,12 @@ class PCB:
                 property_name="atopile_address",
                 layer="User.9",
                 value=get_property_value(comp, "atopile_address", "No atopile_address"),
+            )
+            footprint.propertys["atopile_name"] = fill_fp_property(
+                fp=footprint,
+                property_name="atopile_name",
+                layer="User.9",
+                value=get_property_value(comp, "atopile_name", "No atopile_name"),
             )
             footprint.propertys["LCSC"] = fill_fp_property(
                 fp=footprint,

@@ -49,7 +49,7 @@ def get_or_set_name_and_value_of_node(c: Module):
             )
         )
 
-    c.add(F.has_descriptive_properties_defined({"atopile_address": c.get_full_name()}))
+    c.add(F.has_descriptive_properties_defined({"atopile_name": c.get_full_name()}))
 
     return c.get_trait(F.has_overriden_name).get_name(), value
 
@@ -84,6 +84,8 @@ class can_represent_kicad_footprint_via_attached_component(
                 properties.update(
                     c.get_trait(F.has_descriptive_properties).get_properties()
                 )
+
+        properties["atopile_address"] = self.component.get_full_name()
 
         name, value = self.get_name_and_value()
 

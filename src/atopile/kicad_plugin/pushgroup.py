@@ -61,7 +61,7 @@ class PushGroup(pcbnew.ActionPlugin):
 
             # Push the layout
             sync_footprints(
-                source_board, target_board, known_layouts[g_name]["uuid_map"]
+                source_board, target_board, known_layouts[g_name]["addr_map"]
             )
 
             for i in g.GetItems():

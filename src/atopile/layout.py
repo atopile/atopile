@@ -11,6 +11,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
+from typing import Type
 
 from more_itertools import first
 
@@ -36,43 +37,33 @@ def _generate_uuid_from_string(path: str) -> str:
     return str(uuid.UUID(bytes=hashed_path))
 
 
-def _clean_full_name(node: Module, root: Module | None = None) -> str:
-    # TODO: this function shouldn't exist
-    # See: https://github.com/atopile/atopile/issues/547
-    addr: list[str] = []
-    for n, name in reversed(list(node.get_hierarchy())):
-        if root is not None and n is root:
-            break
-        addr.append(name)
-    else:
-        return node.get_full_name()
-    return ".".join(reversed(addr))
-
-
-def _index_module_layouts() -> FuncDict[Module, set[Path]]:
+def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
     """Find, tag and return a set of all the modules with layouts."""
     directory = config.get_project_context().project_path
 
     entries: FuncDict[Module, set[Path]] = FuncDict()
     for filepath in directory.glob("**/ato.yaml"):
-        cfg = config.get_project_config_from_path(filepath)
+        with errors.downgrade(Exception, logger=logger):
+            cfg = config.get_project_config_from_path(filepath)
 
-        for build_name in cfg.builds:
-            ctx = config.BuildContext.from_config_name(cfg, build_name)
+            for build_name in cfg.builds:
+                with errors.downgrade(Exception, logger=logger):
+                    ctx = config.BuildContext.from_config_name(cfg, build_name)
 
-            if (
-                class_ := get_module_from_path(
-                    ctx.entry.file_path, ctx.entry.entry_section
-                )
-            ) is not None:
-                # we only bother to index things we've imported, otherwise we can be sure they weren't used
-                entries.setdefault(class_, set()).add(ctx.layout_path)
+                    if (
+                        class_ := get_module_from_path(
+                            ctx.entry.file_path, ctx.entry.entry_section
+                        )
+                    ) is not None:
+                        # we only bother to index things we've imported,
+                        # otherwise we can be sure they weren't used
+                        entries.setdefault(class_, set()).add(ctx.layout_path)
 
     return entries
 
 
 def _cmp_uuid(inst: Module, root: Module) -> str:
-    return _generate_uuid_from_string(_clean_full_name(inst, root))
+    return _generate_uuid_from_string(inst.relative_address(root))
 
 
 def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
@@ -90,7 +81,8 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         try:
             # TODO: this could be improved if we had the mro of the module
             module_super = find(
-                lambda x: isinstance(module_instance, x) in x, module_layouts.keys()
+                module_layouts.keys(),
+                lambda x: isinstance(module_instance, x)
             )
         except KeyErrorNotFound:
             continue
@@ -104,17 +96,20 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         # Build up a map of UUIDs of the children of the module
         # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout
         uuid_map = {}
-        for inst_child in GraphFunctions(module_instance.get_graph()).nodes_with_trait(
+        addr_map = {}
+        for inst_child, _ in GraphFunctions(module_instance.get_graph()).nodes_with_trait(
             F.has_footprint
         ):
             uuid_map[_cmp_uuid(inst_child, app)] = _cmp_uuid(
                 inst_child, module_instance
             )
+            addr_map[inst_child.relative_address(app)] = inst_child.relative_address(module_instance)
 
         module_map[address.get_instance_section(module_instance)] = {
             "instance_path": module_instance,
             "layout_path": str(first(module_layouts[module_super])),
             "uuid_map": uuid_map,
+            "addr_map": addr_map,
         }
 
     with open(
