@@ -274,56 +274,53 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
     # pick only for most specialized module
     module = module.get_most_special()
 
-    if module.has_trait(has_part_picked):
-        return
+    if not module.has_trait(has_part_picked):
+        # pick mif module parts
+        for mif in module.get_children(direct_only=True, types=ModuleInterface):
+            for mod in _get_mif_top_level_modules(mif):
+                _pick_part_recursively(mod, progress)
 
-    # pick mif module parts
-    for mif in module.get_children(direct_only=True, types=ModuleInterface):
-        for mod in _get_mif_top_level_modules(mif):
-            _pick_part_recursively(mod, progress)
-
-    # pick
-    if module.has_trait(F.has_picker):
-        try:
-            module.get_trait(F.has_picker).pick()
-        except PickError as e:
-            # if no children, raise
-            # This whole logic will be so much easier if the recursive
-            # picker is just a normal picker
-            if not module.get_children_modules(types=Module, direct_only=True):
-                raise e
-
-    if module.has_trait(has_part_picked):
-        if progress:
-            progress.advance(module)
-        return
-
-    # if module has been specialized during pick, try again
-    if module.get_most_special() != module:
-        _pick_part_recursively(module, progress)
-        return
-
-    # go level lower
-    to_pick: set[Module] = {
-        c
-        for c in module.get_children(types=Module, direct_only=True)
-        if not c.has_trait(has_part_picked)
-    }
-    failed: dict[Module, PickError] = {}
-
-    logger.debug(f"Try picking unpicked children of {module}: {to_pick}")
-    # try repicking as long as progress is being made
-    while to_pick:
-        for child in to_pick:
+        # pick
+        if module.has_trait(F.has_picker):
             try:
-                _pick_part_recursively(child, progress)
+                module.get_trait(F.has_picker).pick()
             except PickError as e:
-                failed[child] = e
+                # if no children, raise
+                # This whole logic will be so much easier if the recursive
+                # picker is just a normal picker
+                if not module.get_children_modules(types=Module, direct_only=True):
+                    raise e
 
-        # no progress or last one failed as only
-        if to_pick == set(failed.keys()) or (len(failed) == 1 and child in failed):
-            logger.debug(f"No progress made on {module}, backtracking")
-            raise PickErrorChildren(module, failed)
+    if not module.has_trait(has_part_picked):
+        # if module has been specialized during pick, try again
+        if module.get_most_special() != module:
+            _pick_part_recursively(module, progress)
 
-        to_pick = set(failed.keys())
-        failed.clear()
+    if not module.has_trait(has_part_picked):
+        # go level lower
+        to_pick: set[Module] = {
+            c
+            for c in module.get_children(types=Module, direct_only=True)
+            if not c.has_trait(has_part_picked)
+        }
+        failed: dict[Module, PickError] = {}
+
+        logger.debug(f"Try picking unpicked children of {module}: {to_pick}")
+        # try repicking as long as progress is being made
+        while to_pick:
+            for child in to_pick:
+                try:
+                    _pick_part_recursively(child, progress)
+                except PickError as e:
+                    failed[child] = e
+
+            # no progress or last one failed as only
+            if to_pick == set(failed.keys()) or (len(failed) == 1 and child in failed):
+                logger.debug(f"No progress made on {module}, backtracking")
+                raise PickErrorChildren(module, failed)
+
+            to_pick = set(failed.keys())
+            failed.clear()
+
+    if progress:
+        progress.advance(module)
