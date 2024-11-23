@@ -1,0 +1,9 @@
+ato-version: ^0.2.0
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  default:
+    entry: main.py:App

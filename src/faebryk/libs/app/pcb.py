@@ -27,7 +27,9 @@ from faebryk.libs.util import ConfigFlag
 logger = logging.getLogger(__name__)
 
 PCBNEW_AUTO = ConfigFlag(
-    "PCBNEW_AUTO", default=True, descr="Automatically open pcbnew when applying netlist"
+    "PCBNEW_AUTO",
+    default=False,
+    descr="Automatically open pcbnew when applying netlist",
 )
 
 
