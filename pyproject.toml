@@ -175,6 +175,7 @@ log_file_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
 # log_file_level = "DEBUG"  # <-- you can set this in a PR if you want to debug tests in CI
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "not_in_ci: marks tests that should not be run in CI",
 ]
 
 
