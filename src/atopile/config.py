@@ -17,6 +17,7 @@ from typing import Optional
 
 import cattrs
 import deepdiff
+from attr import fields_dict
 from attrs import Factory, define
 from ruamel.yaml import YAML
 
@@ -114,7 +115,8 @@ class ProjectConfig:
     def _sanitise_dict_keys(cls, data: dict) -> dict:
         """Sanitise the keys of a dictionary to be valid python identifiers."""
         data = copy.deepcopy(data) or {}
-        data["ato_version"] = data.pop("ato-version", cls.ato_version)
+        fields = fields_dict(cls)
+        data["ato_version"] = data.pop("ato-version", fields["ato_version"].default)
         return data
 
     @staticmethod

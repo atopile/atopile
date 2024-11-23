@@ -15,6 +15,7 @@ from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext, BuildType
 from atopile.errors import ExceptionAccumulator
 from faebryk.core.module import Module
+from faebryk.libs.picker import lcsc
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +51,14 @@ def build(
                         app = _init_python_app(build_ctx)
                     case _:
                         raise ValueError(f"Unknown build type: {build_ctx.build_type}")
+
+                # TODO: these should be drawn from the buildcontext like everything else
+                lcsc.BUILD_FOLDER = build_ctx.build_path
+                lcsc.LIB_FOLDER = (
+                    build_ctx.build_path / build_ctx.layout_path.parent / "lib"
+                )  # TODO: move this to the buildcontext
+                lcsc.LIB_FOLDER.mkdir(exist_ok=True, parents=True)
+                # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models
 
                 # TODO: add a mechanism to override the following with custom build machinery
                 buildutil.build(build_ctx, app)
