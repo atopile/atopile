@@ -9,6 +9,9 @@ jobs:
         steps:
         - name: Checkout code
           uses: actions/checkout@v4
+        # Required due to a bug in the checkout action
+        # https://github.com/actions/checkout/issues/1471
+        - run: git fetch --prune --unshallow --tags
         - name: Set up Python
           uses: actions/setup-python@v5
           with:
@@ -34,7 +37,6 @@ jobs:
             name: test-logs
             path: artifacts/**/*.log
             if-no-files-found: warn
-        - run: tree .
         - name: Upload all test report
           if: steps.pytest.outcome == 'failure'
           uses: actions/upload-artifact@v4
