@@ -1,0 +1,6 @@
+*.kicad_* linguist-generated=true
+*.step linguist-generated=true
+*.wrl linguist-generated=true
+*.dxf linguist-generated=true
+*.svg linguist-generated=true
+*.net linguist-generated=true
