@@ -29,7 +29,7 @@ jobs:
         - name: Run pytest
           id: pytest
           continue-on-error: true
-          run: hatch run test:pytest
+          run: hatch run test:pytest -m "not not_in_ci"
         - name: Upload all test logs
           if: steps.pytest.outcome == 'failure'
           uses: actions/upload-artifact@v4
