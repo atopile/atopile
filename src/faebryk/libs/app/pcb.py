@@ -53,44 +53,46 @@ def apply_layouts(app: Module):
     if not app.has_trait(F.has_pcb_position):
         app.add(F.has_pcb_position_defined(origin))
 
-    HORIZONTAL_SPACING = 20
+    HORIZONTAL_SPACING = 10
     VERTICAL_SPACING = -5
 
     current_x = 0
+    current_y = 0
 
-    # separate levels horizontally
-    for level in app.get_tree(types=Node).iter_by_depth():
-        current_y = 0  # Reset Y position for each new column
-        has_footprints = False
-        current_group = None
+    nodes = [
+        n
+        for level in app.get_tree(types=Node).iter_by_depth()
+        for n in level
+        if n.has_trait(F.has_footprint)
+    ]
 
-        # stack components within level vertically
-        for node in sorted(level, key=lambda x: x.get_full_name()):
-            if node.has_trait(F.has_footprint):
-                group = node.get_full_name().rsplit(".", 1)[0]
-                print(f"{group=}")
+    current_prefix = None
+    for node in sorted(nodes, key=lambda x: x.get_full_name().lower()):
+        prefix = node.get_full_name().rsplit(".", 1)[0]
+        print(f"{prefix=}")
 
-                if current_group is not None and group != current_group:
-                    current_y += 2 * VERTICAL_SPACING
+        # start a new column per prefix
+        if current_prefix is not None and prefix != current_prefix:
+            current_x += HORIZONTAL_SPACING
+            current_y = 0  # Reset Y for new column
 
-                current_group = group
+        current_prefix = prefix
 
-                print(node.get_full_name())
-                pos = make_point_with_offsets(
-                    origin,
-                    x=current_x,
-                    y=current_y,
-                    layer=F.has_pcb_position.layer_type.TOP_LAYER,
-                )
-                node.add(F.has_pcb_position_defined(pos))
+        pos = make_point_with_offsets(
+            origin,
+            x=current_x,
+            y=current_y,
+            layer=F.has_pcb_position.layer_type.TOP_LAYER,
+        )
+        node.add(F.has_pcb_position_defined(pos))
 
-                # TODO: dynamic spacing based on footprint size?
-                current_y += VERTICAL_SPACING
-                has_footprints = True
+        # TODO: dynamic spacing based on footprint size?
+        current_y += VERTICAL_SPACING
 
         # only increment X position if we placed any footprints in this level
-        if has_footprints:
-            current_x += HORIZONTAL_SPACING
+        # and we haven't already incremented it for a new group
+        # if has_footprints and (current_group is None or group == current_group):
+        # current_x += HORIZONTAL_SPACING
 
 
 def apply_routing(app: Module, transformer: PCB_Transformer):
