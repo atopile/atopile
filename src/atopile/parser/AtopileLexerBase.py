@@ -127,4 +127,4 @@ class AtopileLexerBase(Lexer):
         super().skip()
 
     def atEndOfInput(self):
-        return self._input.LA(1) == Token.EOF
+        return self._input.LA(1) == CommonToken.EOF

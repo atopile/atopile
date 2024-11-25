@@ -9,7 +9,7 @@ from antlr4.error.ErrorListener import ErrorListener
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 
-from .errors import AtoFileNotFoundError, AtoSyntaxError
+from .errors import IMMEDIATE_RAISE, AtoFileNotFoundError, AtoSyntaxError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -70,12 +70,15 @@ def set_error_listener(parser: AtopileParser, error_listener: ErrorListener) -> 
 @contextmanager
 def defer_parser_errors(parser: AtopileParser) -> None:
     """Defer errors from a parser until the end of the context manager."""
-    error_listener = ErrorListenerCollector()
+    if IMMEDIATE_RAISE:
+        error_listener = ErrorListenerConverter()
+    else:
+        error_listener = ErrorListenerCollector()
     set_error_listener(parser, error_listener)
 
-    yield parser
+    yield
 
-    if error_listener.errors:
+    if not IMMEDIATE_RAISE and error_listener.errors:
         raise ExceptionGroup("Errors caused parsing failure", error_listener.errors)
 
 
