@@ -112,6 +112,11 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
             f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.entry_section}"
         ) from e
 
+    if not isinstance(app_class, type):
+        raise errors.AtoPythonLoadError(
+            f"Build entry {build_ctx.entry.file_path} is not a module we can instantiate"
+        )
+
     app = app_class()
 
     return app

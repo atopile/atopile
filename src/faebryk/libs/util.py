@@ -1284,14 +1284,12 @@ def hash_string(string: str) -> str:
 
 
 def get_module_from_path(
-    sanitized_file_path: os.PathLike, attr: str | None = None
+    file_path: os.PathLike, attr: str | None = None
 ) -> ModuleType | None:
     """
     Return a module based on a file path if already imported, or return None.
     """
-    sanitized_file_path = str(
-        Path(sanitized_file_path).expanduser().resolve().absolute()
-    )
+    sanitized_file_path = str(Path(file_path).expanduser().resolve().absolute())
     try:
         module = find(
             sys.modules.values(),
@@ -1306,7 +1304,9 @@ def get_module_from_path(
     return getattr(module, attr, None)
 
 
-def import_from_path(file_path: os.PathLike, attr: str | None = None) -> ModuleType:
+def import_from_path(
+    file_path: os.PathLike, attr: str | None = None
+) -> ModuleType | Type:
     """
     Import a module from a file path.
 

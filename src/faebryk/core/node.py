@@ -576,7 +576,7 @@ class Node(CNode):
         if not self_name.startswith(root_name):
             raise ValueError(f"Root {root_name} is not an ancestor of {self_name}")
 
-        return self_name[len(root_name) + 1 :]
+        return self_name.removeprefix(root_name + ".")
 
     # Trait stuff ----------------------------------------------------------------------
 
