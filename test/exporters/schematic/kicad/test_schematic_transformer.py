@@ -4,9 +4,20 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.exporters.schematic.kicad.transformer import SchTransformer
+from faebryk.exporters.schematic.kicad.skidl.shims import Part, Pin
+from faebryk.exporters.schematic.kicad.transformer import Transformer
 from faebryk.libs.exceptions import FaebrykException
-from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
+from faebryk.libs.kicad.fileformats_common import C_effects, C_stroke, C_wh, C_xy, C_xyr
+from faebryk.libs.kicad.fileformats_sch import (
+    C_arc,
+    C_circle,
+    C_fill,
+    C_kicad_sch_file,
+    C_lib_symbol,
+    C_polyline,
+    C_pts,
+    C_rect,
+)
 from faebryk.libs.util import find
 
 
@@ -19,8 +30,8 @@ def test_dir():
 
 
 @pytest.fixture
-def fp_lib_path_path(test_dir: Path):
-    return test_dir / "common/resources/fp-lib-table"
+def sch_libs_path(test_dir: Path):
+    return test_dir / "common" / "libs"
 
 
 @pytest.fixture
@@ -31,10 +42,10 @@ def sch_file(test_dir: Path):
 @pytest.fixture
 def transformer(sch_file: C_kicad_sch_file):
     app = Module()
-    return SchTransformer(sch_file.kicad_sch, app.get_graph(), app)
+    return Transformer(sch_file.kicad_sch, app.get_graph(), app)
 
 
-def test_wire_transformer(transformer: SchTransformer):
+def test_wire_transformer(transformer: Transformer):
     start_wire_count = len(transformer.sch.wires)
 
     transformer.insert_wire(
@@ -53,30 +64,31 @@ def test_wire_transformer(transformer: SchTransformer):
     ]
 
 
-def test_index_symbol_files(transformer: SchTransformer, fp_lib_path_path: Path):
-    assert len(transformer._symbol_files_index) == 0
-    transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
+def test_index_symbol_files(transformer: Transformer, sch_libs_path: Path):
+    assert transformer._symbol_files_index is None
+    transformer.index_symbol_files(sch_libs_path, load_globals=False)
+    assert transformer._symbol_files_index is not None
     assert len(transformer._symbol_files_index) == 1
 
 
 @pytest.fixture
-def full_transformer(transformer: SchTransformer, fp_lib_path_path: Path):
-    transformer.index_symbol_files(fp_lib_path_path, load_globals=False)
+def full_transformer(transformer: Transformer, sch_libs_path: Path):
+    transformer.index_symbol_files(sch_libs_path, load_globals=False)
     return transformer
 
 
-def test_get_symbol_file(full_transformer: SchTransformer):
+def test_get_symbol_file(full_transformer: Transformer):
     with pytest.raises(FaebrykException):
-        full_transformer.get_symbol_file("notta-lib")
+        full_transformer.get_symbol_by_name("notta-lib")
 
-    sym_flie = full_transformer.get_symbol_file("test")
+    sym_flie = full_transformer.get_symbol_by_name("test")
     assert (
         sym_flie.kicad_symbol_lib.symbols["AudioJack-CUI-SJ-3523-SMT"].name
         == "AudioJack-CUI-SJ-3523-SMT"
     )
 
 
-def test_insert_symbol(full_transformer: SchTransformer, sch_file: C_kicad_sch_file):
+def test_insert_symbol(full_transformer: Transformer, sch_file: C_kicad_sch_file):
     start_symbol_count = len(full_transformer.sch.symbols)
 
     # mimicing typically design/user-space
@@ -102,3 +114,263 @@ def test_insert_symbol(full_transformer: SchTransformer, sch_file: C_kicad_sch_f
 
     assert len(full_transformer.sch.symbols) == start_symbol_count + 1
     assert full_transformer.sch.symbols[-1].propertys["Reference"].value == "U1"
+
+
+def test_get_bbox_arc():
+    arc = C_arc(
+        # Arcs are made CCW
+        start=C_xy(2, 0),
+        mid=C_xy(1, 1),
+        end=C_xy(0, 0),
+        stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+        fill=C_fill(type=C_fill.E_type.background),
+    )
+    bbox = Transformer.get_bbox(arc)
+    assert len(bbox) == 2
+    # Arc should span from (0,0) to (2,0), going up to (1,1)
+    assert bbox[0] == (0, 0)
+    assert bbox[1] == (2, 1)
+
+
+def test_get_bbox_polyline():
+    polyline = C_polyline(
+        pts=C_pts(
+            xys=[
+                C_xy(0, 0),
+                C_xy(1, 1),
+                C_xy(2, 0),
+            ]
+        ),
+        stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+        fill=C_fill(type=C_fill.E_type.background),
+    )
+    bbox = Transformer.get_bbox(polyline)
+    assert len(bbox) == 2
+    assert bbox[0] == (0, 0)
+    assert bbox[1] == (2, 1)
+
+
+def test_get_bbox_rect():
+    rect = C_rect(
+        start=C_xy(1, 1),
+        end=C_xy(3, 4),
+        stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+        fill=C_fill(type=C_fill.E_type.background),
+    )
+    bbox = Transformer.get_bbox(rect)
+    assert len(bbox) == 2
+    assert bbox[0] == (1, 1)
+    assert bbox[1] == (3, 4)
+
+
+def test_get_bbox_circle():
+    # Test with radius
+    circle1 = C_circle(
+        center=C_xy(0, 0),
+        radius=2.0,
+        stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+        fill=C_fill(type=C_fill.E_type.background),
+    )
+    bbox1 = Transformer.get_bbox(circle1)
+    assert len(bbox1) == 2
+    assert bbox1[0] == (-2, -2)
+    assert bbox1[1] == (2, 2)
+
+    # Test with end point
+    circle2 = C_circle(
+        center=C_xy(0, 0),
+        end=C_xy(2, 0),
+        stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+        fill=C_fill(type=C_fill.E_type.background),
+    )
+    bbox2 = Transformer.get_bbox(circle2)
+    assert len(bbox2) == 2
+    assert bbox2[0] == (-2, -2)
+    assert bbox2[1] == (2, 2)
+
+
+def test_get_bbox_pin():
+    pin = C_lib_symbol.C_symbol.C_pin(
+        at=C_xyr(x=1, y=1, r=0),
+        length=2.0,
+        type=C_lib_symbol.C_symbol.C_pin.E_type.input,
+        style=C_lib_symbol.C_symbol.C_pin.E_style.line,
+        name=C_lib_symbol.C_symbol.C_pin.C_name(
+            name="",
+            effects=C_effects(
+                font=C_effects.C_font(size=C_wh(w=1.27, h=1.27), thickness=0.127),
+                hide=False,
+            ),
+        ),
+        number=C_lib_symbol.C_symbol.C_pin.C_number(
+            number="",
+            effects=C_effects(
+                font=C_effects.C_font(size=C_wh(w=1.27, h=1.27), thickness=0.127),
+                hide=False,
+            ),
+        ),
+    )
+    bbox = Transformer.get_bbox(pin)
+    assert len(bbox) == 2
+    assert bbox[0] == (-1.54, 1)
+    assert bbox[1] == (3, 1)  # Pin extends by length in x direction
+
+
+def test_get_bbox_symbol():
+    symbol = C_lib_symbol.C_symbol(
+        name="test_symbol",
+        rectangles=[
+            C_rect(
+                start=C_xy(0, 0),
+                end=C_xy(2, 2),
+                stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+                fill=C_fill(type=C_fill.E_type.background),
+            )
+        ],
+        pins=[
+            C_lib_symbol.C_symbol.C_pin(
+                at=C_xyr(x=0, y=0, r=0),
+                length=1.0,
+                type=C_lib_symbol.C_symbol.C_pin.E_type.input,
+                style=C_lib_symbol.C_symbol.C_pin.E_style.line,
+                name=C_lib_symbol.C_symbol.C_pin.C_name(
+                    name="",
+                    effects=C_effects(
+                        font=C_effects.C_font(
+                            size=C_wh(w=1.27, h=1.27), thickness=0.127
+                        ),
+                        hide=False,
+                    ),
+                ),
+                number=C_lib_symbol.C_symbol.C_pin.C_number(
+                    number="",
+                    effects=C_effects(
+                        font=C_effects.C_font(
+                            size=C_wh(w=1.27, h=1.27), thickness=0.127
+                        ),
+                        hide=False,
+                    ),
+                ),
+            )
+        ],
+        polylines=[],
+        circles=[],
+        arcs=[],
+    )
+    bbox = Transformer.get_bbox(symbol)
+    assert len(bbox) == 2
+    assert bbox[0] == (-2.54, 0)
+    assert bbox[1] == (2, 2)
+
+
+def test_get_bbox_lib_symbol():
+    lib_symbol = C_lib_symbol(
+        name="test_lib",
+        symbols={
+            "unit1": C_lib_symbol.C_symbol(
+                name="unit1",
+                rectangles=[
+                    C_rect(
+                        start=C_xy(0, 0),
+                        end=C_xy(2, 2),
+                        stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+                        fill=C_fill(type=C_fill.E_type.background),
+                    )
+                ],
+                polylines=[],
+                circles=[],
+                arcs=[],
+                pins=[],
+            ),
+            "unit2": C_lib_symbol.C_symbol(
+                name="unit2",
+                rectangles=[
+                    C_rect(
+                        start=C_xy(1, 1),
+                        end=C_xy(3, 3),
+                        stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+                        fill=C_fill(type=C_fill.E_type.background),
+                    )
+                ],
+                polylines=[],
+                circles=[],
+                arcs=[],
+                pins=[],
+            ),
+        },
+        power=None,
+        pin_numbers=None,
+        pin_names=None,
+        in_bom=None,
+        on_board=None,
+        convert=None,
+        propertys={},
+    )
+    bbox = Transformer.get_bbox(lib_symbol)
+    assert len(bbox) == 2
+    assert bbox[0] == (0, 0)
+    assert bbox[1] == (3, 3)
+
+
+def test_get_bbox_empty_polyline():
+    polyline = C_polyline(
+        pts=C_pts(xys=[]),
+        stroke=C_stroke(width=0, type=C_stroke.E_type.default),
+        fill=C_fill(type=C_fill.E_type.background),
+    )
+    bbox = Transformer.get_bbox(polyline)
+    assert bbox is None
+
+
+def test_get_bbox_empty_symbol():
+    symbol = C_lib_symbol.C_symbol(
+        name="empty_symbol", rectangles=[], pins=[], polylines=[], circles=[], arcs=[]
+    )
+    bbox = Transformer.get_bbox(symbol)
+    assert bbox is None
+
+
+@pytest.fixture
+def part() -> Part:
+    part = Part()
+
+    part.pins = [Pin() for _ in range(4)]
+    part.pins[0].orientation = "U"
+    part.pins[1].orientation = "D"
+    part.pins[2].orientation = "L"
+    part.pins[3].orientation = "R"
+
+    part.pins_by_orientation = {
+        "U": part.pins[0],
+        "D": part.pins[1],
+        "L": part.pins[2],
+        "R": part.pins[3],
+    }
+
+    return part
+
+
+@pytest.mark.parametrize(
+    "pwr_pins, gnd_pins, expected, certainty",
+    [
+        (["U"], ["D"], 180, 1.0),
+        (["L"], ["R"], 90, 1.0),
+        (["R"], ["L"], 270, 1.0),
+        ([], [], 0, 0),
+    ],
+)
+def test_ideal_part_rotation(part, pwr_pins, gnd_pins, expected, certainty):
+    assert isinstance(part, Part)
+    for orientation, pin in part.pins_by_orientation.items():
+        assert isinstance(pin, Pin)
+        if orientation in pwr_pins:
+            pin.fab_is_pwr = True
+            pin.fab_is_gnd = False
+        elif orientation in gnd_pins:
+            pin.fab_is_gnd = True
+            pin.fab_is_pwr = False
+        else:
+            pin.fab_is_pwr = False
+            pin.fab_is_gnd = False
+
+    assert Transformer._ideal_part_rotation(part) == (expected, certainty)

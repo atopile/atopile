@@ -417,15 +417,14 @@ def _encode(t) -> netlist_type:
     return sexp
 
 
-def loads[T](s: str | Path | list, t: type[T]) -> T:
-    text = s
-    sexp = s
-    if isinstance(s, Path):
-        text = s.read_text()
-    if isinstance(text, str):
-        sexp = sexpdata.loads(text)
+def loads[T](data: str | Path | list, t: type[T]) -> T:
+    if isinstance(data, Path):
+        data = data.read_text()
 
-    return _decode([sexp], t)
+    if isinstance(data, str):
+        data = [sexpdata.loads(data)]
+
+    return _decode(data, t)
 
 
 def dumps(obj, path: PathLike | None = None) -> str:
@@ -480,6 +479,14 @@ class JSON_File:
 
 
 def dataclass_dfs(obj) -> Iterator[tuple[Any, list, list[str]]]:
+    """
+    Iterates over all dataclass fields and their values.
+
+    Yields tuples of:
+    - value of the field
+    - list of the objects leading to the value
+    - list of the names of the fields leading to the value
+    """
     return _iterate_tree(obj, [], [])
 
 

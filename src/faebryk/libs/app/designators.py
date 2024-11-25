@@ -79,7 +79,7 @@ def override_names_with_designators(graph: Graph):
             logger.warning(
                 f"Renaming: {n.get_trait(F.has_overriden_name).get_name()} -> {name}"
             )
-        n.add(F.has_overriden_name_defined(name))
+        n.add(F.has_overriden_name_defined(name, explicit=False))
 
 
 def attach_hierarchical_designators(graph: Graph):

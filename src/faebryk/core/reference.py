@@ -17,16 +17,19 @@ class Reference[O: Node](constructed_field):
     class UnboundError(Exception):
         """Cannot resolve unbound reference"""
 
-    def __init__(self, out_type: type[O] | None = None):
+    def __init__(self, out_type: type[O] | None = None, optional: bool = False):
         self.gifs: dict[Node, GraphInterfaceReference] = defaultdict(
             GraphInterfaceReference
         )
         self.is_set: set[Node] = set()
+        self.optional = optional
 
         def get(instance: Node) -> O:
             try:
                 return cast(O, self.gifs[instance].get_reference())
             except GraphInterfaceReferenceUnboundError as ex:
+                if self.optional:
+                    return None
                 raise Reference.UnboundError from ex
 
         def set_(instance: Node, value: O):
@@ -39,6 +42,8 @@ class Reference[O: Node](constructed_field):
             self.is_set.add(instance)
 
             if out_type is not None and not isinstance(value, out_type):
+                if value is None and self.optional:
+                    return
                 raise TypeError(f"Expected {out_type} got {type(value)}")
 
             # attach our gif to what we're referring to
@@ -54,10 +59,12 @@ class Reference[O: Node](constructed_field):
         return None
 
 
-def reference[O: Node](out_type: type[O] | None = None) -> O | Reference:
+def reference[O: Node](
+    out_type: type[O] | None = None, optional: bool = False
+) -> O | Reference:
     """
     Create a simple reference to other nodes properly encoded in the graph.
 
     This final wrapper is primarily to fudge the typing.
     """
-    return Reference(out_type=out_type)
+    return Reference(out_type=out_type, optional=optional)

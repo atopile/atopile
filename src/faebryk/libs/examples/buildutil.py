@@ -28,6 +28,8 @@ KICAD_SRC = BUILD_DIR / Path("kicad/source")
 PCB_FILE = KICAD_SRC / Path("example.kicad_pcb")
 PROJECT_FILE = KICAD_SRC / Path("example.kicad_pro")
 
+EXAMPLE_PRJ = Path(__file__).parent / Path("resources/example")
+
 lcsc.BUILD_FOLDER = BUILD_DIR
 lcsc.LIB_FOLDER = BUILD_DIR / Path("kicad/libs")
 lcsc.MODEL_PATH = None
@@ -84,15 +86,12 @@ def apply_design_to_pcb(
         add_example_pickers(n)
     pick_part_recursively(m)
     # -------------------------------------------------------------------------
-
-    example_prj = Path(__file__).parent / Path("resources/example")
-
     if not DEV_MODE:
         NETLIST_OUT.unlink(missing_ok=True)
 
     if not DEV_MODE or not KICAD_SRC.exists():
         PCB_FILE.unlink(missing_ok=True)
-        shutil.copytree(example_prj, KICAD_SRC, dirs_exist_ok=True)
+        shutil.copytree(EXAMPLE_PRJ, KICAD_SRC, dirs_exist_ok=True)
 
     apply_design(PCB_FILE, NETLIST_OUT, G, m, transform)
 

@@ -9,3 +9,6 @@ from faebryk.core.module import Module
 class has_overriden_name(Module.TraitT):
     @abstractmethod
     def get_name(self) -> str: ...
+
+    @abstractmethod
+    def is_explicit(self) -> bool: ...

@@ -601,6 +601,8 @@ class Geometry:
     def bbox(
         points: Sequence[Point | Point2D], tolerance=0.0
     ) -> tuple[Point2D, Point2D]:
+        # points can't be a generator
+        assert len(points) > 0
         min_x = min(p[0] for p in points)
         min_y = min(p[1] for p in points)
         max_x = max(p[0] for p in points)

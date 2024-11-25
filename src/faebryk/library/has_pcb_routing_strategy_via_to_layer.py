@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from typing import TYPE_CHECKING
 
 import faebryk.library._F as F
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import (
     DEFAULT_TRACE_WIDTH,
     DEFAULT_VIA_SIZE_DRILL,
@@ -17,6 +17,9 @@ from faebryk.exporters.pcb.routing.util import (
 )
 from faebryk.libs.geometry.basic import Geometry
 
+if TYPE_CHECKING:
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +29,7 @@ class has_pcb_routing_strategy_via_to_layer(F.has_pcb_routing_strategy.impl()):
         self.vec = vec
         self.layer = layer
 
-    def calculate(self, transformer: PCB_Transformer):
+    def calculate(self, transformer: "PCB_Transformer"):
         layer = transformer.get_layer_id(self.layer)
 
         node = self.obj
