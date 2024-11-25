@@ -57,17 +57,36 @@ def apply_layouts(app: Module):
 
     # TODO: generate in sorted order
     components = sorted(
-        [n for level in app.get_tree(types=Node).iter_by_depth() for n in level],
-        key=lambda n: n.relative_address().rsplit(".", 1)[0].lower(),
+        [
+            n
+            for level in app.get_tree(types=Node).iter_by_depth()
+            for n in level
+            if n.has_trait(F.has_footprint)
+        ],
+        key=lambda n: (
+            n.relative_address().rsplit(".", 1)[0].lower(),
+            n.relative_address().lower(),
+        ),
     )
 
     current_prefix = None
     for component in components:
-        if not component.has_trait(F.has_footprint):
-            continue
-
         if component.has_trait(F.has_pcb_layout):
             component.get_trait(F.has_pcb_layout).apply()
+            print(f"{component.relative_address()} -> layout applied")
+            continue
+
+        if component.has_trait(F.has_pcb_position):
+            print(f"{component.relative_address()} -> position defined")
+            component.add(
+                F.has_pcb_position_defined(
+                    component.get_trait(F.has_pcb_position).get_position()
+                )
+            )
+            continue
+
+        if component.has_trait(F.has_reference_layout):
+            print(f"{component.relative_address()} -> reference layout")
             continue
 
         prefix = component.relative_address().rsplit(".", 1)[0]
@@ -79,6 +98,7 @@ def apply_layouts(app: Module):
 
         current_prefix = prefix
 
+        print(f"{component.relative_address()} -> {x=} {y=} {z=} {layer=}")
         component.add(
             F.has_pcb_position_defined(F.has_pcb_position.Point((x, y, z, layer)))
         )
