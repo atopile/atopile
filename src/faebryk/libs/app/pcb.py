@@ -34,7 +34,13 @@ PCBNEW_AUTO = ConfigFlag(
 
 
 def apply_layouts(app: Module):
-    """Apply automatic layout to components in the PCB."""
+    """
+    Apply layout to components in the PCB.
+
+    If the component already has a layout defined, use that.
+    Otherwise, group components into columns according to address prefix.
+    """
+
     origin = F.has_pcb_position.Point((0, 0, 0, F.has_pcb_position.layer_type.NONE))
 
     if not app.has_trait(F.has_pcb_position):
@@ -46,18 +52,24 @@ def apply_layouts(app: Module):
 
     x = 0
     y = 0
+    z = 0
+    layer = F.has_pcb_position.layer_type.TOP_LAYER
 
-    components = [
-        n
-        for level in app.get_tree(types=Node).iter_by_depth()
-        for n in level
-        if n.has_trait(F.has_footprint)
-    ]
+    # TODO: generate in sorted order
+    components = sorted(
+        [n for level in app.get_tree(types=Node).iter_by_depth() for n in level],
+        key=lambda n: n.get_full_name().rsplit(".", 1)[0].lower(),
+    )
 
     current_prefix = None
-    for component in sorted(
-        components, key=lambda n: n.get_full_name().rsplit(".", 1)[0].lower()
-    ):
+    for component in components:
+        if component.has_trait(F.has_pcb_layout):
+            component.get_trait(F.has_pcb_layout).apply()
+            continue
+
+        if not component.has_trait(F.has_footprint):
+            continue
+
         prefix = component.get_full_name().rsplit(".", 1)[0]
 
         # separate prefix groups horizontally
@@ -68,11 +80,7 @@ def apply_layouts(app: Module):
         current_prefix = prefix
 
         component.add(
-            F.has_pcb_position_defined(
-                F.has_pcb_position.Point(
-                    (x, y, 0, F.has_pcb_position.layer_type.TOP_LAYER)
-                )
-            )
+            F.has_pcb_position_defined(F.has_pcb_position.Point((x, y, z, layer)))
         )
 
         # separate components vertically
