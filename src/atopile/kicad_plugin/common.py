@@ -1,16 +1,26 @@
+import contextlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 import pcbnew
 
-LOG_FILE = Path("~/.atopile/kicad-plugin.log").expanduser().absolute()
+LOG_FILE = (Path(__file__).parent / "log.log").expanduser().absolute()
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.FileHandler(str(LOG_FILE), "w", "utf-8"))
 log.setLevel(logging.DEBUG)
+
+
+@contextlib.contextmanager
+def log_exceptions():
+    try:
+        yield
+    except Exception as e:
+        log.exception(e)
+        raise
 
 
 def get_prj_dir(path: Path) -> Path:
@@ -38,9 +48,12 @@ def groups_by_name(board: pcbnew.BOARD) -> dict[str, pcbnew.PCB_GROUP]:
     return {g.GetName(): g for g in board.Groups()}
 
 
-def get_footprint_addr(fp: pcbnew.FOOTPRINT) -> str | None:
+def get_footprint_addr(fp: pcbnew.FOOTPRINT) -> Optional[str]:
     """Return the property "atopile_address" of a footprint."""
-    return fp.GetProperty("atopile_address", None)
+    field: pcbnew.PCB_FIELD = fp.GetFieldByName("atopile_address")
+    if field:
+        return field.GetText()
+    return None
 
 
 def footprints_by_addr(board: pcbnew.BOARD) -> dict[str, pcbnew.FOOTPRINT]:

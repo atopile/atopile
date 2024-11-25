@@ -8,6 +8,7 @@ from .common import (
     groups_by_name,
     get_footprint_addr,
     footprints_by_addr,
+    log_exceptions
 )
 
 log = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class ReloadGroup(pcbnew.ActionPlugin):
         self.icon_file_name = str(Path(__file__).parent / "reload.png")
         self.dark_icon_file_name = self.icon_file_name
 
+    @log_exceptions()
     def Run(self):
         board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = board.GetFileName()
@@ -53,5 +55,5 @@ class ReloadGroup(pcbnew.ActionPlugin):
             for fp_addr in expected_footprints - footprints_in_group:
                 g.AddItem(footprints[fp_addr])
 
-
-ReloadGroup().register()
+with log_exceptions():
+    ReloadGroup().register()

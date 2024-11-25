@@ -16,7 +16,7 @@ from typing import Type
 from more_itertools import first
 
 import faebryk.library._F as F
-from atopile import address, config, errors
+from atopile import config, errors
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.util import (
@@ -81,8 +81,7 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         try:
             # TODO: this could be improved if we had the mro of the module
             module_super = find(
-                module_layouts.keys(),
-                lambda x: isinstance(module_instance, x)
+                module_layouts.keys(), lambda x: isinstance(module_instance, x)
             )
         except KeyErrorNotFound:
             continue
@@ -97,16 +96,16 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout
         uuid_map = {}
         addr_map = {}
-        for inst_child, _ in GraphFunctions(module_instance.get_graph()).nodes_with_trait(
-            F.has_footprint
-        ):
+        for inst_child in module_instance.get_children_modules(types=Module):
+            if not inst_child.has_trait(F.has_footprint):
+                continue
+            inst_addr = inst_child.relative_address(app)
             uuid_map[_cmp_uuid(inst_child, app)] = _cmp_uuid(
                 inst_child, module_instance
             )
-            addr_map[inst_child.relative_address(app)] = inst_child.relative_address(module_instance)
+            addr_map[inst_addr] = inst_child.relative_address(module_instance)
 
-        module_map[address.get_instance_section(module_instance)] = {
-            "instance_path": module_instance,
+        module_map[module_instance.relative_address(app)] = {
             "layout_path": str(first(module_layouts[module_super])),
             "uuid_map": uuid_map,
             "addr_map": addr_map,

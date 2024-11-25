@@ -85,7 +85,15 @@ class can_represent_kicad_footprint_via_attached_component(
                     c.get_trait(F.has_descriptive_properties).get_properties()
                 )
 
-        properties["atopile_address"] = self.component.get_full_name()
+        # FIXME: this should be a part of the Node.get_full_name(),
+        # but it's not yet implemented, so we're patching in the same
+        # functionality here. See: https://github.com/atopile/atopile/issues/547
+        if root_trait := self.component.get_parent_with_trait(F.is_app_root):
+            root, _ = root_trait
+            address = self.component.relative_address(root)
+        else:
+            address = self.component.get_full_name()
+        properties["atopile_address"] = address
 
         name, value = self.get_name_and_value()
 

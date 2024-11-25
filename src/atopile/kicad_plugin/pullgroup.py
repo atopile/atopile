@@ -13,6 +13,7 @@ from .common import (
     sync_track,
     sync_zone,
     update_zone_net,
+    log_exceptions
 )
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class PullGroup(pcbnew.ActionPlugin):
         self.icon_file_name = str(Path(__file__).parent / "download.png")
         self.dark_icon_file_name = self.icon_file_name
 
+    @log_exceptions()
     def Run(self):
         target_board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = target_board.GetFileName()
@@ -84,5 +86,5 @@ class PullGroup(pcbnew.ActionPlugin):
 
         pcbnew.Refresh()
 
-
-PullGroup().register()
+with log_exceptions():
+    PullGroup().register()
