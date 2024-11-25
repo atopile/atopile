@@ -12,6 +12,7 @@ from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext, BuildType
 from atopile.errors import ExceptionAccumulator
 from faebryk.core.module import Module
+from faebryk.library import _F as F
 from faebryk.libs.picker import lcsc
 from faebryk.libs.util import import_from_path
 
@@ -49,6 +50,8 @@ def build(
                         app = _init_python_app(build_ctx)
                     case _:
                         raise ValueError(f"Unknown build type: {build_ctx.build_type}")
+
+                app.add(F.is_app_root())
 
                 # TODO: these should be drawn from the buildcontext like everything else
                 lcsc.BUILD_FOLDER = build_ctx.build_path
