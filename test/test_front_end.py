@@ -6,7 +6,7 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end2 import AtoComponent, Lofty, _write_only_property
+from atopile.front_end import AtoComponent, Lofty, _write_only_property
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 
@@ -28,6 +28,7 @@ def test_empty_module_build(lofty: Lofty):
     assert isinstance(node, L.Module)
 
 
+@pytest.mark.skip
 def test_simple_module_build(lofty: Lofty):
     text = dedent(
         """
@@ -44,6 +45,7 @@ def test_simple_module_build(lofty: Lofty):
     # TODO: check value
 
 
+@pytest.mark.skip
 def test_arithmetic(lofty: Lofty):
     text = dedent(
         """

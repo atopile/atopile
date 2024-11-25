@@ -33,8 +33,31 @@ from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.units import Quantity, Unit, UnitCompatibilityError, dimensionless
+from faebryk.libs.units import P, Quantity, Unit
 from faebryk.libs.util import FuncDict
+
+# Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
+try:
+    from faebryk.libs.units import UnitCompatibilityError, dimensionless
+except ImportError:
+
+    class UnitCompatibilityError(Exception):
+        """Placeholder Exception"""
+
+    dimensionless = P.dimensionless
+
+
+def _raises_not_implemented(*args, **kwargs):
+    raise NotImplementedError(
+        "Parameters are a work-in-progress. They will be available soon"
+    )
+
+
+if not hasattr(L, "Range"):
+    L.Range = _raises_not_implemented
+    L.Single = _raises_not_implemented
+
+# End helpers ---------------------------------------------------------------
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +113,7 @@ class PhysicalValuesMixin:
                 ctx, f"Unknown unit '{unit_str}'"
             ) from ex
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> L.Range:
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> "L.Range":
         """Yield a physical value from a physical context."""
         if ctx.quantity():
             qty = self.visitQuantity(ctx.quantity())
@@ -122,7 +145,7 @@ class PhysicalValuesMixin:
 
         return Quantity(value, unit)
 
-    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> L.Range:
+    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> "L.Range":
         """Yield a physical value from a bilateral quantity context."""
         nominal_qty = self.visitQuantity(ctx.quantity())
 
@@ -171,7 +194,7 @@ class PhysicalValuesMixin:
 
         return L.Range.from_center(nominal_qty, tol_qty)
 
-    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> L.Range:
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> "L.Range":
         """Yield a physical value from a bound quantity context."""
 
         start, end = map(self.visitQuantity, ctx.quantity())
@@ -404,7 +427,7 @@ class _has_kicad_footprint_name_defined(F.has_footprint_impl):
             return fp
 
     def handle_duplicate(
-        self, old: "_has_kicad_footprint_name_defined", node: fab_param.Node
+        self, old: "_has_kicad_footprint_name_defined", _: fab_param.Node
     ) -> bool:
         if old._try_get_footprint():
             raise RuntimeError("Too late to set footprint")
@@ -473,11 +496,11 @@ class ShimResistor(F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
 
     @property
-    def value(self) -> L.Range:
+    def value(self) -> "L.Range":
         return self.resistance
 
     @value.setter
-    def value(self, value: L.Range):
+    def value(self, value: "L.Range"):
         self.resistance.alias_is(value)
 
     @_write_only_property
@@ -520,11 +543,11 @@ class ShimCapacitor(F.Capacitor):
     """Temporary shim to translate `value` to `capacitance`."""
 
     @property
-    def value(self) -> L.Range:
+    def value(self) -> "L.Range":
         return self.capacitance
 
     @value.setter
-    def value(self, value: L.Range):
+    def value(self, value: "L.Range"):
         self.capacitance.alias_is(value)
 
     @_write_only_property
@@ -570,7 +593,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         self._node_stack = StackList[L.Node]()
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
         self._param_assignments = FuncDict[
-            fab_param.Parameter, tuple[L.Range | L.Single, ParserRuleContext | None]
+            fab_param.Parameter, "tuple[L.Range | L.Single, ParserRuleContext | None]"
         ]()
 
     def build_ast(
@@ -802,7 +825,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
             return param
 
     @staticmethod
-    def _attach_range_to_param(param: fab_param.Parameter, range: L.Range):
+    def _attach_range_to_param(param: fab_param.Parameter, range: "L.Range"):
         param.alias_is(range)
 
     def _fufill_param_promise(self, param: fab_param.Parameter):
@@ -972,7 +995,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
     def visitArithmetic_expression(
         self, ctx: ap.Arithmetic_expressionContext
-    ) -> fab_param.ParameterOperatable:
+    ) -> "fab_param.ParameterOperatable":
         if ctx.OR_OP() or ctx.AND_OP():
             lh = self.visitArithmetic_expression(ctx.arithmetic_expression())
             rh = self.visitSum(ctx.sum_())
@@ -984,7 +1007,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
         return self.visitSum(ctx.sum_())
 
-    def visitSum(self, ctx: ap.SumContext) -> fab_param.ParameterOperatable:
+    def visitSum(self, ctx: ap.SumContext) -> "fab_param.ParameterOperatable":
         if ctx.ADD() or ctx.MINUS():
             lh = self.visitSum(ctx.sum_())
             rh = self.visitTerm(ctx.term())
@@ -996,7 +1019,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
         return self.visitTerm(ctx.term())
 
-    def visitTerm(self, ctx: ap.TermContext) -> fab_param.ParameterOperatable:
+    def visitTerm(self, ctx: ap.TermContext) -> "fab_param.ParameterOperatable":
         if ctx.STAR() or ctx.DIV():
             lh = self.visitTerm(ctx.term())
             rh = self.visitPower(ctx.power())
@@ -1008,7 +1031,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
         return self.visitPower(ctx.power())
 
-    def visitPower(self, ctx: ap.PowerContext) -> fab_param.ParameterOperatable:
+    def visitPower(self, ctx: ap.PowerContext) -> "fab_param.ParameterOperatable":
         if ctx.POWER():
             base = self.visitFunctional(ctx.functional())
             exp = self.visitFunctional(ctx.functional())
@@ -1018,17 +1041,17 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
     def visitFunctional(
         self, ctx: ap.FunctionalContext
-    ) -> fab_param.ParameterOperatable:
+    ) -> "fab_param.ParameterOperatable":
         if ctx.name():
             # TODO: implement min/max
             raise NotImplementedError
         else:
             return self.visitBound(ctx.bound(0))
 
-    def visitBound(self, ctx: ap.BoundContext) -> fab_param.ParameterOperatable:
+    def visitBound(self, ctx: ap.BoundContext) -> "fab_param.ParameterOperatable":
         return self.visitAtom(ctx.atom())
 
-    def visitAtom(self, ctx: ap.AtomContext) -> fab_param.ParameterOperatable:
+    def visitAtom(self, ctx: ap.AtomContext) -> "fab_param.ParameterOperatable":
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
             if len(ref) > 1:
@@ -1046,7 +1069,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
         raise ValueError(f"Unhandled atom type {ctx}")
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> L.Range:
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> "L.Range":
         return PhysicalValuesMixin.visitLiteral_physical(self, ctx)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):

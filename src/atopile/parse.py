@@ -9,10 +9,12 @@ from antlr4.error.ErrorListener import ErrorListener
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 
-from .errors import IMMEDIATE_RAISE, AtoFileNotFoundError, AtoSyntaxError
+from .errors import AtoFileNotFoundError, AtoSyntaxError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
+
+IMMEDIATE_RAISE = False
 
 
 def error_factory(
