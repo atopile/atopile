@@ -1,7 +1,7 @@
 from faebryk.libs.util import has_attr_or_property
 
 
-class TestClass:
+class SomeClass:
     def __init__(self):
         self.regular_attr = "value"
 
@@ -20,36 +20,36 @@ class TestClass:
 
 def test_regular_attribute():
     """Test detection of regular attributes"""
-    obj = TestClass()
+    obj = SomeClass()
     assert has_attr_or_property(obj, "regular_attr")
     assert not has_attr_or_property(obj, "nonexistent_attr")
 
 
 def test_property_detection():
     """Test detection of properties"""
-    obj = TestClass()
+    obj = SomeClass()
     assert has_attr_or_property(obj, "read_only_prop")
     assert has_attr_or_property(obj, "read_write_prop")
 
 
 def test_dynamic_attribute():
     """Test detection of dynamically added attributes"""
-    obj = TestClass()
+    obj = SomeClass()
     obj.dynamic_attr = "dynamic"
     assert has_attr_or_property(obj, "dynamic_attr")
 
 
 def test_class_level_attribute():
     """Test detection of class-level attributes"""
-    TestClass.class_attr = "class_value"
-    obj = TestClass()
+    SomeClass.class_attr = "class_value"
+    obj = SomeClass()
     assert has_attr_or_property(obj, "class_attr")
 
 
 def test_inherited_property():
     """Test detection of inherited properties"""
 
-    class ChildClass(TestClass):
+    class ChildClass(SomeClass):
         pass
 
     obj = ChildClass()
@@ -59,7 +59,7 @@ def test_inherited_property():
 
 def test_builtin_attributes():
     """Test behavior with built-in attributes"""
-    obj = TestClass()
+    obj = SomeClass()
     assert has_attr_or_property(obj, "__class__")
     assert has_attr_or_property(obj, "__dict__")
 
