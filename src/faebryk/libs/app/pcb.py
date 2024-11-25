@@ -48,27 +48,34 @@ def make_point_with_offsets(
 
 def apply_layouts(app: Module):
     """Apply automatic layout to components in the PCB."""
-    # Starting point for the layout
     origin = F.has_pcb_position.Point((0, 0, 0, F.has_pcb_position.layer_type.NONE))
 
     if not app.has_trait(F.has_pcb_position):
         app.add(F.has_pcb_position_defined(origin))
 
-    # Layout constants
     HORIZONTAL_SPACING = 20
     VERTICAL_SPACING = -5
 
-    # Current position tracking
     current_x = 0
 
-    # Process each level in the tree
+    # separate levels horizontally
     for level in app.get_tree(types=Node).iter_by_depth():
         current_y = 0  # Reset Y position for each new column
         has_footprints = False
+        current_group = None
 
-        # Stack components vertically in this level
-        for node in level:
+        # stack components within level vertically
+        for node in sorted(level, key=lambda x: x.get_full_name()):
             if node.has_trait(F.has_footprint):
+                group = node.get_full_name().rsplit(".", 1)[0]
+                print(f"{group=}")
+
+                if current_group is not None and group != current_group:
+                    current_y += 2 * VERTICAL_SPACING
+
+                current_group = group
+
+                print(node.get_full_name())
                 pos = make_point_with_offsets(
                     origin,
                     x=current_x,
@@ -76,10 +83,12 @@ def apply_layouts(app: Module):
                     layer=F.has_pcb_position.layer_type.TOP_LAYER,
                 )
                 node.add(F.has_pcb_position_defined(pos))
+
+                # TODO: dynamic spacing based on footprint size?
                 current_y += VERTICAL_SPACING
                 has_footprints = True
 
-        # Only increment X position if we placed any footprints in this level
+        # only increment X position if we placed any footprints in this level
         if has_footprints:
             current_x += HORIZONTAL_SPACING
 
