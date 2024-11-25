@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable
 
 import psutil
 
@@ -46,203 +46,6 @@ def make_point_with_offsets(
     )
 
 
-T = TypeVar("T", bound="DrawTree")
-
-
-class DrawTree:
-    """Tree layout algorithm implementation for PCB component placement."""
-
-    def __init__(self, node: Node, parent=None, depth=0, number=1):
-        self.x = -1.0
-        self.y = depth
-        self.node = node
-        self.parent = parent
-        self.thread = None
-        self.offset = 0
-        self.ancestor = self
-        self.change = self.shift = 0
-        self._lmost_sibling = None
-        self.mod = 0.0
-        self.number = number
-
-        # Get all descendant nodes that have footprints, maintaining hierarchy
-        self.children = self._build_component_children(node, depth + 1)
-
-    def _build_component_children(self, node: Node, depth: int) -> list["DrawTree"]:
-        """Build tree of components, skipping intermediary nodes without footprints."""
-        component_children: list[DrawTree] = []
-        child_num = 1
-
-        def collect_component_children(n: Node, current_depth: int):
-            nonlocal child_num
-            # If this node has a footprint, add it directly
-            if n.has_trait(F.has_footprint):
-                component_children.append(DrawTree(n, self, current_depth, child_num))
-                child_num += 1
-                return
-
-            # Otherwise, recursively check its children
-            for child in n.get_children(direct_only=True, types=Node):
-                collect_component_children(child, current_depth)
-
-        # Process all direct children
-        for child in node.get_children(direct_only=True, types=Node):
-            collect_component_children(child, depth)
-
-        return component_children
-
-    def left(self) -> "DrawTree | None":
-        """Return the leftmost child of the node."""
-        if self.thread:
-            return self.thread
-        if len(self.children) > 0:
-            return self.children[0]
-        return None
-
-    def right(self) -> "DrawTree | None":
-        """Return the rightmost child of the node."""
-        if self.thread:
-            return self.thread
-        if len(self.children) > 0:
-            return self.children[-1]
-        return None
-
-    def left_brother(self):
-        """Get the node's left sibling in the tree."""
-        n = None
-        if self.parent:
-            for node in self.parent.children:
-                if node == self:
-                    return n
-                else:
-                    n = node
-        return n
-
-    def get_lmost_sibling(self):
-        """Get the leftmost sibling of this node."""
-        if not self._lmost_sibling and self.parent and self != self.parent.children[0]:
-            self._lmost_sibling = self.parent.children[0]
-        return self._lmost_sibling
-
-    leftmost_sibling = property(get_lmost_sibling)
-
-
-def buchheim(tree):
-    dt = firstwalk(tree)
-    min = second_walk(dt)
-    if min < 0:
-        third_walk(dt, -min)
-    return dt
-
-
-def firstwalk(v, distance=1.0):
-    if len(v.children) == 0:
-        if v.leftmost_sibling:
-            v.x = v.left_brother().x + distance
-        else:
-            v.x = 0.0
-    else:
-        default_ancestor = v.children[0]
-        for w in v.children:
-            firstwalk(w)
-            default_ancestor = apportion(w, default_ancestor, distance)
-        execute_shifts(v)
-
-        midpoint = (v.children[0].x + v.children[-1].x) / 2
-
-        ell = v.children[0]
-        arr = v.children[-1]
-        w = v.left_brother()
-        if w:
-            v.x = w.x + distance
-            v.mod = v.x - midpoint
-        else:
-            v.x = midpoint
-    return v
-
-
-def apportion(v, default_ancestor, distance):
-    w = v.left_brother()
-    if w is not None:
-        # in buchheim notation:
-        # i == inner; o == outer; r == right; l == left;
-        vir = vor = v
-        vil = w
-        vol = v.leftmost_sibling
-        sir = sor = v.mod
-        sil = vil.mod
-        sol = vol.mod
-        while vil.right() and vir.left():
-            vil = vil.right()
-            vir = vir.left()
-            vol = vol.left()
-            vor = vor.right()
-            vor.ancestor = v
-            shift = (vil.x + sil) - (vir.x + sir) + distance
-            if shift > 0:
-                a = ancestor(vil, v, default_ancestor)
-                move_subtree(a, v, shift)
-                sir = sir + shift
-                sor = sor + shift
-            sil += vil.mod
-            sir += vir.mod
-            sol += vol.mod
-            sor += vor.mod
-        if vil.right() and not vor.right():
-            vor.thread = vil.right()
-            vor.mod += sil - sor
-        else:
-            if vir.left() and not vol.left():
-                vol.thread = vir.left()
-                vol.mod += sir - sol
-            default_ancestor = v
-    return default_ancestor
-
-
-def move_subtree(wl, wr, shift):
-    subtrees = wr.number - wl.number
-    wr.change -= shift / subtrees
-    wr.shift += shift
-    wl.change += shift / subtrees
-    wr.x += shift
-    wr.mod += shift
-
-
-def execute_shifts(v):
-    shift = change = 0
-    for w in v.children[::-1]:
-        w.x += shift
-        w.mod += shift
-        change += w.change
-        shift += w.shift + change
-
-
-def ancestor(vil, v, default_ancestor):
-    if vil.ancestor in v.parent.children:
-        return vil.ancestor
-    else:
-        return default_ancestor
-
-
-def second_walk(v, m=0, depth=0, min=None):
-    v.x += m
-    v.y = depth
-
-    if min is None or v.x < min:
-        min = v.x
-
-    for w in v.children:
-        min = second_walk(w, m + v.mod, depth + 1, min)
-
-    return min
-
-
-def third_walk(tree, n):
-    tree.x += n
-    for c in tree.children:
-        third_walk(c, n)
-
-
 def apply_layouts(app: Module):
     """Apply automatic layout to components in the PCB."""
     # Starting point for the layout
@@ -251,29 +54,34 @@ def apply_layouts(app: Module):
     if not app.has_trait(F.has_pcb_position):
         app.add(F.has_pcb_position_defined(origin))
 
-    # Build tree of nodes that have footprints
-    tree = DrawTree(app)
-    positioned_tree = buchheim(tree)
+    # Layout constants
+    HORIZONTAL_SPACING = 20
+    VERTICAL_SPACING = -5
 
-    # Convert the computed positions to PCB coordinates
-    HORIZONTAL_SPACING = 10
-    VERTICAL_SPACING = 40
+    # Current position tracking
+    current_x = 0
 
-    def apply_positions(dt: DrawTree):
-        # Only apply positions to nodes with footprints
-        if dt.node.has_trait(F.has_footprint):
-            pos = make_point_with_offsets(
-                origin,
-                x=dt.x * HORIZONTAL_SPACING,
-                y=dt.y * VERTICAL_SPACING,
-                layer=F.has_pcb_position.layer_type.TOP_LAYER,
-            )
-            dt.node.add(F.has_pcb_position_defined(pos))
+    # Process each level in the tree
+    for level in app.get_tree(types=Node).iter_by_depth():
+        current_y = 0  # Reset Y position for each new column
+        has_footprints = False
 
-        for child in dt.children:
-            apply_positions(child)
+        # Stack components vertically in this level
+        for node in level:
+            if node.has_trait(F.has_footprint):
+                pos = make_point_with_offsets(
+                    origin,
+                    x=current_x,
+                    y=current_y,
+                    layer=F.has_pcb_position.layer_type.TOP_LAYER,
+                )
+                node.add(F.has_pcb_position_defined(pos))
+                current_y += VERTICAL_SPACING
+                has_footprints = True
 
-    apply_positions(positioned_tree)
+        # Only increment X position if we placed any footprints in this level
+        if has_footprints:
+            current_x += HORIZONTAL_SPACING
 
 
 def apply_routing(app: Module, transformer: PCB_Transformer):
