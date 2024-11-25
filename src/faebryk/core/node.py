@@ -566,6 +566,18 @@ class Node(CNode):
 
         return params_str
 
+    def relative_address(self, root: "Node | None" = None) -> str:
+        """Return the address from root to self"""
+        if root is None:
+            return self.get_full_name()
+
+        root_name = root.get_full_name()
+        self_name = self.get_full_name()
+        if not self_name.startswith(root_name):
+            raise ValueError(f"Root {root_name} is not an ancestor of {self_name}")
+
+        return self_name.removeprefix(root_name + ".")
+
     # Trait stuff ----------------------------------------------------------------------
 
     @deprecated("Just use add")

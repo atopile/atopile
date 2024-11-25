@@ -1,10 +1,7 @@
 """CLI command definition for `ato build`."""
 
-import importlib.util
 import json
 import logging
-import sys
-import uuid
 from typing import Annotated
 
 import typer
@@ -15,7 +12,9 @@ from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext, BuildType
 from atopile.errors import ExceptionAccumulator
 from faebryk.core.module import Module
+from faebryk.library import _F as F
 from faebryk.libs.picker import lcsc
+from faebryk.libs.util import import_from_path
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +50,8 @@ def build(
                         app = _init_python_app(build_ctx)
                     case _:
                         raise ValueError(f"Unknown build type: {build_ctx.build_type}")
+
+                app.add(F.is_app_root())
 
                 # TODO: these should be drawn from the buildcontext like everything else
                 lcsc.BUILD_FOLDER = build_ctx.build_path
@@ -95,44 +96,26 @@ def do_prebuild(build_ctx: BuildContext) -> None:
             )
 
 
-def import_from_path(file_path):
-    # setting to a sequence (and not None) indicates that the module is a package, which lets us use relative imports for submodules
-    submodule_search_locations = []
-
-    # custom unique name to avoid collisions
-    module_name = str(uuid.uuid4())
-
-    spec = importlib.util.spec_from_file_location(
-        module_name, file_path, submodule_search_locations=submodule_search_locations
-    )
-    if spec is None:
-        raise errors.AtoPythonLoadError(f"Failed to load {file_path}")
-
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-
-    assert spec.loader is not None
-
-    spec.loader.exec_module(module)
-    return module
-
-
 def _init_python_app(build_ctx: BuildContext) -> Module:
     """Initialize a specific .py build."""
 
     try:
-        build_module = import_from_path(build_ctx.entry.file_path)
-    except ImportError as e:
+        app_class = import_from_path(
+            build_ctx.entry.file_path, build_ctx.entry.entry_section
+        )
+    except (FileNotFoundError, ImportError) as e:
         raise errors.AtoPythonLoadError(
             f"Cannot import build entry {build_ctx.entry.file_path}"
         ) from e
-
-    try:
-        app_class = getattr(build_module, build_ctx.entry.entry_section)
     except AttributeError as e:
         raise errors.AtoPythonLoadError(
             f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.entry_section}"
         ) from e
+
+    if not isinstance(app_class, type):
+        raise errors.AtoPythonLoadError(
+            f"Build entry {build_ctx.entry.file_path} is not a module we can instantiate"
+        )
 
     app = app_class()
 

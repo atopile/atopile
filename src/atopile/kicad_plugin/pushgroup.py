@@ -10,6 +10,7 @@ from .common import (
     sync_drawing,
     sync_footprints,
     sync_track,
+    log_exceptions
 )
 
 log = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class PushGroup(pcbnew.ActionPlugin):
         self.icon_file_name = str(Path(__file__).parent / "upload.png")
         self.dark_icon_file_name = self.icon_file_name
 
+    @log_exceptions()
     def Run(self):
         source_board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = source_board.GetFileName()
@@ -61,7 +63,7 @@ class PushGroup(pcbnew.ActionPlugin):
 
             # Push the layout
             sync_footprints(
-                source_board, target_board, known_layouts[g_name]["uuid_map"]
+                source_board, target_board, known_layouts[g_name]["addr_map"]
             )
 
             for i in g.GetItems():
@@ -83,4 +85,5 @@ class PushGroup(pcbnew.ActionPlugin):
             else:
                 raise RuntimeWarning("Cannot push group. No groups selected")
 
-PushGroup().register()
+with log_exceptions():
+    PushGroup().register()

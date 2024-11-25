@@ -13,6 +13,7 @@ from .common import (
     sync_track,
     sync_zone,
     update_zone_net,
+    log_exceptions
 )
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class PullGroup(pcbnew.ActionPlugin):
         self.icon_file_name = str(Path(__file__).parent / "download.png")
         self.dark_icon_file_name = self.icon_file_name
 
+    @log_exceptions()
     def Run(self):
         target_board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = target_board.GetFileName()
@@ -63,7 +65,7 @@ class PullGroup(pcbnew.ActionPlugin):
             offset = calculate_translation(source_fps=source_board.GetFootprints(), target_fps=get_group_footprints(g))
 
             sync_footprints(
-                source_board, target_board, flip_dict(known_layouts[g_name]["uuid_map"])
+                source_board, target_board, flip_dict(known_layouts[g_name]["addr_map"])
             )
 
             for track in source_board.GetTracks():
@@ -76,7 +78,7 @@ class PullGroup(pcbnew.ActionPlugin):
 
             for zone in source_board.Zones():
                 new_zone = sync_zone(zone,target_board)
-                update_zone_net(zone, source_board, new_zone, target_board, flip_dict(known_layouts[g_name]["uuid_map"]))
+                update_zone_net(zone, source_board, new_zone, target_board, flip_dict(known_layouts[g_name]["addr_map"]))
                 g.AddItem(new_zone)
 
             # Shift entire target group by offset as last operation
@@ -84,5 +86,5 @@ class PullGroup(pcbnew.ActionPlugin):
 
         pcbnew.Refresh()
 
-
-PullGroup().register()
+with log_exceptions():
+    PullGroup().register()

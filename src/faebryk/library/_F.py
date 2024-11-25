@@ -34,6 +34,7 @@ from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.Operation import Operation
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
+from faebryk.library.is_app_root import is_app_root
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
@@ -46,6 +47,7 @@ from faebryk.library.has_kicad_ref import has_kicad_ref
 from faebryk.library.has_picker import has_picker
 from faebryk.library.has_pcb_layout import has_pcb_layout
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
+from faebryk.library.has_reference_layout import has_reference_layout
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
