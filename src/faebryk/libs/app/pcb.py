@@ -34,77 +34,17 @@ PCBNEW_AUTO = ConfigFlag(
 
 
 def apply_layouts(app: Module):
-    """
-    Apply layout to components in the PCB.
-
-    If the component already has a layout defined, use that.
-    Otherwise, group components into columns according to address prefix.
-    """
-
-    origin = F.has_pcb_position.Point((0, 0, 0, F.has_pcb_position.layer_type.NONE))
-
     if not app.has_trait(F.has_pcb_position):
-        app.add(F.has_pcb_position_defined(origin))
-
-    # TODO: dynamic spacing based on footprint dimensions?
-    HORIZONTAL_SPACING = 5
-    VERTICAL_SPACING = -5
-
-    x = 0
-    y = 0
-    z = 0
-    layer = F.has_pcb_position.layer_type.TOP_LAYER
-
-    # TODO: generate in sorted order
-    components = sorted(
-        [
-            n
-            for level in app.get_tree(types=Node).iter_by_depth()
-            for n in level
-            if n.has_trait(F.has_footprint)
-        ],
-        key=lambda n: (
-            n.relative_address().rsplit(".", 1)[0].lower(),
-            n.relative_address().lower(),
-        ),
-    )
-
-    current_prefix = None
-    for component in components:
-        if component.has_trait(F.has_pcb_layout):
-            component.get_trait(F.has_pcb_layout).apply()
-            print(f"{component.relative_address()} -> layout applied")
-            continue
-
-        if component.has_trait(F.has_pcb_position):
-            print(f"{component.relative_address()} -> position defined")
-            component.add(
-                F.has_pcb_position_defined(
-                    component.get_trait(F.has_pcb_position).get_position()
-                )
+        app.add(
+            F.has_pcb_position_defined(
+                F.has_pcb_position.Point((0, 0, 0, F.has_pcb_position.layer_type.NONE))
             )
-            continue
-
-        if component.has_trait(F.has_reference_layout):
-            print(f"{component.relative_address()} -> reference layout")
-            continue
-
-        prefix = component.relative_address().rsplit(".", 1)[0]
-
-        # separate prefix groups horizontally
-        if current_prefix is not None and prefix != current_prefix:
-            x += HORIZONTAL_SPACING
-            y = 0
-
-        current_prefix = prefix
-
-        print(f"{component.relative_address()} -> {x=} {y=} {z=} {layer=}")
-        component.add(
-            F.has_pcb_position_defined(F.has_pcb_position.Point((x, y, z, layer)))
         )
 
-        # separate components vertically
-        y += VERTICAL_SPACING
+    for level in app.get_tree(types=Node).iter_by_depth():
+        for n in level:
+            if n.has_trait(F.has_pcb_layout):
+                n.get_trait(F.has_pcb_layout).apply()
 
 
 def apply_routing(app: Module, transformer: PCB_Transformer):

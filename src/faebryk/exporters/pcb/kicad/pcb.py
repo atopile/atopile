@@ -26,6 +26,10 @@ from faebryk.libs.util import (
 
 logger = logging.getLogger(__name__)
 
+# TODO: dynamic spacing based on footprint dimensions?
+HORIZONTAL_SPACING = 10
+VERTICAL_SPACING = -5  # negative is upwards
+
 
 def _nets_same(
     pcb_net: tuple[
@@ -59,6 +63,31 @@ def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
 
     path = dir_path / f"{fp_name}.kicad_mod"
     return kicad_footprint_file(path).footprint
+
+
+def _get_address(
+    comp: C_kicad_netlist_file.C_netlist.C_components.C_component,
+) -> str:
+    return comp.propertys["atopile_address"].value
+
+
+def _get_address_prefix(
+    comp: C_kicad_netlist_file.C_netlist.C_components.C_component,
+) -> str:
+    return _get_address(comp).rsplit(".", 1)[0]
+
+
+def _sort_by_address_prefix(
+    nl_comps: dict[str, C_kicad_netlist_file.C_netlist.C_components.C_component],
+    comp_names: set[str],
+) -> list[str]:
+    return sorted(
+        list(comp_names),
+        key=lambda c: (
+            _get_address_prefix(nl_comps[c]).lower(),
+            _get_address(nl_comps[c]).lower(),
+        ),
+    )
 
 
 # TODO use G instead of netlist intermediary
@@ -277,8 +306,12 @@ class PCB:
 
         # Add new components -----------------------------------------------------------
         logger.debug(f"Comps added: {comps_added}")
-        for comp_name in comps_added:
+
+        x, y = 0, 0
+        current_prefix = None
+        for comp_name in _sort_by_address_prefix(nl_comps, comps_added):
             comp = nl_comps[comp_name]
+            address_prefix = _get_address_prefix(comp)
             footprint_identifier = comp.footprint
             footprint = _get_footprint(footprint_identifier, fp_lib_path)
             pads = {
@@ -310,7 +343,18 @@ class PCB:
                 value=get_property_value(comp, "LCSC", "No LCSC number"),
             )
 
-            at = C_xyr(x=0, y=0, r=0)
+            if current_prefix is not None and address_prefix != current_prefix:
+                # separate prefix groups horizontally
+                x += HORIZONTAL_SPACING
+                y = 0
+
+            current_prefix = address_prefix
+
+            at = C_xyr(x=x, y=y, r=0)
+
+            # separate components vertically within group
+            y += VERTICAL_SPACING
+
             if comp_name in comps_changed:
                 # TODO also need to do geo rotations and stuff
                 at = comps_changed[comp_name].at
