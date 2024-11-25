@@ -58,19 +58,19 @@ def apply_layouts(app: Module):
     # TODO: generate in sorted order
     components = sorted(
         [n for level in app.get_tree(types=Node).iter_by_depth() for n in level],
-        key=lambda n: n.get_full_name().rsplit(".", 1)[0].lower(),
+        key=lambda n: n.relative_address().rsplit(".", 1)[0].lower(),
     )
 
     current_prefix = None
     for component in components:
+        if not component.has_trait(F.has_footprint):
+            continue
+
         if component.has_trait(F.has_pcb_layout):
             component.get_trait(F.has_pcb_layout).apply()
             continue
 
-        if not component.has_trait(F.has_footprint):
-            continue
-
-        prefix = component.get_full_name().rsplit(".", 1)[0]
+        prefix = component.relative_address().rsplit(".", 1)[0]
 
         # separate prefix groups horizontally
         if current_prefix is not None and prefix != current_prefix:
