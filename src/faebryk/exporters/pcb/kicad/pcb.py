@@ -243,9 +243,7 @@ class PCB:
                 fp=pcb_comp,
                 property_name="atopile_name",
                 layer="User.9",
-                value=get_property_value(
-                    nl_comp, "atopile_name", "No atopile_name"
-                ),
+                value=get_property_value(nl_comp, "atopile_name", "No atopile_name"),
             )
 
             pcb_comp.propertys["LCSC"] = fill_fp_property(
