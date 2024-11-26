@@ -6,9 +6,10 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end import Bob, _Component, _write_only_property
+from atopile.front_end import Bob, _Component
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
+from faebryk.libs.util import write_only_property
 
 
 @pytest.fixture
@@ -152,7 +153,7 @@ def test_write_only_property():
         def __init__(self):
             self._value = None
 
-        @_write_only_property
+        @write_only_property
         def write_only(self, value):
             self._value = value
 

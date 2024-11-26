@@ -13,7 +13,6 @@ from itertools import chain
 from pathlib import Path
 from typing import (
     Any,
-    Callable,
     Iterable,
     Type,
 )
@@ -34,7 +33,12 @@ from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P, Quantity, Unit
-from faebryk.libs.util import FuncDict, has_attr_or_property, try_set_attr
+from faebryk.libs.util import (
+    FuncDict,
+    has_attr_or_property,
+    try_set_attr,
+    write_only_property,
+)
 
 # Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
 try:
@@ -384,16 +388,6 @@ def ato_error_converter():
         raise ex
 
 
-def _write_only_property(func: Callable):
-    def raise_write_only(*args, **kwargs):
-        raise AttributeError(f"{func.__name__} is write-only")
-
-    return property(
-        fget=raise_write_only,
-        fset=func,
-    )
-
-
 class _has_kicad_footprint_name_defined(F.has_footprint_impl):
     """
     This trait defers footprint creation until it's needed,
@@ -459,16 +453,16 @@ class _Component(L.Module):
         self.pinmap[name] = mif
         return mif
 
-    @_write_only_property
+    @write_only_property
     def footprint(self, value: str):
         self.add(_has_kicad_footprint_name_defined(value, self.pinmap))
 
-    @_write_only_property
+    @write_only_property
     def lcsc_id(self, value: str):
         # handles duplicates gracefully
         self.add(F.has_descriptive_properties_defined({"LCSC": value}))
 
-    @_write_only_property
+    @write_only_property
     def manufacturer(self, value: str):
         # handles duplicates gracefully
         self.add(
@@ -477,14 +471,14 @@ class _Component(L.Module):
             )
         )
 
-    @_write_only_property
+    @write_only_property
     def mpn(self, value: str):
         # handles duplicates gracefully
         self.add(
             F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
         )
 
-    @_write_only_property
+    @write_only_property
     def designator(self, value: str):
         self.add(F.has_designator_prefix_defined(value))
 
@@ -500,13 +494,13 @@ class _ShimResistor(F.Resistor):
     def value(self, value: "L.Range"):
         self.resistance.alias_is(value)
 
-    @_write_only_property
+    @write_only_property
     def footprint(self, value: str):
         if value.startswith("R"):
             value = value[1:]
         self.package = value
 
-    @_write_only_property
+    @write_only_property
     def package(self, value: str):
         reqs = [(value, 2)]  # package, pin-count
         if fp_req := self.try_get_trait(F.has_footprint_requirement):
@@ -514,12 +508,12 @@ class _ShimResistor(F.Resistor):
         else:
             self.add(F.has_footprint_requirement_defined(reqs))
 
-    @_write_only_property
+    @write_only_property
     def lcsc_id(self, value: str):
         # handles duplicates gracefully
         self.add(F.has_descriptive_properties_defined({"LCSC": value}))
 
-    @_write_only_property
+    @write_only_property
     def manufacturer(self, value: str):
         # handles duplicates gracefully
         self.add(
@@ -528,7 +522,7 @@ class _ShimResistor(F.Resistor):
             )
         )
 
-    @_write_only_property
+    @write_only_property
     def mpn(self, value: str):
         # handles duplicates gracefully
         self.add(
@@ -547,13 +541,13 @@ class _ShimCapacitor(F.Capacitor):
     def value(self, value: "L.Range"):
         self.capacitance.alias_is(value)
 
-    @_write_only_property
+    @write_only_property
     def footprint(self, value: str):
         if value.startswith("C"):
             value = value[1:]
         self.package = value
 
-    @_write_only_property
+    @write_only_property
     def package(self, value: str):
         reqs = [(value, 2)]  # package, pin-count
         if fp_req := self.try_get_trait(F.has_footprint_requirement):
@@ -561,12 +555,12 @@ class _ShimCapacitor(F.Capacitor):
         else:
             self.add(F.has_footprint_requirement_defined(reqs))
 
-    @_write_only_property
+    @write_only_property
     def lcsc_id(self, value: str):
         # handles duplicates gracefully
         self.add(F.has_descriptive_properties_defined({"LCSC": value}))
 
-    @_write_only_property
+    @write_only_property
     def manufacturer(self, value: str):
         # handles duplicates gracefully
         self.add(
@@ -575,7 +569,7 @@ class _ShimCapacitor(F.Capacitor):
             )
         )
 
-    @_write_only_property
+    @write_only_property
     def mpn(self, value: str):
         # handles duplicates gracefully
         self.add(
@@ -798,10 +792,10 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             return None
 
     def _new_node(
-        bob,
+        self,
         item: ap.BlockdefContext | Type[L.Node],
         promised_supers: list[ap.BlockdefContext] | None = None,
-    ) -> L.Node:
+    ) -> tuple[L.Node, list[ap.BlockdefContext]]:
         """
         Kind of analogous to __new__ in Python, except that it's a factory
 
@@ -819,8 +813,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if isinstance(item, type) and issubclass(item, L.Node):
             super_class = item
             for super_ctx in promised_supers:
-                if super_ctx in bob._python_classes:
-                    super_class = bob._python_classes[super_ctx]
+                if super_ctx in self._python_classes:
+                    super_class = self._python_classes[super_ctx]
                     continue
 
                 assert issubclass(super_class, L.Node)
@@ -829,26 +823,18 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                     __name__ = super_ctx.name().getText()
                     __atopile_src_ctx__ = super_ctx
 
-                    def __init__(self, *args, **kwargs):
-                        super().__init__(*args, **kwargs)
-
-                    def __postinit__(self):
-                        # TODO: should this be done in post-init?
-                        with bob._node_stack.enter(self):
-                            bob.visitBlock(super_ctx.block())
-
                 super_class = Class_
-                bob._python_classes[super_ctx] = super_class
+                self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
-            return super_class()
+            return super_class(), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
             if super_ctx := item.name_or_attr():
-                super_ref = bob.visitName_or_attr(super_ctx)
+                super_ref = self.visitName_or_attr(super_ctx)
                 # Create a base node to build off
-                base_class = bob._get_referenced_class(item, super_ref)
+                base_class = self._get_referenced_class(item, super_ref)
 
             else:
                 # Create a shell of base-node to build off
@@ -866,14 +852,21 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             # Descend into building the superclass. We've got no information
             # on when the super-chain will be resolved, so we need to promise
             # that this current blockdef will be visited as part of the init
-            return bob._new_node(base_class, [item] + promised_supers)
+            return self._new_node(base_class, [item] + promised_supers)
 
         # This should never happen
         raise ValueError(f"Unknown item type {item}")
 
     def _init_node(self, stmt_ctx: ParserRuleContext, ref: Ref) -> L.Node:
         """Kind of analogous to __init__ in Python, except that it's a factory"""
-        new_node = self._new_node(self._get_referenced_class(stmt_ctx, ref))
+        new_node, promised_supers = self._new_node(
+            self._get_referenced_class(stmt_ctx, ref)
+        )
+
+        with self._node_stack.enter(new_node):
+            for super_ctx in promised_supers:
+                self.visitBlock(super_ctx.block())
+
         new_node.add_trait(from_dsl(stmt_ctx))
         return new_node
 
