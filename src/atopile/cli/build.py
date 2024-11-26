@@ -7,7 +7,7 @@ from typing import Annotated
 import typer
 
 import atopile.config
-from atopile import buildutil, errors
+from atopile import buildutil, errors, front_end
 from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext, BuildType
 from atopile.errors import ExceptionAccumulator
@@ -44,8 +44,7 @@ def build(
             with accumulator.collect():
                 match build_ctx.build_type:
                     case BuildType.ATO:
-                        log.error("Building .ato modules is not currently supported")
-                        continue
+                        app = _init_ato_app(build_ctx)
                     case BuildType.PYTHON:
                         app = _init_python_app(build_ctx)
                     case _:
@@ -124,5 +123,6 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
 
 def _init_ato_app(build_ctx: BuildContext) -> Module:
     """Initialize a specific .ato build."""
-    raise errors.AtoNotImplementedError("ato builds are not implemented yet")
-    do_prebuild(build_ctx)
+    return front_end.bob.build_file(
+        build_ctx.entry.file_path, build_ctx.entry.entry_section
+    )

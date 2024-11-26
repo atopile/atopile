@@ -8,6 +8,7 @@ import operator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import chain
+import os
 from pathlib import Path
 from typing import (
     Any,
@@ -21,7 +22,7 @@ from pint import UndefinedUnitError
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
-from atopile import errors
+from atopile import errors, config
 from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
@@ -595,6 +596,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
     ) -> L.Node:
         """Build a Module from an AST and reference."""
+        file_path = self._sanitise_path(file_path) if file_path else None
         context = self._index_ast(ast, file_path)
         try:
             return self._build(context, ref)
@@ -603,7 +605,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def build_file(self, path: Path, ref: Ref) -> L.Node:
         """Build a Module from a file and reference."""
-        context = self._index_file(path)
+        context = self._index_file(self._sanitise_path(path))
         try:
             return self._build(context, ref)
         finally:
@@ -665,6 +667,10 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def _current_node(self) -> L.Node:
         return self._node_stack[-1]
 
+    @staticmethod
+    def _sanitise_path(path: os.PathLike) -> Path:
+        return Path(path).expanduser().resolve().absolute()
+
     def _index_ast(
         self, ast: ap.File_inputContext, file_path: Path | None = None
     ) -> Context:
@@ -690,7 +696,23 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if ref in shim_map:
             return shim_map[ref]
 
-        from_path = Path(item.from_path)
+        prj_context = config.get_project_context()
+        search_paths = [
+            context.file_path.parent,
+            prj_context.src_path,
+            prj_context.module_path,
+        ]
+
+        for search_path in search_paths:
+            candidate_from_path = search_path / item.from_path
+            if candidate_from_path.exists():
+                break
+        else:
+            raise errors.AtoFileNotFoundError.from_ctx(
+                item.original_ctx, f"Can't find {item.from_path} in {", ".join(self.search_paths)}"
+            )
+
+        from_path = self._sanitise_path(candidate_from_path)
 
         if from_path.suffix == ".py":
             try:
