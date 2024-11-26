@@ -122,9 +122,7 @@ def include_footprints(pcb_path: Path):
         )
 
     # TODO make more generic, this is very lcsc specific
-    from faebryk.libs.picker.lcsc import LIB_FOLDER as LCSC_LIB_FOLDER
-
-    fppath = LCSC_LIB_FOLDER / "footprints/lcsc.pretty"
+    fppath = pcb_path.parent / "lib" / "footprints" / "lcsc.pretty"
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
@@ -143,19 +141,24 @@ def include_footprints(pcb_path: Path):
         assert not uri.startswith("${KIPRJMOD}")
         uri = "${KIPRJMOD}/" + uri
 
-    if not any(fplib.name == "lcsc" for fplib in fptable.fp_lib_table.libs):
-        fptable.fp_lib_table.libs.append(
-            C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
-                name="lcsc",
-                type="KiCad",
-                uri=uri,
-                options="",
-                descr="FBRK: LCSC footprints auto-downloaded",
-            )
-        )
-        logger.warning(
-            "Changed fp-lib-table to include lcsc library, need to restart pcbnew"
-        )
+    lcsc_lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+        name="lcsc",
+        type="KiCad",
+        uri=uri,
+        options="",
+        descr="atopile: project LCSC footprints",
+    )
+
+    lcsc_libs = [lib for lib in fptable.fp_lib_table.libs if lib.name == "lcsc"]
+    table_has_one_lcsc = len(lcsc_libs) == 1
+    lcsc_table_outdated = any(lib != lcsc_lib for lib in lcsc_libs)
+
+    if not table_has_one_lcsc or lcsc_table_outdated:
+        fptable.fp_lib_table.libs = [
+            lib for lib in fptable.fp_lib_table.libs if lib.name != "lcsc"
+        ] + [lcsc_lib]
+
+        logger.warning("pcbnew restart required (updated fp-lib-table)")
 
     fptable.dumps(fplibpath)
 
