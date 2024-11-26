@@ -9,7 +9,7 @@ from antlr4.error.ErrorListener import ErrorListener
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 
-from ..faebryk.libs.exceptions.errors import UserFileNotFoundError, UserSyntaxError
+from .errors import UserFileNotFoundError, UserSyntaxError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)

@@ -21,7 +21,7 @@ from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Rep
 import atopile.config
 from atopile import version
 from atopile.utils import robustly_rm_dir
-from faebryk.libs.exceptions import errors
+from atopile import errors
 import faebryk.libs.exceptions.utils
 
 yaml = ruamel.yaml.YAML()

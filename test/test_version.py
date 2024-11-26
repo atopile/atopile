@@ -2,7 +2,7 @@ import pytest
 from semver import Version
 
 from atopile.version import match, parse
-from faebryk.libs.exceptions import errors
+from atopile import errors
 
 # disable docstring checks - it's a test file
 # pylint: disable=C0116

@@ -19,7 +19,7 @@ import faebryk.library._F as F
 from atopile import config
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
-from faebryk.libs.exceptions import errors
+from atopile import errors
 import faebryk.libs.exceptions.utils
 from faebryk.libs.util import (
     FuncDict,

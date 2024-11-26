@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from faebryk.libs.exceptions.errors import (
+from atopile.errors import (
     UserException,
 )
 from faebryk.libs.exceptions.utils import (

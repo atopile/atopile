@@ -7,7 +7,7 @@ import logging
 
 from semver import Version
 
-from faebryk.libs.exceptions import errors
+from atopile import errors
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)

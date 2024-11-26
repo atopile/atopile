@@ -7,7 +7,7 @@ from antlr4.Token import CommonToken
 
 from .AtopileParser import AtopileParser
 
-import faebryk.libs.exceptions.errors
+import atopile.errors
 
 
 class AtopileLexerBase(Lexer):
@@ -64,7 +64,7 @@ class AtopileLexerBase(Lexer):
         count = 0
         for c in whitespace:
             if c == '\t':
-                raise faebryk.libs.exceptions.errors.UserNotImplementedError(
+                raise atopile.errors.UserNotImplementedError(
                     "Tabs aren't supported. Please use spaces instead",
                     src_path=self.inputStream.name,
                     src_line=self._tokenStartLine,

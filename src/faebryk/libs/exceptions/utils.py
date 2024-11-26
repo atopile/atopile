@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 
 class UserException(Exception):
     """A user-caused exception."""
+
     # TODO: Add interface for getting user-facing exception information
     # - Origin?
     # - Title?
@@ -142,7 +143,7 @@ class ExceptionAccumulator:
         self.errors.extend(ex.exceptions)
 
         # TODO: log the errors with the UserException protocol instead
-        from faebryk.libs.exceptions.errors import _log_user_errors
+        from atopile.errors import _log_user_errors
 
         _log_user_errors(ex, log)
 

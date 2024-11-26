@@ -10,7 +10,7 @@ from typing import Iterable
 import atopile.config
 from atopile import address, version
 from atopile.address import AddrStr
-from faebryk.libs.exceptions import errors
+from atopile import errors
 import faebryk.libs.exceptions.utils
 
 log = logging.getLogger(__name__)

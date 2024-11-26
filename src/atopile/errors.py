@@ -45,7 +45,9 @@ class _BaseUserException(Exception):
         self.src_stop_col = src_stop_col
 
     @classmethod
-    def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseUserException":
+    def from_token(
+        cls, token: Token, message: str, *args, **kwargs
+    ) -> "_BaseUserException":
         """Create an error from a token."""
         src_path, src_line, src_col = get_src_info_from_token(token)
         return cls(
