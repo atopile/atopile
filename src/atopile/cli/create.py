@@ -80,14 +80,16 @@ class ProjectType(str, Enum):
 def create(
     name: Annotated[str | None, typer.Argument()] = None,
     repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
-    project_type: Annotated[
-        ProjectType | None,
-        typer.Option("--type", "-t", prompt="What do you want to create"),
-    ] = None,
+    project_type: Annotated[ProjectType | None, typer.Option("--type", "-t")] = None,
 ):  # pylint: disable=redefined-builtin
     """
     Create a new ato project or build configuration.
     """
+
+    project_type = rich.prompt.Prompt.ask(
+        "What do you want to create?", choices=list(ProjectType)
+    )
+
     if project_type == ProjectType.build:
         create_build()
         return
@@ -210,17 +212,9 @@ def create(
 
     # Install dependencies listed in the ato.yaml, typically just generics
     do_install(
-        to_install="",
+        to_install=None,
         jlcpcb=False,
         link=True,
-        upgrade=True,
-        path=repo_obj.working_tree_dir,
-    )
-
-    do_install(
-        to_install="generics",
-        jlcpcb=False,
-        link=False,
         upgrade=True,
         path=repo_obj.working_tree_dir,
     )
