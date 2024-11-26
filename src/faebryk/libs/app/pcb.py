@@ -5,12 +5,11 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import psutil
 
 import faebryk.library._F as F
-from atopile.config import BuildPaths
 from faebryk.core.graph import Graph
 from faebryk.core.module import Module
 from faebryk.core.node import Node
@@ -24,6 +23,9 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_project_file,
 )
 from faebryk.libs.util import ConfigFlag
+
+if TYPE_CHECKING:
+    from atopile.config import BuildPaths
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,7 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
 
 
 def apply_design(
-    build_paths: BuildPaths,
+    build_paths: "BuildPaths",
     app: Module,
     G: Graph,
     transform: Callable[[PCB_Transformer], Any] | None = None,
@@ -112,7 +114,7 @@ def apply_design(
         print(f"PCB location: {build_paths.layout}")
 
 
-def include_footprints(build_paths: BuildPaths):
+def include_footprints(build_paths: "BuildPaths"):
     if build_paths.fp_lib_table.exists():
         fptable = C_kicad_fp_lib_table_file.loads(
             path_or_string_or_data=build_paths.fp_lib_table
@@ -196,7 +198,7 @@ def open_pcb(pcb_path: os.PathLike):
     subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
 
 
-def apply_netlist(build_paths: BuildPaths, netlist_has_changed: bool = True):
+def apply_netlist(build_paths: "BuildPaths", netlist_has_changed: bool = True):
     from faebryk.exporters.pcb.kicad.pcb import PCB
 
     include_footprints(build_paths)
