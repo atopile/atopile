@@ -57,7 +57,7 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
                     ) is not None:
                         # we only bother to index things we've imported,
                         # otherwise we can be sure they weren't used
-                        entries.setdefault(class_, set()).add(ctx.layout_path)
+                        entries.setdefault(class_, set()).add(ctx.paths.layout)
 
     return entries
 
@@ -112,6 +112,6 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         }
 
     with open(
-        build_ctx.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8"
+        build_ctx.paths.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8"
     ) as f:
         json.dump(module_map, f)

@@ -10,6 +10,7 @@ from typing import Any, Callable
 import psutil
 
 import faebryk.library._F as F
+from atopile.config import BuildPaths
 from faebryk.core.graph import Graph
 from faebryk.core.module import Module
 from faebryk.core.node import Node
@@ -71,20 +72,19 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
 
 
 def apply_design(
-    pcb_path: Path,
-    netlist_path: Path,
-    G: Graph,
+    build_paths: BuildPaths,
     app: Module,
+    G: Graph,
     transform: Callable[[PCB_Transformer], Any] | None = None,
 ):
     resolve_dynamic_parameters(G)
 
-    logger.info(f"Writing netlist to {netlist_path}")
-    changed = write_netlist(G, netlist_path, use_kicad_designators=True)
-    apply_netlist(pcb_path, netlist_path, changed)
+    logger.info(f"Writing netlist to {build_paths.netlist}")
+    changed = write_netlist(G, build_paths.netlist, use_kicad_designators=True)
+    apply_netlist(build_paths, changed)
 
     logger.info("Load PCB")
-    pcb = C_kicad_pcb_file.loads(pcb_path)
+    pcb = C_kicad_pcb_file.loads(build_paths.layout)
 
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
 
@@ -97,36 +97,36 @@ def apply_design(
     transformer.move_footprints()
     apply_routing(app, transformer)
 
-    logger.info(f"Writing pcbfile {pcb_path}")
-    pcb.dumps(pcb_path)
+    logger.info(f"Writing pcbfile {build_paths.layout}")
+    pcb.dumps(build_paths.layout)
 
     print("Reopen PCB in kicad")
     if PCBNEW_AUTO:
         try:
-            open_pcb(pcb_path)
+            open_pcb(build_paths.layout)
         except FileNotFoundError:
-            print(f"PCB location: {pcb_path}")
+            print(f"PCB location: {build_paths.layout}")
         except RuntimeError as e:
             print(f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter")
     else:
-        print(f"PCB location: {pcb_path}")
+        print(f"PCB location: {build_paths.layout}")
 
 
-def include_footprints(pcb_path: Path):
-    fplibpath = pcb_path.parent / "fp-lib-table"
-    if fplibpath.exists():
-        fptable = C_kicad_fp_lib_table_file.loads(fplibpath)
+def include_footprints(build_paths: BuildPaths):
+    if build_paths.fp_lib_table.exists():
+        fptable = C_kicad_fp_lib_table_file.loads(
+            path_or_string_or_data=build_paths.fp_lib_table
+        )
     else:
         fptable = C_kicad_fp_lib_table_file(
             C_kicad_fp_lib_table_file.C_fp_lib_table(version=7, libs=[])
         )
 
-    # TODO make more generic, this is very lcsc specific
-    fppath = pcb_path.parent / "lib" / "footprints" / "lcsc.pretty"
+    fppath = build_paths.footprints
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
-            pcb_path.parent.resolve(), walk_up=True
+            build_paths.layout.parent.resolve(), walk_up=True
         )
         # check if not going up too much
         if len([part for part in fppath_rel.parts if part == ".."]) > 5:
@@ -160,7 +160,7 @@ def include_footprints(pcb_path: Path):
 
         logger.warning("pcbnew restart required (updated fp-lib-table)")
 
-    fptable.dumps(fplibpath)
+    fptable.dumps(build_paths.fp_lib_table)
 
 
 def find_pcbnew() -> os.PathLike:
@@ -196,22 +196,23 @@ def open_pcb(pcb_path: os.PathLike):
     subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
 
 
-def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool = True):
+def apply_netlist(build_paths: BuildPaths, netlist_has_changed: bool = True):
     from faebryk.exporters.pcb.kicad.pcb import PCB
 
-    include_footprints(pcb_path)
+    include_footprints(build_paths)
 
     # Set netlist path in gui menu
-    prj_path = pcb_path.with_suffix(".kicad_pro")
-    if not prj_path.exists():
+    if not build_paths.kicad_project.exists():
         project = C_kicad_project_file()
     else:
-        project = C_kicad_project_file.loads(prj_path)
+        project = C_kicad_project_file.loads(build_paths.kicad_project)
     project.pcbnew.last_paths.netlist = str(
-        netlist_path.resolve().relative_to(pcb_path.parent.resolve(), walk_up=True)
+        build_paths.netlist.resolve().relative_to(
+            build_paths.layout.parent.resolve(), walk_up=True
+        )
     )
-    project.dumps(prj_path)
+    project.dumps(build_paths.kicad_project)
 
     # Import netlist into pcb
-    logger.info(f"Apply netlist to {pcb_path}")
-    PCB.apply_netlist(pcb_path, netlist_path)
+    logger.info(f"Apply netlist to {build_paths.layout}")
+    PCB.apply_netlist(build_paths.layout, build_paths.netlist)

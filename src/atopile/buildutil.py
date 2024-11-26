@@ -48,11 +48,10 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     logger.info("Running checks")
     run_checks(app, G)
 
-    logger.info("Make netlist & pcb")
-    apply_design(build_ctx.layout_path, build_ctx.netlist_path, G, app, transform=None)
+    build_ctx.ensure_paths()
 
-    # Ensure the build directory exists
-    build_ctx.build_path.mkdir(parents=True, exist_ok=True)
+    logger.info("Make netlist & pcb")
+    apply_design(build_ctx.paths, app, G, transform=None)
 
     # Figure out what targets to build
     if build_ctx.targets == ["__default__"]:
@@ -66,9 +65,6 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     excluded_targets = set(build_ctx.exclude_targets)
     known_targets = set(muster.targets.keys())
     targets = list(set(targets) - excluded_targets & known_targets)
-
-    # Ensure the output directory exists
-    build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
 
     # Make the noise
     built_targets = []
@@ -121,7 +117,7 @@ def generate_bom(build_ctx: BuildContext, app: Module) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
-        build_ctx.output_base.with_suffix(".bom.csv"),
+        build_ctx.paths.output_base.with_suffix(".bom.csv"),
     )
 
 
@@ -129,25 +125,28 @@ def generate_bom(build_ctx: BuildContext, app: Module) -> None:
 def generate_manufacturing_data(build_ctx: BuildContext, app: Module) -> None:
     """Generate a designator map for the project."""
     export_step(
-        build_ctx.layout_path, step_file=build_ctx.output_base.with_suffix(".pcba.step")
+        build_ctx.paths.layout,
+        step_file=build_ctx.paths.output_base.with_suffix(".pcba.step"),
     )
     export_glb(
-        build_ctx.layout_path, glb_file=build_ctx.output_base.with_suffix(".pcba.glb")
+        build_ctx.paths.layout,
+        glb_file=build_ctx.paths.output_base.with_suffix(".pcba.glb"),
     )
     export_dxf(
-        build_ctx.layout_path, dxf_file=build_ctx.output_base.with_suffix(".pcba.dxf")
+        build_ctx.paths.layout,
+        dxf_file=build_ctx.paths.output_base.with_suffix(".pcba.dxf"),
     )
 
     export_gerber(
-        build_ctx.layout_path,
-        gerber_zip_file=build_ctx.output_base.with_suffix(".gerber.zip"),
+        build_ctx.paths.layout,
+        gerber_zip_file=build_ctx.paths.output_base.with_suffix(".gerber.zip"),
     )
 
-    pnp_file = build_ctx.output_base.with_suffix(".pick_and_place.csv")
-    export_pick_and_place(build_ctx.layout_path, pick_and_place_file=pnp_file)
+    pnp_file = build_ctx.paths.output_base.with_suffix(".pick_and_place.csv")
+    export_pick_and_place(build_ctx.paths.layout, pick_and_place_file=pnp_file)
     convert_kicad_pick_and_place_to_jlcpcb(
         pnp_file,
-        build_ctx.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
+        build_ctx.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
     )
 
 
@@ -160,4 +159,4 @@ def generate_module_map(build_ctx: BuildContext, app: Module) -> None:
 @muster.register("variable-report")
 def generate_variable_report(build_ctx: BuildContext, app: Module) -> None:
     """Generate a report of all the variable values in the design."""
-    export_parameters_to_file(app, build_ctx.output_base / "variables.md")
+    export_parameters_to_file(app, build_ctx.paths.output_base / "variables.md")
