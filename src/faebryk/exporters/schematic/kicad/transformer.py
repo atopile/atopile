@@ -16,7 +16,7 @@ import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.libs.exceptions.utils import UserException
+from faebryk.libs.exception import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,

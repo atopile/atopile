@@ -22,7 +22,7 @@ import atopile.config
 from atopile import version
 from atopile.utils import robustly_rm_dir
 from atopile import errors
-import faebryk.libs.exceptions.utils
+import faebryk.libs.exception
 
 yaml = ruamel.yaml.YAML()
 
@@ -167,7 +167,9 @@ def install_project_dependencies(
     ctx: atopile.config.ProjectContext,
     upgrade: bool,
 ):
-    for _ctx, dependency in faebryk.libs.exceptions.utils.iter_through_errors(config.dependencies):
+    for _ctx, dependency in faebryk.libs.exception.iter_through_errors(
+        config.dependencies
+    ):
         with _ctx():
             if not dependency.link_broken:
                 # FIXME: these dependency objects are a little too entangled

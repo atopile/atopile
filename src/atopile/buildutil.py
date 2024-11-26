@@ -19,7 +19,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.app.pcb import apply_design
-from faebryk.libs.exceptions.utils import ExceptionAccumulator
+from faebryk.libs.exception import ExceptionAccumulator
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
 

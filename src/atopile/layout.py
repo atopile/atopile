@@ -20,7 +20,7 @@ from atopile import config
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from atopile import errors
-import faebryk.libs.exceptions.utils
+import faebryk.libs.exception
 from faebryk.libs.util import (
     FuncDict,
     KeyErrorAmbiguous,
@@ -45,11 +45,11 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
 
     entries: FuncDict[Module, set[Path]] = FuncDict()
     for filepath in directory.glob("**/ato.yaml"):
-        with faebryk.libs.exceptions.utils.downgrade(Exception, logger=logger):
+        with faebryk.libs.exception.downgrade(Exception, logger=logger):
             cfg = config.get_project_config_from_path(filepath)
 
             for build_name in cfg.builds:
-                with faebryk.libs.exceptions.utils.downgrade(Exception, logger=logger):
+                with faebryk.libs.exception.downgrade(Exception, logger=logger):
                     ctx = config.BuildContext.from_config_name(cfg, build_name)
 
                     if (
