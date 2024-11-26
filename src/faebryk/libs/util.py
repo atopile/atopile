@@ -1165,6 +1165,9 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
             self[key] = default
         return default
 
+    def backwards(self) -> "FuncDict[U, T, H]":
+        return FuncDict(((v, k) for k, v in self.items()), hasher=self._hasher)
+
 
 def run_live(
     *args,
