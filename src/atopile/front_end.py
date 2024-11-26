@@ -34,7 +34,7 @@ from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import FaebrykException
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P, Quantity, Unit
-from faebryk.libs.util import FuncDict
+from faebryk.libs.util import FuncDict, has_attr_or_property, try_set_attr
 
 # Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
 try:
@@ -288,7 +288,7 @@ def _sys_path_context(path: Path):
 
 @dataclass
 class Context:
-    """Context dataclass for the visitor constructor."""
+    """~A metaclass to hold context/origin information on ato classes."""
 
     @dataclass
     class ImportPlaceholder:
@@ -296,12 +296,27 @@ class Context:
         from_path: str
         original_ctx: ParserRuleContext
 
+    # Location information re. the source of this module
     file_path: Path
+
+    # Scope information
     scope_ctx: ParserRuleContext
     refs: dict[Ref, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
 
 
-class Surveyor(BasicsMixin, SequenceMixin, AtopileParserVisitor):
+class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
+    """
+    Wendy is Bob's business partner and fellow builder in the children's TV series
+    "Bob the Builder." She is a skilled construction worker who often manages the
+    business side of their building company while also participating in hands-on
+    construction work. Wendy is portrayed as capable, practical and level-headed,
+    often helping to keep projects organized and on track. She wears a green safety
+    helmet and work clothes, and is known for her competence in operating various
+    construction vehicles and equipment.
+
+    Wendy also knows where to find the best building supplies.
+    """
+
     def visitImport_stmt(
         self, ctx: ap.Import_stmtContext
     ) -> KeyOptMap[Context.ImportPlaceholder]:
@@ -369,24 +384,6 @@ def ato_error_converter():
         raise ex
 
 
-def has_attr_or_property(obj: object, attr: str) -> bool:
-    return hasattr(obj, attr) or (
-        hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property)
-    )
-
-
-def try_set_attr(obj: object, attr: str, value: Any) -> bool:
-    if hasattr(obj, attr) or (
-        hasattr(type(obj), attr)
-        and isinstance(getattr(type(obj), attr), property)
-        and getattr(type(obj), attr).fset is not None
-    ):
-        setattr(obj, attr, value)
-        return True
-    else:
-        return False
-
-
 def _write_only_property(func: Callable):
     def raise_write_only(*args, **kwargs):
         raise AttributeError(f"{func.__name__} is write-only")
@@ -439,7 +436,7 @@ class _has_kicad_footprint_name_defined(F.has_footprint_impl):
         return False
 
 
-class AtoComponent(L.Module):
+class _Component(L.Module):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pinmap = {}
@@ -492,7 +489,7 @@ class AtoComponent(L.Module):
         self.add(F.has_designator_prefix_defined(value))
 
 
-class ShimResistor(F.Resistor):
+class _ShimResistor(F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
 
     @property
@@ -539,7 +536,7 @@ class ShimResistor(F.Resistor):
         )
 
 
-class ShimCapacitor(F.Capacitor):
+class _ShimCapacitor(F.Capacitor):
     """Temporary shim to translate `value` to `capacitance`."""
 
     @property
@@ -586,10 +583,24 @@ class ShimCapacitor(F.Capacitor):
         )
 
 
-class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
+class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
+    """
+    Bob is a general contractor who runs his own construction company in the town
+    of Fixham Harbour (in earlier episodes, he was based in Bobsville). Recognizable
+    by his blue jeans, checked shirt, yellow hard hat, and tool belt, Bob is known
+    for his positive catchphrase "Can we fix it? Yes, we can!" He's portrayed as a
+    friendly, optimistic problem-solver who takes pride in helping his community
+    through various building and repair projects. Bob works closely with his team
+    of anthropomorphic construction vehicles and his business partner Wendy,
+    tackling each construction challenge with enthusiasm and determination. His
+    character embodies values of teamwork, perseverance, and taking pride in one's
+    work.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self._scopes = FuncDict[ParserRuleContext, Context]()
+        self._python_classes = FuncDict[ap.BlockdefContext, Type[_Component]]()
         self._node_stack = StackList[L.Node]()
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
         self._param_assignments = FuncDict[
@@ -599,6 +610,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
     def build_ast(
         self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
     ) -> L.Node:
+        """Build a Module from an AST and reference."""
         context = self._index_ast(ast, file_path)
         try:
             return self._build(context, ref)
@@ -606,6 +618,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
             self._finish()
 
     def build_file(self, path: Path, ref: Ref) -> L.Node:
+        """Build a Module from a file and reference."""
         context = self._index_file(path)
         try:
             return self._build(context, ref)
@@ -652,7 +665,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         if ast in self._scopes:
             return self._scopes[ast]
 
-        context = Surveyor.survey(file_path, ast)
+        context = Wendy.survey(file_path, ast)
         self._scopes[ast] = context
         return context
 
@@ -661,7 +674,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         if ast in self._scopes:
             return self._scopes[ast]
 
-        context = Surveyor.survey(file_path, ast)
+        context = Wendy.survey(file_path, ast)
         self._scopes[ast] = context
         return context
 
@@ -669,8 +682,8 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         self, context: Context, item: Context.ImportPlaceholder
     ) -> Type[L.Node] | ap.BlockdefContext:
         shim_map: dict[tuple[str, Ref], Type[L.Node]] = {
-            ("generics/resistors.ato", Ref.from_one("Resistor")): ShimResistor,
-            ("generics/capacitors.ato", Ref.from_one("Capacitor")): ShimCapacitor,
+            ("generics/resistors.ato", Ref.from_one("Resistor")): _ShimResistor,
+            ("generics/capacitors.ato", Ref.from_one("Capacitor")): _ShimCapacitor,
         }
         ref = (item.from_path, item.ref)
         if ref in shim_map:
@@ -710,18 +723,32 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
 
     def _get_referenced_class(
         self, ctx: ParserRuleContext, ref: Ref
-    ) -> Type[L.Node] | ap.BlockdefContext | None:
-        while ctx not in self._scopes:
-            if ctx.parentCtx is None:
-                raise ValueError(f"No scope found for {ref}")
-            ctx = ctx.parentCtx
+    ) -> Type[L.Node] | ap.BlockdefContext:
+        """
+        Returns the class / object referenced by the given ref,
+        based on Bob's current context. The contextual nature
+        of this means that it's only useful during the build process.
+        """
+        # No change in position from the current context
+        # return self, eg the current parser context
+        if ref == tuple():
+            return ctx
 
-        context = self._scopes[ctx]
+        # Ascend the tree until we find a scope that has the ref within it
+        ctx_ = ctx
+        while ctx_ not in self._scopes:
+            if ctx_.parentCtx is None:
+                raise ValueError(f"No scope found for {ref}")
+            ctx_ = ctx_.parentCtx
+
+        context = self._scopes[ctx_]
 
         # TODO: there are more cases to check here,
         # eg. if we have part of a ref resolved
         if ref not in context.refs:
-            return None
+            raise errors.AtoKeyError.from_ctx(
+                ctx, f"No class or block definition found for {ref}"
+            )
 
         item = context.refs[ref]
         # Ensure the item is resolved, if not already
@@ -770,45 +797,85 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         except errors.AtoKeyError:
             return None
 
-    def _build_ato_node(self, ctx: ap.BlockdefContext) -> L.Node:
-        # Find the superclass of the new node, if there's one defined
-        if super_ctx := ctx.name_or_attr():
-            super_ref = self.visitName_or_attr(super_ctx)
-            # Create a base node to build off
-            base_node = self._init_node(ctx, super_ref)
-        else:
-            # Create a shell of base-node to build off
-            block_type = ctx.blocktype()
-            assert isinstance(block_type, ap.BlocktypeContext)
-            if block_type.INTERFACE():
-                base_node = L.ModuleInterface()
-            elif block_type.COMPONENT():
-                base_node = AtoComponent()
-            elif block_type.MODULE():
-                base_node = L.Module()
+    def _new_node(
+        bob,
+        item: ap.BlockdefContext | Type[L.Node],
+        promised_supers: list[ap.BlockdefContext] | None = None,
+    ) -> L.Node:
+        """
+        Kind of analogous to __new__ in Python, except that it's a factory
+
+        Descends down the class hierarchy until it finds a known base class.
+        As it descends, it logs all superclasses it encounters, as `promised_supers`.
+        These are accumulated lowest (base-class) to highest (what was initialised).
+
+        Once a base class is found, it creates a new class for each superclass that
+        isn't already known, attaching the __atopile_src_ctx__ attribute to the new
+        class.
+        """
+        if promised_supers is None:
+            promised_supers = []
+
+        if isinstance(item, type) and issubclass(item, L.Node):
+            super_class = item
+            for super_ctx in promised_supers:
+                if super_ctx in bob._python_classes:
+                    super_class = bob._python_classes[super_ctx]
+                    continue
+
+                assert issubclass(super_class, L.Node)
+
+                class Class_(super_class):
+                    __name__ = super_ctx.name().getText()
+                    __atopile_src_ctx__ = super_ctx
+
+                    def __init__(self, *args, **kwargs):
+                        super().__init__(*args, **kwargs)
+
+                    def __postinit__(self):
+                        # TODO: should this be done in post-init?
+                        with bob._node_stack.enter(self):
+                            bob.visitBlock(super_ctx.block())
+
+                super_class = Class_
+                bob._python_classes[super_ctx] = super_class
+
+            assert issubclass(super_class, L.Node)
+            return super_class()
+
+        if isinstance(item, ap.BlockdefContext):
+            # Find the superclass of the new node, if there's one defined
+            if super_ctx := item.name_or_attr():
+                super_ref = bob.visitName_or_attr(super_ctx)
+                # Create a base node to build off
+                base_class = bob._get_referenced_class(item, super_ref)
+
             else:
-                raise ValueError(f"Unknown block type {block_type.getText()}")
+                # Create a shell of base-node to build off
+                block_type = item.blocktype()
+                assert isinstance(block_type, ap.BlocktypeContext)
+                if block_type.INTERFACE():
+                    base_class = L.ModuleInterface
+                elif block_type.COMPONENT():
+                    base_class = _Component
+                elif block_type.MODULE():
+                    base_class = L.Module
+                else:
+                    raise ValueError(f"Unknown block type {block_type.getText()}")
 
-        # Make the noise
-        with self._node_stack.enter(base_node):
-            self.visitBlock(ctx.block())
+            # Descend into building the superclass. We've got no information
+            # on when the super-chain will be resolved, so we need to promise
+            # that this current blockdef will be visited as part of the init
+            return bob._new_node(base_class, [item] + promised_supers)
 
-        return base_node
+        # This should never happen
+        raise ValueError(f"Unknown item type {item}")
 
     def _init_node(self, stmt_ctx: ParserRuleContext, ref: Ref) -> L.Node:
-        if item := self._get_referenced_class(stmt_ctx, ref):
-            if isinstance(item, type) and issubclass(item, L.Node):
-                return item()
-            elif isinstance(item, ap.BlockdefContext):
-                new_node = self._build_ato_node(item)
-                new_node.add_trait(from_dsl(stmt_ctx))
-                return new_node
-            else:
-                raise ValueError(f"Unknown item type {item}")
-        else:
-            raise errors.AtoKeyError.from_ctx(
-                stmt_ctx, f"No class or block definition found for {ref}"
-            )
+        """Kind of analogous to __init__ in Python, except that it's a factory"""
+        new_node = self._new_node(self._get_referenced_class(stmt_ctx, ref))
+        new_node.add_trait(from_dsl(stmt_ctx))
+        return new_node
 
     def _ensure_param(
         self,
@@ -816,6 +883,10 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         name: str,
         src_ctx: ParserRuleContext,
     ) -> fab_param.Parameter:
+        """
+        Get a param from a node. If it doesn't exist, create it and promise to assign
+        it later. Used in forward-declaration.
+        """
         try:
             return self.get_node_attr(node, name)
         except AttributeError:
@@ -889,7 +960,7 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         else:
             raise ValueError(f"Unhandled pin name type {ctx}")
 
-        if not isinstance(self._current_node, AtoComponent):
+        if not isinstance(self._current_node, _Component):
             raise errors.AtoTypeError.from_ctx(
                 ctx, f"Can't declare pins on components of type {self._current_node}"
             )
@@ -1119,4 +1190,4 @@ class Lofty(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisito
         return KeyOptMap.empty()
 
 
-lofty = Lofty()
+bob = Bob()

@@ -6,17 +6,17 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end import AtoComponent, Lofty, _write_only_property
+from atopile.front_end import Bob, _Component, _write_only_property
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 
 
 @pytest.fixture
-def lofty() -> Lofty:
-    return Lofty()
+def lofty() -> Bob:
+    return Bob()
 
 
-def test_empty_module_build(lofty: Lofty):
+def test_empty_module_build(lofty: Bob):
     text = dedent(
         """
         module A:
@@ -29,7 +29,7 @@ def test_empty_module_build(lofty: Lofty):
 
 
 @pytest.mark.skip
-def test_simple_module_build(lofty: Lofty):
+def test_simple_module_build(lofty: Bob):
     text = dedent(
         """
         module A:
@@ -46,7 +46,7 @@ def test_simple_module_build(lofty: Lofty):
 
 
 @pytest.mark.skip
-def test_arithmetic(lofty: Lofty):
+def test_arithmetic(lofty: Bob):
     text = dedent(
         """
         module A:
@@ -62,7 +62,7 @@ def test_arithmetic(lofty: Lofty):
     # Requires params solver to be sane
 
 
-def test_simple_new(lofty: Lofty):
+def test_simple_new(lofty: Bob):
     text = dedent(
         """
         component SomeComponent:
@@ -78,14 +78,14 @@ def test_simple_new(lofty: Lofty):
         node = lofty.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
-    child = Lofty.get_node_attr(node, "child")
-    assert isinstance(child, AtoComponent)
+    child = Bob.get_node_attr(node, "child")
+    assert isinstance(child, _Component)
 
-    a = Lofty.get_node_attr(child, "a")
+    a = Bob.get_node_attr(child, "a")
     assert isinstance(a, F.Electrical)
 
 
-def test_nested_nodes(lofty: Lofty):
+def test_nested_nodes(lofty: Bob):
     text = dedent(
         """
         interface SomeInterface:
@@ -120,7 +120,7 @@ def test_nested_nodes(lofty: Lofty):
     assert isinstance(node, L.Module)
 
 
-def test_resistor(lofty: Lofty):
+def test_resistor(lofty: Bob):
     text = dedent(
         """
         from "generics/resistors.ato" import Resistor
@@ -139,7 +139,7 @@ def test_resistor(lofty: Lofty):
 
     assert isinstance(node, L.Module)
 
-    r1 = Lofty.get_node_attr(node, "r1")
+    r1 = Bob.get_node_attr(node, "r1")
     assert r1.get_trait(F.has_footprint_requirement).get_footprint_requirement() == [
         ("0805", 2)
     ]
