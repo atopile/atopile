@@ -80,14 +80,16 @@ class ProjectType(str, Enum):
 def create(
     name: Annotated[str | None, typer.Argument()] = None,
     repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
-    project_type: Annotated[
-        ProjectType | None,
-        typer.Option("--type", "-t", prompt="What do you want to create"),
-    ] = None,
+    project_type: Annotated[ProjectType | None, typer.Option("--type", "-t")] = None,
 ):  # pylint: disable=redefined-builtin
     """
     Create a new ato project or build configuration.
     """
+
+    project_type = rich.prompt.Prompt.ask(
+        "What do you want to create?", choices=list(ProjectType)
+    )
+
     if project_type == ProjectType.build:
         create_build()
         return
