@@ -122,7 +122,7 @@ def include_footprints(pcb_path: Path):
         )
 
     # TODO make more generic, this is very lcsc specific
-    fppath = pcb_path.parent / "lib" / "footprints/lcsc.pretty"
+    fppath = pcb_path.parent / "lib" / "footprints" / "lcsc.pretty"
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
