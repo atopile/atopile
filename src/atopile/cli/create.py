@@ -219,14 +219,6 @@ def create(
         path=repo_obj.working_tree_dir,
     )
 
-    do_install(
-        to_install="generics",
-        jlcpcb=False,
-        link=False,
-        upgrade=True,
-        path=repo_obj.working_tree_dir,
-    )
-
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
 
