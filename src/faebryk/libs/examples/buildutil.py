@@ -24,21 +24,21 @@ from faebryk.libs.util import ConfigFlag
 
 NAME = "example"
 BUILD_DIR = Path("./build")
-KICAD_SRC = BUILD_DIR / Path("kicad/source")
+KICAD_SRC = BUILD_DIR / "kicad" / "source"
 
 lcsc.BUILD_FOLDER = BUILD_DIR
-lcsc.LIB_FOLDER = BUILD_DIR / Path("kicad/libs")
+lcsc.LIB_FOLDER = BUILD_DIR / "kicad" / "libs"
 lcsc.MODEL_PATH = None
 
 build_paths: BuildPaths = BuildPaths(
-    layout=KICAD_SRC / Path(f"{NAME}.kicad_pcb"),
+    layout=KICAD_SRC / f"{NAME}.kicad_pcb",
     lock_file=None,
     build=BUILD_DIR,
     output_base=BUILD_DIR / NAME,
-    netlist=BUILD_DIR / Path("faebryk/faebryk.net"),
-    fp_lib_table=KICAD_SRC / Path("fp-lib-table"),
-    footprints=KICAD_SRC / Path("lib") / Path("footprints") / Path("lcsc.pretty"),
-    kicad_project=KICAD_SRC / Path(f"{NAME}.kicad_pro"),
+    netlist=BUILD_DIR / "faebryk" / "faebryk.net",
+    fp_lib_table=KICAD_SRC / "fp-lib-table",
+    footprints=KICAD_SRC / "lib" / "footprints" / "lcsc.pretty",
+    kicad_project=KICAD_SRC / f"{NAME}.kicad_pro",
 )
 
 DEV_MODE = ConfigFlag("EXP_DEV_MODE", False)
