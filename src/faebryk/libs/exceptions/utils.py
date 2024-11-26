@@ -203,7 +203,7 @@ class downgrade[T: Exception](Pacman):
 def iter_through_errors[T](
     gen: Iterable[T],
     *accumulate_types: Type,
-    group_message: Optional[str] = None,
+    group_message: str | None = None,
 ) -> Iterable[tuple[Callable[[], ContextManager], T]]:
     """
     Wraps an iterable and yields:

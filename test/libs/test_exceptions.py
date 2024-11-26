@@ -5,7 +5,11 @@ import pytest
 from faebryk.libs.exceptions.errors import (
     UserException,
 )
-from faebryk.libs.exceptions.utils import ExceptionAccumulator, downgrade, iter_through_errors
+from faebryk.libs.exceptions.utils import (
+    ExceptionAccumulator,
+    downgrade,
+    iter_through_errors,
+)
 
 
 def test_ExceptionAccumulator():
