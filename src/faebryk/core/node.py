@@ -24,7 +24,7 @@ from faebryk.core.graphinterface import (
     GraphInterface,
 )
 from faebryk.core.link import LinkNamedParent, LinkSibling
-from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.exceptions.exceptions import FaebrykException
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
