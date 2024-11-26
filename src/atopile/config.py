@@ -321,24 +321,32 @@ class BuildType(Enum):
 
 
 @define
+class BuildPaths:
+    """Output paths for a build."""
+
+    layout: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
+    lock_file: Path | None  # eg. path/to/project/ato-lock.yaml
+    build: Path  # eg. path/to/project/build/<build-name>
+    output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
+    netlist: Path
+    fp_lib_table: Path
+    footprints: Path
+    kicad_project: Path
+
+
+@define
 class BuildContext:
     """A class to hold the arguments to a build."""
 
     project_context: ProjectContext
-
     name: str
-
     entry: address.AddrStr  # eg. "path/to/project/src/entry-name.ato:module.path"
     targets: list[str]
     exclude_targets: list[str]
     fail_on_drcs: bool
     dont_solve_equations: bool
 
-    layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
-    lock_file_path: Optional[Path]  # eg. path/to/project/ato-lock.yaml
-    build_path: Path  # eg. path/to/project/build/<build-name>
-
-    output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
+    paths: BuildPaths
 
     @property
     def build_type(self) -> BuildType:
@@ -361,11 +369,6 @@ class BuildContext:
                     f"Unknown entry suffix: {suffix} for {self.entry}"
                 )
 
-    @property
-    def netlist_path(self) -> Path:
-        """The path to output the netlist for this build."""
-        return self.output_base / f"{self.name}.net"
-
     @classmethod
     def from_config(
         cls,
@@ -379,6 +382,9 @@ class BuildContext:
         )
 
         build_path = Path(project_context.project_path) / BUILD_DIR_NAME
+        layout_path = find_layout(
+            project_context.project_path / project_context.layout_path
+        )
 
         return BuildContext(
             project_context=project_context,
@@ -388,12 +394,16 @@ class BuildContext:
             exclude_targets=build_config.exclude_targets,
             fail_on_drcs=build_config.fail_on_drcs,
             dont_solve_equations=build_config.dont_solve_equations,
-            layout_path=find_layout(
-                project_context.project_path / project_context.layout_path / config_name
+            paths=BuildPaths(
+                layout=layout_path,
+                lock_file=project_context.lock_file_path,
+                build=build_path,
+                output_base=build_path / config_name,
+                netlist=build_path / config_name / f"{config_name}.net",
+                fp_lib_table=layout_path.parent / "fp-lib-table",
+                footprints=layout_path.parent / "lib" / "footprints" / "lcsc.pretty",
+                kicad_project=layout_path.with_suffix(".kicad_pro"),
             ),
-            lock_file_path=project_context.project_path / LOCK_FILE_NAME,
-            build_path=build_path,
-            output_base=build_path / config_name,
         )
 
     @classmethod
@@ -410,6 +420,10 @@ class BuildContext:
             ) from ex
 
         return cls.from_config(build_name, build_config, project_context)
+
+    def ensure_paths(self) -> None:
+        self.paths.build.mkdir(parents=True, exist_ok=True)
+        self.paths.output_base.parent.mkdir(parents=True, exist_ok=True)
 
 
 _project_context: Optional[ProjectContext] = None

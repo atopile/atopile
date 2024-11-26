@@ -54,9 +54,9 @@ def build(
                 app.add(F.is_app_root())
 
                 # TODO: these should be drawn from the buildcontext like everything else
-                lcsc.BUILD_FOLDER = build_ctx.build_path
+                lcsc.BUILD_FOLDER = build_ctx.paths.build
                 lcsc.LIB_FOLDER = (
-                    build_ctx.build_path / build_ctx.layout_path.parent / "lib"
+                    build_ctx.paths.build / build_ctx.paths.layout.parent / "lib"
                 )  # TODO: move this to the buildcontext
                 lcsc.LIB_FOLDER.mkdir(exist_ok=True, parents=True)
                 # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models
@@ -72,12 +72,12 @@ def build(
             manifest = {}
             manifest["version"] = "2.0"
             for ctx in build_ctxs:
-                if ctx.layout_path:
+                if ctx.paths.layout:
                     by_layout_manifest = manifest.setdefault(
                         "by-layout", {}
-                    ).setdefault(str(ctx.layout_path), {})
+                    ).setdefault(str(ctx.paths.layout), {})
                     by_layout_manifest["layouts"] = str(
-                        ctx.output_base.with_suffix(".layouts.json")
+                        ctx.paths.output_base.with_suffix(".layouts.json")
                     )
 
             manifest_path = project_context.project_path / "build" / "manifest.json"
