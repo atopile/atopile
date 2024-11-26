@@ -47,6 +47,9 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def max_elem(self) -> NumericT:
         return self._max
 
+    def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
+        return self._min >= other._min and self._max <= other._max
+
     def op_add_interval(
         self, other: "Numeric_Interval[NumericT]"
     ) -> "Numeric_Interval[NumericT]":
@@ -75,20 +78,30 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         Arithmetically multiplies two intervals.
         """
-        return Numeric_Interval(
-            min(
-                self._min * other._min,
-                self._min * other._max,
-                self._max * other._min,
-                self._max * other._max,
-            ),
-            max(
-                self._min * other._min,
-                self._min * other._max,
-                self._max * other._min,
-                self._max * other._max,
-            ),
-        )
+        values = [
+            self._min * other._min,
+            self._min * other._max,
+            self._max * other._min,
+            self._max * other._max,
+        ]
+        return Numeric_Interval(min(values), max(values))
+
+    def op_pow_interval(
+        self, other: "Numeric_Interval"
+    ) -> "Numeric_Interval_Disjoint[float]":
+        # TODO implement this properly
+        if other.max_elem() < 0:
+            return self.op_pow_interval(other.op_negate()).op_invert()
+        if other.min_elem() < 0:
+            raise NotImplementedError("passing zero not implemented yet")
+
+        values = [
+            self._min**other._min,
+            self._min**other._max,
+            self._max**other._min,
+            self._max**other._max,
+        ]
+        return Numeric_Interval_Disjoint(Numeric_Interval(min(values), max(values)))
 
     def op_invert(self) -> "Numeric_Interval_Disjoint[float]":
         """
@@ -198,6 +211,9 @@ class Numeric_Interval(Numeric_Set[NumericT]):
 
     def __or__(self, other: "Numeric_Interval[NumericT]"):
         return self.maybe_merge_interval(other)
+
+    def __pow__(self, other: "Numeric_Interval[NumericT]"):
+        return self.op_pow_interval(other)
 
 
 def Numeric_Singleton(value: NumericT) -> Numeric_Interval[NumericT]:
@@ -367,6 +383,13 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
     ) -> "Numeric_Interval_Disjoint[float]":
         return self.op_mul_intervals(other.op_invert())
 
+    def op_pow_intervals(
+        self, other: "Numeric_Interval_Disjoint"
+    ) -> "Numeric_Interval_Disjoint[float]":
+        return Numeric_Interval_Disjoint(
+            *(r.op_pow_interval(o) for r in self.intervals for o in other.intervals)
+        )
+
     def __contains__(self, item: NumericT) -> bool:
         index = bisect(self.intervals, item, key=lambda r: r.min_elem())
 
@@ -422,6 +445,9 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
 
     def __or__(self, other: "Numeric_Interval_Disjoint[NumericT]"):
         return self.op_union_intervals(other)
+
+    def __pow__(self, other: "Numeric_Interval_Disjoint"):
+        return self.op_pow_intervals(other)
 
 
 class Numeric_Set_Discrete(Numeric_Interval_Disjoint[NumericT]):

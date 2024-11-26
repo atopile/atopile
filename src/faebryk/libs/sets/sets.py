@@ -23,9 +23,14 @@ class P_Set[T](Protocol):
             Quantity_Interval_Disjoint,
             QuantitySetLikeR,
         )
+
         if isinstance(value, QuantitySetLikeR) and not isinstance(value, bool):
             return Quantity_Interval_Disjoint.from_value(value)
+        if isinstance(value, (bool, BoolSet)):
+            return BoolSet.from_value(value)
         return PlainSet(value)
+
+    def is_subset_of(self, other: "P_Set[T]") -> bool: ...
 
 
 class P_IterableSet[T, IterT](P_Set[T], Iterable[IterT], Protocol): ...
@@ -61,4 +66,72 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
         return f"PlainSet({', '.join(repr(e) for e in self.elements)})"
 
     def __iter__(self) -> Iterator[U]:
-        return self.elements.__iter__()
+        return iter(self.elements)
+
+    def is_subset_of(self, other: "PlainSet[U]") -> bool:
+        return self.elements.issubset(other.elements)
+
+
+type BoolSetLike_ = bool | BoolSet
+
+
+class BoolSet(P_Set[bool]):
+    def __init__(self, *values: BoolSetLike_):
+        assert all(isinstance(v, (bool, BoolSet)) for v in values)
+        # flatten
+        self.values = frozenset(
+            {v for v in values if isinstance(v, bool)}
+            | {v for vb in values if isinstance(vb, BoolSet) for v in vb.values}
+        )
+
+    @staticmethod
+    def from_value(value: BoolSetLike_) -> "BoolSet":
+        if isinstance(value, BoolSet):
+            return value
+        return BoolSet(value)
+
+    def __contains__(self, item: BoolSetLike_) -> bool:
+        return all(o_v in self.values for o_v in BoolSet.from_value(item).values)
+
+    def is_empty(self) -> bool:
+        return not len(self.values)
+
+    def __bool__(self) -> bool:
+        return True in self.values
+
+    def op_not(self) -> "BoolSet":
+        return BoolSet(*(not v for v in self.values))
+
+    def op_and(self, other: BoolSetLike_) -> "BoolSet":
+        return BoolSet(
+            *[
+                v and o_v
+                for v in self.values
+                for o_v in BoolSet.from_value(other).values
+            ]
+        )
+
+    def op_or(self, other: BoolSetLike_) -> "BoolSet":
+        return BoolSet(
+            *[v or o_v for v in self.values for o_v in BoolSet.from_value(other).values]
+        )
+
+    def __eq__(self, value: Any) -> bool:
+        if value is None:
+            return False
+        if not isinstance(value, BoolSetLike):
+            return False
+        return self.values == BoolSet.from_value(value).values
+
+    def is_subset_of(self, other: BoolSetLike_) -> bool:
+        other_b = BoolSet.from_value(other)
+        return self.values.issubset(other_b.values)
+
+    def __hash__(self) -> int:
+        return hash(self.values)
+
+    def __repr__(self) -> str:
+        return f"BoolSet({', '.join(repr(v) for v in self.values)})"
+
+
+BoolSetLike = bool | BoolSet

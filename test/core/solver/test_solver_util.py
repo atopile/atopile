@@ -82,7 +82,7 @@ def test_mutator_no_graph_merge():
 
     p3 = Parameter(units=P.V)
 
-    mutator = Mutator()
+    mutator = Mutator(p0.get_graph())
     p0_new = cast_assert(Parameter, mutator.get_copy(p0))
     p3_new = cast_assert(Parameter, mutator.get_copy(p3))
     alias_new = cast_assert(Is, mutator.get_copy(alias))

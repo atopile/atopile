@@ -16,7 +16,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
@@ -455,6 +455,7 @@ class ParameterOperatable(Node):
 
     # type checks
 
+    # TODO Quantity_Interval_Disjoint is also a literal
     @staticmethod
     def is_number_literal(value: Any) -> TypeGuard[QuantityLike]:
         return isinstance(value, QuantityLikeR)
@@ -803,7 +804,7 @@ class Ceil(Arithmetic):
 class Logic(ConstrainableExpression):
     def __init__(self, *operands):
         super().__init__(*operands)
-        types = bool, Parameter, Logic, Predicate
+        types = bool, BoolSet, Parameter, Logic, Predicate
         if any(not isinstance(op, types) for op in operands):
             raise ValueError("operands must be bool, Parameter, Logic, or Predicate")
         if any(

@@ -17,8 +17,7 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.analytical import (
     compress_associative,
-    convert_inequality_to_subset,
-    convert_to_canonical_operations,
+    convert_inequality_with_literal_to_subset,
     fold_literals,
     merge_intersect_subsets,
     remove_obvious_tautologies,
@@ -26,66 +25,25 @@ from faebryk.core.solver.analytical import (
     resolve_alias_classes,
     upper_estimation_of_expressions_with_subsets,
 )
+from faebryk.core.solver.canonical import (
+    constrain_within_and_domain,
+    convert_to_canonical_literals,
+    convert_to_canonical_operations,
+)
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
     Contradiction,
     Mutator,
     Mutators,
-    NumericLiteralR,
-    literal_to_base_units,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     QuantitySetLikeR,
 )
-from faebryk.libs.sets.sets import P_Set, PlainSet
-from faebryk.libs.units import dimensionless
+from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import times_out
 
 logger = logging.getLogger(__name__)
-
-
-def constrain_within_and_domain(mutator: Mutator):
-    for param in GraphFunctions(mutator.G).nodes_of_type(Parameter):
-        new_param = mutator.mutate_parameter(param)
-        if new_param.within is not None:
-            new_param.constrain_subset(new_param.within)
-        if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
-            new_param.constrain_ge(0.0 * new_param.units)
-
-
-def strip_units(mutator: Mutator):
-    """
-    units -> base units (dimensionless)
-    scalar to single
-    """
-
-    param_ops = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
-
-    for po in ParameterOperatable.sort_by_depth(param_ops, ascending=True):
-        # Parameter
-        if isinstance(po, Parameter):
-            mutator.mutate_parameter(
-                po,
-                units=dimensionless,
-                soft_set=literal_to_base_units(po.soft_set),
-                guess=literal_to_base_units(po.guess),
-            )
-
-        # Expression
-        elif isinstance(po, Expression):
-
-            def mutate(
-                i: int, operand: ParameterOperatable.All
-            ) -> ParameterOperatable.All:
-                if isinstance(operand, NumericLiteralR):
-                    return literal_to_base_units(operand)
-
-                # # FIXME: I don't think this is correct
-                # assert isinstance(operand, ParameterOperatable)
-                return operand
-
-            mutator.mutate_expression_with_op_map(po, mutate)
 
 
 class DefaultSolver(Solver):
@@ -102,7 +60,7 @@ class DefaultSolver(Solver):
 
     @times_out(5)
     def phase_one_no_guess_solving(self, g: Graph):
-        logger.info("Phase 1 Solving: No guesses".ljust(80, "="))
+        logger.info("Phase 1 Solving: No guesses ".ljust(80, "="))
 
         # TODO move into comment here
         # strategies
@@ -111,14 +69,18 @@ class DefaultSolver(Solver):
 
         pre_algorithms = [
             ("Constrain within and domain", constrain_within_and_domain),
-            ("Strip units", strip_units),
+            ("Canonical literal form", convert_to_canonical_literals),
+            ("Canonical expression form", convert_to_canonical_operations),
         ]
+
         iterative_algorithms = [
             ("Remove unconstrained", remove_unconstrained),
             ("Alias classes", resolve_alias_classes),
             ("Remove obvious tautologies", remove_obvious_tautologies),
-            ("Inequality to set", convert_inequality_to_subset),
-            ("Canonical expression form", convert_to_canonical_operations),
+            (
+                "Inequality with literal to subset",
+                convert_inequality_with_literal_to_subset,
+            ),
             ("Associative expressions Full", compress_associative),
             ("Fold literals", fold_literals),
             ("Merge intersecting subsets", merge_intersect_subsets),
@@ -127,7 +89,12 @@ class DefaultSolver(Solver):
             ("Upper estimation", upper_estimation_of_expressions_with_subsets),
         ]
 
-        def run_algo(graphs: list[Graph], phase_name: str, algo_name: str, algo: Callable[[Mutator], None]):
+        def run_algo(
+            graphs: list[Graph],
+            phase_name: str,
+            algo_name: str,
+            algo: Callable[[Mutator], None],
+        ):
             mutators = Mutators(*graphs)
             mutators.run(algo)
             algo_repr_map, algo_graphs, algo_dirty = mutators.close()
@@ -139,11 +106,15 @@ class DefaultSolver(Solver):
                     mutator.debug_print()
             # TODO assert all new graphs
             return algo_repr_map, algo_graphs, algo_dirty
+
         any_dirty = True
         iterno = 0
-        total_repr_map: dict[tuple[int, str], Mutator.REPR_MAP] = {}
-        param_ops_subset_literals: dict[ParameterOperatable, ParameterOperatable.Literal] = {
-            po: po.try_get_literal_subset() for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+        total_repr_map: Mutator.REPR_MAP = {}
+        param_ops_subset_literals: dict[
+            ParameterOperatable, ParameterOperatable.Literal
+        ] = {
+            po: po.try_get_literal_subset()
+            for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
         }
         graphs = [g]
 
@@ -163,7 +134,9 @@ class DefaultSolver(Solver):
             iteration_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
             iteration_dirty = {}
             for phase_name, (algo_name, algo) in enumerate(algos):
-                algo_repr_map, algo_graphs, algo_dirty = run_algo(graphs, phase_name, algo_name, algo)
+                algo_repr_map, algo_graphs, algo_dirty = run_algo(
+                    graphs, str(phase_name), algo_name, algo
+                )
                 if not algo_dirty:
                     continue
                 iteration_dirty[(iterno, algo_name)] = algo_dirty
@@ -172,31 +145,48 @@ class DefaultSolver(Solver):
 
             any_dirty = any(iteration_dirty.values())
 
-            total_repr_map = Mutators.concat_repr_maps(*([total_repr_map] if total_repr_map else []), *iteration_repr_maps.values())
+            total_repr_map = Mutators.concat_repr_maps(
+                *([total_repr_map] if total_repr_map else []),
+                *iteration_repr_maps.values(),
+            )
 
             subset_dirty = False
             total_repr_map_obj = Mutators.create_concat_repr_map(total_repr_map)
-            param_ops_subset_literals = {po: lit for po, lit in param_ops_subset_literals.items() if po in total_repr_map_obj}
+            param_ops_subset_literals = {
+                po: lit
+                for po, lit in param_ops_subset_literals.items()
+                if po in total_repr_map_obj
+            }
             for po in param_ops_subset_literals:
                 new_subset_literal = total_repr_map_obj.try_get_literal(po, IsSubset)
                 if new_subset_literal != param_ops_subset_literals[po]:
-                    logger.info(f"Subset dirty {param_ops_subset_literals[po]} != {new_subset_literal}")
+                    logger.info(
+                        f"Subset dirty {param_ops_subset_literals[po]} != {new_subset_literal}"
+                    )
                     param_ops_subset_literals[po] = new_subset_literal
                     subset_dirty = True
 
             iteration_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
             if subset_dirty or iterno == 1:
                 logger.info("Subset dirty, running subset dirty algorithms")
-                for phase_name, (algo_name, algo) in enumerate(subset_dirty_algorithms, start=phase_name):
-                    algo_repr_map, algo_graphs, algo_dirty = run_algo(graphs, phase_name, algo_name, algo)
+                for phase_name, (algo_name, algo) in enumerate(
+                    subset_dirty_algorithms, start=phase_name
+                ):
+                    algo_repr_map, algo_graphs, algo_dirty = run_algo(
+                        graphs, str(phase_name), algo_name, algo
+                    )
                     if not algo_dirty:
                         continue
                     graphs = algo_graphs
                     iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
 
-            total_repr_map = Mutators.concat_repr_maps(*([total_repr_map] if total_repr_map else []), *iteration_repr_maps.values())
+            total_repr_map = Mutators.concat_repr_maps(
+                *([total_repr_map] if total_repr_map else []),
+                *iteration_repr_maps.values(),
+            )
             iterno += 1
 
+        logger.info(f"Phase 1 Solving done in {iterno} iterations ".ljust(80, "="))
         return Mutators.create_concat_repr_map(total_repr_map)
 
     def get_any_single(
@@ -294,13 +284,14 @@ class DefaultSolver(Solver):
             try:
                 repr_map = self.phase_one_no_guess_solving(pred.get_graph())
                 lit = repr_map.try_get_literal(pred)
-                if lit is True or lit == PlainSet(True):
+                assert isinstance(lit, BoolSet) or lit is None
+                if lit is None:
+                    result.unknown_predicates.append(p)
+                elif True in lit:
                     result.true_predicates.append(p)
                     break
-                elif lit is False or lit == PlainSet(False):
+                elif False in lit:
                     result.false_predicates.append(p)
-                elif lit is None:
-                    result.unknown_predicates.append(p)
                 else:
                     assert False
             except Contradiction:
@@ -314,6 +305,6 @@ class DefaultSolver(Solver):
 
         if lock and result.true_predicates:
             assert len(result.true_predicates) == 1
-            result.true_predicates[0].constrain()
+            result.true_predicates[0][0].constrain()
 
         return result

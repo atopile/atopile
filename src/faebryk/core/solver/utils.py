@@ -5,14 +5,14 @@
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from statistics import median
 from typing import Callable, Iterable, Iterator, TypeGuard, cast
-
-from deprecated import deprecated
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.graphinterface import GraphInterfaceSelf
 from faebryk.core.parameter import (
+    Abs,
     Add,
     And,
     ConstrainableExpression,
@@ -20,14 +20,21 @@ from faebryk.core.parameter import (
     Divide,
     Domain,
     Expression,
+    GreaterOrEqual,
+    GreaterThan,
     Intersection,
     Is,
     IsSubset,
+    Log,
     Multiply,
+    Not,
     Or,
     Parameter,
     ParameterOperatable,
+    Power,
     Predicate,
+    Round,
+    Sin,
     Subtract,
     SymmetricDifference,
     Union,
@@ -37,12 +44,19 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
     Quantity_Set,
+    Quantity_Set_Discrete,
     QuantityLike,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import P_Set, PlainSet
-from faebryk.libs.units import HasUnit, Quantity, Unit, dimensionless, quantity
-from faebryk.libs.util import EquivalenceClasses, not_none, partition, unique_ref
+from faebryk.libs.sets.sets import BoolSet, P_Set
+from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
+from faebryk.libs.util import (
+    EquivalenceClasses,
+    KeyErrorAmbiguous,
+    not_none,
+    partition,
+    unique_ref,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +75,90 @@ class Contradiction(Exception):
 class ContradictionByLiteral(Contradiction):
     pass
 
+
+CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
+CanonicalBoolean = BoolSet
+CanonicalEnum = P_Set[Enum]
+# TODO Canonical set?
+CanonicalLiteral = CanonicalNumber | CanonicalBoolean | CanonicalEnum
+SolverLiteral = CanonicalLiteral
+
+CanonicalNumericOperation = Add | Multiply | Power | Round | Abs | Sin | Log
+CanonicalLogicOperation = Or | Not
+CanonicalSeticOperation = Intersection | Union | SymmetricDifference | Difference
+CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
+
+
+CanonicalOperation = (
+    CanonicalNumericOperation
+    | CanonicalLogicOperation
+    | CanonicalSeticOperation
+    | CanonicalPredicate
+)
+
+
+def make_lit(val):
+    return P_Set.from_value(val)
+
+
+def try_extract_literal(po) -> SolverLiteral | None:
+    lit = ParameterOperatable.try_extract_literal(po)
+    if lit is None:
+        return None
+    assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set))
+    return lit
+
+
+def try_extract_numeric_literal(po) -> CanonicalNumber | None:
+    lit = try_extract_literal(po)
+    if lit is None:
+        return None
+    assert isinstance(lit, CanonicalNumber)
+    return lit
+
+
+def try_extract_all_literals[T: P_Set](
+    expr: Expression,
+    op: type[Expression] | None = None,
+    lit_type: type[T] = P_Set,
+    accept_partial: bool = False,
+) -> list[T] | None:
+    try:
+        as_lits = [
+            ParameterOperatable.try_extract_literal(o, op) for o in expr.operands
+        ]
+    except KeyErrorAmbiguous as e:
+        raise ContradictionByLiteral(
+            f"Duplicate unequal is literals: {e.duplicates}"
+        ) from e
+
+    if None in as_lits and not accept_partial:
+        return None
+    as_lits = [lit for lit in as_lits if lit is not None]
+    assert all(isinstance(lit, lit_type) for lit in as_lits)
+    return cast(list[T], as_lits)
+
+
 def alias_is_literal(po: ParameterOperatable, literal: ParameterOperatable.Literal):
     existing = po.try_get_literal()
+    literal = make_lit(literal)
+
     if existing is not None:
         if existing == literal:
             return
         raise ContradictionByLiteral(f"{existing} != {literal}")
     po.alias_is(literal)
+
+
+def alias_is_and_check_constrained(
+    expr: ConstrainableExpression, value: BoolSet | bool
+):
+    if not isinstance(value, BoolSet):
+        value = BoolSet(value)
+    alias_is_literal(expr, value)
+    if not value and expr.constrained:
+        raise ContradictionByLiteral(f"False and constrained: {expr}")
+
 
 def flatten_associative[T: Associative](
     to_flatten: T,  # type: ignore
@@ -260,22 +351,7 @@ def get_graphs(values: Iterable) -> list[Graph]:
 
 NumericLiteral = QuantityLike | Quantity_Interval_Disjoint | Quantity_Interval
 NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
-
-
-def literal_to_base_units[T: NumericLiteral | None](q: T) -> P_Set:
-    if q is None:
-        return None  # type: ignore
-    if isinstance(q, bool):
-        return q
-    if isinstance(q, Quantity):
-        return Quantity_Interval_Disjoint.from_value(q.to_base_units().magnitude * dimensionless)
-    if isinstance(q, int | float):
-        return Quantity_Interval_Disjoint.from_value(q * dimensionless)
-    if isinstance(q, Quantity_Interval_Disjoint):
-        return Quantity_Interval_Disjoint._from_intervals(q._intervals, dimensionless)
-    if isinstance(q, Quantity_Interval):
-        return Quantity_Interval_Disjoint(Quantity_Interval._from_interval(q._interval, dimensionless))
-    raise ValueError(f"unknown literal type {type(q)}")
+BoolLiteral = BoolSet | bool
 
 
 def merge_parameters(params: Iterable[Parameter]) -> Parameter:
@@ -459,15 +535,6 @@ class Mutator:
 
         assert False
 
-    # TODO remove
-    @deprecated
-    @staticmethod
-    def copy_operand_recursively(
-        o: ParameterOperatable.All,
-        repr_map: REPR_MAP,
-    ) -> ParameterOperatable.All:
-        return Mutator(None, repr_map).get_copy(o)
-
     def remove(self, *po: ParameterOperatable):
         if any(p in self.repr_map for p in po):
             raise ValueError("Object already in repr_map")
@@ -596,11 +663,8 @@ class Mutators:
                 return None
             res = P_Set.from_value(lit)
             if isinstance(res, Quantity_Set):
-                return res *quantity(
-                1, HasUnit.get_units(param)
-            )
+                return res * quantity(1, HasUnit.get_units(param))
             return res
-
 
         def __getitem__(
             self, param: ParameterOperatable

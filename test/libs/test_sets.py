@@ -4,7 +4,7 @@
 import pytest
 
 from faebryk.libs.library.L import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
-from faebryk.libs.units import P, Unit, dimensionless
+from faebryk.libs.units import P, Unit, dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
 
@@ -180,3 +180,21 @@ def test_division_unit():
     assert Range(0 * P.V, 1 * P.V) / Range(2 * P.A, 3 * P.A) == Range(
         0 * P.ohm, 1 / 2 * P.ohm
     )
+
+
+def test_pow():
+    assert RangeWithGaps((0, 1), (2, 3)) ** Range(2, 3) == RangeWithGaps(
+        (0, 1), (4, 27)
+    )
+
+
+def test_pow_unit():
+    assert RangeWithGaps((-3 * P.m, 1 * P.m)) ** Single(quantity(2)) == RangeWithGaps(
+        (1 * P.m**2, 9 * P.m**2)
+    )
+
+
+def test_pow_div_eq():
+    x = RangeWithGaps(Range(-5, 10))
+    y = RangeWithGaps(Range(-2, 3))
+    assert x / y == x * y**-1

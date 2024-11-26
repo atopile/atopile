@@ -170,6 +170,9 @@ class Quantity_Interval(Quantity_Set):
     def is_finite(self) -> bool:
         return self._interval.is_finite()
 
+    def is_subset_of(self, other: "Quantity_Interval") -> bool:
+        return self._interval.is_subset_of(other._interval)
+
     def op_intersect_interval(
         self, other: "Quantity_Interval"
     ) -> "Quantity_Interval_Disjoint":
@@ -353,7 +356,9 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return r
 
     @classmethod
-    def unbounded(cls: type[Quantity_Interval_DisjointT], units: Unit) -> Quantity_Interval_DisjointT:
+    def unbounded(
+        cls: type[Quantity_Interval_DisjointT], units: Unit
+    ) -> Quantity_Interval_DisjointT:
         return cls(Quantity_Interval(units=units))
 
     def is_empty(self) -> bool:
@@ -462,6 +467,21 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             _interval, cast(Unit, self.units / other.units)
         )
 
+    def op_pow_intervals(
+        self, other: "Quantity_Interval_Disjoint"
+    ) -> "Quantity_Interval_Disjoint":
+        if not other.units.is_compatible_with(dimensionless):
+            raise ValueError("exponent must have dimensionless units")
+        if other.min_elem() != other.max_elem() and not self.units.is_compatible_with(
+            dimensionless
+        ):
+            raise ValueError(
+                "base must have dimensionless units when exponent is interval"
+            )
+        units = self.units ** other.min_elem().magnitude
+        _interval = self._intervals.op_pow_intervals(other._intervals)
+        return Quantity_Interval_Disjoint._from_intervals(_interval, units)
+
     def __contains__(self, item: Any) -> bool:
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
@@ -470,17 +490,6 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             if not isinstance(item, float) and not isinstance(item, int):
                 return False
             return self._intervals.__contains__(item)
-        return False
-
-    def __eq__(self, value: Any) -> bool:
-        if not HasUnit.check(value):
-            return False
-        if not self.units.is_compatible_with(value.units):
-            return False
-        if isinstance(value, Quantity_Interval_Disjoint):
-            return self._intervals == value._intervals
-        if isinstance(value, Quantity_Interval) and len(self._intervals.intervals) == 1:
-            return self._intervals.intervals[0] == value._interval
         return False
 
     def __hash__(self) -> int:
@@ -534,6 +543,14 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             intersected = intersected & Quantity_Interval_Disjoint.from_value(o)
         return intersected
 
+    def __eq__(self, value: Any) -> bool:
+        if value is None:
+            return False
+        if not isinstance(value, QuantitySetLikeR):
+            return False
+        value_q = Quantity_Interval_Disjoint.from_value(value)
+        return self._intervals == value_q._intervals
+
     def __add__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self.op_add_intervals(Quantity_Interval_Disjoint.from_value(other))
 
@@ -561,6 +578,9 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def __rtruediv__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self.op_invert() * Quantity_Interval_Disjoint.from_value(other)
 
+    def __pow__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        return self.op_pow_intervals(Quantity_Interval_Disjoint.from_value(other))
+
     def __and__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self.op_intersect_intervals(Quantity_Interval_Disjoint.from_value(other))
 
@@ -572,6 +592,16 @@ class Quantity_Interval_Disjoint(Quantity_Set):
 
     def __ror__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return Quantity_Interval_Disjoint.from_value(other) | self
+
+    # TODO move impl to numeric
+    def __ge__(self, other: QuantitySetLike) -> bool:
+        other_q = Quantity_Interval_Disjoint.from_value(other)
+        return self.max_elem() >= other_q.min_elem()
+
+    # TODO move impl to numeric
+    def __le__(self, other: QuantitySetLike) -> bool:
+        other_q = Quantity_Interval_Disjoint.from_value(other)
+        return self.min_elem() <= other_q.max_elem()
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

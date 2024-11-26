@@ -15,6 +15,7 @@ from faebryk.core.parameter import (
     Is,
     IsSubset,
     Multiply,
+    Or,
     Parameter,
     ParameterOperatable,
     Predicate,
@@ -27,6 +28,7 @@ from faebryk.libs.library.L import Range, RangeWithGaps
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
+from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.units import P, dimensionless, quantity
 
 logger = logging.getLogger(__name__)
@@ -93,7 +95,7 @@ def test_simplify():
     solver.phase_one_no_guess_solving(G)
 
 
-def test_simplify_logic():
+def test_simplify_logic_and():
     class App(Module):
         p = L.list_field(4, lambda: Parameter(domain=L.Domains.BOOL()))
 
@@ -107,12 +109,41 @@ def test_simplify_logic():
     G = anded.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
+    # TODO actually test something
+
+
+def test_shortcircuit_logic_and():
+    p0 = Parameter(domain=L.Domains.BOOL())
+    expr = p0 & False
+    expr.constrain()
+    G = expr.get_graph()
+    solver = DefaultSolver()
+
+    with pytest.raises(ContradictionByLiteral):
+        solver.phase_one_no_guess_solving(G)
+
+
+def test_shortcircuit_logic_or():
+    class App(Module):
+        p = L.list_field(4, lambda: Parameter(domain=L.Domains.BOOL()))
+
+    app = App()
+    ored = Or(app.p[0], True)
+    for p in app.p[1:]:
+        ored = ored | p
+    ored = ored | ored
+
+    ored.constrain()
+    G = ored.get_graph()
+    solver = DefaultSolver()
+    repr_map = solver.phase_one_no_guess_solving(G)
+    assert repr_map[ored] == BoolSet(True)
 
 
 def test_inequality_to_set():
     p0 = Parameter(units=dimensionless)
-    p0.constrain_le(2.)
-    p0.constrain_ge(1.)
+    p0.constrain_le(2.0)
+    p0.constrain_ge(1.0)
     G = p0.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
@@ -121,8 +152,8 @@ def test_inequality_to_set():
 def test_remove_obvious_tautologies():
     p0, p1, p2 = (Parameter(units=dimensionless) for _ in range(3))
     p0.alias_is(p1 + p2)
-    p1.constrain_ge(0.)
-    p2.constrain_ge(0.)
+    p1.constrain_ge(0.0)
+    p2.constrain_ge(0.0)
     p2.alias_is(p2)
 
     G = p0.get_graph()
@@ -217,10 +248,12 @@ def test_less_obvious_contradiction_by_literal():
     with pytest.raises(ContradictionByLiteral):
         repr_map = solver.phase_one_no_guess_solving(G)
         from faebryk.core.graph import GraphFunctions
-        from faebryk.core.parameter import Expression
-        for op in GraphFunctions(repr_map.repr_map[A].get_graph()).nodes_of_type(ParameterOperatable):
+
+        for op in GraphFunctions(repr_map.repr_map[A].get_graph()).nodes_of_type(
+            ParameterOperatable
+        ):
             logger.info(f"{op!r}")
-    #FIME
+    # FIME
     # <*3548|Parameter> is 5-10               subset 0-inf
     # <*3158|Parameter> is 5-20 is Add(P)
     # <*35D8|Parameter> is Add(P, P) is 0-15  subset 0-inf | Add(P,P) subset 3158 is 5-20 SHOULD DETECT CONTRADICTION HERE
@@ -367,7 +400,8 @@ def test_literal_folding_add_multiplicative_2():
     a_ops = [
         op
         for op in a_res.get_operations()
-        if isinstance(op, Multiply) and Quantity_Interval_Disjoint.from_value(8) in op.operands
+        if isinstance(op, Multiply)
+        and Quantity_Interval_Disjoint.from_value(8) in op.operands
     ]
     assert len(a_ops) == 1
     mul = next(iter(a_ops))
@@ -403,4 +437,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_assert_any_predicate_super_basic)
+    typer.run(test_shortcircuit_logic_and)

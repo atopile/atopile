@@ -9,27 +9,19 @@ from typing import cast
 
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
-    Add,
-    Divide,
     Domain,
     Expression,
     GreaterOrEqual,
-    GreaterThan,
     Is,
     IsSubset,
-    IsSuperset,
-    LessOrEqual,
-    LessThan,
-    Multiply,
     Parameter,
     ParameterOperatable,
-    Power,
     Predicate,
-    Subtract,
     has_implicit_constraints_recursive,
 )
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
+    CanonicalOperation,
     FullyAssociative,
     Mutator,
     alias_is_literal,
@@ -43,13 +35,12 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
 )
-from faebryk.libs.units import quantity
 from faebryk.libs.util import cast_assert, not_none, partition
 
 logger = logging.getLogger(__name__)
 
 
-def convert_inequality_to_subset(mutator: Mutator):
+def convert_inequality_with_literal_to_subset(mutator: Mutator):
     """
     A >= 5 -> A in [5, inf)
     5 >= A -> A in (-inf, 5]
@@ -274,71 +265,34 @@ def compress_associative(mutator: Mutator):
         )
 
 
-# TODO typealias canonical types
-def convert_to_canonical_operations(mutator: Mutator):
-    """
-    Transforms Sub-Add to Add-Add
-    ```
-    A - B -> A + (-B)
-    A / B -> A * B^-1
-    A <= B -> B >= A
-    A < B -> B > A
-    A superset B -> B subset A
-
-    #TODO: floor/ceil -> round(x -/+ 0.5)
-    #TODO: cos(x) -> sin(x + pi/2)
-    #TODO: sqrt -> ^-(2^-1)
-    #TODO: Logic (xor, and, implies) -> Or & Not
-    ```
-    """
-
-    MirroredExpressions = [
-        (
-            Add,
-            Subtract,
-            lambda operands: [operands[0]]
-            + [Multiply(o, quantity(-1)) for o in operands[1:]],
-        ),
-        (
-            Multiply,
-            Divide,
-            lambda operands: [operands[0]]
-            + [Power(o, quantity(-1)) for o in operands[1:]],
-        ),
-        (
-            GreaterOrEqual,
-            LessOrEqual,
-            lambda operands: list(reversed(operands)),
-        ),
-        (
-            GreaterThan,
-            LessThan,
-            lambda operands: list(reversed(operands)),
-        ),
-        (
-            IsSubset,
-            IsSuperset,
-            lambda operands: list(reversed(operands)),
-        ),
-    ]
-
-    for Target, Convertible, Converter in MirroredExpressions:
-        convertible = {e for e in GraphFunctions(mutator.G).nodes_of_type(Convertible)}
-
-        for expr in ParameterOperatable.sort_by_depth(convertible, ascending=True):
-            mutator.mutate_expression(
-                expr, Converter(expr.operands), expression_factory=Target
-            )
-
-
 def fold_literals(mutator: Mutator):
+    """
+    Tries to do operations on literals or fold expressions.
+    - If possible to do literal operation, aliases expr with result.
+    - If fold results in new expr, replaces old expr with new one.
+    - If fold results in neutralization, returns operand if not literal else alias.
+
+    Examples:
+    ```
+    Or(True, B) -> alias: True
+    Add(A, B, 5, 10) -> replace: Add(A, B, 15)
+    Add(10, 15) -> alias: 25
+    Not(Not(A)) -> neutralize=replace: A
+    ```
+    """
+
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
 
     for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
 
+        # don't run on aliased exprs
+        if ParameterOperatable.try_get_literal(expr) is not None:
+            continue
+
         operands = expr.operands
+        # TODO consider extracting instead
         p_operands, literal_operands = partition(
             lambda o: ParameterOperatable.is_literal(o), operands
         )
@@ -351,7 +305,7 @@ def fold_literals(mutator: Mutator):
         # TODO, obviously_eq offers additional possibilites,
         # must be replacable, no implicit constr
         fold(
-            expr,
+            cast(CanonicalOperation, expr),
             literal_operands=list(literal_operands),
             replacable_nonliteral_operands=multiplicity,
             non_replacable_nonliteral_operands=list(non_replacable_nonliteral_operands),

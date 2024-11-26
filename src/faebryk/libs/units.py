@@ -27,8 +27,10 @@ assert issubclass(Quantity, _Quantity)
 
 
 def quantity(
-    value: Number | str, unit: UnitsContainer | Quantity | None = None
+    value: Number | str | Quantity, unit: UnitsContainer | Quantity | None = None
 ) -> Quantity:
+    if isinstance(value, Quantity) and unit is not None:
+        value = value.to_base_units().m
     return P.Quantity(value, unit)  # type: ignore
 
 
