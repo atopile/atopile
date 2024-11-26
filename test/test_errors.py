@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from atopile.errors import (
+from faebryk.libs.exceptions.errors import (
     AtoError,
     ExceptionAccumulator,
     downgrade,

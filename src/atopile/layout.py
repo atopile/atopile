@@ -16,9 +16,10 @@ from typing import Type
 from more_itertools import first
 
 import faebryk.library._F as F
-from atopile import config, errors
+from atopile import config
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
+from faebryk.libs.exceptions import errors
 from faebryk.libs.util import (
     FuncDict,
     KeyErrorAmbiguous,

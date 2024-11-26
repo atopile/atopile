@@ -19,7 +19,7 @@ from typing import Any, Optional, Protocol, Sequence
 import atopile.address
 import atopile.config
 import atopile.datatypes
-import atopile.errors
+import faebryk.libs.exceptions.errors
 import atopile.front_end
 import atopile.parse
 import atopile.parse_utils
@@ -29,8 +29,8 @@ import atopile.parse_utils
 # **********************************************************
 
 _line_to_def_block: dict[Path, list[Optional[atopile.address.AddrStr]]] = {}
-_error_accumulators: dict[Path, atopile.errors.ExceptionAccumulator] = defaultdict(
-    atopile.errors.ExceptionAccumulator
+_error_accumulators: dict[Path, faebryk.libs.exceptions.errors.ExceptionAccumulator] = (
+    defaultdict(faebryk.libs.exceptions.errors.ExceptionAccumulator)
 )
 
 
@@ -52,7 +52,7 @@ def _index_class_defs_by_line(file: Path):
     addrs = None
     try:
         addrs = atopile.front_end.scoop.ingest_file(file)
-    except* atopile.errors._BaseAtoError as ex:
+    except* faebryk.libs.exceptions.errors._BaseAtoError as ex:
         accumulator.add_errors(ex)
     if addrs is None:
         # we don't chuck a hissy here, but the caller won't progress much
@@ -199,7 +199,7 @@ def publish_errors(uri: str):
     processed_errors = set()
     for error in _error_accumulators[file].errors:
         if (
-            isinstance(error, atopile.errors._BaseAtoError)
+            isinstance(error, faebryk.libs.exceptions.errors._BaseAtoError)
             and error.src_path
             and error.src_col
             and error.src_line
@@ -275,7 +275,7 @@ def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
     instance_addr = atopile.address.add_instances(class_addr, word.split(".")[:-1])
     try:
         instance = atopile.front_end.lofty.get_instance(instance_addr)
-    except (KeyError, atopile.errors.AtoError):
+    except (KeyError, faebryk.libs.exceptions.errors.AtoError):
         pass
     else:
         for child, assignment in instance.assignments.items():
@@ -297,7 +297,7 @@ def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
     if "." not in word:
         try:
             class_ctx = atopile.front_end.scoop.get_obj_def(class_addr)
-        except (KeyError, atopile.errors.AtoError):
+        except (KeyError, faebryk.libs.exceptions.errors.AtoError):
             pass
         else:
             closure_contexts = [class_ctx]
@@ -354,7 +354,7 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
     try:
         instance_addr = atopile.address.add_instances(class_addr, word.split("."))
         instance = atopile.front_end.lofty.get_instance(instance_addr)
-    except (KeyError, atopile.errors.AtoError, AttributeError):
+    except (KeyError, faebryk.libs.exceptions.errors.AtoError, AttributeError):
         pass
     else:
         # TODO: deal with assignments made to super
@@ -411,7 +411,7 @@ def goto_definition(
     src_ctx = None
     try:
         src_ctx = atopile.front_end.lofty.get_instance(instance_addr).src_ctx
-    except (KeyError, atopile.errors.AtoError, AttributeError):
+    except (KeyError, faebryk.libs.exceptions.errors.AtoError, AttributeError):
         # See if it's a Class instead
         pass
 
@@ -423,7 +423,7 @@ def goto_definition(
                 atopile.datatypes.Ref(word.split(".")),
             )
         ).src_ctx
-    except (KeyError, atopile.errors.AtoError, AttributeError):
+    except (KeyError, faebryk.libs.exceptions.errors.AtoError, AttributeError):
         pass
 
     try:

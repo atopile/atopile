@@ -18,9 +18,10 @@ import rich
 import ruamel.yaml
 import typer
 
-from atopile import config, errors
+from atopile import config
 from atopile.cli.install import do_install
 from atopile.utils import robustly_rm_dir
+from faebryk.libs.exceptions import errors
 
 # Set up logging
 log = logging.getLogger(__name__)
