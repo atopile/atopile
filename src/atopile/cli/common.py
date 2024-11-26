@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 import atopile.config
-import faebryk.libs.exception
+import faebryk.libs.exceptions
 from atopile import address, errors, version
 from atopile.address import AddrStr
 
@@ -93,13 +93,13 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
     used to build the project.
     """
     dependency_cfgs = (
-        faebryk.libs.exception.downgrade(FileNotFoundError)(
+        faebryk.libs.exceptions.downgrade(FileNotFoundError)(
             atopile.config.get_project_config_from_path
         )(p)
         for p in Path(config.location or ".").glob("*")
     )
 
-    for cltr, cfg in faebryk.libs.exception.iter_through_errors(
+    for cltr, cfg in faebryk.libs.exceptions.iter_through_errors(
         itertools.chain([config], dependency_cfgs)
     ):
         if cfg is None:

@@ -5,7 +5,7 @@ import pytest
 from atopile.errors import (
     UserException,
 )
-from faebryk.libs.exception import (
+from faebryk.libs.exceptions import (
     ExceptionAccumulator,
     downgrade,
     iter_through_errors,

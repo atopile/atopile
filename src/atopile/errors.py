@@ -12,8 +12,8 @@ from rich.traceback import Traceback
 
 from atopile import address, telemetry
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
-from faebryk.libs.exception import UserException as _BaseBaseUserException
-from faebryk.libs.exception import in_debug_session
+from faebryk.libs.exceptions import UserException as _BaseBaseUserException
+from faebryk.libs.exceptions import in_debug_session
 
 log = logging.getLogger(__name__)
 

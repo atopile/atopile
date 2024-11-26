@@ -22,15 +22,15 @@ import atopile.datatypes
 import atopile.front_end
 import atopile.parse
 import atopile.parse_utils
-import faebryk.libs.exception
+import faebryk.libs.exceptions
 
 # **********************************************************
 # Utils for interacting with the atopile front-end
 # **********************************************************
 
 _line_to_def_block: dict[Path, list[Optional[atopile.address.AddrStr]]] = {}
-_error_accumulators: dict[Path, faebryk.libs.exception.ExceptionAccumulator] = (
-    defaultdict(faebryk.libs.exception.ExceptionAccumulator)
+_error_accumulators: dict[Path, faebryk.libs.exceptions.ExceptionAccumulator] = (
+    defaultdict(faebryk.libs.exceptions.ExceptionAccumulator)
 )
 
 

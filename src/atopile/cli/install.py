@@ -19,7 +19,7 @@ import typer
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 import atopile.config
-import faebryk.libs.exception
+import faebryk.libs.exceptions
 from atopile import errors, version
 from atopile.utils import robustly_rm_dir
 
@@ -166,7 +166,7 @@ def install_project_dependencies(
     ctx: atopile.config.ProjectContext,
     upgrade: bool,
 ):
-    for _ctx, dependency in faebryk.libs.exception.iter_through_errors(
+    for _ctx, dependency in faebryk.libs.exceptions.iter_through_errors(
         config.dependencies
     ):
         with _ctx():
