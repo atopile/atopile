@@ -1355,20 +1355,45 @@ def has_attr_or_property(obj: object, attr: str) -> bool:
     )
 
 
+def write_only_property(func: Callable):
+    def raise_write_only(*args, **kwargs):
+        raise AttributeError(f"{func.__name__} is write-only")
+
+    return property(
+        fget=raise_write_only,
+        fset=func,
+    )
+
+
 def try_set_attr(obj: object, attr: str, value: Any) -> bool:
     """Set an attribute or property if possible, and return whether it was successful."""
-    if hasattr(obj, attr):
-        # If the attribute is only an instance attribute, set it directly
-        if not hasattr(type(obj), attr):
-            setattr(obj, attr, value)
+
+    def _should() -> bool:
+        # If we have a property, it's going to tell us all we need to know
+        if hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property):
+            # If the property is settable, use it to set the value
+            if getattr(type(obj), attr).fset is not None:
+                return True
+            # If not, it's not settable, end here
+            return False
+
+        # If there's an instance only attribute, we can set it
+        if hasattr(obj, attr) and not hasattr(type(obj), attr):
             return True
 
-        # If the attribute is a property with a setter, set it through the property
+        # If there's an instance attribute, that's unique compared to the class attribute,
+        # we can set it. We don't need to check for a property here because we already
+        # checked for that above.
         if (
-            isinstance(getattr(type(obj), attr), property)
-            and getattr(type(obj), attr).fset is not None
+            hasattr(obj, attr)
+            and hasattr(type(obj), attr)
+            and getattr(obj, attr) is not getattr(type(obj), attr)
         ):
-            setattr(obj, attr, value)
             return True
 
+        return False
+
+    if _should():
+        setattr(obj, attr, value)
+        return True
     return False
