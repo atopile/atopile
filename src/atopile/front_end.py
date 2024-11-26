@@ -2,11 +2,9 @@
 Build faebryk core objects from ato DSL.
 """
 
-import importlib
 import itertools
 import logging
 import operator
-import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import chain
@@ -24,6 +22,7 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import errors
+from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
@@ -36,6 +35,7 @@ from faebryk.libs.units import P, Quantity, Unit
 from faebryk.libs.util import (
     FuncDict,
     has_attr_or_property,
+    import_from_path,
     try_set_attr,
     write_only_property,
 )
@@ -278,16 +278,6 @@ class BlockNotFoundError(errors.AtoKeyError):
     """
     Raised when a block doesn't exist.
     """
-
-
-@contextmanager
-def _sys_path_context(path: Path):
-    """Add a path to the system path for the duration of the context."""
-    sys.path.append(path)
-    try:
-        yield
-    finally:
-        sys.path.remove(path)
 
 
 @dataclass
@@ -619,6 +609,15 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         finally:
             self._finish()
 
+    @property
+    def modules(self) -> dict[AddrStr, Type[L.Module]]:
+        """Conceptually similar to `sys.modules`"""
+        return {
+            AddrStr.from_parts(scope.file_path.name, ref=scope.ref): cls
+            for ctx, cls in self._python_classes.items()
+            if (scope := self._scopes.get(ctx))
+        }
+
     def _build(self, context: Context, ref: Ref) -> L.Node:
         if ref not in context.refs:
             raise errors.AtoKeyError.from_ctx(
@@ -665,12 +664,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def _index_file(self, file_path: Path) -> Context:
         ast = parser.get_ast_from_file(file_path)
-        if ast in self._scopes:
-            return self._scopes[ast]
-
-        context = Wendy.survey(file_path, ast)
-        self._scopes[ast] = context
-        return context
+        return self._index_ast(ast, file_path)
 
     def _import_item(
         self, context: Context, item: Context.ImportPlaceholder
@@ -686,10 +680,13 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         from_path = Path(item.from_path)
 
         if from_path.suffix == ".py":
-            with _sys_path_context(context.file_path.parent):
-                module = importlib.import_module(from_path.stem)
+            try:
+                node = import_from_path(from_path)
+            except FileNotFoundError as ex:
+                raise errors.AtoImportNotFoundError.from_ctx(
+                    item.original_ctx, str(ex)
+                ) from ex
 
-            node = module
             for ref in item.ref:
                 try:
                     node = getattr(node, ref)
@@ -737,7 +734,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         context = self._scopes[ctx_]
 
-        # TODO: there are more cases to check here,
+        # FIXME: there are more cases to check here,
         # eg. if we have part of a ref resolved
         if ref not in context.refs:
             raise errors.AtoKeyError.from_ctx(
@@ -747,6 +744,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         item = context.refs[ref]
         # Ensure the item is resolved, if not already
         if isinstance(item, Context.ImportPlaceholder):
+            # TODO: search path for these imports
             item = self._import_item(context, item)
             context.refs[ref] = item
 
@@ -770,7 +768,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def _get_referenced_node(self, ref: Ref, ctx: ParserRuleContext) -> L.Node:
         node = self._current_node
         for i, name in enumerate(ref):
-            # TODO: shimming integer names to make valid python identifiers
+            # Shim integer names to make valid python identifiers
             if _is_int(name):
                 name = f"_{name}"
 

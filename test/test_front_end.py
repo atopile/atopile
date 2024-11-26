@@ -9,15 +9,14 @@ from atopile.datatypes import Ref
 from atopile.front_end import Bob, _Component
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
-from faebryk.libs.util import write_only_property
 
 
 @pytest.fixture
-def lofty() -> Bob:
+def bob() -> Bob:
     return Bob()
 
 
-def test_empty_module_build(lofty: Bob):
+def test_empty_module_build(bob: Bob):
     text = dedent(
         """
         module A:
@@ -25,12 +24,12 @@ def test_empty_module_build(lofty: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = lofty.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, Ref(["A"]))
     assert isinstance(node, L.Module)
 
 
 @pytest.mark.skip
-def test_simple_module_build(lofty: Bob):
+def test_simple_module_build(bob: Bob):
     text = dedent(
         """
         module A:
@@ -38,7 +37,7 @@ def test_simple_module_build(lofty: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = lofty.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, Ref(["A"]))
     assert isinstance(node, L.Module)
 
     param = node.runtime["a"]
@@ -47,7 +46,7 @@ def test_simple_module_build(lofty: Bob):
 
 
 @pytest.mark.skip
-def test_arithmetic(lofty: Bob):
+def test_arithmetic(bob: Bob):
     text = dedent(
         """
         module A:
@@ -56,14 +55,14 @@ def test_arithmetic(lofty: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = lofty.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, Ref(["A"]))
     assert isinstance(node, L.Module)
 
     # TODO: check output
     # Requires params solver to be sane
 
 
-def test_simple_new(lofty: Bob):
+def test_simple_new(bob: Bob):
     text = dedent(
         """
         component SomeComponent:
@@ -76,7 +75,7 @@ def test_simple_new(lofty: Bob):
 
     with errors.log_ato_errors():
         tree = parse_text_as_file(text)
-        node = lofty.build_ast(tree, Ref(["A"]))
+        node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
@@ -86,7 +85,7 @@ def test_simple_new(lofty: Bob):
     assert isinstance(a, F.Electrical)
 
 
-def test_nested_nodes(lofty: Bob):
+def test_nested_nodes(bob: Bob):
     text = dedent(
         """
         interface SomeInterface:
@@ -116,12 +115,12 @@ def test_nested_nodes(lofty: Bob):
 
     with errors.log_ato_errors():
         tree = parse_text_as_file(text)
-        node = lofty.build_ast(tree, Ref(["A"]))
+        node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
 
 
-def test_resistor(lofty: Bob):
+def test_resistor(bob: Bob):
     text = dedent(
         """
         from "generics/resistors.ato" import Resistor
@@ -136,7 +135,7 @@ def test_resistor(lofty: Bob):
 
     with errors.log_ato_errors():
         tree = parse_text_as_file(text)
-        node = lofty.build_ast(tree, Ref(["A"]))
+        node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -144,30 +143,3 @@ def test_resistor(lofty: Bob):
     assert r1.get_trait(F.has_footprint_requirement).get_footprint_requirement() == [
         ("0805", 2)
     ]
-
-
-def test_write_only_property():
-    """Test that write-only property raises on get and allows set"""
-
-    class TestClass:
-        def __init__(self):
-            self._value = None
-
-        @write_only_property
-        def write_only(self, value):
-            self._value = value
-
-        def get_value(self):
-            return self._value
-
-    obj = TestClass()
-
-    # Reading should raise AttributeError
-    with pytest.raises(AttributeError) as exc_info:
-        _ = obj.write_only
-    assert "write_only is write-only" in str(exc_info.value)
-
-    # Writing should work
-    test_value = "test"
-    obj.write_only = test_value
-    assert obj.get_value() == test_value

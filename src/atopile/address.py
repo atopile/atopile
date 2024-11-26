@@ -27,6 +27,12 @@ class AddrStr(str):
             return entry_section
         raise AddressError("No entry section in address")
 
+    @classmethod
+    def from_parts(
+        cls, file: str, entry: Optional[str] = None, instance: Optional[str] = None
+    ) -> "AddrStr":
+        return cls(from_parts(file, entry, instance))
+
 
 class AddressError(ValueError):
     """
