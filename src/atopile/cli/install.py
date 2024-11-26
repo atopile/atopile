@@ -63,7 +63,7 @@ def do_install(
     ctx = atopile.config.ProjectContext.from_config(config)
     top_level_path = config.location
 
-    log.info(f"Installing {to_install} in {top_level_path}")
+    log.info(f"Installing {to_install + ' ' if to_install else ''}in {top_level_path}")
 
     if jlcpcb:
         if to_install is None:

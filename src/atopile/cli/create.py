@@ -212,7 +212,7 @@ def create(
 
     # Install dependencies listed in the ato.yaml, typically just generics
     do_install(
-        to_install="",
+        to_install=None,
         jlcpcb=False,
         link=True,
         upgrade=True,
