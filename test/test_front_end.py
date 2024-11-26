@@ -26,7 +26,7 @@ def test_empty_module_build(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, Ref(["A"]))
     assert isinstance(node, L.Module)
-    assert bob.modules == {(None, Ref(["A"])): node}
+    assert isinstance(node, bob.modules[(None, Ref(["A"]))])
 
 
 @pytest.mark.skip

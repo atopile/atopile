@@ -11,7 +11,6 @@ from itertools import chain
 from pathlib import Path
 from typing import (
     Any,
-    Generator,
     Iterable,
     Type,
 )
@@ -293,7 +292,6 @@ class Context:
 
     # Location information re. the source of this module
     file_path: Path
-    ref: Ref
 
     # Scope information
     scope_ctx: ParserRuleContext
@@ -312,27 +310,6 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
 
     Wendy also knows where to find the best building supplies.
     """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._context_stack = StackList[Context]()
-        self._context_dict = FuncDict[
-            ap.BlockdefContext | ap.File_inputContext, Context
-        ]()
-
-    @contextmanager
-    def _new_context(
-        self, ctx: ParserRuleContext, ref: Ref
-    ) -> Generator[None, None, Context]:
-        context = Context(
-            file_path=self._context_stack.top.file_path,
-            ref=self._context_stack.top.ref + ref,
-            scope_ctx=ctx,
-            refs={},
-        )
-        self._context_dict[ctx] = context
-        with self._context_stack.enter(context):
-            yield
 
     def visitImport_stmt(
         self, ctx: ap.Import_stmtContext
@@ -359,9 +336,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptMap:
         ref = Ref.from_one(self.visitName(ctx.name()))
-        with self._context_stack.enter(ref):
-            child_results = self.visit(ctx.block())
-        return KeyOptMap.from_kv(ref, ctx) + child_results
+        return KeyOptMap.from_kv(ref, ctx)
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext | Any) -> KeyOptMap:
         if ctx.import_stmt() or ctx.dep_import_stmt():
@@ -369,22 +344,16 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
         return KeyOptMap.empty()
 
     @classmethod
-    def survey(
-        cls, file_path: Path, ctx: ParserRuleContext
-    ) -> FuncDict[ap.BlockdefContext | ap.File_inputContext, Context]:
+    def survey(cls, file_path: Path, ctx: ParserRuleContext) -> Context:
         surveyor = cls()
-        context = Context(file_path=file_path, ref=Ref.empty(), scope_ctx=ctx, refs={})
-        surveyor._context_stack.append(context)
-        with surveyor._context_dict.enter(context):
-            for ref, item in surveyor.visit(ctx):
-                if ref in context.refs:
-                    raise errors.AtoKeyError.from_ctx(
-                        ctx, f"Duplicate declaration of {ref}"
-                    )
-
-                context.refs[ref] = item
-
-        return surveyor._context_dict
+        context = Context(file_path=file_path, scope_ctx=ctx, refs={})
+        for ref, item in surveyor.visit(ctx):
+            if ref in context.refs:
+                raise errors.AtoKeyError.from_ctx(
+                    ctx, f"Duplicate declaration of {ref}"
+                )
+            context.refs[ref] = item
+        return context
 
 
 def _is_int(name: str) -> bool:
@@ -643,10 +612,23 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     @property
     def modules(self) -> dict[AddrStr, Type[L.Module]]:
         """Conceptually similar to `sys.modules`"""
+
+        # FIXME: this feels like a shit way to get addresses of the imported modules
+        def _get_addr(ctx: ParserRuleContext) -> tuple[Path, Ref] | None:
+            ref = tuple()
+            ctx_ = ctx
+            while ctx_ not in self._scopes:
+                if isinstance(ctx_, ap.BlockdefContext):
+                    ref = (ctx_.name().getText(),) + ref
+                ctx_ = ctx_.parentCtx
+                if ctx_ is None:
+                    return None
+            return (self._scopes[ctx_].file_path, ref)
+
         return {
-            AddrStr.from_parts(scope.file_path.name, ref=scope.ref): cls
+            addr: cls
             for ctx, cls in self._python_classes.items()
-            if (scope := self._scopes.get(ctx))
+            if (addr := _get_addr(ctx)) is not None
         }
 
     def _build(self, context: Context, ref: Ref) -> L.Node:
@@ -689,9 +671,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if ast in self._scopes:
             return self._scopes[ast]
 
-        contexts = Wendy.survey(file_path, ast)
-        self._scopes.update(contexts)
-        return contexts[ast]
+        context = Wendy.survey(file_path, ast)
+        self._scopes[ast] = context
+        return context
 
     def _index_file(self, file_path: Path) -> Context:
         ast = parser.get_ast_from_file(file_path)
