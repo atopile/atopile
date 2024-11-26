@@ -11,6 +11,7 @@ import atopile.config
 from atopile import address, version
 from atopile.address import AddrStr
 from faebryk.libs.exceptions import errors
+import faebryk.libs.exceptions.utils
 
 log = logging.getLogger(__name__)
 
@@ -93,13 +94,13 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
     used to build the project.
     """
     dependency_cfgs = (
-        errors.downgrade(FileNotFoundError)(
+        faebryk.libs.exceptions.utils.downgrade(FileNotFoundError)(
             atopile.config.get_project_config_from_path
         )(p)
         for p in Path(config.location or ".").glob("*")
     )
 
-    for cltr, cfg in errors.iter_through_errors(
+    for cltr, cfg in faebryk.libs.exceptions.utils.iter_through_errors(
         itertools.chain([config], dependency_cfgs)
     ):
         if cfg is None:
