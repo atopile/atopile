@@ -1,8 +1,8 @@
 import pytest
 from semver import Version
 
-from atopile.version import match, parse
 from atopile import errors
+from atopile.version import match, parse
 
 # disable docstring checks - it's a test file
 # pylint: disable=C0116

@@ -8,10 +8,9 @@ from pathlib import Path
 from typing import Iterable
 
 import atopile.config
-from atopile import address, version
-from atopile.address import AddrStr
-from atopile import errors
 import faebryk.libs.exception
+from atopile import address, errors, version
+from atopile.address import AddrStr
 
 log = logging.getLogger(__name__)
 

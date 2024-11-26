@@ -21,8 +21,8 @@ from attr import fields_dict
 from attrs import Factory, define
 from ruamel.yaml import YAML
 
-import atopile.version
 import atopile.errors
+import atopile.version
 from atopile import address
 
 log = logging.getLogger(__name__)

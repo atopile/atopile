@@ -7,12 +7,11 @@ from typing import Annotated
 import typer
 
 import atopile.config
-from atopile import buildutil
+from atopile import buildutil, errors
 from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext, BuildType
 from faebryk.core.module import Module
 from faebryk.library import _F as F
-from atopile import errors
 from faebryk.libs.exception import ExceptionAccumulator
 from faebryk.libs.picker import lcsc
 from faebryk.libs.util import import_from_path

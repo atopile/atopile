@@ -9,8 +9,8 @@ from typing import Annotated
 
 import typer
 
-from atopile.address import AddrStr
 from atopile import errors
+from atopile.address import AddrStr
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)

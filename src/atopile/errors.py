@@ -12,12 +12,13 @@ from rich.traceback import Traceback
 
 from atopile import address, telemetry
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
-from faebryk.libs.exception import in_debug_session, UserException
+from faebryk.libs.exception import UserException as _BaseBaseUserException
+from faebryk.libs.exception import in_debug_session
 
 log = logging.getLogger(__name__)
 
 
-class _BaseUserException(Exception):
+class _BaseUserException(_BaseBaseUserException):
     """
     This exception is thrown when there's an error in the syntax of the language
     """
