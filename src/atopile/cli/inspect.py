@@ -63,4 +63,4 @@ def inspect(
     The context sets the boundary where something is considered connected.
     For example: `--inspect rp2040_micro --context rp2040_micro_ki`
     """
-    raise errors.AtoNotImplementedError("Inspect is not yet implemented.")
+    raise errors.UserNotImplementedError("Inspect is not yet implemented.")

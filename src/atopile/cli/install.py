@@ -68,7 +68,7 @@ def do_install(
 
     if jlcpcb:
         if to_install is None:
-            raise errors.AtoBadParameterError("No component ID specified")
+            raise errors.UserBadParameterError("No component ID specified")
         # eg. "ato install --jlcpcb=C123"
         install_jlcpcb(to_install, top_level_path)
     elif to_install:
@@ -92,18 +92,22 @@ def get_package_repo_from_registry(module_name: str) -> str:
             timeout=10,
         )
     except requests.exceptions.ReadTimeout as ex:
-        raise errors.AtoInfraError(
+        raise errors.UserInfraError(
             f"Request to registry timed out for package '{module_name}'"
         ) from ex
 
     if response.status_code == 500:
-        raise errors.AtoError(f"Could not find package '{module_name}' in registry.")
+        raise errors.UserException(
+            f"Could not find package '{module_name}' in registry."
+        )
     response.raise_for_status()
     return_data = response.json()
     try:
         return_url = return_data["data"]["repo_url"]
     except KeyError as ex:
-        raise errors.AtoError(f"No repo_url found for package '{module_name}'") from ex
+        raise errors.UserException(
+            f"No repo_url found for package '{module_name}'"
+        ) from ex
     return return_url
 
 
@@ -130,7 +134,7 @@ def install_single_dependency(
     except GitCommandError as ex:
         if "already exists and is not an empty directory" in ex.stderr:
             # FIXME: shouldn't `--upgrade` do this already?
-            raise errors.AtoError(
+            raise errors.UserException(
                 f"Directory {abs_path} already exists and is not empty. "
                 "Please move or remove it before installing this new content."
             ) from ex
@@ -140,7 +144,7 @@ def install_single_dependency(
         try:
             robustly_rm_dir(abs_path / ".git")
         except (PermissionError, OSError, FileNotFoundError) as ex:
-            errors.AtoError(f"Failed to remove .git directory: {repr(ex)}").log(
+            errors.UserException(f"Failed to remove .git directory: {repr(ex)}").log(
                 log, logging.WARNING
             )
 
@@ -175,7 +179,7 @@ def install_project_dependencies(
                 except GitCommandError as ex:
                     if "already exists and is not an empty directory" in ex.stderr:
                         # FIXME: shouldn't `--upgrade` do this already?
-                        raise errors.AtoError(
+                        raise errors.UserException(
                             f"Directory {abs_path} already exists and is not empty. "
                             "Please move or remove it before installing this new content."
                         ) from ex
@@ -221,7 +225,7 @@ def install_dependency(
     for tag in repo.tags:
         try:
             semver_to_tag[version.parse(tag.name)] = tag
-        except errors.AtoError:
+        except errors.UserException:
             log.debug(f"Tag {tag.name} is not a valid semver tag. Skipping.")
 
     if "@" in module_spec:
@@ -231,7 +235,7 @@ def install_dependency(
         # Otherwise we're gonna find the best tag meeting the semver spec
         valid_versions = [v for v in semver_to_tag if version.match(module_spec, v)]
         if not valid_versions:
-            raise errors.AtoError(
+            raise errors.UserException(
                 f"No versions of {module_name} match spec {module_spec}.\n"
                 f"Available versions: {', '.join(map(str, semver_to_tag))}"
             )
@@ -246,7 +250,7 @@ def install_dependency(
 
     # If the repo is dirty, throw an error
     if repo.is_dirty():
-        raise errors.AtoError(
+        raise errors.UserException(
             f"Module {module_name} has uncommitted changes. Aborting."
         )
 
@@ -277,7 +281,7 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
     """Install a component from JLCPCB"""
     component_id = component_id.upper()
     if not component_id.startswith("C") or not component_id[1:].isdigit():
-        raise errors.AtoError(f"Component id {component_id} is invalid. Aborting.")
+        raise errors.UserException(f"Component id {component_id} is invalid. Aborting.")
 
     footprints_dir = (
         top_level_path
@@ -315,7 +319,7 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
         print("Command executed successfully")
     else:
         component_link = f"https://jlcpcb.com/partdetail/{component_id}"
-        raise errors.AtoError(
+        raise errors.UserException(
             "Oh no! Looks like this component doesnt have a model available. "
             f"More information about the component can be found here: {component_link}"
         )

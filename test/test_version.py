@@ -80,7 +80,7 @@ def test_match_negation(version):
 
 
 def test_syntax_error(version):
-    with pytest.raises(errors.AtoError):
+    with pytest.raises(errors.UserException):
         match("abc", version)
 
 

@@ -24,7 +24,7 @@ def get_entry_arg_file_path(entry: str | None) -> tuple[AddrStr | None, Path]:
         entry = AddrStr(entry)
 
         if address.get_file(entry) is None:
-            raise errors.AtoBadParameterError(
+            raise errors.UserBadParameterError(
                 f"Invalid entry address {entry} - entry must specify a file.",
                 title="Bad 'entry' parameter",
             )
@@ -43,7 +43,7 @@ def get_project_config(entry_arg_file_path: Path) -> atopile.config.ProjectConfi
         )
     except FileNotFoundError as ex:
         # FIXME: this raises an exception when the entry is not in a project
-        raise errors.AtoBadParameterError(
+        raise errors.UserBadParameterError(
             f"Could not find project from path {str(entry_arg_file_path)}. "
             "Is this file path within a project?"
         ) from ex
@@ -64,7 +64,7 @@ def check_entry_arg_file_path(
                     entry_section,
                 )
             else:
-                raise errors.AtoBadParameterError(
+                raise errors.UserBadParameterError(
                     "If an entry of a file is specified, you must specify"
                     " the node within it you want to build.",
                     title="Bad 'entry' parameter",
@@ -74,7 +74,7 @@ def check_entry_arg_file_path(
             pass
 
         elif not entry_arg_file_path.exists():
-            raise errors.AtoBadParameterError(
+            raise errors.UserBadParameterError(
                 "The entry you have specified does not exist.",
                 title="Bad 'entry' parameter",
             )
@@ -86,7 +86,7 @@ def check_entry_arg_file_path(
     return entry_addr_override
 
 
-@errors.handle_ato_errors()
+@errors.handle_user_errors()
 def check_compiler_versions(config: atopile.config.ProjectConfig):
     """
     Check that the compiler version is compatible with the version
@@ -138,7 +138,7 @@ def create_build_contexts(
 
     # add custom config overrides
     if option:
-        raise errors.AtoNotImplementedError(
+        raise errors.UserNotImplementedError(
             "Custom config overrides have been removed in a refactor. "
             "It's planned to re-add them in a future release. "
             "If this is a blocker for you, please raise an issue. "

@@ -2,6 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 
-class FaebrykException(Exception):
+class UserException(Exception):
     def __init__(self, *args: object) -> None:
         super().__init__(*args)

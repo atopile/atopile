@@ -28,4 +28,4 @@ def view(
     """
     View a block diagram or schematic of your project.
     """
-    raise errors.AtoNotImplementedError("View is not yet implemented.")
+    raise errors.UserNotImplementedError("View is not yet implemented.")

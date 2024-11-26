@@ -87,7 +87,7 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         except KeyErrorNotFound:
             continue
         except KeyErrorAmbiguous as e:
-            raise errors.AtoNotImplementedError(
+            raise errors.UserNotImplementedError(
                 "There are multiple build configurations for this module.\n"
                 "We don't currently support multiple layouts for the same module."
                 "Show the issue some love to get it done: https://github.com/atopile/atopile/issues/399"

@@ -199,7 +199,7 @@ def create(
         try:
             robustly_rm_dir(repo_obj.git_dir)
         except (PermissionError, OSError) as ex:
-            errors.AtoError(f"Failed to remove .git directory: {repr(ex)}").log(
+            errors.UserException(f"Failed to remove .git directory: {repr(ex)}").log(
                 log, logging.WARNING
             )
         if not _in_git_repo(Path(repo_obj.working_dir).parent):
@@ -244,7 +244,7 @@ def create_build():
         layout_path = project_context.layout_path
         src_path = project_context.src_path
     except FileNotFoundError:
-        raise errors.AtoError(
+        raise errors.UserException(
             "Could not find the project directory, are you within an ato project?"
         )
 
@@ -259,12 +259,12 @@ def create_build():
         try:
             git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname)
         except git.GitCommandError as ex:
-            raise errors.AtoError(
+            raise errors.UserException(
                 f"Failed to clone layout template from {PROJECT_TEMPLATE}: {repr(ex)}"
             )
         source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
         if not source_layout_path.exists():
-            raise errors.AtoError(
+            raise errors.UserException(
                 f"The specified layout path {source_layout_path} does not exist."
             )
         else:

@@ -5,7 +5,6 @@ import textwrap
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from types import ModuleType
 from typing import Callable, ContextManager, Iterable, Optional, Self, Type, cast
 
 import rich
@@ -14,11 +13,12 @@ from rich.traceback import Traceback
 
 from atopile import address, telemetry
 from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
+from faebryk.libs.exceptions.utils import in_debug_session
 
 log = logging.getLogger(__name__)
 
 
-class _BaseAtoError(Exception):
+class _BaseUserException(Exception):
     """
     This exception is thrown when there's an error in the syntax of the language
     """
@@ -46,7 +46,9 @@ class _BaseAtoError(Exception):
         self.src_stop_col = src_stop_col
 
     @classmethod
-    def from_token(cls, token: Token, message: str, *args, **kwargs) -> "_BaseAtoError":
+    def from_token(
+        cls, token: Token, message: str, *args, **kwargs
+    ) -> "_BaseUserException":
         """Create an error from a token."""
         src_path, src_line, src_col = get_src_info_from_token(token)
         return cls(
@@ -61,7 +63,7 @@ class _BaseAtoError(Exception):
     @classmethod
     def from_ctx(
         cls, ctx: Optional[ParserRuleContext], message: str, *args, **kwargs
-    ) -> "_BaseAtoError":
+    ) -> "_BaseUserException":
         """Create an error from a context."""
         self = cls(message, *args, **kwargs)
         self.set_src_from_ctx(ctx)
@@ -117,74 +119,74 @@ class _BaseAtoError(Exception):
         )
 
 
-class AtoFatalError(_BaseAtoError):
+class UserFatalException(_BaseUserException):
     """
     Something in the user's code meant we weren't able to continue.
     Don't display a traceback on these because we'll have already printed one.
     """
 
 
-class AtoError(_BaseAtoError):
+class UserException(_BaseUserException):
     """
     This exception is thrown when there's an error in ato code
     """
 
 
-class AtoSyntaxError(AtoError):
+class UserSyntaxError(UserException):
     """
     Raised when there's an error in the syntax of the language
     """
 
 
-class AtoKeyError(AtoError, KeyError):
+class UserKeyError(UserException, KeyError):
     """
     Raised if a name isn't found in the current scope.
     """
 
 
-class AtoTypeError(AtoError):
+class UserTypeError(UserException):
     """
     Raised if something is the wrong type.
     """
 
 
-class AtoValueError(AtoError):
+class UserValueError(UserException):
     """
     Raised if something is the wrong type.
     """
 
 
-class AtoImportNotFoundError(AtoError):
+class UserImportNotFoundError(UserException):
     """
     Raised if something has a conflicting name in the same scope.
     """
 
 
-class AtoAmbiguousReferenceError(AtoError):
+class UserAmbiguousReferenceError(UserException):
     """
     Raised if something has a conflicting name in the same scope.
     """
 
 
-class AtoFileNotFoundError(AtoError, FileNotFoundError):
+class UserFileNotFoundError(UserException, FileNotFoundError):
     """
     Raised if a file couldn't be found.
     """
 
 
-class AtoUnknownUnitError(AtoError):
+class UserUnknownUnitError(UserException):
     """
     Raised if a unit couldn't be interpreted.
     """
 
 
-class AtoIncompatibleUnitError(AtoError):
+class UserIncompatibleUnitError(UserException):
     """
     Raised if a unit couldn't be interpreted.
     """
 
 
-class AtoInfraError(AtoError):
+class UserInfraError(UserException):
     """
     Raised when there's an issue contacting atopile
     infrastructure needed for an operation.
@@ -193,13 +195,13 @@ class AtoInfraError(AtoError):
     title = "Infrastructure Error"
 
 
-class AtoNotImplementedError(AtoError):
+class UserNotImplementedError(UserException):
     """
     Raised when a feature is not yet implemented.
     """
 
 
-class AtoBadParameterError(AtoError):
+class UserBadParameterError(UserException):
     """
     Raised when a bad CLI param is given
     """
@@ -207,13 +209,13 @@ class AtoBadParameterError(AtoError):
     title = "Bad Parameter"
 
 
-class AtoPythonLoadError(AtoError):
+class UserPythonLoadError(UserException):
     """
     Raised when a Python module couldn't be loaded.
     """
 
 
-class CountingError(AtoError):
+class CountingError(UserException):
     count = None
 
     def __init__(self, *args, **kwargs):
@@ -240,7 +242,7 @@ class ImplicitDeclarationFutureDeprecationWarning(CountingError):
     count = 5
 
 
-def format_error(ex: AtoError, debug: bool = False) -> str:
+def format_error(ex: UserException, debug: bool = False) -> str:
     """
     Format an error into a string.
     """
@@ -285,8 +287,8 @@ def format_error(ex: AtoError, debug: bool = False) -> str:
 _logged_exceptions: set[tuple[Type[Exception], tuple]] = set()
 
 
-def _log_ato_errors(
-    ex: AtoError | ExceptionGroup,
+def _log_user_errors(
+    ex: UserException | ExceptionGroup,
     logger: logging.Logger,
     de_dup: bool = True,
 ):
@@ -295,9 +297,9 @@ def _log_ato_errors(
         if ex.message:
             logger.error(ex.message)
 
-        nice_errors, naughty_errors = ex.split((AtoError, ExceptionGroup))
+        nice_errors, naughty_errors = ex.split((UserException, ExceptionGroup))
         for e in nice_errors.exceptions:
-            _log_ato_errors(e, logger)
+            _log_user_errors(e, logger)
 
         if naughty_errors:
             raise naughty_errors
@@ -314,28 +316,15 @@ def _log_ato_errors(
     ex.log(logger)
 
 
-def in_debug_session() -> Optional[ModuleType]:
-    """
-    Return the debugpy module if we're in a debugging session.
-    """
-    if "debugpy" in sys.modules:
-        import debugpy
-
-        if debugpy.is_client_connected():
-            return debugpy
-
-    return None
-
-
 @contextmanager
-def handle_ato_errors(log_: logging.Logger = log):
+def handle_user_errors(log_: logging.Logger = log):
     """
-    This helper function catches ato exceptions and logs them.
+    This helper function catches user exceptions and logs them.
     """
     try:
         yield
 
-    except* AtoError as ex:
+    except* UserException as ex:
         # If we're in a debug session, we want to see the
         # unadulterated exception. We do this pre-logging because
         # we don't want the logging to potentially obstruct the debugger.
@@ -344,9 +333,9 @@ def handle_ato_errors(log_: logging.Logger = log):
 
         # This is here to print out any straggling ato errors that weren't
         # printed via a lower-level accumulator of the likes
-        _log_ato_errors(ex, log_)
+        _log_user_errors(ex, log_)
 
-        raise AtoFatalError from ex
+        raise UserFatalException from ex
 
 
 @contextmanager
@@ -358,10 +347,10 @@ def muffle_fatalities():
 
     do_exit = False
     try:
-        with handle_ato_errors():
+        with handle_user_errors():
             yield
 
-    except AtoFatalError:
+    except UserFatalException:
         if telemetry.telemetry_data is not None:
             telemetry.telemetry_data.ato_error = 1
         rich.print(
@@ -487,7 +476,7 @@ class ExceptionAccumulator:
         # NOTE: we don't do this in the function signature because
         # we want the defaults to be the same here as in the iter_through_errors
         # function below
-        self.accumulate_types = accumulate_types or (AtoError,)
+        self.accumulate_types = accumulate_types or (UserException,)
         self.group_message = group_message or ""
 
     def collect(self) -> Pacman:
@@ -502,7 +491,7 @@ class ExceptionAccumulator:
 
     def add_errors(self, ex: ExceptionGroup):
         self.errors.extend(ex.exceptions)
-        _log_ato_errors(ex, log)
+        _log_user_errors(ex, log)
 
     def raise_errors(self):
         """
@@ -585,6 +574,6 @@ def log_ato_errors():
     """
     try:
         yield
-    except* AtoError as ex:
-        _log_ato_errors(ex, log)
+    except* UserException as ex:
+        _log_user_errors(ex, log)
         raise
