@@ -63,10 +63,6 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
     return entries
 
 
-def _cmp_uuid(inst: Module, root: Module) -> str:
-    return _generate_uuid_from_string(inst.relative_address(root))
-
-
 def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
     """Generate a file containing a list of all the modules and their components in the build."""
     module_map = {}
@@ -100,11 +96,12 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         for inst_child in module_instance.get_children_modules(types=Module):
             if not inst_child.has_trait(F.has_footprint):
                 continue
-            inst_addr = inst_child.relative_address(app)
-            uuid_map[_cmp_uuid(inst_child, app)] = _cmp_uuid(
-                inst_child, module_instance
+            uuid_map[_generate_uuid_from_string(inst_child.get_full_name())] = (
+                _generate_uuid_from_string(inst_child.relative_address(module_instance))
             )
-            addr_map[inst_addr] = inst_child.relative_address(module_instance)
+            addr_map[inst_child.get_full_name()] = inst_child.relative_address(
+                module_instance
+            )
 
         module_map[module_instance.relative_address(app)] = {
             "layout_path": str(first(module_layouts[module_super])),

@@ -1,5 +1,5 @@
 ~*
-layout/lib
-layout/default.kicad_prl
-layout/fp-info-cache
-layout/_autosave*
+layout/**/lib
+*.kicad_prl
+fp-info-cache
+_autosave*
