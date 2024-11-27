@@ -27,6 +27,12 @@ class AddrStr(str):
             return entry_section
         raise AddressError("No entry section in address")
 
+    @classmethod
+    def from_parts(
+        cls, file: str, entry: Optional[str] = None, instance: Optional[str] = None
+    ) -> "AddrStr":
+        return cls(from_parts(file, entry, instance))
+
 
 class AddressError(ValueError):
     """
@@ -181,12 +187,12 @@ def add_entries(address: AddrStr, entries: Iterable[str]) -> AddrStr:
 
 
 def from_parts(
-    file: str, entry: Optional[str] = None, instance: Optional[str] = None
+    file: str | None, entry: str | None = None, instance: str | None = None
 ) -> AddrStr:
     """
     Create an address from its parts.
     """
-    address = str(file)
+    address = str(file) if file else ""
     if entry:
         address = add_entry(address, entry)
     if instance:

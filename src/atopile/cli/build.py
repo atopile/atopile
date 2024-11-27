@@ -7,12 +7,14 @@ from typing import Annotated
 import typer
 
 import atopile.config
-from atopile import buildutil, errors
+from atopile import buildutil, errors, front_end
 from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext, BuildType
+from atopile.datatypes import Ref
 from faebryk.core.module import Module
 from faebryk.library import _F as F
 from faebryk.libs.exceptions import ExceptionAccumulator
+from faebryk.libs.library import L
 from faebryk.libs.picker import lcsc
 from faebryk.libs.util import import_from_path
 
@@ -44,8 +46,7 @@ def build(
             with accumulator.collect():
                 match build_ctx.build_type:
                     case BuildType.ATO:
-                        log.error("Building .ato modules is not currently supported")
-                        continue
+                        app = _init_ato_app(build_ctx)
                     case BuildType.PYTHON:
                         app = _init_python_app(build_ctx)
                     case _:
@@ -85,16 +86,6 @@ def build(
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f)
 
-    log.info("Build complete!")
-
-
-def do_prebuild(build_ctx: BuildContext) -> None:
-    with ExceptionAccumulator() as _:
-        if not build_ctx.dont_solve_equations:
-            raise errors.UserNotImplementedError(
-                "Equation solving is not implemented yet"
-            )
-
 
 def _init_python_app(build_ctx: BuildContext) -> Module:
     """Initialize a specific .py build."""
@@ -124,5 +115,8 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
 
 def _init_ato_app(build_ctx: BuildContext) -> Module:
     """Initialize a specific .ato build."""
-    raise errors.UserNotImplementedError("ato builds are not implemented yet")
-    do_prebuild(build_ctx)
+    node = front_end.bob.build_file(
+        build_ctx.entry.file_path, Ref(build_ctx.entry.entry_section.split("."))
+    )
+    assert isinstance(node, L.Module)
+    return node

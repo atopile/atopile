@@ -14,6 +14,8 @@ from .errors import UserFileNotFoundError, UserSyntaxError
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+IMMEDIATE_RAISE = False
+
 
 def error_factory(
     e: Exception, msg: str, offendingSymbol, line, column
@@ -70,12 +72,15 @@ def set_error_listener(parser: AtopileParser, error_listener: ErrorListener) -> 
 @contextmanager
 def defer_parser_errors(parser: AtopileParser) -> None:
     """Defer errors from a parser until the end of the context manager."""
-    error_listener = ErrorListenerCollector()
+    if IMMEDIATE_RAISE:
+        error_listener = ErrorListenerConverter()
+    else:
+        error_listener = ErrorListenerCollector()
     set_error_listener(parser, error_listener)
 
-    yield parser
+    yield
 
-    if error_listener.errors:
+    if not IMMEDIATE_RAISE and error_listener.errors:
         raise ExceptionGroup("Errors caused parsing failure", error_listener.errors)
 
 

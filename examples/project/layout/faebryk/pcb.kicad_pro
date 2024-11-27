@@ -3,7 +3,7 @@
         "last_paths": {
             "gencad": "",
             "idf": "",
-            "netlist": "../build/default/default.net",
+            "netlist": "../../build/faebryk/faebryk.net",
             "plot": "",
             "pos_files": "",
             "specctra_dsn": "",

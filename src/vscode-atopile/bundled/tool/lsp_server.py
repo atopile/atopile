@@ -19,6 +19,7 @@ from typing import Any, Optional, Protocol, Sequence
 import atopile.address
 import atopile.config
 import atopile.datatypes
+import atopile.errors
 import atopile.front_end
 import atopile.parse
 import atopile.parse_utils
@@ -64,7 +65,7 @@ def _index_class_defs_by_line(file: Path):
             if addr == str(file):
                 continue
 
-            atopile.front_end.lofty.get_instance(addr)
+            atopile.front_end.bob.get_instance(addr)
 
             # FIXME: we shouldn't be entangling this
             # code w/ the front-end so much
@@ -274,7 +275,7 @@ def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
 
     instance_addr = atopile.address.add_instances(class_addr, word.split(".")[:-1])
     try:
-        instance = atopile.front_end.lofty.get_instance(instance_addr)
+        instance = atopile.front_end.bob.get_instance(instance_addr)
     except (KeyError, atopile.errors.UserException):
         pass
     else:
@@ -353,7 +354,7 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
     # check if it is an instance
     try:
         instance_addr = atopile.address.add_instances(class_addr, word.split("."))
-        instance = atopile.front_end.lofty.get_instance(instance_addr)
+        instance = atopile.front_end.bob.get_instance(instance_addr)
     except (KeyError, atopile.errors.UserException, AttributeError):
         pass
     else:
@@ -410,7 +411,7 @@ def goto_definition(
 
     src_ctx = None
     try:
-        src_ctx = atopile.front_end.lofty.get_instance(instance_addr).src_ctx
+        src_ctx = atopile.front_end.bob.get_instance(instance_addr).src_ctx
     except (KeyError, atopile.errors.UserException, AttributeError):
         # See if it's a Class instead
         pass

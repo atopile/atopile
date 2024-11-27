@@ -17,7 +17,7 @@ from more_itertools import first
 
 import faebryk.library._F as F
 import faebryk.libs.exceptions
-from atopile import config, errors
+from atopile import config, errors, front_end
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.util import (
@@ -43,6 +43,8 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
     directory = config.get_project_context().project_path
 
     entries: FuncDict[Module, set[Path]] = FuncDict()
+    ato_modules = front_end.bob.modules
+
     for filepath in directory.glob("**/ato.yaml"):
         with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
             cfg = config.get_project_config_from_path(filepath)
@@ -51,6 +53,7 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
                 with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
                     ctx = config.BuildContext.from_config_name(cfg, build_name)
 
+                    # Check if the module is a known python module
                     if (
                         class_ := get_module_from_path(
                             ctx.entry.file_path, ctx.entry.entry_section
@@ -58,6 +61,10 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
                     ) is not None:
                         # we only bother to index things we've imported,
                         # otherwise we can be sure they weren't used
+                        entries.setdefault(class_, set()).add(ctx.paths.layout)
+
+                    # Check if the module is a known ato module
+                    elif class_ := ato_modules.get(ctx.entry):
                         entries.setdefault(class_, set()).add(ctx.paths.layout)
 
     return entries

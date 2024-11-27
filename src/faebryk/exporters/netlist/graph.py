@@ -212,7 +212,7 @@ def _shit_name(name: str) -> bool:
 
 
 def generate_net_names(nets: list[F.Net]) -> None:
-    """`
+    """
     Generate good net names, assuming that we're passed all the nets in a design
     """
 
