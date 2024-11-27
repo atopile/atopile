@@ -30,7 +30,7 @@ from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
-from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.exceptions import ExceptionAccumulator, iter_through_errors
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P, Quantity, Unit
 from faebryk.libs.util import (
@@ -96,7 +96,7 @@ class BasicsMixin:
         elif ctx.attr():
             return self.visitAttr(ctx.attr())
 
-        raise errors.AtoError.from_ctx(ctx, "Expected a name or attribute")
+        raise errors.UserException.from_ctx(ctx, "Expected a name or attribute")
 
     def visitString(self, ctx: ap.StringContext) -> str:
         raw: str = ctx.getText()
@@ -110,7 +110,7 @@ class BasicsMixin:
         elif raw.lower() == "false":
             return False
 
-        raise errors.AtoError.from_ctx(ctx, f"Expected a boolean value, got {raw}")
+        raise errors.UserException.from_ctx(ctx, f"Expected a boolean value, got {raw}")
 
 
 class PhysicalValuesMixin:
@@ -121,7 +121,7 @@ class PhysicalValuesMixin:
         try:
             return Unit(unit_str)
         except UndefinedUnitError as ex:
-            raise errors.AtoUnknownUnitError.from_ctx(
+            raise errors.UserUnknownUnitError.from_ctx(
                 ctx, f"Unknown unit '{unit_str}'"
             ) from ex
 
@@ -174,7 +174,7 @@ class PhysicalValuesMixin:
 
         if tol_divider:
             if nominal_qty == 0:
-                raise errors.AtoError.from_ctx(
+                raise errors.UserException.from_ctx(
                     tol_ctx,
                     "Can't calculate tolerance percentage of a nominal value of zero",
                 )
@@ -198,7 +198,7 @@ class PhysicalValuesMixin:
 
         # If the nominal has a unit, then we rely on the ranged value's unit compatibility
         if not nominal_qty.is_compatible_with(tol_qty):
-            raise errors.AtoTypeError.from_ctx(
+            raise errors.UserTypeError.from_ctx(
                 tol_name,
                 f"Tolerance unit '{tol_qty.units}' is not dimensionally"
                 f" compatible with nominal unit '{nominal_qty.units}'",
@@ -220,7 +220,7 @@ class PhysicalValuesMixin:
         elif not start.is_compatible_with(end):
             # If they've both got units, let the RangedValue handle
             # the dimensional compatibility
-            raise errors.AtoTypeError.from_ctx(
+            raise errors.UserTypeError.from_ctx(
                 ctx,
                 f"Tolerance unit '{end.units}' is not dimensionally"
                 f" compatible with nominal unit '{start.units}'",
@@ -255,7 +255,7 @@ class SequenceMixin:
         """
 
         def _visit():
-            for err_cltr, child in errors.iter_through_errors(children):
+            for err_cltr, child in iter_through_errors(children):
                 with err_cltr():
                     child_result = self.visit(child)
                     if child_result is not NOTHING:
@@ -282,7 +282,7 @@ class SequenceMixin:
         raise ValueError  # this should be protected because it shouldn't be parseable
 
 
-class BlockNotFoundError(errors.AtoKeyError):
+class BlockNotFoundError(errors.UserKeyError):
     """
     Raised when a block doesn't exist.
     """
@@ -357,7 +357,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
         context = Context(file_path=file_path, scope_ctx=ctx, refs={})
         for ref, item in surveyor.visit(ctx):
             if ref in context.refs:
-                raise errors.AtoKeyError.from_ctx(
+                raise errors.UserKeyError.from_ctx(
                     ctx, f"Duplicate declaration of {ref}"
                 )
             context.refs[ref] = item
@@ -378,12 +378,9 @@ def ato_error_converter():
         yield
     except NodeException as ex:
         if from_dsl_ := ex.node.try_get_trait(from_dsl):
-            raise errors.AtoError.from_ctx(from_dsl_.src_ctx, str(ex)) from ex
+            raise errors.UserException.from_ctx(from_dsl_.src_ctx, str(ex)) from ex
         else:
             raise ex
-    except FaebrykException as ex:
-        # TODO: consolidate faebryk exceptions
-        raise ex
 
 
 class _has_kicad_footprint_name_defined(F.has_footprint_impl):
@@ -684,17 +681,17 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def _build(self, context: Context, ref: Ref) -> L.Node:
         if ref not in context.refs:
-            raise errors.AtoKeyError.from_ctx(
+            raise errors.UserKeyError.from_ctx(
                 context.scope_ctx, f'No declaration of "{ref}" in {context.file_path}'
             )
         return self._init_node(context.scope_ctx, ref)
 
     def _finish(self):
-        with errors.ExceptionAccumulator() as ex_acc:
+        with ExceptionAccumulator() as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():
                 with ex_acc.collect(), ato_error_converter():
                     if value is None:
-                        raise errors.AtoKeyError.from_ctx(
+                        raise errors.UserKeyError.from_ctx(
                             ctx, f"Parameter {param} never assigned"
                         )
 
@@ -703,12 +700,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                     try:
                         _alias_is(param, value)
                     except UnitCompatibilityError as ex:
-                        raise errors.AtoTypeError.from_ctx(ctx, str(ex)) from ex
+                        raise errors.UserTypeError.from_ctx(ctx, str(ex)) from ex
 
             for param, ctxs in self._promised_params.items():
                 for ctx in ctxs:
                     with ex_acc.collect():
-                        raise errors.AtoKeyError.from_ctx(
+                        raise errors.UserKeyError.from_ctx(
                             ctx, f"Attribute {param} referenced, but never assigned"
                         )
 
@@ -757,7 +754,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             if candidate_from_path.exists():
                 break
         else:
-            raise errors.AtoFileNotFoundError.from_ctx(
+            raise errors.UserFileNotFoundError.from_ctx(
                 item.original_ctx,
                 f"Can't find {item.from_path} in {", ".join(map(str, search_paths))}",
             )
@@ -768,7 +765,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             try:
                 node = import_from_path(from_path)
             except FileNotFoundError as ex:
-                raise errors.AtoImportNotFoundError.from_ctx(
+                raise errors.UserImportNotFoundError.from_ctx(
                     item.original_ctx, str(ex)
                 ) from ex
 
@@ -776,7 +773,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 try:
                     node = getattr(node, ref)
                 except AttributeError as ex:
-                    raise errors.AtoKeyError.from_ctx(
+                    raise errors.UserKeyError.from_ctx(
                         item.original_ctx, f"No attribute '{ref}' found on {node}"
                     ) from ex
             return node
@@ -786,14 +783,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             node = item
             for ref in item.ref:
                 if ref not in context.refs:
-                    raise errors.AtoKeyError.from_ctx(
+                    raise errors.UserKeyError.from_ctx(
                         item.original_ctx, f"No declaration of {ref} in {from_path}"
                     )
                 node = context.refs[ref]
             return node
 
         else:
-            raise errors.AtoImportNotFoundError.from_ctx(
+            raise errors.UserImportNotFoundError.from_ctx(
                 item.original_ctx, f"Can't import file type {from_path.suffix}"
             )
 
@@ -822,7 +819,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         # FIXME: there are more cases to check here,
         # eg. if we have part of a ref resolved
         if ref not in context.refs:
-            raise errors.AtoKeyError.from_ctx(
+            raise errors.UserKeyError.from_ctx(
                 ctx, f"No class or block definition found for {ref}"
             )
 
@@ -861,7 +858,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 node = self.get_node_attr(node, name)
             except AttributeError as ex:
                 # Wah wah wah - we don't know what this is
-                raise errors.AtoKeyError.from_ctx(
+                raise errors.UserKeyError.from_ctx(
                     ctx, f"{ref[:i]} has no attribute '{name}'"
                 ) from ex
         return node
@@ -871,7 +868,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     ) -> L.Node | None:
         try:
             return self._get_referenced_node(ref, ctx)
-        except errors.AtoKeyError:
+        except errors.UserKeyError:
             return None
 
     def _new_node(
@@ -991,7 +988,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         ########## Handle New Statements ##########
         if new_stmt_ctx := assignable_ctx.new_stmt():
             if len(assigned_ref) > 1:
-                raise errors.AtoSyntaxError.from_ctx(
+                raise errors.UserSyntaxError.from_ctx(
                     ctx, f"Can't declare fields in a nested object {assigned_ref}"
                 )
 
@@ -1012,7 +1009,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
             if not try_set_attr(target, assigned_name, value):
-                errors.AtoError.from_ctx(
+                errors.UserException.from_ctx(
                     ctx,
                     f"Ignoring assignment of {value} to {assigned_name} on {target}",
                 ).log(to_level=logging.WARNING)
@@ -1033,7 +1030,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             raise ValueError(f"Unhandled pin name type {ctx}")
 
         if not isinstance(self._current_node, _Component):
-            raise errors.AtoTypeError.from_ctx(
+            raise errors.UserTypeError.from_ctx(
                 ctx, f"Can't declare pins on components of type {self._current_node}"
             )
 
@@ -1048,9 +1045,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
         """Connect interfaces together"""
         connectables = [self.visitConnectable(c) for c in ctx.connectable()]
-        for err_cltr, (a, b) in errors.iter_through_errors(
-            itertools.pairwise(connectables)
-        ):
+        for err_cltr, (a, b) in iter_through_errors(itertools.pairwise(connectables)):
             with err_cltr():
                 a.connect(b)
         return KeyOptMap.empty()
@@ -1073,7 +1068,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         from_, to = map(self.visitName_or_attr, ctx.name_or_attr())
         node = self._get_referenced_node(from_, ctx)
         if not isinstance(node, L.Module):
-            raise errors.AtoTypeError.from_ctx(ctx, f"Can't retype {node}")
+            raise errors.UserTypeError.from_ctx(ctx, f"Can't retype {node}")
 
         node.specialize(self._init_node(ctx, to))
         return KeyOptMap.empty()
@@ -1239,14 +1234,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         """Handle declaration statements."""
         assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
         if len(assigned_value_ref) > 1:
-            raise errors.AtoSyntaxError.from_ctx(
+            raise errors.UserSyntaxError.from_ctx(
                 ctx, f"Can't declare fields in a nested object {assigned_value_ref}"
             )
 
         assigned_name = assigned_value_ref[0]
 
         if assigned_name in self._param_assignments:
-            errors.AtoKeyError.from_ctx(
+            errors.UserKeyError.from_ctx(
                 ctx,
                 f"Ignoring declaration of {assigned_name} because it's already defined",
             ).log(to_level=logging.WARNING)
