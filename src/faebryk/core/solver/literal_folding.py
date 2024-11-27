@@ -32,6 +32,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.utils import (
     CanonicalNumber,
     CanonicalOperation,
+    Contradiction,
     Mutator,
     alias_is_and_check_constrained,
     alias_is_literal,
@@ -231,25 +232,27 @@ def fold_or(
         alias_is_and_check_constrained(expr, True)
         return
 
+    # TODO
     # Or(A, B, C, P) | P constrained -> True
-    if any(
-        op.constrained
-        for op in expr.operands
-        if isinstance(op, ConstrainableExpression)
-    ):
-        alias_is_and_check_constrained(expr, True)
+    # if any(
+    #    op.constrained
+    #    for op in expr.operands
+    #    if isinstance(op, ConstrainableExpression)
+    # ):
+    #    alias_is_and_check_constrained(expr, True)
 
     # Or(A, B, C, False) -> Or(A, B, C)
     # TODO also do something when extracted lits?
     if literal_operands:
+        operands = [
+            *replacable_nonliteral_operands.keys(),
+            *non_replacable_nonliteral_operands,
+        ]
+        if not operands:
+            alias_is_and_check_constrained(expr, False)
+            return
         # Rebuild without (False) literals
-        mutator.mutate_expression(
-            expr,
-            operands=[
-                *replacable_nonliteral_operands.keys(),
-                *non_replacable_nonliteral_operands,
-            ],
-        )
+        mutator.mutate_expression(expr, operands=operands)
 
 
 def fold_not(
@@ -281,14 +284,22 @@ def fold_not(
             inner = op.operands[0]
             # inner Not would have run first
             assert not isinstance(inner, BoolSet)
-            expr.alias_is(inner)
+            mutator._mutate(expr, mutator.get_copy(inner))
             return
 
+        # TODO this is kinda ugly
+        if isinstance(op, Or) and expr.constrained:
+            if op.constrained:
+                raise Contradiction(expr)
+            for inner_op in op.operands:
+                if isinstance(inner_op, Not):
+                    for not_op in inner_op.operands:
+                        if isinstance(not_op, ConstrainableExpression):
+                            not_op.constrain()
+
     op = expr.operands[0]
-    # assume predicate true
     if isinstance(op, ConstrainableExpression) and op.constrained:
-        alias_is_and_check_constrained(expr, False)
-        return
+        raise Contradiction(expr)
 
 
 def fold_pow(
@@ -361,10 +372,15 @@ def fold_alias(
         return
 
     lits = try_extract_all_literals(expr)
-    if lits is None:
+    if lits is not None:
+        a, b = lits
+        alias_is_and_check_constrained(expr, a == b)
         return
-    a, b = lits
-    alias_is_and_check_constrained(expr, a == b)
+
+    # lits = try_extract_all_literals(expr, accept_partial=True)
+    # if expr.constrained:
+    #    alias_is_literal()
+    #    return
 
 
 def fold_ge(

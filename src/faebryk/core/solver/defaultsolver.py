@@ -27,7 +27,7 @@ from faebryk.core.solver.analytical import (
     upper_estimation_of_expressions_with_subsets,
 )
 from faebryk.core.solver.canonical import (
-    constrain_within_and_domain,
+    constrain_within_domain,
     convert_to_canonical_literals,
     convert_to_canonical_operations,
 )
@@ -70,7 +70,7 @@ class DefaultSolver(Solver):
         # Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
 
         pre_algorithms = [
-            ("Constrain within and domain", constrain_within_and_domain),
+            ("Constrain within and domain", constrain_within_domain),
             ("Canonical literal form", convert_to_canonical_literals),
             ("Canonical expression form", convert_to_canonical_operations),
         ]
@@ -196,6 +196,8 @@ class DefaultSolver(Solver):
             )
             iterno += 1
 
+        Mutators.print_all(*graphs, context=print_context, type_filter=Expression)
+
         logger.info(f"Phase 1 Solving done in {iterno} iterations ".ljust(80, "="))
         return Mutators.create_concat_repr_map(total_repr_map)
 
@@ -297,6 +299,7 @@ class DefaultSolver(Solver):
                 assert isinstance(lit, BoolSet) or lit is None
                 if lit is None:
                     # TODO remove
+                    logger.warning(f"Unknown predicate {pred.compact_repr()}")
                     logger.warning(repr_map.repr_map[pred].compact_repr())
                     result.unknown_predicates.append(p)
                 elif True in lit:

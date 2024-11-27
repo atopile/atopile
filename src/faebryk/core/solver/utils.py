@@ -5,7 +5,6 @@
 import io
 import logging
 import sys
-from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from statistics import median
@@ -266,19 +265,20 @@ def parameter_ops_eq_classes(
     for is_expr in is_exprs:
         full_eq.add_eq(*is_expr.operatable_operands)
 
-    obvious_eq = defaultdict(list)
-    for p in non_predicate_objs:
-        obvious_eq[p.obviously_eq_hash()].append(p)
+    # FIXME: not sure it's a good idea to mix alias & eq classes
+    # obvious_eq = defaultdict(list)
+    # for p in non_predicate_objs:
+    #    obvious_eq[p.obviously_eq_hash()].append(p)
 
-    for candidates in obvious_eq.values():
-        if len(candidates) <= 1:
-            continue
-        # logger.debug(f"#obvious eq candidates: {len(candidates)}")
-        for i, p in enumerate(candidates):
-            for q in candidates[:i]:
-                if p.obviously_eq(q):
-                    full_eq.add_eq(p, q)
-                    break
+    # for candidates in obvious_eq.values():
+    #    if len(candidates) <= 1:
+    #        continue
+    #    # logger.debug(f"#obvious eq candidates: {len(candidates)}")
+    #    for i, p in enumerate(candidates):
+    #        for q in candidates[:i]:
+    #            if p.obviously_eq(q):
+    #                full_eq.add_eq(p, q)
+    #                break
 
     return full_eq.get()
 

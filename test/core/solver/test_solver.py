@@ -470,7 +470,43 @@ def test_simple_pick():
     )
 
     assert led.has_trait(has_part_picked)
-    assert led.get_trait(has_part_picked).get_part() == LCSC_Part(partno="C72043")
+    assert led.get_trait(has_part_picked).get_part().partno == "C72043"
+
+
+def test_simple_negative_pick():
+    led = F.LED()
+    led.color.constrain_subset(L.PlainSet(F.LED.Color.RED, F.LED.Color.BLUE))
+
+    solver = DefaultSolver()
+    pick_module_by_params(
+        led,
+        solver,
+        [
+            PickerOption(
+                part=LCSC_Part(partno="C72043"),
+                params={
+                    "color": L.PlainSet(F.LED.Color.EMERALD),
+                    "max_brightness": 285 * P.mcandela,
+                    "forward_voltage": L.Single(3.7 * P.volt),
+                    "max_current": 100 * P.mA,
+                },
+                pinmap={"1": led.cathode, "2": led.anode},
+            ),
+            PickerOption(
+                part=LCSC_Part(partno="C72041"),
+                params={
+                    "color": L.PlainSet(F.LED.Color.BLUE),
+                    "max_brightness": 28.5 * P.mcandela,
+                    "forward_voltage": L.Single(3.1 * P.volt),
+                    "max_current": 100 * P.mA,
+                },
+                pinmap={"1": led.cathode, "2": led.anode},
+            ),
+        ],
+    )
+
+    assert led.has_trait(has_part_picked)
+    assert led.get_trait(has_part_picked).get_part().partno == "C72041"
 
 
 if __name__ == "__main__":

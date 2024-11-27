@@ -37,6 +37,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
 )
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import cast_assert, not_none, partition
 
 logger = logging.getLogger(__name__)
@@ -217,7 +218,7 @@ def merge_intersect_subsets(mutator: Mutator):
             for e in constrained_subset_ops_with_literal
         ]
         # intersect
-        intersected = Quantity_Interval_Disjoint.intersect_all(*literal_subsets)
+        intersected = P_Set.intersect_all(*literal_subsets)
 
         # If not narrower than all operands, skip
         if not all(

@@ -35,6 +35,18 @@ class P_Set[T](Protocol):
 
     def is_subset_of(self, other: "P_Set[T]") -> bool: ...
 
+    @staticmethod
+    def intersect_all[P: P_Set](*sets: P) -> P:
+        if not sets:
+            raise ValueError("no sets to intersect")
+            # return PlainSet()
+        out = sets[0]
+        for s in sets[1:]:
+            out = out & s
+        return out
+
+    def __and__[P: P_Set](self: P, other: P) -> P: ...
+
 
 class P_IterableSet[T, IterT](P_Set[T], Iterable[IterT], Protocol): ...
 
@@ -75,8 +87,14 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
     def __iter__(self) -> Iterator[U]:
         return iter(self.elements)
 
+    def op_intersection(self, other: "PlainSet[U]") -> "PlainSet[U]":
+        return PlainSet(*(self.elements & other.elements))
+
     def is_subset_of(self, other: "PlainSet[U]") -> bool:
         return self.elements.issubset(other.elements)
+
+    def __and__(self, other: "PlainSet[U]") -> "PlainSet[U]":
+        return self.op_intersection(other)
 
 
 type BoolSetLike_ = bool | BoolSet
@@ -105,6 +123,9 @@ class BoolSet(P_Set[bool]):
 
     def __bool__(self) -> bool:
         return True in self.values
+
+    def op_intersection(self, other: BoolSetLike_) -> "BoolSet":
+        return BoolSet(*(self.values & BoolSet.from_value(other).values))
 
     def op_not(self) -> "BoolSet":
         return BoolSet(*(not v for v in self.values))
@@ -139,6 +160,10 @@ class BoolSet(P_Set[bool]):
 
     def __repr__(self) -> str:
         return f"BoolSet({', '.join(repr(v) for v in self.values)})"
+
+    # TODO rethink this
+    def __and__(self, other: BoolSetLike_) -> "BoolSet":
+        return self.op_intersection(other)
 
 
 BoolSetLike = bool | BoolSet

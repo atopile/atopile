@@ -422,7 +422,7 @@ class ParameterOperatable(Node):
                     raise
                 return duplicates[0]
             elif issubclass(op, IsSubset):
-                return Quantity_Interval_Disjoint.intersect_all(*duplicates)
+                return P_Set.intersect_all(*duplicates)
             else:
                 raise
         return literal_is
@@ -620,6 +620,10 @@ class Expression(ParameterOperatable):
         symbol = style.symbol
         if symbol is None:
             symbol = type(self).__name__
+
+        if isinstance(self, ConstrainableExpression) and self.constrained:
+            # symbol = f"\033[4m{symbol}!\033[0m"
+            symbol = f"{symbol}!"
 
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):

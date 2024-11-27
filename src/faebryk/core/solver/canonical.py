@@ -48,9 +48,10 @@ from faebryk.libs.units import Quantity, dimensionless, quantity
 logger = logging.getLogger(__name__)
 
 
-def constrain_within_and_domain(mutator: Mutator):
+def constrain_within_domain(mutator: Mutator):
     """
     Translate domain and within constraints to parameter constraints.
+    #TODO: Alias predicates to True since we need to assume they are true.
     """
 
     for param in GraphFunctions(mutator.G).nodes_of_type(Parameter):
@@ -59,6 +60,14 @@ def constrain_within_and_domain(mutator: Mutator):
             new_param.constrain_subset(new_param.within)
         if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
             new_param.constrain_ge(0.0 * new_param.units)
+
+    # FIXME: think more carefully about predicates and aliases
+    # for predicate in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression):
+    #    if predicate.constrained:
+    #        new_predicate = cast_assert(
+    #            ConstrainableExpression, mutator.mutate_expression(predicate)
+    #        )
+    #        alias_is_and_check_constrained(new_predicate, True)
 
 
 def convert_to_canonical_literals(mutator: Mutator):
