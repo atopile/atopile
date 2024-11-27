@@ -383,7 +383,7 @@ class BuildContext:
 
         build_path = Path(project_context.project_path) / BUILD_DIR_NAME
         layout_path = find_layout(
-            project_context.project_path / project_context.layout_path
+            project_context.project_path / project_context.layout_path / config_name
         )
 
         return BuildContext(
