@@ -188,7 +188,6 @@ def test_netlist_t2(netlist_t2, netlist_manu):
 def test_netlist_graph(netlist_graph, netlist_t2):
     for comp in netlist_graph.comps:
         assert isinstance(comp.properties, dict)
-        comp.properties.pop("atopile_name", None)
         comp.properties.pop("atopile_address", None)
 
     netlist_graph = from_faebryk_t2_netlist(netlist_graph)
