@@ -1,4 +1,4 @@
-(kicad_pcb 
+(kicad_pcb
     (version 20240108)
     (generator "pcbnew")
     (generator_version "8.0")
@@ -117,7 +117,7 @@
             (at 0 0 0)
             (layer "User.9")
             (hide no)
-            (uuid "42201883-3283-4b8e-92c3-9d2dbd763fd3")
+            (uuid "a8a36578-0ea1-4355-be1b-cf3d87f13d1e")
             (effects
                 (font
                     (size 1.27 1.27)
@@ -127,17 +127,7 @@
             (at 0 0 0)
             (layer "User.9")
             (hide no)
-            (uuid "838800e4-854b-4def-8b36-969f65b6a530")
-            (effects
-                (font
-                    (size 1.27 1.27)
-                    (thickness 0.15))
-                (hide yes)))
-        (property "atopile_name" "*EDF8.led"
-            (at 0 0 0)
-            (layer "User.9")
-            (hide no)
-            (uuid "13108720-bf0c-4045-9e9f-6b2800b57826")
+            (uuid "92e12c8d-293f-4ef6-8688-5fbb95bd130f")
             (effects
                 (font
                     (size 1.27 1.27)
@@ -358,7 +348,7 @@
             (at 0 0 0)
             (layer "User.9")
             (hide no)
-            (uuid "788cce33-06a1-4298-9c79-bfe146290f32")
+            (uuid "78b12f33-5b51-4592-898c-f73c7166b242")
             (effects
                 (font
                     (size 1.27 1.27)
@@ -368,17 +358,7 @@
             (at 0 0 0)
             (layer "User.9")
             (hide no)
-            (uuid "86417e75-7fce-4283-9295-b4bff0f2373f")
-            (effects
-                (font
-                    (size 1.27 1.27)
-                    (thickness 0.15))
-                (hide yes)))
-        (property "atopile_name" "*EDF8.battery"
-            (at 0 0 0)
-            (layer "User.9")
-            (hide no)
-            (uuid "6271b514-480c-4afe-a3c9-5f66075093be")
+            (uuid "67079877-cfac-4c86-8990-3420d7c26401")
             (effects
                 (font
                     (size 1.27 1.27)

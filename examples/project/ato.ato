@@ -1,33 +1,14 @@
-from "generics/batteries.ato" import Battery
-from "generics/leds.ato" import LED
 from "generics/resistors.ato" import Resistor
+from "generics/capacitors.ato" import Capacitor
 
 module App:
-    # Define power signals
-    signal vcc
-    signal gnd
-
-    # Battery component
-    bat = new Battery
-    bat.designator = "B?"  # Will be auto-numbered
-    bat.mpn = "C5239862"   # LCSC part number
-    # Connect battery terminals
-    bat.positive ~ vcc
-    bat.negative ~ gnd
-
-    # LED component
-    led = new LED
-    led.designator = "D?"  # Will be auto-numbered
-    led.mpn = "C72038"     # LCSC part number
-    led.color = "yellow"
-
-    # Current limiting resistor (calculated for typical indicator LED brightness)
     r1 = new Resistor
-    r1.footprint = "R0402"  # Common SMD resistor size
-    # Assuming ~20mA for indicator LED and 3.3V nominal battery voltage
-    r1.value = 150ohm +/- 10%
+    r1.value = 10kohm +/- 20%
+    r1.package = "0402"
 
-    # Connect LED circuit
-    vcc ~ r1.p1
-    r1.p2 ~ led.anode
-    led.cathode ~ gnd
+    c1 = new Capacitor
+    c1.value = 100nF +/- 20%
+    c1.package = "0402"
+
+    r1.p1 ~ c1.p1
+    r1.p2 ~ c1.p2

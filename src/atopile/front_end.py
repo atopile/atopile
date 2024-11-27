@@ -5,10 +5,10 @@ Build faebryk core objects from ato DSL.
 import itertools
 import logging
 import operator
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import chain
-import os
 from pathlib import Path
 from typing import (
     Any,
@@ -22,7 +22,7 @@ from pint import UndefinedUnitError
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
-from atopile import errors, config
+from atopile import config, errors
 from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
@@ -51,16 +51,23 @@ except ImportError:
 
     dimensionless = P.dimensionless
 
+try:
+    from faebryk.libs.library.L import Range
+except ImportError:
+    from faebryk.library._F import Range
 
-def _raises_not_implemented(*args, **kwargs):
-    raise NotImplementedError(
-        "Parameters are a work-in-progress. They will be available soon"
-    )
+try:
+    from faebryk.library import Single
+except ImportError:
+    from faebryk.library._F import Constant as Single
 
 
-if not hasattr(L, "Range"):
-    L.Range = _raises_not_implemented
-    L.Single = _raises_not_implemented
+def _alias_is(lh, rh):
+    try:
+        return lh.alias_is(rh)
+    except AttributeError:
+        return lh.merge(rh)
+
 
 # End helpers ---------------------------------------------------------------
 
@@ -118,11 +125,11 @@ class PhysicalValuesMixin:
                 ctx, f"Unknown unit '{unit_str}'"
             ) from ex
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> "L.Range":
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> Range:
         """Yield a physical value from a physical context."""
         if ctx.quantity():
             qty = self.visitQuantity(ctx.quantity())
-            value = L.Single(qty)
+            value = Single(qty)
         elif ctx.bilateral_quantity():
             value = self.visitBilateral_quantity(ctx.bilateral_quantity())
         elif ctx.bound_quantity():
@@ -150,7 +157,7 @@ class PhysicalValuesMixin:
 
         return Quantity(value, unit)
 
-    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> "L.Range":
+    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> Range:
         """Yield a physical value from a bilateral quantity context."""
         nominal_qty = self.visitQuantity(ctx.quantity())
 
@@ -174,7 +181,7 @@ class PhysicalValuesMixin:
 
             # Calculate tolerance value from percentage/ppm
             tol_value = tol_num / tol_divider
-            return L.Range.from_center_rel(nominal_qty, tol_value)
+            return Range.from_center_rel(nominal_qty, tol_value)
 
         # Ensure the tolerance has a unit
         if tol_name := tol_ctx.name():
@@ -197,9 +204,9 @@ class PhysicalValuesMixin:
                 f" compatible with nominal unit '{nominal_qty.units}'",
             )
 
-        return L.Range.from_center(nominal_qty, tol_qty)
+        return Range.from_center(nominal_qty, tol_qty)
 
-    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> "L.Range":
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Range:
         """Yield a physical value from a bound quantity context."""
 
         start, end = map(self.visitQuantity, ctx.quantity())
@@ -219,7 +226,7 @@ class PhysicalValuesMixin:
                 f" compatible with nominal unit '{start.units}'",
             )
 
-        return L.Range(start, end)
+        return Range(start, end)
 
 
 class NOTHING:
@@ -478,12 +485,12 @@ class _ShimResistor(F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
 
     @property
-    def value(self) -> "L.Range":
+    def value(self) -> Range:
         return self.resistance
 
     @value.setter
-    def value(self, value: "L.Range"):
-        self.resistance.alias_is(value)
+    def value(self, value: Range):
+        _alias_is(self.resistance, value)
 
     @write_only_property
     def footprint(self, value: str):
@@ -520,17 +527,36 @@ class _ShimResistor(F.Resistor):
             F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
         )
 
+    @property
+    def p1(self) -> F.Electrical:
+        return self.unnamed[0]
+
+    @property
+    def p2(self) -> F.Electrical:
+        return self.unnamed[1]
+
+    @property
+    def _1(self) -> F.Electrical:
+        return self.unnamed[0]
+
+    @property
+    def _2(self) -> F.Electrical:
+        return self.unnamed[1]
+
 
 class _ShimCapacitor(F.Capacitor):
     """Temporary shim to translate `value` to `capacitance`."""
 
+    class has_power(L.ModuleInterface.TraitT.decless()):
+        power: F.ElectricPower
+
     @property
-    def value(self) -> "L.Range":
+    def value(self) -> Range:
         return self.capacitance
 
     @value.setter
-    def value(self, value: "L.Range"):
-        self.capacitance.alias_is(value)
+    def value(self, value: Range):
+        _alias_is(self.capacitance, value)
 
     @write_only_property
     def footprint(self, value: str):
@@ -567,6 +593,29 @@ class _ShimCapacitor(F.Capacitor):
             F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
         )
 
+    @property
+    def p1(self) -> F.Electrical:
+        return self.unnamed[0]
+
+    @property
+    def p2(self) -> F.Electrical:
+        return self.unnamed[1]
+
+    @property
+    def _1(self) -> F.Electrical:
+        return self.unnamed[0]
+
+    @property
+    def _2(self) -> F.Electrical:
+        return self.unnamed[1]
+
+    @property
+    def power(self) -> F.ElectricPower:
+        if trait := self.try_get_trait(self.has_power):
+            return trait.power
+        else:
+            return self.add(self.has_power()).power
+
 
 class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
     """
@@ -589,7 +638,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         self._node_stack = StackList[L.Node]()
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
         self._param_assignments = FuncDict[
-            fab_param.Parameter, "tuple[L.Range | L.Single, ParserRuleContext | None]"
+            fab_param.Parameter, "tuple[Range | Single, ParserRuleContext | None]"
         ]()
 
     def build_ast(
@@ -636,7 +685,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def _build(self, context: Context, ref: Ref) -> L.Node:
         if ref not in context.refs:
             raise errors.AtoKeyError.from_ctx(
-                context.scope_ctx, f"No declaration of {ref} in {context.file_path}"
+                context.scope_ctx, f'No declaration of "{ref}" in {context.file_path}'
             )
         return self._init_node(context.scope_ctx, ref)
 
@@ -652,7 +701,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                     # Set final value of parameter
                     param.add(from_dsl(ctx))
                     try:
-                        param.alias_is(value)
+                        _alias_is(param, value)
                     except UnitCompatibilityError as ex:
                         raise errors.AtoTypeError.from_ctx(ctx, str(ex)) from ex
 
@@ -709,7 +758,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 break
         else:
             raise errors.AtoFileNotFoundError.from_ctx(
-                item.original_ctx, f"Can't find {item.from_path} in {", ".join(self.search_paths)}"
+                item.original_ctx,
+                f"Can't find {item.from_path} in {", ".join(map(str, search_paths))}",
             )
 
         from_path = self._sanitise_path(candidate_from_path)
@@ -920,10 +970,6 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             param = node.add(default, name=name)
             self._promised_params.setdefault(param, []).append(src_ctx)
             return param
-
-    @staticmethod
-    def _attach_range_to_param(param: fab_param.Parameter, range: "L.Range"):
-        param.alias_is(range)
 
     def _fufill_param_promise(self, param: fab_param.Parameter):
         if param in self._promised_params:
@@ -1166,7 +1212,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         raise ValueError(f"Unhandled atom type {ctx}")
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> "L.Range":
+    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> Range:
         return PhysicalValuesMixin.visitLiteral_physical(self, ctx)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
