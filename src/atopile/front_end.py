@@ -23,7 +23,7 @@ from pint import UndefinedUnitError
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
-from atopile import config, errors
+from atopile import address, config, errors
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
@@ -657,7 +657,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             self._finish()
 
     @property
-    def modules(self) -> dict[tuple[Path | None, Ref], Type[L.Module]]:
+    def modules(self) -> dict[address.AddrStr, Type[L.Module]]:
         """Conceptually similar to `sys.modules`"""
 
         # FIXME: this feels like a shit way to get addresses of the imported modules
@@ -671,7 +671,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 if ctx_ is None:
                     return None
 
-            return (self._scopes[ctx_].file_path, Ref(ref))
+            return address.AddrStr.from_parts(
+                self._scopes[ctx_].file_path, ".".join(ref)
+            )
 
         return {
             addr: cls
