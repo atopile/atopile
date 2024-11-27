@@ -3,6 +3,7 @@
 
 import logging
 from itertools import pairwise
+from typing import cast
 
 import pytest
 
@@ -10,7 +11,11 @@ import faebryk.library._F as F
 from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Additive,
+    And,
+    Expression,
+    Not,
     Parameter,
+    ParameterOperatable,
 )
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range
@@ -28,6 +33,48 @@ def test_new_definitions():
         soft_set=Range(1 * P.ohm, 10 * P.Mohm),
         likely_constrained=True,
     )
+
+
+def test_compact_repr():
+    p1 = Parameter(units=P.V)
+    p2 = Parameter(units=P.V)
+    context = ParameterOperatable.ReprContext()
+    expr = cast(Expression, (p1 + p2 + (5 * P.V)) * 10)  # type: ignore
+    exprstr = expr.compact_repr(context)
+    assert exprstr == "((A volt + B volt) + 5 volt) * 10"
+    expr2 = p2 + p1
+    expr2str = expr2.compact_repr(context)
+    assert expr2str == "B volt + A volt"
+
+    p3 = Parameter(domain=L.Domains.BOOL())
+    expr3 = Not(p3)
+    expr3str = expr3.compact_repr(context)
+    assert expr3str == "¬C"
+
+    expr4 = And(expr3, (expr > 10 * P.V))
+    expr4str = expr4.compact_repr(context)
+    assert expr4str == "¬C ∧ ((((A volt + B volt) + 5 volt) * 10) > 10 volt)"
+
+    manyps = times(22, Parameter)
+    Additive.sum(manyps).compact_repr(context)
+
+    pZ = Parameter()
+    assert pZ.compact_repr(context) == "Z"
+
+    pa = Parameter()
+    assert pa.compact_repr(context) == "a"
+
+    manyps2 = times(25, Parameter)
+    Additive.sum(manyps2).compact_repr(context)
+    palpha = Parameter()
+    assert palpha.compact_repr(context) == "α"
+    pbeta = Parameter()
+    assert pbeta.compact_repr(context) == "β"
+
+    manyps3 = times(22, Parameter)
+    Additive.sum(manyps3).compact_repr(context)
+    pAA = Parameter()
+    assert pAA.compact_repr(context) == "A'"
 
 
 @pytest.mark.skip
@@ -89,7 +136,7 @@ if __name__ == "__main__":
     # if run in jupyter notebook
     import sys
 
-    func = test_visualize
+    func = test_compact_repr
 
     if "ipykernel" in sys.modules:
         func()

@@ -389,6 +389,6 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
         # Make new expr with subset literals
         new_expr = type(expr)(*[mutator.get_copy(operand) for operand in operands])
-        logger.info(f"Adding upper estimate {expr} subset {new_expr}")
+        logger.debug(f"Adding upper estimate {expr} subset {new_expr}")
         # Constrain subset on copy of old expr
         cast_assert(Expression, mutator.get_copy(expr)).constrain_subset(new_expr)

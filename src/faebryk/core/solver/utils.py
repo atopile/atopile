@@ -2,12 +2,17 @@
 # SPDX-License-Identifier: MIT
 
 
+import io
 import logging
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from statistics import median
 from typing import Callable, Iterable, Iterator, TypeGuard, cast
+
+from rich.console import Console
+from rich.table import Table
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.graphinterface import GraphInterfaceSelf
@@ -51,6 +56,7 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
 from faebryk.libs.util import (
+    ConfigFlag,
     EquivalenceClasses,
     KeyErrorAmbiguous,
     not_none,
@@ -59,6 +65,10 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
+
+S_LOG = ConfigFlag("SLOG", default=False, descr="Log solver operations")
+if S_LOG:
+    logger.setLevel(logging.DEBUG)
 
 Commutative = (
     Add | Multiply | And | Or | Xor | Union | Intersection | SymmetricDifference
@@ -261,7 +271,7 @@ def parameter_ops_eq_classes(
     for candidates in obvious_eq.values():
         if len(candidates) <= 1:
             continue
-        logger.debug(f"#obvious eq candidates: {len(candidates)}")
+        # logger.debug(f"#obvious eq candidates: {len(candidates)}")
         for i, p in enumerate(candidates):
             for q in candidates[:i]:
                 if p.obviously_eq(q):
@@ -577,28 +587,6 @@ class Mutator:
         assert self.G not in get_graphs(self.repr_map.values())
         return self.repr_map, True
 
-    def debug_print(self):
-        import sys
-
-        if getattr(sys, "gettrace", lambda: None)():
-            log = print
-        else:
-            log = logger.info
-
-        for s, d in self.repr_map.items():
-            if s in self.copied:
-                continue
-
-            if isinstance(d, Parameter) and isinstance(s, Parameter):
-                log(
-                    f"{s!r}({s.units}, {s.domain}, {s.within}) -> {d!r}({d.units}, {d.domain}, {s.within})"
-                )
-            else:
-                log(f"{s!r} -> {d!r}")
-
-        for s in self.removed:
-            log(f"{s!r} -> removed")
-
 
 class Mutators:
     def __init__(self, *graphs: Graph):
@@ -620,6 +608,52 @@ class Mutators:
     def __iter__(self) -> Iterator[Mutator]:
         return iter(self.mutators)
 
+    def debug_print(self, context_old: ParameterOperatable.ReprContext):
+        if getattr(sys, "gettrace", lambda: None)():
+            log = print
+        else:
+            log = logger.debug
+
+        table = Table(title="Mutations", show_lines=True)
+        table.add_column("Before")
+        table.add_column("After")
+
+        context_new = ParameterOperatable.ReprContext()
+        context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
+
+        for m in self.mutators:
+            for s, d in m.repr_map.items():
+                if isinstance(s, Parameter) and isinstance(d, Parameter):
+                    s.compact_repr(context_old)
+                    context_new.variable_mapping.mapping[d] = (
+                        context_old.variable_mapping.mapping[s]
+                    )
+
+        for m in self.mutators:
+            for s, d in m.repr_map.items():
+                if s in m.copied:
+                    continue
+
+                if isinstance(d, Parameter) and isinstance(s, Parameter):
+                    # TODO maybe print units, domain change
+                    continue
+
+                old = s.compact_repr(context_old)
+                new = d.compact_repr(context_new)
+                if old == new:
+                    continue
+                table.add_row(old, new)
+
+            for s in m.removed:
+                table.add_row(s.compact_repr(context_old), "removed")
+
+        if table.rows:
+            console = Console(record=True, width=80, file=io.StringIO())
+            console.print(table)
+            log(console.export_text(styles=True))
+
+        return context_new
+
     @staticmethod
     def concat_repr_maps(*repr_maps: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
         assert repr_maps
@@ -635,9 +669,7 @@ class Mutators:
                 if not isinstance(chain_end, ParameterOperatable):
                     break
                 if chain_end not in m:
-                    logger.warning(
-                        f"chain_end {original_obj} -> {chain_end} interrupted"
-                    )
+                    logger.debug(f"chain_end {original_obj} -> {chain_end} interrupted")
                     chain_interrupted = True
                     break
                 chain_end = m[chain_end]
@@ -677,3 +709,17 @@ class Mutators:
     @staticmethod
     def create_concat_repr_map(*repr_maps: Mutator.REPR_MAP) -> ReprMap:
         return Mutators.ReprMap(Mutators.concat_repr_maps(*repr_maps))
+
+
+def debug_name_mappings(context: ParameterOperatable.ReprContext, g: Graph):
+    table = Table(title="Name mappings", show_lines=True)
+    table.add_column("Before")
+    table.add_column("After")
+
+    for p in GraphFunctions(g).nodes_of_type(Parameter):
+        table.add_row(p.compact_repr(context), p.get_full_name())
+
+    if table.rows:
+        console = Console(record=True, width=80, file=io.StringIO())
+        console.print(table)
+        logger.debug(console.export_text(styles=True))

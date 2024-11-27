@@ -17,8 +17,9 @@ from faebryk.libs.units import (
     Unit,
     dimensionless,
     quantity,
+    to_si_str,
 )
-from faebryk.libs.util import cast_assert, not_none, operator_type_check
+from faebryk.libs.util import cast_assert, not_none, operator_type_check, round_str
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,21 @@ def base_units(units: Unit) -> Unit:
 
 
 class Quantity_Set(P_UnitSet[QuantityLike]):
-    pass
+    def __init__(self, units: Unit):
+        super().__init__()
+        self.units = units
+        self.interval_units = base_units(units)
+
+    def base_to_units(self, value: NumericT) -> Quantity:
+        return cast_assert(
+            Quantity, quantity(value, self.interval_units).to(self.units)
+        )
+
+    def _format_number(self, number: float) -> str:
+        if self.units.is_compatible_with(dimensionless):
+            # TODO better rounding
+            return round_str(number, 9)
+        return to_si_str(self.base_to_units(number), self.units)
 
 
 QuantitySetLikeR = (Quantity_Set, *QuantityLikeR)
@@ -93,8 +108,7 @@ class Quantity_Interval(Quantity_Set):
         ):
             raise ValueError("min and max must have the same units")
 
-        self.units = not_none(units or min_unit or max_unit)
-        self.interval_units = base_units(self.units)
+        super().__init__(not_none(units or min_unit or max_unit))
 
         if isinstance(min, Quantity):
             num_min = min.to_base_units().magnitude
@@ -149,11 +163,6 @@ class Quantity_Interval(Quantity_Set):
         assert isinstance(center, QuantityLikeR)
         assert isinstance(delta, type(center))
         return center, delta  # type: ignore
-
-    def base_to_units(self, value: NumericT) -> Quantity:
-        return cast_assert(
-            Quantity, quantity(value, self.interval_units).to(self.units)
-        )
 
     def min_elem(self) -> Quantity:
         return self.base_to_units(self._interval.min_elem())
@@ -253,12 +262,15 @@ class Quantity_Interval(Quantity_Set):
         return hash((self._interval, self.interval_units))
 
     def __repr__(self) -> str:
-        if self.units.is_compatible_with(dimensionless):
-            return f"Quantity_Interval({self._interval._min}, {self._interval._max})"
-        return (
-            f"Quantity_Interval({self.base_to_units(self._interval._min)}, "
-            f"{self.base_to_units(self._interval._max)} | {self.units})"
-        )
+        return f"Quantity_Interval({self})"
+
+    def __str__(self) -> str:
+        min_ = self._format_number(self._interval._min)
+        max_ = self._format_number(self._interval._max)
+        if min_ != max_:
+            return f"[{min_}, {max_}]"
+        else:
+            return f"[{min_}]"
 
     # operators
     @operator_type_check
@@ -328,8 +340,9 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         ]
         if len(interval_units) == 0 and units is None:
             raise ValueError("units must be provided for empty union")
-        self.units = units or interval_units[0]
-        self.interval_units = base_units(self.units)
+
+        super().__init__(units or interval_units[0])
+
         if not all(self.units.is_compatible_with(u) for u in interval_units):
             raise ValueError("all elements must have compatible units")
 
@@ -363,11 +376,6 @@ class Quantity_Interval_Disjoint(Quantity_Set):
 
     def is_empty(self) -> bool:
         return self._intervals.is_empty()
-
-    def base_to_units(self, value: NumericT) -> Quantity:
-        return cast_assert(
-            Quantity, quantity(value, self.interval_units).to(self.units)
-        )
 
     def min_elem(self) -> Quantity:
         if self.is_empty():
@@ -496,16 +504,17 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return hash((self._intervals, self.interval_units))
 
     def __repr__(self) -> str:
-        if self.units.is_compatible_with(dimensionless):
-            inner = ", ".join(
-                f"[{r._min}, {r._max}]" for r in self._intervals.intervals
-            )
-            return f"Quantity_Interval_Disjoint({inner})"
-        inner = ", ".join(
-            f"[{self.base_to_units(r._min)}, {self.base_to_units(r._max)}]"
+        return f"{self.__class__.__name__}({self})"
+
+    def __str__(self) -> str:
+        out = ", ".join(
+            f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
+            if r._min != r._max
+            else f"[{self._format_number(r._min)}]"
             for r in self._intervals.intervals
         )
-        return f"Quantity_Interval_Disjoint({inner} | {self.units})"
+
+        return f"({out})"
 
     def __iter__(self) -> Generator[Quantity_Interval]:
         for r in self._intervals.intervals:

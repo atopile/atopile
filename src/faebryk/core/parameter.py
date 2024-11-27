@@ -3,6 +3,7 @@
 
 import logging
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from types import NotImplementedType
 from typing import Any, Callable, Self, Sequence, TypeGuard, cast, override
@@ -464,6 +465,18 @@ class ParameterOperatable(Node):
     def is_literal(value: Any) -> TypeGuard[Literal]:
         return not isinstance(value, ParameterOperatable)
 
+    @dataclass
+    class ReprContext:
+        @dataclass
+        class VariableMapping:
+            mapping: dict["Parameter", str] = field(default_factory=dict)
+            next_id: int = 0
+
+        variable_mapping: VariableMapping = field(default_factory=VariableMapping)
+
+    def compact_repr(self, context: ReprContext | None = None) -> str:
+        raise NotImplementedError()
+
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     if isinstance(po, ParameterOperatable):
@@ -567,6 +580,87 @@ class Expression(ParameterOperatable):
     def __repr__(self) -> str:
         return f"{super().__repr__()}({self.operands})"
 
+    @dataclass
+    class ReprStyle:
+        symbol: str | None = None
+
+        class Placement(Enum):
+            INFIX = auto()
+            """
+            A + B + C
+            """
+            INFIX_FIRST = auto()
+            """
+            A > (B, C)
+            """
+            PREFIX = auto()
+            """
+            ¬A
+            """
+            POSTFIX = auto()
+            """
+            A!
+            """
+            EMBRACE = auto()
+            """
+            |A|
+            """
+
+        placement: Placement = Placement.INFIX
+
+    REPR_STYLE: ReprStyle = ReprStyle()
+
+    def compact_repr(
+        self, context: ParameterOperatable.ReprContext | None = None
+    ) -> str:
+        if context is None:
+            context = ParameterOperatable.ReprContext()
+
+        style = type(self).REPR_STYLE
+        symbol = style.symbol
+        if symbol is None:
+            symbol = type(self).__name__
+
+        def format_operand(op):
+            if not isinstance(op, ParameterOperatable):
+                return str(op)
+            op_out = op.compact_repr(context)
+            if isinstance(op, Expression) and len(op.operands) > 1:
+                op_out = f"({op_out})"
+            return op_out
+
+        formatted_operands = [format_operand(op) for op in self.operands]
+        out = ""
+        if style.placement == Expression.ReprStyle.Placement.PREFIX:
+            if len(formatted_operands) == 1:
+                out = f"{symbol}{formatted_operands[0]}"
+            else:
+                out = f"{symbol}({', '.join(formatted_operands)})"
+        elif style.placement == Expression.ReprStyle.Placement.POSTFIX:
+            if len(formatted_operands) == 1:
+                out = f"{formatted_operands[0]}{symbol}"
+            else:
+                out = f"({', '.join(formatted_operands)}){symbol}"
+        elif style.placement == Expression.ReprStyle.Placement.INFIX:
+            if len(formatted_operands) == 1:
+                out = f"{symbol}{formatted_operands[0]}"
+            else:
+                symbol = f" {symbol} "
+                out = f"{symbol.join(formatted_operands)}"
+        elif style.placement == Expression.ReprStyle.Placement.INFIX_FIRST:
+            if len(formatted_operands) == 1:
+                return f"{symbol}{formatted_operands[0]}"
+            elif len(formatted_operands) == 2:
+                out = f"{formatted_operands[0]} {symbol} {formatted_operands[1]}"
+            else:
+                out = f"{formatted_operands[0]}{symbol}({', '.join(formatted_operands[1:])})"
+        elif style.placement == Expression.ReprStyle.Placement.EMBRACE:
+            out = f"{symbol}{', '.join(formatted_operands)}{symbol}"
+        else:
+            assert False
+
+        return out
+
 
 @abstract
 class ConstrainableExpression(Expression):
@@ -635,6 +729,11 @@ class Additive(Arithmetic):
 
 
 class Add(Additive):
+    REPR_STYLE = Additive.ReprStyle(
+        symbol="+",
+        placement=Additive.ReprStyle.Placement.INFIX,
+    )
+
     def __init__(self, *operands):
         super().__init__(*operands)
         self.bla = 5
@@ -657,6 +756,11 @@ class Add(Additive):
 
 
 class Subtract(Additive):
+    REPR_STYLE = Additive.ReprStyle(
+        symbol="-",
+        placement=Additive.ReprStyle.Placement.INFIX,
+    )
+
     def __init__(self, minuend, *subtrahend):
         super().__init__(minuend, *subtrahend)
 
@@ -665,6 +769,11 @@ class Subtract(Additive):
 
 
 class Multiply(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="*",
+        placement=Arithmetic.ReprStyle.Placement.INFIX,
+    )
+
     def __init__(self, *operands):
         super().__init__(*operands)
         units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
@@ -690,6 +799,11 @@ class Multiply(Arithmetic):
 
 
 class Divide(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="/",
+        placement=Arithmetic.ReprStyle.Placement.INFIX,
+    )
+
     def __init__(self, numerator, *denominator):
         super().__init__(numerator, *denominator)
 
@@ -708,6 +822,11 @@ class Divide(Arithmetic):
 
 
 class Sqrt(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="√",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units**0.5
@@ -717,6 +836,11 @@ class Sqrt(Arithmetic):
 
 
 class Power(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="^",
+        placement=Arithmetic.ReprStyle.Placement.INFIX_FIRST,
+    )
+
     def __init__(self, base, exponent):
         super().__init__(base, exponent)
 
@@ -726,13 +850,25 @@ class Power(Arithmetic):
                 "exponent must have dimensionless unit",
                 incompatible_items=[exponent],
             )
-        exponent = quantity(exponent)
-        units = HasUnit.get_units_or_dimensionless(base) ** exponent.magnitude
+        base_unit = HasUnit.get_units_or_dimensionless(base)
+        units = dimensionless
+        if not base_unit.is_compatible_with(dimensionless):
+            exp_val = Quantity_Interval_Disjoint.from_value(exponent)
+            if exp_val.min_elem() != exp_val.max_elem():
+                raise ValueError(
+                    "exponent must be a single value for non-dimensionless base"
+                )
+            units = base_unit ** exp_val.min_elem().magnitude
         assert isinstance(units, Unit)
         self.units = units
 
 
 class Log(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="log",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
         if not operand.unit.is_compatible_with(dimensionless):
@@ -744,6 +880,11 @@ class Log(Arithmetic):
 
 
 class Sin(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="sin",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
         if not operand.unit.is_compatible_with(dimensionless):
@@ -755,6 +896,11 @@ class Sin(Arithmetic):
 
 
 class Cos(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="cos",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
         if not operand.unit.is_compatible_with(dimensionless):
@@ -766,6 +912,11 @@ class Cos(Arithmetic):
 
 
 class Abs(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="|",
+        placement=Arithmetic.ReprStyle.Placement.EMBRACE,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units
@@ -775,6 +926,11 @@ class Abs(Arithmetic):
 
 
 class Round(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="round",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units
@@ -784,6 +940,11 @@ class Round(Arithmetic):
 
 
 class Floor(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="⌊",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units
@@ -793,6 +954,11 @@ class Floor(Arithmetic):
 
 
 class Ceil(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="⌈",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units
@@ -817,24 +983,45 @@ class Logic(ConstrainableExpression):
 
 
 class And(Logic):
-    pass
+    REPR_STYLE = Logic.ReprStyle(
+        symbol="∧",
+        placement=Logic.ReprStyle.Placement.INFIX,
+    )
 
 
 class Or(Logic):
-    pass
+    REPR_STYLE = Logic.ReprStyle(
+        symbol="∨",
+        placement=Logic.ReprStyle.Placement.INFIX,
+    )
 
 
 class Not(Logic):
+    REPR_STYLE = Logic.ReprStyle(
+        symbol="¬",
+        placement=Logic.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(self, operand):
         super().__init__(operand)
 
 
 class Xor(Logic):
+    REPR_STYLE = Logic.ReprStyle(
+        symbol="⊕",
+        placement=Logic.ReprStyle.Placement.INFIX,
+    )
+
     def __init__(self, *operands):
         super().__init__(*operands)
 
 
 class Implies(Logic):
+    REPR_STYLE = Logic.ReprStyle(
+        symbol="⇒",
+        placement=Logic.ReprStyle.Placement.INFIX_FIRST,
+    )
+
     def __init__(self, condition, implication):
         super().__init__(condition, implication)
 
@@ -864,20 +1051,34 @@ class Setic(Expression):
 
 
 class Union(Setic):
-    pass
+    REPR_STYLE = Setic.ReprStyle(
+        symbol="∪",
+        placement=Setic.ReprStyle.Placement.INFIX,
+    )
 
 
 class Intersection(Setic):
-    pass
+    REPR_STYLE = Setic.ReprStyle(
+        symbol="∩",
+        placement=Setic.ReprStyle.Placement.INFIX,
+    )
 
 
 class Difference(Setic):
+    REPR_STYLE = Setic.ReprStyle(
+        symbol="−",
+        placement=Setic.ReprStyle.Placement.INFIX,
+    )
+
     def __init__(self, minuend, subtrahend):
         super().__init__(minuend, subtrahend)
 
 
 class SymmetricDifference(Setic):
-    pass
+    REPR_STYLE = Setic.ReprStyle(
+        symbol="△",
+        placement=Setic.ReprStyle.Placement.INFIX,
+    )
 
 
 class Domain:
@@ -996,23 +1197,38 @@ class NumericPredicate(Predicate):
 
 
 class LessThan(NumericPredicate):
-    pass
+    REPR_STYLE = NumericPredicate.ReprStyle(
+        symbol="<",
+        placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
+    )
 
 
 class GreaterThan(NumericPredicate):
-    pass
+    REPR_STYLE = NumericPredicate.ReprStyle(
+        symbol=">",
+        placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
+    )
 
 
 class LessOrEqual(NumericPredicate):
-    pass
+    REPR_STYLE = NumericPredicate.ReprStyle(
+        symbol="≤",
+        placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
+    )
 
 
 class GreaterOrEqual(NumericPredicate):
-    pass
+    REPR_STYLE = NumericPredicate.ReprStyle(
+        symbol="≥",
+        placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
+    )
 
 
 class NotEqual(NumericPredicate):
-    pass
+    REPR_STYLE = NumericPredicate.ReprStyle(
+        symbol="≠",
+        placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
+    )
 
 
 class SeticPredicate(Predicate):
@@ -1030,14 +1246,26 @@ class SeticPredicate(Predicate):
 
 
 class IsSubset(SeticPredicate):
-    pass
+    REPR_STYLE = SeticPredicate.ReprStyle(
+        symbol="⊆",
+        placement=SeticPredicate.ReprStyle.Placement.INFIX_FIRST,
+    )
 
 
 class IsSuperset(SeticPredicate):
-    pass
+    REPR_STYLE = SeticPredicate.ReprStyle(
+        symbol="⊇",
+        placement=SeticPredicate.ReprStyle.Placement.INFIX_FIRST,
+    )
 
 
 class Cardinality(SeticPredicate):
+    REPR_STYLE = SeticPredicate.ReprStyle(
+        # TODO
+        symbol="||",
+        placement=SeticPredicate.ReprStyle.Placement.PREFIX,
+    )
+
     def __init__(
         self, set: ParameterOperatable.Sets, cardinality: ParameterOperatable.NumberLike
     ):
@@ -1045,6 +1273,11 @@ class Cardinality(SeticPredicate):
 
 
 class Is(Predicate):
+    REPR_STYLE = Predicate.ReprStyle(
+        symbol="is",
+        placement=Predicate.ReprStyle.Placement.INFIX_FIRST,
+    )
+
     def __init__(self, left, right):
         super().__init__(left, right)
 
@@ -1171,6 +1404,46 @@ class Parameter(ParameterOperatable):
 
     def has_implicit_constraints_recursive(self) -> bool:
         return False
+
+    def compact_repr(
+        self, context: ParameterOperatable.ReprContext | None = None
+    ) -> str:
+        """
+        Unit only printed if not dimensionless.
+
+        Letters:
+        ```
+        A-Z, a-z, α-ω
+        A'-Z', a'-z', α'-ω',
+        A''-Z'', a''-z'', α''-ω''
+        ...
+        ```
+        """
+        if context is None:
+            context = ParameterOperatable.ReprContext()
+
+        if self not in context.variable_mapping.mapping:
+            next_id = context.variable_mapping.next_id
+            alphabets = [("A", 26), ("a", 26), ("α", 24)]
+
+            def alphagen():
+                idx = 0
+                while True:
+                    for letter, maxcnt in alphabets:
+                        yield letter, idx, maxcnt
+                    idx += 1
+
+            alpha_iter = alphagen()
+            while next_id >= (cur := next(alpha_iter))[2]:
+                next_id -= cur[2]
+            letter = chr(ord(cur[0]) + next_id) + "'" * cur[1]
+
+            context.variable_mapping.mapping[self] = letter
+            context.variable_mapping.next_id += 1
+
+        unitstr = f" {self.units}" if self.units != dimensionless else ""
+        letter = context.variable_mapping.mapping[self]
+        return f"{letter}{unitstr}"
 
 
 p_field = f_field(Parameter)

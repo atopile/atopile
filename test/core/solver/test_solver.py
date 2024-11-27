@@ -25,6 +25,12 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps
+from faebryk.libs.picker.lcsc import LCSC_Part
+from faebryk.libs.picker.picker import (
+    PickerOption,
+    has_part_picked,
+    pick_module_by_params,
+)
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
@@ -431,10 +437,35 @@ def test_assert_any_predicate_super_basic(predicate_type: type[Predicate]):
     assert result.unknown_predicates == []
 
 
+def test_simple_pick():
+    led = F.LED()
+
+    solver = DefaultSolver()
+    pick_module_by_params(
+        led,
+        solver,
+        [
+            PickerOption(
+                part=LCSC_Part(partno="C72043"),
+                params={
+                    "color": L.PlainSet(F.LED.Color.EMERALD),
+                    "max_brightness": 285 * P.mcandela,
+                    "forward_voltage": L.Single(3.7 * P.volt),
+                    "max_current": 100 * P.mA,
+                },
+                pinmap={"1": led.cathode, "2": led.anode},
+            ),
+        ],
+    )
+
+    assert led.has_trait(has_part_picked)
+    assert led.get_trait(has_part_picked).get_part() == LCSC_Part(partno="C72043")
+
+
 if __name__ == "__main__":
     import typer
 
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_shortcircuit_logic_and)
+    typer.run(test_simple_pick)

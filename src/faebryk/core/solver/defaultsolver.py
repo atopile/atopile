@@ -35,6 +35,7 @@ from faebryk.core.solver.utils import (
     Contradiction,
     Mutator,
     Mutators,
+    debug_name_mappings,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
@@ -89,6 +90,9 @@ class DefaultSolver(Solver):
             ("Upper estimation", upper_estimation_of_expressions_with_subsets),
         ]
 
+        print_context = ParameterOperatable.ReprContext()
+        debug_name_mappings(print_context, g)
+
         def run_algo(
             graphs: list[Graph],
             phase_name: str,
@@ -102,8 +106,8 @@ class DefaultSolver(Solver):
                 logger.info(
                     f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
                 )
-                for mutator in mutators:
-                    mutator.debug_print()
+                nonlocal print_context
+                print_context = mutators.debug_print(print_context)
             # TODO assert all new graphs
             return algo_repr_map, algo_graphs, algo_dirty
 
@@ -160,7 +164,7 @@ class DefaultSolver(Solver):
             for po in param_ops_subset_literals:
                 new_subset_literal = total_repr_map_obj.try_get_literal(po, IsSubset)
                 if new_subset_literal != param_ops_subset_literals[po]:
-                    logger.info(
+                    logger.debug(
                         f"Subset dirty {param_ops_subset_literals[po]} != {new_subset_literal}"
                     )
                     param_ops_subset_literals[po] = new_subset_literal
@@ -286,6 +290,8 @@ class DefaultSolver(Solver):
                 lit = repr_map.try_get_literal(pred)
                 assert isinstance(lit, BoolSet) or lit is None
                 if lit is None:
+                    # TODO remove
+                    logger.warning(repr_map.repr_map[pred])
                     result.unknown_predicates.append(p)
                 elif True in lit:
                     result.true_predicates.append(p)

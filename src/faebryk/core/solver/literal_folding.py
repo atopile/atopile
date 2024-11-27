@@ -10,6 +10,7 @@ from typing import Callable
 from faebryk.core.parameter import (
     Abs,
     Add,
+    ConstrainableExpression,
     Difference,
     GreaterOrEqual,
     GreaterThan,
@@ -215,17 +216,30 @@ def fold_or(
     mutator: Mutator,
 ):
     """
+    ```
     Or(A, B, C, True) -> True
     Or(A, B, C, False) -> Or(A, B, C)
+    Or(A, B, C, P) | P constrained -> True
+    ```
     """
 
     extracted_literals = try_extract_all_literals(
         expr, lit_type=BoolSet, accept_partial=True
     )
+    # Or(A, B, C, True) -> True
     if extracted_literals and any(extracted_literals):
         alias_is_and_check_constrained(expr, True)
         return
 
+    # Or(A, B, C, P) | P constrained -> True
+    if any(
+        op.constrained
+        for op in expr.operands
+        if isinstance(op, ConstrainableExpression)
+    ):
+        alias_is_and_check_constrained(expr, True)
+
+    # Or(A, B, C, False) -> Or(A, B, C)
     # TODO also do something when extracted lits?
     if literal_operands:
         # Rebuild without (False) literals
@@ -246,27 +260,34 @@ def fold_not(
     mutator: Mutator,
 ):
     """
+    ```
     Not(Not(A)) -> A
     Not(True) -> False
     Not(False) -> True
+    Not(P) | P constrained -> False
+    ```
     """
+    assert len(expr.operands) == 1
 
     lits = try_extract_all_literals(expr, lit_type=BoolSet)
     if lits:
-        assert len(lits) == 1
         inner = lits[0]
         alias_is_and_check_constrained(expr, not inner)
         return
 
-    if not replacable_nonliteral_operands:
-        return
-    assert len(replacable_nonliteral_operands) == 1
-    op = next(iter(replacable_nonliteral_operands.keys()))
-    if isinstance(op, Not):
-        inner = op.operands[0]
-        # inner Not would have run first
-        assert not isinstance(inner, BoolSet)
-        expr.alias_is(inner)
+    if replacable_nonliteral_operands:
+        op = next(iter(replacable_nonliteral_operands.keys()))
+        if isinstance(op, Not):
+            inner = op.operands[0]
+            # inner Not would have run first
+            assert not isinstance(inner, BoolSet)
+            expr.alias_is(inner)
+            return
+
+    op = expr.operands[0]
+    # assume predicate true
+    if isinstance(op, ConstrainableExpression) and op.constrained:
+        alias_is_and_check_constrained(expr, False)
         return
 
 
@@ -278,12 +299,14 @@ def fold_pow(
     mutator: Mutator,
 ):
     """
+    ```
     A^0 -> 1
     0^0 -> 1
     A^1 -> A
     0^A -> 0
     1^A -> 1
     5^3 -> 125
+    ```
     """
 
     base, exp = map(try_extract_numeric_literal, expr.operands)

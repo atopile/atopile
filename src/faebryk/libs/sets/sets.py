@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from collections.abc import Iterable, Iterator
+from enum import Enum
 from typing import Any, Protocol, runtime_checkable
 
 from faebryk.libs.units import Unit, dimensionless
@@ -28,6 +29,8 @@ class P_Set[T](Protocol):
             return Quantity_Interval_Disjoint.from_value(value)
         if isinstance(value, (bool, BoolSet)):
             return BoolSet.from_value(value)
+        if isinstance(value, PlainSet):
+            return value
         return PlainSet(value)
 
     def is_subset_of(self, other: "P_Set[T]") -> bool: ...
@@ -64,6 +67,10 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
 
     def __repr__(self) -> str:
         return f"PlainSet({', '.join(repr(e) for e in self.elements)})"
+
+    def __str__(self) -> str:
+        # TODO move enum stuff to new EnumSet
+        return f"{{{', '.join(str(e) if not isinstance(e, Enum) else f'{e.name}' for e in self.elements)}}}"
 
     def __iter__(self) -> Iterator[U]:
         return iter(self.elements)
