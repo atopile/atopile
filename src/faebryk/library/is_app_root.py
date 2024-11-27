@@ -11,4 +11,4 @@ class is_app_root(L.Module.TraitT.decless()):
 
     def on_obj_set(self):
         obj = self.get_obj(L.Node)
-        obj.is_app_root = True
+        obj.no_include_parents_in_full_name = True

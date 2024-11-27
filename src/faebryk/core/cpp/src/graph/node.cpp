@@ -101,13 +101,13 @@ std::string Node::get_full_name(bool types) {
     auto p = this->get_parent();
     if (p) {
         auto [parent, name] = *p;
-        if (!parent->get_is_app_root()) {
+        if (!parent->getter_no_include_parents_in_full_name()) {
             auto parent_hierarchy = parent->get_full_name(types);
             ss << parent_hierarchy << ".";
         }
         ss << name;
     } else {
-        if (!this->get_is_app_root()) {
+        if (!this->getter_no_include_parents_in_full_name()) {
             ss << this->get_root_id();
         }
     }
@@ -251,10 +251,10 @@ nb::type_object Node::Type::get_moduleinterface_type() {
     return nb::module_::import_("faebryk.core.moduleinterface").attr("ModuleInterface");
 }
 
-void Node::set_is_app_root(bool is_root) {
-    this->is_app_root = is_root;
+void Node::setter_no_include_parents_in_full_name(bool no_include_parents_in_full_name) {
+    this->no_include_parents_in_full_name = no_include_parents_in_full_name;
 }
 
-bool Node::get_is_app_root() const {
-    return this->is_app_root;
+bool Node::getter_no_include_parents_in_full_name() const {
+    return this->no_include_parents_in_full_name;
 }

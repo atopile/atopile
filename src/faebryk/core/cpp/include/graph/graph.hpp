@@ -82,7 +82,7 @@ class Node {
   private:
     std::optional<nb::object> py_handle{};
     std::optional<Type> type{};
-    bool is_app_root = false;
+    bool no_include_parents_in_full_name = false;
 
   private:
     std::shared_ptr<GraphInterfaceSelf> self;
@@ -118,8 +118,8 @@ class Node {
     void set_py_handle(nb::object handle);
     std::optional<nb::object> get_py_handle();
 
-    void set_is_app_root(bool is_root);
-    bool get_is_app_root() const;
+    void setter_no_include_parents_in_full_name(bool no_include_parents_in_full_name);
+    bool getter_no_include_parents_in_full_name() const;
 
   private:
     std::unordered_set<Node_ref> get_children_all(bool include_root);

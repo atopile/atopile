@@ -112,7 +112,7 @@ class TestGraph(unittest.TestCase):
 
     def test_fab_ll_chain_tree_with_root(self):
         root = Node()
-        root.is_app_root = True
+        root.no_include_parents_in_full_name = True
         x = root
         for i in range(10):
             y = Node()

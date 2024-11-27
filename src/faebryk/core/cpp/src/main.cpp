@@ -186,7 +186,7 @@ PYMOD(m) {
         .def("get_hierarchy", &Node::get_hierarchy)
         .def("get_full_name", &Node::get_full_name, "types"_a = false)
         .def("__repr__", &Node::repr)
-        .def_prop_rw("is_app_root", &Node::get_is_app_root, &Node::set_is_app_root);
+        .def_prop_rw("no_include_parents_in_full_name", &Node::getter_no_include_parents_in_full_name, &Node::setter_no_include_parents_in_full_name);
 
     nb::exception<Node::NodeException>(m, "NodeException");
     nb::exception<Node::NodeNoParent>(m, "NodeNoParent");
