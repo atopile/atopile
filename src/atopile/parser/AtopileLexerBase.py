@@ -64,7 +64,7 @@ class AtopileLexerBase(Lexer):
         count = 0
         for c in whitespace:
             if c == '\t':
-                raise atopile.errors.AtoNotImplementedError(
+                raise atopile.errors.UserNotImplementedError(
                     "Tabs aren't supported. Please use spaces instead",
                     src_path=self.inputStream.name,
                     src_line=self._tokenStartLine,

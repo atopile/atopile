@@ -16,7 +16,7 @@ import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
@@ -249,7 +249,7 @@ class SchTransformer:
     def get_symbol_file(self, lib_name: str) -> C_kicad_sym_file:
         # primary caching handled by @once
         if lib_name not in self._symbol_files_index:
-            raise FaebrykException(f"Symbol file {lib_name} not found")
+            raise UserException(f"Symbol file {lib_name} not found")
 
         path = self._symbol_files_index[lib_name]
         return C_kicad_sym_file.loads(path)

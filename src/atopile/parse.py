@@ -9,7 +9,7 @@ from antlr4.error.ErrorListener import ErrorListener
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 
-from .errors import AtoFileNotFoundError, AtoSyntaxError
+from .errors import UserFileNotFoundError, UserSyntaxError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -19,10 +19,10 @@ IMMEDIATE_RAISE = False
 
 def error_factory(
     e: Exception, msg: str, offendingSymbol, line, column
-) -> AtoSyntaxError:
+) -> UserSyntaxError:
     from atopile.parse_utils import get_src_info_from_token
 
-    error = AtoSyntaxError(f"{str(e)} '{msg}'")
+    error = UserSyntaxError(f"{str(e)} '{msg}'")
 
     src_path, src_line, src_col = get_src_info_from_token(offendingSymbol)
     error.src_path = src_path
@@ -124,7 +124,7 @@ class FileParser:
 
         if src_origin_str not in self.cache:
             if not src_origin_path.exists():
-                raise AtoFileNotFoundError(src_origin_str)
+                raise UserFileNotFoundError(src_origin_str)
             self.cache[src_origin_str] = parse_file(src_origin_path)
 
         return self.cache[src_origin_str]

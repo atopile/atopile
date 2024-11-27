@@ -887,16 +887,22 @@ class PCB_Transformer:
         for module, _ in pos_mods:
             fp = module.get_trait(self.has_linked_kicad_footprint).get_fp()
             coord = module.get_trait(F.has_pcb_position).get_position()
-            layer_name = {
+            layer_names = {
                 F.has_pcb_position.layer_type.TOP_LAYER: "F.Cu",
                 F.has_pcb_position.layer_type.BOTTOM_LAYER: "B.Cu",
             }
 
-            if coord[3] == F.has_pcb_position.layer_type.NONE:
-                raise Exception(f"Component {module}({fp.name}) has no layer defined")
+            match coord[3]:
+                case F.has_pcb_position.layer_type.NONE:
+                    logger.warning(
+                        f"Assigning default layer for component {module}({fp.name})"
+                    )
+                    layer = layer_names[F.has_pcb_position.layer_type.TOP_LAYER]
+                case _:
+                    layer = layer_names[coord[3]]
 
-            logger.debug(f"Placing {fp.name} at {coord} layer {layer_name[coord[3]]}")
-            self.move_fp(fp, C_xyr(*coord[:3]), layer_name[coord[3]])
+            logger.debug(f"Placing {fp.name} at {coord} layer {layer}")
+            self.move_fp(fp, C_xyr(*coord[:3]), layer)
 
     def move_fp(self, fp: Footprint, coord: C_xyr, layer: str):
         if any([x.text == "FBRK:notouch" for x in fp.fp_texts]):
