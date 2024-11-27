@@ -39,7 +39,7 @@ LOCK_FILE_NAME = "ato-lock.yaml"
 _converter = cattrs.Converter()
 
 
-class AtoConfigError(atopile.errors.AtoError):
+class AtoConfigError(atopile.errors.UserException):
     """An error in the config file."""
 
 
@@ -90,7 +90,7 @@ class Dependency:
                     version_spec = version_spec.strip()
                     version_spec = splitter + version_spec
                 except TypeError as ex:
-                    raise atopile.errors.AtoTypeError(
+                    raise atopile.errors.UserTypeError(
                         f"Invalid dependency spec: {spec_str}"
                     ) from ex
                 return cls(name, version_spec)
@@ -217,7 +217,7 @@ def get_project_dir_from_path(path: Path) -> Path:
         clean_path = p.resolve().absolute()
         if (clean_path / CONFIG_FILENAME).exists():
             return clean_path
-    raise atopile.errors.AtoFileNotFoundError(
+    raise atopile.errors.UserFileNotFoundError(
         f"Could not find {CONFIG_FILENAME} in {path} or any parents"
     )
 
@@ -304,13 +304,13 @@ def find_layout(layout_base: Path) -> Path:
             return layout_candidates[0].resolve().absolute()
 
         else:
-            raise atopile.errors.AtoError(
+            raise atopile.errors.UserException(
                 "Layout directories must contain only 1 layout,"
                 f" but {len(layout_candidates)} found in {layout_base}"
             )
 
     else:
-        raise atopile.errors.AtoFileNotFoundError(
+        raise atopile.errors.UserFileNotFoundError(
             f"Layout file not found in {layout_base}"
         )
 
@@ -365,7 +365,7 @@ class BuildContext:
             case ".py":
                 return BuildType.PYTHON
             case _:
-                raise atopile.errors.AtoError(
+                raise atopile.errors.UserException(
                     f"Unknown entry suffix: {suffix} for {self.entry}"
                 )
 
@@ -414,7 +414,7 @@ class BuildContext:
         try:
             build_config = config.builds[build_name]
         except KeyError as ex:
-            raise atopile.errors.AtoError(
+            raise atopile.errors.UserException(
                 f"Build {build_name} not found for project {config.location}\n"
                 f"Available builds: {list(config.builds.keys())}"
             ) from ex

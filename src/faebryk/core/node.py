@@ -24,7 +24,7 @@ from faebryk.core.graphinterface import (
     GraphInterface,
 )
 from faebryk.core.link import LinkNamedParent, LinkSibling
-from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
@@ -141,13 +141,13 @@ def list_f_field[T, **P](n: int, con: Callable[P, T]) -> Callable[P, list[T]]:
     return _  # type: ignore
 
 
-class NodeException(FaebrykException):
+class NodeException(UserException):
     def __init__(self, node: "Node", *args: object) -> None:
         super().__init__(*args)
         self.node = node
 
 
-class FieldConstructionError(FaebrykException):
+class FieldConstructionError(UserException):
     def __init__(self, node: "Node", field: str, *args: object) -> None:
         super().__init__(*args)
         self.node = node

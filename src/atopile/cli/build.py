@@ -10,9 +10,9 @@ import atopile.config
 from atopile import buildutil, errors
 from atopile.cli.common import create_build_contexts
 from atopile.config import BuildContext, BuildType
-from atopile.errors import ExceptionAccumulator
 from faebryk.core.module import Module
 from faebryk.library import _F as F
+from faebryk.libs.exceptions import ExceptionAccumulator
 from faebryk.libs.picker import lcsc
 from faebryk.libs.util import import_from_path
 
@@ -91,7 +91,7 @@ def build(
 def do_prebuild(build_ctx: BuildContext) -> None:
     with ExceptionAccumulator() as _:
         if not build_ctx.dont_solve_equations:
-            raise errors.AtoNotImplementedError(
+            raise errors.UserNotImplementedError(
                 "Equation solving is not implemented yet"
             )
 
@@ -104,16 +104,16 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
             build_ctx.entry.file_path, build_ctx.entry.entry_section
         )
     except (FileNotFoundError, ImportError) as e:
-        raise errors.AtoPythonLoadError(
+        raise errors.UserPythonLoadError(
             f"Cannot import build entry {build_ctx.entry.file_path}"
         ) from e
     except AttributeError as e:
-        raise errors.AtoPythonLoadError(
+        raise errors.UserPythonLoadError(
             f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.entry_section}"
         ) from e
 
     if not isinstance(app_class, type):
-        raise errors.AtoPythonLoadError(
+        raise errors.UserPythonLoadError(
             f"Build entry {build_ctx.entry.file_path} is not a module we can instantiate"
         )
 
@@ -124,5 +124,5 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
 
 def _init_ato_app(build_ctx: BuildContext) -> Module:
     """Initialize a specific .ato build."""
-    raise errors.AtoNotImplementedError("ato builds are not implemented yet")
+    raise errors.UserNotImplementedError("ato builds are not implemented yet")
     do_prebuild(build_ctx)

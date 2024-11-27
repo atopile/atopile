@@ -3,7 +3,6 @@ from typing import Callable, Optional
 
 from atopile import layout
 from atopile.config import BuildContext
-from atopile.errors import ExceptionAccumulator
 from faebryk.core.module import Module
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
@@ -20,6 +19,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.parameters import replace_tbd_with_any
 from faebryk.libs.app.pcb import apply_design
+from faebryk.libs.exceptions import ExceptionAccumulator
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
 

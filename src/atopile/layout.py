@@ -16,6 +16,7 @@ from typing import Type
 from more_itertools import first
 
 import faebryk.library._F as F
+import faebryk.libs.exceptions
 from atopile import config, errors
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
@@ -43,11 +44,11 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
 
     entries: FuncDict[Module, set[Path]] = FuncDict()
     for filepath in directory.glob("**/ato.yaml"):
-        with errors.downgrade(Exception, logger=logger):
+        with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
             cfg = config.get_project_config_from_path(filepath)
 
             for build_name in cfg.builds:
-                with errors.downgrade(Exception, logger=logger):
+                with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
                     ctx = config.BuildContext.from_config_name(cfg, build_name)
 
                     if (
@@ -86,7 +87,7 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
         except KeyErrorNotFound:
             continue
         except KeyErrorAmbiguous as e:
-            raise errors.AtoNotImplementedError(
+            raise errors.UserNotImplementedError(
                 "There are multiple build configurations for this module.\n"
                 "We don't currently support multiple layouts for the same module."
                 "Show the issue some love to get it done: https://github.com/atopile/atopile/issues/399"

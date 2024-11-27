@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-class VersionMismatchError(errors.AtoError):
+class VersionMismatchError(errors.UserException):
     """
     Raise when the compiler version isn't
     compatible with the project version.
@@ -141,7 +141,7 @@ def match(spec: str, version: Version):
             operator = "^"
         except ValueError as ex:
             # finally, if we could do any of that, we assume there's something wrong with the spec
-            raise errors.AtoError(f"Invalid version spec: {spec}") from ex
+            raise errors.UserException(f"Invalid version spec: {spec}") from ex
 
     if operator == "^":
         # semver doesn't support ^, so we have to do it ourselves
