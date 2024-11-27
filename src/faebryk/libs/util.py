@@ -1078,6 +1078,7 @@ class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
         )
 
 
+# TODO: @python3.13 ..., H: Hashable = int]
 class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
     """
     A dict by pre-processing the objects with the hasher function.

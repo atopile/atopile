@@ -14,6 +14,7 @@ from atopile.datatypes import Ref
 from faebryk.core.module import Module
 from faebryk.library import _F as F
 from faebryk.libs.exceptions import ExceptionAccumulator
+from faebryk.libs.library import L
 from faebryk.libs.picker import lcsc
 from faebryk.libs.util import import_from_path
 
@@ -114,6 +115,8 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
 
 def _init_ato_app(build_ctx: BuildContext) -> Module:
     """Initialize a specific .ato build."""
-    return front_end.bob.build_file(
+    node = front_end.bob.build_file(
         build_ctx.entry.file_path, Ref(build_ctx.entry.entry_section.split("."))
     )
+    assert isinstance(node, L.Module)
+    return node

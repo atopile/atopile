@@ -14,6 +14,7 @@ from typing import (
     Any,
     Iterable,
     Type,
+    cast,
 )
 
 from antlr4 import ParserRuleContext
@@ -23,7 +24,6 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import config, errors
-from atopile.address import AddrStr
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
@@ -43,7 +43,7 @@ from faebryk.libs.util import (
 
 # Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
 try:
-    from faebryk.libs.units import UnitCompatibilityError, dimensionless
+    from faebryk.libs.units import UnitCompatibilityError, dimensionless  # type: ignore
 except ImportError:
 
     class UnitCompatibilityError(Exception):
@@ -52,14 +52,14 @@ except ImportError:
     dimensionless = P.dimensionless
 
 try:
-    from faebryk.libs.library.L import Range
+    from faebryk.libs.library.L import Range  # type: ignore
 except ImportError:
-    from faebryk.library._F import Range
+    from faebryk.library._F import Range  # type: ignore
 
 try:
-    from faebryk.library import Single
+    from faebryk.library import Single  # type: ignore
 except ImportError:
-    from faebryk.library._F import Constant as Single
+    from faebryk.library._F import Constant as Single  # type: ignore
 
 
 def _alias_is(lh, rh):
@@ -155,7 +155,7 @@ class PhysicalValuesMixin:
         else:
             unit = dimensionless
 
-        return Quantity(value, unit)
+        return Quantity(value, unit)  # type: ignore
 
     def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> Range:
         """Yield a physical value from a bilateral quantity context."""
@@ -191,6 +191,8 @@ class PhysicalValuesMixin:
             tol_qty = tol_num * dimensionless
         else:
             tol_qty = tol_num * nominal_qty.units
+
+        assert isinstance(tol_qty, Quantity)
 
         # Ensure units on the nominal quantity
         if nominal_qty.unitless:
@@ -257,7 +259,8 @@ class SequenceMixin:
         def _visit():
             for err_cltr, child in iter_through_errors(children):
                 with err_cltr():
-                    child_result = self.visit(child)
+                    # Since we're in a SequenceMixin, we need to cast self to the visitor type
+                    child_result = cast(AtopileParserVisitor, self).visit(child)
                     if child_result is not NOTHING:
                         yield child_result
 
@@ -294,15 +297,15 @@ class Context:
 
     @dataclass
     class ImportPlaceholder:
-        ref: list[str]
+        ref: Ref
         from_path: str
         original_ctx: ParserRuleContext
 
     # Location information re. the source of this module
-    file_path: Path
+    file_path: Path | None
 
     # Scope information
-    scope_ctx: ParserRuleContext
+    scope_ctx: ap.BlockdefContext | ap.File_inputContext
     refs: dict[Ref, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
 
 
@@ -352,7 +355,9 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
         return KeyOptMap.empty()
 
     @classmethod
-    def survey(cls, file_path: Path, ctx: ParserRuleContext) -> Context:
+    def survey(
+        cls, file_path: Path | None, ctx: ap.BlockdefContext | ap.File_inputContext
+    ) -> Context:
         surveyor = cls()
         context = Context(file_path=file_path, scope_ctx=ctx, refs={})
         for ref, item in surveyor.visit(ctx):
@@ -498,10 +503,7 @@ class _ShimResistor(F.Resistor):
     @write_only_property
     def package(self, value: str):
         reqs = [(value, 2)]  # package, pin-count
-        if fp_req := self.try_get_trait(F.has_footprint_requirement):
-            fp_req.reqs = reqs
-        else:
-            self.add(F.has_footprint_requirement_defined(reqs))
+        self.add(F.has_footprint_requirement_defined(reqs))
 
     @write_only_property
     def lcsc_id(self, value: str):
@@ -564,10 +566,7 @@ class _ShimCapacitor(F.Capacitor):
     @write_only_property
     def package(self, value: str):
         reqs = [(value, 2)]  # package, pin-count
-        if fp_req := self.try_get_trait(F.has_footprint_requirement):
-            fp_req.reqs = reqs
-        else:
-            self.add(F.has_footprint_requirement_defined(reqs))
+        self.add(F.has_footprint_requirement_defined(reqs))
 
     @write_only_property
     def lcsc_id(self, value: str):
@@ -630,12 +629,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def __init__(self) -> None:
         super().__init__()
-        self._scopes = FuncDict[ParserRuleContext, Context]()
-        self._python_classes = FuncDict[ap.BlockdefContext, Type[_Component]]()
-        self._node_stack = StackList[L.Node]()
-        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
+        self._scopes = FuncDict[ParserRuleContext, Context]()  # type: ignore
+        self._python_classes = FuncDict[ap.BlockdefContext, Type[_Component]]()  # type: ignore
+        self._node_stack = StackList[L.Node]()  # type: ignore
+        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()  # type: ignore
         self._param_assignments = FuncDict[
-            fab_param.Parameter, "tuple[Range | Single, ParserRuleContext | None]"
+            fab_param.Parameter, "tuple[Range | Single, ParserRuleContext | None]"  # type: ignore
         ]()
 
     def build_ast(
@@ -658,11 +657,11 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             self._finish()
 
     @property
-    def modules(self) -> dict[AddrStr, Type[L.Module]]:
+    def modules(self) -> dict[tuple[Path | None, Ref], Type[L.Module]]:
         """Conceptually similar to `sys.modules`"""
 
         # FIXME: this feels like a shit way to get addresses of the imported modules
-        def _get_addr(ctx: ParserRuleContext) -> tuple[Path, Ref] | None:
+        def _get_addr(ctx: ParserRuleContext):
             ref = tuple()
             ctx_ = ctx
             while ctx_ not in self._scopes:
@@ -671,7 +670,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 ctx_ = ctx_.parentCtx
                 if ctx_ is None:
                     return None
-            return (self._scopes[ctx_].file_path, ref)
+
+            return (self._scopes[ctx_].file_path, Ref(ref))
 
         return {
             addr: cls
@@ -696,6 +696,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                         )
 
                     # Set final value of parameter
+                    assert isinstance(
+                        ctx, ParserRuleContext
+                    )  # Since value and ctx should be None together
                     param.add(from_dsl(ctx))
                     try:
                         _alias_is(param, value)
@@ -744,10 +747,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         prj_context = config.get_project_context()
         search_paths = [
-            context.file_path.parent,
             prj_context.src_path,
             prj_context.module_path,
         ]
+
+        if context.file_path is not None:
+            search_paths.insert(0, context.file_path.parent)
 
         for search_path in search_paths:
             candidate_from_path = search_path / item.from_path
@@ -776,6 +781,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                     raise errors.UserKeyError.from_ctx(
                         item.original_ctx, f"No attribute '{ref}' found on {node}"
                     ) from ex
+
+            assert isinstance(node, type) and issubclass(node, L.Node)
             return node
 
         elif from_path.suffix == ".ato":
@@ -787,6 +794,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                         item.original_ctx, f"No declaration of {ref} in {from_path}"
                     )
                 node = context.refs[ref]
+
+            assert isinstance(node, type) and issubclass(node, L.Node)
             return node
 
         else:
@@ -805,7 +814,10 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         # No change in position from the current context
         # return self, eg the current parser context
         if ref == tuple():
-            return ctx
+            if isinstance(ctx, ap.BlockdefContext):
+                return ctx
+            else:
+                raise ValueError(f"Can't get class {ref} from {ctx}")
 
         # Ascend the tree until we find a scope that has the ref within it
         ctx_ = ctx
@@ -899,7 +911,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
                 assert issubclass(super_class, L.Node)
 
-                class Class_(super_class):
+                class Class_(super_class):  # type: ignore
                     __name__ = super_ctx.name().getText()
                     __atopile_src_ctx__ = super_ctx
 
@@ -961,7 +973,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         it later. Used in forward-declaration.
         """
         try:
-            return self.get_node_attr(node, name)
+            node = self.get_node_attr(node, name)
+            assert isinstance(node, fab_param.Parameter)
+            return node
         except AttributeError:
             default = fab_param.Parameter()
             param = node.add(default, name=name)
@@ -981,7 +995,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         assert isinstance(assignable_ctx, ap.AssignableContext)
 
         if len(assigned_ref) > 1:
-            target = self._get_referenced_node(assigned_ref[:-1], ctx)
+            target = self._get_referenced_node(Ref(assigned_ref[:-1]), ctx)
         else:
             target = self._current_node
 
@@ -1035,12 +1049,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             )
 
         mif = self._current_node.add_pin(name)
-        return KeyOptMap.from_item(KeyOptItem.from_kv(name, mif))
+        return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visitName(ctx.name())
         mif = self._current_node.add(F.Electrical(), name=name)
-        return KeyOptMap.from_item(KeyOptItem.from_kv(name, mif))
+        return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
         """Connect interfaces together"""
@@ -1057,10 +1071,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             return mif
         elif name_or_attr_ctx := ctx.name_or_attr():
             ref = self.visitName_or_attr(name_or_attr_ctx)
-            return self._get_referenced_node(ref, ctx)
+            node = self._get_referenced_node(ref, ctx)
+            assert isinstance(node, L.ModuleInterface)
+            return node
         elif numerical_ctx := ctx.numerical_pin_ref():
             pin_name = numerical_ctx.getText()
-            return self.get_node_attr(self._current_node, pin_name)
+            node = self.get_node_attr(self._current_node, pin_name)
+            assert isinstance(node, L.ModuleInterface)
+            return node
         else:
             raise ValueError(f"Unhandled connectable type {ctx}")
 
@@ -1070,7 +1088,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if not isinstance(node, L.Module):
             raise errors.UserTypeError.from_ctx(ctx, f"Can't retype {node}")
 
-        node.specialize(self._init_node(ctx, to))
+        narrow = self._init_node(ctx, to)
+        assert isinstance(narrow, L.Module)
+        node.specialize(narrow)
         return KeyOptMap.empty()
 
     def visitBlockdef(self, ctx: ap.BlockdefContext):
@@ -1193,7 +1213,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
             if len(ref) > 1:
-                target = self._get_referenced_node(ref[:-1], ctx)
+                target = self._get_referenced_node(Ref(ref[:-1]), ctx)
             else:
                 target = self._current_node
             return self._ensure_param(target, ref[-1], ctx)
@@ -1240,16 +1260,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         assigned_name = assigned_value_ref[0]
 
-        if assigned_name in self._param_assignments:
+        param = self._ensure_param(self._current_node, assigned_name, ctx)
+        if param not in self._param_assignments:
+            self._param_assignments[param] = (None, ctx)
+        else:
             errors.UserKeyError.from_ctx(
                 ctx,
                 f"Ignoring declaration of {assigned_name} because it's already defined",
             ).log(to_level=logging.WARNING)
-
-        else:
-            # TODO: greedily create this param?
-            # param = self._ensure_param(self._current_node, assigned_name, None, ctx)
-            self._param_assignments[assigned_name] = (None, ctx)
 
         return KeyOptMap.empty()
 
