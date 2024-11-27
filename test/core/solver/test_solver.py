@@ -418,6 +418,17 @@ def test_literal_folding_add_multiplicative_2():
     }
 
 
+def test_base_unit_switch():
+    A = Parameter(units=P.mAh)
+    A.alias_is(Range(100 * P.mAh, 600 * P.mAh))
+    (A >= 100 * P.mAh).constrain()
+
+    G = A.get_graph()
+    solver = DefaultSolver()
+    repr_map = solver.phase_one_no_guess_solving(G)
+    assert repr_map[A] == RangeWithGaps.from_value((100 * P.mAh, 600 * P.mAh))
+
+
 @pytest.mark.parametrize(
     "predicate_type",
     [

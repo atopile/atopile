@@ -743,7 +743,8 @@ class Mutators:
                 return None
             res = P_Set.from_value(lit)
             if isinstance(res, Quantity_Set):
-                return res * quantity(1, HasUnit.get_units(param))
+                fac = quantity(1, HasUnit.get_units(param))
+                return res * fac / fac.to_base_units().m
             return res
 
         def __getitem__(
