@@ -69,11 +69,12 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
             Quantity, quantity(value, self.interval_units).to(self.units)
         )
 
-    def _format_number(self, number: float) -> str:
+    def _format_number(self, number: float, num_decimals: int = 9) -> str:
         if self.units.is_compatible_with(dimensionless):
-            # TODO better rounding
-            return round_str(number, 9)
-        return to_si_str(self.base_to_units(number), self.units)
+            return round_str(number, num_decimals)
+        return to_si_str(
+            self.base_to_units(number), self.units, num_decimals=num_decimals
+        )
 
 
 QuantitySetLikeR = (Quantity_Set, *QuantityLikeR)
