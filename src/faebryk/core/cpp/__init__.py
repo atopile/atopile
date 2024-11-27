@@ -117,7 +117,9 @@ def compile_and_load():
                 is_pyi=True,
             )
         )
-        run_live(["ruff", "check", "--fix", pyi_out], logger=logger)
+        run_live(
+            [sys.executable, "-m", "ruff", "check", "--fix", pyi_out], logger=logger
+        )
 
 
 # Re-export c++ with type hints provided by __init__.pyi

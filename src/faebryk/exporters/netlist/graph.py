@@ -49,8 +49,6 @@ def get_or_set_name_and_value_of_node(c: Module):
             )
         )
 
-    c.add(F.has_descriptive_properties_defined({"atopile_name": c.get_full_name()}))
-
     return c.get_trait(F.has_overriden_name).get_name(), value
 
 
@@ -164,9 +162,7 @@ class _NetName:
         Prefixes and suffixes are joined with a "-" if they exist.
         """
         return "-".join(
-            str(n)
-            for n in [self.prefix, self.base_name or "net", self.suffix]
-            if n is not None
+            str(n) for n in [self.prefix, self.base_name or "net", self.suffix] if n
         )
 
 
