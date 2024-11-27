@@ -152,7 +152,7 @@ class UserTypeError(UserException):
 
 class UserValueError(UserException):
     """
-    Raised if something is the wrong type.
+    Raised if something is the correct type but an invalid value.
     """
 
 
