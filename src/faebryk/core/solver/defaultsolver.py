@@ -20,6 +20,7 @@ from faebryk.core.solver.analytical import (
     convert_inequality_with_literal_to_subset,
     fold_literals,
     merge_intersect_subsets,
+    remove_empty_graphs,
     remove_obvious_tautologies,
     remove_unconstrained,
     resolve_alias_classes,
@@ -85,6 +86,7 @@ class DefaultSolver(Solver):
             ("Associative expressions Full", compress_associative),
             ("Fold literals", fold_literals),
             ("Merge intersecting subsets", merge_intersect_subsets),
+            ("Remove empty graphs", remove_empty_graphs),
         ]
         subset_dirty_algorithms = [
             ("Upper estimation", upper_estimation_of_expressions_with_subsets),
@@ -99,6 +101,7 @@ class DefaultSolver(Solver):
             algo_name: str,
             algo: Callable[[Mutator], None],
         ):
+            nonlocal print_context
             mutators = Mutators(*graphs)
             mutators.run(algo)
             algo_repr_map, algo_graphs, algo_dirty = mutators.close()
@@ -106,7 +109,6 @@ class DefaultSolver(Solver):
                 logger.info(
                     f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
                 )
-                nonlocal print_context
                 print_context = mutators.debug_print(print_context)
             # TODO assert all new graphs
             return algo_repr_map, algo_graphs, algo_dirty
@@ -123,7 +125,10 @@ class DefaultSolver(Solver):
         graphs = [g]
 
         while any_dirty and len(graphs) > 0:
-            v_count = sum(g.node_count for g in graphs)
+            v_count = sum(
+                len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
+                for g in graphs
+            )
             logger.info(
                 f"Iteration {iterno} |graphs|: {len(graphs)}, |V|: {v_count}".ljust(
                     80, "-"
@@ -291,7 +296,7 @@ class DefaultSolver(Solver):
                 assert isinstance(lit, BoolSet) or lit is None
                 if lit is None:
                     # TODO remove
-                    logger.warning(repr_map.repr_map[pred])
+                    logger.warning(repr_map.repr_map[pred].compact_repr())
                     result.unknown_predicates.append(p)
                 elif True in lit:
                     result.true_predicates.append(p)

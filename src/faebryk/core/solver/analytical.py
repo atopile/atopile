@@ -9,6 +9,7 @@ from typing import cast
 
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
+    ConstrainableExpression,
     Domain,
     Expression,
     GreaterOrEqual,
@@ -24,6 +25,7 @@ from faebryk.core.solver.utils import (
     CanonicalOperation,
     FullyAssociative,
     Mutator,
+    alias_is_and_check_constrained,
     alias_is_literal,
     flatten_associative,
     get_constrained_expressions_involved_in,
@@ -377,6 +379,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             continue
 
         operands = []
+        has_subset_literal = False
         for op in expr.operands:
             if not isinstance(op, ParameterOperatable):
                 operands.append(op)
@@ -386,9 +389,33 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
                 operands.append(op)
                 continue
             operands.append(subset_lits)
+            has_subset_literal = True
+
+        if not has_subset_literal:
+            continue
 
         # Make new expr with subset literals
         new_expr = type(expr)(*[mutator.get_copy(operand) for operand in operands])
         logger.debug(f"Adding upper estimate {expr} subset {new_expr}")
         # Constrain subset on copy of old expr
         cast_assert(Expression, mutator.get_copy(expr)).constrain_subset(new_expr)
+
+
+def remove_empty_graphs(mutator: Mutator):
+    """
+    If there is only one predicate, it can be replaced by True
+    If there are no predicates, the graph can be removed
+    """
+    predicates = [
+        p
+        for p in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
+        if p.constrained
+    ]
+
+    if len(predicates) > 1:
+        return
+
+    for p in predicates:
+        alias_is_and_check_constrained(p, True)
+
+    mutator.remove(*GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable))

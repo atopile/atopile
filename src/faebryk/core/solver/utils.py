@@ -70,6 +70,8 @@ S_LOG = ConfigFlag("SLOG", default=False, descr="Log solver operations")
 if S_LOG:
     logger.setLevel(logging.DEBUG)
 
+VERBOSE_TABLE = ConfigFlag("SVERBOSE_TABLE", default=False, descr="Verbose table")
+
 Commutative = (
     Add | Multiply | And | Or | Xor | Union | Intersection | SymmetricDifference
 )
@@ -591,6 +593,7 @@ class Mutator:
 class Mutators:
     def __init__(self, *graphs: Graph):
         self.mutators = [Mutator(g) for g in graphs]
+        self.result_repr_map = {}
 
     def close(self) -> tuple[Mutator.REPR_MAP, list[Graph], bool]:
         if not any(m.dirty for m in self.mutators):
@@ -599,7 +602,12 @@ class Mutators:
         repr_map = {}
         for m in self.mutators:
             repr_map.update(m.close()[0])
-        return repr_map, get_graphs(repr_map.values()), True
+        graphs = get_graphs(repr_map.values())
+
+        assert not (set(m.G for m in self.mutators if m.dirty) & set(graphs))
+        self.result_repr_map = repr_map
+
+        return repr_map, graphs, True
 
     def run(self, algo: Callable[[Mutator], None]):
         for m in self.mutators:
@@ -609,6 +617,9 @@ class Mutators:
         return iter(self.mutators)
 
     def debug_print(self, context_old: ParameterOperatable.ReprContext):
+        if not self.result_repr_map:
+            return
+
         if getattr(sys, "gettrace", lambda: None)():
             log = print
         else:
@@ -628,29 +639,66 @@ class Mutators:
                     context_new.variable_mapping.mapping[d] = (
                         context_old.variable_mapping.mapping[s]
                     )
+        graphs = get_graphs(self.result_repr_map.values())
+
+        new_operatables = {
+            op
+            for g in graphs
+            for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+        }.difference(self.result_repr_map.values())
+
+        rows: list[tuple[str, str]] = []
+
+        for d in new_operatables:
+            new = d.compact_repr(context_new)
+            if VERBOSE_TABLE:
+                new += "\n\n" + repr(d)
+            rows.append(("new", new))
 
         for m in self.mutators:
             for s, d in m.repr_map.items():
-                if s in m.copied:
-                    continue
+                if not VERBOSE_TABLE:
+                    if s in m.copied:
+                        continue
 
-                if isinstance(d, Parameter) and isinstance(s, Parameter):
-                    # TODO maybe print units, domain change
-                    continue
+                    if isinstance(d, Parameter) and isinstance(s, Parameter):
+                        # TODO maybe print units, domain change
+                        continue
 
                 old = s.compact_repr(context_old)
                 new = d.compact_repr(context_new)
+                if VERBOSE_TABLE:
+                    old += "\n\n" + repr(s)
+                    new += "\n\n" + repr(d)
                 if old == new:
                     continue
-                table.add_row(old, new)
+                rows.append((old, new))
 
             for s in m.removed:
-                table.add_row(s.compact_repr(context_old), "removed")
+                old = s.compact_repr(context_old)
+                if VERBOSE_TABLE:
+                    old += "\n\n" + repr(s)
+                rows.append((old, "removed"))
 
-        if table.rows:
+        if rows:
+            rows.sort(key=lambda r: tuple(r))
+            for row in rows:
+                table.add_row(*row)
             console = Console(record=True, width=80, file=io.StringIO())
             console.print(table)
             log(console.export_text(styles=True))
+
+        # TODO remove
+        if len(graphs) != len(self.mutators):
+            logger.debug(
+                f"Mutators created/destroyed graphs: {len(self.mutators)} -> {len(graphs)}"
+            )
+            # for i, g in enumerate(graphs):
+            #    nodes = GraphFunctions(g).nodes_of_type(ParameterOperatable)
+            #    compact_reprs = ",\n    ".join(
+            #        n.compact_repr(context_new) for n in nodes
+            #    )
+            #    logger.debug(f"|Graph {i}|={len(nodes)} [\n    {compact_reprs}\n]")
 
         return context_new
 
