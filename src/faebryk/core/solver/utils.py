@@ -632,13 +632,12 @@ class Mutators:
         context_new = ParameterOperatable.ReprContext()
         context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
 
-        for m in self.mutators:
-            for s, d in m.repr_map.items():
-                if isinstance(s, Parameter) and isinstance(d, Parameter):
-                    s.compact_repr(context_old)
-                    context_new.variable_mapping.mapping[d] = (
-                        context_old.variable_mapping.mapping[s]
-                    )
+        for s, d in self.result_repr_map.items():
+            if isinstance(s, Parameter) and isinstance(d, Parameter):
+                s.compact_repr(context_old)
+                context_new.variable_mapping.mapping[d] = (
+                    context_old.variable_mapping.mapping[s]
+                )
         graphs = get_graphs(self.result_repr_map.values())
 
         new_operatables = {
@@ -655,25 +654,31 @@ class Mutators:
                 new += "\n\n" + repr(d)
             rows.append(("new", new))
 
-        for m in self.mutators:
-            for s, d in m.repr_map.items():
-                if not VERBOSE_TABLE:
-                    if s in m.copied:
-                        continue
+        copied = {op for m in self.mutators for op in m.copied}
 
-                    if isinstance(d, Parameter) and isinstance(s, Parameter):
-                        # TODO maybe print units, domain change
-                        continue
-
-                old = s.compact_repr(context_old)
-                new = d.compact_repr(context_new)
-                if VERBOSE_TABLE:
-                    old += "\n\n" + repr(s)
-                    new += "\n\n" + repr(d)
-                if old == new:
+        for s, d in self.result_repr_map.items():
+            if not VERBOSE_TABLE:
+                if s in copied:
                     continue
-                rows.append((old, new))
 
+                # for no-op mutations (non dirty)
+                if s is d:
+                    continue
+
+                if isinstance(d, Parameter) and isinstance(s, Parameter):
+                    # TODO maybe print units, domain change
+                    continue
+
+            old = s.compact_repr(context_old)
+            new = d.compact_repr(context_new)
+            if VERBOSE_TABLE:
+                old += "\n\n" + repr(s)
+                new += "\n\n" + repr(d)
+            if old == new:
+                continue
+            rows.append((old, new))
+
+        for m in self.mutators:
             for s in m.removed:
                 old = s.compact_repr(context_old)
                 if VERBOSE_TABLE:
@@ -693,14 +698,20 @@ class Mutators:
             logger.debug(
                 f"Mutators created/destroyed graphs: {len(self.mutators)} -> {len(graphs)}"
             )
-            # for i, g in enumerate(graphs):
-            #    nodes = GraphFunctions(g).nodes_of_type(ParameterOperatable)
-            #    compact_reprs = ",\n    ".join(
-            #        n.compact_repr(context_new) for n in nodes
-            #    )
-            #    logger.debug(f"|Graph {i}|={len(nodes)} [\n    {compact_reprs}\n]")
+            # print_all(graphs, context_new)
 
         return context_new
+
+    @staticmethod
+    def print_all(
+        *graphs: Graph,
+        context: ParameterOperatable.ReprContext,
+        type_filter: type[ParameterOperatable] = ParameterOperatable,
+    ):
+        for i, g in enumerate(graphs):
+            nodes = GraphFunctions(g).nodes_of_type(type_filter)
+            compact_reprs = ",\n    ".join(n.compact_repr(context) for n in nodes)
+            logger.debug(f"|Graph {i}|={len(nodes)} [\n    {compact_reprs}\n]")
 
     @staticmethod
     def concat_repr_maps(*repr_maps: Mutator.REPR_MAP) -> Mutator.REPR_MAP:

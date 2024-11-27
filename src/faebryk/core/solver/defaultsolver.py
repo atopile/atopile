@@ -94,6 +94,7 @@ class DefaultSolver(Solver):
 
         print_context = ParameterOperatable.ReprContext()
         debug_name_mappings(print_context, g)
+        Mutators.print_all(g, context=print_context, type_filter=Expression)
 
         def run_algo(
             graphs: list[Graph],
