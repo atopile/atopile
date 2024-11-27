@@ -8,3 +8,7 @@ class is_app_root(L.Module.TraitT.decless()):
     """
     Indicates that the module is the root of an application.
     """
+
+    def on_obj_set(self):
+        obj = self.get_obj(L.Node)
+        obj.is_app_root = True

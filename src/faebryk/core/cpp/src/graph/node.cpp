@@ -101,10 +101,15 @@ std::string Node::get_full_name(bool types) {
     auto p = this->get_parent();
     if (p) {
         auto [parent, name] = *p;
-        auto parent_hierarchy = parent->get_full_name(types);
-        ss << parent_hierarchy << "." << name;
+        if (!parent->get_is_app_root()) {
+            auto parent_hierarchy = parent->get_full_name(types);
+            ss << parent_hierarchy << ".";
+        }
+        ss << name;
     } else {
-        ss << this->get_root_id();
+        if (!this->get_is_app_root()) {
+            ss << this->get_root_id();
+        }
     }
     if (types) {
         ss << "|" << this->get_type_name();
@@ -244,4 +249,12 @@ bool Node::Type::is_moduleinterface() {
 nb::type_object Node::Type::get_moduleinterface_type() {
     // TODO can be done in a nicer way
     return nb::module_::import_("faebryk.core.moduleinterface").attr("ModuleInterface");
+}
+
+void Node::set_is_app_root(bool is_root) {
+    this->is_app_root = is_root;
+}
+
+bool Node::get_is_app_root() const {
+    return this->is_app_root;
 }

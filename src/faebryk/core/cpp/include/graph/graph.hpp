@@ -82,6 +82,7 @@ class Node {
   private:
     std::optional<nb::object> py_handle{};
     std::optional<Type> type{};
+    bool is_app_root = false;
 
   private:
     std::shared_ptr<GraphInterfaceSelf> self;
@@ -116,6 +117,9 @@ class Node {
     // TODO replace with constructor
     void set_py_handle(nb::object handle);
     std::optional<nb::object> get_py_handle();
+
+    void set_is_app_root(bool is_root);
+    bool get_is_app_root() const;
 
   private:
     std::unordered_set<Node_ref> get_children_all(bool include_root);
