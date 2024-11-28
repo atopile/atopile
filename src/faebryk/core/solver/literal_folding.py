@@ -36,6 +36,7 @@ from faebryk.core.solver.utils import (
     Mutator,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
+    no_other_constrains,
     try_extract_all_literals,
     try_extract_boolset,
     try_extract_numeric_literal,
@@ -421,6 +422,7 @@ def fold_is(
     P is! True -> P!
     P is! False -> ¬!P
     P1 is! P2! -> P1!
+    A is B | A or B unconstrained -> True
     # literals
     X is Y | X == Y -> True
     X is Y | X != Y -> False
@@ -460,6 +462,15 @@ def fold_is(
         if BoolSet(False) in literal_operands:
             for p in expr.get_operatable_operands(ConstrainableExpression):
                 Not(p).constrain()
+
+    if not literal_operands:
+        # A is B | A or B unconstrained -> True
+        if no_other_constrains(expr.operands[0], expr):
+            alias_is_literal_and_check_predicate_eval(expr, True, mutator)
+            return
+        if no_other_constrains(expr.operands[1], expr):
+            alias_is_literal_and_check_predicate_eval(expr, True, mutator)
+            return
 
 
 def fold_subset(

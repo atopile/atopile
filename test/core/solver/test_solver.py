@@ -143,7 +143,7 @@ def test_shortcircuit_logic_or():
     ored.constrain()
     G = ored.get_graph()
     solver = DefaultSolver()
-    repr_map = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_one_no_guess_solving(G)
     assert repr_map[ored] == BoolSet(True)
 
 
@@ -253,7 +253,7 @@ def test_less_obvious_contradiction_by_literal():
     G = A.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        repr_map = solver.phase_one_no_guess_solving(G)
+        repr_map, context = solver.phase_one_no_guess_solving(G)
         from faebryk.core.graph import GraphFunctions
 
         for op in GraphFunctions(repr_map.repr_map[A].get_graph()).nodes_of_type(
@@ -302,7 +302,7 @@ def test_symmetric_inequality_correlated():
 
     G = p0.get_graph()
     solver = DefaultSolver()
-    repr_map = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_one_no_guess_solving(G)
     assert repr_map[p0] == repr_map[p1]
     assert repr_map[p0] == Range(0 * P.V, 10 * P.V)
 
@@ -332,7 +332,7 @@ def test_simple_literal_folds_arithmetic(
     G = expr.get_graph()
 
     solver = DefaultSolver()
-    repr_map = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_one_no_guess_solving(G)
     logger.info(f"{repr_map.repr_map}")
     deducted_subset = repr_map.try_get_literal(expr, IsSubset)
     assert deducted_subset == expected_result
@@ -361,7 +361,7 @@ def test_super_simple_literal_folding(
     (expr < 100.0).constrain()
     G = expr.get_graph()
 
-    repr_map = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_one_no_guess_solving(G)
     assert repr_map[expr] == Quantity_Interval_Disjoint.from_value(expected)
 
 
@@ -373,7 +373,7 @@ def test_literal_folding_add_multiplicative():
 
     G = expr.get_graph()
     solver = DefaultSolver()
-    repr_map = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_one_no_guess_solving(G)
     rep_add = repr_map.repr_map[expr]
     a_res = repr_map.repr_map[A]
     assert isinstance(rep_add, Multiply)
@@ -399,7 +399,7 @@ def test_literal_folding_add_multiplicative_2():
 
     G = expr.get_graph()
     solver = DefaultSolver()
-    repr_map = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_one_no_guess_solving(G)
     rep_add = repr_map.repr_map[expr]
     a_res = repr_map.repr_map[A]
     b_res = repr_map.repr_map[B]
@@ -426,7 +426,7 @@ def test_base_unit_switch():
 
     G = A.get_graph()
     solver = DefaultSolver()
-    repr_map = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_one_no_guess_solving(G)
     assert repr_map[A] == RangeWithGaps.from_value((100 * P.mAh, 600 * P.mAh))
 
 
@@ -529,4 +529,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_simple_negative_pick)
+    typer.run(test_remove_obvious_tautologies)

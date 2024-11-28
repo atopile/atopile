@@ -19,7 +19,6 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
     Predicate,
-    has_implicit_constraints_recursive,
 )
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
@@ -132,6 +131,7 @@ def remove_congruent_expressions(mutator: Mutator):
 
         eq_id = id(eq_class)
         if eq_id not in repres:
+            logger.warning(f"Remove congruent: {eq_class}")
             representative = mutator.mutate_expression(expr)
             repres[eq_id] = representative
             if isinstance(representative, ConstrainableExpression):
@@ -375,51 +375,6 @@ def fold_literals(mutator: Mutator):
             non_replacable_nonliteral_operands=list(non_replacable_nonliteral_operands),
             mutator=mutator,
         )
-
-
-# TODO move into fold_alias
-def remove_obvious_tautologies(mutator: Mutator):
-    """
-    Remove tautologies like:
-     - A is A
-     - A is B | A or B unconstrained
-     - Lit1 is Lit2 | Lit1 and Lit2 are equal literals
-    """
-
-    def remove_is(pred_is: Is):
-        if len(pred_is.get_operations()) == 0:
-            mutator.remove(pred_is)
-        else:
-            pred_is.alias_is(True)
-
-    def known_unconstrained(po: ParameterOperatable) -> bool:
-        no_other_constraints = (
-            len(get_constrained_expressions_involved_in(po).difference({pred_is})) == 0
-        )
-        return no_other_constraints and not po.has_implicit_constraints_recursive()
-
-    is_predicates = GraphFunctions(mutator.G).nodes_of_type(Is)
-
-    for pred_is in ParameterOperatable.sort_by_depth(is_predicates, ascending=True):
-        left, right = pred_is.operands
-        left_is_literal = not isinstance(left, ParameterOperatable)
-        right_is_literal = not isinstance(right, ParameterOperatable)
-
-        if (
-            left is right
-            or (left_is_literal and right_is_literal and left == right)  # TODO obv eq
-            and not has_implicit_constraints_recursive(left)
-            and not has_implicit_constraints_recursive(right)
-        ):
-            # A == A
-            # L1 == L2
-            remove_is(pred_is)
-        elif not (left_is_literal or right_is_literal) and (
-            (isinstance(left, Parameter) and known_unconstrained(left))
-            or (isinstance(right, Parameter) and known_unconstrained(right))
-        ):
-            # A == B | A or B unconstrained
-            remove_is(pred_is)
 
 
 def upper_estimation_of_expressions_with_subsets(mutator: Mutator):

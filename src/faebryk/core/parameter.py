@@ -33,6 +33,7 @@ from faebryk.libs.util import (
     abstract,
     cast_assert,
     find,
+    unique,
 )
 
 logger = logging.getLogger(__name__)
@@ -382,7 +383,7 @@ class ParameterOperatable(Node):
         except KeyErrorAmbiguous as e:
             duplicates = e.duplicates
             if issubclass(op, Is):
-                if len(set(duplicates)) != 1:
+                if len(unique(duplicates, key=lambda x: x)) != 1:
                     raise
                 return duplicates[0]
             elif issubclass(op, IsSubset):

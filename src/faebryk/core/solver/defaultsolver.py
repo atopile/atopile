@@ -24,7 +24,6 @@ from faebryk.core.solver.analytical import (
     predicate_literal_deduce,
     remove_congruent_expressions,
     remove_empty_graphs,
-    remove_obvious_tautologies,
     remove_unconstrained,
     resolve_alias_classes,
     upper_estimation_of_expressions_with_subsets,
@@ -90,7 +89,6 @@ class DefaultSolver(Solver):
             ("Remove unconstrained", remove_unconstrained),
             ("Remove congruent expressions", remove_congruent_expressions),
             ("Alias classes", resolve_alias_classes),
-            ("Remove obvious tautologies", remove_obvious_tautologies),
             (
                 "Inequality with literal to subset",
                 convert_inequality_with_literal_to_subset,

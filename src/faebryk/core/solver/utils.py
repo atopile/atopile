@@ -155,7 +155,12 @@ def try_extract_all_literals[T: P_Set](
 
 
 def alias_is_literal(po: ParameterOperatable, literal: ParameterOperatable.Literal):
-    existing = po.try_get_literal()
+    try:
+        existing = po.try_get_literal()
+    except KeyErrorAmbiguous as e:
+        raise ContradictionByLiteral(
+            f"Duplicate unequal is literals: {e.duplicates}"
+        ) from e
     literal = make_lit(literal)
 
     if existing is not None:
@@ -186,6 +191,15 @@ def alias_is_literal_and_check_predicate_eval(
         if op.try_get_literal() is None:
             continue
         mutator.mark_predicate_true(op)
+
+
+def no_other_constrains(
+    po: ParameterOperatable, *other: ConstrainableExpression
+) -> bool:
+    no_other_constraints = (
+        len(get_constrained_expressions_involved_in(po).difference(other)) == 0
+    )
+    return no_other_constraints and not po.has_implicit_constraints_recursive()
 
 
 def flatten_associative[T: Associative](
