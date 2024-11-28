@@ -341,9 +341,19 @@ def fold_literals(mutator: Mutator):
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
 
+        # TODO
+        # A is! 5, A is! Add(10, 2)
+        # A ...
+        # Add(10, 2) -> A -> 5
         # don't run on aliased exprs
-        if ParameterOperatable.try_get_literal(expr) is not None:
-            continue
+        # if (
+        #    not (
+        #        not isinstance(expr, ConstrainableExpression)
+        #        or expr._solver_evaluates_to_true
+        #    )
+        #    and ParameterOperatable.try_get_literal(expr) is not None
+        # ):
+        #    continue
 
         operands = expr.operands
         # TODO consider extracting instead
@@ -448,7 +458,8 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         new_expr = type(expr)(*[mutator.get_copy(operand) for operand in operands])
         logger.debug(f"Adding upper estimate {expr} subset {new_expr}")
         # Constrain subset on copy of old expr
-        cast_assert(Expression, mutator.get_copy(expr)).constrain_subset(new_expr)
+        ss = cast_assert(Expression, mutator.get_copy(expr)).constrain_subset(new_expr)
+        mutator.mark_predicate_true(ss)
 
 
 def remove_empty_graphs(mutator: Mutator):

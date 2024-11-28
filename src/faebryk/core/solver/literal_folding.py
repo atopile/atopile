@@ -370,7 +370,6 @@ def fold_not(
         raise Contradiction(expr)
 
     if replacable_nonliteral_operands:
-        op = next(iter(replacable_nonliteral_operands.keys()))
         if isinstance(op, Not):
             inner = op.operands[0]
             # inner Not would have run first
@@ -380,14 +379,24 @@ def fold_not(
 
         # TODO this is kinda ugly
         # ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
-        if isinstance(op, Or) and expr.constrained:
-            for inner_op in op.operands:
-                if isinstance(inner_op, Not):
-                    for not_op in inner_op.operands:
-                        if isinstance(not_op, ConstrainableExpression):
-                            not_op.constrain()
-                elif isinstance(inner_op, ConstrainableExpression):
-                    Not(inner_op).constrain()
+        if expr.constrained:
+            # ¬( v )
+            if isinstance(op, Or):
+                for inner_op in op.operands:
+                    # ¬(¬A v ...)
+                    if isinstance(inner_op, Not):
+                        for not_op in inner_op.operands:
+                            if (
+                                isinstance(not_op, ConstrainableExpression)
+                                and not not_op.constrained
+                            ):
+                                cast_assert(
+                                    ConstrainableExpression,
+                                    mutator.get_copy(not_op),
+                                ).constrain()
+                    # ¬(A v ...)
+                    elif isinstance(inner_op, ConstrainableExpression):
+                        Not(mutator.get_copy(inner_op)).constrain()
 
 
 def if_operands_same_make_true(pred: Predicate, mutator: Mutator) -> bool:

@@ -176,7 +176,7 @@ def alias_is_literal_and_check_predicate_eval(
     if not expr.constrained:
         return
     # all predicates alias to True, so alias False will already throw
-    assert value
+    assert value == BoolSet(True)
     mutator.mark_predicate_true(expr)
 
     # mark all alias_is P -> True as true

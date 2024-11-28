@@ -545,7 +545,8 @@ class Expression(ParameterOperatable):
         if hasattr(self, "_depth"):
             return self._depth
         self._depth = 1 + max(
-            op.depth() if isinstance(op, Expression) else 0 for op in self.operands
+            [0]
+            + [op.depth() if isinstance(op, Expression) else 0 for op in self.operands],
         )
         return self._depth
 

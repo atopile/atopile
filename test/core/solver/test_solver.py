@@ -529,4 +529,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_simple_pick)
+    typer.run(test_simple_negative_pick)

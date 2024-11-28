@@ -117,9 +117,9 @@ class DefaultSolver(Solver):
             algo: Callable[[Mutator], None],
         ):
             nonlocal print_context_
-            logger.info(
-                f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
-            )
+            # logger.info(
+            #    f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+            # )
             mutators = Mutators(*graphs)
             mutators.run(algo)
             algo_repr_map, algo_graphs, algo_dirty = mutators.close()
