@@ -7,7 +7,6 @@ from typing import Optional, Type
 
 import rich
 from antlr4 import ParserRuleContext
-from rich.traceback import Traceback
 
 from atopile import telemetry
 from atopile.parse_utils import get_src_info_from_ctx
@@ -182,17 +181,17 @@ class UserPythonConstructionError(UserPythonModuleError):
 _logged_exceptions: set[tuple[Type[Exception], tuple]] = set()
 
 
-def _log_user_errors(ex: UserException | ExceptionGroup, de_dup: bool = True):
+def _log_user_errors(ex: _BaseBaseUserException | ExceptionGroup, de_dup: bool = True):
     """Helper function to consistently write errors to the log"""
     if isinstance(ex, ExceptionGroup):
         if ex.message:
             logger.error(ex.message)
 
-        nice_errors, naughty_errors = ex.split((UserException, ExceptionGroup))
+        nice_errors, naughty_errors = ex.split((_BaseBaseUserException, ExceptionGroup))
 
         if nice_errors:
             for e in nice_errors.exceptions:
-                assert isinstance(e, UserException)
+                assert isinstance(e, _BaseBaseUserException)
                 _log_user_errors(e)
 
         if naughty_errors:
@@ -260,12 +259,9 @@ def muffle_fatalities():
     except* Exception as ex:
         if isinstance(ex, BaseExceptionGroup):
             # Rich handles ExceptionGroups poorly, so we do it ourselves here
+            # TODO: just use the Rich-installed traceback handler
             for e in ex.exceptions:
-                logger.error(f"Uncaught compiler exception: {e}")
-                tb = Traceback.from_exception(
-                    type(e), e, e.__traceback__, show_locals=True
-                )
-                rich.print(tb)
+                logger.exception("Uncaught compiler exception", exc_info=e)
 
             with contextlib.suppress(Exception):
                 telemetry.telemetry_data.crash += len(ex.exceptions)
@@ -273,12 +269,11 @@ def muffle_fatalities():
             with contextlib.suppress(Exception):
                 telemetry.telemetry_data.crash += 1
 
-        raise
+        do_exit = True
 
     finally:
         telemetry.log_telemetry()
 
-    # Raisinng sys.exit here so all exceptions can be raised
     if do_exit:
         sys.exit(1)
 
