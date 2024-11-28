@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 class UserException(Exception):
     """A user-caused exception."""
 
-    # TODO: Add interface for getting user-facing exception information
+    # TODO: Add / refine interface for getting user-facing exception information
     # - Origin?
     # - Title?
     # - Description?
@@ -21,8 +21,30 @@ class UserException(Exception):
     # - Help text?
     # __print__?
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        title: str | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
+        self.message = args[0] if args else ""
+        self._title = title
+
+    @property
+    def title(self):
+        """Return the name of this error, without the "User" prefix."""
+        if self._title is not None:
+            return self._title
+
+        error_name = self.__class__.__name__
+        return error_name.removeprefix("User")
+
+    def get_frozen(self) -> tuple:
+        """
+        Return a frozen version of this error.
+        """
+        return (self.__class__, self.message, self._title)
 
 
 class UserResourceException(UserException):
@@ -209,10 +231,7 @@ class downgrade[T: Exception](Pacman):
             exceptions = [exc]
 
         for e in exceptions:
-            try:
-                e.log(self.logger, self.to_level)
-            except AttributeError:
-                self.logger.log(self.to_level, e)
+            self.logger.log(self.to_level, e)
 
 
 def iter_through_errors[T](
