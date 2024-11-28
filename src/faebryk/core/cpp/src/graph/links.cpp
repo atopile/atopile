@@ -208,6 +208,13 @@ LinkDirectConditional::LinkDirectConditional(FilterF filter,
   : LinkDirect()
   , filter(filter)
   , needs_only_first_in_path(needs_only_first_in_path) {
+
+    // TODO 1 actually check implied is on
+    // TODO 2 implement this
+    //  not easy, needs some changes in how split paths are handled
+    if (!needs_only_first_in_path) {
+        throw std::runtime_error("No support for path conditions with implied links on");
+    }
 }
 
 LinkDirectConditional::LinkDirectConditional(FilterF filter,
@@ -216,6 +223,14 @@ LinkDirectConditional::LinkDirectConditional(FilterF filter,
   : LinkDirect(from, to)
   , filter(filter)
   , needs_only_first_in_path(needs_only_first_in_path) {
+
+    // TODO 1 actually check implied is on
+    // TODO 2 implement this
+    //  not easy, needs some changes in how split paths are handled
+    if (!needs_only_first_in_path) {
+        throw std::runtime_error("No support for path conditions with implied links on");
+    }
+
     this->set_connections(from, to);
 }
 

@@ -313,7 +313,10 @@ def test_specialize_link():
     # test special link
     class _Link(LinkDirectConditional):
         def __init__(self):
-            super().__init__(lambda path: LinkDirectConditionalFilterResult.FILTER_PASS)
+            super().__init__(
+                lambda path: LinkDirectConditionalFilterResult.FILTER_PASS,
+                needs_only_first_in_path=True,
+            )
 
     mifs = times(3, ModuleInterface)
     mifs_special = times(3, Specialized)
@@ -561,4 +564,5 @@ def test_regression_rp2040_usb_diffpair_full():
 
 
 if __name__ == "__main__":
-    test_regression_rp2040_usb_diffpair()
+    # test_regression_rp2040_usb_diffpair()
+    test_up_connect_simple_multiple()

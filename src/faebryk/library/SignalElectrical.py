@@ -21,7 +21,7 @@ class SignalElectrical(F.Signal):
                 lambda path: LinkDirectConditionalFilterResult.FILTER_PASS
                 if all(self.test(dst.node) for dst in path)
                 else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE,
-                needs_only_first_in_path=False,
+                needs_only_first_in_path=True,
             )
 
     # ----------------------------------------

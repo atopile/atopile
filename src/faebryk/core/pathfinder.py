@@ -36,8 +36,8 @@ set_max_paths(int(MAX_PATHS), int(MAX_PATHS_NO_NEW_WEAK), int(MAX_PATHS_NO_WEAK)
 def find_paths(src: Node, dst: Sequence[Node]) -> Sequence[Path]:
     paths, counters = find_paths_cpp(src, dst)
 
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(Counters(counters))
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(Counters(counters))
     return paths
 
 
