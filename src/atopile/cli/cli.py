@@ -5,15 +5,11 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from rich.traceback import install as install_traceback_handler
 
 from atopile import telemetry
 from atopile.cli.logging import logger
-from atopile.cli.rich_console import console
 
 from . import build, configure, create, inspect, install, view
-
-install_traceback_handler(console=console, suppress=[typer])
 
 app = typer.Typer(no_args_is_help=True)
 

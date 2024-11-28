@@ -5,14 +5,40 @@ from types import ModuleType, TracebackType
 
 import typer
 from rich._null_file import NullFile
+from rich.console import Console
+from rich.highlighter import RegexHighlighter
 from rich.logging import RichHandler
+from rich.theme import Theme
 from rich.traceback import Traceback
+from rich.traceback import install as install_traceback_handler
 
 import atopile
 import faebryk
 from atopile import address
-from atopile.cli.rich_console import console
 from atopile.errors import UserPythonModuleError
+
+
+class NodeHighlighter(RegexHighlighter):
+    """
+    Apply style to anything that looks like an faebryk Node\n
+    <*|XOR_with_NANDS.nands[2]|NAND.inputs[0]|Logic> with
+    <*|TI_CD4011BE.nands[2]|ElectricNAND.inputs[0]|ElectricLogic>\n
+    \t<> = Node\n
+    \t|  = Type\n
+    \t.  = Parent\n
+    \t*  = Root
+    """
+
+    base_style = "node."
+    highlights = [
+        #  r"(?P<Rest>(.*))",
+        r"(?P<Node>([/</>]))",
+        r"[?=\|](?P<Type>([a-zA-Z_0-9]+))[?=\>]",
+        r"[\.](?P<Child>([a-zA-Z_0-9]+))[?=\[]",
+        r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",
+        r"[?<=*.](?P<Root>(\*))",
+        r"[?=\[](?P<Number>([0-9]+))[?=\]]",
+    ]
 
 
 class AtoLogHandler(RichHandler):
@@ -173,7 +199,24 @@ class AtoLogFormatter(logging.Formatter):
         return f"{message}{fmt_message}".strip()
 
 
+console = Console(
+    theme=Theme(
+        {
+            "node.Node": "bold magenta",
+            "node.Type": "bright_cyan",
+            "node.Parent": "bright_red",
+            "node.Child": "bright_yellow",
+            "node.Root": "bold yellow",
+            "node.Number": "bright_green",
+            #   "node.Rest": "bright_black",
+            "logging.level.warning": "yellow",
+        }
+    )
+)
+
+
 logger = logging.getLogger(__name__)
+
 handler = AtoLogHandler(
     console=console,
     rich_tracebacks=True,
@@ -183,8 +226,11 @@ handler = AtoLogHandler(
         UserPythonModuleError: [atopile, faebryk],
     },
     tracebacks_unwrap=[UserPythonModuleError],
+    highlighter=NodeHighlighter(),
 )
 
 handler.setFormatter(AtoLogFormatter())
 
 logging.basicConfig(level="INFO", handlers=[handler])
+
+install_traceback_handler(console=console, suppress=[typer])
