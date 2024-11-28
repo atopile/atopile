@@ -207,7 +207,11 @@ def _log_user_errors(ex: UserException | ExceptionGroup, de_dup: bool = True):
 
     # Format and printout the error
     _logged_exceptions.add(hashable)
-    logger.error(ex)
+
+    if isinstance(ex, UserPythonModuleError):
+        logger.exception(ex.message, exc_info=ex)
+    else:
+        logger.error(ex.message, extra={"title": ex.title})
 
 
 @contextmanager

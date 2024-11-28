@@ -94,13 +94,9 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
         app_class = import_from_path(
             build_ctx.entry.file_path, build_ctx.entry.entry_section
         )
-    except (FileNotFoundError, ImportError) as e:
-        raise errors.UserPythonLoadError(
+    except Exception as e:
+        raise errors.UserPythonModuleError(
             f"Cannot import build entry {build_ctx.entry.file_path}"
-        ) from e
-    except AttributeError as e:
-        raise errors.UserPythonLoadError(
-            f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.entry_section}"
         ) from e
 
     if not isinstance(app_class, type):
@@ -108,7 +104,12 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
             f"Build entry {build_ctx.entry.file_path} is not a module we can instantiate"
         )
 
-    app = app_class()
+    try:
+        app = app_class()
+    except Exception as e:
+        raise errors.UserPythonConstructionError(
+            f"Cannot construct build entry {build_ctx.entry.file_path}"
+        ) from e
 
     return app
 
