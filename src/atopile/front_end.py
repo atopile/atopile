@@ -24,21 +24,24 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, config, errors
+from atopile._shim import Component, shim_map
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
-from faebryk.libs.exceptions import ExceptionAccumulator, iter_through_errors
-from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.exceptions import (
+    ExceptionAccumulator,
+    downgrade,
+    iter_through_errors,
+)
 from faebryk.libs.units import P, Quantity, Unit
 from faebryk.libs.util import (
     FuncDict,
     has_attr_or_property,
     import_from_path,
     try_set_attr,
-    write_only_property,
 )
 
 # Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
@@ -388,229 +391,10 @@ def ato_error_converter():
             raise ex
 
 
-class _has_kicad_footprint_name_defined(F.has_footprint_impl):
+class DeprecationError(errors.UserException):
     """
-    This trait defers footprint creation until it's needed,
-    which means we can construct the underlying pin map
+    Raised when a deprecated feature is used.
     """
-
-    def __init__(self, lib_reference: str, pinmap: dict[str, F.Electrical]):
-        super().__init__()
-        self.lib_reference = lib_reference
-        self.pinmap = pinmap
-
-    def _try_get_footprint(self) -> F.Footprint | None:
-        if fps := self.obj.get_children(direct_only=True, types=F.Footprint):
-            return next(iter(fps))
-        else:
-            return None
-
-    def get_footprint(self) -> F.Footprint:
-        if fps := self._try_get_footprint():
-            return fps
-        else:
-            fp = F.KicadFootprint(
-                self.lib_reference,
-                pin_names=list(self.pinmap.keys()),
-            )
-            self.get_trait(F.can_attach_to_footprint).attach(fp)
-            self.set_footprint(fp)
-            return fp
-
-    def handle_duplicate(
-        self, old: "_has_kicad_footprint_name_defined", _: fab_param.Node
-    ) -> bool:
-        if old._try_get_footprint():
-            raise RuntimeError("Too late to set footprint")
-
-        # Update the existing trait...
-        old.lib_reference = self.lib_reference
-        old.pinmap.update(self.pinmap)
-        # ... and we don't need to attach the new
-        return False
-
-
-class _Component(L.Module):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.pinmap = {}
-
-    @L.rt_field
-    def attach_to_footprint(self):
-        return F.can_attach_to_footprint_via_pinmap(self.pinmap)
-
-    @L.rt_field
-    def has_designator_prefix(self):
-        return F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
-
-    def add_pin(self, name: str) -> F.Electrical:
-        if _is_int(name):
-            py_name = f"_{name}"
-        else:
-            py_name = name
-
-        mif = self.add(F.Electrical(), name=py_name)
-        self.pinmap[name] = mif
-        return mif
-
-    @write_only_property
-    def footprint(self, value: str):
-        self.add(_has_kicad_footprint_name_defined(value, self.pinmap))
-
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
-    @write_only_property
-    def designator(self, value: str):
-        self.add(F.has_designator_prefix_defined(value))
-
-
-class _ShimResistor(F.Resistor):
-    """Temporary shim to translate `value` to `resistance`."""
-
-    @property
-    def value(self) -> Range:
-        return self.resistance
-
-    @value.setter
-    def value(self, value: Range):
-        _alias_is(self.resistance, value)
-
-    @write_only_property
-    def footprint(self, value: str):
-        if value.startswith("R"):
-            value = value[1:]
-        self.package = value
-
-    @write_only_property
-    def package(self, value: str):
-        reqs = [(value, 2)]  # package, pin-count
-        self.add(F.has_footprint_requirement_defined(reqs))
-
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
-    @property
-    def p1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-    @property
-    def _1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def _2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-
-class _ShimCapacitor(F.Capacitor):
-    """Temporary shim to translate `value` to `capacitance`."""
-
-    class has_power(L.ModuleInterface.TraitT.decless()):
-        power: F.ElectricPower
-
-    @property
-    def value(self) -> Range:
-        return self.capacitance
-
-    @value.setter
-    def value(self, value: Range):
-        _alias_is(self.capacitance, value)
-
-    @write_only_property
-    def footprint(self, value: str):
-        if value.startswith("C"):
-            value = value[1:]
-        self.package = value
-
-    @write_only_property
-    def package(self, value: str):
-        reqs = [(value, 2)]  # package, pin-count
-        self.add(F.has_footprint_requirement_defined(reqs))
-
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
-    @property
-    def p1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-    @property
-    def _1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def _2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-    @property
-    def power(self) -> F.ElectricPower:
-        if trait := self.try_get_trait(self.has_power):
-            return trait.power
-        else:
-            return self.add(self.has_power()).power
 
 
 class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
@@ -630,7 +414,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def __init__(self) -> None:
         super().__init__()
         self._scopes = FuncDict[ParserRuleContext, Context]()  # type: ignore
-        self._python_classes = FuncDict[ap.BlockdefContext, Type[_Component]]()  # type: ignore
+        self._python_classes = FuncDict[ap.BlockdefContext, Type[Component]]()  # type: ignore
         self._node_stack = StackList[L.Node]()  # type: ignore
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()  # type: ignore
         self._param_assignments = FuncDict[
@@ -739,23 +523,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def _import_item(
         self, context: Context, item: Context.ImportPlaceholder
     ) -> Type[L.Node] | ap.BlockdefContext:
-        shim_map: dict[tuple[str, Ref], Type[L.Node]] = {
-            ("generics/resistors.ato", Ref.from_one("Resistor")): _ShimResistor,
-            ("generics/capacitors.ato", Ref.from_one("Capacitor")): _ShimCapacitor,
-        }
-        ref = (item.from_path, item.ref)
-        if ref in shim_map:
-            return shim_map[ref]
-
+        # Build up search paths to check for the import in
         prj_context = config.get_project_context()
         search_paths = [
             prj_context.src_path,
             prj_context.module_path,
         ]
-
         if context.file_path is not None:
             search_paths.insert(0, context.file_path.parent)
 
+        # Iterate though them, checking if any contains the thing we're looking for
         for search_path in search_paths:
             candidate_from_path = search_path / item.from_path
             if candidate_from_path.exists():
@@ -767,6 +544,18 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             )
 
         from_path = self._sanitise_path(candidate_from_path)
+
+        # TODO: @v0.4: remove this shimming
+        import_addr = address.AddrStr.from_parts(from_path, ".".join(item.ref))
+        for shim_addr, (shim_cls, preferred) in shim_map.items():
+            if import_addr.endswith(shim_addr):
+                with downgrade(DeprecationError):
+                    raise DeprecationError.from_ctx(
+                        item.original_ctx,
+                        f"Deprecated: {import_addr} is deprecated and a likeness"
+                        f" is being shimmed in place for you. Use {preferred} instead.",
+                    )
+                return shim_cls
 
         if from_path.suffix == ".py":
             try:
@@ -789,15 +578,17 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         elif from_path.suffix == ".ato":
             context = self._index_file(from_path)
-            node = item
-            for ref in item.ref:
-                if ref not in context.refs:
-                    raise errors.UserKeyError.from_ctx(
-                        item.original_ctx, f"No declaration of {ref} in {from_path}"
-                    )
-                node = context.refs[ref]
+            if item.ref not in context.refs:
+                raise errors.UserKeyError.from_ctx(
+                    item.original_ctx, f"No declaration of {ref} in {from_path}"
+                )
+            node = context.refs[item.ref]
 
-            assert isinstance(node, type) and issubclass(node, L.Node)
+            assert (
+                isinstance(node, type)
+                and issubclass(node, L.Node)
+                or isinstance(node, ap.BlockdefContext | ap.File_inputContext)
+            )
             return node
 
         else:
@@ -913,11 +704,20 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
                 assert issubclass(super_class, L.Node)
 
-                class Class_(super_class):  # type: ignore
-                    __name__ = super_ctx.name().getText()
-                    __atopile_src_ctx__ = super_ctx
+                # Create a new type with a more descriptive name
+                type_name = super_ctx.name().getText()
+                type_qualname = f"{super_class.__module__}.{type_name}"
 
-                super_class = Class_
+                super_class = type(
+                    type_name,  # Class name
+                    (super_class,),  # Base classes
+                    {
+                        "__module__": super_class.__module__,
+                        "__qualname__": type_qualname,
+                        "__atopile_src_ctx__": super_ctx,
+                    },
+                )
+
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
@@ -937,7 +737,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 if block_type.INTERFACE():
                     base_class = L.ModuleInterface
                 elif block_type.COMPONENT():
-                    base_class = _Component
+                    base_class = Component
                 elif block_type.MODULE():
                     base_class = L.Module
                 else:
@@ -1045,7 +845,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         else:
             raise ValueError(f"Unhandled pin name type {ctx}")
 
-        if not isinstance(self._current_node, _Component):
+        if not isinstance(self._current_node, Component):
             raise errors.UserTypeError.from_ctx(
                 ctx, f"Can't declare pins on components of type {self._current_node}"
             )
@@ -1055,15 +855,69 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visitName(ctx.name())
-        mif = self._current_node.add(F.Electrical(), name=name)
+        # TODO: @v0.4: remove this protection
+        if (
+            has_attr_or_property(self._current_node, name)
+            or name in self._current_node.runtime
+        ):
+            with downgrade(DeprecationError):
+                raise DeprecationError(
+                    f"Signal {name} already exists, skipping."
+                    " In the future this will be an error."
+                )
+            mif = self.get_node_attr(self._current_node, name)
+        else:
+            mif = self._current_node.add(F.Electrical(), name=name)
+
         return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+
+    @classmethod
+    def _connect(cls, a: L.ModuleInterface, b: L.ModuleInterface, nested: bool = False):
+        """
+        FIXME: In ato, we allowed duck-typing of connectables
+        We need to reconcile this with the strong typing
+        in faebryk's connect method
+        For now, we'll attempt to connect by name, and log a deprecation
+        warning if that succeeds, else, re-raise the exception emitted
+        by the connect method
+        """
+        try:
+            a.connect(b)
+        except NodeException as top_ex:
+            for name, (c_a, c_b) in a.zip_children_by_name_with(
+                b, L.ModuleInterface
+            ).items():
+                if c_a is None:
+                    if has_attr_or_property(a, name):
+                        c_a = getattr(a, name)
+                    else:
+                        raise
+
+                if c_b is None:
+                    if has_attr_or_property(b, name):
+                        c_b = getattr(b, name)
+                    else:
+                        raise
+
+                try:
+                    cls._connect(c_a, c_b, nested=True)
+                except NodeException:
+                    raise top_ex
+
+            else:
+                if not nested:
+                    logging.warning(
+                        f"Deprecated: Connected {a} to {b} by duck-typing."
+                        " They should be of the same type."
+                    )
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
         """Connect interfaces together"""
         connectables = [self.visitConnectable(c) for c in ctx.connectable()]
         for err_cltr, (a, b) in iter_through_errors(itertools.pairwise(connectables)):
             with err_cltr():
-                a.connect(b)
+                self._connect(a, b)
+
         return KeyOptMap.empty()
 
     def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:

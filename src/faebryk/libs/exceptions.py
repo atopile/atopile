@@ -21,6 +21,9 @@ class UserException(Exception):
     # - Help text?
     # __print__?
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
 
 def in_debug_session() -> ModuleType | None:
     """
@@ -162,7 +165,10 @@ class ExceptionAccumulator:
                 ):
                     displayed_errors.append(error)
 
-            raise ExceptionGroup(self.group_message, displayed_errors)
+            if len(displayed_errors) > 1:
+                raise ExceptionGroup(self.group_message, displayed_errors)
+            else:
+                raise displayed_errors[0]
 
     def __enter__(self) -> Self:
         return self
