@@ -18,12 +18,12 @@ from faebryk.core.graphinterface import GraphInterfaceSelf
 from faebryk.core.parameter import (
     Abs,
     Add,
-    And,
+    Associative,
     ConstrainableExpression,
     Difference,
-    Divide,
     Domain,
     Expression,
+    FullyAssociative,
     GreaterOrEqual,
     GreaterThan,
     Intersection,
@@ -39,10 +39,8 @@ from faebryk.core.parameter import (
     Predicate,
     Round,
     Sin,
-    Subtract,
     SymmetricDifference,
     Union,
-    Xor,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -71,13 +69,6 @@ if S_LOG:
     logger.setLevel(logging.DEBUG)
 
 VERBOSE_TABLE = ConfigFlag("SVERBOSE_TABLE", default=False, descr="Verbose table")
-
-Commutative = (
-    Add | Multiply | And | Or | Xor | Union | Intersection | SymmetricDifference
-)
-FullyAssociative = Add | Multiply | And | Or | Xor | Union | Intersection
-LeftAssociative = Subtract | Divide | Difference
-Associative = FullyAssociative | LeftAssociative
 
 
 class Contradiction(Exception):
@@ -270,41 +261,25 @@ def flatten_associative[T: Associative](
     return out
 
 
-def parameter_ops_eq_classes(
+def parameter_ops_alias_classes(
     G: Graph,
 ) -> list[set[ParameterOperatable]]:
     """
-    Return for dict[key, set[parameter_operatable]]
-    which maps from each obj to its alias/eq class
+    Return for list[set[parameter_operatable]] = eq classes
     Note: if eq class only single obj, it is still included
+
+    ```
+    A is B, B is C, C is A -> [{A, B, C}]
+    ````
     """
 
-    non_predicate_objs = (
-        GraphFunctions(G)
-        .nodes_of_type(ParameterOperatable)
-        .difference(GraphFunctions(G).nodes_of_type(Predicate))
-    )
-    full_eq = EquivalenceClasses[ParameterOperatable](non_predicate_objs)
+    param_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
+    full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
 
     is_exprs = [e for e in GraphFunctions(G).nodes_of_type(Is) if e.constrained]
 
     for is_expr in is_exprs:
         full_eq.add_eq(*is_expr.operatable_operands)
-
-    # FIXME: not sure it's a good idea to mix alias & eq classes
-    # obvious_eq = defaultdict(list)
-    # for p in non_predicate_objs:
-    #    obvious_eq[p.obviously_eq_hash()].append(p)
-
-    # for candidates in obvious_eq.values():
-    #    if len(candidates) <= 1:
-    #        continue
-    #    # logger.debug(f"#obvious eq candidates: {len(candidates)}")
-    #    for i, p in enumerate(candidates):
-    #        for q in candidates[:i]:
-    #            if p.obviously_eq(q):
-    #                full_eq.add_eq(p, q)
-    #                break
 
     return full_eq.get()
 
@@ -462,7 +437,7 @@ class Mutator:
         """
         if self.has_been_mutated(po):
             if self.get_mutated(po) is not new_po:
-                raise ValueError("already mutated")
+                raise ValueError(f"already mutated to: {self.get_mutated(po)}")
 
         if self.is_removed(po):
             raise ValueError("Object marked removed")

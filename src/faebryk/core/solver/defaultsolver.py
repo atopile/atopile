@@ -22,6 +22,7 @@ from faebryk.core.solver.analytical import (
     fold_literals,
     merge_intersect_subsets,
     predicate_literal_deduce,
+    remove_congruent_expressions,
     remove_empty_graphs,
     remove_obvious_tautologies,
     remove_unconstrained,
@@ -87,6 +88,7 @@ class DefaultSolver(Solver):
 
         iterative_algorithms = [
             ("Remove unconstrained", remove_unconstrained),
+            ("Remove congruent expressions", remove_congruent_expressions),
             ("Alias classes", resolve_alias_classes),
             ("Remove obvious tautologies", remove_obvious_tautologies),
             (

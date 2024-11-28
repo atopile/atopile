@@ -1280,6 +1280,9 @@ class EquivalenceClasses[T: Hashable]:
             for v in self.classes[val]:
                 self.classes[v] = self.classes[val1]
 
+    def is_eq(self, a: T, b: T) -> bool:
+        return self.classes[a] is self.classes[b]
+
     def get(self) -> list[set[T]]:
         sets = {id(s): s for s in self.classes.values()}
         return list(sets.values())

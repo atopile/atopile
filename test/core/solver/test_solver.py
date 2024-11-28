@@ -15,6 +15,7 @@ from faebryk.core.parameter import (
     Is,
     IsSubset,
     Multiply,
+    Not,
     Or,
     Parameter,
     ParameterOperatable,
@@ -34,7 +35,7 @@ from faebryk.libs.picker.picker import (
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
-from faebryk.libs.sets.sets import BoolSet
+from faebryk.libs.sets.sets import BoolSet, PlainSet
 from faebryk.libs.units import P, dimensionless, quantity
 
 logger = logging.getLogger(__name__)
@@ -446,6 +447,19 @@ def test_assert_any_predicate_super_basic(predicate_type: type[Predicate]):
     assert result.true_predicates == [(pred, None)]
     assert result.false_predicates == []
     assert result.unknown_predicates == []
+
+
+def test_congruence_filter():
+    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+    x = Is(A, PlainSet(F.LED.Color.EMERALD))
+
+    y1 = Not(x).constrain()
+    y2 = Not(x).constrain()
+    assert y1.is_congruent_to(y2)
+
+    solver = DefaultSolver()
+    result, context = solver.phase_one_no_guess_solving(x.get_graph())
+    assert result.repr_map[y1] is result.repr_map[y2]
 
 
 def test_simple_pick():

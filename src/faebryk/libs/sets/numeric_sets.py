@@ -217,6 +217,9 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def __pow__(self, other: "Numeric_Interval[NumericT]"):
         return self.op_pow_interval(other)
 
+    def is_single_element(self) -> bool:
+        return self._min == self._max
+
 
 def Numeric_Singleton(value: NumericT) -> Numeric_Interval[NumericT]:
     """
@@ -450,6 +453,11 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
 
     def __pow__(self, other: "Numeric_Interval_Disjoint"):
         return self.op_pow_intervals(other)
+
+    def is_single_element(self) -> bool:
+        if self.is_empty():
+            return False
+        return self.min_elem() == self.max_elem()
 
 
 class Numeric_Set_Discrete(Numeric_Interval_Disjoint[NumericT]):

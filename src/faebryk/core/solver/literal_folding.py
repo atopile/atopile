@@ -306,7 +306,7 @@ def fold_or(
         expr, lit_type=BoolSet, accept_partial=True
     )
     # Or(A, B, C, True) -> True
-    if extracted_literals and any(extracted_literals):
+    if extracted_literals and BoolSet(True) in extracted_literals:
         alias_is_literal_and_check_predicate_eval(expr, True, mutator)
         return
 
@@ -362,7 +362,7 @@ def fold_not(
     lits = try_extract_all_literals(expr, lit_type=BoolSet)
     if lits:
         inner = lits[0]
-        alias_is_literal_and_check_predicate_eval(expr, not inner, mutator)
+        alias_is_literal_and_check_predicate_eval(expr, inner.op_not(), mutator)
         return
 
     op = expr.operands[0]

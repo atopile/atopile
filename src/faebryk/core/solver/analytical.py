@@ -5,6 +5,7 @@
 import logging
 from collections import Counter
 from functools import partial
+from itertools import combinations
 from typing import cast
 
 from faebryk.core.graph import GraphFunctions
@@ -31,7 +32,7 @@ from faebryk.core.solver.utils import (
     get_constrained_expressions_involved_in,
     is_replacable,
     merge_parameters,
-    parameter_ops_eq_classes,
+    parameter_ops_alias_classes,
     try_extract_all_literals,
 )
 from faebryk.libs.sets.quantity_sets import (
@@ -39,7 +40,13 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import cast_assert, not_none, partition
+from faebryk.libs.util import (
+    EquivalenceClasses,
+    cast_assert,
+    groupby,
+    not_none,
+    partition,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +100,49 @@ def remove_unconstrained(mutator: Mutator):
         mutator.remove(obj)
 
 
+def remove_congruent_expressions(mutator: Mutator):
+    """
+    Remove expressions that are congruent to other expressions
+
+    ```
+    X1 := A + B, X2 := A + B -> [{X1, X2}, {A}, {B}]
+    ```
+    """
+    # X1 = A + B, X2 = A + B -> X1 is X2
+    # No (Invalid): X1 = A + [0, 10], X2 = A + [0, 10]
+    # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
+
+    all_exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    exprs_by_type = groupby(all_exprs, type)
+    full_eq = EquivalenceClasses[Expression](all_exprs)
+
+    for exprs in exprs_by_type.values():
+        if len(exprs) <= 1:
+            continue
+        # TODO use hash to speed up comparisons
+        for e1, e2 in combinations(exprs, 2):
+            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(e2):
+                full_eq.add_eq(e1, e2)
+
+    repres = {}
+    for expr in ParameterOperatable.sort_by_depth(all_exprs, ascending=True):
+        eq_class = full_eq.classes[expr]
+        if len(eq_class) <= 1:
+            continue
+
+        eq_id = id(eq_class)
+        if eq_id not in repres:
+            representative = mutator.mutate_expression(expr)
+            repres[eq_id] = representative
+            if isinstance(representative, ConstrainableExpression):
+                eq_class = cast(set[ConstrainableExpression], eq_class)
+                representative.constrained = any(e.constrained for e in eq_class)
+                representative._solver_evaluates_to_true = any(
+                    e._solver_evaluates_to_true for e in eq_class
+                )
+        mutator._mutate(expr, repres[eq_id])
+
+
 def resolve_alias_classes(mutator: Mutator):
     """
     Resolve alias classes
@@ -112,7 +162,7 @@ def resolve_alias_classes(mutator: Mutator):
     predicates = {e for e in exprs if isinstance(e, Predicate)}
     exprs.difference_update(predicates)
 
-    p_eq_classes = parameter_ops_eq_classes(mutator.G)
+    p_eq_classes = parameter_ops_alias_classes(mutator.G)
 
     # Make new param repre for alias classes
     for eq_class in p_eq_classes:

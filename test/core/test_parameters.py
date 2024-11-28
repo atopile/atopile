@@ -10,9 +10,11 @@ import pytest
 import faebryk.library._F as F
 from faebryk.core.node import Node
 from faebryk.core.parameter import (
+    Add,
     Additive,
     And,
     Expression,
+    Is,
     Not,
     Parameter,
     ParameterOperatable,
@@ -20,6 +22,8 @@ from faebryk.core.parameter import (
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range
 from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
+from faebryk.libs.sets.sets import BoolSet, PlainSet
 from faebryk.libs.units import P
 from faebryk.libs.util import times
 
@@ -75,6 +79,37 @@ def test_compact_repr():
     Additive.sum(manyps3).compact_repr(context)
     pAA = Parameter()
     assert pAA.compact_repr(context) == "A'"
+
+
+def test_expression_congruence():
+    p1 = Parameter()
+    p2 = Parameter()
+    p3 = Parameter()
+    assert (p1 + p2).is_congruent_to(p1 + p2)
+    assert (p1 + p2).is_congruent_to(p2 + p1)
+
+    assert hash(Quantity_Singleton(0)) == hash(Quantity_Singleton(0))
+    assert Quantity_Singleton(0) == Quantity_Singleton(0)
+    assert Add(Quantity_Singleton(0), p2, p1).is_congruent_to(
+        Add(p1, p2, Quantity_Singleton(0))
+    )
+
+    assert not Add(Quantity_Interval(0, 1)).is_congruent_to(
+        Add(Quantity_Interval(0, 1))
+    )
+    assert not (p1 - p2).is_congruent_to(p2 - p1)
+
+    assert Is(p1, p2).is_congruent_to(Is(p2, p1))
+    assert Is(p1, BoolSet(True)).is_congruent_to(Is(BoolSet(True), p1))
+    p3.alias_is(p2)
+    assert not Is(p1, p3).is_congruent_to(Is(p1, p2))
+
+
+def test_expression_congruence_not():
+    A = Parameter()
+    x = Is(A, PlainSet(F.LED.Color.EMERALD))
+    assert x.is_congruent_to(Is(A, PlainSet(F.LED.Color.EMERALD)))
+    assert Not(x).is_congruent_to(Not(x))
 
 
 @pytest.mark.skip

@@ -298,6 +298,9 @@ class Quantity_Interval(Quantity_Set):
     def __and__(self, other: "Quantity_Interval"):
         return self.op_intersect_interval(other)
 
+    def is_single_element(self) -> bool:
+        return self.min_elem() == self.max_elem()  # type: ignore #TODO
+
 
 class Quantity_Singleton(Quantity_Interval):
     """
@@ -612,6 +615,11 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def __le__(self, other: QuantitySetLike) -> bool:
         other_q = Quantity_Interval_Disjoint.from_value(other)
         return self.min_elem() <= other_q.max_elem()
+
+    def is_single_element(self) -> bool:
+        if self.is_empty():
+            return False
+        return self.min_elem() == self.max_elem()  # type: ignore #TODO
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

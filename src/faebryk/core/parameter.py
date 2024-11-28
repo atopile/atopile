@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Self, Sequence, TypeGuard, cast, override
+from typing import Any, Callable, Self, Sequence, TypeGuard, cast
 
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
@@ -95,48 +95,6 @@ class ParameterOperatable(Node):
             return 0
 
         return sorted(exprs, key=key, reverse=not ascending)
-
-    def _is_constrains(self) -> list["Is"]:
-        return [
-            cast_assert(Is, i).get_other_operand(self)
-            for i in self.operated_on.get_connected_nodes(types=[Is])
-            if cast_assert(Is, i).constrained
-        ]
-
-    def obviously_eq(self, other: "ParameterOperatable.All") -> bool:
-        if self == other:
-            return True
-        if other in self._is_constrains():
-            return True
-        return False
-
-    @staticmethod
-    def pops_obviously_eq(a: All, b: All) -> bool:
-        if a == b:
-            return True
-        if isinstance(a, ParameterOperatable):
-            return a.obviously_eq(b)
-        elif isinstance(b, ParameterOperatable):
-            return b.obviously_eq(a)
-        return False
-
-    def obviously_eq_hash(self) -> int:
-        if hasattr(self, "__hash"):
-            return self.__hash
-
-        ises = [i for i in self._is_constrains() if not isinstance(i, Expression)]
-
-        def keyfn(i: Is):
-            if isinstance(i, Parameter):
-                return 1 << 63
-            return hash(i) % (1 << 63)
-
-        sorted_ises = sorted(ises, key=keyfn)
-        if len(sorted_ises) > 0:
-            self.__hash = hash(sorted_ises[0])
-        else:
-            self.__hash = id(self)
-        return self.__hash
 
     def operation_add(self, other: NumberLike):
         return Add(self, other)
@@ -392,13 +350,19 @@ class ParameterOperatable(Node):
     # ) -> None: ...
 
     # ----------------------------------------------------------------------------------
-    def get_operations[T: "Expression"](self, types: type[T] | None = None) -> set[T]:
+    def get_operations[T: "Expression"](
+        self, types: type[T] | None = None, constrained_only: bool = False
+    ) -> set[T]:
         if types is None:
             types = Expression  # type: ignore
         types = cast(type[T], types)
         assert issubclass(types, Expression)
 
-        return cast(set[T], self.operated_on.get_connected_nodes(types=[types]))
+        out = cast(set[T], self.operated_on.get_connected_nodes(types=[types]))
+        if constrained_only:
+            assert issubclass(types, ConstrainableExpression)
+            out = {i for i in out if cast(ConstrainableExpression, i).constrained}
+        return out
 
     def get_literal(self, op: type["ConstrainableExpression"] | None = None) -> Literal:
         """
@@ -408,7 +372,7 @@ class ParameterOperatable(Node):
         """
         if op is None:
             op = Is
-        iss = [i for i in self.get_operations(op) if i.constrained]
+        iss = self.get_operations(op, constrained_only=True)
         try:
             literal_is = find(o for i in iss for o in i.get_literal_operands())
         except KeyErrorNotFound as e:
@@ -506,6 +470,45 @@ class Expression(ParameterOperatable):
                 continue
             self.operates_on.connect(op.operated_on)
 
+    def is_congruent_to(self, other: "Expression") -> bool:
+        if self == other:
+            return True
+        if type(self) is not type(other):
+            return False
+        if len(self.operands) != len(other.operands):
+            return False
+
+        def get_uncorrelatable_literals(
+            e: "Expression",
+        ) -> list[ParameterOperatable.Literal]:
+            return [
+                lit
+                for lit in e.operands
+                # TODO we should just use the canonical lits, for now just no support
+                # for non-canonical lits
+                if not isinstance(lit, ParameterOperatable)
+                and (
+                    not isinstance(lit, P_Set)
+                    or not (lit.is_single_element() or lit.is_empty())
+                )
+            ]
+
+        if get_uncorrelatable_literals(self) or get_uncorrelatable_literals(other):
+            return False
+
+        if self.operands == other.operands:
+            return True
+        if isinstance(self, Commutative):
+            # fucking genius
+            # lit hash is stable
+            # paramop hash only same with same id
+            left = sorted(self.operands, key=hash)
+            right = sorted(other.operands, key=hash)
+            if left == right:
+                return True
+
+        return False
+
     @property
     def domain(self) -> "Domain":
         return self._domain
@@ -556,30 +559,6 @@ class Expression(ParameterOperatable):
             if isinstance(op, Expression) and op.has_implicit_constraints_recursive():
                 return True
         return False
-
-    # TODO caching
-    @override
-    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
-        if super().obviously_eq(other):
-            return True
-        if type(other) is type(self):
-            for s, o in zip(self.operands, cast_assert(Expression, other).operands):
-                if not ParameterOperatable.pops_obviously_eq(s, o):
-                    return False
-            return True
-        return False
-
-    def obviously_eq_hash(self) -> int:
-        return hash((type(self), self.operands))
-
-    def _associative_obviously_eq(self: "Expression", other: "Expression") -> bool:
-        remaining = list(other.operands)
-        for op in self.operands:
-            for r in remaining:
-                if ParameterOperatable.pops_obviously_eq(op, r):
-                    remaining.remove(r)
-                    break
-        return not remaining
 
     def __repr__(self) -> str:
         return f"{super().__repr__()}({self.operands})"
@@ -719,7 +698,9 @@ class Arithmetic(Expression):
         )
         if any(not isinstance(op, types) for op in operands):
             raise ValueError(
-                "operands must be int, float, Quantity, Parameter, or Expression"
+                "operands must be int, float, Quantity, Unit, Parameter, Arithmetic"
+                ", Quantity_Interval, or Quantity_Interval_Disjoint"
+                f", got {[op for op in operands if not isinstance(op, types)]}"
             )
         if any(
             not isinstance(param.domain, (Numbers, ESeries))
@@ -761,19 +742,6 @@ class Add(Additive):
         super().__init__(*operands)
         self.bla = 5
 
-    # TODO caching
-    @override
-    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
-        if ParameterOperatable.obviously_eq(self, other):
-            return True
-        if isinstance(other, Add):
-            return self._associative_obviously_eq(other)
-        return False
-
-    def obviously_eq_hash(self) -> int:
-        op_hash = sum(hash(op) for op in self.operands)
-        return hash((type(self), op_hash))
-
     def has_implicit_constraint(self) -> bool:
         return False
 
@@ -803,19 +771,6 @@ class Multiply(Arithmetic):
         self.units = units[0]
         for u in units[1:]:
             self.units = cast_assert(Unit, self.units * u)
-
-    # TODO caching
-    @override
-    def obviously_eq(self, other: ParameterOperatable.All) -> bool:
-        if ParameterOperatable.obviously_eq(self, other):
-            return True
-        if isinstance(other, Multiply):
-            return self._associative_obviously_eq(other)
-        return False
-
-    def obviously_eq_hash(self) -> int:
-        op_hash = sum(hash(op) for op in self.operands)
-        return hash((type(self), op_hash))
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1477,3 +1432,10 @@ class Parameter(ParameterOperatable):
 
 
 p_field = f_field(Parameter)
+
+Commutative = (
+    Add | Multiply | And | Or | Xor | Union | Intersection | SymmetricDifference | Is
+)
+FullyAssociative = Add | Multiply | And | Or | Xor | Union | Intersection
+LeftAssociative = Subtract | Divide | Difference
+Associative = FullyAssociative | LeftAssociative

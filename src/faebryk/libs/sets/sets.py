@@ -47,6 +47,8 @@ class P_Set[T](Protocol):
 
     def __and__[P: P_Set](self: P, other: P) -> P: ...
 
+    def is_single_element(self) -> bool: ...
+
 
 class P_IterableSet[T, IterT](P_Set[T], Iterable[IterT], Protocol): ...
 
@@ -96,10 +98,14 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
     def __and__(self, other: "PlainSet[U]") -> "PlainSet[U]":
         return self.op_intersection(other)
 
+    def is_single_element(self) -> bool:
+        return len(self.elements) == 1
+
 
 type BoolSetLike_ = bool | BoolSet
 
 
+# TODO think about inheriting from plainset
 class BoolSet(P_Set[bool]):
     def __init__(self, *values: BoolSetLike_):
         assert all(isinstance(v, (bool, BoolSet)) for v in values)
@@ -161,6 +167,9 @@ class BoolSet(P_Set[bool]):
     # TODO rethink this
     def __and__(self, other: BoolSetLike_) -> "BoolSet":
         return self.op_intersection(other)
+
+    def is_single_element(self) -> bool:
+        return len(self.values) == 1
 
 
 BoolSetLike = bool | BoolSet
