@@ -58,6 +58,7 @@ from faebryk.libs.util import (
     ConfigFlag,
     EquivalenceClasses,
     KeyErrorAmbiguous,
+    cast_assert,
     not_none,
     partition,
     unique_ref,
@@ -112,25 +113,37 @@ def make_lit(val):
     return P_Set.from_value(val)
 
 
-def try_extract_literal(po) -> SolverLiteral | None:
+def try_extract_literal(po, allow_subset: bool = False) -> SolverLiteral | None:
     lit = ParameterOperatable.try_extract_literal(po)
+    if lit is None and allow_subset:
+        lit = po.try_get_literal_subset()
     if lit is None:
         return None
     assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set))
     return lit
 
 
-def try_extract_numeric_literal(po) -> CanonicalNumber | None:
-    lit = try_extract_literal(po)
+def try_extract_numeric_literal(
+    po, allow_subset: bool = False
+) -> CanonicalNumber | None:
+    lit = try_extract_literal(po, allow_subset)
     if lit is None:
         return None
     assert isinstance(lit, CanonicalNumber)
     return lit
 
 
+def try_extract_boolset(po, allow_subset: bool = False) -> CanonicalBoolean | None:
+    lit = try_extract_literal(po, allow_subset)
+    if lit is None:
+        return None
+    assert isinstance(lit, CanonicalBoolean)
+    return lit
+
+
 def try_extract_all_literals[T: P_Set](
     expr: Expression,
-    op: type[Expression] | None = None,
+    op: type[ConstrainableExpression] | None = None,
     lit_type: type[T] = P_Set,
     accept_partial: bool = False,
 ) -> list[T] | None:
@@ -158,17 +171,30 @@ def alias_is_literal(po: ParameterOperatable, literal: ParameterOperatable.Liter
         if existing == literal:
             return
         raise ContradictionByLiteral(f"{existing} != {literal}")
-    po.alias_is(literal)
+    # prevent (A is X) is X
+    if isinstance(po, Is):
+        if literal in po.get_literal_operands():
+            return
+    return po.alias_is(literal)
 
 
-def alias_is_and_check_constrained(
-    expr: ConstrainableExpression, value: BoolSet | bool
+def alias_is_literal_and_check_predicate_eval(
+    expr: ConstrainableExpression, value: BoolSet | bool, mutator: "Mutator"
 ):
-    if not isinstance(value, BoolSet):
-        value = BoolSet(value)
     alias_is_literal(expr, value)
-    if not value and expr.constrained:
-        raise ContradictionByLiteral(f"False and constrained: {expr}")
+    if not expr.constrained:
+        return
+    # all predicates alias to True, so alias False will already throw
+    assert value
+    mutator.mark_predicate_true(expr)
+
+    # mark all alias_is P -> True as true
+    for op in expr.get_operations(Is):
+        if not op.constrained:
+            continue
+        if op.try_get_literal() is None:
+            continue
+        mutator.mark_predicate_true(op)
 
 
 def flatten_associative[T: Associative](
@@ -421,6 +447,8 @@ class Mutator:
         self.removed = set()
         self.copied = set()
 
+        self._old_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
+
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
         return po in self.repr_map
 
@@ -511,7 +539,9 @@ class Mutator:
             if isinstance(op, ParameterOperatable):
                 assert op.get_graph() == new_expr.get_graph()
         if isinstance(expr, ConstrainableExpression):
-            cast(ConstrainableExpression, new_expr).constrained = expr.constrained
+            new_expr = cast_assert(ConstrainableExpression, new_expr)
+            new_expr.constrained = expr.constrained
+            new_expr._solver_evaluates_to_true |= expr._solver_evaluates_to_true
 
         return self._mutate(expr, new_expr)
 
@@ -589,6 +619,13 @@ class Mutator:
         assert self.G not in get_graphs(self.repr_map.values())
         return self.repr_map, True
 
+    def mark_predicate_true(self, pred: ConstrainableExpression):
+        assert pred.constrained
+        pred._solver_evaluates_to_true = True
+
+    def is_predicate_true(self, pred: ConstrainableExpression) -> bool:
+        return pred._solver_evaluates_to_true
+
 
 class Mutators:
     def __init__(self, *graphs: Graph):
@@ -596,6 +633,21 @@ class Mutators:
         self.result_repr_map = {}
 
     def close(self) -> tuple[Mutator.REPR_MAP, list[Graph], bool]:
+        if VERBOSE_TABLE:
+            # TODO this should become illegal
+            for m in self.mutators:
+                post_mut_nodes = GraphFunctions(m.G).nodes_of_type(ParameterOperatable)
+                removed = m._old_ops - post_mut_nodes
+                added = post_mut_nodes - m._old_ops
+                if removed:
+                    logger.warning(
+                        f"Mutator removed \n    {'\n    '.join(repr(o) for o in removed)}"
+                    )
+                if added:
+                    logger.warning(
+                        f"Mutator added \n    {'\n    '.join(repr(o) for o in added)}"
+                    )
+
         if not any(m.dirty for m in self.mutators):
             return {}, [], False
 

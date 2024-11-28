@@ -93,7 +93,9 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         if other.max_elem() < 0:
             return self.op_pow_interval(other.op_negate()).op_invert()
         if other.min_elem() < 0:
-            raise NotImplementedError("passing zero not implemented yet")
+            raise NotImplementedError("passing zero in exp not implemented yet")
+        if self._min < 0 and self._max > 0:
+            raise NotImplementedError("crossing zero in base not implemented yet")
 
         values = [
             self._min**other._min,

@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import (
+    ConstrainableExpression,
     Expression,
     Is,
     IsSubset,
@@ -20,6 +21,7 @@ from faebryk.core.solver.analytical import (
     convert_inequality_with_literal_to_subset,
     fold_literals,
     merge_intersect_subsets,
+    predicate_literal_deduce,
     remove_empty_graphs,
     remove_obvious_tautologies,
     remove_unconstrained,
@@ -33,6 +35,7 @@ from faebryk.core.solver.canonical import (
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
+    S_LOG,
     Contradiction,
     Mutator,
     Mutators,
@@ -42,10 +45,13 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     QuantitySetLikeR,
 )
-from faebryk.libs.sets.sets import BoolSet, P_Set
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import times_out
 
 logger = logging.getLogger(__name__)
+
+if S_LOG:
+    logger.setLevel(logging.DEBUG)
 
 
 class DefaultSolver(Solver):
@@ -61,7 +67,11 @@ class DefaultSolver(Solver):
         raise NotImplementedError()
 
     @times_out(5)
-    def phase_one_no_guess_solving(self, g: Graph):
+    def phase_one_no_guess_solving(
+        self,
+        g: Graph,
+        print_context: ParameterOperatable.ReprContext | None = None,
+    ):
         logger.info("Phase 1 Solving: No guesses ".ljust(80, "="))
 
         # TODO move into comment here
@@ -86,15 +96,17 @@ class DefaultSolver(Solver):
             ("Associative expressions Full", compress_associative),
             ("Fold literals", fold_literals),
             ("Merge intersecting subsets", merge_intersect_subsets),
+            ("Predicate literal deduce", predicate_literal_deduce),
             ("Remove empty graphs", remove_empty_graphs),
         ]
         subset_dirty_algorithms = [
             ("Upper estimation", upper_estimation_of_expressions_with_subsets),
         ]
 
-        print_context = ParameterOperatable.ReprContext()
-        debug_name_mappings(print_context, g)
-        Mutators.print_all(g, context=print_context, type_filter=Expression)
+        print_context_ = print_context or ParameterOperatable.ReprContext()
+
+        debug_name_mappings(print_context_, g)
+        Mutators.print_all(g, context=print_context_, type_filter=Expression)
 
         def run_algo(
             graphs: list[Graph],
@@ -102,28 +114,31 @@ class DefaultSolver(Solver):
             algo_name: str,
             algo: Callable[[Mutator], None],
         ):
-            nonlocal print_context
+            nonlocal print_context_
+            logger.info(
+                f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+            )
             mutators = Mutators(*graphs)
             mutators.run(algo)
             algo_repr_map, algo_graphs, algo_dirty = mutators.close()
+            # TODO remove
             if algo_dirty:
                 logger.info(
-                    f"Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+                    f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
                 )
-                print_context = mutators.debug_print(print_context)
+                print_context_ = mutators.debug_print(print_context_)
             # TODO assert all new graphs
             return algo_repr_map, algo_graphs, algo_dirty
 
         any_dirty = True
         iterno = 0
         total_repr_map: Mutator.REPR_MAP = {}
+        graphs = [g]
+
+        # subset specific
         param_ops_subset_literals: dict[
             ParameterOperatable, ParameterOperatable.Literal
-        ] = {
-            po: po.try_get_literal_subset()
-            for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
-        }
-        graphs = [g]
+        ] = {}
 
         while any_dirty and len(graphs) > 0:
             v_count = sum(
@@ -160,6 +175,18 @@ class DefaultSolver(Solver):
                 *iteration_repr_maps.values(),
             )
 
+            # subset -------------------------------------------------------------------
+            if iterno == 0:
+                iterno += 1
+                # Build initial subset literals
+                param_ops_subset_literals = {
+                    po: po.try_get_literal_subset()
+                    for G in graphs
+                    for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)
+                }
+                continue
+
+            # check which subset literals have changed for our old paramops
             subset_dirty = False
             total_repr_map_obj = Mutators.create_concat_repr_map(total_repr_map)
             param_ops_subset_literals = {
@@ -177,29 +204,37 @@ class DefaultSolver(Solver):
                     subset_dirty = True
 
             iteration_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
-            if subset_dirty or iterno == 1:
+
+            if not subset_dirty and iterno > 1:
+                continue
+            if subset_dirty:
                 logger.info("Subset dirty, running subset dirty algorithms")
-                for phase_name, (algo_name, algo) in enumerate(
-                    subset_dirty_algorithms, start=phase_name
-                ):
-                    algo_repr_map, algo_graphs, algo_dirty = run_algo(
-                        graphs, str(phase_name), algo_name, algo
-                    )
-                    if not algo_dirty:
-                        continue
-                    graphs = algo_graphs
-                    iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
+            else:
+                logger.info("Iteration 1, running subset dirty algorithms")
+
+            phase_end = phase_name + 1
+            # Run subset dirty algorithms
+            for phase_name, (algo_name, algo) in enumerate(subset_dirty_algorithms):
+                algo_repr_map, algo_graphs, algo_dirty = run_algo(
+                    graphs, f"{phase_end}.{phase_name}", algo_name, algo
+                )
+                if not algo_dirty:
+                    continue
+                graphs = algo_graphs
+                iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
 
             total_repr_map = Mutators.concat_repr_maps(
                 *([total_repr_map] if total_repr_map else []),
                 *iteration_repr_maps.values(),
             )
+
+            # --------------------------------------------------------------------------
             iterno += 1
 
-        Mutators.print_all(*graphs, context=print_context, type_filter=Expression)
+        Mutators.print_all(*graphs, context=print_context_, type_filter=Expression)
 
         logger.info(f"Phase 1 Solving done in {iterno} iterations ".ljust(80, "="))
-        return Mutators.create_concat_repr_map(total_repr_map)
+        return Mutators.create_concat_repr_map(total_repr_map), print_context_
 
     def get_any_single(
         self,
@@ -252,7 +287,7 @@ class DefaultSolver(Solver):
 
         # run phase 1 solver
         # TODO caching
-        repr_map = self.phase_one_no_guess_solving(param.get_graph())
+        repr_map, print_context = self.phase_one_no_guess_solving(param.get_graph())
         if param not in repr_map.repr_map:
             logger.warning(f"Parameter {param} not in repr_map")
             return Quantity_Interval_Disjoint.unbounded(param.units)
@@ -287,6 +322,8 @@ class DefaultSolver(Solver):
             unknown_predicates=[],
         )
 
+        print_context = ParameterOperatable.ReprContext()
+
         it = iter(predicates)
 
         for p in it:
@@ -294,21 +331,32 @@ class DefaultSolver(Solver):
             assert not pred.constrained
             pred.constrained = True
             try:
-                repr_map = self.phase_one_no_guess_solving(pred.get_graph())
-                lit = repr_map.try_get_literal(pred)
-                assert isinstance(lit, BoolSet) or lit is None
-                if lit is None:
-                    # TODO remove
-                    logger.warning(f"Unknown predicate {pred.compact_repr()}")
-                    logger.warning(repr_map.repr_map[pred].compact_repr())
+                repr_map, print_context_new = self.phase_one_no_guess_solving(
+                    pred.get_graph(), print_context=print_context
+                )
+
+                # check if all predicates have been deducted, else unknown
+                repr_pred = repr_map.repr_map[pred]
+                new_G = repr_pred.get_graph()
+                new_preds = GraphFunctions(new_G).nodes_of_type(ConstrainableExpression)
+                not_deducted = [
+                    p
+                    for p in new_preds
+                    if p.constrained and not p._solver_evaluates_to_true
+                ]
+
+                if not_deducted:
+                    logger.warning(
+                        f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
+                        f" -> {repr_pred.compact_repr(print_context_new)}"
+                    )
+                    logger.warning(
+                        f"NOT DEDUCTED: \n    {'\n    '.join([p.compact_repr(print_context_new) for p in not_deducted])}"
+                    )
                     result.unknown_predicates.append(p)
-                elif True in lit:
-                    result.true_predicates.append(p)
-                    break
-                elif False in lit:
-                    result.false_predicates.append(p)
                 else:
-                    assert False
+                    result.true_predicates.append(p)
+
             except Contradiction:
                 result.false_predicates.append(p)
             except TimeoutError:

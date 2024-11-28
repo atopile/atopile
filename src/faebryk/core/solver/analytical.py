@@ -25,13 +25,14 @@ from faebryk.core.solver.utils import (
     CanonicalOperation,
     FullyAssociative,
     Mutator,
-    alias_is_and_check_constrained,
     alias_is_literal,
+    alias_is_literal_and_check_predicate_eval,
     flatten_associative,
     get_constrained_expressions_involved_in,
     is_replacable,
     merge_parameters,
     parameter_ops_eq_classes,
+    try_extract_all_literals,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -380,7 +381,6 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             continue
 
         operands = []
-        has_subset_literal = False
         for op in expr.operands:
             if not isinstance(op, ParameterOperatable):
                 operands.append(op)
@@ -390,10 +390,9 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
                 operands.append(op)
                 continue
             operands.append(subset_lits)
-            has_subset_literal = True
 
-        if not has_subset_literal:
-            continue
+        # if not has_subset_literal:
+        #    continue
 
         # Make new expr with subset literals
         new_expr = type(expr)(*[mutator.get_copy(operand) for operand in operands])
@@ -417,6 +416,36 @@ def remove_empty_graphs(mutator: Mutator):
         return
 
     for p in predicates:
-        alias_is_and_check_constrained(p, True)
+        alias_is_literal_and_check_predicate_eval(p, True, mutator)
 
     mutator.remove(*GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable))
+
+
+def predicate_literal_deduce(mutator: Mutator):
+    """
+    ```
+    P!(A, Lit) -> P!!(A, Lit)
+    P!(Lit1, Lit2) -> P!!(Lit1, Lit2)
+    ```
+
+    Proof:
+    ```
+    >=, >, is, ss, or, not
+    P1!(A, Lit1) True
+    P2!(A, Lit2)
+    P3!(A, B)
+    P3!!(A, B)
+    ```
+    """
+    predicates = GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
+    for p in predicates:
+        if not p.constrained:
+            continue
+        lits = not_none(try_extract_all_literals(p, accept_partial=True))
+        if len(p.operands) - len(lits) <= 1:
+            # mutator.mark_predicate_true(p)
+            # purely for printing mutating needed
+            if not p._solver_evaluates_to_true:
+                mutator.mark_predicate_true(
+                    cast_assert(ConstrainableExpression, mutator.mutate_expression(p))
+                )

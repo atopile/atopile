@@ -400,17 +400,17 @@ class ParameterOperatable(Node):
 
         return cast(set[T], self.operated_on.get_connected_nodes(types=[types]))
 
-    def get_literal(self, op: type["Expression"] | None = None) -> Literal:
+    def get_literal(self, op: type["ConstrainableExpression"] | None = None) -> Literal:
+        """
+        ```
+        P(self, X) ∧ P.constrained -> return X
+        ```
+        """
         if op is None:
             op = Is
-        iss = self.get_operations(op)
+        iss = [i for i in self.get_operations(op) if i.constrained]
         try:
-            literal_is = find(
-                o
-                for i in iss
-                for o in i.get_literal_operands()
-                if isinstance(i, ConstrainableExpression) and i.constrained
-            )
+            literal_is = find(o for i in iss for o in i.get_literal_operands())
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
                 self, f"Parameter {self} has no literal for op {op}"
@@ -430,14 +430,16 @@ class ParameterOperatable(Node):
     def try_get_literal_subset(self) -> Literal | None:
         return self.try_get_literal_for_multiple_ops([Is, IsSubset])
 
-    def try_get_literal(self, op: type["Expression"] | None = None) -> Literal | None:
+    def try_get_literal(
+        self, op: type["ConstrainableExpression"] | None = None
+    ) -> Literal | None:
         try:
             return self.get_literal(op)
         except ParameterOperableHasNoLiteral:
             return None
 
     def try_get_literal_for_multiple_ops(
-        self, ops: list[type["Expression"]]
+        self, ops: list[type["ConstrainableExpression"]]
     ) -> Literal | None:
         for op in ops:
             lits = self.try_get_literal(op)
@@ -447,7 +449,7 @@ class ParameterOperatable(Node):
 
     @staticmethod
     def try_extract_literal(
-        po: "ParameterOperatable.All", op: type["Expression"] | None = None
+        po: "ParameterOperatable.All", op: type["ConstrainableExpression"] | None = None
     ) -> Literal | None:
         if ParameterOperatable.is_literal(po):
             return po
@@ -508,10 +510,12 @@ class Expression(ParameterOperatable):
     def domain(self) -> "Domain":
         return self._domain
 
-    def get_operatable_operands(self) -> set[ParameterOperatable]:
+    def get_operatable_operands[T: ParameterOperatable](
+        self, types: type[T] = ParameterOperatable
+    ) -> set[T]:
         return cast(
-            set[ParameterOperatable],
-            self.operates_on.get_connected_nodes(types=[ParameterOperatable]),
+            set[T],
+            self.operates_on.get_connected_nodes(types=[types]),
         )
 
     def get_literal_operands(self) -> list[ParameterOperatable.Literal]:
@@ -624,6 +628,8 @@ class Expression(ParameterOperatable):
         if isinstance(self, ConstrainableExpression) and self.constrained:
             # symbol = f"\033[4m{symbol}!\033[0m"
             symbol = f"{symbol}!"
+            if self._solver_evaluates_to_true:
+                symbol = f"{symbol}!"
 
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
@@ -663,6 +669,11 @@ class Expression(ParameterOperatable):
         else:
             assert False
 
+        if (lit := self.try_get_literal()) is not None:
+            out = f"{out}{{{lit}}}"
+        elif (lit := self.try_get_literal_subset()) is not None:
+            out = f"{out}{{S|{lit}}}"
+
         return out
 
 
@@ -671,6 +682,14 @@ class ConstrainableExpression(Expression):
     def __init__(self, *operands: ParameterOperatable.All):
         super().__init__(Boolean(), *operands)
         self.constrained: bool = False
+
+        # TODO this should be done in solver, not here
+        self._solver_evaluates_to_true: bool = False
+        """
+        Flag marking to the solver that this predicate has been deduced to True.
+        Differs from alias in the sense that we can guarantee that the predicate is
+        True, while alias only marks that the predicate shall be True.
+        """
 
     def _constrain(self, constraint: "Predicate"):
         constraint.constrain()
@@ -1447,7 +1466,14 @@ class Parameter(ParameterOperatable):
 
         unitstr = f" {self.units}" if self.units != dimensionless else ""
         letter = context.variable_mapping.mapping[self]
-        return f"{letter}{unitstr}"
+
+        out = f"{letter}{unitstr}"
+        if (lit := self.try_get_literal()) is not None:
+            out = f"{out}{{{lit}}}"
+        elif (lit := self.try_get_literal_subset()) is not None:
+            out = f"{out}{{S|{lit}}}"
+
+        return out
 
 
 p_field = f_field(Parameter)

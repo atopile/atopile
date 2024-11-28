@@ -259,7 +259,7 @@ def test_less_obvious_contradiction_by_literal():
             ParameterOperatable
         ):
             logger.info(f"{op!r}")
-    # FIME
+    # FIXME
     # <*3548|Parameter> is 5-10               subset 0-inf
     # <*3158|Parameter> is 5-20 is Add(P)
     # <*35D8|Parameter> is Add(P, P) is 0-15  subset 0-inf | Add(P,P) subset 3158 is 5-20 SHOULD DETECT CONTRADICTION HERE

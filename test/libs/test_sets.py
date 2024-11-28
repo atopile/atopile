@@ -4,6 +4,7 @@
 import pytest
 
 from faebryk.libs.library.L import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
+from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.units import P, Unit, dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
@@ -198,3 +199,32 @@ def test_pow_div_eq():
     x = RangeWithGaps(Range(-5, 10))
     y = RangeWithGaps(Range(-2, 3))
     assert x / y == x * y**-1
+
+
+def test_boolset_contain():
+    assert BoolSet(True) in [BoolSet(True), BoolSet(False), BoolSet(True, False)]
+    assert BoolSet(False) in [BoolSet(True), BoolSet(False), BoolSet(True, False)]
+    assert BoolSet(True) not in [BoolSet(False), BoolSet(True, False)]
+    assert BoolSet(False) not in [BoolSet(True), BoolSet(True, False)]
+    assert True in [BoolSet(True)]
+    assert False in [BoolSet(False)]
+    assert True not in [BoolSet(True, False)]
+    assert False not in [BoolSet(True, False)]
+    assert True in BoolSet(True, False)
+    assert False in BoolSet(True, False)
+
+
+def test_boolset_eq():
+    assert BoolSet(True) == BoolSet(True)
+    assert BoolSet(False) == BoolSet(False)
+    assert BoolSet(True, False) == BoolSet(True, False)
+    assert BoolSet(True) != BoolSet(False)
+    assert BoolSet(True) != BoolSet(True, False)
+    assert True == BoolSet(True)  # noqa: E712
+    with pytest.raises(Exception):
+        bool(BoolSet(True))
+    assert False == BoolSet(False)  # noqa: E712
+    assert True != BoolSet(False)  # noqa: E712
+    assert False != BoolSet(True)  # noqa: E712
+    assert BoolSet(True, False) == BoolSet(False, True)
+    assert True is not BoolSet(True)

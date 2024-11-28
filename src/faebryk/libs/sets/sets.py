@@ -121,9 +121,6 @@ class BoolSet(P_Set[bool]):
     def is_empty(self) -> bool:
         return not len(self.values)
 
-    def __bool__(self) -> bool:
-        return True in self.values
-
     def op_intersection(self, other: BoolSetLike_) -> "BoolSet":
         return BoolSet(*(self.values & BoolSet.from_value(other).values))
 

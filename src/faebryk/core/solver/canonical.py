@@ -9,6 +9,7 @@ from faebryk.core.parameter import (
     Add,
     And,
     Ceil,
+    ConstrainableExpression,
     Cos,
     Divide,
     Expression,
@@ -36,6 +37,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.utils import (
     Mutator,
     NumericLiteralR,
+    alias_is_literal,
     make_lit,
 )
 from faebryk.libs.sets.quantity_sets import (
@@ -44,6 +46,7 @@ from faebryk.libs.sets.quantity_sets import (
 )
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import Quantity, dimensionless, quantity
+from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +64,14 @@ def constrain_within_domain(mutator: Mutator):
         if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
             new_param.constrain_ge(0.0 * new_param.units)
 
-    # FIXME: think more carefully about predicates and aliases
-    # for predicate in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression):
-    #    if predicate.constrained:
-    #        new_predicate = cast_assert(
-    #            ConstrainableExpression, mutator.mutate_expression(predicate)
-    #        )
-    #        alias_is_and_check_constrained(new_predicate, True)
+    for predicate in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression):
+        if predicate.constrained:
+            new_predicate = cast_assert(
+                ConstrainableExpression, mutator.mutate_expression(predicate)
+            )
+            alias_is_literal(new_predicate, True)
+            # reset solver flag
+            predicate._solver_evaluates_to_true = False
 
 
 def convert_to_canonical_literals(mutator: Mutator):
