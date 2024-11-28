@@ -1,4 +1,6 @@
 import logging
+import textwrap
+from pathlib import Path
 from types import ModuleType, TracebackType
 
 import typer
@@ -8,11 +10,12 @@ from rich.traceback import Traceback
 
 import atopile
 import faebryk
+from atopile import address
 from atopile.cli.rich_console import console
 from atopile.errors import UserPythonModuleError
 
 
-class LogHandler(RichHandler):
+class AtoLogHandler(RichHandler):
     """
     A logging handler that renders output with Rich.
 
@@ -108,6 +111,7 @@ class LogHandler(RichHandler):
                 message = formatter.formatMessage(record)
 
         message_renderable = self.render_message(record, message)
+
         log_renderable = self.render(
             record=record, traceback=traceback, message_renderable=message_renderable
         )
@@ -123,24 +127,64 @@ class LogHandler(RichHandler):
                 self.handleError(record)
 
 
-FORMAT = "%(message)s"
-logging.basicConfig(
-    level="INFO",
-    format=FORMAT,
-    datefmt="[%X]",
-    handlers=[
-        LogHandler(
-            console=console,
-            rich_tracebacks=True,
-            show_path=False,
-            tracebacks_suppress=[typer],
-            tracebacks_suppress_map={
-                UserPythonModuleError: [atopile, faebryk],
-            },
-            tracebacks_unwrap=[UserPythonModuleError],
+class AtoLogFormatter(logging.Formatter):
+    def __init__(self):
+        super().__init__(fmt="%(message)s", datefmt="[%X]")
+
+    def format(self, record: logging.LogRecord) -> str:
+        message = ""
+
+        if title := getattr(record, "title", None):
+            message += f"[bold]{title}[/]\n"
+            record.markup = True
+
+        # Attach source info if we have it
+        if source_info := getattr(record, "src_path", None):
+            source_info = str(source_info)
+            if src_line := getattr(record, "src_line", None):
+                source_info += f":{src_line}"
+                if src_col := getattr(record, "src_col", None):
+                    source_info += f":{src_col}"
+
+            message += f"{source_info}\n"
+
+        fmt_message = (
+            textwrap.indent(record.getMessage(), "    ")
+            if title or source_info
+            else record.getMessage()
         )
-    ],
-)
+
+        # Replace the address in the string, if we have it attached
+        if addr := getattr(record, "addr", None):
+            addr = address.from_parts(
+                Path(address.get_file(addr)).name,
+                address.get_entry_section(addr),
+                address.get_instance_section(addr),
+            )
+            # FIXME: we ignore the escaping of the address here
+            fmt_addr = f"[bold cyan]{addr}[/]"
+            record.markup = True
+
+            if "$addr" in fmt_message:
+                fmt_message = fmt_message.replace("$addr", fmt_addr)
+            elif not source_info:
+                message += f"Address: {fmt_addr}\n"
+
+        return f"{message}{fmt_message}".strip()
 
 
 logger = logging.getLogger(__name__)
+handler = AtoLogHandler(
+    console=console,
+    rich_tracebacks=True,
+    show_path=False,
+    tracebacks_suppress=[typer],
+    tracebacks_suppress_map={
+        UserPythonModuleError: [atopile, faebryk],
+    },
+    tracebacks_unwrap=[UserPythonModuleError],
+)
+
+handler.setFormatter(AtoLogFormatter())
+
+logging.basicConfig(level="INFO", handlers=[handler])
