@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 from rich.logging import RichHandler
+from rich.traceback import install as install_traceback_handler
 
 from atopile import telemetry
 from atopile.cli.rich_console import console
@@ -24,6 +25,7 @@ logging.basicConfig(
         )
     ],
 )
+install_traceback_handler(console=console, suppress=[typer])
 
 app = typer.Typer(no_args_is_help=True)
 
