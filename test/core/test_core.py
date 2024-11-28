@@ -148,6 +148,46 @@ class TestGraph(unittest.TestCase):
 
         assert MIFType.LinkDirectShallow() is MIFType.LinkDirectShallow()
 
+    def test_node_preinit(self):
+        counter = 0
+
+        def assert_and_reset(target: int):
+            nonlocal counter
+            self.assertEqual(counter, target)
+            counter = 0
+
+        class N1(Node):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N11(N1):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N12(N1):
+            pass
+
+        class N111(N11):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N112(N11):
+            pass
+
+        N1()
+        assert_and_reset(1)
+        N11()
+        assert_and_reset(2)
+        N12()
+        assert_and_reset(1)
+        N111()
+        assert_and_reset(3)
+        N112()
+        assert_and_reset(2)
+
 
 if __name__ == "__main__":
     unittest.main()

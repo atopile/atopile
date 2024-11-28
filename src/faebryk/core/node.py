@@ -492,7 +492,7 @@ class Node(CNode):
         if self._init:
             for f_name in ("__preinit__", "__postinit__"):
                 for base in reversed(type(self).mro()):
-                    if hasattr(base, f_name):
+                    if f_name in base.__dict__:
                         f = getattr(base, f_name)
                         f(self)
 
