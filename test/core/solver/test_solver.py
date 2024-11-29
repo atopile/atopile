@@ -202,7 +202,7 @@ def test_alias_classes():
 
 
 def test_solve_realworld():
-    app = F.RP2040()
+    app = F.RP2040_ReferenceDesign()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(app.get_graph())
     # TODO actually test something

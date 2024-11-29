@@ -62,7 +62,7 @@ def constrain_within_domain(mutator: Mutator):
         if new_param.within is not None:
             new_param.constrain_subset(new_param.within)
         if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
-            new_param.constrain_ge(0.0 * new_param.units)
+            new_param.constrain_ge(quantity(0.0, new_param.units))
 
     for predicate in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression):
         if predicate.constrained:
