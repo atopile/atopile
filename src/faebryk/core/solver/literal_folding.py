@@ -3,13 +3,14 @@
 
 
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from typing import Callable
 
 from faebryk.core.parameter import (
     Abs,
     Add,
+    Commutative,
     ConstrainableExpression,
     Difference,
     GreaterOrEqual,
@@ -30,12 +31,12 @@ from faebryk.core.parameter import (
     Union,
 )
 from faebryk.core.solver.utils import (
-    CanonicalNumber,
     CanonicalOperation,
     Contradiction,
     Mutator,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
+    make_lit,
     no_other_constrains,
     try_extract_all_literals,
     try_extract_boolset,
@@ -43,7 +44,6 @@ from faebryk.core.solver.utils import (
 )
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import BoolSet
-from faebryk.libs.units import dimensionless
 from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
@@ -67,15 +67,72 @@ def _fold_op(
         return []
 
     literal_it = iter(operands)
-    const_sum = [next(literal_it)]
+    const_sum = next(literal_it)
     for c in literal_it:
-        const_sum[0] = operator(const_sum[0], c)
+        const_sum = operator(const_sum, c)
 
     # TODO make work with all the types
-    if const_sum[0] == identity:
-        const_sum = []
+    if const_sum == identity:
+        return []
 
-    return const_sum
+    return [const_sum]
+
+
+def _collect_factors[T: Multiply | Power](
+    counter: Counter[ParameterOperatable], collect_type: type[T]
+):
+    # collect factors
+    factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
+        counter.items()
+    )
+
+    same_literal_factors: dict[ParameterOperatable, list[T]] = defaultdict(list)
+
+    for collect_op in set(factors.keys()):
+        if not isinstance(collect_op, collect_type):
+            continue
+        # TODO unnecessary strict
+        if len(collect_op.operands) != 2:
+            continue
+        if issubclass(collect_type, Commutative):
+            if not any(
+                ParameterOperatable.is_literal(operand)
+                for operand in collect_op.operands
+            ):
+                continue
+            paramop = next(
+                o for o in collect_op.operands if not ParameterOperatable.is_literal(o)
+            )
+        else:
+            if not ParameterOperatable.is_literal(collect_op.operands[1]):
+                continue
+            paramop = collect_op.operands[0]
+
+        same_literal_factors[paramop].append(collect_op)
+        if paramop not in factors:
+            factors[paramop] = 0
+        del factors[collect_op]
+
+    new_factors = {}
+    old_factors = []
+
+    for var, count in factors.items():
+        muls = same_literal_factors[var]
+        mul_lits = [
+            next(o for o in mul.operands if ParameterOperatable.is_literal(o))
+            for mul in muls
+        ]
+        if count == 0 and len(muls) <= 1:
+            old_factors.extend(muls)
+            continue
+
+        if count == 1 and not muls:
+            old_factors.append(var)
+            continue
+
+        new_factors[var] = sum(mul_lits) + count  # type: ignore
+
+    return new_factors, old_factors
 
 
 def fold_add(
@@ -98,38 +155,26 @@ def fold_add(
     #TODO recheck double match (of last case)
     """
 
-    literal_sum = _fold_op(literal_operands, lambda a, b: a + b, 0.0 * expr.units)  # type: ignore #TODO
+    # A + X, B + X, X = A * 5
+    # 6*A
+    # (A * 2) + (A * 5)
 
-    # collect factors
-    factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
-        replacable_nonliteral_operands.items()
+    literal_sum = _fold_op(literal_operands, lambda a, b: a + b, 0)  # type: ignore #TODO
+
+    new_factors, old_factors = _collect_factors(
+        replacable_nonliteral_operands, Multiply
     )
-    for mul in set(factors.keys()):
-        if not isinstance(mul, Multiply):
-            continue
-        if len(mul.operands) != 2:
-            continue
-        if not any(ParameterOperatable.is_literal(operand) for operand in mul.operands):
-            continue
-        if not any(operand in factors for operand in mul.operands):
-            continue
-        lit = next(o for o in mul.operands if ParameterOperatable.is_literal(o))
-        paramop = next(o for o in mul.operands if not ParameterOperatable.is_literal(o))
-        factors[paramop] += lit  # type: ignore #TODO
-        mutator.remove(mul)
-        del factors[mul]
 
-    # if no literal folding and non-lit factors all 1, nothing to do
-    if all(m == 1 for m in factors.values()) and len(literal_sum) == len(
-        literal_operands
-    ):
+    # if non-lit factors all 1 and no literal folding, nothing to do
+    if not new_factors and len(literal_sum) == len(literal_operands):
         return
 
     # Careful, modifying old graph, but should be ok
-    nonlit_operands = [Multiply(n, m) if m != 1 else n for n, m in factors.items()]
+    factored_operands = [Multiply(n, m) for n, m in new_factors.items()]
 
     new_operands = [
-        *nonlit_operands,
+        *factored_operands,
+        *old_factors,
         *literal_sum,
         *non_replacable_nonliteral_operands,
     ]
@@ -155,50 +200,37 @@ def fold_multiply(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    literal_prod = _fold_op(literal_operands, lambda a, b: a * b, 1.0 * expr.units)  # type: ignore #TODO
+    literal_prod = _fold_op(literal_operands, lambda a, b: a * b, 1)  # type: ignore #TODO
 
-    # collect factors
-    powers: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
-        replacable_nonliteral_operands.items()
-    )
-    for power in set(powers.keys()):
-        if not isinstance(power, Power):
-            continue
-        lit = power.operands[1]
-        paramop = power.operands[0]
-        if not ParameterOperatable.is_literal(lit):
-            continue
-        assert isinstance(lit, CanonicalNumber)
-        if paramop not in powers:
-            continue
-        # not lit >= 0 is not the same as lit < 0
-        if paramop.try_get_literal() == 0 and not lit >= 0 * dimensionless:
-            continue
-        powers[paramop] += lit  # type: ignore
-        mutator.remove(power)
-        del powers[power]
+    new_powers, old_powers = _collect_factors(replacable_nonliteral_operands, Power)
 
-    # if no literal folding and non-lit factors all 1, nothing to do
-    if all(m == 1 for m in powers.values()) and len(literal_prod) == len(
-        literal_operands
+    # if non-lit powers all 1 and no literal folding, nothing to do
+    if (
+        not new_powers
+        and len(literal_prod) == len(literal_operands)
+        and not (
+            literal_prod
+            and literal_prod[0] == 0
+            and len(replacable_nonliteral_operands)
+            + len(non_replacable_nonliteral_operands)
+            > 0
+        )
     ):
         return
 
     # Careful, modifying old graph, but should be ok
-    nonlit_operands = [Power(n, m) if m != 1 else n for n, m in powers.items()]
+    powered_operands = [Power(n, m) for n, m in new_powers.items()]
 
     new_operands = [
-        *nonlit_operands,
+        *powered_operands,
+        *old_powers,
         *literal_prod,
         *non_replacable_nonliteral_operands,
     ]
 
-    zero_operand = any(
-        ParameterOperatable.try_extract_literal(o) == 0.0 * o.units
-        for o in new_operands
-    )
+    zero_operand = any(try_extract_numeric_literal(o) == 0 for o in new_operands)
     if zero_operand:
-        new_operands = [0.0 * expr.units]
+        new_operands = [make_lit(0)]
 
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
@@ -231,6 +263,8 @@ def fold_pow(
     #TODO rethink: 0^0 -> 1
     ```
     """
+
+    # TODO if (litex0)^negative -> new constraint
 
     base, exp = map(try_extract_numeric_literal, expr.operands)
     # All literals

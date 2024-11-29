@@ -31,8 +31,8 @@ from faebryk.core.solver.utils import (
     get_constrained_expressions_involved_in,
     is_replacable,
     merge_parameters,
-    parameter_ops_alias_classes,
     try_extract_all_literals,
+    try_extract_literal,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -158,11 +158,15 @@ def resolve_alias_classes(mutator: Mutator):
     of correlation information
     ```
     """
-    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
-    predicates = {e for e in exprs if isinstance(e, Predicate)}
-    exprs.difference_update(predicates)
 
-    p_eq_classes = parameter_ops_alias_classes(mutator.G)
+    # A is B, B is C, D is E, F, G is (A+B)
+    # -> [{A, B, C}, {D, E}, {F}, {G, (A+B)}]
+    param_ops = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
+    full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
+    is_exprs = [e for e in GraphFunctions(mutator.G).nodes_of_type(Is) if e.constrained]
+    for is_expr in is_exprs:
+        full_eq.add_eq(*is_expr.operatable_operands)
+    p_eq_classes = full_eq.get()
 
     # Make new param repre for alias classes
     for eq_class in p_eq_classes:
@@ -234,6 +238,7 @@ def resolve_alias_classes(mutator: Mutator):
         e
         for e in GraphFunctions(mutator.G).nodes_of_type(Is)
         if all(mutator.has_been_mutated(operand) for operand in e.operands)
+        and not e.get_operations()
     }
     mutator.remove(*removed)
 
@@ -465,3 +470,32 @@ def predicate_literal_deduce(mutator: Mutator):
                 mutator.mark_predicate_true(
                     cast_assert(ConstrainableExpression, mutator.mutate_expression(p))
                 )
+
+
+def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
+    """
+    A alias ([5]), A + B -> ([5]) + B
+    """
+
+    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+        if isinstance(e, ConstrainableExpression) and e.constrained:
+            continue
+
+        if not any(
+            (lit := try_extract_literal(op, allow_subset=True)) is not None
+            and lit.is_single_element()
+            for op in e.operands
+            if isinstance(op, ParameterOperatable)
+        ):
+            continue
+        mutator.mutate_expression_with_op_map(
+            e,
+            operand_mutator=lambda _, op: (
+                lit
+                if isinstance(op, ParameterOperatable)
+                and (lit := try_extract_literal(op, allow_subset=True)) is not None
+                and lit.is_single_element()
+                else op
+            ),
+        )

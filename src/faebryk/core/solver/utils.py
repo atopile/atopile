@@ -265,37 +265,9 @@ def flatten_associative[T: Associative](
         nested_extracted_operands += res.extracted_operands
         out.destroyed_operations.update(res.destroyed_operations)
 
-    if len(nested_extracted_operands) > 0 and logger.isEnabledFor(logging.DEBUG):
-        logger.debug(
-            f"FLATTENED {type(to_flatten).__name__} {to_flatten} -> {nested_extracted_operands}"
-        )
-
     out.extracted_operands.extend(nested_extracted_operands)
 
     return out
-
-
-def parameter_ops_alias_classes(
-    G: Graph,
-) -> list[set[ParameterOperatable]]:
-    """
-    Return for list[set[parameter_operatable]] = eq classes
-    Note: if eq class only single obj, it is still included
-
-    ```
-    A is B, B is C, C is A -> [{A, B, C}]
-    ````
-    """
-
-    param_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
-    full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
-
-    is_exprs = [e for e in GraphFunctions(G).nodes_of_type(Is) if e.constrained]
-
-    for is_expr in is_exprs:
-        full_eq.add_eq(*is_expr.operatable_operands)
-
-    return full_eq.get()
 
 
 def is_replacable(

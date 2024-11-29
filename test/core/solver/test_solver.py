@@ -367,20 +367,34 @@ def test_super_simple_literal_folding(
 
 def test_literal_folding_add_multiplicative():
     A = Parameter(units=dimensionless)
+    B = Parameter(units=dimensionless)
 
-    expr = A + (A * 2) + (5 * A)
+    expr = A + (A * 2) + (5 * A) + B + (A * B * 2) - B
+    # expect: 8A + 2AB
+
     (expr <= 100.0).constrain()
 
     G = expr.get_graph()
     solver = DefaultSolver()
     repr_map, context = solver.phase_one_no_guess_solving(G)
+
     rep_add = repr_map.repr_map[expr]
-    a_res = repr_map.repr_map[A]
-    assert isinstance(rep_add, Multiply)
-    assert set(rep_add.operands) == {
-        a_res,
-        Quantity_Interval_Disjoint.from_value(8),
-    }
+    rep_A = repr_map.repr_map[A]
+    rep_B = repr_map.repr_map[B]
+    assert isinstance(rep_add, Add)
+    assert len(rep_add.operands) == 2, f"{rep_add.compact_repr(context)}"
+    mul1, mul2 = rep_add.operands
+
+    assert isinstance(mul1, Multiply)
+    assert isinstance(mul2, Multiply)
+    assert any(
+        set(m.operands) == {rep_A, Quantity_Interval_Disjoint.from_value(8)}
+        for m in (mul1, mul2)
+    )
+    assert any(
+        set(m.operands) == {rep_A, rep_B, Quantity_Interval_Disjoint.from_value(2)}
+        for m in (mul1, mul2)
+    )
 
 
 def test_literal_folding_add_multiplicative_2():
@@ -529,4 +543,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_remove_obvious_tautologies)
+    typer.run(test_literal_folding_add_multiplicative)

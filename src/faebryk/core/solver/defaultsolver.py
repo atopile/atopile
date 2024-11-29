@@ -19,6 +19,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.analytical import (
     compress_associative,
     convert_inequality_with_literal_to_subset,
+    convert_operable_aliased_to_single_into_literal,
     fold_literals,
     merge_intersect_subsets,
     predicate_literal_deduce,
@@ -87,6 +88,10 @@ class DefaultSolver(Solver):
 
         iterative_algorithms = [
             ("Remove unconstrained", remove_unconstrained),
+            (
+                "Convert aliased singletons into literals",
+                convert_operable_aliased_to_single_into_literal,
+            ),
             ("Remove congruent expressions", remove_congruent_expressions),
             ("Alias classes", resolve_alias_classes),
             (
