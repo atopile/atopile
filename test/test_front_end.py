@@ -151,3 +151,61 @@ def test_resistor(bob: Bob):
     assert r1.get_trait(F.has_footprint_requirement).get_footprint_requirement() == [
         ("0805", 2)
     ]
+
+
+def test_standard_library_import(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+
+        module A:
+            r1 = new Resistor
+        """
+    )
+
+    with errors.log_ato_errors():
+        tree = parse_text_as_file(text)
+        node = bob.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    r1 = Bob.get_node_attr(node, "r1")
+    assert isinstance(r1, F.Resistor)
+
+
+def test_import_ato(bob: Bob, tmp_path):
+    tmp_path = Path(tmp_path)
+    some_module_search_path = tmp_path / "path"
+    some_module_path = some_module_search_path / "to" / "some_module.ato"
+    some_module_path.parent.mkdir(parents=True)
+
+    some_module_path.write_text(
+        dedent(
+            """
+        import Resistor
+
+        module SpecialResistor from Resistor:
+            footprint = "R0805"
+        """
+        )
+    )
+
+    top_module_content = dedent(
+        """
+        from "to/some_module.ato" import SpecialResistor
+
+        module A:
+            r1 = new SpecialResistor
+        """
+    )
+
+    bob.search_paths.append(some_module_search_path)
+
+    with errors.log_ato_errors():
+        tree = parse_text_as_file(top_module_content)
+        node = bob.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    r1 = Bob.get_node_attr(node, "r1")
+    assert isinstance(r1, F.Resistor)

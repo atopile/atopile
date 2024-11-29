@@ -328,16 +328,41 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
     def visitImport_stmt(
         self, ctx: ap.Import_stmtContext
     ) -> KeyOptMap[Context.ImportPlaceholder]:
-        lazy_imports = [
-            Context.ImportPlaceholder(
-                ref=self.visitName_or_attr(name_or_attr),
-                from_path=self.visitString(ctx.string()),
-                original_ctx=ctx,
-            )
-            for name_or_attr in ctx.name_or_attr()
-        ]
-        return KeyOptMap(KeyOptItem.from_kv(li.ref, li) for li in lazy_imports)
+        if from_path := ctx.string():
+            lazy_imports = [
+                Context.ImportPlaceholder(
+                    ref=self.visitName_or_attr(name_or_attr),
+                    from_path=self.visitString(from_path),
+                    original_ctx=ctx,
+                )
+                for name_or_attr in ctx.name_or_attr()
+            ]
+            return KeyOptMap(KeyOptItem.from_kv(li.ref, li) for li in lazy_imports)
 
+        else:
+            # Standard library imports are special, and don't require a from path
+            imports = []
+            for collector, name_or_attr in iter_through_errors(ctx.name_or_attr()):
+                with collector():
+                    ref = self.visitName_or_attr(name_or_attr)
+                    if len(ref) > 1:
+                        raise errors.UserKeyError.from_ctx(
+                            ctx, "Standard library imports must be single-name"
+                        )
+
+                    name = ref[0]
+                    if not hasattr(F, name) or not issubclass(
+                        getattr(F, name), (L.Module, L.ModuleInterface)
+                    ):
+                        raise errors.UserKeyError.from_ctx(
+                            ctx, f'Unknown standard library module: "{name}"'
+                        )
+
+                    imports.append(KeyOptItem.from_kv(ref, getattr(F, name)))
+
+            return KeyOptMap(imports)
+
+    # TODO: @v0.4 remove this deprecated import form
     def visitDep_import_stmt(
         self, ctx: ap.Dep_import_stmtContext
     ) -> KeyOptMap[Context.ImportPlaceholder]:
@@ -346,6 +371,14 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
             from_path=self.visitString(ctx.string()),
             original_ctx=ctx,
         )
+        with downgrade(DeprecationError):
+            raise DeprecationError.from_ctx(
+                ctx,
+                'Deprecated: "import <something> from <path>" is deprecated and'
+                ' will be removed in a future version. Use "from'
+                f' {ctx.string().getText()} import {ctx.name_or_attr().getText()}"'
+                " instead.",
+            )
         return KeyOptMap.from_kv(lazy_import.ref, lazy_import)
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptMap:
