@@ -650,10 +650,13 @@ class Expression(ParameterOperatable):
         else:
             assert False
 
-        if (lit := self.try_get_literal()) is not None:
-            out = f"{out}{{{lit}}}"
-        elif (lit := self.try_get_literal_subset()) is not None:
-            out = f"{out}{{S|{lit}}}"
+        try:
+            if (lit := self.try_get_literal()) is not None:
+                out = f"{out}{{{lit}}}"
+            elif (lit := self.try_get_literal_subset()) is not None:
+                out = f"{out}{{S|{lit}}}"
+        except KeyErrorAmbiguous as e:
+            out = f"{out}{{AMBIGUOUS: {e.duplicates}}}"
 
         return out
 
@@ -1425,10 +1428,13 @@ class Parameter(ParameterOperatable):
         letter = context.variable_mapping.mapping[self]
 
         out = f"{letter}{unitstr}"
-        if (lit := self.try_get_literal()) is not None:
-            out = f"{out}{{{lit}}}"
-        elif (lit := self.try_get_literal_subset()) is not None:
-            out = f"{out}{{S|{lit}}}"
+        try:
+            if (lit := self.try_get_literal()) is not None:
+                out = f"{out}{{{lit}}}"
+            elif (lit := self.try_get_literal_subset()) is not None:
+                out = f"{out}{{S|{lit}}}"
+        except KeyErrorAmbiguous as e:
+            out = f"{out}{{AMBIGUOUS: {e.duplicates}}}"
 
         return out
 
