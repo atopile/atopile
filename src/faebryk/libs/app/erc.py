@@ -10,6 +10,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.library.Operation import Operation
+from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.picker import has_part_picked
 from faebryk.libs.util import groupby
 
@@ -87,7 +88,8 @@ def simple_erc(G: Graph):
     ]
 
     if unresolved_voltage:
-        raise ERCFaultElectricPowerUndefinedVoltage(unresolved_voltage)
+        with downgrade(ERCFaultElectricPowerUndefinedVoltage):
+            raise ERCFaultElectricPowerUndefinedVoltage(unresolved_voltage)
 
     # shorted nets
     nets = GraphFunctions(G).nodes_of_type(F.Net)

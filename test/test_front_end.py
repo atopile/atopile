@@ -1,3 +1,4 @@
+from pathlib import Path
 from textwrap import dedent
 
 import pytest
@@ -6,7 +7,7 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end import Bob, _Component
+from atopile.front_end import Bob, Component
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 
@@ -80,7 +81,7 @@ def test_simple_new(bob: Bob):
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
-    assert isinstance(child, _Component)
+    assert isinstance(child, Component)
 
     a = Bob.get_node_attr(child, "a")
     assert isinstance(a, F.Electrical)
@@ -122,6 +123,12 @@ def test_nested_nodes(bob: Bob):
 
 
 def test_resistor(bob: Bob):
+    prj_root = Path(__file__)
+    while not (prj_root / "pyproject.toml").exists():
+        prj_root = prj_root.parent
+
+    bob.search_paths.append(prj_root / "examples" / "project" / ".ato" / "modules")
+
     text = dedent(
         """
         from "generics/resistors.ato" import Resistor
