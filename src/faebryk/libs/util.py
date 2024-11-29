@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import inspect
 import itertools
+import json
 import logging
 import os
 import select
@@ -19,6 +20,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import StrEnum
+from importlib.metadata import Distribution
 from itertools import chain
 from pathlib import Path
 from textwrap import indent
@@ -1401,3 +1403,13 @@ def try_set_attr(obj: object, attr: str, value: Any) -> bool:
         setattr(obj, attr, value)
         return True
     return False
+
+
+# Check if installed as editable
+def is_editable_install():
+    distro = Distribution.from_name("atopile")
+    return (
+        json.loads(distro.read_text("direct_url.json") or "")
+        .get("dir_info", {})
+        .get("editable", False)
+    )
