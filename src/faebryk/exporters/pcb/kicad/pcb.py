@@ -105,13 +105,17 @@ class PCB:
 
         # footprint properties
         def fill_fp_property(
-            fp: C_footprint, property_name: str, layer: str, value: str
+            fp: C_footprint,
+            property_name: str,
+            layer: str,
+            value: str,
+            uuid: str,
         ) -> C_footprint.C_property:
             return C_footprint.C_property(
                 name=property_name,
                 value=value,
                 layer=C_text_layer(layer=layer),
-                uuid=gen_uuid(),
+                uuid=uuid,
                 effects=C_effects(
                     font=C_effects.C_font(size=C_wh(w=1.27, h=1.27), thickness=0.15),
                     hide=True,
@@ -129,6 +133,16 @@ class PCB:
                 return comp.propertys[property_name].value
             except KeyError:
                 return default
+
+        def get_property_uuid(
+            comp: C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint
+            | C_kicad_netlist_file.C_netlist.C_components.C_component,
+            property_name: str,
+        ) -> str:
+            try:
+                return comp.propertys[property_name].uuid  # type: ignore
+            except (KeyError, AttributeError):
+                return gen_uuid()
 
         # update nets
         # load footprints
@@ -267,12 +281,14 @@ class PCB:
                 value=get_property_value(
                     nl_comp, "atopile_address", "No atopile_address"
                 ),
+                uuid=get_property_uuid(pcb_comp, "atopile_address"),
             )
             pcb_comp.propertys["LCSC"] = fill_fp_property(
                 fp=pcb_comp,
                 property_name="LCSC",
                 layer="User.9",
                 value=get_property_value(nl_comp, "LCSC", "No LCSC number"),
+                uuid=get_property_uuid(pcb_comp, "LCSC"),
             )
 
             # update pad nets
@@ -322,12 +338,14 @@ class PCB:
                 property_name="atopile_address",
                 layer="User.9",
                 value=get_property_value(comp, "atopile_address", "No atopile_address"),
+                uuid=get_property_uuid(comp, "atopile_address"),
             )
             footprint.propertys["LCSC"] = fill_fp_property(
                 fp=footprint,
                 property_name="LCSC",
                 layer="User.9",
                 value=get_property_value(comp, "LCSC", "No LCSC number"),
+                uuid=get_property_uuid(comp, "LCSC"),
             )
 
             if current_prefix is not None and address_prefix != current_prefix:
