@@ -100,6 +100,7 @@ def test_simplify():
     G = acc.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
+    # TODO actually test something
 
 
 def test_simplify_logic_and():
@@ -154,6 +155,7 @@ def test_inequality_to_set():
     G = p0.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
+    # TODO actually test something
 
 
 def test_remove_obvious_tautologies():
@@ -166,6 +168,7 @@ def test_remove_obvious_tautologies():
     G = p0.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
+    # TODO actually test something
 
 
 def test_subset_of_literal():
@@ -179,6 +182,7 @@ def test_subset_of_literal():
     G = p0.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
+    # TODO actually test something
 
 
 def test_alias_classes():
@@ -194,12 +198,14 @@ def test_alias_classes():
     G = p0.get_graph()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(G)
+    # TODO actually test something
 
 
 def test_solve_realworld():
     app = F.RP2040()
     solver = DefaultSolver()
     solver.phase_one_no_guess_solving(app.get_graph())
+    # TODO actually test something
 
 
 def test_inspect_known_superranges():
@@ -543,4 +549,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_literal_folding_add_multiplicative)
+    typer.run(test_solve_realworld)

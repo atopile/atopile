@@ -431,7 +431,12 @@ def fold_not(
                                 ).constrain()
                     # ¬(A v ...)
                     elif isinstance(inner_op, ConstrainableExpression):
-                        Not(mutator.get_copy(inner_op)).constrain()
+                        parent_nots = inner_op.get_operations(Not)
+                        if parent_nots:
+                            for n in parent_nots:
+                                n.constrain()
+                        else:
+                            Not(mutator.get_copy(inner_op)).constrain()
 
 
 def if_operands_same_make_true(pred: Predicate, mutator: Mutator) -> bool:

@@ -1397,17 +1397,25 @@ class Parameter(ParameterOperatable):
         Letters:
         ```
         A-Z, a-z, α-ω
-        A'-Z', a'-z', α'-ω',
-        A''-Z'', a''-z'', α''-ω''
+        A₁-Z₁, a₁-z₁, α₁-ω₁
+        A₂-Z₂, a₂-z₂, α₂-ω₂
         ...
         ```
         """
+
+        def int_to_subscript(i: int) -> str:
+            assert isinstance(i, int)
+            if i == 0:
+                return ""
+            _str = str(i)
+            return "".join(chr(ord("₀") + ord(c) - ord("0")) for c in _str)
+
         if context is None:
             context = ParameterOperatable.ReprContext()
 
         if self not in context.variable_mapping.mapping:
             next_id = context.variable_mapping.next_id
-            alphabets = [("A", 26), ("a", 26), ("α", 24)]
+            alphabets = [("A", 26), ("a", 26), ("α", 25)]
 
             def alphagen():
                 idx = 0
@@ -1419,7 +1427,7 @@ class Parameter(ParameterOperatable):
             alpha_iter = alphagen()
             while next_id >= (cur := next(alpha_iter))[2]:
                 next_id -= cur[2]
-            letter = chr(ord(cur[0]) + next_id) + "'" * cur[1]
+            letter = chr(ord(cur[0]) + next_id) + int_to_subscript(cur[1])
 
             context.variable_mapping.mapping[self] = letter
             context.variable_mapping.next_id += 1
