@@ -147,9 +147,9 @@ class has_part_picked_remove(has_part_picked.impl()):
         )
 
 
-class is_virtual(Module.TraitT.decless()):
+class skip_self_pick(Module.TraitT.decless()):
     """
-    A node that exists only to contain children, and shouldn't itself be picked
+    Indicates that a node exists only to contain children, and shouldn't itself be picked
     """
 
     ...
@@ -288,11 +288,11 @@ def _pick_part_recursively(module: Module, progress: PickerProgress | None = Non
             for mod in _get_mif_top_level_modules(mif):
                 _pick_part_recursively(mod, progress)
 
-        if module.has_trait(is_virtual):
+        if module.has_trait(skip_self_pick):
             logger.debug(f"Skipping virtual module {module}")
 
         # pick
-        if module.has_trait(F.has_picker) and not module.has_trait(is_virtual):
+        if module.has_trait(F.has_picker) and not module.has_trait(skip_self_pick):
             try:
                 module.get_trait(F.has_picker).pick()
             except PickError as e:

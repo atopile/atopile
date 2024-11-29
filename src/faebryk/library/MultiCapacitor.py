@@ -6,7 +6,7 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import is_virtual
+from faebryk.libs.picker.picker import skip_self_pick
 from faebryk.libs.util import times  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class MultiCapacitor(F.Capacitor):
         return times(self._count, F.Capacitor)
 
     def __preinit__(self):
-        self.add(is_virtual())
+        self.add(skip_self_pick())
 
         # ------------------------------------
         #           connections
