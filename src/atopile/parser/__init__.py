@@ -1,0 +1,56 @@
+import logging
+import sys
+from pathlib import Path
+
+from git import Repo
+
+from faebryk.libs.util import is_editable_install, run_live
+
+logger = logging.getLogger(__name__)
+
+
+if is_editable_install():
+
+    def has_uncommitted_changes(files: list[str | Path]) -> bool:
+        """Check if any of the given files have uncommitted changes."""
+        try:
+            repo = Repo(search_parent_directories=True)
+            diff_index = repo.index.diff(None)  # Get uncommitted changes
+
+            # Convert all files to Path objects for consistent comparison
+            files = [Path(f).resolve() for f in files]
+            repo_root = Path(repo.working_dir)
+
+            # Check if any of the files have changes
+            for diff in diff_index:
+                diff_path = (repo_root / diff.a_path).resolve()
+                if diff_path in files:
+                    return True
+
+            return False
+        except Exception:
+            # If we can't check git status (not a git repo, etc), assume we need to recompile
+            return True
+
+    SACUY_FILES = [
+        "AtopileParser.g4",
+        "AtopileLexer.g4",
+        "AtopileParserBase.py",
+        "AtopileLexerBase.py",
+    ]
+    THIS_DIR = Path(__file__).parent
+
+    if has_uncommitted_changes(THIS_DIR / f for f in SACUY_FILES):
+        logger.warning("Recompiling ANTLR4 grammars due to changes in grammar files")
+        bin_dir = Path(sys.executable).parent
+        run_live(
+            [
+                bin_dir / "antlr4",
+                "-visitor",
+                "-no-listener",
+                "-Dlanguage=Python3",
+                "AtopileLexer.g4",
+                "AtopileParser.g4",
+            ],
+            cwd=THIS_DIR,
+        )
