@@ -219,10 +219,15 @@ def convert_to_canonical_operations(mutator: Mutator):
         ),
     ]
 
-    for Target, Convertible, Converter in MirroredExpressions:
-        convertible = {e for e in GraphFunctions(mutator.G).nodes_of_type(Convertible)}
+    lookup = {
+        Convertible: (Target, Converter)
+        for Target, Convertible, Converter in MirroredExpressions
+    }
 
-        for expr in ParameterOperatable.sort_by_depth(convertible, ascending=True):
-            mutator.mutate_expression(
-                expr, Converter(expr.operands), expression_factory=Target
-            )
+    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+        if type(e) not in lookup:
+            continue
+        Target, Converter = lookup[type(e)]
+
+        mutator.mutate_expression(e, Converter(e.operands), expression_factory=Target)

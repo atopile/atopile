@@ -26,7 +26,7 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps
-from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
+from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
     PickerOption,
@@ -551,15 +551,29 @@ def test_simple_negative_pick():
     assert led.get_trait(has_part_picked).get_part().partno == "C72041"
 
 
-def test_jlcpcb_pick():
+def test_jlcpcb_pick_resistor():
     resistor = F.Resistor()
     resistor.resistance.constrain_subset(L.Range(10 * P.ohm, 100 * P.ohm))
 
     solver = DefaultSolver()
-    add_jlcpcb_pickers(resistor)
+    add_api_pickers(resistor)
     pick_part_recursively(resistor, solver)
 
     assert resistor.has_trait(has_part_picked)
+    print(resistor.get_trait(has_part_picked).get_part())
+
+
+def test_jlcpcb_pick_capacitor():
+    capacitor = F.Capacitor()
+    capacitor.capacitance.constrain_subset(L.Range(100 * P.nF, 1 * P.uF))
+    capacitor.max_voltage.constrain_ge(50 * P.V)
+
+    solver = DefaultSolver()
+    add_api_pickers(capacitor)
+    pick_part_recursively(capacitor, solver)
+
+    assert capacitor.has_trait(has_part_picked)
+    print(capacitor.get_trait(has_part_picked).get_part())
 
 
 if __name__ == "__main__":
@@ -570,4 +584,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_jlcpcb_pick)
+    typer.run(test_jlcpcb_pick_capacitor)
