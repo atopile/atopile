@@ -565,8 +565,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 with downgrade(DeprecationError):
                     raise DeprecationError.from_ctx(
                         item.original_ctx,
-                        f"Deprecated: {import_addr} is deprecated and a likeness"
-                        f" is being shimmed in place for you. Use {preferred} instead.",
+                        f"Deprecated: {import_addr} is deprecated and will be"
+                        " removed in a future version. Use {preferred} instead.",
                     )
                 return shim_cls
 
@@ -919,10 +919,11 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
             else:
                 if not nested:
-                    logging.warning(
-                        f"Deprecated: Connected {a} to {b} by duck-typing."
-                        " They should be of the same type."
-                    )
+                    with downgrade(DeprecationError):
+                        raise DeprecationError(
+                            f"Deprecated: Connected {a} to {b} by duck-typing."
+                            " They should be of the same type."
+                        )
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
         """Connect interfaces together"""

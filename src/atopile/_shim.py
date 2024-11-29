@@ -5,9 +5,7 @@ It will be removed in v0.4.
 """
 
 import logging
-from typing import (
-    Type,
-)
+from typing import Type
 
 from more_itertools import first
 
@@ -17,10 +15,7 @@ import faebryk.libs.library.L as L
 from atopile import address
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
-from faebryk.libs.util import (
-    has_attr_or_property,
-    write_only_property,
-)
+from faebryk.libs.util import has_attr_or_property, write_only_property
 
 # Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
 try:
@@ -83,7 +78,7 @@ class _has_kicad_footprint_name_defined(F.has_footprint_impl):
         if ":" not in lib_reference:
             # TODO: default to a lib reference starting with "lib:"
             # for backwards compatibility with old footprints
-            lib_reference = f"lcsc:{lib_reference}"
+            lib_reference = f"lib:{lib_reference}"
         self.lib_reference = lib_reference
         self.pinmap = pinmap
 
