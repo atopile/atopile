@@ -32,8 +32,9 @@ blockdef: blocktype name ('from' name_or_attr)? ':' block;
 blocktype: ('component' | 'module' | 'interface');
 block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 
+// TODO: @v0.4 remove the deprecated import form
 dep_import_stmt: 'import' name_or_attr 'from' string;
-import_stmt: 'from' string 'import' name_or_attr (',' name_or_attr)*;
+import_stmt: ('from' string)? 'import' name_or_attr (',' name_or_attr)*;
 
 declaration_stmt: name_or_attr type_info;
 assign_stmt: name_or_attr type_info? '=' assignable;

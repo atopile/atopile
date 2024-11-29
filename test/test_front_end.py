@@ -151,3 +151,23 @@ def test_resistor(bob: Bob):
     assert r1.get_trait(F.has_footprint_requirement).get_footprint_requirement() == [
         ("0805", 2)
     ]
+
+
+def test_standard_library_import(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+
+        module A:
+            r1 = new Resistor
+        """
+    )
+
+    with errors.log_ato_errors():
+        tree = parse_text_as_file(text)
+        node = bob.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    r1 = Bob.get_node_attr(node, "r1")
+    assert isinstance(r1, F.Resistor)
