@@ -32,7 +32,7 @@ if is_editable_install():
             # If we can't check git status (not a git repo, etc), assume we need to recompile
             return True
 
-    SACUY_FILES = [
+    SAUCY_FILES = [
         "AtopileParser.g4",
         "AtopileLexer.g4",
         "AtopileParserBase.py",
@@ -40,7 +40,7 @@ if is_editable_install():
     ]
     THIS_DIR = Path(__file__).parent
 
-    if has_uncommitted_changes(THIS_DIR / f for f in SACUY_FILES):
+    if has_uncommitted_changes(THIS_DIR / f for f in SAUCY_FILES):
         logger.warning("Recompiling ANTLR4 grammars due to changes in grammar files")
         bin_dir = Path(sys.executable).parent
         run_live(
