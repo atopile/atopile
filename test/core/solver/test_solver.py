@@ -26,11 +26,13 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps
+from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
     PickerOption,
     has_part_picked,
     pick_module_by_params,
+    pick_part_recursively,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
@@ -224,6 +226,13 @@ def test_symmetric_inequality_uncorrelated():
     (p0 >= p1).constrain()
     (p0 <= p1).constrain()
 
+    # This would only work if p0 is alias p1
+    # but we never do implicit alias, because that's very dangerous
+    # so this has to throw
+
+    # strategy: if this kind of unequality exists, check if there is an alias
+    # and if not, throw
+
     G = p0.get_graph()
     solver = DefaultSolver()
 
@@ -256,16 +265,15 @@ def test_less_obvious_contradiction_by_literal():
     C.alias_is(A + B)
     C.alias_is(Range(0.0 * P.V, 15.0 * P.V))
 
+    print_context = ParameterOperatable.ReprContext()
+    for p in (A, B, C):
+        p.compact_repr(print_context)
+
     G = A.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        repr_map, context = solver.phase_one_no_guess_solving(G)
-        from faebryk.core.graph import GraphFunctions
+        repr_map, context = solver.phase_one_no_guess_solving(G, print_context)
 
-        for op in GraphFunctions(repr_map.repr_map[A].get_graph()).nodes_of_type(
-            ParameterOperatable
-        ):
-            logger.info(f"{op!r}")
     # FIXME
     # <*3548|Parameter> is 5-10               subset 0-inf
     # <*3158|Parameter> is 5-20 is Add(P)
@@ -543,10 +551,23 @@ def test_simple_negative_pick():
     assert led.get_trait(has_part_picked).get_part().partno == "C72041"
 
 
+def test_jlcpcb_pick():
+    resistor = F.Resistor()
+    resistor.resistance.constrain_subset(L.Range(10 * P.ohm, 100 * P.ohm))
+
+    solver = DefaultSolver()
+    add_jlcpcb_pickers(resistor)
+    pick_part_recursively(resistor, solver)
+
+    assert resistor.has_trait(has_part_picked)
+
+
 if __name__ == "__main__":
     import typer
 
+    # Sets LCSC paths
+    import faebryk.libs.examples.buildutil  # noqa: F401
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_solve_realworld)
+    typer.run(test_jlcpcb_pick)

@@ -9,8 +9,6 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
-    Is,
-    IsSubset,
     Numbers,
     Parameter,
     ParameterOperatable,
@@ -40,7 +38,10 @@ from faebryk.core.solver.utils import (
     Contradiction,
     Mutator,
     Mutators,
+    SolverLiteral,
     debug_name_mappings,
+    get_graphs,
+    try_extract_literal,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
@@ -136,16 +137,18 @@ class DefaultSolver(Solver):
             return algo_repr_map, algo_graphs, algo_dirty
 
         any_dirty = True
-        iterno = 0
+        iterno = -1
         total_repr_map: Mutator.REPR_MAP = {}
         graphs = [g]
 
         # subset specific
-        param_ops_subset_literals: dict[
-            ParameterOperatable, ParameterOperatable.Literal
-        ] = {}
+        param_ops_subset_literals: dict[ParameterOperatable, SolverLiteral | None] = {}
 
         while any_dirty and len(graphs) > 0:
+            iterno += 1
+            # TODO remove
+            if iterno > 10:
+                raise Exception("Too many iterations")
             v_count = sum(
                 len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
                 for g in graphs
@@ -182,10 +185,9 @@ class DefaultSolver(Solver):
 
             # subset -------------------------------------------------------------------
             if iterno == 0:
-                iterno += 1
                 # Build initial subset literals
                 param_ops_subset_literals = {
-                    po: po.try_get_literal_subset()
+                    po: try_extract_literal(po, allow_subset=True)
                     for G in graphs
                     for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)
                 }
@@ -200,7 +202,9 @@ class DefaultSolver(Solver):
                 if po in total_repr_map_obj
             }
             for po in param_ops_subset_literals:
-                new_subset_literal = total_repr_map_obj.try_get_literal(po, IsSubset)
+                new_subset_literal = total_repr_map_obj.try_get_literal(
+                    po, allow_subset=True
+                )
                 if new_subset_literal != param_ops_subset_literals[po]:
                     logger.debug(
                         f"Subset dirty {param_ops_subset_literals[po]} != {new_subset_literal}"
@@ -232,11 +236,9 @@ class DefaultSolver(Solver):
                 *([total_repr_map] if total_repr_map else []),
                 *iteration_repr_maps.values(),
             )
-
             # --------------------------------------------------------------------------
-            iterno += 1
 
-        Mutators.print_all(*graphs, context=print_context_, type_filter=Expression)
+        Mutators.print_all(*graphs, context=print_context_)
 
         logger.info(f"Phase 1 Solving done in {iterno} iterations ".ljust(80, "="))
         return Mutators.create_concat_repr_map(total_repr_map), print_context_
@@ -298,9 +300,7 @@ class DefaultSolver(Solver):
             return Quantity_Interval_Disjoint.unbounded(param.units)
 
         # check predicates (is, subset), (ge, le covered too)
-        literal = repr_map.try_get_literal(param, Is)
-        if literal is None:
-            literal = repr_map.try_get_literal(param, IsSubset)
+        literal = repr_map.try_get_literal(param, allow_subset=True)
 
         if literal is None:
             return Quantity_Interval_Disjoint.unbounded(param.units)
@@ -339,11 +339,22 @@ class DefaultSolver(Solver):
                 repr_map, print_context_new = self.phase_one_no_guess_solving(
                     pred.get_graph(), print_context=print_context
                 )
+                # FIXME: is this correct?
+                # definitely breaks a lot
+                new_Gs = get_graphs(repr_map.repr_map.values())
+                repr_pred = repr_map.repr_map.get(pred)
 
-                # check if all predicates have been deducted, else unknown
-                repr_pred = repr_map.repr_map[pred]
-                new_G = repr_pred.get_graph()
-                new_preds = GraphFunctions(new_G).nodes_of_type(ConstrainableExpression)
+                # FIXME: workaround for above
+                if repr_pred is not None:
+                    new_Gs = [repr_pred.get_graph()]
+
+                new_preds = [
+                    n
+                    for new_G in new_Gs
+                    for n in GraphFunctions(new_G).nodes_of_type(
+                        ConstrainableExpression
+                    )
+                ]
                 not_deducted = [
                     p
                     for p in new_preds
@@ -353,10 +364,14 @@ class DefaultSolver(Solver):
                 if not_deducted:
                     logger.warning(
                         f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
-                        f" -> {repr_pred.compact_repr(print_context_new)}"
+                        + (
+                            f" -> {repr_pred.compact_repr(print_context_new)}"
+                            if repr_pred
+                            else ""
+                        )
                     )
                     logger.warning(
-                        f"NOT DEDUCTED: \n    {'\n    '.join([p.compact_repr(print_context_new) for p in not_deducted])}"
+                        f"NOT DEDUCED: \n    {'\n    '.join([p.compact_repr(print_context_new) for p in not_deducted])}"
                     )
                     result.unknown_predicates.append(p)
                 else:

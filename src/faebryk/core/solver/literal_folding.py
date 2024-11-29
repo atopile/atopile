@@ -503,6 +503,7 @@ def fold_is(
                 Not(p).constrain()
 
     if not literal_operands:
+        # TODO shouldn't this be the case for all predicates?
         # A is B | A or B unconstrained -> True
         if no_other_constrains(expr.operands[0], expr):
             alias_is_literal_and_check_predicate_eval(expr, True, mutator)
@@ -537,9 +538,11 @@ def fold_subset(
         return
 
     # FIXME should use op=IsSubset? both?
+    # if left one is subset that should be ok
     lits = try_extract_all_literals(expr)
     if lits is None:
         return
+
     a, b = lits
     alias_is_literal_and_check_predicate_eval(expr, a.is_subset_of(b), mutator)
 

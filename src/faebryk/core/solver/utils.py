@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 from statistics import median
+from types import NoneType
 from typing import Callable, Iterable, Iterator, TypeGuard, cast
 
 from rich.console import Console
@@ -36,7 +37,6 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
     Power,
-    Predicate,
     Round,
     Sin,
     SymmetricDifference,
@@ -54,9 +54,9 @@ from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
 from faebryk.libs.util import (
     ConfigFlag,
-    EquivalenceClasses,
     KeyErrorAmbiguous,
     cast_assert,
+    groupby,
     not_none,
     partition,
     unique_ref,
@@ -105,12 +105,13 @@ def make_lit(val):
 
 
 def try_extract_literal(po, allow_subset: bool = False) -> SolverLiteral | None:
-    lit = ParameterOperatable.try_extract_literal(po)
-    if lit is None and allow_subset:
-        lit = po.try_get_literal_subset()
-    if lit is None:
-        return None
-    assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set))
+    try:
+        lit = ParameterOperatable.try_extract_literal(po, allow_subset=allow_subset)
+    except KeyErrorAmbiguous as e:
+        raise ContradictionByLiteral(
+            f"Duplicate unequal is literals: {e.duplicates}"
+        ) from e
+    assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set, NoneType))
     return lit
 
 
@@ -118,34 +119,23 @@ def try_extract_numeric_literal(
     po, allow_subset: bool = False
 ) -> CanonicalNumber | None:
     lit = try_extract_literal(po, allow_subset)
-    if lit is None:
-        return None
-    assert isinstance(lit, CanonicalNumber)
+    assert isinstance(lit, (CanonicalNumber, NoneType))
     return lit
 
 
 def try_extract_boolset(po, allow_subset: bool = False) -> CanonicalBoolean | None:
     lit = try_extract_literal(po, allow_subset)
-    if lit is None:
-        return None
-    assert isinstance(lit, CanonicalBoolean)
+    assert isinstance(lit, (CanonicalBoolean, NoneType))
     return lit
 
 
 def try_extract_all_literals[T: P_Set](
     expr: Expression,
-    op: type[ConstrainableExpression] | None = None,
+    allow_subset: bool = False,
     lit_type: type[T] = P_Set,
     accept_partial: bool = False,
 ) -> list[T] | None:
-    try:
-        as_lits = [
-            ParameterOperatable.try_extract_literal(o, op) for o in expr.operands
-        ]
-    except KeyErrorAmbiguous as e:
-        raise ContradictionByLiteral(
-            f"Duplicate unequal is literals: {e.duplicates}"
-        ) from e
+    as_lits = [try_extract_literal(o, allow_subset) for o in expr.operands]
 
     if None in as_lits and not accept_partial:
         return None
@@ -155,13 +145,8 @@ def try_extract_all_literals[T: P_Set](
 
 
 def alias_is_literal(po: ParameterOperatable, literal: ParameterOperatable.Literal):
-    try:
-        existing = po.try_get_literal()
-    except KeyErrorAmbiguous as e:
-        raise ContradictionByLiteral(
-            f"Duplicate unequal is literals: {e.duplicates}"
-        ) from e
     literal = make_lit(literal)
+    existing = try_extract_literal(po)
 
     if existing is not None:
         if existing == literal:
@@ -174,6 +159,11 @@ def alias_is_literal(po: ParameterOperatable, literal: ParameterOperatable.Liter
     return po.alias_is(literal)
 
 
+def is_literal(po: ParameterOperatable) -> TypeGuard[SolverLiteral]:
+    # allowed because of canonicalization
+    return ParameterOperatable.is_literal(po)
+
+
 def alias_is_literal_and_check_predicate_eval(
     expr: ConstrainableExpression, value: BoolSet | bool, mutator: "Mutator"
 ):
@@ -184,13 +174,22 @@ def alias_is_literal_and_check_predicate_eval(
     assert value == BoolSet(True)
     mutator.mark_predicate_true(expr)
 
+    # TODO is this still needed?
     # mark all alias_is P -> True as true
     for op in expr.get_operations(Is):
         if not op.constrained:
             continue
-        if op.try_get_literal() is None:
+        lit = try_extract_literal(op)
+        if lit is None:
+            continue
+        if lit != BoolSet(True):
             continue
         mutator.mark_predicate_true(op)
+
+    # FIXME is this the right place?
+    # unconstrain effectively results in remove
+    # mutator.mark_predicate_false(expr)
+    # expr.constrained = False
 
 
 def no_other_constrains(
@@ -286,25 +285,6 @@ def is_replacable(
     return True
 
 
-def parameter_dependency_classes(G: Graph) -> list[set[Parameter]]:
-    # TODO just get passed
-    params = [
-        p
-        for p in GraphFunctions(G).nodes_of_type(Parameter)
-        if get_constrained_expressions_involved_in(p)
-    ]
-
-    related = EquivalenceClasses[Parameter](params)
-
-    eq_exprs = [e for e in GraphFunctions(G).nodes_of_type(Predicate) if e.constrained]
-
-    for eq_expr in eq_exprs:
-        params = get_params_for_expr(eq_expr)
-        related.add_eq(*params)
-
-    return related.get()
-
-
 def get_params_for_expr(expr: Expression) -> set[Parameter]:
     param_ops = {op for op in expr.operatable_operands if isinstance(op, Parameter)}
     expr_ops = {op for op in expr.operatable_operands if isinstance(op, Expression)}
@@ -339,6 +319,22 @@ def get_constrained_expressions_involved_in(
         if isinstance(p, ConstrainableExpression) and p.constrained
     }
     return res
+
+
+def is_replacable_by_literal(op: ParameterOperatable.All):
+    if not isinstance(op, ParameterOperatable):
+        return None
+
+    # special case for Is(True, True) due to alias_is_literal check
+    if isinstance(op, Is) and {BoolSet(True)} == set(op.operands):
+        return BoolSet(True)
+
+    lit = try_extract_literal(op, allow_subset=True)
+    if lit is None:
+        return None
+    if not lit.is_single_element():
+        return None
+    return lit
 
 
 # TODO move to Mutator
@@ -502,7 +498,8 @@ class Mutator:
         if isinstance(expr, ConstrainableExpression):
             new_expr = cast_assert(ConstrainableExpression, new_expr)
             new_expr.constrained = expr.constrained
-            new_expr._solver_evaluates_to_true |= expr._solver_evaluates_to_true
+            if self.is_predicate_true(expr):
+                self.mark_predicate_true(new_expr)
 
         return self._mutate(expr, new_expr)
 
@@ -586,6 +583,10 @@ class Mutator:
 
     def is_predicate_true(self, pred: ConstrainableExpression) -> bool:
         return pred._solver_evaluates_to_true
+
+    def mark_predicate_false(self, pred: ConstrainableExpression):
+        assert pred.constrained
+        pred._solver_evaluates_to_true = False
 
 
 class Mutators:
@@ -722,13 +723,33 @@ class Mutators:
         type_filter: type[ParameterOperatable] = ParameterOperatable,
     ):
         for i, g in enumerate(graphs):
-            nodes = GraphFunctions(g).nodes_of_type(type_filter)
-            compact_reprs = ",\n    ".join(n.compact_repr(context) for n in nodes)
-            logger.debug(f"|Graph {i}|={len(nodes)} [\n    {compact_reprs}\n]")
+            pre_nodes = GraphFunctions(g).nodes_of_type(type_filter)
+            nodes = [
+                n
+                for n in pre_nodes
+                if not (
+                    isinstance(n, (Is, IsSubset))
+                    and n.constrained
+                    and n._solver_evaluates_to_true
+                    and any(ParameterOperatable.is_literal(o) for o in n.operands)
+                )
+            ]
+            out = ""
+            node_by_depth = groupby(nodes, key=ParameterOperatable.get_depth)
+            for depth, dnodes in sorted(node_by_depth.items(), key=lambda t: t[0]):
+                out += f"\n  --Depth {depth}--"
+                for n in dnodes:
+                    out += f"\n      {n.compact_repr(context)}"
+
+            if not nodes:
+                continue
+            logger.debug(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
     @staticmethod
     def concat_repr_maps(*repr_maps: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
-        assert repr_maps
+        # TODO just removed assert
+        if not repr_maps:
+            return {}
         if len(repr_maps) == 1:
             return repr_maps[0]
 
@@ -738,8 +759,7 @@ class Mutators:
             chain_interrupted = False
             for m in repr_maps:
                 # CONSIDER: I think we can assert this
-                if not isinstance(chain_end, ParameterOperatable):
-                    break
+                assert isinstance(chain_end, ParameterOperatable)
                 if chain_end not in m:
                     logger.debug(f"chain_end {original_obj} -> {chain_end} interrupted")
                     chain_interrupted = True
@@ -754,22 +774,15 @@ class Mutators:
             self.repr_map = repr_map
 
         def try_get_literal(
-            self, param: ParameterOperatable, e_type: type[Is | IsSubset] | None = None
+            self, param: ParameterOperatable, allow_subset: bool = False
         ) -> ParameterOperatable.Literal | None:
-            if e_type is Is or e_type is None:
-                lit = self.repr_map[param].try_get_literal(e_type)
-            elif e_type is IsSubset:
-                lit = self.repr_map[param].try_get_literal_subset()
-            else:
-                assert False
-
+            lit = try_extract_literal(self.repr_map[param], allow_subset=allow_subset)
             if lit is None:
                 return None
-            res = P_Set.from_value(lit)
-            if isinstance(res, Quantity_Set):
+            if isinstance(lit, Quantity_Set):
                 fac = quantity(1, HasUnit.get_units(param))
-                return res * fac / fac.to_base_units().m
-            return res
+                return lit * fac / fac.to_base_units().m
+            return lit
 
         def __getitem__(
             self, param: ParameterOperatable

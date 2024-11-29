@@ -78,25 +78,6 @@ class ParameterOperatable(Node):
 
     def has_implicit_constraints_recursive(self) -> bool: ...
 
-    @staticmethod
-    def sort_by_depth[T: ParameterOperatable](
-        exprs: Iterable[T], ascending: bool
-    ) -> list[T]:
-        """
-        Ascending:
-        ```
-        (A + B) + (C + D)
-        -> [(A+B), (C+D), (A+B)+(C+D)]
-        ```
-        """
-
-        def key(e: ParameterOperatable):
-            if isinstance(e, Expression):
-                return e.depth()
-            return 0
-
-        return sorted(exprs, key=key, reverse=not ascending)
-
     def operation_add(self, other: NumberLike):
         return Add(self, other)
 
@@ -393,7 +374,16 @@ class ParameterOperatable(Node):
         return literal_is
 
     def try_get_literal_subset(self) -> Literal | None:
-        return self.try_get_literal_for_multiple_ops([Is, IsSubset])
+        lits = self.try_get_literal_for_multiple_ops([Is, IsSubset])
+        if not lits:
+            return None
+        if len(lits) == 1:
+            return next(iter(lits.values()))
+
+        is_lit, ss_lit = map(P_Set.from_value, (lits[Is], lits[IsSubset]))
+        if not is_lit.is_subset_of(ss_lit):
+            raise KeyErrorAmbiguous(list(lits.values()))
+        return is_lit
 
     def try_get_literal(
         self, op: type["ConstrainableExpression"] | None = None
@@ -405,21 +395,21 @@ class ParameterOperatable(Node):
 
     def try_get_literal_for_multiple_ops(
         self, ops: list[type["ConstrainableExpression"]]
-    ) -> Literal | None:
-        for op in ops:
-            lits = self.try_get_literal(op)
-            if lits is not None:
-                return lits
-        return None
+    ) -> dict[type["ConstrainableExpression"], Literal] | None:
+        lits = {op: self.try_get_literal(op) for op in ops}
+        lits = {op: lit for op, lit in lits.items() if lit is not None}
+        return lits if lits else None
 
     @staticmethod
     def try_extract_literal(
-        po: "ParameterOperatable.All", op: type["ConstrainableExpression"] | None = None
+        po: "ParameterOperatable.All", allow_subset: bool = False
     ) -> Literal | None:
         if ParameterOperatable.is_literal(po):
             return po
         assert isinstance(po, ParameterOperatable)
-        return po.try_get_literal(op)
+        if allow_subset:
+            return po.try_get_literal_subset()
+        return po.try_get_literal()
 
     # type checks
 
@@ -443,6 +433,37 @@ class ParameterOperatable(Node):
 
     def compact_repr(self, context: ReprContext | None = None) -> str:
         raise NotImplementedError()
+
+    # TODO move to Expression
+    @staticmethod
+    def sort_by_depth[T: ParameterOperatable](
+        exprs: Iterable[T], ascending: bool
+    ) -> list[T]:
+        """
+        Ascending:
+        ```
+        (A + B) + (C + D)
+        -> [(A+B), (C+D), (A+B)+(C+D)]
+        ```
+        """
+        return sorted(exprs, key=ParameterOperatable.get_depth, reverse=not ascending)
+
+    @staticmethod
+    def get_depth(po: "ParameterOperatable.All") -> int:
+        if isinstance(po, Expression):
+            return po.depth()
+        return 0
+
+    def _get_lit_suffix(self) -> str:
+        out = ""
+        try:
+            if (lit := self.try_get_literal()) is not None:
+                out = f"{{I|{lit}}}"
+            elif (lit := self.try_get_literal_subset()) is not None:
+                out = f"{{S|{lit}}}"
+        except KeyErrorAmbiguous as e:
+            out = f"{{AMBIGUOUS: {e.duplicates}}}"
+        return out
 
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
@@ -546,8 +567,7 @@ class Expression(ParameterOperatable):
         if hasattr(self, "_depth"):
             return self._depth
         self._depth = 1 + max(
-            [0]
-            + [op.depth() if isinstance(op, Expression) else 0 for op in self.operands],
+            [0] + [Expression.get_depth(op) for op in self.operands],
         )
         return self._depth
 
@@ -606,11 +626,13 @@ class Expression(ParameterOperatable):
         if symbol is None:
             symbol = type(self).__name__
 
+        symbol_suffix = ""
         if isinstance(self, ConstrainableExpression) and self.constrained:
             # symbol = f"\033[4m{symbol}!\033[0m"
-            symbol = f"{symbol}!"
+            symbol_suffix += "!"
             if self._solver_evaluates_to_true:
-                symbol = f"{symbol}!"
+                symbol_suffix += "!"
+        symbol += symbol_suffix
 
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
@@ -627,36 +649,30 @@ class Expression(ParameterOperatable):
                 out = f"{symbol}{formatted_operands[0]}"
             else:
                 out = f"{symbol}({', '.join(formatted_operands)})"
+        elif style.placement == Expression.ReprStyle.Placement.EMBRACE:
+            out = f"{symbol}{', '.join(formatted_operands)}{symbol}"
+        elif len(formatted_operands) == 0:
+            out = f"{type(self).__name__}{symbol_suffix}()"
         elif style.placement == Expression.ReprStyle.Placement.POSTFIX:
             if len(formatted_operands) == 1:
                 out = f"{formatted_operands[0]}{symbol}"
             else:
                 out = f"({', '.join(formatted_operands)}){symbol}"
+        elif len(formatted_operands) == 1:
+            out = f"{type(self).__name__}{symbol_suffix}({formatted_operands[0]})"
         elif style.placement == Expression.ReprStyle.Placement.INFIX:
-            if len(formatted_operands) == 1:
-                out = f"{symbol}{formatted_operands[0]}"
-            else:
-                symbol = f" {symbol} "
-                out = f"{symbol.join(formatted_operands)}"
+            symbol = f" {symbol} "
+            out = f"{symbol.join(formatted_operands)}"
         elif style.placement == Expression.ReprStyle.Placement.INFIX_FIRST:
-            if len(formatted_operands) == 1:
-                return f"{symbol}{formatted_operands[0]}"
-            elif len(formatted_operands) == 2:
+            if len(formatted_operands) == 2:
                 out = f"{formatted_operands[0]} {symbol} {formatted_operands[1]}"
             else:
                 out = f"{formatted_operands[0]}{symbol}({', '.join(formatted_operands[1:])})"
-        elif style.placement == Expression.ReprStyle.Placement.EMBRACE:
-            out = f"{symbol}{', '.join(formatted_operands)}{symbol}"
         else:
             assert False
+        assert out
 
-        try:
-            if (lit := self.try_get_literal()) is not None:
-                out = f"{out}{{{lit}}}"
-            elif (lit := self.try_get_literal_subset()) is not None:
-                out = f"{out}{{S|{lit}}}"
-        except KeyErrorAmbiguous as e:
-            out = f"{out}{{AMBIGUOUS: {e.duplicates}}}"
+        out += self._get_lit_suffix()
 
         return out
 
@@ -1436,13 +1452,7 @@ class Parameter(ParameterOperatable):
         letter = context.variable_mapping.mapping[self]
 
         out = f"{letter}{unitstr}"
-        try:
-            if (lit := self.try_get_literal()) is not None:
-                out = f"{out}{{{lit}}}"
-            elif (lit := self.try_get_literal_subset()) is not None:
-                out = f"{out}{{S|{lit}}}"
-        except KeyErrorAmbiguous as e:
-            out = f"{out}{{AMBIGUOUS: {e.duplicates}}}"
+        out += self._get_lit_suffix()
 
         return out
 

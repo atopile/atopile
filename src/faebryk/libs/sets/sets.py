@@ -84,7 +84,7 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
 
     def __str__(self) -> str:
         # TODO move enum stuff to new EnumSet
-        return f"{{{', '.join(str(e) if not isinstance(e, Enum) else f'{e.name}' for e in self.elements)}}}"
+        return f"[{', '.join(str(e) if not isinstance(e, Enum) else f'{e.name}' for e in self.elements)}]"
 
     def __iter__(self) -> Iterator[U]:
         return iter(self.elements)
@@ -163,6 +163,9 @@ class BoolSet(P_Set[bool]):
 
     def __repr__(self) -> str:
         return f"BoolSet({', '.join(repr(v) for v in self.values)})"
+
+    def __str__(self) -> str:
+        return f"[{', '.join(str(v) for v in self.values)}]"
 
     # TODO rethink this
     def __and__(self, other: BoolSetLike_) -> "BoolSet":

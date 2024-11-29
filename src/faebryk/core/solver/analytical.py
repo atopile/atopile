@@ -18,10 +18,10 @@ from faebryk.core.parameter import (
     IsSubset,
     Parameter,
     ParameterOperatable,
-    Predicate,
 )
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
+    S_LOG,
     CanonicalOperation,
     FullyAssociative,
     Mutator,
@@ -30,6 +30,7 @@ from faebryk.core.solver.utils import (
     flatten_associative,
     get_constrained_expressions_involved_in,
     is_replacable,
+    is_replacable_by_literal,
     merge_parameters,
     try_extract_all_literals,
     try_extract_literal,
@@ -48,6 +49,9 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
+
+if S_LOG:
+    logger.setLevel(logging.DEBUG)
 
 
 def convert_inequality_with_literal_to_subset(mutator: Mutator):
@@ -131,15 +135,17 @@ def remove_congruent_expressions(mutator: Mutator):
 
         eq_id = id(eq_class)
         if eq_id not in repres:
-            logger.warning(f"Remove congruent: {eq_class}")
+            logger.debug(f"Remove congruent: {eq_class}")
             representative = mutator.mutate_expression(expr)
             repres[eq_id] = representative
+
+            # propagate constrained & marked true
             if isinstance(representative, ConstrainableExpression):
                 eq_class = cast(set[ConstrainableExpression], eq_class)
                 representative.constrained = any(e.constrained for e in eq_class)
-                representative._solver_evaluates_to_true = any(
-                    e._solver_evaluates_to_true for e in eq_class
-                )
+                if any(mutator.is_predicate_true(e) for e in eq_class):
+                    mutator.mark_predicate_true(representative)
+
         mutator._mutate(expr, repres[eq_id])
 
 
@@ -386,37 +392,36 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     """
     If any operand in an expression has a subset literal, we can add a subset to the expr
 
-    A + B | A alias B ; never happens (after eq classes)
-    A + B | B alias [1,5] -> (A + B) , (A + B) subset (A + [1,5])
+    ```
+    A + B | B is [1,5] -> (A + B) , (A + B) subset (A + [1,5])
     A + B | B subset [1,5] -> (A + B) , (A + B) subset (A + [1,5])
-    A / B | B alias [1,5] -> (A / B) , (A / B) subset (A / [1,5])
-    B / A | B alias [1,5] -> (B / A) , (B / A) subset ([1,5] / A)
-    A / B | B alias 0 -> (A / B), (A / B) subset (A / 0)
-    A / B | B alias [-1,1] -> (A / B), (A / B) subset (A / [-1,1])
+    ```
+
+    No need to check:
+    ```
+    A + B | A alias B ; never happens (after eq classes)
+    A + B | B alias ([0]); never happens (after aliased_single_into_literal)
+    ```
     """
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for expr in exprs:
-        if isinstance(expr, Predicate):
-            continue
+        # if isinstance(expr, Predicate):
+        #    continue
 
         operands = []
         for op in expr.operands:
             if not isinstance(op, ParameterOperatable):
                 operands.append(op)
                 continue
-            subset_lits = op.try_get_literal_subset()
+            subset_lits = try_extract_literal(op, allow_subset=True)
             if subset_lits is None:
                 operands.append(op)
                 continue
             operands.append(subset_lits)
 
-        # if not has_subset_literal:
-        #    continue
-
         # Make new expr with subset literals
         new_expr = type(expr)(*[mutator.get_copy(operand) for operand in operands])
-        logger.debug(f"Adding upper estimate {expr} subset {new_expr}")
         # Constrain subset on copy of old expr
         ss = cast_assert(Expression, mutator.get_copy(expr)).constrain_subset(new_expr)
         mutator.mark_predicate_true(ss)
@@ -466,7 +471,7 @@ def predicate_literal_deduce(mutator: Mutator):
         if len(p.operands) - len(lits) <= 1:
             # mutator.mark_predicate_true(p)
             # purely for printing mutating needed
-            if not p._solver_evaluates_to_true:
+            if not mutator.is_predicate_true(p):
                 mutator.mark_predicate_true(
                     cast_assert(ConstrainableExpression, mutator.mutate_expression(p))
                 )
@@ -474,28 +479,22 @@ def predicate_literal_deduce(mutator: Mutator):
 
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
-    A alias ([5]), A + B -> ([5]) + B
+    A is ([5]), A + B -> ([5]) + B
     """
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
-        if isinstance(e, ConstrainableExpression) and e.constrained:
+        # TODO I don't fully understand why this is here
+        # but is very needed
+        if isinstance(e, Is) and e.constrained:
             continue
 
-        if not any(
-            (lit := try_extract_literal(op, allow_subset=True)) is not None
-            and lit.is_single_element()
-            for op in e.operands
-            if isinstance(op, ParameterOperatable)
-        ):
+        if not any(is_replacable_by_literal(op) is not None for op in e.operands):
             continue
+
         mutator.mutate_expression_with_op_map(
             e,
             operand_mutator=lambda _, op: (
-                lit
-                if isinstance(op, ParameterOperatable)
-                and (lit := try_extract_literal(op, allow_subset=True)) is not None
-                and lit.is_single_element()
-                else op
+                lit if (lit := is_replacable_by_literal(op)) is not None else op
             ),
         )
