@@ -420,6 +420,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         self._param_assignments = FuncDict[
             fab_param.Parameter, "tuple[Range | Single, ParserRuleContext | None]"  # type: ignore
         ]()
+        self.search_paths: list[os.PathLike] = []
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
@@ -520,19 +521,31 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         ast = parser.get_ast_from_file(file_path)
         return self._index_ast(ast, file_path)
 
+    def _get_search_paths(self, context: Context) -> list[Path]:
+        search_paths = [Path(p) for p in self.search_paths]
+
+        if context.file_path is not None:
+            search_paths.insert(0, context.file_path.parent)
+
+        try:
+            prj_context = config.get_project_context()
+        except ValueError:
+            # No project context, so we can't import anything
+            pass
+        else:
+            search_paths += [
+                prj_context.src_path,
+                prj_context.module_path,
+            ]
+
+        return search_paths
+
     def _import_item(
         self, context: Context, item: Context.ImportPlaceholder
     ) -> Type[L.Node] | ap.BlockdefContext:
         # Build up search paths to check for the import in
-        prj_context = config.get_project_context()
-        search_paths = [
-            prj_context.src_path,
-            prj_context.module_path,
-        ]
-        if context.file_path is not None:
-            search_paths.insert(0, context.file_path.parent)
-
         # Iterate though them, checking if any contains the thing we're looking for
+        search_paths = self._get_search_paths(context)
         for search_path in search_paths:
             candidate_from_path = search_path / item.from_path
             if candidate_from_path.exists():

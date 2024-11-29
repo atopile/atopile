@@ -13,7 +13,7 @@ from faebryk.libs.exceptions import (
 
 
 def test_ExceptionAccumulator():
-    with pytest.raises(ExceptionGroup):
+    with pytest.raises(UserException):
         with ExceptionAccumulator() as error_collector:
             with error_collector.collect():
                 raise UserException("test error")
