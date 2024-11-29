@@ -351,7 +351,9 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
                         )
 
                     name = ref[0]
-                    if not hasattr(F, name):
+                    if not hasattr(F, name) or not isinstance(
+                        getattr(F, name), (L.Module, L.ModuleInterface)
+                    ):
                         raise errors.UserKeyError.from_ctx(
                             ctx, f'Unknown standard library module: "{name}"'
                         )
