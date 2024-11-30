@@ -325,11 +325,7 @@ def find_layout(layout_base: Path) -> Path:
 
         log.warning("Creating new layout at %s", layout_path)
 
-<<<<<<< HEAD
         C_kicad_pcb_file.skeleton(
-=======
-        C_kicad_pcb_file.from_generator(
->>>>>>> 414f8a20 (create pcb on build)
             generator=atopile.version.DISTRIBUTION_NAME,
             generator_version=str(atopile.version.get_installed_atopile_version()),
         ).dumps(layout_path)
