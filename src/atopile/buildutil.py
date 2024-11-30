@@ -27,7 +27,6 @@ from faebryk.libs.app.designators import (
     load_designators_from_netlist,
     override_names_with_designators,
 )
-from faebryk.libs.app.kicad_netlist import write_netlist
 from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
 from faebryk.libs.app.pcb import (
     apply_layouts,
@@ -70,7 +69,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     resolve_dynamic_parameters(G)
 
     logger.info(f"Writing netlist to {build_paths.netlist}")
-    changed = write_netlist(G, build_paths.netlist, use_kicad_designators=True)
+
     # Write Netlist ------------------------------------------------------------
     netlist_path = build_paths.netlist
     use_kicad_designators = True
