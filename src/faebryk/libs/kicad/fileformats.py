@@ -1163,9 +1163,7 @@ class C_kicad_pcb_file(SEXP_File):
 
     @staticmethod
     def skeleton(
-        generator: str,
-        generator_version: str,
-        version: int = KICAD_PCB_VERSION,
+        generator: str, generator_version: str, version: int = KICAD_PCB_VERSION
     ) -> "C_kicad_pcb_file":
         return C_kicad_pcb_file(
             kicad_pcb=C_kicad_pcb_file.C_kicad_pcb(
