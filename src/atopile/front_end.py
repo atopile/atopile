@@ -64,6 +64,8 @@ try:
 except ImportError:
     from faebryk.library._F import Constant as Single  # type: ignore
 
+logger = logging.getLogger(__name__)
+
 
 def _alias_is(lh, rh):
     try:
@@ -871,10 +873,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
             if not try_set_attr(target, assigned_name, value):
-                errors.UserException.from_ctx(
-                    ctx,
-                    f"Ignoring assignment of {value} to {assigned_name} on {target}",
-                ).log(to_level=logging.WARNING)
+                logger.warning(
+                    errors.UserException.from_ctx(
+                        ctx,
+                        f"Ignoring assignment of {value} to {assigned_name} on {target}",
+                    )
+                )
 
         else:
             raise ValueError(f"Unhandled assignable type {assignable_ctx.getText()}")
@@ -1167,10 +1171,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if param not in self._param_assignments:
             self._param_assignments[param] = (None, ctx)
         else:
-            errors.UserKeyError.from_ctx(
-                ctx,
-                f"Ignoring declaration of {assigned_name} because it's already defined",
-            ).log(to_level=logging.WARNING)
+            logger.warning(
+                errors.UserKeyError.from_ctx(
+                    ctx,
+                    f"Ignoring declaration of {assigned_name} because it's already defined",
+                )
+            )
 
         return KeyOptMap.empty()
 
