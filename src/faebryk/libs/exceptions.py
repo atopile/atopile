@@ -159,7 +159,7 @@ class ExceptionAccumulator:
         # TODO: log the errors with the UserException protocol instead
         from atopile.errors import _log_user_errors
 
-        _log_user_errors(ex, log)
+        _log_user_errors(ex)
 
     def raise_errors(self):
         """
