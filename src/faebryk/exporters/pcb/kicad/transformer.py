@@ -242,20 +242,7 @@ class PCB_Transformer:
                 f" Did you import the latest NETLIST into KiCad?"
             )
             fp = footprints[(fp_ref, fp_name)]
-
-            g_fp.add(self.has_linked_kicad_footprint_defined(fp, self))
-
-            # TODO: should this be removed?
-            node.add(self.has_linked_kicad_footprint_defined(fp, self))
-
-            pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
-            for fpad in g_fp.get_children(direct_only=True, types=ModuleInterface):
-                pads = [
-                    pad
-                    for pad in fp.pads
-                    if pad.name == pin_names[cast_assert(F.Pad, fpad)]
-                ]
-                fpad.add(PCB_Transformer.has_linked_kicad_pad_defined(fp, pads, self))
+            self.bind_footprint(fp, node)
 
         attached = {
             n: t.get_fp()
@@ -264,6 +251,22 @@ class PCB_Transformer:
             )
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
+
+    def bind_footprint(self, fp: Footprint, node: Node):
+        g_fp = node.get_trait(F.has_footprint).get_footprint()
+
+        g_fp.add(self.has_linked_kicad_footprint_defined(fp, self))
+        # TODO: should this be removed?
+        node.add(self.has_linked_kicad_footprint_defined(fp, self))
+
+        pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
+        for fpad in g_fp.get_children(direct_only=True, types=ModuleInterface):
+            pads = [
+                pad
+                for pad in fp.pads
+                if pad.name == pin_names[cast_assert(F.Pad, fpad)]
+            ]
+            fpad.add(PCB_Transformer.has_linked_kicad_pad_defined(fp, pads, self))
 
     def cleanup(self):
         # delete faebryk objects in pcb
