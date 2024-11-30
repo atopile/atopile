@@ -21,15 +21,16 @@ class UserException(Exception):
     # - Help text?
     # __print__?
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
 class UserDesignException(UserException):
     """Indicates an issue with the user's design."""
 
 
 class UserResourceException(UserException):
     """Indicates an issue with a user-facing resource, e.g. layout files."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
 
 class UserResourceException(UserException):
