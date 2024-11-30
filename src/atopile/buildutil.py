@@ -13,13 +13,21 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_pick_and_place,
     export_step,
 )
+from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.libs.app.checks import run_checks
-from faebryk.libs.app.parameters import replace_tbd_with_any
-from faebryk.libs.app.pcb import apply_design
+from faebryk.libs.app.kicad_netlist import write_netlist
+from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
+from faebryk.libs.app.pcb import (
+    apply_design,
+    apply_layouts,
+    apply_netlist,
+    apply_routing,
+)
 from faebryk.libs.exceptions import ExceptionAccumulator
+from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
 
@@ -52,6 +60,30 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     logger.info("Make netlist & pcb")
     apply_design(build_ctx.paths, app, G, transform=None)
+    build_paths = build_ctx.paths
+    resolve_dynamic_parameters(G)
+
+    logger.info(f"Writing netlist to {build_paths.netlist}")
+    changed = write_netlist(G, build_paths.netlist, use_kicad_designators=True)
+    apply_netlist(build_paths, changed)
+
+    logger.info("Load PCB")
+    pcb = C_kicad_pcb_file.loads(build_paths.layout)
+
+    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
+
+    # TODO: handle PCB transformations
+    # logger.info("Transform PCB")
+    # if transform:
+    #     transform(transformer)
+
+    # set layout
+    apply_layouts(app)
+    transformer.move_footprints()
+    apply_routing(app, transformer)
+
+    logger.info(f"Writing pcbfile {build_paths.layout}")
+    pcb.dumps(build_paths.layout)
 
     # Figure out what targets to build
     if build_ctx.targets == ["__default__"]:
