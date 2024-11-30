@@ -45,10 +45,6 @@ class UserException(Exception):
         return (self.__class__, self.message, self._title)
 
 
-class UserDesignException(UserException):
-    """Indicates an issue with the user's design."""
-
-
 class UserResourceException(UserException):
     """Indicates an issue with a user-facing resource, e.g. layout files."""
 
