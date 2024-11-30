@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
+KICAD_PCB_VERSION = 20240108
+
 
 @dataclass_json(undefined=Undefined.INCLUDE)
 @dataclass
@@ -956,7 +958,7 @@ class C_kicad_pcb_file(SEXP_File):
             locked: Optional[bool] = None
             members: list[UUID]
 
-        version: int = field(**sexp_field(assert_value=20240108))
+        version: int = field(**sexp_field(assert_value=KICAD_PCB_VERSION))
         generator: str
         generator_version: str
         general: C_general = field(default_factory=C_general)
@@ -1158,6 +1160,20 @@ class C_kicad_pcb_file(SEXP_File):
         )
 
     kicad_pcb: C_kicad_pcb
+
+    @staticmethod
+    def from_generator(
+        generator: str,
+        generator_version: str,
+        version: int = KICAD_PCB_VERSION,
+    ) -> "C_kicad_pcb_file":
+        return C_kicad_pcb_file(
+            kicad_pcb=C_kicad_pcb_file.C_kicad_pcb(
+                version=version,
+                generator=generator,
+                generator_version=generator_version,
+            )
+        )
 
 
 @dataclass
