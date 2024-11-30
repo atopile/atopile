@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -60,8 +61,12 @@ def test_build_errors(from_project_dir: None, build_name: str, expected_error):
 @pytest.mark.parametrize("build_name", ["unconstructable", "unimportable"])
 def test_build_error_logging(from_project_dir: None, build_name: str):
     # CLIRunner doesn't give us the fully-formatted log output as seen by the user
+
     result = subprocess.run(
-        ["ato", "build", "-b", build_name], capture_output=True, text=True
+        ["ato", "build", "-b", build_name],
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
     )
 
     # single error
