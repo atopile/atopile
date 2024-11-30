@@ -4,6 +4,7 @@
 import logging
 from pathlib import Path
 
+from atopile import version
 from faebryk.libs.kicad.fileformats import (
     C_footprint,
     C_kicad_fp_lib_table_file,
