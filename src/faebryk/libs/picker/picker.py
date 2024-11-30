@@ -148,11 +148,7 @@ class has_part_picked_remove(has_part_picked.impl()):
 
 
 class skip_self_pick(Module.TraitT.decless()):
-    """
-    Indicates that a node exists only to contain children, and shouldn't itself be picked
-    """
-
-    ...
+    """Indicates that a node exists only to contain children, and shouldn't itself be picked"""
 
 
 def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
