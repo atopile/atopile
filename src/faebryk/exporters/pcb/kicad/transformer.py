@@ -20,6 +20,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import (
     UUID,
@@ -46,7 +47,7 @@ from faebryk.libs.kicad.fileformats import (
 )
 from faebryk.libs.kicad.fileformats_common import C_pts
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
-from faebryk.libs.util import KeyErrorNotFound, cast_assert, find, get_key
+from faebryk.libs.util import FuncSet, KeyErrorNotFound, cast_assert, find, get_key
 
 logger = logging.getLogger(__name__)
 
@@ -221,28 +222,12 @@ class PCB_Transformer:
         self.attach()
 
     def attach(self):
-        footprints = {
-            (f.propertys["Reference"].value, f.name): f for f in self.pcb.footprints
-        }
-        for node, fpt in GraphFunctions(self.graph).nodes_with_trait(F.has_footprint):
-            if not node.has_trait(F.has_overriden_name):
-                continue
-            g_fp = fpt.get_footprint()
-            if not g_fp.has_trait(F.has_kicad_footprint):
-                continue
-
-            fp_ref = node.get_trait(F.has_overriden_name).get_name()
-            fp_name = g_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
-
-            assert (
-                fp_ref,
-                fp_name,
-            ) in footprints, (
-                f"Footprint ({fp_ref=}, {fp_name=}) not found in footprints dictionary."
-                f" Did you import the latest NETLIST into KiCad?"
-            )
-            fp = footprints[(fp_ref, fp_name)]
-            self.bind_footprint(fp, node)
+        unattached_nodes = FuncSet()
+        for fp, node in self.map_footprints(self.graph, self.pcb):
+            if fp is None:
+                unattached_nodes.add(node)
+            else:
+                self.bind_footprint(fp, node)
 
         attached = {
             n: t.get_fp()
@@ -251,6 +236,47 @@ class PCB_Transformer:
             )
         }
         logger.debug(f"Attached: {pprint.pformat(attached)}")
+
+        if unattached_nodes:
+            logger.error(f"Unattached: {pprint.pformat(unattached_nodes)}")
+            raise UserException(
+                f"Failed to attach {len(unattached_nodes)} nodes to footprints"
+            )
+
+    @classmethod
+    def map_footprints(cls, graph: Graph, pcb: PCB) -> list[tuple[Footprint, Node]]:
+        """
+        Attach as many nodes <> footprints as possible, and
+        return the set of nodes that were missing footprints.
+        """
+        # First, make a list of all the nodes with footprints in the graph
+        # (eg. things that should have a matching footprint in the layout)
+        nodes_with_kicad_footprints: FuncSet[Node] = FuncSet()
+        for node, fpt in GraphFunctions(graph).nodes_with_trait(F.has_footprint):
+            if not node.has_trait(F.has_overriden_name):
+                continue
+            g_fp = fpt.get_footprint()
+            if not g_fp.has_trait(F.has_kicad_footprint):
+                continue
+
+            nodes_with_kicad_footprints.add(node)
+
+        # Now, try to map between the footprints and the layout
+        footprint_map: list[tuple[Footprint, Node]] = []
+        footprints = {
+            (f.propertys["Reference"].value, f.name): f for f in pcb.footprints
+        }
+        for node in nodes_with_kicad_footprints:
+            g_fp = node.get_trait(F.has_footprint).get_footprint()
+            fp_ref = node.get_trait(F.has_overriden_name).get_name()
+            fp_name = g_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
+
+            if (fp_ref, fp_name) in footprints:
+                footprint_map.append((footprints[(fp_ref, fp_name)], node))
+            else:
+                footprint_map.append((None, node))
+
+        return footprint_map
 
     def bind_footprint(self, fp: Footprint, node: Node):
         g_fp = node.get_trait(F.has_footprint).get_footprint()
