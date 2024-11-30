@@ -25,10 +25,6 @@ class UserException(Exception):
         super().__init__(*args, **kwargs)
 
 
-class UserDesignException(UserException):
-    """Indicates an issue with the user's design."""
-
-
 class UserResourceException(UserException):
     """Indicates an issue with a user-facing resource, e.g. layout files."""
 
