@@ -12,6 +12,8 @@ from atopile import errors
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+DISTRIBUTION_NAME = "atopile"
+
 
 class VersionMismatchError(errors.UserException):
     """
@@ -63,7 +65,7 @@ def get_installed_atopile_version() -> Version:
     """
     Get the installed atopile version
     """
-    ap_version_str = importlib.metadata.version("atopile")
+    ap_version_str = importlib.metadata.version(DISTRIBUTION_NAME)
     semver = parse(ap_version_str)
     return semver
 

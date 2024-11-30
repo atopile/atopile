@@ -24,6 +24,7 @@ from ruamel.yaml import YAML
 import atopile.errors
 import atopile.version
 from atopile import address
+from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 
 log = logging.getLogger(__name__)
 yaml = YAML()
@@ -310,9 +311,16 @@ def find_layout(layout_base: Path) -> Path:
             )
 
     else:
-        raise atopile.errors.UserFileNotFoundError(
-            f"Layout file not found in {layout_base}"
-        )
+        layout_path = layout_base.with_suffix(".kicad_pcb")
+
+        log.warning("Creating new layout at %s", layout_path)
+
+        C_kicad_pcb_file.skeleton(
+            generator=atopile.version.DISTRIBUTION_NAME,
+            generator_version=str(atopile.version.get_installed_atopile_version()),
+        ).dumps(layout_path)
+
+        return layout_path
 
 
 class BuildType(Enum):
