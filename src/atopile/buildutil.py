@@ -115,12 +115,10 @@ muster = Muster()
 @muster.register("bom")
 def generate_bom(build_ctx: BuildContext, app: Module) -> None:
     """Generate a BOM for the project."""
-    children = app.get_children_modules(types=Module)
-    if children:
-        write_bom_jlcpcb(
-            children,
-            build_ctx.paths.output_base.with_suffix(".bom.csv"),
-        )
+    write_bom_jlcpcb(
+        app.get_children_modules(types=Module),
+        build_ctx.paths.output_base.with_suffix(".bom.csv"),
+    )
 
 
 @muster.register("mfg-data", default=False)
