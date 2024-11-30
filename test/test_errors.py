@@ -62,32 +62,35 @@ def test_build_errors(from_project_dir: None, build_name: str, expected_error):
 def test_build_error_logging(from_project_dir: None, build_name: str):
     # CLIRunner doesn't give us the fully-formatted log output as seen by the user
 
-    result = subprocess.run(
+    process = subprocess.Popen(
         ["ato", "build", "-b", build_name],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         env=os.environ.copy(),
     )
 
+    stdout, stderr = process.communicate()
+
     # single error
-    assert result.stdout.count("ERROR") == 1
+    assert stdout.count("ERROR") == 1
 
     # single traceback
-    assert result.stdout.count("❱") == 1
-    assert result.stdout.count("Traceback (most recent call last)") == 1
-    assert "another exception occurred" not in result.stdout
-    assert "direct cause of the following exception" not in result.stdout
+    assert stdout.count("❱") == 1
+    assert stdout.count("Traceback (most recent call last)") == 1
+    assert "another exception occurred" not in stdout
+    assert "direct cause of the following exception" not in stdout
 
     # including the test exception
-    assert f'raise ValueError("{build_name}")' in result.stdout
+    assert f'raise ValueError("{build_name}")' in stdout
 
     # exiting cleanly
-    assert result.stdout.strip().endswith(
+    assert stdout.strip().endswith(
         "Unfortunately errors ^^^ stopped the build. If you need a hand jump on Discord! \nhttps://discord.gg/mjtxARsr9V 👋"
     )
 
     # exception groups are unwrapped
-    assert "ExceptionGroup" not in result.stdout
+    assert "ExceptionGroup" not in stdout
 
     # with a non-zero exit code
-    assert result.returncode == 1
+    assert process.returncode == 1
