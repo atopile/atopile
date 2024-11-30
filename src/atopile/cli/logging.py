@@ -1,6 +1,5 @@
 import logging
 import textwrap
-from pathlib import Path
 from types import ModuleType, TracebackType
 
 import typer
@@ -14,8 +13,11 @@ from rich.traceback import install as install_traceback_handler
 
 import atopile
 import faebryk
-from atopile import address
-from atopile.errors import UserPythonModuleError
+from atopile.errors import (
+    UserPythonModuleError,
+    _BaseBaseUserException,
+    _BaseUserException,
+)
 
 
 class NodeHighlighter(RegexHighlighter):
@@ -158,43 +160,37 @@ class AtoLogFormatter(logging.Formatter):
         super().__init__(fmt="%(message)s", datefmt="[%X]")
 
     def format(self, record: logging.LogRecord) -> str:
+        # special handling for exceptions only
+        if record.exc_info is None:
+            return super().format(record)
+
+        _, exc, _ = record.exc_info
+
+        if not isinstance(exc, _BaseBaseUserException):
+            return super().format(record)
+
         message = ""
 
-        if title := getattr(record, "title", None):
-            message += f"[bold]{title}[/]\n"
+        if exc.title:
+            message += f"[bold]{exc.title}[/]\n"
             record.markup = True
 
         # Attach source info if we have it
-        if source_info := getattr(record, "src_path", None):
-            source_info = str(source_info)
-            if src_line := getattr(record, "src_line", None):
-                source_info += f":{src_line}"
-                if src_col := getattr(record, "src_col", None):
+        if isinstance(exc, _BaseUserException):
+            if source_info := exc.src_path:
+                source_info = str(source_info)
+                if src_line := exc.src_line:
+                    source_info += f":{src_line}"
+                if src_col := exc.src_col:
                     source_info += f":{src_col}"
 
             message += f"{source_info}\n"
 
         fmt_message = (
             textwrap.indent(record.getMessage(), "    ")
-            if title or source_info
+            if exc.title or source_info
             else record.getMessage()
         )
-
-        # Replace the address in the string, if we have it attached
-        if addr := getattr(record, "addr", None):
-            addr = address.from_parts(
-                Path(address.get_file(addr)).name,
-                address.get_entry_section(addr),
-                address.get_instance_section(addr),
-            )
-            # FIXME: we ignore the escaping of the address here
-            fmt_addr = f"[bold cyan]{addr}[/]"
-            record.markup = True
-
-            if "$addr" in fmt_message:
-                fmt_message = fmt_message.replace("$addr", fmt_addr)
-            elif not source_info:
-                message += f"Address: {fmt_addr}\n"
 
         return f"{message}{fmt_message}".strip()
 

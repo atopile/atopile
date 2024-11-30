@@ -24,7 +24,6 @@ class _BaseUserException(_BaseBaseUserException):
     def __init__(
         self,
         *args,
-        addr: str | None = None,
         src_path: str | Path | None = None,
         src_line: int | None = None,
         src_col: int | None = None,
@@ -33,7 +32,6 @@ class _BaseUserException(_BaseBaseUserException):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.addr = addr
         self.src_path = src_path
         self.src_line = src_line
         self.src_col = src_col
@@ -61,7 +59,6 @@ class _BaseUserException(_BaseBaseUserException):
 
     def get_frozen(self) -> tuple:
         return super().get_frozen() + (
-            self.addr,
             self.src_path,
             self.src_line,
             self.src_col,
