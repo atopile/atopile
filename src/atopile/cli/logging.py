@@ -222,11 +222,8 @@ handler = AtoLogHandler(
     rich_tracebacks=True,
     show_path=False,
     tracebacks_suppress=[typer],
-    tracebacks_suppress_map={
-        UserPythonModuleError: [atopile, faebryk],
-    },
+    tracebacks_suppress_map={UserPythonModuleError: [atopile, faebryk]},
     tracebacks_unwrap=[UserPythonModuleError],
-    highlighter=NodeHighlighter(),
 )
 
 handler.setFormatter(AtoLogFormatter())
