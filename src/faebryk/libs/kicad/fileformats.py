@@ -1162,7 +1162,7 @@ class C_kicad_pcb_file(SEXP_File):
     kicad_pcb: C_kicad_pcb
 
     @staticmethod
-    def create_skeleton(
+    def skeleton(
         generator: str,
         generator_version: str,
         version: int = KICAD_PCB_VERSION,
