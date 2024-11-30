@@ -48,9 +48,21 @@ class AtoConfigError(atopile.errors.UserException):
 class ProjectPaths:
     """Config grouping for all the paths in a project."""
 
-    src: Path = "elec/src"
-    layout: Path = "elec/layout"
-    footprints: Path = "elec/footprints/footprints"
+    src: Path
+    layout: Path
+    footprints: Path
+
+    def __init__(self):
+        if Path("elec").exists():
+            # default project structure
+            self.src = Path("elec") / "src"
+            self.layout = Path("elec") / "layout"
+            self.footprints = Path("elec") / "footprints" / "footprints"
+        else:
+            # flat project structure
+            self.src = Path(".")
+            self.layout = Path(".")
+            self.footprints = Path(".")
 
 
 @define
