@@ -21,8 +21,6 @@ from faebryk.libs.util import import_from_path
 log = logging.getLogger(__name__)
 
 
-@errors.muffle_fatalities()
-@errors.log_ato_errors()
 def build(
     entry: Annotated[str | None, typer.Argument()] = None,
     build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],

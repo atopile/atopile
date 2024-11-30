@@ -1,17 +1,22 @@
-import logging
+import logging  # noqa: I001
 import sys
 from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated
 
+# excepthook must be installed before typer is imported
+import atopile.cli.excepthook  # noqa: F401
+
 import typer
 
 from atopile import telemetry
+from atopile.cli import build, configure, create, inspect, install, view
 from atopile.cli.logging import logger
 
-from . import build, configure, create, inspect, install, view
-
-app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,  # required to override the excepthook
+)
 
 
 def python_interpreter_path(ctx: typer.Context, value: bool):

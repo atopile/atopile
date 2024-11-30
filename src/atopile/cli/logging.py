@@ -2,14 +2,12 @@ import logging
 import textwrap
 from types import ModuleType, TracebackType
 
-import typer
 from rich._null_file import NullFile
 from rich.console import Console
 from rich.highlighter import RegexHighlighter
 from rich.logging import RichHandler
 from rich.theme import Theme
 from rich.traceback import Traceback
-from rich.traceback import install as install_traceback_handler
 
 import atopile
 import faebryk
@@ -217,7 +215,7 @@ handler = AtoLogHandler(
     console=console,
     rich_tracebacks=True,
     show_path=False,
-    tracebacks_suppress=[typer],
+    tracebacks_suppress=["typer"],
     tracebacks_suppress_map={UserPythonModuleError: [atopile, faebryk]},
     tracebacks_unwrap=[UserPythonModuleError],
 )
@@ -225,5 +223,3 @@ handler = AtoLogHandler(
 handler.setFormatter(AtoLogFormatter())
 
 logging.basicConfig(level="INFO", handlers=[handler])
-
-install_traceback_handler(console=console, suppress=[typer])

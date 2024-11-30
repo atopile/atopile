@@ -1,0 +1,103 @@
+import contextlib
+import sys
+from types import ModuleType
+
+import rich
+
+from atopile import telemetry
+from atopile.cli.logging import logger
+from atopile.errors import UserPythonModuleError, _BaseBaseUserException
+
+
+def in_debug_session() -> ModuleType | None:
+    """
+    Return the debugpy module if we're in a debugging session.
+    """
+    if "debugpy" in sys.modules:
+        import os
+
+        os.environ["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
+        import debugpy
+
+        if debugpy.is_client_connected():
+            return debugpy
+
+    return None
+
+
+_logged_exceptions: set[tuple[type[Exception], tuple]] = set()
+
+
+def _log_user_errors(ex: _BaseBaseUserException | ExceptionGroup, de_dup: bool = True):
+    """Helper function to consistently write errors to the log"""
+    if isinstance(ex, ExceptionGroup):
+        if ex.message:
+            logger.error(ex.message)
+
+        nice_errors, naughty_errors = ex.split((_BaseBaseUserException, ExceptionGroup))
+
+        if nice_errors:
+            for e in nice_errors.exceptions:
+                assert isinstance(e, _BaseBaseUserException)
+                _log_user_errors(e)
+
+        if naughty_errors:
+            raise naughty_errors
+
+        return
+
+    # Check if this error has already been logged
+    hashable = ex.get_frozen()
+    if de_dup and hashable in _logged_exceptions:
+        return
+
+    # Format and printout the error
+    _logged_exceptions.add(hashable)
+
+    if isinstance(ex, UserPythonModuleError):
+        logger.exception(ex.message, exc_info=ex)
+    else:
+        logger.error(ex.message, extra={"title": ex.title})
+
+
+def _handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, _BaseBaseUserException):
+        # If we're in a debug session, we want to see the
+        # unadulterated exception. We do this pre-logging because
+        # we don't want the logging to potentially obstruct the debugger.
+        if debugpy := in_debug_session():
+            debugpy.breakpoint()
+
+        # This is here to print out any straggling ato errors that weren't
+        # printed via a lower-level accumulator of the likes
+        _log_user_errors(exc_value)
+
+        if telemetry.telemetry_data is not None:
+            with contextlib.suppress(Exception):
+                telemetry.telemetry_data.ato_error += 1
+    elif issubclass(exc_type, BaseExceptionGroup):
+        for e in exc_value.exceptions:
+            _handle_exception(type(e), e, e.__traceback__)
+    else:
+        with contextlib.suppress(Exception):
+            telemetry.telemetry_data.crash += 1
+        logger.exception("Uncaught compiler exception", exc_info=exc_value)
+
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    try:
+        _handle_exception(exc_type, exc_value, exc_traceback)
+    except Exception:
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    finally:
+        with contextlib.suppress(Exception):
+            telemetry.log_telemetry()
+
+        rich.print(
+            "\n\nUnfortunately errors ^^^ stopped the build. "
+            "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
+        )
+        sys.exit(1)
+
+
+sys.excepthook = handle_exception
