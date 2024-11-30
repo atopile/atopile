@@ -21,7 +21,6 @@ from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.kicad_netlist import write_netlist
 from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
 from faebryk.libs.app.pcb import (
-    apply_design,
     apply_layouts,
     apply_netlist,
     apply_routing,
@@ -37,6 +36,8 @@ logger = logging.getLogger(__name__)
 def build(build_ctx: BuildContext, app: Module) -> None:
     """Build the project."""
 
+    G = app.get_graph()
+
     # TODO: consider making each of these a configurable target
     logger.info("Filling unspecified parameters")
     replace_tbd_with_any(app, recursive=True)
@@ -50,16 +51,12 @@ def build(build_ctx: BuildContext, app: Module) -> None:
         add_api_pickers(n, base_prio=10)
     pick_part_recursively(app)
 
-    logger.info("Make graph")
-    G = app.get_graph()
-
     logger.info("Running checks")
     run_checks(app, G)
 
     build_ctx.ensure_paths()
 
     logger.info("Make netlist & pcb")
-    apply_design(build_ctx.paths, app, G, transform=None)
     build_paths = build_ctx.paths
     resolve_dynamic_parameters(G)
 
