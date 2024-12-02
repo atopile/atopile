@@ -175,7 +175,7 @@ def generate_bom(entry_addr: address.AddrStr) -> str:
     bom_row_nb_counter = itertools.count()
 
     # Help to fill both tables
-    def _add_row(value, designator, footprint, mpn, price):
+    def _add_row(value, designator, footprint, mpn, price=None):
         row_nb = next(bom_row_nb_counter)
         writer.writerow(
             {
