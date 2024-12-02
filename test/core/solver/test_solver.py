@@ -157,10 +157,8 @@ def test_inequality_to_set():
     p0 = Parameter(units=dimensionless)
     p0.constrain_le(2.0)
     p0.constrain_ge(1.0)
-    G = p0.get_graph()
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(G)
-    # TODO actually test something
+    assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((1.0, 2.0))
 
 
 def test_remove_obvious_tautologies():
