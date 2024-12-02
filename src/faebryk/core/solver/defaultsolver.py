@@ -34,6 +34,7 @@ from faebryk.core.solver.canonical import (
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
+    PRINT_START,
     S_LOG,
     Contradiction,
     Mutator,
@@ -65,7 +66,7 @@ class DefaultSolver(Solver):
     [Careful: not the same as the class Predicate]
 
     Associativity of simplification:
-    - Goal: Simplify(B, Simplify(A)) = Simplify(A ^ B)
+    - Goal: Simplify(B, Simplify(A)) == Simplify(A ^ B)
     Note: Not 100% sure if that's possible and whether we are there yet
 
     Debugging:
@@ -137,10 +138,11 @@ class DefaultSolver(Solver):
             algo: Callable[[Mutator], None],
         ):
             nonlocal print_context_
-            logger.debug(
-                f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name}"
-                f" G:{len(graphs)}"
-            )
+            if PRINT_START:
+                logger.debug(
+                    f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name}"
+                    f" G:{len(graphs)}"
+                )
             mutators = Mutators(*graphs)
             mutators.run(algo)
             algo_repr_map, algo_graphs, algo_dirty = mutators.close()

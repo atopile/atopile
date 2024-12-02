@@ -67,12 +67,12 @@ logger = logging.getLogger(__name__)
 # Config -------------------------------------------------------------------------------
 S_LOG = ConfigFlag("SLOG", default=False, descr="Log solver operations")
 VERBOSE_TABLE = ConfigFlag("SVERBOSE_TABLE", default=False, descr="Verbose table")
-NON_ASSOCIATIVE_SIMPLIFY = ConfigFlag(
-    "SNON_ASSOC",
+SHOW_SS_IS = ConfigFlag(
+    "SSHOW_SS_IS",
     default=False,
-    descr="Remove requirement of simplify to be associative. "
-    "Enables some optimizations that would otherwise be blocked.",
+    descr="Show subset/is predicates in graph print",
 )
+PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of solver")
 # --------------------------------------------------------------------------------------
 
 if S_LOG:
@@ -193,11 +193,6 @@ def alias_is_literal_and_check_predicate_eval(
         if lit != BoolSet(True):
             continue
         mutator.mark_predicate_true(op)
-
-    # FIXME is this the right place?
-    # unconstrain effectively results in remove
-    # mutator.mark_predicate_false(expr)
-    # expr.constrained = False
 
 
 def no_other_constrains(
@@ -343,6 +338,26 @@ def is_replacable_by_literal(op: ParameterOperatable.All):
     if not lit.is_single_element():
         return None
     return lit
+
+
+def remove_predicate(
+    pred: ConstrainableExpression,
+    representative: ConstrainableExpression,
+    mutator: "Mutator",
+):
+    """
+    VERY CAREFUL WITH THIS ONE!
+    Replaces pred in all parent expressions with true
+    """
+
+    ops = pred.get_operations()
+    for op in ops:
+        mutator.mutate_expression_with_op_map(
+            op,
+            operand_mutator=lambda _, op: (make_lit(True) if op is pred else op),
+        )
+
+    mutator._mutate(pred, mutator.get_copy(representative))
 
 
 # TODO move to Mutator
@@ -732,16 +747,19 @@ class Mutators:
     ):
         for i, g in enumerate(graphs):
             pre_nodes = GraphFunctions(g).nodes_of_type(type_filter)
-            nodes = [
-                n
-                for n in pre_nodes
-                if not (
-                    isinstance(n, (Is, IsSubset))
-                    and n.constrained
-                    and n._solver_evaluates_to_true
-                    and any(ParameterOperatable.is_literal(o) for o in n.operands)
-                )
-            ]
+            if SHOW_SS_IS:
+                nodes = pre_nodes
+            else:
+                nodes = [
+                    n
+                    for n in pre_nodes
+                    if not (
+                        isinstance(n, (Is, IsSubset))
+                        and n.constrained
+                        and n._solver_evaluates_to_true
+                        and any(ParameterOperatable.is_literal(o) for o in n.operands)
+                    )
+                ]
             out = ""
             node_by_depth = groupby(nodes, key=ParameterOperatable.get_depth)
             for depth, dnodes in sorted(node_by_depth.items(), key=lambda t: t[0]):

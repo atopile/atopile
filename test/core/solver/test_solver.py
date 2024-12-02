@@ -7,6 +7,9 @@ from typing import Any, Iterable
 import pytest
 
 import faebryk.library._F as F
+
+# Sets LCSC paths
+import faebryk.libs.examples.buildutil  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
     Add,
@@ -579,8 +582,6 @@ def test_jlcpcb_pick_capacitor():
 if __name__ == "__main__":
     import typer
 
-    # Sets LCSC paths
-    import faebryk.libs.examples.buildutil  # noqa: F401
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()

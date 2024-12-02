@@ -21,7 +21,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
-    NON_ASSOCIATIVE_SIMPLIFY,
     S_LOG,
     CanonicalOperation,
     FullyAssociative,
@@ -30,9 +29,11 @@ from faebryk.core.solver.utils import (
     alias_is_literal_and_check_predicate_eval,
     flatten_associative,
     get_constrained_expressions_involved_in,
+    is_literal,
     is_replacable,
     is_replacable_by_literal,
     merge_parameters,
+    remove_predicate,
     try_extract_all_literals,
     try_extract_literal,
 )
@@ -40,10 +41,13 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
 )
-from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
     EquivalenceClasses,
+    KeyErrorAmbiguous,
+    KeyErrorNotFound,
     cast_assert,
+    find,
     groupby,
     not_none,
     partition,
@@ -283,21 +287,29 @@ def merge_intersect_subsets(mutator: Mutator):
         # intersect
         intersected = P_Set.intersect_all(*literal_subsets)
 
-        # If not narrower than all operands, skip
-        if not all(
-            intersected != e.operands[1] for e in constrained_subset_ops_with_literal
-        ):
-            continue
+        direct_literal_subsets = [
+            e for e in constrained_subset_ops_with_literal if is_literal(e.operands[1])
+        ]
 
-        # What we are doing here is mark this predicate as satisfied
-        # because another predicate exists that will always imply this one
+        try:
+            narrowest = find(
+                direct_literal_subsets,
+                lambda e: intersected == e.operands[1],
+            )
+        except KeyErrorNotFound:
+            p_copy = cast_assert(ParameterOperatable, mutator.get_copy(param))
+            narrowest = p_copy.constrain_subset(intersected)
+            alias_is_literal(narrowest, True)
+        except KeyErrorAmbiguous as e:
+            narrowest = e.duplicates[0]
+
         for e in constrained_subset_ops_with_literal:
-            # TODO remove e if possible
-            alias_is_literal(e, True)
-
-        cast_assert(ParameterOperatable, mutator.get_copy(param)).constrain_subset(
-            intersected
-        )
+            if e is narrowest:
+                continue
+            if e in direct_literal_subsets:
+                remove_predicate(e, narrowest, mutator)
+                continue
+            alias_is_literal_and_check_predicate_eval(e, True, mutator)
 
 
 def compress_associative(mutator: Mutator):
@@ -438,6 +450,18 @@ def remove_empty_graphs(mutator: Mutator):
         p
         for p in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
         if p.constrained
+        # Ignore Is!!(P!!, True)
+        and not (
+            isinstance(p, Is)
+            and p._solver_evaluates_to_true
+            and BoolSet(True) in p.get_literal_operands()
+            and all(
+                isinstance(inner, ConstrainableExpression)
+                and inner.constrained
+                and inner._solver_evaluates_to_true
+                for inner in p.get_operatable_operands()
+            )
+        )
     ]
 
     if len(predicates) > 1:
@@ -447,7 +471,7 @@ def remove_empty_graphs(mutator: Mutator):
         alias_is_literal_and_check_predicate_eval(p, True, mutator)
 
     # Never remove predicates
-    if predicates and not NON_ASSOCIATIVE_SIMPLIFY:
+    if predicates:
         return
 
     mutator.remove(*GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable))
@@ -486,6 +510,7 @@ def predicate_literal_deduce(mutator: Mutator):
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
     A is ([5]), A + B -> ([5]) + B
+    A is [True], A ^ B -> [True] ^ B
     """
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
