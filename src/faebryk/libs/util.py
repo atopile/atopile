@@ -1482,6 +1482,10 @@ def partition(pred, iterable):  # type: ignore
 
 
 def times_out(seconds: float):
+    # if running in debugger, don't timeout
+    if hasattr(sys, "gettrace") and sys.gettrace():
+        return lambda func: func
+
     def decorator[**P, T](func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:

@@ -38,13 +38,19 @@ from faebryk.core.solver.utils import (
     alias_is_literal_and_check_predicate_eval,
     make_lit,
     no_other_constrains,
+    remove_predicate,
     try_extract_all_literals,
     try_extract_boolset,
+    try_extract_literal,
     try_extract_numeric_literal,
 )
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import BoolSet
-from faebryk.libs.util import cast_assert
+from faebryk.libs.util import (
+    cast_assert,
+    find_or,
+    not_none,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -360,6 +366,7 @@ def fold_or(
     if len(operands_not_clearly_false) != len(expr.operands):
         # Rebuild without (False) literals
         mutator.mutate_expression(expr, operands=operands_not_clearly_false)
+        return
 
     # Or(P) -> P
     if len(expr.operands) == 1:
@@ -442,6 +449,8 @@ def fold_not(
 def if_operands_same_make_true(pred: Predicate, mutator: Mutator) -> bool:
     if pred.operands[0] is not pred.operands[1]:
         return False
+    if not isinstance(pred.operands[0], ParameterOperatable):
+        return False
     alias_is_literal_and_check_predicate_eval(pred, True, mutator)
     return True
 
@@ -522,30 +531,61 @@ def fold_subset(
 ):
     """
     ```
-    A is subset of A -> True
+    A ss A -> True
+    A is B, A ss B | B non(ex)literal -> repr(B, A)
+    A as ([X]) -> A is ([X])
     # predicates
     P ss! True -> P!
     P ss! False -> ¬!P
     P1 ss! P2! -> P1!
     # literals
-    X is subset of Y -> True / False
+    X ss Y -> True / False
 
-    # TODO A subset B, B subset/is C -> A subset C (transitive)
-    # TODO A is B, A subset B -> remove redundant subset
+    # TODO A ss B, B ss/is C -> A ss C (transitive)
     ```
     """
+
+    A, B = expr.operands
+
+    # A as ([X]) -> A is ([X])
+    b_is = try_extract_literal(B, allow_subset=False)
+    if b_is is not None and b_is.is_single_element():
+        new_is = mutator._mutate(expr, Is(mutator.get_copy(A), b_is))
+        if expr.constrained:
+            new_is.constrain()
+        return
+
+    # A is B, A ss B | B non(ex)literal -> repr(B, A)
+    if not literal_operands:
+        iss = cast_assert(ParameterOperatable, A).get_operations(
+            Is, constrained_only=True
+        )
+        match_is_op = find_or(
+            iss,
+            lambda is_op: set(expr.operands).issubset(not_none(is_op).operands),
+            default=None,
+            default_multi=lambda dup: dup[0],
+        )
+        if match_is_op is not None:
+            remove_predicate(expr, match_is_op, mutator)
+            return
 
     if if_operands_same_make_true(expr, mutator):
         return
 
-    # FIXME should use op=IsSubset? both?
-    # if left one is subset that should be ok
-    lits = try_extract_all_literals(expr)
-    if lits is None:
+    a_is = try_extract_literal(A, allow_subset=False)
+    a_ss = try_extract_literal(A, allow_subset=True)
+    b = try_extract_literal(B, allow_subset=True)
+    if b is None:
         return
-
-    a, b = lits
-    alias_is_literal_and_check_predicate_eval(expr, a.is_subset_of(b), mutator)
+    if a_is is not None:
+        # A{I|X} ss B{S/I|Y} <-> X ss Y
+        alias_is_literal_and_check_predicate_eval(expr, a_is.is_subset_of(b), mutator)  # type: ignore #TODO type
+    elif a_ss is not None:
+        if a_ss.is_subset_of(b):  # type: ignore #TODO type
+            if b_is is not None:
+                # A{S|X} ss B{I|Y} | X ss Y -> True
+                alias_is_literal_and_check_predicate_eval(expr, True, mutator)
 
     if expr.constrained:
         # P1 ss! True -> P1!

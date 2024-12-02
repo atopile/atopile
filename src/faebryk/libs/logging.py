@@ -31,7 +31,16 @@ class NodeHighlighter(RegexHighlighter):
         r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",
         r"[?<=*.](?P<Root>(\*))",
         r"[?=\[](?P<Number>([0-9]+))[?=\]]",
+        # Solver/Parameter stuff -------------------------------------------------------
+        # Literals
         r"(?P<Quantity>Quantity_Interval(_Disjoint)?\([^)]*\))",
+        r"(?P<Quantity>\(\[[^)]*\]\))",
+        r"(?P<Quantity>\[(True|False)+\])",
+        # Predicates / Expressions
+        r"(?P<Op> (\+|\*|/))[ {]",
+        r"(?P<Predicate>(is|⊆|≥|≤|)!?!?[✓✗]?)",
+        # Literal Is/IsSubset
+        r"(?P<IsSubset>{(I|S)\|[^}]+})",
     ]
 
 
@@ -45,6 +54,9 @@ theme = Theme(
         "node.Number": "bright_green",
         #   "node.Rest": "bright_black",
         "node.Quantity": "bright_yellow",
+        "node.IsSubset": "bright_blue",
+        "node.Predicate": "bright_magenta",
+        "node.Op": "red",
     }
 )
 
@@ -61,6 +73,7 @@ def setup_basic_logging(rich: bool = True):
                 console=Console(
                     safe_box=False,
                     theme=theme,
+                    force_terminal=True,
                 ),
                 highlighter=NodeHighlighter(),
             )

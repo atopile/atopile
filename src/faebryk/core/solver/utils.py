@@ -332,7 +332,7 @@ def is_replacable_by_literal(op: ParameterOperatable.All):
     if isinstance(op, Is) and {BoolSet(True)} == set(op.operands):
         return BoolSet(True)
 
-    lit = try_extract_literal(op, allow_subset=True)
+    lit = try_extract_literal(op, allow_subset=False)
     if lit is None:
         return None
     if not lit.is_single_element():
@@ -661,6 +661,8 @@ class Mutators:
             log = print
         else:
             log = logger.debug
+            if not logger.isEnabledFor(logging.DEBUG):
+                return
 
         table = Table(title="Mutations", show_lines=True)
         table.add_column("Before")
@@ -671,10 +673,10 @@ class Mutators:
 
         for s, d in self.result_repr_map.items():
             if isinstance(s, Parameter) and isinstance(d, Parameter):
-                s.compact_repr(context_old)
-                context_new.variable_mapping.mapping[d] = (
-                    context_old.variable_mapping.mapping[s]
-                )
+                s_mapping = context_old.variable_mapping.mapping[s]
+                d_mapping = context_new.variable_mapping.mapping.get(d, None)
+                if d_mapping is None or ord(d_mapping) > ord(s_mapping):
+                    context_new.variable_mapping.mapping[d] = s_mapping
         graphs = get_graphs(self.result_repr_map.values())
 
         new_operatables = {
@@ -700,10 +702,6 @@ class Mutators:
 
                 # for no-op mutations (non dirty)
                 if s is d:
-                    continue
-
-                if isinstance(d, Parameter) and isinstance(s, Parameter):
-                    # TODO maybe print units, domain change
                     continue
 
             old = s.compact_repr(context_old)
@@ -745,6 +743,9 @@ class Mutators:
         context: ParameterOperatable.ReprContext,
         type_filter: type[ParameterOperatable] = ParameterOperatable,
     ):
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+
         for i, g in enumerate(graphs):
             pre_nodes = GraphFunctions(g).nodes_of_type(type_filter)
             if SHOW_SS_IS:

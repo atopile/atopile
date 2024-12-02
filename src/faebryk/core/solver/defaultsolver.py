@@ -25,6 +25,7 @@ from faebryk.core.solver.analytical import (
     remove_empty_graphs,
     remove_unconstrained,
     resolve_alias_classes,
+    transitive_subset,
     upper_estimation_of_expressions_with_subsets,
 )
 from faebryk.core.solver.canonical import (
@@ -85,7 +86,7 @@ class DefaultSolver(Solver):
         # any constrained expression literal is False
         raise NotImplementedError()
 
-    @times_out(5)
+    @times_out(10)
     def phase_1_simplify_analytically(
         self,
         g: Graph,
@@ -120,6 +121,7 @@ class DefaultSolver(Solver):
             ("Fold literals", fold_literals),
             ("Merge intersecting subsets", merge_intersect_subsets),
             ("Predicate literal deduce", predicate_literal_deduce),
+            ("Transitive subset", transitive_subset),
             ("Remove empty graphs", remove_empty_graphs),
         ]
         subset_dirty_algorithms = [

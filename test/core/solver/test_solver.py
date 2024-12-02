@@ -28,7 +28,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.library import L
-from faebryk.libs.library.L import Range, RangeWithGaps
+from faebryk.libs.library.L import Range, RangeWithGaps, Single
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
@@ -42,6 +42,7 @@ from faebryk.libs.sets.quantity_sets import (
 )
 from faebryk.libs.sets.sets import BoolSet, PlainSet
 from faebryk.libs.units import P, dimensionless, quantity
+from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
@@ -189,23 +190,37 @@ def test_subset_of_literal():
 
 
 def test_alias_classes():
-    p0, p1, p2, p3, p4 = (
-        Parameter(units=dimensionless, within=Range(0, i)) for i in range(5)
-    )
-    p0.alias_is(p1)
-    addition = p2 + p3
-    p1.alias_is(addition)
-    addition2 = p3 + p2
-    p4.alias_is(addition2)
+    A, B, C, D, E = (Parameter() for _ in range(5))
+    A.alias_is(B)
+    addition = C + D
+    B.alias_is(addition)
+    addition2 = D + C
+    E.alias_is(addition2)
 
-    G = p0.get_graph()
+    G = A.get_graph()
+    context = ParameterOperatable.ReprContext()
+    for p in (A, B, C, D, E):
+        p.compact_repr(context)
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(G)
+    solver.phase_1_simplify_analytically(G, context)
     # TODO actually test something
 
 
 def test_solve_realworld():
+    app = F.RP2040()
+    solver = DefaultSolver()
+    solver.phase_1_simplify_analytically(app.get_graph())
+    # TODO actually test something
+
+
+def test_solve_realworld_bigger():
     app = F.RP2040_ReferenceDesign()
+    # TODO
+    # resolve_dynamic_parameters(app.get_graph())
+
+    # TODO broken due to contradiction
+    # ContradictionByLiteral: Intersection of [Quantity_Interval_Disjoint(([-inf, 0])), Quantity_Interval_Disjoint(([3.6, 6.6]))] is empty`
+    # 3.6, 6.6 = 2 * [1.8, 3.3]
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(app.get_graph())
     # TODO actually test something
@@ -256,6 +271,73 @@ def test_obvious_contradiction_by_literal():
         solver.phase_1_simplify_analytically(G)
 
 
+def test_subset_is():
+    A, B = params = times(2, lambda: Parameter(domain=L.Domains.Numbers.REAL()))
+
+    A.alias_is(Range(0, 15))
+    B.constrain_subset(Range(5, 20))
+    A.alias_is(B)
+
+    context = ParameterOperatable.ReprContext()
+    for p in params:
+        p.compact_repr(context)
+
+    solver = DefaultSolver()
+    with pytest.raises(ContradictionByLiteral):
+        solver.phase_1_simplify_analytically(A.get_graph())
+
+
+def test_subset_is_expr():
+    A, B, C = params = times(3, lambda: Parameter(domain=L.Domains.Numbers.REAL()))
+
+    context = ParameterOperatable.ReprContext()
+    for p in params:
+        p.compact_repr(context)
+
+    E = A + B
+    C.alias_is(Range(0, 15))
+    E.constrain_subset(Range(5, 20))
+
+    C.alias_is(E)
+
+    solver = DefaultSolver()
+    with pytest.raises(ContradictionByLiteral):
+        solver.phase_1_simplify_analytically(A.get_graph(), context)
+
+
+def test_subset_single_alias():
+    A = Parameter(units=P.V)
+    A.constrain_subset(Single(1 * P.V))
+
+    solver = DefaultSolver()
+    repr_map, context = solver.phase_1_simplify_analytically(A.get_graph())
+    assert repr_map[A] == Single(1 * P.V)
+
+
+def test_very_simple_alias_class():
+    A, B, C = params = times(3, lambda: Parameter(units=P.V))
+    A.alias_is(B)
+    B.alias_is(C)
+
+    context = ParameterOperatable.ReprContext()
+    for p in params:
+        p.compact_repr(context)
+
+    solver = DefaultSolver()
+    repr_map, context = solver.phase_1_simplify_analytically(A.get_graph(), context)
+    r2_map = repr_map.repr_map
+    assert r2_map[A] == r2_map[B] == r2_map[C]
+
+
+def test_domain():
+    p0 = Parameter(units=P.V, within=Range(0 * P.V, 10 * P.V))
+    p0.alias_is(Range(15 * P.V, 20 * P.V))
+
+    solver = DefaultSolver()
+    with pytest.raises(ContradictionByLiteral):
+        solver.phase_1_simplify_analytically(p0.get_graph())
+
+
 def test_less_obvious_contradiction_by_literal():
     A = Parameter(units=P.V)
     B = Parameter(units=P.V)
@@ -274,35 +356,6 @@ def test_less_obvious_contradiction_by_literal():
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
         repr_map, context = solver.phase_1_simplify_analytically(G, print_context)
-
-    # FIXME
-    # <*3548|Parameter> is 5-10               subset 0-inf
-    # <*3158|Parameter> is 5-20 is Add(P)
-    # <*35D8|Parameter> is Add(P, P) is 0-15  subset 0-inf | Add(P,P) subset 3158 is 5-20 SHOULD DETECT CONTRADICTION HERE
-    # <*3668|Parameter> is 0-10               subset 0-inf
-
-    # <*3428|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),))
-    # <*3278|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),))
-    # <*3788|Add>((<*3668|Parameter>, <*3548|Parameter>))
-    # <*3308|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),))
-
-    # <*3938|Is>((<*3668|Parameter>, Quantity_Interval_Disjoint([0.0, 10.0])))
-    # <*C338|Is>((<*35D8|Parameter>, <*3788|Add>((<*3668|Parameter>, <*3548|Parameter>))))
-    # <*3A58|Is>((<*35D8|Parameter>, Quantity_Interval_Disjoint([0.0, 15.0])))
-    # <*3AE8|Is>((<*3158|Parameter>, Quantity_Interval_Disjoint([5.0, 20.0])))
-    # <*3C08|Is>((<*3158|Parameter>, Quantity_Interval_Disjoint([5.0, 20.0])))
-    # <*38A8|Is>((<*3548|Parameter>, Quantity_Interval_Disjoint([5.0, 10.0])))
-    # <*34B8|Is>((<*3428|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),)), <*3158|Parameter>))
-    # <*31E8|Is>((<*3278|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),)), <*3158|Parameter>))
-    # <*3398|Is>((<*3308|Add>((Quantity_Interval_Disjoint([5.0, 20.0]),)), <*3158|Parameter>))
-
-    # <*39C8|IsSubset>((<*3668|Parameter>, Quantity_Interval_Disjoint([0.0, inf])))
-    # <*3B78|IsSubset>((<*3548|Parameter>, Quantity_Interval_Disjoint([0.0, inf])))
-    # <*36F8|IsSubset>((<*35D8|Parameter>, Quantity_Interval_Disjoint([0.0, inf])))
-    # <*3818|IsSubset>((<*3158|Parameter>, <*3158|Parameter>))
-    # <*3C98|IsSubset>((<*3788|Add>((<*3668|Parameter>, <*3548|Parameter>)), <*3158|Parameter>))
-    # <*C218|IsSubset>((<*3788|Add>((<*3668|Parameter>, <*3548|Parameter>)), <*3158|Parameter>))
-    # <*3E48|IsSubset>((<*3788|Add>((<*3668|Parameter>, <*3548|Parameter>)), Quantity_Interval_Disjoint([5.0, 20.0])))
 
 
 def test_symmetric_inequality_correlated():
@@ -349,7 +402,7 @@ def test_simple_literal_folds_arithmetic(
     solver = DefaultSolver()
     repr_map, context = solver.phase_1_simplify_analytically(G)
     logger.info(f"{repr_map.repr_map}")
-    deducted_subset = repr_map.try_get_literal(expr, IsSubset)
+    deducted_subset = repr_map.try_get_literal(expr, allow_subset=True)
     assert deducted_subset == expected_result
 
 
@@ -446,6 +499,37 @@ def test_literal_folding_add_multiplicative_2():
         Quantity_Interval_Disjoint.from_value(10),
         mul,
     }
+
+
+def test_subset_is_replace():
+    A = Parameter()
+    B = Parameter()
+
+    op_is = A.alias_is(B)
+    op_subset = A.constrain_subset(B)
+
+    solver = DefaultSolver()
+    result, context = solver.phase_1_simplify_analytically(A.get_graph())
+    assert result.repr_map[op_subset] == result.repr_map[op_is]
+
+
+def test_transitive_subset():
+    A = Parameter(domain=L.Domains.Numbers.REAL())
+    B = Parameter(domain=L.Domains.Numbers.REAL())
+    C = Parameter(domain=L.Domains.Numbers.REAL())
+
+    A.constrain_subset(B)
+    B.constrain_subset(C)
+
+    context = ParameterOperatable.ReprContext()
+    for p in (A, B, C):
+        p.compact_repr(context)
+
+    C.alias_is(Range(0, 10))
+
+    solver = DefaultSolver()
+    result, context = solver.phase_1_simplify_analytically(A.get_graph(), context)
+    assert result.try_get_literal(A, allow_subset=True) == Range(0, 10)
 
 
 def test_base_unit_switch():
@@ -583,4 +667,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_jlcpcb_pick_capacitor)
+    typer.run(test_transitive_subset)

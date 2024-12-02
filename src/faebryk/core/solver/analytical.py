@@ -23,6 +23,7 @@ from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
     S_LOG,
     CanonicalOperation,
+    ContradictionByLiteral,
     FullyAssociative,
     Mutator,
     alias_is_literal,
@@ -44,10 +45,8 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
     EquivalenceClasses,
-    KeyErrorAmbiguous,
-    KeyErrorNotFound,
     cast_assert,
-    find,
+    find_or,
     groupby,
     not_none,
     partition,
@@ -204,7 +203,16 @@ def resolve_alias_classes(mutator: Mutator):
                 if isinstance(o, Expression)
             }
             if alias_class_exprs.issubset(iss_exprs):
-                continue
+                # check if all predicates are already propagated
+                class_predicates = {
+                    e
+                    for operand in alias_class_exprs
+                    for e in operand.get_operations()
+                    # skip POps Is, because they create the alias classes
+                    if not isinstance(e, Is) or e.get_literal_operands()
+                }
+                if not class_predicates:
+                    continue
 
         # Merge param alias classes
         representative = merge_parameters(alias_class_params)
@@ -281,27 +289,28 @@ def merge_intersect_subsets(mutator: Mutator):
             continue
 
         literal_subsets = [
-            not_none(ParameterOperatable.try_extract_literal(e.operands[1]))
+            not_none(try_extract_literal(e.operands[1]))
             for e in constrained_subset_ops_with_literal
         ]
         # intersect
         intersected = P_Set.intersect_all(*literal_subsets)
+        if intersected.is_empty():
+            raise ContradictionByLiteral(f"Intersection of {literal_subsets} is empty`")
 
         direct_literal_subsets = [
             e for e in constrained_subset_ops_with_literal if is_literal(e.operands[1])
         ]
 
-        try:
-            narrowest = find(
-                direct_literal_subsets,
-                lambda e: intersected == e.operands[1],
-            )
-        except KeyErrorNotFound:
+        narrowest = find_or(
+            direct_literal_subsets,
+            lambda e: intersected == not_none(e).operands[1],
+            default=None,
+            default_multi=lambda dup: dup[0],
+        )
+        if narrowest is None:
             p_copy = cast_assert(ParameterOperatable, mutator.get_copy(param))
             narrowest = p_copy.constrain_subset(intersected)
             alias_is_literal(narrowest, True)
-        except KeyErrorAmbiguous as e:
-            narrowest = e.duplicates[0]
 
         for e in constrained_subset_ops_with_literal:
             if e is narrowest:
@@ -419,15 +428,19 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for expr in exprs:
-        # if isinstance(expr, Predicate):
-        #    continue
+        # In Is automatically by eq classes
+        if isinstance(expr, Is):
+            continue
+        # In subset useless to look at subset lits
+        no_allow_subset_lit = isinstance(expr, IsSubset)
 
         operands = []
         for op in expr.operands:
             if not isinstance(op, ParameterOperatable):
                 operands.append(op)
                 continue
-            subset_lits = try_extract_literal(op, allow_subset=True)
+
+            subset_lits = try_extract_literal(op, allow_subset=not no_allow_subset_lit)
             if subset_lits is None:
                 operands.append(op)
                 continue
@@ -438,6 +451,48 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         # Constrain subset on copy of old expr
         ss = cast_assert(Expression, mutator.get_copy(expr)).constrain_subset(new_expr)
         mutator.mark_predicate_true(ss)
+
+
+def transitive_subset(mutator: Mutator):
+    """
+    ```
+    A ss B, B ss C -> new A ss C
+    A ss B, B is X -> new A ss X
+    ```
+    """
+    sss = GraphFunctions(mutator.G).nodes_of_type(IsSubset)
+
+    # don't add new IsSubset if already exists as Is or IsSubset
+    ss_lookup = {ss.operands for ss in sss if ss.constrained}
+    for is_op in GraphFunctions(mutator.G).nodes_of_type(Is):
+        if not is_op.constrained:
+            continue
+        ss_lookup.update(combinations(is_op.operands, 2))
+
+    for ss in sss:
+        if not ss.constrained:
+            continue
+        A, B = ss.operands
+        if not isinstance(B, ParameterOperatable):
+            continue
+
+        # A ss B, B ss C -> new A ss C
+        B_ss = [
+            e
+            for e in B.get_operations(IsSubset, constrained_only=True)
+            if e.operands[0] is not A
+        ]
+        if not B_ss:
+            continue
+
+        for b_ss in B_ss:
+            other_B = b_ss.get_other_operand(B)
+            if (A, other_B) in ss_lookup:
+                continue
+            new_ss = IsSubset(
+                mutator.get_copy(A), mutator.get_copy(other_B)
+            ).constrain()
+            ss_lookup.add(new_ss.operands)
 
 
 def remove_empty_graphs(mutator: Mutator):

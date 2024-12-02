@@ -461,6 +461,10 @@ class ParameterOperatable(Node):
                 out = f"{{I|{lit}}}"
             elif (lit := self.try_get_literal_subset()) is not None:
                 out = f"{{S|{lit}}}"
+            if lit == BoolSet(True):
+                out = "✓"
+            elif lit == BoolSet(False):
+                out = "✗"
         except KeyErrorAmbiguous as e:
             out = f"{{AMBIGUOUS: {e.duplicates}}}"
         return out
@@ -544,9 +548,9 @@ class Expression(ParameterOperatable):
         )
 
     def get_literal_operands(self) -> list[ParameterOperatable.Literal]:
-        # TODO not sure its a good idea to do this that recursive
-        if isinstance(self, Is):
+        if isinstance(self, (Is, IsSubset)):
             return [o for o in self.operands if ParameterOperatable.is_literal(o)]
+        # TODO not sure its a good idea to do this that recursive
         return [ParameterOperatable.try_extract_literal(o) for o in self.operands]
 
     def depth(self) -> int:
@@ -633,6 +637,7 @@ class Expression(ParameterOperatable):
             if self._solver_evaluates_to_true:
                 symbol_suffix += "!"
         symbol += symbol_suffix
+        symbol += self._get_lit_suffix()
 
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
@@ -672,7 +677,7 @@ class Expression(ParameterOperatable):
             assert False
         assert out
 
-        out += self._get_lit_suffix()
+        # out += self._get_lit_suffix()
 
         return out
 
