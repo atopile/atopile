@@ -99,6 +99,7 @@ dev = [
     "dash~=2.18.1",
     "dash_cytoscape~=1.0.2",
     "nanobind~=2.2.0",
+    "coverage>=7.6.8",
 ]
 
 test = [

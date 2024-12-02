@@ -6,6 +6,6 @@ paths:
 
 builds:
   faebryk:
-    entry: faebryk.py:App
+    entry: fab.py:App
   ato:
     entry: ato.ato:App
