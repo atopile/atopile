@@ -23,6 +23,7 @@ from faebryk.libs.picker.common import (
 )
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
+from faebryk.libs.picker.picker import PickError
 from faebryk.libs.util import (
     ConfigFlagString,
     KeyErrorAmbiguous,
@@ -104,8 +105,11 @@ def api_generate_si_values(
 
     candidate_ranges = solver.inspect_get_known_superranges(value)
     # TODO api support for unbounded
-    if candidate_ranges.is_unbounded():
+    if not candidate_ranges.is_finite():
         logger.warning(f"Parameter {value} has unbounded known supersets")
+        raise PickError(
+            module=None, message=f"Parameter {value} has unbounded known supersets"
+        )
     return generate_si_values(candidate_ranges, e_series=e_series)
 
 

@@ -673,6 +673,7 @@ class Mutators:
 
         for s, d in self.result_repr_map.items():
             if isinstance(s, Parameter) and isinstance(d, Parameter):
+                s.compact_repr(context_old)
                 s_mapping = context_old.variable_mapping.mapping[s]
                 d_mapping = context_new.variable_mapping.mapping.get(d, None)
                 if d_mapping is None or ord(d_mapping) > ord(s_mapping):

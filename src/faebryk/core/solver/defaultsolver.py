@@ -393,7 +393,7 @@ class DefaultSolver(Solver):
                         f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
                         + (
                             f" -> {repr_pred.compact_repr(print_context_new)}"
-                            if repr_pred
+                            if repr_pred is not None
                             else ""
                         )
                     )

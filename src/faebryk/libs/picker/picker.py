@@ -15,7 +15,14 @@ from rich.progress import Progress
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable, Predicate
+from faebryk.core.parameter import (
+    And,
+    Is,
+    Or,
+    Parameter,
+    ParameterOperatable,
+    Predicate,
+)
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import flatten, not_none
 
@@ -180,7 +187,7 @@ def pick_module_by_params(
 
         # No predicates, thus always valid option
         if len(predicate_list) == 0:
-            predicates[o] = True
+            predicates[o] = Or(True)
             continue
 
         predicates[o] = And(*predicate_list)

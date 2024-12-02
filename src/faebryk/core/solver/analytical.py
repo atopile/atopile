@@ -204,14 +204,14 @@ def resolve_alias_classes(mutator: Mutator):
             }
             if alias_class_exprs.issubset(iss_exprs):
                 # check if all predicates are already propagated
-                class_predicates = {
+                class_expressions = {
                     e
                     for operand in alias_class_exprs
                     for e in operand.get_operations()
                     # skip POps Is, because they create the alias classes
                     if not isinstance(e, Is) or e.get_literal_operands()
                 }
-                if not class_predicates:
+                if not class_expressions:
                     continue
 
         # Merge param alias classes

@@ -273,9 +273,12 @@ def check_compatible_parameters(
     # check for every param whether the candidate component's range is
     # compatible by querying the solver
     if not known_incompatible:
-        anded = True
-        for m_param, c_range in param_mapping:
-            anded &= m_param.operation_is_superset(c_range)
+        anded = And(
+            *(
+                m_param.operation_is_superset(c_range)
+                for m_param, c_range in param_mapping
+            )
+        )
 
         result = solver.assert_any_predicate([(anded, None)], lock=False)
         if not result.true_predicates:

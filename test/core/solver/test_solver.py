@@ -30,6 +30,7 @@ from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps, Single
 from faebryk.libs.picker.api.pickers import add_api_pickers
+from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
     PickerOption,
@@ -661,10 +662,41 @@ def test_jlcpcb_pick_capacitor():
     print(capacitor.get_trait(has_part_picked).get_part())
 
 
+def test_jlcpcb_pick_led():
+    led = F.LED()
+    led.color.constrain_subset(L.PlainSet(F.LED.Color.EMERALD))
+    led.max_current.constrain_ge(10 * P.mA)
+
+    solver = DefaultSolver()
+    add_api_pickers(led)
+    pick_part_recursively(led, solver)
+
+    assert led.has_trait(has_part_picked)
+    print(led.get_trait(has_part_picked).get_part())
+
+
+def test_jlcpcb_pick_powered_led():
+    led = F.PoweredLED()
+    led.led.color.constrain_subset(L.PlainSet(F.LED.Color.EMERALD))
+    led.power.voltage.constrain_subset(L.Range(1.8 * P.volt, 5.5 * P.volt))
+
+    solver = DefaultSolver()
+    children_mods = led.get_children_modules(direct_only=False, types=(Module,))
+    for mod in children_mods:
+        # add_api_pickers(mod)
+        add_jlcpcb_pickers(mod)
+
+    pick_part_recursively(led, solver)
+
+    picked_parts = [mod for mod in children_mods if mod.has_trait(has_part_picked)]
+    assert len(picked_parts) == 2
+    print([(p, p.get_trait(has_part_picked).get_part()) for p in picked_parts])
+
+
 if __name__ == "__main__":
     import typer
 
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_transitive_subset)
+    typer.run(test_less_obvious_contradiction_by_literal)
