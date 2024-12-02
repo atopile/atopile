@@ -25,6 +25,10 @@ class UserException(Exception):
         super().__init__(*args, **kwargs)
 
 
+class DeprecatedException(UserException):
+    """This feature is deprecated and will be removed in a future version."""
+
+
 def in_debug_session() -> ModuleType | None:
     """
     Return the debugpy module if we're in a debugging session.
@@ -50,7 +54,7 @@ class Pacman(contextlib.suppress):
         *exceptions: Type | tuple[Type],
         default=None,
     ):
-        self._exceptions = exceptions
+        super().__init__(exceptions)
         self.default = default
 
     def nom_nom_nom(

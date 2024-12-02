@@ -86,6 +86,8 @@ def build(
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f)
 
+    log.info("Build successful! 🚀")
+
 
 def _init_python_app(build_ctx: BuildContext) -> Module:
     """Initialize a specific .py build."""
