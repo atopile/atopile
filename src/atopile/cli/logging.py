@@ -41,6 +41,9 @@ class NodeHighlighter(RegexHighlighter):
     ]
 
 
+_logged_exceptions: set[tuple[type[Exception], tuple]] = set()
+
+
 class AtoLogHandler(RichHandler):
     """
     A logging handler that renders output with Rich.
@@ -106,6 +109,13 @@ class AtoLogHandler(RichHandler):
             and record.exc_info != (None, None, None)
         ):
             exc_type, exc_value, exc_traceback = record.exc_info
+
+            if exc_value and isinstance(exc_value, _BaseBaseUserException):
+                hashable = exc_value.get_frozen()
+                if hashable in _logged_exceptions:
+                    # we've already logged this
+                    return
+                _logged_exceptions.add(hashable)
 
             suppress = self._get_suppress(exc_type)
 

@@ -25,9 +25,6 @@ def in_debug_session() -> ModuleType | None:
     return None
 
 
-_logged_exceptions: set[tuple[type[Exception], tuple]] = set()
-
-
 def _log_user_errors(ex: _BaseBaseUserException | ExceptionGroup, de_dup: bool = True):
     """Helper function to consistently write errors to the log"""
     if isinstance(ex, ExceptionGroup):
@@ -45,14 +42,6 @@ def _log_user_errors(ex: _BaseBaseUserException | ExceptionGroup, de_dup: bool =
             raise naughty_errors
 
         return
-
-    # Check if this error has already been logged
-    hashable = ex.get_frozen()
-    if de_dup and hashable in _logged_exceptions:
-        return
-
-    # Format and printout the error
-    _logged_exceptions.add(hashable)
 
     if isinstance(ex, UserPythonModuleError):
         logger.exception(ex.message, exc_info=ex)
