@@ -20,7 +20,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
-from faebryk.libs.exceptions import UserException
+from faebryk.libs.exceptions import DeprecatedException, UserException, downgrade
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import (
     UUID,
@@ -47,7 +47,15 @@ from faebryk.libs.kicad.fileformats import (
 )
 from faebryk.libs.kicad.fileformats_common import C_pts
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
-from faebryk.libs.util import FuncSet, KeyErrorNotFound, cast_assert, find, get_key
+from faebryk.libs.util import (
+    FuncDict,
+    FuncSet,
+    KeyErrorNotFound,
+    cast_assert,
+    find,
+    get_key,
+    hash_string,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +211,11 @@ class PCB_Transformer:
             return self.transformer
 
     def __init__(
-        self, pcb: PCB, graph: Graph, app: Module, cleanup: bool = True
+        self,
+        pcb: PCB,
+        graph: Graph,
+        app: Module,
+        cleanup: bool = True,
     ) -> None:
         self.pcb = pcb
         self.graph = graph
@@ -243,6 +255,11 @@ class PCB_Transformer:
                 f"Failed to attach {len(unattached_nodes)} nodes to footprints"
             )
 
+        # TODO: check other properties:
+        # fp_ref = node.get_trait(F.has_overriden_name).get_name()
+        # fp_name = g_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
+        # fp.propertys["atopile_address"] = node.get_full_name()
+
     @classmethod
     def map_footprints(cls, graph: Graph, pcb: PCB) -> list[tuple[Footprint, Node]]:
         """
@@ -253,8 +270,6 @@ class PCB_Transformer:
         # (eg. things that should have a matching footprint in the layout)
         nodes_with_kicad_footprints: FuncSet[Node] = FuncSet()
         for node, fpt in GraphFunctions(graph).nodes_with_trait(F.has_footprint):
-            if not node.has_trait(F.has_overriden_name):
-                continue
             g_fp = fpt.get_footprint()
             if not g_fp.has_trait(F.has_kicad_footprint):
                 continue
@@ -263,20 +278,45 @@ class PCB_Transformer:
 
         # Now, try to map between the footprints and the layout
         footprint_map: list[tuple[Footprint, Node]] = []
-        footprints = {
-            (f.propertys["Reference"].value, f.name): f for f in pcb.footprints
+        fps_by_atopile_addr = {
+            f.propertys["atopile_address"].value: f
+            for f in pcb.footprints
+            if "atopile_address" in f.propertys
         }
-        for node in nodes_with_kicad_footprints:
-            g_fp = node.get_trait(F.has_footprint).get_footprint()
-            fp_ref = node.get_trait(F.has_overriden_name).get_name()
-            fp_name = g_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
+        fps_by_uuid = {f.uuid: f for f in pcb.footprints}
 
-            if (fp_ref, fp_name) in footprints:
-                footprint_map.append((footprints[(fp_ref, fp_name)], node))
+        for node in nodes_with_kicad_footprints:
+            atopile_addr = node.get_full_name()
+            if fp := fps_by_atopile_addr.get(atopile_addr):
+                footprint_map.append((fp, node))
+            # TODO: @v0.4 remove this, it's a fallback for v0.2 designs
+            elif fp := fps_by_uuid.get(hash_string(atopile_addr)):
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException(
+                        f"{fp.name} is linked using v0.2 mechanism, "
+                        "please save the design to update."
+                    )
+                footprint_map.append((fp, node))
             else:
                 footprint_map.append((None, node))
 
         return footprint_map
+
+    @classmethod
+    def load_designators(cls, graph: Graph, pcb: PCB) -> FuncDict[Node, str]:
+        fp_map = cls.map_footprints(graph, pcb)
+
+        def _get_reference(fp: Footprint):
+            try:
+                return fp.propertys["Reference"].value
+            except KeyError:
+                return None
+
+        known_designators = FuncDict(
+            [(node, _get_reference(fp)) for fp, node in fp_map if fp and fp.name]
+        )
+
+        return known_designators
 
     def bind_footprint(self, fp: Footprint, node: Node):
         g_fp = node.get_trait(F.has_footprint).get_footprint()

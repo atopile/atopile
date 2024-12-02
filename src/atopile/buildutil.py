@@ -20,11 +20,10 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
-from faebryk.importers.netlist.kicad.netlist_kicad import to_faebryk_t2_netlist
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.designators import (
+    attach_designators,
     attach_random_designators,
-    load_designators_from_netlist,
     override_names_with_designators,
 )
 from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
@@ -72,17 +71,12 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     # Write Netlist ------------------------------------------------------------
     netlist_path = build_paths.netlist
-    use_kicad_designators = True
-    if use_kicad_designators:
-        logger.info("Determining kicad-style designators")
-        # use kicad designators & names
-        if netlist_path.exists():
-            load_designators_from_netlist(
-                G,
-                {c.name: c for c in to_faebryk_t2_netlist(netlist_path).comps},
-            )
-        attach_random_designators(G)
-        override_names_with_designators(G)
+
+    pcb = C_kicad_pcb_file.loads(build_paths.layout)
+    known_designators = PCB_Transformer.load_designators(G, pcb.kicad_pcb)
+    attach_designators(known_designators)
+    attach_random_designators(G)
+    override_names_with_designators(G)
 
     logger.info("Creating Nets and attach kicad info")
     attach_nets_and_kicad_info(G)
@@ -92,28 +86,13 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     logger.info("Making kicad netlist")
     netlist = from_faebryk_t2_netlist(t2).dumps()
 
-    if netlist_path.exists():
-        old_netlist = netlist_path.read_text()
-        # pure text based check
-        # works in a lot of cases because netlist is pretty stable
-        # components sorted by name
-        # nets sorted by name
-        if old_netlist == netlist:
-            logger.warning("Netlist did not change, not writing")
-            return False
-        backup_path = netlist_path.with_suffix(netlist_path.suffix + ".bak")
-        logger.info(f"Backup old netlist at {backup_path}")
-        backup_path.write_text(old_netlist)
-    else:
-        changed = True
-
-        logger.info("Writing Experiment netlist to {}".format(netlist_path.resolve()))
-        netlist_path.parent.mkdir(parents=True, exist_ok=True)
-        netlist_path.write_text(netlist, encoding="utf-8")
+    logger.info("Writing Experiment netlist to {}".format(netlist_path.resolve()))
+    netlist_path.parent.mkdir(parents=True, exist_ok=True)
+    netlist_path.write_text(netlist, encoding="utf-8")
 
     # --------------------------------------------------------------------------
 
-    apply_netlist(build_paths, changed)
+    apply_netlist(build_paths, False)
 
     logger.info("Load PCB")
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
