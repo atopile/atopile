@@ -64,11 +64,19 @@ from faebryk.libs.util import (
 
 logger = logging.getLogger(__name__)
 
+# Config -------------------------------------------------------------------------------
 S_LOG = ConfigFlag("SLOG", default=False, descr="Log solver operations")
+VERBOSE_TABLE = ConfigFlag("SVERBOSE_TABLE", default=False, descr="Verbose table")
+NON_ASSOCIATIVE_SIMPLIFY = ConfigFlag(
+    "SNON_ASSOC",
+    default=False,
+    descr="Remove requirement of simplify to be associative. "
+    "Enables some optimizations that would otherwise be blocked.",
+)
+# --------------------------------------------------------------------------------------
+
 if S_LOG:
     logger.setLevel(logging.DEBUG)
-
-VERBOSE_TABLE = ConfigFlag("SVERBOSE_TABLE", default=False, descr="Verbose table")
 
 
 class Contradiction(Exception):

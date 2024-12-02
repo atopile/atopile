@@ -21,6 +21,7 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
+    NON_ASSOCIATIVE_SIMPLIFY,
     S_LOG,
     CanonicalOperation,
     FullyAssociative,
@@ -432,6 +433,7 @@ def remove_empty_graphs(mutator: Mutator):
     If there is only one predicate, it can be replaced by True
     If there are no predicates, the graph can be removed
     """
+
     predicates = [
         p
         for p in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
@@ -443,6 +445,10 @@ def remove_empty_graphs(mutator: Mutator):
 
     for p in predicates:
         alias_is_literal_and_check_predicate_eval(p, True, mutator)
+
+    # Never remove predicates
+    if predicates and not NON_ASSOCIATIVE_SIMPLIFY:
+        return
 
     mutator.remove(*GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable))
 

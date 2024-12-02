@@ -57,6 +57,22 @@ if S_LOG:
 
 
 class DefaultSolver(Solver):
+    """
+    General documentation
+
+    Naming:
+    - Predicate: A constrainable expression that is constrained
+    [Careful: not the same as the class Predicate]
+
+    Associativity of simplification:
+    - Goal: Simplify(B, Simplify(A)) = Simplify(A ^ B)
+    Note: Not 100% sure if that's possible and whether we are there yet
+
+    Debugging:
+    - Run with FBRK_SLOG=y to turn on debug
+    - Run with FRBK_SVERBOSE_TABLE=y for full expression names
+    """
+
     # TODO actually use this...
     timeout: int = 1000
 
@@ -69,12 +85,12 @@ class DefaultSolver(Solver):
         raise NotImplementedError()
 
     @times_out(5)
-    def phase_one_no_guess_solving(
+    def phase_1_simplify_analytically(
         self,
         g: Graph,
         print_context: ParameterOperatable.ReprContext | None = None,
     ):
-        logger.info("Phase 1 Solving: No guesses ".ljust(80, "="))
+        logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
 
         # TODO move into comment here
         # strategies
@@ -121,16 +137,18 @@ class DefaultSolver(Solver):
             algo: Callable[[Mutator], None],
         ):
             nonlocal print_context_
-            # logger.info(
-            #    f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
-            # )
+            logger.debug(
+                f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name}"
+                f" G:{len(graphs)}"
+            )
             mutators = Mutators(*graphs)
             mutators.run(algo)
             algo_repr_map, algo_graphs, algo_dirty = mutators.close()
             # TODO remove
             if algo_dirty:
-                logger.info(
-                    f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo_name} G:{len(graphs)}"
+                logger.debug(
+                    f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo_name} "
+                    f"G:{len(graphs)}"
                 )
                 print_context_ = mutators.debug_print(print_context_)
             # TODO assert all new graphs
@@ -153,7 +171,7 @@ class DefaultSolver(Solver):
                 len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
                 for g in graphs
             )
-            logger.info(
+            logger.debug(
                 f"Iteration {iterno} |graphs|: {len(graphs)}, |V|: {v_count}".ljust(
                     80, "-"
                 )
@@ -207,7 +225,8 @@ class DefaultSolver(Solver):
                 )
                 if new_subset_literal != param_ops_subset_literals[po]:
                     logger.debug(
-                        f"Subset dirty {param_ops_subset_literals[po]} != {new_subset_literal}"
+                        f"Subset dirty {param_ops_subset_literals[po]} != "
+                        f"{new_subset_literal}"
                     )
                     param_ops_subset_literals[po] = new_subset_literal
                     subset_dirty = True
@@ -217,9 +236,9 @@ class DefaultSolver(Solver):
             if not subset_dirty and iterno > 1:
                 continue
             if subset_dirty:
-                logger.info("Subset dirty, running subset dirty algorithms")
+                logger.debug("Subset dirty, running subset dirty algorithms")
             else:
-                logger.info("Iteration 1, running subset dirty algorithms")
+                logger.debug("Iteration 1, running subset dirty algorithms")
 
             phase_end = phase_name + 1
             # Run subset dirty algorithms
@@ -240,7 +259,11 @@ class DefaultSolver(Solver):
 
         Mutators.print_all(*graphs, context=print_context_)
 
-        logger.info(f"Phase 1 Solving done in {iterno} iterations ".ljust(80, "="))
+        logger.info(
+            f"Phase 1 Solving: Analytical Solving done in {iterno} iterations ".ljust(
+                80, "="
+            )
+        )
         return Mutators.create_concat_repr_map(total_repr_map), print_context_
 
     def get_any_single(
@@ -294,7 +317,7 @@ class DefaultSolver(Solver):
 
         # run phase 1 solver
         # TODO caching
-        repr_map, print_context = self.phase_one_no_guess_solving(param.get_graph())
+        repr_map, print_context = self.phase_1_simplify_analytically(param.get_graph())
         if param not in repr_map.repr_map:
             logger.warning(f"Parameter {param} not in repr_map")
             return Quantity_Interval_Disjoint.unbounded(param.units)
@@ -336,7 +359,7 @@ class DefaultSolver(Solver):
             assert not pred.constrained
             pred.constrained = True
             try:
-                repr_map, print_context_new = self.phase_one_no_guess_solving(
+                repr_map, print_context_new = self.phase_1_simplify_analytically(
                     pred.get_graph(), print_context=print_context
                 )
                 # FIXME: is this correct?

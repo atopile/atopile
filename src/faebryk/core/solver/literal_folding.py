@@ -530,7 +530,8 @@ def fold_subset(
     # literals
     X is subset of Y -> True / False
 
-    # TODO A subset B, B subset C -> A subset C (transitive)
+    # TODO A subset B, B subset/is C -> A subset C (transitive)
+    # TODO A is B, A subset B -> remove redundant subset
     ```
     """
 

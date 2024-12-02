@@ -65,7 +65,7 @@ def test_solve_phase_one():
     voltage1.alias_is(Range(1 * P.V, 3 * P.V))
     voltage3.alias_is(Range(4 * P.V, 6 * P.V))
 
-    solver.phase_one_no_guess_solving(voltage1.get_graph())
+    solver.phase_1_simplify_analytically(voltage1.get_graph())
 
 
 def test_simplify():
@@ -101,7 +101,7 @@ def test_simplify():
 
     G = acc.get_graph()
     solver = DefaultSolver()
-    solver.phase_one_no_guess_solving(G)
+    solver.phase_1_simplify_analytically(G)
     # TODO actually test something
 
 
@@ -118,7 +118,7 @@ def test_simplify_logic_and():
     anded.constrain()
     G = anded.get_graph()
     solver = DefaultSolver()
-    solver.phase_one_no_guess_solving(G)
+    solver.phase_1_simplify_analytically(G)
     # TODO actually test something
 
 
@@ -130,7 +130,7 @@ def test_shortcircuit_logic_and():
     solver = DefaultSolver()
 
     with pytest.raises(ContradictionByLiteral):
-        solver.phase_one_no_guess_solving(G)
+        solver.phase_1_simplify_analytically(G)
 
 
 def test_shortcircuit_logic_or():
@@ -146,7 +146,7 @@ def test_shortcircuit_logic_or():
     ored.constrain()
     G = ored.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_1_simplify_analytically(G)
     assert repr_map[ored] == BoolSet(True)
 
 
@@ -156,7 +156,7 @@ def test_inequality_to_set():
     p0.constrain_ge(1.0)
     G = p0.get_graph()
     solver = DefaultSolver()
-    solver.phase_one_no_guess_solving(G)
+    solver.phase_1_simplify_analytically(G)
     # TODO actually test something
 
 
@@ -169,7 +169,7 @@ def test_remove_obvious_tautologies():
 
     G = p0.get_graph()
     solver = DefaultSolver()
-    solver.phase_one_no_guess_solving(G)
+    solver.phase_1_simplify_analytically(G)
     # TODO actually test something
 
 
@@ -183,7 +183,7 @@ def test_subset_of_literal():
 
     G = p0.get_graph()
     solver = DefaultSolver()
-    solver.phase_one_no_guess_solving(G)
+    solver.phase_1_simplify_analytically(G)
     # TODO actually test something
 
 
@@ -199,14 +199,14 @@ def test_alias_classes():
 
     G = p0.get_graph()
     solver = DefaultSolver()
-    solver.phase_one_no_guess_solving(G)
+    solver.phase_1_simplify_analytically(G)
     # TODO actually test something
 
 
 def test_solve_realworld():
     app = F.RP2040_ReferenceDesign()
     solver = DefaultSolver()
-    solver.phase_one_no_guess_solving(app.get_graph())
+    solver.phase_1_simplify_analytically(app.get_graph())
     # TODO actually test something
 
 
@@ -237,7 +237,7 @@ def test_symmetric_inequality_uncorrelated():
     solver = DefaultSolver()
 
     with pytest.raises(Contradiction):
-        solver.phase_one_no_guess_solving(G)
+        solver.phase_1_simplify_analytically(G)
 
 
 def test_obvious_contradiction_by_literal():
@@ -252,7 +252,7 @@ def test_obvious_contradiction_by_literal():
     G = p0.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.phase_one_no_guess_solving(G)
+        solver.phase_1_simplify_analytically(G)
 
 
 def test_less_obvious_contradiction_by_literal():
@@ -272,7 +272,7 @@ def test_less_obvious_contradiction_by_literal():
     G = A.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        repr_map, context = solver.phase_one_no_guess_solving(G, print_context)
+        repr_map, context = solver.phase_1_simplify_analytically(G, print_context)
 
     # FIXME
     # <*3548|Parameter> is 5-10               subset 0-inf
@@ -316,7 +316,7 @@ def test_symmetric_inequality_correlated():
 
     G = p0.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_1_simplify_analytically(G)
     assert repr_map[p0] == repr_map[p1]
     assert repr_map[p0] == Range(0 * P.V, 10 * P.V)
 
@@ -346,7 +346,7 @@ def test_simple_literal_folds_arithmetic(
     G = expr.get_graph()
 
     solver = DefaultSolver()
-    repr_map, context = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_1_simplify_analytically(G)
     logger.info(f"{repr_map.repr_map}")
     deducted_subset = repr_map.try_get_literal(expr, IsSubset)
     assert deducted_subset == expected_result
@@ -375,7 +375,7 @@ def test_super_simple_literal_folding(
     (expr < 100.0).constrain()
     G = expr.get_graph()
 
-    repr_map, context = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_1_simplify_analytically(G)
     assert repr_map[expr] == Quantity_Interval_Disjoint.from_value(expected)
 
 
@@ -390,7 +390,7 @@ def test_literal_folding_add_multiplicative():
 
     G = expr.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_1_simplify_analytically(G)
 
     rep_add = repr_map.repr_map[expr]
     rep_A = repr_map.repr_map[A]
@@ -427,7 +427,7 @@ def test_literal_folding_add_multiplicative_2():
 
     G = expr.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_1_simplify_analytically(G)
     rep_add = repr_map.repr_map[expr]
     a_res = repr_map.repr_map[A]
     b_res = repr_map.repr_map[B]
@@ -454,7 +454,7 @@ def test_base_unit_switch():
 
     G = A.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_one_no_guess_solving(G)
+    repr_map, context = solver.phase_1_simplify_analytically(G)
     assert repr_map[A] == RangeWithGaps.from_value((100 * P.mAh, 600 * P.mAh))
 
 
@@ -486,7 +486,7 @@ def test_congruence_filter():
     assert y1.is_congruent_to(y2)
 
     solver = DefaultSolver()
-    result, context = solver.phase_one_no_guess_solving(x.get_graph())
+    result, context = solver.phase_1_simplify_analytically(x.get_graph())
     assert result.repr_map[y1] is result.repr_map[y2]
 
 
