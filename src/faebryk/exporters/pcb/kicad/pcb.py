@@ -101,6 +101,7 @@ class PCB:
         fp_lib_path = pcb_path.parent / "fp-lib-table"
 
         pcb = C_kicad_pcb_file.loads(pcb_path)
+
         netlist = C_kicad_netlist_file.loads(netlist_path)
 
         # footprint properties

@@ -29,6 +29,10 @@ class DeprecatedException(UserException):
     """This feature is deprecated and will be removed in a future version."""
 
 
+class UserResourceException(UserException):
+    """Indicates an issue with a user-facing resource, e.g. layout files."""
+
+
 def in_debug_session() -> ModuleType | None:
     """
     Return the debugpy module if we're in a debugging session.
