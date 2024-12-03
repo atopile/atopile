@@ -4,12 +4,12 @@ from pathlib import Path
 
 from git import Repo
 
-from faebryk.libs.util import is_editable_install, run_live
+from faebryk.libs.util import AUTO_RECOMPILE, is_editable_install, run_live
 
 logger = logging.getLogger(__name__)
 
 
-if is_editable_install():
+if is_editable_install() and AUTO_RECOMPILE.get():
 
     def has_uncommitted_changes(files: list[str | Path]) -> bool:
         """Check if any of the given files have uncommitted changes."""
@@ -29,8 +29,8 @@ if is_editable_install():
 
             return False
         except Exception:
-            # If we can't check git status (not a git repo, etc), assume we need to recompile
-            return True
+            # If we can't check git status (not a git repo, etc), assume we don't need to recompile
+            return False
 
     SAUCY_FILES = [
         "AtopileParser.g4",
