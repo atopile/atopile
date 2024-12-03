@@ -29,6 +29,7 @@ jobs:
         - name: Install project + dependencies
           run: |
             uv venv
+            source .venv/bin/activate
             uv pip install dist/*.whl
         - name: Lint with Ruff
           run: uv run ruff check --output-format=github .
