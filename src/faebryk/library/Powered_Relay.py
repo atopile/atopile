@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class Powered_Relay(Module):
+    """
+    A relay with MOSFET driver, flyback diode and LED indicator.
+    """
+
     relay: F.Relay
     indicator: F.PoweredLED
     flyback_diode: F.Diode
