@@ -426,7 +426,7 @@ class ParameterOperatable(Node):
     class ReprContext:
         @dataclass
         class VariableMapping:
-            mapping: dict["Parameter", str] = field(default_factory=dict)
+            mapping: dict["Parameter", int] = field(default_factory=dict)
             next_id: int = 0
 
         variable_mapping: VariableMapping = field(default_factory=VariableMapping)
@@ -1424,37 +1424,28 @@ class Parameter(ParameterOperatable):
         ```
         """
 
-        def int_to_subscript(i: int) -> str:
-            assert isinstance(i, int)
-            if i == 0:
-                return ""
-            _str = str(i)
-            return "".join(chr(ord("₀") + ord(c) - ord("0")) for c in _str)
+        def id_to_human_str(id: int) -> str:
+            assert isinstance(id, int)
+            alphabet = [chr(ord("A") + i) for i in range(26)] + [chr(ord("a") + i) for i in range(26)] + [chr(ord("α") + i) for i in range(25)]
+            def int_to_subscript(i: int) -> str:
+                if i == 0:
+                    return ""
+                _str = str(i)
+                return "".join(chr(ord("₀") + ord(c) - ord("0")) for c in _str)
+
+            return alphabet[id % len(alphabet)] + int_to_subscript(id // len(alphabet))
 
         if context is None:
             context = ParameterOperatable.ReprContext()
 
         if self not in context.variable_mapping.mapping:
             next_id = context.variable_mapping.next_id
-            alphabets = [("A", 26), ("a", 26), ("α", 25)]
-
-            def alphagen():
-                idx = 0
-                while True:
-                    for letter, maxcnt in alphabets:
-                        yield letter, idx, maxcnt
-                    idx += 1
-
-            alpha_iter = alphagen()
-            while next_id >= (cur := next(alpha_iter))[2]:
-                next_id -= cur[2]
-            letter = chr(ord(cur[0]) + next_id) + int_to_subscript(cur[1])
-
-            context.variable_mapping.mapping[self] = letter
+            context.variable_mapping.mapping[self] = next_id
             context.variable_mapping.next_id += 1
 
+
         unitstr = f" {self.units}" if self.units != dimensionless else ""
-        letter = context.variable_mapping.mapping[self]
+        letter = id_to_human_str(context.variable_mapping.mapping[self])
 
         out = f"{letter}{unitstr}"
         out += self._get_lit_suffix()

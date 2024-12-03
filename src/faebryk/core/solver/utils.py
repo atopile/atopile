@@ -676,7 +676,7 @@ class Mutators:
                 s.compact_repr(context_old)
                 s_mapping = context_old.variable_mapping.mapping[s]
                 d_mapping = context_new.variable_mapping.mapping.get(d, None)
-                if d_mapping is None or ord(d_mapping) > ord(s_mapping):
+                if d_mapping is None or d_mapping > s_mapping:
                     context_new.variable_mapping.mapping[d] = s_mapping
         graphs = get_graphs(self.result_repr_map.values())
 
