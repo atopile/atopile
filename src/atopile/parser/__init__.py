@@ -29,8 +29,8 @@ if is_editable_install():
 
             return False
         except Exception:
-            # If we can't check git status (not a git repo, etc), assume we need to recompile
-            return True
+            # If we can't check git status (not a git repo, etc), assume we don't need to recompile
+            return False
 
     SAUCY_FILES = [
         "AtopileParser.g4",
