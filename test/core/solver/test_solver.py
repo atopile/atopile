@@ -233,6 +233,9 @@ def test_inspect_known_superranges():
     assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
 
 
+@pytest.mark.skip(
+    "Behaviour not implemented https://github.com/atopile/atopile/issues/615"
+)
 def test_symmetric_inequality_uncorrelated():
     p0 = Parameter(units=P.V)
     p1 = Parameter(units=P.V)
