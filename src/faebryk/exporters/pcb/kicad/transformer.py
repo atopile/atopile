@@ -211,11 +211,7 @@ class PCB_Transformer:
             return self.transformer
 
     def __init__(
-        self,
-        pcb: PCB,
-        graph: Graph,
-        app: Module,
-        cleanup: bool = True,
+        self, pcb: PCB, graph: Graph, app: Module, cleanup: bool = True
     ) -> None:
         self.pcb = pcb
         self.graph = graph
