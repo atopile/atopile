@@ -260,7 +260,6 @@ def consolidate_footprints(build_ctx: BuildContext) -> None:
             )
         return
 
-
     for fp in build_ctx.paths.root.glob("**/*.kicad_mod"):
         try:
             shutil.copy(fp, fp_target)
