@@ -19,7 +19,7 @@ class USB_Type_C_Receptacle_16_pin(Module):
     # power
     power: F.ElectricPower
     # ds: p, n
-    d: F.DifferentialPair
+    d: F.USB2_0_IF.Data
 
     @L.rt_field
     def attach_to_footprint(self):
@@ -49,6 +49,27 @@ class USB_Type_C_Receptacle_16_pin(Module):
                 "2": self.shield,
                 "3": self.shield,
             }
+        )
+
+    @L.rt_field
+    def pin_association_heuristic(self):
+        vbus = self.power.hv
+        gnd = self.power.lv
+
+        return F.has_pin_association_heuristic_lookup_table(
+            mapping={
+                gnd: ["GND"],
+                vbus: ["VBUS"],
+                self.cc1: ["CC1"],
+                self.cc2: ["CC2"],
+                self.d.p.signal: ["DP1", "DP2"],
+                self.d.n.signal: ["DN1", "DN2"],
+                self.sbu1: ["SBU1"],
+                self.sbu2: ["SBU2"],
+                self.shield: ["SHELL"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
         )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
