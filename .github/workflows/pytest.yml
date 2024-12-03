@@ -24,7 +24,7 @@ jobs:
             python-version-file: "pyproject.toml"
         - name: Install dependencies
           run: |
-            uv pip install ."[dev]"
+            uv sync --all-extras --dev
         - name: Lint with Ruff
           run: uv run ruff check --output-format=github .
           #continue-on-error: true
