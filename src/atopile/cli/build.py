@@ -92,6 +92,10 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
         app_class = import_from_path(
             build_ctx.entry.file_path, build_ctx.entry.entry_section
         )
+    except FileNotFoundError as e:
+        raise errors.UserFileNotFoundError(
+            f"Cannot find build entry {build_ctx.entry.file_path}"
+        ) from e
     except Exception as e:
         raise errors.UserPythonModuleError(
             f"Cannot import build entry {build_ctx.entry.file_path}"
