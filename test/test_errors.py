@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -55,35 +56,32 @@ def test_build_errors(build_name: str, expected_error):
 def test_build_error_logging(build_name: str):
     # CLIRunner doesn't give us the fully-formatted log output as seen by the user
 
-    process = subprocess.Popen(
-        ["ato", "build", "-b", build_name],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+    process = subprocess.run(
+        [sys.executable, "-m", "atopile.cli", "build", "-b", build_name],
+        capture_output=True,
         text=True,
-        env=os.environ.copy(),
+        env=os.environ,
     )
 
-    stdout, stderr = process.communicate()
-
     # single error
-    assert stdout.count("ERROR") == 1
+    assert process.stdout.count("ERROR") == 1
 
     # single traceback
-    assert stdout.count("❱") == 1
-    assert stdout.count("Traceback (most recent call last)") == 1
-    assert "another exception occurred" not in stdout
-    assert "direct cause of the following exception" not in stdout
+    assert process.stdout.count("❱") == 1
+    assert process.stdout.count("Traceback (most recent call last)") == 1
+    assert "another exception occurred" not in process.stdout
+    assert "direct cause of the following exception" not in process.stdout
 
     # including the test exception
-    assert f'raise ValueError("{build_name}")' in stdout
+    assert f'raise ValueError("{build_name}")' in process.stdout
 
     # exiting cleanly
-    assert stdout.strip().endswith(
+    assert process.stdout.strip().endswith(
         "Unfortunately errors ^^^ stopped the build. If you need a hand jump on Discord! \nhttps://discord.gg/mjtxARsr9V 👋"
     )
 
     # exception groups are unwrapped
-    assert "ExceptionGroup" not in stdout
+    assert "ExceptionGroup" not in process.stdout
 
     # with a non-zero exit code
     assert process.returncode == 1
