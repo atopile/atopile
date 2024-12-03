@@ -1,3 +1,5 @@
+uv.lock linguist-generated=true
+
 *.kicad_* linguist-generated=true
 *.step linguist-generated=true
 *.wrl linguist-generated=true
