@@ -22,14 +22,17 @@ jobs:
           uses: actions/setup-python@v5
           with:
             python-version-file: "pyproject.toml"
-        - name: Install dependencies
+        - name: Setup cmake
+          uses: jwlawson/actions-setup-cmake@v2
+        - name: Build project
           run: |
-            uv sync --all-extras --dev
+            uv build --wheel
+        - name: Install project + dependencies
+          run: |
+            uv pip install dist/*.whl
         - name: Lint with Ruff
           run: uv run ruff check --output-format=github .
           #continue-on-error: true
-        - name: Setup cmake
-          uses: jwlawson/actions-setup-cmake@v2
         - name: Run pytest
           id: pytest
           continue-on-error: true
