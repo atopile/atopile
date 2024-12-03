@@ -3,6 +3,6 @@
     (lib
         (name "lcsc")
         (type "KiCad")
-        (uri "${KIPRJMOD}/lib/footprints/lcsc.pretty")
+        (uri "${KIPRJMOD}/../../build/kicad/libs/footprints/lcsc.pretty")
         (options "")
         (descr "atopile: project LCSC footprints")))
