@@ -58,7 +58,7 @@ class Pacman(contextlib.suppress):
         *exceptions: Type | tuple[Type],
         default=None,
     ):
-        super().__init__(exceptions)
+        self._exceptions = exceptions
         self.default = default
 
     def nom_nom_nom(
