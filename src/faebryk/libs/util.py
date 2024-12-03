@@ -1405,6 +1405,13 @@ def try_set_attr(obj: object, attr: str, value: Any) -> bool:
     return False
 
 
+AUTO_RECOMPILE = ConfigFlag(
+    "AUTO_RECOMPILE",
+    default=False,
+    descr="Automatically recompile source files if they have changed",
+)
+
+
 # Check if installed as editable
 def is_editable_install():
     distro = Distribution.from_name("atopile")
