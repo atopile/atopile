@@ -13,12 +13,12 @@ from atopile.config import BuildContext, BuildType
 from atopile.datatypes import Ref
 from faebryk.core.module import Module
 from faebryk.library import _F as F
-from faebryk.libs.exceptions import ExceptionAccumulator
+from faebryk.libs.exceptions import ExceptionAccumulator, log_user_errors
 from faebryk.libs.library import L
 from faebryk.libs.picker import lcsc
 from faebryk.libs.util import import_from_path
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def build(
@@ -40,8 +40,8 @@ def build(
 
     with ExceptionAccumulator() as accumulator:
         for build_ctx in build_ctxs:
-            log.info("Building %s", build_ctx.name)
-            with accumulator.collect():
+            logger.info("Building %s", build_ctx.name)
+            with accumulator.collect(), log_user_errors(logger):
                 match build_ctx.build_type:
                     case BuildType.ATO:
                         app = _init_ato_app(build_ctx)

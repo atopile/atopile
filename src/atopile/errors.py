@@ -1,12 +1,9 @@
-import logging
 from pathlib import Path
 
 from antlr4 import ParserRuleContext
 
 from atopile.parse_utils import get_src_info_from_ctx
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
-
-logger = logging.getLogger(__name__)
 
 
 class _BaseUserException(_BaseBaseUserException):

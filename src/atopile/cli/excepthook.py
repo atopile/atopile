@@ -6,7 +6,7 @@ import rich
 
 from atopile import telemetry
 from atopile.cli.logging import logger
-from atopile.errors import UserPythonModuleError, _BaseBaseUserException
+from atopile.errors import _BaseBaseUserException
 
 
 def in_debug_session() -> ModuleType | None:
@@ -25,30 +25,6 @@ def in_debug_session() -> ModuleType | None:
     return None
 
 
-def _log_user_errors(ex: _BaseBaseUserException | ExceptionGroup, de_dup: bool = True):
-    """Helper function to consistently write errors to the log"""
-    if isinstance(ex, ExceptionGroup):
-        if ex.message:
-            logger.error(ex.message)
-
-        nice_errors, naughty_errors = ex.split((_BaseBaseUserException, ExceptionGroup))
-
-        if nice_errors:
-            for e in nice_errors.exceptions:
-                assert isinstance(e, _BaseBaseUserException)
-                _log_user_errors(e)
-
-        if naughty_errors:
-            raise naughty_errors
-
-        return
-
-    if isinstance(ex, UserPythonModuleError):
-        logger.exception(ex.message, exc_info=ex)
-    else:
-        logger.error(ex.message, extra={"title": ex.title})
-
-
 def _handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, _BaseBaseUserException):
         # If we're in a debug session, we want to see the
@@ -57,9 +33,10 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
         if debugpy := in_debug_session():
             debugpy.breakpoint()
 
-        # This is here to print out any straggling ato errors that weren't
-        # printed via a lower-level accumulator of the likes
-        _log_user_errors(exc_value)
+        # in case we missed logging closer to the source
+        logger.exception(
+            msg=exc_value.message, exc_info=(exc_type, exc_value, exc_traceback)
+        )
 
         if telemetry.telemetry_data is not None:
             with contextlib.suppress(Exception):
@@ -76,8 +53,8 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
 def handle_exception(exc_type, exc_value, exc_traceback):
     try:
         _handle_exception(exc_type, exc_value, exc_traceback)
-    except Exception:
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    except Exception as e:
+        sys.__excepthook__(type(e), e, e.__traceback__)
     finally:
         with contextlib.suppress(Exception):
             telemetry.log_telemetry()

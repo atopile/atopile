@@ -5,7 +5,7 @@ from typing import Callable, ContextManager, Iterable, Self, Type, cast
 
 from rich.traceback import Traceback
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class UserException(Exception):
@@ -153,14 +153,6 @@ class ExceptionAccumulator:
 
         return _Collector(*self.accumulate_types)
 
-    def add_errors(self, ex: ExceptionGroup):
-        self.errors.extend(ex.exceptions)
-
-        # TODO: log the errors with the UserException protocol instead
-        from atopile.errors import _log_user_errors
-
-        _log_user_errors(ex)
-
     def raise_errors(self):
         """
         Raise the collected errors as an exception group.
@@ -199,7 +191,7 @@ class downgrade[T: Exception](Pacman):
         *exceptions: Type[T],
         default=None,
         to_level: int = logging.WARNING,
-        logger: logging.Logger = log,
+        logger: logging.Logger = logger,
     ):
         super().__init__(exceptions, default=default)
         self.to_level = to_level
@@ -233,3 +225,15 @@ def iter_through_errors[T](
             # NOTE: we don't create a single context manager for the whole generator
             # because generator context managers are a bit special
             yield accumulator.collect, item
+
+
+@contextlib.contextmanager
+def log_user_errors(logger: logging.Logger = logger):
+    """
+    Log any exceptions raised within the context.
+    """
+    try:
+        yield
+    except UserException as e:
+        logger.exception(e)
+        raise

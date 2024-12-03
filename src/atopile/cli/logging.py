@@ -99,52 +99,65 @@ class AtoLogHandler(RichHandler):
 
         return exc_type, exc_value, exc_traceback
 
-    def emit(self, record: logging.LogRecord) -> None:
-        """Invoked by logging."""
-        message = self.format(record)
-        traceback = None
-        if (
-            self.rich_tracebacks
-            and record.exc_info
-            and record.exc_info != (None, None, None)
-        ):
-            exc_type, exc_value, exc_traceback = record.exc_info
-
+    def _get_hashable(self, record: logging.LogRecord) -> tuple | None:
+        if exc_info := getattr(record, "exc_info", None):
+            _, exc_value, _ = exc_info
             if exc_value and isinstance(exc_value, _BaseBaseUserException):
-                hashable = exc_value.get_frozen()
-                if hashable in _logged_exceptions:
-                    # we've already logged this
-                    return
-                _logged_exceptions.add(hashable)
+                return exc_value.get_frozen()
+        return None
 
-            suppress = self._get_suppress(exc_type)
+    def _get_traceback(self, record: logging.LogRecord) -> Traceback | None:
+        if not record.exc_info:
+            return None
 
+        exc_type, exc_value, exc_traceback = record.exc_info
+
+        suppress = self._get_suppress(exc_type)
+
+        hide_traceback = isinstance(
+            exc_value, _BaseBaseUserException
+        ) and not isinstance(exc_value, UserPythonModuleError)
+
+        if isinstance(exc_value, UserPythonModuleError):
             exc_type, exc_value, exc_traceback = self._unwrap_chained_exceptions(
                 exc_type, exc_value, exc_traceback
             )
 
-            assert exc_type is not None
-            assert exc_value is not None
-            traceback = Traceback.from_exception(
-                exc_type,
-                exc_value,
-                exc_traceback,
-                width=self.tracebacks_width,
-                extra_lines=self.tracebacks_extra_lines,
-                theme=self.tracebacks_theme,
-                word_wrap=self.tracebacks_word_wrap,
-                show_locals=self.tracebacks_show_locals,
-                locals_max_length=self.locals_max_length,
-                locals_max_string=self.locals_max_string,
-                suppress=suppress,
-            )
-            message = record.getMessage()
-            if self.formatter:
-                record.message = record.getMessage()
-                formatter = self.formatter
-                if hasattr(formatter, "usesTime") and formatter.usesTime():
-                    record.asctime = formatter.formatTime(record, formatter.datefmt)
-                message = formatter.formatMessage(record)
+        if hide_traceback or exc_type is None or exc_value is None:
+            return None
+
+        return Traceback.from_exception(
+            exc_type,
+            exc_value,
+            exc_traceback,
+            width=self.tracebacks_width,
+            extra_lines=self.tracebacks_extra_lines,
+            theme=self.tracebacks_theme,
+            word_wrap=self.tracebacks_word_wrap,
+            show_locals=self.tracebacks_show_locals,
+            locals_max_length=self.locals_max_length,
+            locals_max_string=self.locals_max_string,
+            suppress=suppress,
+        )
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Invoked by logging."""
+        message = self.format(record)
+        hashable = self._get_hashable(record)
+
+        if hashable and hashable in _logged_exceptions:
+            # we've already logged this
+            return
+
+        traceback = self._get_traceback(record)
+
+        message = record.getMessage()
+        if self.formatter:
+            record.message = record.getMessage()
+            formatter = self.formatter
+            if hasattr(formatter, "usesTime") and formatter.usesTime():
+                record.asctime = formatter.formatTime(record, formatter.datefmt)
+            message = formatter.formatMessage(record)
 
         message_renderable = self.render_message(record, message)
 
@@ -162,6 +175,9 @@ class AtoLogHandler(RichHandler):
             except Exception:
                 self.handleError(record)
 
+        if hashable:
+            _logged_exceptions.add(hashable)
+
 
 class AtoLogFormatter(logging.Formatter):
     def __init__(self):
@@ -177,30 +193,31 @@ class AtoLogFormatter(logging.Formatter):
         if not isinstance(exc, _BaseBaseUserException):
             return super().format(record)
 
-        message = ""
+        header = ""
 
         if exc.title:
-            message += f"[bold]{exc.title}[/]\n"
+            header += f"[bold]{exc.title}[/]\n"
             record.markup = True
 
         # Attach source info if we have it
         if isinstance(exc, _BaseUserException):
             if source_info := exc.src_path:
+                print(f"{source_info=}")
                 source_info = str(source_info)
                 if src_line := exc.src_line:
                     source_info += f":{src_line}"
                 if src_col := exc.src_col:
                     source_info += f":{src_col}"
 
-            message += f"{source_info}\n"
+                header += f"{source_info}\n"
 
-        fmt_message = (
+        indented_message = (
             textwrap.indent(record.getMessage(), "    ")
             if exc.title or source_info
             else record.getMessage()
         )
 
-        return f"{message}{fmt_message}".strip()
+        return f"{header}{indented_message}".strip()
 
 
 console = Console(

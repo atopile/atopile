@@ -35,6 +35,7 @@ from faebryk.libs.exceptions import (
     ExceptionAccumulator,
     downgrade,
     iter_through_errors,
+    log_user_errors,
 )
 from faebryk.libs.units import P, Quantity, Unit
 from faebryk.libs.util import (
@@ -511,7 +512,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def _finish(self):
         with ExceptionAccumulator() as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():
-                with ex_acc.collect(), ato_error_converter():
+                with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
                     if value is None:
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Parameter {param} never assigned"
