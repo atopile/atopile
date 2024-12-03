@@ -162,7 +162,7 @@ def alias_is_literal(po: ParameterOperatable, literal: ParameterOperatable.Liter
         raise ContradictionByLiteral(f"{existing} != {literal}")
     # prevent (A is X) is X
     if isinstance(po, Is):
-        if literal in po.get_literal_operands():
+        if literal in po.get_literal_operands().values():
             return
     return po.alias_is(literal)
 

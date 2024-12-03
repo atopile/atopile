@@ -613,9 +613,9 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self._intervals >= other_q._intervals
 
     def __le__(self, other: QuantitySetLike) -> BoolSet:
-        if not self.units.is_compatible_with(other.units):
-            raise ValueError("incompatible units")
         other_q = Quantity_Interval_Disjoint.from_value(other)
+        if not self.units.is_compatible_with(other_q.units):
+            raise ValueError("incompatible units")
         return self._intervals <= other_q._intervals
 
     def is_single_element(self) -> bool:

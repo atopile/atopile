@@ -184,10 +184,9 @@ def test_subset_of_literal():
     p0.alias_is(p1)
     p1.alias_is(p2)
 
-    G = p0.get_graph()
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(G)
-    # TODO actually test something
+    for p in (p0, p1, p2):
+        assert solver.inspect_get_known_superranges(p) == RangeWithGaps((0.0, 0.0))
 
 
 def test_alias_classes():

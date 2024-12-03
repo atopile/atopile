@@ -3,7 +3,7 @@
 
 
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from functools import partial
 from itertools import combinations
 from typing import cast
@@ -59,19 +59,21 @@ if S_LOG:
 
 
 def convert_inequality_with_literal_to_subset(mutator: Mutator):
+    #TODO if not! A <= x it can be replaced by A intersect [-inf, a] is {}
     """
-    A >= 5 -> A in [5, inf)
-    5 >= A -> A in (-inf, 5]
+    This only works for inequalities we know cannot evaluate to {True, False}
+    A >=! 5 -> A ss! [5, inf)
+    5 >=! A -> A ss! (-inf, 5]
 
-    A >= [1, 10] -> A in [10, inf)
-    [1, 10] >= A -> A in (-inf, 1]
+    A >=! [1, 10] -> A ss! [10, inf)
+    [1, 10] >=! A -> A ss! (-inf, 1]
     """
 
     ge_exprs = {
         e
         for e in GraphFunctions(mutator.G).nodes_of_type(GreaterOrEqual)
         # Look for expressions with only one non-literal operand
-        if len(list(op for op in e.operands if isinstance(op, ParameterOperatable)))
+        if e.constrained and len(list(op for op in e.operands if isinstance(op, ParameterOperatable)))
         == 1
     }
 
@@ -463,11 +465,15 @@ def transitive_subset(mutator: Mutator):
     sss = GraphFunctions(mutator.G).nodes_of_type(IsSubset)
 
     # don't add new IsSubset if already exists as Is or IsSubset
-    ss_lookup = {ss.operands for ss in sss if ss.constrained}
-    for is_op in GraphFunctions(mutator.G).nodes_of_type(Is):
-        if not is_op.constrained:
+    ss_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(list)
+    for ss in sss:
+        if not ss.constrained:
             continue
-        ss_lookup.update(combinations(is_op.operands, 2))
+        ss_lookup[ss.operands[0]].append(ss.operands[1])
+    is_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(list)
+    for is_op in GraphFunctions(mutator.G).nodes_of_type(Is):
+        for op in is_op.operands:
+            is_lookup[op] += is_op.operands
 
     for ss in sss:
         if not ss.constrained:
@@ -480,19 +486,36 @@ def transitive_subset(mutator: Mutator):
         B_ss = [
             e
             for e in B.get_operations(IsSubset, constrained_only=True)
-            if e.operands[0] is not A
+            if e.operands[0] is B and e.operands[1] is not A
         ]
-        if not B_ss:
-            continue
+        # A ss B, B is C -> new A ss C
+        if not ParameterOperatable.is_literal(A):
+            B_is = [
+                e
+                for e in B.get_operations(Is, constrained_only=True)
+                if ParameterOperatable.is_literal(e.get_other_operand(B))
+            ]
+        else:
+            B_is = []
 
-        for b_ss in B_ss:
+        for b_ss in B_ss + B_is:
             other_B = b_ss.get_other_operand(B)
-            if (A, other_B) in ss_lookup:
-                continue
-            new_ss = IsSubset(
+            if A in ss_lookup:
+                if other_B in ss_lookup[A]:
+                    continue
+                lit_A = ParameterOperatable.try_extract_literal(A, allow_subset=True)
+                lit_other_B = ParameterOperatable.try_extract_literal(other_B)
+                if lit_A is not None and lit_other_B is not None:
+                    if P_Set.from_value(lit_A).is_subset_of(P_Set.from_value(lit_other_B)):
+                        continue
+            if A in is_lookup:
+                if other_B in is_lookup[A]:
+                    continue
+            # TODO this seems iffy
+            _ = IsSubset(
                 mutator.get_copy(A), mutator.get_copy(other_B)
             ).constrain()
-            ss_lookup.add(new_ss.operands)
+            ss_lookup[A].append(other_B)
 
 
 def remove_empty_graphs(mutator: Mutator):
@@ -509,7 +532,7 @@ def remove_empty_graphs(mutator: Mutator):
         and not (
             isinstance(p, Is)
             and p._solver_evaluates_to_true
-            and BoolSet(True) in p.get_literal_operands()
+            and BoolSet(True) in p.get_literal_operands().values()
             and all(
                 isinstance(inner, ConstrainableExpression)
                 and inner.constrained
@@ -570,17 +593,21 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
-        # TODO I don't fully understand why this is here
-        # but is very needed
-        if isinstance(e, Is) and e.constrained:
+
+        ops = []
+        found_literal = False
+        for op in e.operands:
+            lit = is_replacable_by_literal(op)
+            if lit is not None:
+                if isinstance(e, Is) and e.constrained and lit in e.operands:
+                    continue
+                ops.append(lit)
+                found_literal = True
+            else:
+                ops.append(op)
+
+        if not found_literal:
             continue
 
-        if not any(is_replacable_by_literal(op) is not None for op in e.operands):
-            continue
-
-        mutator.mutate_expression_with_op_map(
-            e,
-            operand_mutator=lambda _, op: (
-                lit if (lit := is_replacable_by_literal(op)) is not None else op
-            ),
-        )
+        mutator.mutate_expression(e,
+                    operands=ops)

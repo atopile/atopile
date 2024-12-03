@@ -590,16 +590,13 @@ def fold_subset(
     if expr.constrained:
         # P1 ss! True -> P1!
         # P1 ss! P2!  -> P1!
-        if BoolSet(True) in literal_operands or any(
-            op.constrained
-            for op in expr.get_operatable_operands(ConstrainableExpression)
-        ):
-            for p in expr.get_operatable_operands(ConstrainableExpression):
-                p.constrain()
+        if B == BoolSet(True) or isinstance(B, ConstrainableExpression) and B.constrained:
+            assert isinstance(A, ConstrainableExpression)
+            A.constrain()
         # P ss! False -> ¬!P
-        if BoolSet(False) in literal_operands:
-            for p in expr.get_operatable_operands(ConstrainableExpression):
-                Not(p).constrain()
+        if B == BoolSet(False):
+            assert isinstance(A, ConstrainableExpression)
+            Not(A).constrain()
 
 
 def fold_ge(

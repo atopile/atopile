@@ -354,9 +354,16 @@ class ParameterOperatable(Node):
         """
         if op is None:
             op = Is
-        iss = self.get_operations(op, constrained_only=True)
+        # we have logic for is and is_subset in this function,
+        # let's find a usecase for other ops before allowing them
+        if not issubclass(op, (Is, IsSubset)):
+            raise ValueError(f"Unsupported op {op}")
+        ops = self.get_operations(op, constrained_only=True)
         try:
-            literal_is = find(o for i in iss for o in i.get_literal_operands())
+            if op is IsSubset:
+                literals = find(lit for op in ops for (i, lit) in op.get_literal_operands().items() if i > 0)
+            else:
+                literals = find(lit for op in ops for (_, lit) in op.get_literal_operands().items())
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
                 self, f"Parameter {self} has no literal for op {op}"
@@ -371,7 +378,7 @@ class ParameterOperatable(Node):
                 return P_Set.intersect_all(*duplicates)
             else:
                 raise
-        return literal_is
+        return literals
 
     def try_get_literal_subset(self) -> Literal | None:
         lits = self.try_get_literal_for_multiple_ops([Is, IsSubset])
@@ -547,11 +554,11 @@ class Expression(ParameterOperatable):
             self.operates_on.get_connected_nodes(types=[types]),
         )
 
-    def get_literal_operands(self) -> list[ParameterOperatable.Literal]:
+    def get_literal_operands(self) -> dict[int, ParameterOperatable.Literal]:
         if isinstance(self, (Is, IsSubset)):
-            return [o for o in self.operands if ParameterOperatable.is_literal(o)]
+            return {i: o for i, o in enumerate(self.operands) if ParameterOperatable.is_literal(o)}
         # TODO not sure its a good idea to do this that recursive
-        return [ParameterOperatable.try_extract_literal(o) for o in self.operands]
+        return {i: ParameterOperatable.try_extract_literal(o) for i, o in enumerate(self.operands)}
 
     def depth(self) -> int:
         """
