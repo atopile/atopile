@@ -1,11 +1,11 @@
-import logging  # noqa: I001
+# excepthook must be installed before typer is imported
+import atopile.cli.excepthook  # noqa: F401, I001
+
+import logging
 import sys
 from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated
-
-# excepthook must be installed before typer is imported
-import atopile.cli.excepthook  # noqa: F401
 
 import typer
 
