@@ -55,7 +55,7 @@ def test_build_error_logging(build_name: str):
         [sys.executable, "-m", "atopile", "build", "-b", build_name],
         capture_output=True,
         text=True,
-        env=os.environ,
+        env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
     )
 
     # single error
