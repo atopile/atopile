@@ -5,7 +5,6 @@
     "python.testing.pytestEnabled": true,
     "python.testing.pytestArgs": [
         "test",
-        "tests"
     ],
     "python.testing.cwd": "${workspaceFolder}",
     "[typescript]": {
