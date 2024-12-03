@@ -194,6 +194,10 @@ class downgrade[T: Exception](Pacman):
         logger: logging.Logger = logger,
     ):
         super().__init__(exceptions, default=default)
+
+        if to_level >= logging.ERROR:
+            raise ValueError("to_level must be less than ERROR")
+
         self.to_level = to_level
         self.logger = logger
 
