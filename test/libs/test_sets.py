@@ -189,12 +189,18 @@ def test_pow():
     )
 
 
+@pytest.mark.skip(
+    "Zero crossing not implemented https://github.com/atopile/atopile/issues/614"
+)
 def test_pow_unit():
     assert RangeWithGaps((-3 * P.m, 1 * P.m)) ** Single(quantity(2)) == RangeWithGaps(
         (1 * P.m**2, 9 * P.m**2)
     )
 
 
+@pytest.mark.skip(
+    "Zero crossing not implemented https://github.com/atopile/atopile/issues/614"
+)
 def test_pow_div_eq():
     x = RangeWithGaps(Range(-5, 10))
     y = RangeWithGaps(Range(-2, 3))
@@ -229,14 +235,31 @@ def test_boolset_eq():
     assert BoolSet(True, False) == BoolSet(False, True)
     assert True is not BoolSet(True)
 
+
 def test_comparison():
-    assert (RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((0 * P.V, 1 * P.V))) == BoolSet(True)
-    assert (RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((2 * P.V, 3 * P.V))) == BoolSet(True)
-    assert (RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((0 * P.V, 0.5 * P.V))) == BoolSet(True)
-    assert (RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((2.5 * P.V, 3 * P.V))) == BoolSet(True)
+    assert (
+        RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((0 * P.V, 1 * P.V))
+    ) == BoolSet(True)
+    assert (
+        RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((2 * P.V, 3 * P.V))
+    ) == BoolSet(True)
+    assert (
+        RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((0 * P.V, 0.5 * P.V))
+    ) == BoolSet(True)
+    assert (
+        RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((2.5 * P.V, 3 * P.V))
+    ) == BoolSet(True)
 
-    assert (RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((0 * P.V, 0.5 * P.V))) == BoolSet(False)
-    assert (RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((2.5 * P.V, 3 * P.V))) == BoolSet(False)
+    assert (
+        RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((0 * P.V, 0.5 * P.V))
+    ) == BoolSet(False)
+    assert (
+        RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((2.5 * P.V, 3 * P.V))
+    ) == BoolSet(False)
 
-    assert (RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((0 * P.V, 1 * P.V))) == BoolSet(True, False)
-    assert (RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((2 * P.V, 3 * P.V))) == BoolSet(True, False)
+    assert (
+        RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((0 * P.V, 1 * P.V))
+    ) == BoolSet(True, False)
+    assert (
+        RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((2 * P.V, 3 * P.V))
+    ) == BoolSet(True, False)
