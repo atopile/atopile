@@ -27,7 +27,7 @@ class USB2514B_ReferenceDesign(Module):
         Power switched USB2_0 interface.
         """
 
-        power_distribution_switch: F.Diodes_Incorporated_AP2552W6_7
+        power_distribution_switch: F.Diodes_Incorporated_AP2553W6_7
         usb_dfp_power_indicator: F.PoweredLED
 
         power_in: F.ElectricPower
@@ -46,8 +46,8 @@ class USB2514B_ReferenceDesign(Module):
             LVL = LayoutTypeHierarchy.Level
 
             layouts = [
-                LVL(  # Diodes Incorporated AP2552W6_7
-                    mod_type=F.Diodes_Incorporated_AP2552W6_7,
+                LVL(  # Diodes Incorporated AP2553W6_7
+                    mod_type=F.Diodes_Incorporated_AP2553W6_7,
                     layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
                 ),
                 LVL(  # PoweredLED
