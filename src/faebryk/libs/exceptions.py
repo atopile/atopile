@@ -1,19 +1,17 @@
 import contextlib
 import logging
-import sys
 from functools import wraps
-from types import ModuleType
 from typing import Callable, ContextManager, Iterable, Self, Type, cast
 
 from rich.traceback import Traceback
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class UserException(Exception):
     """A user-caused exception."""
 
-    # TODO: Add interface for getting user-facing exception information
+    # TODO: Add / refine interface for getting user-facing exception information
     # - Origin?
     # - Title?
     # - Description?
@@ -21,8 +19,30 @@ class UserException(Exception):
     # - Help text?
     # __print__?
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        title: str | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
+        self.message = args[0] if args else ""
+        self._title = title
+
+    @property
+    def title(self):
+        """Return the name of this error, without the "User" prefix."""
+        if self._title is not None:
+            return self._title
+
+        error_name = self.__class__.__name__
+        return error_name.removeprefix("User")
+
+    def get_frozen(self) -> tuple:
+        """
+        Return a frozen version of this error.
+        """
+        return (self.__class__, self.message, self._title)
 
 
 class DeprecatedException(UserException):
@@ -31,19 +51,6 @@ class DeprecatedException(UserException):
 
 class UserResourceException(UserException):
     """Indicates an issue with a user-facing resource, e.g. layout files."""
-
-
-def in_debug_session() -> ModuleType | None:
-    """
-    Return the debugpy module if we're in a debugging session.
-    """
-    if "debugpy" in sys.modules:
-        import debugpy
-
-        if debugpy.is_client_connected():
-            return debugpy
-
-    return None
 
 
 class Pacman(contextlib.suppress):
@@ -150,14 +157,6 @@ class ExceptionAccumulator:
 
         return _Collector(*self.accumulate_types)
 
-    def add_errors(self, ex: ExceptionGroup):
-        self.errors.extend(ex.exceptions)
-
-        # TODO: log the errors with the UserException protocol instead
-        from atopile.errors import _log_user_errors
-
-        _log_user_errors(ex, log)
-
     def raise_errors(self):
         """
         Raise the collected errors as an exception group.
@@ -196,9 +195,13 @@ class downgrade[T: Exception](Pacman):
         *exceptions: Type[T],
         default=None,
         to_level: int = logging.WARNING,
-        logger: logging.Logger = log,
+        logger: logging.Logger = logger,
     ):
         super().__init__(exceptions, default=default)
+
+        if to_level >= logging.ERROR:
+            raise ValueError("to_level must be less than ERROR")
+
         self.to_level = to_level
         self.logger = logger
 
@@ -209,10 +212,7 @@ class downgrade[T: Exception](Pacman):
             exceptions = [exc]
 
         for e in exceptions:
-            try:
-                e.log(self.logger, self.to_level)
-            except AttributeError:
-                self.logger.log(self.to_level, e)
+            self.logger.log(self.to_level, e)
 
 
 def iter_through_errors[T](
@@ -233,3 +233,15 @@ def iter_through_errors[T](
             # NOTE: we don't create a single context manager for the whole generator
             # because generator context managers are a bit special
             yield accumulator.collect, item
+
+
+@contextlib.contextmanager
+def log_user_errors(logger: logging.Logger = logger):
+    """
+    Log any exceptions raised within the context.
+    """
+    try:
+        yield
+    except UserException as e:
+        logger.exception(e)
+        raise

@@ -1,3 +1,6 @@
+# excepthook must be installed before typer is imported
+import atopile.cli.excepthook  # noqa: F401, I001
+
 import logging
 import sys
 from importlib.metadata import version
@@ -5,27 +8,15 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from rich.logging import RichHandler
 
 from atopile import telemetry
-from atopile.cli.rich_console import console
+from atopile.cli import build, configure, create, inspect, install, view
+from atopile.cli.logging import logger
 
-from . import build, configure, create, inspect, install, view
-
-FORMAT = "%(message)s"
-logging.basicConfig(
-    level="INFO",
-    format=FORMAT,
-    datefmt="[%X]",
-    handlers=[
-        RichHandler(
-            console=console,
-            tracebacks_suppress=[typer],
-        )
-    ],
+app = typer.Typer(
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,  # required to override the excepthook
 )
-
-app = typer.Typer(no_args_is_help=True)
 
 
 def python_interpreter_path(ctx: typer.Context, value: bool):
@@ -75,7 +66,7 @@ def cli(
 
         debug_port = 5678
         debugpy.listen(("localhost", debug_port))
-        logging.info("Starting debugpy on port %s", debug_port)
+        logger.info("Starting debugpy on port %s", debug_port)
         debugpy.wait_for_client()
 
     # Initialize telemetry
@@ -84,9 +75,9 @@ def cli(
 
     # set the log level
     if verbose == 1:
-        logging.root.setLevel(logging.DEBUG)
+        logger.root.setLevel(logging.DEBUG)
     elif verbose > 1:
-        logging.root.setLevel(logging.NOTSET)
+        logger.root.setLevel(logging.NOTSET)
 
     if not non_interactive:
         configure.do_configure_if_needed()
