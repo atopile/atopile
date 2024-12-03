@@ -34,9 +34,9 @@ from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
-from faebryk.library.has_descriptive_properties import has_descriptive_properties
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
+from faebryk.library.has_descriptive_properties import has_descriptive_properties
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_capacitance import has_capacitance
 from faebryk.library.has_construction_dependency import has_construction_dependency
@@ -65,9 +65,9 @@ from faebryk.library.has_overriden_name_defined import has_overriden_name_define
 from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.Symbol import Symbol
 from faebryk.library.can_bridge_defined import can_bridge_defined
-from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.has_datasheet_defined import has_datasheet_defined
 from faebryk.library.has_designator_defined import has_designator_defined
+from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.has_simple_value_representation_based_on_params import has_simple_value_representation_based_on_params
 from faebryk.library.has_simple_value_representation_based_on_params_chain import has_simple_value_representation_based_on_params_chain
 from faebryk.library.has_simple_value_representation_defined import has_simple_value_representation_defined
@@ -120,6 +120,7 @@ from faebryk.library.Switch import Switch
 from faebryk.library.B4B_ZR_SM4_TF import B4B_ZR_SM4_TF
 from faebryk.library.DE9Connector import DE9Connector
 from faebryk.library.Header import Header
+from faebryk.library.SHOU_HAN_TYPE_C_16PIN_2MD073 import SHOU_HAN_TYPE_C_16PIN_2MD073
 from faebryk.library.pf_533984002 import pf_533984002
 from faebryk.library.DIP import DIP
 from faebryk.library.QFN import QFN
@@ -157,9 +158,8 @@ from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
-from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
 from faebryk.library.USB_Type_C_Receptacle_24_pin import USB_Type_C_Receptacle_24_pin
-from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
+from faebryk.library.Diodes_Incorporated_AP255x_x import Diodes_Incorporated_AP255x_x
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
 from faebryk.library.Ethernet import Ethernet
 from faebryk.library.GenericBusProtection import GenericBusProtection
@@ -185,6 +185,8 @@ from faebryk.library.can_switch_power import can_switch_power
 from faebryk.library.pf_74AHCT2G125 import pf_74AHCT2G125
 from faebryk.library.TPS2116 import TPS2116
 from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
+from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
+from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
 from faebryk.library.ElectricLogicGates import ElectricLogicGates
 from faebryk.library.Logic74xx import Logic74xx
 from faebryk.library.BH1750FVI_TR import BH1750FVI_TR
@@ -211,6 +213,8 @@ from faebryk.library.UART_RS485 import UART_RS485
 from faebryk.library.USB2514B import USB2514B
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
+from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
+from faebryk.library.WCHJiangsu_Qin_Heng_CH224K import WCHJiangsu_Qin_Heng_CH224K
 from faebryk.library.can_switch_power_defined import can_switch_power_defined
 from faebryk.library.RS485_Bus_Protection import RS485_Bus_Protection
 from faebryk.library.CD4011 import CD4011
@@ -257,4 +261,5 @@ from faebryk.library.LEDIndicator import LEDIndicator
 from faebryk.library.CH344Q_ReferenceDesign import CH344Q_ReferenceDesign
 from faebryk.library.RaspberryPiPicoBase_ReferenceDesign import RaspberryPiPicoBase_ReferenceDesign
 from faebryk.library.USB2514B_ReferenceDesign import USB2514B_ReferenceDesign
+from faebryk.library.WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign import WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign
 from faebryk.library.RaspberryPiPico import RaspberryPiPico
