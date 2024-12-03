@@ -35,6 +35,7 @@ from faebryk.libs.exceptions import (
     ExceptionAccumulator,
     downgrade,
     iter_through_errors,
+    log_user_errors,
 )
 from faebryk.libs.units import P, Quantity, Unit
 from faebryk.libs.util import (
@@ -63,6 +64,8 @@ try:
     from faebryk.library import Single  # type: ignore
 except ImportError:
     from faebryk.library._F import Constant as Single  # type: ignore
+
+logger = logging.getLogger(__name__)
 
 
 def _alias_is(lh, rh):
@@ -509,7 +512,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def _finish(self):
         with ExceptionAccumulator() as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():
-                with ex_acc.collect(), ato_error_converter():
+                with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
                     if value is None:
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Parameter {param} never assigned"
@@ -871,10 +874,11 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
             if not try_set_attr(target, assigned_name, value):
-                errors.UserException.from_ctx(
-                    ctx,
-                    f"Ignoring assignment of {value} to {assigned_name} on {target}",
-                ).log(to_level=logging.WARNING)
+                with downgrade(errors.UserException):
+                    raise errors.UserException.from_ctx(
+                        ctx,
+                        f"Ignoring assignment of {value} to {assigned_name} on {target}",
+                    )
 
         else:
             raise ValueError(f"Unhandled assignable type {assignable_ctx.getText()}")
@@ -1167,10 +1171,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if param not in self._param_assignments:
             self._param_assignments[param] = (None, ctx)
         else:
-            errors.UserKeyError.from_ctx(
-                ctx,
-                f"Ignoring declaration of {assigned_name} because it's already defined",
-            ).log(to_level=logging.WARNING)
+            logger.warning(
+                errors.UserKeyError.from_ctx(
+                    ctx,
+                    f"Ignoring declaration of {assigned_name} because it's already defined",
+                )
+            )
 
         return KeyOptMap.empty()
 

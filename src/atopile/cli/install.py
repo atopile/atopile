@@ -29,8 +29,6 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-@errors.muffle_fatalities()
-@errors.log_ato_errors()
 def install(
     to_install: Annotated[str | None, typer.Argument()] = None,
     jlcpcb: Annotated[

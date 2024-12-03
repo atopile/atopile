@@ -13,16 +13,14 @@ from atopile.config import BuildContext, BuildType
 from atopile.datatypes import Ref
 from faebryk.core.module import Module
 from faebryk.library import _F as F
-from faebryk.libs.exceptions import ExceptionAccumulator
+from faebryk.libs.exceptions import ExceptionAccumulator, log_user_errors
 from faebryk.libs.library import L
 from faebryk.libs.picker import lcsc
 from faebryk.libs.util import import_from_path
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
-@errors.muffle_fatalities()
-@errors.log_ato_errors()
 def build(
     entry: Annotated[str | None, typer.Argument()] = None,
     build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],
@@ -42,8 +40,8 @@ def build(
 
     with ExceptionAccumulator() as accumulator:
         for build_ctx in build_ctxs:
-            log.info("Building %s", build_ctx.name)
-            with accumulator.collect():
+            logger.info("Building %s", build_ctx.name)
+            with accumulator.collect(), log_user_errors(logger):
                 match build_ctx.build_type:
                     case BuildType.ATO:
                         app = _init_ato_app(build_ctx)
@@ -94,13 +92,13 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
         app_class = import_from_path(
             build_ctx.entry.file_path, build_ctx.entry.entry_section
         )
-    except (FileNotFoundError, ImportError) as e:
-        raise errors.UserPythonLoadError(
-            f"Cannot import build entry {build_ctx.entry.file_path}"
+    except FileNotFoundError as e:
+        raise errors.UserFileNotFoundError(
+            f"Cannot find build entry {build_ctx.entry.file_path}"
         ) from e
-    except AttributeError as e:
-        raise errors.UserPythonLoadError(
-            f"Build entry {build_ctx.entry.file_path} has no module named {build_ctx.entry.entry_section}"
+    except Exception as e:
+        raise errors.UserPythonModuleError(
+            f"Cannot import build entry {build_ctx.entry.file_path}"
         ) from e
 
     if not isinstance(app_class, type):
@@ -108,7 +106,12 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
             f"Build entry {build_ctx.entry.file_path} is not a module we can instantiate"
         )
 
-    app = app_class()
+    try:
+        app = app_class()
+    except Exception as e:
+        raise errors.UserPythonConstructionError(
+            f"Cannot construct build entry {build_ctx.entry.file_path}"
+        ) from e
 
     return app
 

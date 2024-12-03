@@ -5,7 +5,6 @@ import pytest
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
-from atopile import errors
 from atopile.datatypes import Ref
 from atopile.front_end import Bob, Component
 from atopile.parse import parse_text_as_file
@@ -75,9 +74,8 @@ def test_simple_new(bob: Bob):
         """
     )
 
-    with errors.log_ato_errors():
-        tree = parse_text_as_file(text)
-        node = bob.build_ast(tree, Ref(["A"]))
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
@@ -115,9 +113,8 @@ def test_nested_nodes(bob: Bob):
         """
     )
 
-    with errors.log_ato_errors():
-        tree = parse_text_as_file(text)
-        node = bob.build_ast(tree, Ref(["A"]))
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -141,9 +138,8 @@ def test_resistor(bob: Bob):
         """
     )
 
-    with errors.log_ato_errors():
-        tree = parse_text_as_file(text)
-        node = bob.build_ast(tree, Ref(["A"]))
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -163,9 +159,8 @@ def test_standard_library_import(bob: Bob):
         """
     )
 
-    with errors.log_ato_errors():
-        tree = parse_text_as_file(text)
-        node = bob.build_ast(tree, Ref(["A"]))
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -201,9 +196,8 @@ def test_import_ato(bob: Bob, tmp_path):
 
     bob.search_paths.append(some_module_search_path)
 
-    with errors.log_ato_errors():
-        tree = parse_text_as_file(top_module_content)
-        node = bob.build_ast(tree, Ref(["A"]))
+    tree = parse_text_as_file(top_module_content)
+    node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
 

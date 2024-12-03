@@ -1004,41 +1004,19 @@ class RecursionGuard:
         sys.setrecursionlimit(self.recursion_depth)
 
 
-@contextmanager
-def exceptions_to_log(
-    logger: logging.Logger = logger,
-    level: int = logging.WARNING,
-    mute=True,
-):
-    """
-    Send exceptions to the log at level and optionally re-raise.
-
-    The original motivation for this is to avoid raising exceptions
-    for debugging messages.
-    """
-    try:
-        yield
-    except Exception as e:
-        try:
-            logger.log(level, str(e), e)
-        except Exception:
-            logger.error(
-                "Exception occurred while logging exception. "
-                "Not re-stringifying exception to avoid the same"
-            )
-        if not mute:
-            raise
-
-
-def debugging() -> bool:
+def in_debug_session() -> bool:
     """
     Check if a debugger is connected.
     """
     try:
         import debugpy
+
+        return debugpy.is_client_connected()
+
     except (ImportError, ModuleNotFoundError):
-        return False
-    return debugpy.is_client_connected()
+        pass
+
+    return False
 
 
 class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):

@@ -86,7 +86,6 @@ def check_entry_arg_file_path(
     return entry_addr_override
 
 
-@errors.handle_user_errors()
 def check_compiler_versions(config: atopile.config.ProjectConfig):
     """
     Check that the compiler version is compatible with the version
