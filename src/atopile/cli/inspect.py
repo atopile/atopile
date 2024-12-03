@@ -36,7 +36,6 @@ odd_greyed_row = "on grey11 grey0"
 even_greyed_row = "on grey15 grey0"
 
 
-@errors.log_ato_errors()
 def inspect(
     entry: Annotated[str | None, typer.Argument()] = None,
     build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],

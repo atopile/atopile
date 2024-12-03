@@ -29,8 +29,8 @@ from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
     cast_assert,
-    debugging,
     find,
+    in_debug_session,
     not_none,
     post_init_decorator,
     times,
@@ -441,7 +441,7 @@ class Node(CNode):
             except Exception as e:
                 # this is a bit of a hack to provide complete context to debuggers
                 # for underlying field construction errors
-                if debugging():
+                if in_debug_session():
                     raise
                 raise FieldConstructionError(
                     self,

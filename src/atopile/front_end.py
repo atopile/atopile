@@ -35,6 +35,7 @@ from faebryk.libs.exceptions import (
     ExceptionAccumulator,
     downgrade,
     iter_through_errors,
+    log_user_errors,
 )
 from faebryk.libs.units import P, Quantity, Unit
 from faebryk.libs.util import (
@@ -63,6 +64,8 @@ try:
     from faebryk.library import Single  # type: ignore
 except ImportError:
     from faebryk.library._F import Constant as Single  # type: ignore
+
+logger = logging.getLogger(__name__)
 
 
 def _alias_is(lh, rh):
@@ -371,8 +374,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
             from_path=self.visitString(ctx.string()),
             original_ctx=ctx,
         )
-        with downgrade(DeprecationError):
-            raise DeprecationError.from_ctx(
+        with downgrade(DeprecatedException):
+            raise DeprecatedException.from_ctx(
                 ctx,
                 'Deprecated: "import <something> from <path>" is deprecated and'
                 ' will be removed in a future version. Use "from'
@@ -424,7 +427,7 @@ def ato_error_converter():
             raise ex
 
 
-class DeprecationError(errors.UserException):
+class DeprecatedException(errors.UserException):
     """
     Raised when a deprecated feature is used.
     """
@@ -509,7 +512,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def _finish(self):
         with ExceptionAccumulator() as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():
-                with ex_acc.collect(), ato_error_converter():
+                with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
                     if value is None:
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Parameter {param} never assigned"
@@ -595,8 +598,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         import_addr = address.AddrStr.from_parts(from_path, ".".join(item.ref))
         for shim_addr, (shim_cls, preferred) in shim_map.items():
             if import_addr.endswith(shim_addr):
-                with downgrade(DeprecationError):
-                    raise DeprecationError.from_ctx(
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException.from_ctx(
                         item.original_ctx,
                         f"Deprecated: {import_addr} is deprecated and will be"
                         " removed in a future version. Use {preferred} instead.",
@@ -871,10 +874,11 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
             if not try_set_attr(target, assigned_name, value):
-                errors.UserException.from_ctx(
-                    ctx,
-                    f"Ignoring assignment of {value} to {assigned_name} on {target}",
-                ).log(to_level=logging.WARNING)
+                with downgrade(errors.UserException):
+                    raise errors.UserException.from_ctx(
+                        ctx,
+                        f"Ignoring assignment of {value} to {assigned_name} on {target}",
+                    )
 
         else:
             raise ValueError(f"Unhandled assignable type {assignable_ctx.getText()}")
@@ -906,8 +910,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             has_attr_or_property(self._current_node, name)
             or name in self._current_node.runtime
         ):
-            with downgrade(DeprecationError):
-                raise DeprecationError(
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
                     f"Signal {name} already exists, skipping."
                     " In the future this will be an error."
                 )
@@ -952,8 +956,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
             else:
                 if not nested:
-                    with downgrade(DeprecationError):
-                        raise DeprecationError(
+                    with downgrade(DeprecatedException):
+                        raise DeprecatedException(
                             f"Deprecated: Connected {a} to {b} by duck-typing."
                             " They should be of the same type."
                         )
@@ -1167,10 +1171,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if param not in self._param_assignments:
             self._param_assignments[param] = (None, ctx)
         else:
-            errors.UserKeyError.from_ctx(
-                ctx,
-                f"Ignoring declaration of {assigned_name} because it's already defined",
-            ).log(to_level=logging.WARNING)
+            logger.warning(
+                errors.UserKeyError.from_ctx(
+                    ctx,
+                    f"Ignoring declaration of {assigned_name} because it's already defined",
+                )
+            )
 
         return KeyOptMap.empty()
 

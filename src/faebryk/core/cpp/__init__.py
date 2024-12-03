@@ -3,7 +3,12 @@
 
 import logging
 
-from faebryk.libs.util import ConfigFlag, at_exit, global_lock, is_editable_install
+from faebryk.libs.util import (
+    ConfigFlag,
+    at_exit,
+    global_lock,
+    is_editable_install,
+)
 
 logger = logging.getLogger(__name__)
 

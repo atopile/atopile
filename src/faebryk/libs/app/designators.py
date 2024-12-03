@@ -12,7 +12,8 @@ import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
-from faebryk.libs.util import duplicates, get_key, groupby
+from faebryk.libs.library import L
+from faebryk.libs.util import FuncDict, duplicates, get_key, groupby
 
 logger = logging.getLogger(__name__)
 
@@ -140,3 +141,8 @@ def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: P
         ref_prop.value = translation[name]
 
     pcb.dumps(pcbfile)
+
+
+def attach_designators(designators: FuncDict[L.Node, str]):
+    for node, designator in designators.items():
+        node.add(F.has_designator_defined(designator))

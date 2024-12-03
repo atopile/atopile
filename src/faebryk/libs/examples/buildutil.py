@@ -31,13 +31,14 @@ lcsc.LIB_FOLDER = BUILD_DIR / "kicad" / "libs"
 lcsc.MODEL_PATH = None
 
 build_paths: BuildPaths = BuildPaths(
+    root=Path("."),
     layout=KICAD_SRC / f"{NAME}.kicad_pcb",
     lock_file=None,
     build=BUILD_DIR,
     output_base=BUILD_DIR / NAME,
     netlist=BUILD_DIR / "faebryk" / "faebryk.net",
     fp_lib_table=KICAD_SRC / "fp-lib-table",
-    footprints=KICAD_SRC / "lib" / "footprints" / "lcsc.pretty",
+    component_lib=BUILD_DIR / "footprints",
     kicad_project=KICAD_SRC / f"{NAME}.kicad_pro",
 )
 

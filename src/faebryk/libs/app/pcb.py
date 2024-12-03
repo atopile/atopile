@@ -17,6 +17,7 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.app.kicad_netlist import write_netlist
 from faebryk.libs.app.parameters import resolve_dynamic_parameters
+from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
     C_kicad_pcb_file,
@@ -124,18 +125,24 @@ def include_footprints(build_paths: "BuildPaths"):
             C_kicad_fp_lib_table_file.C_fp_lib_table(version=7, libs=[])
         )
 
-    fppath = build_paths.footprints
+    fppath = build_paths.component_lib / "footprints" / "lcsc.pretty"
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
             build_paths.layout.parent.resolve(), walk_up=True
         )
-        # check if not going up too much
-        if len([part for part in fppath_rel.parts if part == ".."]) > 5:
-            raise ValueError()
-        fppath = fppath_rel
+        # check if not going up outside the project directory
+        # relative_to raises a ValueError if it has to walk up to make a relative path
+        fppath.relative_to(build_paths.root)
     except ValueError:
         relative = False
+        with downgrade(UserResourceException):
+            raise UserResourceException(
+                f"Footprint path {fppath} is outside the project directory."
+                "This is unstable behavior and may be deprecated in the future."
+            )
+    else:
+        fppath = fppath_rel
 
     uri = str(fppath)
     if relative:
