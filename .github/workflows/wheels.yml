@@ -29,11 +29,18 @@ jobs:
       with:
         submodules: true
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: '0.5.5'
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
     - name: Build SDist
-      run: pipx run build --sdist
+      run: uv build --sdist
 
     - name: Check metadata
-      run: pipx run twine check dist/*
+      run: uv tool run twine check dist/*
 
     - uses: actions/upload-artifact@v4
       with:
@@ -59,6 +66,8 @@ jobs:
         submodules: true
 
     - uses: astral-sh/setup-uv@v4
+      with:
+        version: '0.5.5'
 
     - uses: pypa/cibuildwheel@v2.22
       env:
@@ -93,7 +102,7 @@ jobs:
     steps:
     - uses: actions/setup-python@v5
       with:
-        python-version: "3.x"
+        python-version-file: 'pyproject.toml'
 
     - uses: actions/download-artifact@v4
       with:

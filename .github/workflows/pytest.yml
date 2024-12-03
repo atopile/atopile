@@ -9,23 +9,29 @@ jobs:
         steps:
         - name: Checkout code
           uses: actions/checkout@v4
+
         # Required due to a bug in the checkout action
         # https://github.com/actions/checkout/issues/1471
         - run: git fetch --prune --unshallow --tags
+
         - name: Install uv
           uses: astral-sh/setup-uv@v4
           with:
             version: 0.5.5
             enable-cache: true
-            cache-dependency-glob: "pyproject.toml"  # TOOD: uv.lock
+            cache-dependency-glob: "uv.lock"
+
         - name: "Set up Python"
           uses: actions/setup-python@v5
           with:
             python-version-file: "pyproject.toml"
+
         - name: Setup cmake
           uses: jwlawson/actions-setup-cmake@v2
+
         - name: Build project
           run: uv build --wheel
+
         - name: Install project + dependencies
           run: |
             uv sync --no-install-project --all-extras
@@ -37,6 +43,7 @@ jobs:
           id: pytest
           continue-on-error: true
           run: uv run pytest -m "not not_in_ci"
+
         - name: Upload all test logs
           if: steps.pytest.outcome == 'failure'
           uses: actions/upload-artifact@v4
@@ -44,12 +51,14 @@ jobs:
             name: test-logs
             path: artifacts/**/*.log
             if-no-files-found: warn
+
         - name: Upload all test report
           if: steps.pytest.outcome == 'failure'
           uses: actions/upload-artifact@v4
           with:
             name: test-report
             path: artifacts/test-report.html
+
         - name: Check pytest status
           if: steps.pytest.outcome == 'failure'
           run: exit 1
