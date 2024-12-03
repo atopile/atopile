@@ -120,7 +120,6 @@ from faebryk.library.Switch import Switch
 from faebryk.library.B4B_ZR_SM4_TF import B4B_ZR_SM4_TF
 from faebryk.library.DE9Connector import DE9Connector
 from faebryk.library.Header import Header
-from faebryk.library.SHOU_HAN_TYPE_C_16PIN_2MD073 import SHOU_HAN_TYPE_C_16PIN_2MD073
 from faebryk.library.pf_533984002 import pf_533984002
 from faebryk.library.DIP import DIP
 from faebryk.library.QFN import QFN
