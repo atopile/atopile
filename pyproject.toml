@@ -124,21 +124,6 @@ faebryk = "faebryk.tools.main:__main__"
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[tool.hatch.env]
-#requires = ["hatch-pip-compile"]
-
-
-[tool.hatch.envs.default]
-#type = "pip-compile"
-#pip-compile-resolver = "uv"
-#pip-compile-installer = "uv"
-#lock-filename = "locks/hatch.lock"
-#pip-compile-verbose = true
-#dependencies = ["faebryk[dev]"]
-
-[tool.hatch.envs.test]
-dependencies = ["atopile[test]"]
-
 # Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
 artifacts = ["**/viewer/dist"]
