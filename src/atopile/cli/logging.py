@@ -44,7 +44,7 @@ class NodeHighlighter(RegexHighlighter):
 _logged_exceptions: set[tuple[type[Exception], tuple]] = set()
 
 
-class AtoLogHandler(RichHandler):
+class LogHandler(RichHandler):
     """
     A logging handler that renders output with Rich.
 
@@ -179,7 +179,7 @@ class AtoLogHandler(RichHandler):
             _logged_exceptions.add(hashable)
 
 
-class AtoLogFormatter(logging.Formatter):
+class LogFormatter(logging.Formatter):
     def __init__(self):
         super().__init__(fmt="%(message)s", datefmt="[%X]")
 
@@ -238,7 +238,7 @@ console = Console(
 
 logger = logging.getLogger(__name__)
 
-handler = AtoLogHandler(
+handler = LogHandler(
     console=console,
     rich_tracebacks=True,
     show_path=False,
@@ -247,6 +247,6 @@ handler = AtoLogHandler(
     tracebacks_unwrap=[UserPythonModuleError],
 )
 
-handler.setFormatter(AtoLogFormatter())
+handler.setFormatter(LogFormatter())
 
 logging.basicConfig(level="INFO", handlers=[handler])
