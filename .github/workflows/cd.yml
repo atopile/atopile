@@ -27,30 +27,28 @@ jobs:
       # https://github.com/actions/checkout/issues/1471
       - run: git fetch --prune --unshallow --tags
 
-      -
-        name: Set up Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version-file: 'pyproject.toml'
 
-      -
-        name: Install Hatch
-        uses: pypa/hatch@install
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: '0.5.5'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      -
-        name: Make python package
-        run: |
-          hatch build
+      - name: Make python package
+        run: uv build
 
-      -
-        name: Upload Python Artifact
+      - name: Upload Python Artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-package
           path: dist
 
-      -
-        name: Publish package distributions to PyPI
+      - name: Publish package distributions to PyPI
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
         uses: pypa/gh-action-pypi-publish@897895f1e160c830e369f9779632ebc134688e1b
         with:
@@ -76,15 +74,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      -
-        name: Download python-package
+      - name: Download python-package
         uses: actions/download-artifact@v4
         with:
           name: python-package
           path: dist
 
-      -
-        name: Docker meta
+      - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -100,16 +96,14 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
-      -
-        name: Log in to the Container registry
+      - name: Log in to the Container registry
         uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      -
-        name: Build and push
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
