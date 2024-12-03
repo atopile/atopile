@@ -3,7 +3,13 @@
 
 import logging
 
-from faebryk.libs.util import ConfigFlag, at_exit, global_lock, is_editable_install
+from faebryk.libs.util import (
+    AUTO_RECOMPILE,
+    ConfigFlag,
+    at_exit,
+    global_lock,
+    is_editable_install,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +117,7 @@ def compile_and_load():
 
 
 # Re-export c++ with type hints provided by __init__.pyi
-if is_editable_install():
+if is_editable_install() and AUTO_RECOMPILE:
     logger.warning("faebryk is installed as editable package, compiling c++ code")
     compile_and_load()
     from faebryk_core_cpp_editable import *  # type: ignore # noqa: E402, F403
