@@ -56,9 +56,7 @@ def build(
 
                 # TODO: these should be drawn from the buildcontext like everything else
                 lcsc.BUILD_FOLDER = build_ctx.paths.build
-                lcsc.LIB_FOLDER = (
-                    build_ctx.paths.build / build_ctx.paths.layout.parent / "lib"
-                )  # TODO: move this to the buildcontext
+                lcsc.LIB_FOLDER = build_ctx.paths.component_lib
                 lcsc.LIB_FOLDER.mkdir(exist_ok=True, parents=True)
                 # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models
 

@@ -1,8 +1,10 @@
 import logging
+import shutil
 from typing import Callable, Optional
 
 from atopile import layout
 from atopile.config import BuildContext
+from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
@@ -32,8 +34,8 @@ from faebryk.libs.app.pcb import (
     apply_netlist,
     apply_routing,
 )
-from faebryk.libs.exceptions import ExceptionAccumulator
-from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
+from faebryk.libs.exceptions import ExceptionAccumulator, downgrade
+from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
 
@@ -91,7 +93,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     netlist_path.write_text(netlist, encoding="utf-8")
 
     # --------------------------------------------------------------------------
-
+    consolidate_footprints(build_ctx)
     apply_netlist(build_paths, False)
 
     logger.info("Load PCB")
@@ -219,3 +221,50 @@ def generate_module_map(build_ctx: BuildContext, app: Module) -> None:
 def generate_variable_report(build_ctx: BuildContext, app: Module) -> None:
     """Generate a report of all the variable values in the design."""
     export_parameters_to_file(app, build_ctx.paths.output_base / "variables.md")
+
+
+def consolidate_footprints(build_ctx: BuildContext) -> None:
+    """
+    Consolidate all the project's footprints into a single directory.
+
+    TODO: @v0.4 remove this, it's a fallback for v0.2 designs
+    If there's an entry named "lib" pointing at "build/footprints/footprints.pretty"
+    then copy all footprints we can find there
+    """
+    if build_ctx.paths.fp_lib_table.exists():
+        fptable = C_kicad_fp_lib_table_file.loads(build_ctx.paths.fp_lib_table)
+    else:
+        # no fp-lib-table, no worries
+        return
+
+    # TODO: @windows might need to check backslashes
+    if not any(
+        lib.name == "lib" and lib.uri.endswith("build/footprints/footprints.pretty")
+        for lib in fptable.fp_lib_table.libs
+    ):
+        # no "lib" entry pointing to the footprints dir, this project isn't broken
+        return
+
+    fp_target = build_ctx.paths.build / "footprints" / "footprints.pretty"
+    fp_target_step = build_ctx.paths.build / "footprints" / "footprints.3dshapes"
+    fp_target.mkdir(exist_ok=True, parents=True)
+
+    for fp in build_ctx.paths.root.glob("**/*.kicad_mod"):
+        try:
+            shutil.copy(fp, fp_target)
+        except shutil.SameFileError:
+            logger.debug("Footprint %s already exists in the target directory", fp)
+
+    # Post-process all the footprints in the target directory
+    for fp in fp_target.glob("**/*.kicad_mod"):
+        with open(fp, "r+", encoding="utf-8") as file:
+            content = file.read()
+            content = content.replace("{build_dir}", str(fp_target_step))
+            file.seek(0)
+            file.write(content)
+            file.truncate()
+
+    with downgrade(DeprecatedException):
+        raise DeprecatedException(
+            "This project uses a deprecated footprint consolidation mechanism."
+        )
