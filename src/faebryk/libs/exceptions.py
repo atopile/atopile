@@ -25,6 +25,10 @@ class UserException(Exception):
         super().__init__(*args, **kwargs)
 
 
+class DeprecatedException(UserException):
+    """This feature is deprecated and will be removed in a future version."""
+
+
 class UserResourceException(UserException):
     """Indicates an issue with a user-facing resource, e.g. layout files."""
 

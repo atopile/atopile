@@ -371,8 +371,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
             from_path=self.visitString(ctx.string()),
             original_ctx=ctx,
         )
-        with downgrade(DeprecationError):
-            raise DeprecationError.from_ctx(
+        with downgrade(DeprecatedException):
+            raise DeprecatedException.from_ctx(
                 ctx,
                 'Deprecated: "import <something> from <path>" is deprecated and'
                 ' will be removed in a future version. Use "from'
@@ -424,7 +424,7 @@ def ato_error_converter():
             raise ex
 
 
-class DeprecationError(errors.UserException):
+class DeprecatedException(errors.UserException):
     """
     Raised when a deprecated feature is used.
     """
@@ -595,8 +595,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         import_addr = address.AddrStr.from_parts(from_path, ".".join(item.ref))
         for shim_addr, (shim_cls, preferred) in shim_map.items():
             if import_addr.endswith(shim_addr):
-                with downgrade(DeprecationError):
-                    raise DeprecationError.from_ctx(
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException.from_ctx(
                         item.original_ctx,
                         f"Deprecated: {import_addr} is deprecated and will be"
                         " removed in a future version. Use {preferred} instead.",
@@ -906,8 +906,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             has_attr_or_property(self._current_node, name)
             or name in self._current_node.runtime
         ):
-            with downgrade(DeprecationError):
-                raise DeprecationError(
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
                     f"Signal {name} already exists, skipping."
                     " In the future this will be an error."
                 )
@@ -952,8 +952,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
             else:
                 if not nested:
-                    with downgrade(DeprecationError):
-                        raise DeprecationError(
+                    with downgrade(DeprecatedException):
+                        raise DeprecatedException(
                             f"Deprecated: Connected {a} to {b} by duck-typing."
                             " They should be of the same type."
                         )

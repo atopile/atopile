@@ -342,13 +342,16 @@ class BuildType(Enum):
 class BuildPaths:
     """Output paths for a build."""
 
+    root: (
+        Path | None
+    )  # eg. path/to/project/<where ato.yaml is> OR git repo OR None is indiscernible
     layout: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
     lock_file: Path | None  # eg. path/to/project/ato-lock.yaml
     build: Path  # eg. path/to/project/build/<build-name>
     output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
     netlist: Path
     fp_lib_table: Path
-    footprints: Path
+    component_lib: Path
     kicad_project: Path
 
 
@@ -413,13 +416,14 @@ class BuildContext:
             fail_on_drcs=build_config.fail_on_drcs,
             dont_solve_equations=build_config.dont_solve_equations,
             paths=BuildPaths(
+                root=project_context.project_path,
                 layout=layout_path,
                 lock_file=project_context.lock_file_path,
                 build=build_path,
                 output_base=build_path / config_name,
                 netlist=build_path / config_name / f"{config_name}.net",
                 fp_lib_table=layout_path.parent / "fp-lib-table",
-                footprints=layout_path.parent / "lib" / "footprints" / "lcsc.pretty",
+                component_lib=build_path / "kicad" / "libs",
                 kicad_project=layout_path.with_suffix(".kicad_pro"),
             ),
         )
