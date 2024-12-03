@@ -5,13 +5,10 @@ import sys
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from atopile import errors
 from atopile.cli.build import _init_python_app
 from atopile.cli.common import create_build_contexts
-
-runner = CliRunner(mix_stderr=False)
 
 PROJECT_DIR = Path("test/common/resources/test-project")
 
@@ -54,10 +51,8 @@ def test_build_errors(build_name: str, expected_error):
 @pytest.mark.parametrize("build_name", ["unconstructable", "unimportable"])
 @pytest.mark.usefixtures("from_project_dir")
 def test_build_error_logging(build_name: str):
-    # CLIRunner doesn't give us the fully-formatted log output as seen by the user
-
     process = subprocess.run(
-        [sys.executable, "-m", "atopile.cli", "build", "-b", build_name],
+        [sys.executable, "-m", "atopile", "build", "-b", build_name],
         capture_output=True,
         text=True,
         env=os.environ,
