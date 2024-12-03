@@ -228,3 +228,15 @@ def test_boolset_eq():
     assert False != BoolSet(True)  # noqa: E712
     assert BoolSet(True, False) == BoolSet(False, True)
     assert True is not BoolSet(True)
+
+def test_comparison():
+    assert (RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((0 * P.V, 1 * P.V))) == BoolSet(True)
+    assert (RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((2 * P.V, 3 * P.V))) == BoolSet(True)
+    assert (RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((0 * P.V, 0.5 * P.V))) == BoolSet(True)
+    assert (RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((2.5 * P.V, 3 * P.V))) == BoolSet(True)
+
+    assert (RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((0 * P.V, 0.5 * P.V))) == BoolSet(False)
+    assert (RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((2.5 * P.V, 3 * P.V))) == BoolSet(False)
+
+    assert (RangeWithGaps((1 * P.V, 2 * P.V)) <= RangeWithGaps((0 * P.V, 1 * P.V))) == BoolSet(True, False)
+    assert (RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((2 * P.V, 3 * P.V))) == BoolSet(True, False)

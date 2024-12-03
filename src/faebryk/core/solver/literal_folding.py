@@ -613,7 +613,7 @@ def fold_ge(
     ```
     A >= A -> True
     # literals
-    X >= Y -> True / False
+    X >= Y -> [True] / [False] / [True, False]
     ```
     """
     if if_operands_same_make_true(expr, mutator):

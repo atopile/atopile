@@ -10,7 +10,7 @@ from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval_Disjoint,
     NumericT,
 )
-from faebryk.libs.sets.sets import P_UnitSet
+from faebryk.libs.sets.sets import BoolSet, P_UnitSet
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
@@ -606,15 +606,17 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def __ror__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return Quantity_Interval_Disjoint.from_value(other) | self
 
-    # TODO move impl to numeric
-    def __ge__(self, other: QuantitySetLike) -> bool:
+    def __ge__(self, other: QuantitySetLike) -> BoolSet:
         other_q = Quantity_Interval_Disjoint.from_value(other)
-        return self.max_elem() >= other_q.min_elem()
+        if not self.units.is_compatible_with(other_q.units):
+            raise ValueError("incompatible units")
+        return self._intervals >= other_q._intervals
 
-    # TODO move impl to numeric
-    def __le__(self, other: QuantitySetLike) -> bool:
+    def __le__(self, other: QuantitySetLike) -> BoolSet:
+        if not self.units.is_compatible_with(other.units):
+            raise ValueError("incompatible units")
         other_q = Quantity_Interval_Disjoint.from_value(other)
-        return self.min_elem() <= other_q.max_elem()
+        return self._intervals <= other_q._intervals
 
     def is_single_element(self) -> bool:
         if self.is_empty():

@@ -6,7 +6,7 @@ from bisect import bisect
 from collections.abc import Generator
 from typing import Any, TypeVar
 
-from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.sets.sets import BoolSet, P_Set
 
 logger = logging.getLogger(__name__)
 
@@ -395,6 +395,28 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             *(r.op_pow_interval(o) for r in self.intervals for o in other.intervals)
         )
 
+    def op_ge_intervals(
+        self, other: "Numeric_Interval_Disjoint[NumericT]"
+    ) -> BoolSet:
+        if self.is_empty() or other.is_empty():
+            return BoolSet()
+        if self.min_elem() >= other.max_elem():
+            return BoolSet(True)
+        if self.max_elem() < other.min_elem():
+            return BoolSet(False)
+        return BoolSet(True, False)
+
+    def op_le_intervals(
+        self, other: "Numeric_Interval_Disjoint[NumericT]"
+    ) -> BoolSet:
+        if self.is_empty() or other.is_empty():
+            return BoolSet()
+        if self.max_elem() <= other.min_elem():
+            return BoolSet(True)
+        if self.min_elem() > other.max_elem():
+            return BoolSet(False)
+        return BoolSet(True, False)
+
     def __contains__(self, item: NumericT) -> bool:
         index = bisect(self.intervals, item, key=lambda r: r.min_elem())
 
@@ -411,6 +433,12 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             if r1 != r2:
                 return False
         return True
+
+    def __ge__(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
+        return self.op_ge_intervals(other)
+
+    def __le__(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
+        return self.op_le_intervals(other)
 
     def __hash__(self) -> int:
         return hash(tuple(hash(r) for r in self.intervals))
