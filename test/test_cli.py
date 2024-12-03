@@ -1,3 +1,4 @@
+import os
 import sys
 from subprocess import run
 
@@ -10,6 +11,7 @@ def test_app(config):
         [sys.executable, "-m", "atopile", "build", "examples/project", "-b", config],
         capture_output=True,
         text=True,
+        env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
     )
     assert result.returncode == 0
     assert "Build successful!" in result.stdout
