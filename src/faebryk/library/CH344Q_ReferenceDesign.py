@@ -135,6 +135,7 @@ class CH344Q_ReferenceDesign(Module):
         self.ldo.power_out.decoupled.decouple().capacitance.merge(
             F.Range.from_center_rel(100 * P.nF, 0.1)
         )
+        self.ldo.enable_output()
 
         self.usb.usb_if.buspower.max_current.merge(
             F.Range.from_center_rel(500 * P.mA, 0.1)
