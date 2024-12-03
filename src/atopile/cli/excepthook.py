@@ -1,28 +1,12 @@
 import contextlib
 import sys
-from types import ModuleType
 
 import rich
 
 from atopile import telemetry
 from atopile.cli.logging import logger
 from atopile.errors import _BaseBaseUserException
-
-
-def in_debug_session() -> ModuleType | None:
-    """
-    Return the debugpy module if we're in a debugging session.
-    """
-    if "debugpy" in sys.modules:
-        import os
-
-        os.environ["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
-        import debugpy
-
-        if debugpy.is_client_connected():
-            return debugpy
-
-    return None
+from faebryk.libs.util import in_debug_session
 
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
@@ -30,7 +14,9 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
         # If we're in a debug session, we want to see the
         # unadulterated exception. We do this pre-logging because
         # we don't want the logging to potentially obstruct the debugger.
-        if debugpy := in_debug_session():
+        if in_debug_session():
+            import debugpy
+
             debugpy.breakpoint()
 
         # in case we missed logging closer to the source
