@@ -25,10 +25,10 @@ jobs:
         - name: Setup cmake
           uses: jwlawson/actions-setup-cmake@v2
         - name: Build project
-          run: |
-            uv build --wheel
+          run: uv build --wheel
         - name: Install project + dependencies
           run: |
+            uv venv
             uv pip install dist/*.whl
         - name: Lint with Ruff
           run: uv run ruff check --output-format=github .
