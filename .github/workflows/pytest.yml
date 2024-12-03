@@ -28,8 +28,6 @@ jobs:
           run: uv build --wheel
         - name: Install project + dependencies
           run: |
-            uv venv
-            source .venv/bin/activate
             uv sync --no-install-project --all-extras
             uv pip install dist/*.whl
         - name: Lint with Ruff
