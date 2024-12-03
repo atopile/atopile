@@ -268,13 +268,11 @@ class PCB_Transformer:
         """
         # First, make a list of all the nodes with footprints in the graph
         # (eg. things that should have a matching footprint in the layout)
-        nodes_with_kicad_footprints: FuncSet[Node] = FuncSet()
-        for node, fpt in GraphFunctions(graph).nodes_with_trait(F.has_footprint):
-            g_fp = fpt.get_footprint()
-            if not g_fp.has_trait(F.has_kicad_footprint):
-                continue
-
-            nodes_with_kicad_footprints.add(node)
+        nodes_with_kicad_footprints = FuncSet(
+            node
+            for node, fpt in GraphFunctions(graph).nodes_with_trait(F.has_footprint)
+            if fpt.get_footprint().has_trait(F.has_kicad_footprint)
+        )
 
         # Now, try to map between the footprints and the layout
         footprint_map: list[tuple[Footprint, Node]] = []
@@ -283,14 +281,15 @@ class PCB_Transformer:
             for f in pcb.footprints
             if "atopile_address" in f.propertys
         }
-        fps_by_uuid = {f.uuid: f for f in pcb.footprints}
+        fps_by_path = {f.path: f for f in pcb.footprints if f.path is not None}
 
         for node in nodes_with_kicad_footprints:
             atopile_addr = node.get_full_name()
+            hashed_addr = hash_string(atopile_addr)
             if fp := fps_by_atopile_addr.get(atopile_addr):
                 footprint_map.append((fp, node))
             # TODO: @v0.4 remove this, it's a fallback for v0.2 designs
-            elif fp := fps_by_uuid.get(hash_string(atopile_addr)):
+            elif fp := fps_by_path.get(f"/{hashed_addr}/{hashed_addr}"):
                 with downgrade(DeprecatedException):
                     raise DeprecatedException(
                         f"{fp.name} is linked using v0.2 mechanism, "

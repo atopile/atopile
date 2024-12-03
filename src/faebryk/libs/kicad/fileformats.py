@@ -830,6 +830,7 @@ class C_kicad_pcb_file(SEXP_File):
             pads: list[C_pad] = field(
                 **sexp_field(multidict=True), default_factory=list
             )
+            path: Optional[str] = None
 
         @dataclass
         class C_via:
