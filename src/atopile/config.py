@@ -48,9 +48,19 @@ class AtoConfigError(atopile.errors.UserException):
 class ProjectPaths:
     """Config grouping for all the paths in a project."""
 
-    src: Path = "elec/src"
-    layout: Path = "elec/layout"
-    footprints: Path = "elec/footprints/footprints"
+    src: Path = Factory(lambda: ProjectPaths._conditional_path(Path("elec") / "src"))
+    layout: Path = Factory(
+        lambda: ProjectPaths._conditional_path(Path("elec") / "layout")
+    )
+    footprints: Path = Factory(
+        lambda: ProjectPaths._conditional_path(
+            Path("elec") / "footprints" / "footprints"
+        )
+    )
+
+    @staticmethod
+    def _conditional_path(path: Path, fallback: Path = Path(".")) -> Path:
+        return path if path.exists() else fallback
 
 
 @define

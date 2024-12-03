@@ -34,7 +34,11 @@ from faebryk.libs.app.pcb import (
     apply_netlist,
     apply_routing,
 )
-from faebryk.libs.exceptions import ExceptionAccumulator, downgrade
+from faebryk.libs.exceptions import (
+    ExceptionAccumulator,
+    UserResourceException,
+    downgrade,
+)
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
@@ -248,6 +252,14 @@ def consolidate_footprints(build_ctx: BuildContext) -> None:
     fp_target = build_ctx.paths.build / "footprints" / "footprints.pretty"
     fp_target_step = build_ctx.paths.build / "footprints" / "footprints.3dshapes"
     fp_target.mkdir(exist_ok=True, parents=True)
+
+    if not build_ctx.paths.root:
+        with downgrade(UserResourceException):
+            raise UserResourceException(
+                "No project root directory found. Cannot consolidate footprints."
+            )
+        return
+
 
     for fp in build_ctx.paths.root.glob("**/*.kicad_mod"):
         try:
