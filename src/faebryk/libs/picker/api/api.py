@@ -10,20 +10,13 @@ import requests
 from dataclasses_json import dataclass_json
 
 from faebryk.core.module import Module
+from faebryk.core.parameter import Parameter
+from faebryk.core.solver.solver import Solver
+from faebryk.libs.picker.common import SIvalue, check_compatible_parameters, try_attach
 
 # TODO: replace with API-specific data model
-from faebryk.core.parameter import Numbers, Parameter
-from faebryk.core.solver.solver import Solver
-from faebryk.libs.e_series import E_SERIES
-from faebryk.libs.picker.common import (
-    SIvalue,
-    check_compatible_parameters,
-    generate_si_values,
-    try_attach,
-)
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
-from faebryk.libs.picker.picker import PickError
 from faebryk.libs.util import (
     ConfigFlagString,
     KeyErrorAmbiguous,
@@ -110,26 +103,6 @@ def get_package_candidates(module: Module) -> list["PackageCandidate"]:
             ).get_package_candidates()
         ]
     return []
-
-
-def api_generate_si_values(
-    value: Parameter, solver: Solver, e_series: E_SERIES | None = None
-) -> list[SIvalue]:
-    if not isinstance(value.domain, Numbers):
-        raise NotImplementedError(f"Parameter {value} is not a number")
-
-    if not solver.inspect_known_supersets_are_few(value):
-        raise NotImplementedError(f"Parameter {value} has too many known supersets")
-
-    candidate_ranges = solver.inspect_get_known_supersets(value)
-    # TODO api support for unbounded
-    if not candidate_ranges.is_finite():
-        logger.warning(f"Parameter {value} has unbounded known supersets")
-        raise PickError(
-            module=None, message=f"Parameter {value} has unbounded known supersets"
-        )
-    assert isinstance(candidate_ranges, Quantity_Interval_Disjoint)
-    return generate_si_values(candidate_ranges, e_series=e_series)
 
 
 @dataclass_json
