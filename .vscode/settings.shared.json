@@ -7,11 +7,9 @@
         "test",
     ],
     "python.testing.cwd": "${workspaceFolder}",
-    "[typescript]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
-        "editor.formatOnSave": true
-    },
+
     "cSpell.words": [
         "UNITLESS"
-    ]
+    ],
+    "python.analysis.typeCheckingMode": "basic"
 }
