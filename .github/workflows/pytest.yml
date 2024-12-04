@@ -35,7 +35,7 @@ jobs:
         - name: Install project + dependencies
           run: |
             uv sync --no-install-project --all-extras
-            uv pip install dist/*.whl
+            uv pip install --venv ./.venv dist/*.whl
         - name: Lint with Ruff
           run: uv run ruff check --output-format=github .
           #continue-on-error: true
