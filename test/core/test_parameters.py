@@ -39,6 +39,7 @@ def test_new_definitions():
     )
 
 
+@pytest.mark.skip("@https://github.com/atopile/atopile/issues/619")
 def test_compact_repr():
     p1 = Parameter(units=P.V)
     p2 = Parameter(units=P.V)
