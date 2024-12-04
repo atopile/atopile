@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - '**'
+  push:
+    paths:
+      - '.github/workflows/pre-commit.yml'
 
 jobs:
   pre-commit:

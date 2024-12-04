@@ -6,6 +6,9 @@ on:
   # pull_request:
   #   branches: [main]  # This will run on PRs targeting your main branch
   workflow_dispatch:  # Add manual trigger capability
+  push:
+    paths:
+      - '.github/workflows/project-regression.yml'
 
 jobs:
   regression_tests:

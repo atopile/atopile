@@ -8,6 +8,8 @@ on:
      - main
     tags:
       - 'v*'
+    paths:
+      - '.github/workflows/cd.yml'
 
 jobs:
   python-build:
