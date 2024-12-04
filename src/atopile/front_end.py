@@ -912,12 +912,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             has_attr_or_property(self._current_node, name)
             or name in self._current_node.runtime
         ):
+            ref = Ref.from_one(name)
+            # TODO: consider type-checking this
+            mif = self._get_referenced_node(ref, ctx)
             with downgrade(DeprecatedException):
                 raise DeprecatedException(
                     f"Signal {name} already exists, skipping."
                     " In the future this will be an error."
                 )
-            mif = self.get_node_attr(self._current_node, name)
         else:
             mif = self._current_node.add(F.Electrical(), name=name)
 
@@ -985,7 +987,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             return node
         elif numerical_ctx := ctx.numerical_pin_ref():
             pin_name = numerical_ctx.getText()
-            node = self.get_node_attr(self._current_node, pin_name)
+            ref = Ref.from_one(pin_name)
+            node = self._get_referenced_node(ref, ctx)
             assert isinstance(node, L.ModuleInterface)
             return node
         else:
