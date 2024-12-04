@@ -48,7 +48,6 @@ dependencies = [
     "deprecated~=1.2.14",
     "more-itertools~=10.4.0",
     "psutil~=6.0.0",
-
     # Extra dependencies
     # TODO:
     "antlr4-python3-runtime==4.13.2",
@@ -78,6 +77,7 @@ dependencies = [
     "urllib3>=2.2.1",
     "uvicorn[standard]>=0.25.0",
     "watchfiles>=0.21.0",
+    "questionary>=2.0.1",
 ]
 
 [project.urls]
