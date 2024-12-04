@@ -193,7 +193,7 @@ class ApiClient:
             raise ApiHTTPError(e) from e
 
         logger.debug(
-            f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"
+            f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
         )
 
         return response

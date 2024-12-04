@@ -56,9 +56,9 @@ def build(
                 lcsc.BUILD_FOLDER = build_ctx.paths.build
                 lcsc.LIB_FOLDER = build_ctx.paths.component_lib
                 lcsc.LIB_FOLDER.mkdir(exist_ok=True, parents=True)
-                # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models
+                # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models # noqa: E501  # pre-existing
 
-                # TODO: add a mechanism to override the following with custom build machinery
+                # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
                 buildutil.build(build_ctx, app)
 
         with accumulator.collect():
@@ -103,7 +103,7 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
 
     if not isinstance(app_class, type):
         raise errors.UserPythonLoadError(
-            f"Build entry {build_ctx.entry.file_path} is not a module we can instantiate"
+            f"Build entry {build_ctx.entry.file_path} is not a module we can instantiate"  # noqa: E501  # pre-existing
         )
 
     try:
