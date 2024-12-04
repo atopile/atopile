@@ -9,9 +9,8 @@ from faebryk.core.module import Module
 
 class has_footprint_requirement(Module.TraitT):
     @abstractmethod
-    def get_footprint_requirement(self) -> Sequence[tuple[str, int]]:
+    def get_footprint_requirement(self) -> Sequence[tuple[str, int | None]]:
         """
         Get tuples of footprint names and pin counts of allowed footprints for this
         module
         """
-        ...

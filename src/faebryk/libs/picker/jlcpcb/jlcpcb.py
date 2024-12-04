@@ -489,7 +489,7 @@ class ComponentQuery:
         return self
 
     def filter_by_footprint(
-        self, footprint_candidates: Sequence[tuple[str, int]] | None
+        self, footprint_candidates: Sequence[tuple[str, int | None]] | None
     ) -> Self:
         assert self.Q
         if not footprint_candidates:
@@ -497,9 +497,12 @@ class ComponentQuery:
         footprint_query = Q()
         if footprint_candidates is not None:
             for footprint, pin_count in footprint_candidates:
-                footprint_query |= Q(description__icontains=footprint) & Q(
-                    joints=pin_count
-                )
+                if pin_count is None:
+                    footprint_query |= Q(description__icontains=footprint)
+                else:
+                    footprint_query |= Q(description__icontains=footprint) & Q(
+                        joints=pin_count
+                    )
         self.Q &= footprint_query
         return self
 
