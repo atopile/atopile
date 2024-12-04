@@ -168,9 +168,9 @@ cython_debug/
 .ruff_cache
 
 # ide
-.vscode/launch.json
-.vscode/settings.json
-.vscode/tasks.json
+.vscode/
+!.vscode/*.shared.json
+!.vscode/extensions.json
 .aider*
 
 # generic outputs
