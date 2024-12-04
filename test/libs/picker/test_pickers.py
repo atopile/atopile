@@ -13,8 +13,9 @@ import pytest
 import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import Parameter, ParameterOperableHasNoLiteral
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.libs.exceptions import ExceptionAccumulator
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
@@ -109,11 +110,13 @@ def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
         assert properties.get(prop) == value
 
     # Check parameters
+    # FIXME: this is not correct, some params are not completely filled
     params = module.get_children(types=Parameter, direct_only=True)
-    for param in params:
-        # Test if all params are aliased to Literal
-        param.get_literal()
-        # FIXME this is not correct, since some picks won't have all params picked
+    with ExceptionAccumulator(ParameterOperableHasNoLiteral) as exc_acc:
+        for param in params:
+            with exc_acc.collect():
+                # Test if all params are aliased to Literal
+                param.get_literal()
     # TODO check that part params are equal (alias_is) to module params
 
     # Check footprint
