@@ -361,9 +361,16 @@ class ParameterOperatable(Node):
         ops = self.get_operations(op, constrained_only=True)
         try:
             if op is IsSubset:
-                literals = find(lit for op in ops for (i, lit) in op.get_literal_operands().items() if i > 0)
+                literals = find(
+                    lit
+                    for op in ops
+                    for (i, lit) in op.get_literal_operands().items()
+                    if i > 0
+                )
             else:
-                literals = find(lit for op in ops for (_, lit) in op.get_literal_operands().items())
+                literals = find(
+                    lit for op in ops for (_, lit) in op.get_literal_operands().items()
+                )
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
                 self, f"Parameter {self} has no literal for op {op}"
@@ -556,9 +563,16 @@ class Expression(ParameterOperatable):
 
     def get_literal_operands(self) -> dict[int, ParameterOperatable.Literal]:
         if isinstance(self, (Is, IsSubset)):
-            return {i: o for i, o in enumerate(self.operands) if ParameterOperatable.is_literal(o)}
+            return {
+                i: o
+                for i, o in enumerate(self.operands)
+                if ParameterOperatable.is_literal(o)
+            }
         # TODO not sure its a good idea to do this that recursive
-        return {i: ParameterOperatable.try_extract_literal(o) for i, o in enumerate(self.operands)}
+        return {
+            i: ParameterOperatable.try_extract_literal(o)
+            for i, o in enumerate(self.operands)
+        }
 
     def depth(self) -> int:
         """
@@ -1431,16 +1445,24 @@ class Parameter(ParameterOperatable):
         ```
         """
 
-        def id_to_human_str(id: int) -> str:
-            assert isinstance(id, int)
-            alphabet = [chr(ord("A") + i) for i in range(26)] + [chr(ord("a") + i) for i in range(26)] + [chr(ord("α") + i) for i in range(25)]
+        def param_id_to_human_str(param_id: int) -> str:
+            assert isinstance(param_id, int)
+            alphabets = [("A", 26), ("a", 26), ("α", 25)]
+            alphabet = [
+                chr(ord(start_char) + i)
+                for start_char, char_cnt in alphabets
+                for i in range(char_cnt)
+            ]
+
             def int_to_subscript(i: int) -> str:
                 if i == 0:
                     return ""
                 _str = str(i)
                 return "".join(chr(ord("₀") + ord(c) - ord("0")) for c in _str)
 
-            return alphabet[id % len(alphabet)] + int_to_subscript(id // len(alphabet))
+            return alphabet[param_id % len(alphabet)] + int_to_subscript(
+                param_id // len(alphabet)
+            )
 
         if context is None:
             context = ParameterOperatable.ReprContext()
@@ -1450,9 +1472,8 @@ class Parameter(ParameterOperatable):
             context.variable_mapping.mapping[self] = next_id
             context.variable_mapping.next_id += 1
 
-
         unitstr = f" {self.units}" if self.units != dimensionless else ""
-        letter = id_to_human_str(context.variable_mapping.mapping[self])
+        letter = param_id_to_human_str(context.variable_mapping.mapping[self])
 
         out = f"{letter}{unitstr}"
         out += self._get_lit_suffix()

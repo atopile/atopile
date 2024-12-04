@@ -39,7 +39,6 @@ def test_new_definitions():
     )
 
 
-@pytest.mark.skip("@https://github.com/atopile/atopile/issues/619")
 def test_compact_repr():
     p1 = Parameter(units=P.V)
     p2 = Parameter(units=P.V)
@@ -60,7 +59,7 @@ def test_compact_repr():
     expr4str = expr4.compact_repr(context)
     assert expr4str == "¬C ∧ ((((A volt + B volt) + 5 volt) * 10) > 10 volt)"
 
-    manyps = times(22, Parameter)
+    manyps = times(ord("Z") - ord("C") - 1, Parameter)
     Additive.sum(manyps).compact_repr(context)
 
     pZ = Parameter()
@@ -69,17 +68,17 @@ def test_compact_repr():
     pa = Parameter()
     assert pa.compact_repr(context) == "a"
 
-    manyps2 = times(25, Parameter)
+    manyps2 = times(ord("z") - ord("a"), Parameter)
     Additive.sum(manyps2).compact_repr(context)
     palpha = Parameter()
     assert palpha.compact_repr(context) == "α"
     pbeta = Parameter()
     assert pbeta.compact_repr(context) == "β"
 
-    manyps3 = times(22, Parameter)
+    manyps3 = times(ord("ω") - ord("β"), Parameter)
     Additive.sum(manyps3).compact_repr(context)
     pAA = Parameter()
-    assert pAA.compact_repr(context) == "A'"
+    assert pAA.compact_repr(context) == "A₁"
 
 
 def test_expression_congruence():

@@ -59,7 +59,7 @@ if S_LOG:
 
 
 def convert_inequality_with_literal_to_subset(mutator: Mutator):
-    #TODO if not! A <= x it can be replaced by A intersect [-inf, a] is {}
+    # TODO if not! A <= x it can be replaced by A intersect [-inf, a] is {}
     """
     This only works for inequalities we know cannot evaluate to {True, False}
     A >=! 5 -> A ss! [5, inf)
@@ -73,7 +73,8 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         e
         for e in GraphFunctions(mutator.G).nodes_of_type(GreaterOrEqual)
         # Look for expressions with only one non-literal operand
-        if e.constrained and len(list(op for op in e.operands if isinstance(op, ParameterOperatable)))
+        if e.constrained
+        and len(list(op for op in e.operands if isinstance(op, ParameterOperatable)))
         == 1
     }
 
@@ -458,64 +459,73 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 def transitive_subset(mutator: Mutator):
     """
     ```
-    A ss B, B ss C -> new A ss C
-    A ss B, B is X -> new A ss X
+    A ss! B, B ss! C -> new A ss! C
+    A ss! B, B is! X -> new A ss! X
     ```
     """
-    sss = GraphFunctions(mutator.G).nodes_of_type(IsSubset)
+    ss_ops = [
+        e for e in GraphFunctions(mutator.G).nodes_of_type(IsSubset) if e.constrained
+    ]
 
     # don't add new IsSubset if already exists as Is or IsSubset
-    ss_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(list)
-    for ss in sss:
-        if not ss.constrained:
-            continue
-        ss_lookup[ss.operands[0]].append(ss.operands[1])
-    is_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(list)
-    for is_op in GraphFunctions(mutator.G).nodes_of_type(Is):
+    ss_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(
+        list
+    )
+    for ss_op in ss_ops:
+        ss_lookup[ss_op.operands[0]].append(ss_op.operands[1])
+    is_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(
+        list
+    )
+    for is_op in [
+        e for e in GraphFunctions(mutator.G).nodes_of_type(Is) if e.constrained
+    ]:
         for op in is_op.operands:
-            is_lookup[op] += is_op.operands
+            is_lookup[op] += [n_op for n_op in is_op.operands if n_op is not op]
 
-    for ss in sss:
-        if not ss.constrained:
-            continue
-        A, B = ss.operands
+    # for all A ss! B | B not lit
+    for ss_op in ss_ops:
+        A, B = ss_op.operands
         if not isinstance(B, ParameterOperatable):
             continue
 
-        # A ss B, B ss C -> new A ss C
+        # all B ss! C | C not A
         B_ss = [
             e
             for e in B.get_operations(IsSubset, constrained_only=True)
             if e.operands[0] is B and e.operands[1] is not A
         ]
-        # A ss B, B is C -> new A ss C
-        if not ParameterOperatable.is_literal(A):
+
+        # TODO: not 100% convinced this not done by eq classes
+        # all B is! X | A not lit
+        B_is = []
+        if isinstance(A, ParameterOperatable):
             B_is = [
                 e
                 for e in B.get_operations(Is, constrained_only=True)
                 if ParameterOperatable.is_literal(e.get_other_operand(B))
             ]
-        else:
-            B_is = []
 
+        # all B ss! C and B is! X
         for b_ss in B_ss + B_is:
-            other_B = b_ss.get_other_operand(B)
-            if A in ss_lookup:
-                if other_B in ss_lookup[A]:
+            C_or_X = b_ss.get_other_operand(B)
+            # A ss! C/X already exists
+            if C_or_X in ss_lookup[A]:
+                continue
+            # A is! C/X already exists
+            if A in is_lookup and C_or_X in is_lookup[A]:
+                continue
+            # check for redundant subset:
+            # A ss! Z, C is! W (or X), Z ss! W/X then no need for A ss! C/X
+            lit_A = try_extract_literal(A, allow_subset=True)
+            lit_C_or_X = try_extract_literal(C_or_X)
+            if lit_A is not None and lit_C_or_X is not None:
+                if lit_A.is_subset_of(lit_C_or_X):  # type: ignore #TODO
                     continue
-                lit_A = ParameterOperatable.try_extract_literal(A, allow_subset=True)
-                lit_other_B = ParameterOperatable.try_extract_literal(other_B)
-                if lit_A is not None and lit_other_B is not None:
-                    if P_Set.from_value(lit_A).is_subset_of(P_Set.from_value(lit_other_B)):
-                        continue
-            if A in is_lookup:
-                if other_B in is_lookup[A]:
-                    continue
+
             # TODO this seems iffy
-            _ = IsSubset(
-                mutator.get_copy(A), mutator.get_copy(other_B)
-            ).constrain()
-            ss_lookup[A].append(other_B)
+            # create A ss! C/X
+            _ = IsSubset(mutator.get_copy(A), mutator.get_copy(C_or_X)).constrain()
+            ss_lookup[A].append(C_or_X)
 
 
 def remove_empty_graphs(mutator: Mutator):
@@ -593,21 +603,22 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
-
         ops = []
         found_literal = False
         for op in e.operands:
             lit = is_replacable_by_literal(op)
-            if lit is not None:
-                if isinstance(e, Is) and e.constrained and lit in e.operands:
-                    continue
-                ops.append(lit)
-                found_literal = True
-            else:
+            # preserve non-replaceable operands
+            # A + B + C | A is ([5]) -> B, C
+            if lit is None:
                 ops.append(op)
+                continue
+            # Don't make from A is! X -> X is! X
+            if isinstance(e, Is) and e.constrained and lit in e.operands:
+                continue
+            ops.append(lit)
+            found_literal = True
 
         if not found_literal:
             continue
 
-        mutator.mutate_expression(e,
-                    operands=ops)
+        mutator.mutate_expression(e, operands=ops)
