@@ -9,6 +9,7 @@ from typing import Any, Callable, Iterator, Union, get_args, get_origin
 import sexpdata
 from sexpdata import Symbol
 
+from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.sexp.util import prettify_sexp_string
 from faebryk.libs.util import cast_assert, duplicates, groupby, zip_non_locked
 
@@ -64,7 +65,7 @@ class sexp_field(dict[str, Any]):
 class SymEnum(StrEnum): ...
 
 
-class DecodeError(Exception):
+class DecodeError(UserResourceException):
     """Error during decoding"""
 
 
@@ -423,7 +424,10 @@ def loads[T](s: str | Path | list, t: type[T]) -> T:
     if isinstance(s, Path):
         text = s.read_text()
     if isinstance(text, str):
-        sexp = sexpdata.loads(text)
+        try:
+            sexp = sexpdata.loads(text)
+        except Exception as e:
+            raise DecodeError(f"Failed to parse sexp: {text}") from e
 
     return _decode([sexp], t)
 

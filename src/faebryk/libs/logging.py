@@ -3,84 +3,14 @@
 
 import logging
 
-from rich.console import Console
-from rich.highlighter import RegexHighlighter
-from rich.logging import RichHandler
-from rich.theme import Theme
-
 from faebryk.libs.util import ConfigFlag
-
-
-class NodeHighlighter(RegexHighlighter):
-    """
-    Apply style to anything that looks like an faebryk Node\n
-    <*|XOR_with_NANDS.nands[2]|NAND.inputs[0]|Logic> with
-      <*|TI_CD4011BE.nands[2]|ElectricNAND.inputs[0]|ElectricLogic>\n
-    \t<> = Node\n
-    \t|  = Type\n
-    \t.  = Parent\n
-    \t*  = Root
-    """
-
-    base_style = "node."
-    highlights = [
-        #  r"(?P<Rest>(.*))",
-        r"(?P<Node>([/</>]))",
-        r"[?=\|](?P<Type>([a-zA-Z_0-9]+))[?=\>]",
-        r"[\.](?P<Child>([a-zA-Z_0-9]+))[?=\[]",
-        r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",
-        r"[?<=*.](?P<Root>(\*))",
-        r"[?=\[](?P<Number>([0-9]+))[?=\]]",
-        # Solver/Parameter stuff -------------------------------------------------------
-        # Literals
-        r"(?P<Quantity>Quantity_Interval(_Disjoint)?\([^)]*\))",
-        r"(?P<Quantity>\(\[[^)]*\]\))",
-        r"(?P<Quantity>\[(True|False)+\])",
-        # Predicates / Expressions
-        r"(?P<Op> (\+|\*|/))[ {]",
-        r"(?P<Predicate>(is|⊆|≥|≤|)!?!?[✓✗]?)",
-        # Literal Is/IsSubset
-        r"(?P<IsSubset>{(I|S)\|[^}]+})",
-    ]
-
-
-theme = Theme(
-    {
-        "node.Node": "bold magenta",
-        "node.Type": "bright_cyan",
-        "node.Parent": "bright_red",
-        "node.Child": "bright_yellow",
-        "node.Root": "bold yellow",
-        "node.Number": "bright_green",
-        #   "node.Rest": "bright_black",
-        "node.Quantity": "bright_yellow",
-        "node.IsSubset": "bright_blue",
-        "node.Predicate": "bright_magenta",
-        "node.Op": "red",
-    }
-)
 
 PLOG = ConfigFlag("PLOG", descr="Enable picker debug log")
 JLOG = ConfigFlag("JLOG", descr="Enable jlcpcb picker debug log")
 
 
-def setup_basic_logging(rich: bool = True):
-    logging.basicConfig(
-        format="" if not rich else "%(message)s",
-        level=logging.INFO,
-        handlers=[
-            RichHandler(
-                console=Console(
-                    safe_box=False,
-                    theme=theme,
-                    force_terminal=True,
-                ),
-                highlighter=NodeHighlighter(),
-            )
-        ]
-        if rich
-        else None,
-    )
+def setup_basic_logging():
+    logging.basicConfig(level=logging.INFO)
 
     if PLOG:
         from faebryk.library.has_multi_picker import logger as plog

@@ -17,6 +17,22 @@ class AddrStr(str):
     Represents address strings
     """
 
+    @property
+    def file_path(self) -> Path:
+        return Path(get_file(self))
+
+    @property
+    def entry_section(self) -> str:
+        if entry_section := get_entry_section(self):
+            return entry_section
+        raise AddressError("No entry section in address")
+
+    @classmethod
+    def from_parts(
+        cls, file: str, entry: Optional[str] = None, instance: Optional[str] = None
+    ) -> "AddrStr":
+        return cls(from_parts(file, entry, instance))
+
 
 class AddressError(ValueError):
     """
@@ -80,7 +96,7 @@ def get_relative_addr_str(address: AddrStr, base_path: PathLike) -> AddrStr:
     )
 
 
-def get_entry(address: AddrStr) -> AddrStr:
+def get_entry(address: AddrStr) -> str:
     """
     Extract the root path from an address.
     """
@@ -171,12 +187,12 @@ def add_entries(address: AddrStr, entries: Iterable[str]) -> AddrStr:
 
 
 def from_parts(
-    file: str, entry: Optional[str] = None, instance: Optional[str] = None
+    file: str | None, entry: str | None = None, instance: str | None = None
 ) -> AddrStr:
     """
     Create an address from its parts.
     """
-    address = str(file)
+    address = str(file) if file else ""
     if entry:
         address = add_entry(address, entry)
     if instance:

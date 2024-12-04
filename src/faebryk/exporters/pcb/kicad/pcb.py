@@ -26,6 +26,10 @@ from faebryk.libs.util import (
 
 logger = logging.getLogger(__name__)
 
+# TODO: dynamic spacing based on footprint dimensions?
+HORIZONTAL_SPACING = 10
+VERTICAL_SPACING = -5  # negative is upwards
+
 
 def _nets_same(
     pcb_net: tuple[
@@ -61,6 +65,31 @@ def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
     return kicad_footprint_file(path).footprint
 
 
+def _get_address(
+    comp: C_kicad_netlist_file.C_netlist.C_components.C_component,
+) -> str:
+    return comp.propertys["atopile_address"].value
+
+
+def _get_address_prefix(
+    comp: C_kicad_netlist_file.C_netlist.C_components.C_component,
+) -> str:
+    return _get_address(comp).rsplit(".", 1)[0]
+
+
+def _sort_by_address_prefix(
+    nl_comps: dict[str, C_kicad_netlist_file.C_netlist.C_components.C_component],
+    comp_names: set[str],
+) -> list[str]:
+    return sorted(
+        list(comp_names),
+        key=lambda c: (
+            _get_address_prefix(nl_comps[c]).lower(),
+            _get_address(nl_comps[c]).lower(),
+        ),
+    )
+
+
 # TODO use G instead of netlist intermediary
 
 
@@ -72,17 +101,22 @@ class PCB:
         fp_lib_path = pcb_path.parent / "fp-lib-table"
 
         pcb = C_kicad_pcb_file.loads(pcb_path)
+
         netlist = C_kicad_netlist_file.loads(netlist_path)
 
         # footprint properties
         def fill_fp_property(
-            fp: C_footprint, property_name: str, layer: str, value: str
+            fp: C_footprint,
+            property_name: str,
+            layer: str,
+            value: str,
+            uuid: str,
         ) -> C_footprint.C_property:
             return C_footprint.C_property(
                 name=property_name,
                 value=value,
                 layer=C_text_layer(layer=layer),
-                uuid=gen_uuid(),
+                uuid=uuid,
                 effects=C_effects(
                     font=C_effects.C_font(size=C_wh(w=1.27, h=1.27), thickness=0.15),
                     hide=True,
@@ -100,6 +134,16 @@ class PCB:
                 return comp.propertys[property_name].value
             except KeyError:
                 return default
+
+        def get_property_uuid(
+            comp: C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint
+            | C_kicad_netlist_file.C_netlist.C_components.C_component,
+            property_name: str,
+        ) -> str:
+            try:
+                return comp.propertys[property_name].uuid  # type: ignore
+            except (KeyError, AttributeError):
+                return gen_uuid()
 
         # update nets
         # load footprints
@@ -231,18 +275,21 @@ class PCB:
                 continue
 
             pcb_comp.propertys["Value"].value = nl_comp.value
-            pcb_comp.propertys["faebryk module name"] = fill_fp_property(
+            pcb_comp.propertys["atopile_address"] = fill_fp_property(
                 fp=pcb_comp,
-                property_name="faebryk module name",
+                property_name="atopile_address",
                 layer="User.9",
-                value=get_property_value(nl_comp, "faebryk_name", "No faebryk_name"),
+                value=get_property_value(
+                    nl_comp, "atopile_address", "No atopile_address"
+                ),
+                uuid=get_property_uuid(pcb_comp, "atopile_address"),
             )
-
             pcb_comp.propertys["LCSC"] = fill_fp_property(
                 fp=pcb_comp,
                 property_name="LCSC",
                 layer="User.9",
                 value=get_property_value(nl_comp, "LCSC", "No LCSC number"),
+                uuid=get_property_uuid(pcb_comp, "LCSC"),
             )
 
             # update pad nets
@@ -269,8 +316,12 @@ class PCB:
 
         # Add new components -----------------------------------------------------------
         logger.debug(f"Comps added: {comps_added}")
-        for comp_name in comps_added:
+
+        x, y = 0, 0
+        current_prefix = None
+        for comp_name in _sort_by_address_prefix(nl_comps, comps_added):
             comp = nl_comps[comp_name]
+            address_prefix = _get_address_prefix(comp)
             footprint_identifier = comp.footprint
             footprint = _get_footprint(footprint_identifier, fp_lib_path)
             pads = {
@@ -283,20 +334,33 @@ class PCB:
             # Fill in variables
             footprint.propertys["Reference"].value = comp_name
             footprint.propertys["Value"].value = comp.value
-            footprint.propertys["faebryk module name"] = fill_fp_property(
+            footprint.propertys["atopile_address"] = fill_fp_property(
                 fp=footprint,
-                property_name="faebryk module name",
+                property_name="atopile_address",
                 layer="User.9",
-                value=get_property_value(comp, "faebryk_name", "No faebryk_name"),
+                value=get_property_value(comp, "atopile_address", "No atopile_address"),
+                uuid=get_property_uuid(comp, "atopile_address"),
             )
             footprint.propertys["LCSC"] = fill_fp_property(
                 fp=footprint,
                 property_name="LCSC",
                 layer="User.9",
                 value=get_property_value(comp, "LCSC", "No LCSC number"),
+                uuid=get_property_uuid(comp, "LCSC"),
             )
 
-            at = C_xyr(x=0, y=0, r=0)
+            if current_prefix is not None and address_prefix != current_prefix:
+                # separate prefix groups horizontally
+                x += HORIZONTAL_SPACING
+                y = 0
+
+            current_prefix = address_prefix
+
+            at = C_xyr(x=x, y=y, r=0)
+
+            # separate components vertically within group
+            y += VERTICAL_SPACING
+
             if comp_name in comps_changed:
                 # TODO also need to do geo rotations and stuff
                 at = comps_changed[comp_name].at

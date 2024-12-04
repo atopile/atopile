@@ -110,6 +110,19 @@ class TestGraph(unittest.TestCase):
             x.get_full_name(), "[*][0-9A-F]{4}.i0.i1.i2.i3.i4.i5.i6.i7.i8.i9"
         )
 
+    def test_fab_ll_chain_tree_with_root(self):
+        root = Node()
+        root.no_include_parents_in_full_name = True
+        x = root
+        for i in range(10):
+            y = Node()
+            z = Node()
+            x.add(y, f"i{i}")
+            x.add(z, f"j{i}")
+            x = y
+
+        self.assertEqual(x.get_full_name(), "i0.i1.i2.i3.i4.i5.i6.i7.i8.i9")
+
     def test_link_eq_direct(self):
         gif1 = GraphInterface()
         gif2 = GraphInterface()

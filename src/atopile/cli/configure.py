@@ -6,7 +6,6 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Optional
 
-import click
 import rich
 import rich.prompt
 from attrs import asdict, define
@@ -50,7 +49,6 @@ def get_configured_for_version() -> atopile.version.Version:
     return atopile.version.clean_version(atopile.version.Version.parse(config.version))
 
 
-@click.command("configure")
 def configure() -> None:
     """
     Configure the user's system for atopile development.

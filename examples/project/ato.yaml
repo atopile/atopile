@@ -1,0 +1,11 @@
+ato-version: ^0.2.0
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  faebryk:
+    entry: fab.py:App
+  ato:
+    entry: ato.ato:App

@@ -3,14 +3,18 @@
 
 import asyncio
 import collections.abc
+import hashlib
+import importlib.util
 import inspect
 import itertools
+import json
 import logging
 import os
 import select
 import subprocess
 import sys
 import time
+import uuid
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
@@ -18,9 +22,11 @@ from dataclasses import dataclass, fields
 from enum import StrEnum
 from functools import wraps
 from genericpath import commonprefix
+from importlib.metadata import Distribution
 from itertools import chain, pairwise
 from pathlib import Path
 from textwrap import indent
+from types import ModuleType
 from typing import (
     Any,
     Callable,
@@ -1029,44 +1035,22 @@ class RecursionGuard:
         sys.setrecursionlimit(self.recursion_depth)
 
 
-@contextmanager
-def exceptions_to_log(
-    logger: logging.Logger = logger,
-    level: int = logging.WARNING,
-    mute=True,
-):
-    """
-    Send exceptions to the log at level and optionally re-raise.
-
-    The original motivation for this is to avoid raising exceptions
-    for debugging messages.
-    """
-    try:
-        yield
-    except Exception as e:
-        try:
-            logger.log(level, str(e), e)
-        except Exception:
-            logger.error(
-                "Exception occurred while logging exception. "
-                "Not re-stringifying exception to avoid the same"
-            )
-        if not mute:
-            raise
-
-
-def debugging() -> bool:
+def in_debug_session() -> bool:
     """
     Check if a debugger is connected.
     """
     try:
         import debugpy
+
+        return debugpy.is_client_connected()
+
     except (ImportError, ModuleNotFoundError):
-        return False
-    return debugpy.is_client_connected()
+        pass
+
+    return False
 
 
-class FuncSet[T, H: Hashable](collections.abc.Set[T]):
+class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
     """
     A set by pre-processing the objects with the hasher function.
     """
@@ -1081,6 +1065,13 @@ class FuncSet[T, H: Hashable](collections.abc.Set[T]):
     def add(self, item: T):
         if item not in self._deref[self._hasher(item)]:
             self._deref[self._hasher(item)].append(item)
+
+    def discard(self, item: T):
+        hashed = self._hasher(item)
+        if hashed in self._deref and item in self._deref[hashed]:
+            self._deref[hashed].remove(item)
+            if not self._deref[hashed]:
+                del self._deref[hashed]
 
     def __contains__(self, item: T):
         return item in self._deref[self._hasher(item)]
@@ -1098,6 +1089,7 @@ class FuncSet[T, H: Hashable](collections.abc.Set[T]):
         )
 
 
+# TODO: @python3.13 ..., H: Hashable = int]
 class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
     """
     A dict by pre-processing the objects with the hasher function.
@@ -1184,6 +1176,9 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
         except KeyError:
             self[key] = default
         return default
+
+    def backwards(self) -> "FuncDict[U, T, H]":
+        return FuncDict(((v, k) for k, v in self.items()), hasher=self._hasher)
 
 
 def dict_map_values(d: dict, function: Callable[[Any], Any]) -> dict:
@@ -1511,3 +1506,145 @@ def times_out(seconds: float):
         return wrapper
 
     return decorator
+
+
+def hash_string(string: str) -> str:
+    """Spits out a uuid in hex from a string"""
+    return str(
+        uuid.UUID(
+            bytes=hashlib.blake2b(string.encode("utf-8"), digest_size=16).digest()
+        )
+    )
+
+
+def get_module_from_path(
+    file_path: os.PathLike, attr: str | None = None
+) -> ModuleType | None:
+    """
+    Return a module based on a file path if already imported, or return None.
+    """
+    sanitized_file_path = str(Path(file_path).expanduser().resolve().absolute())
+    try:
+        module = find(
+            sys.modules.values(),
+            lambda m: getattr(m, "__file__", None) == sanitized_file_path,
+        )
+    except KeyErrorNotFound:
+        return None
+
+    if attr is None:
+        return module
+
+    return getattr(module, attr, None)
+
+
+def import_from_path(
+    file_path: os.PathLike, attr: str | None = None
+) -> ModuleType | Type:
+    """
+    Import a module from a file path.
+
+    If the module is already imported, return the existing module.
+    Otherwise, import the module and return the new module.
+
+    Raises FileNotFoundError if the file does not exist.
+    Raises AttributeError if the attr is not found in the module.
+    """
+    # custom unique name to avoid collisions
+    # we use this hasher to generate something terse and unique
+    module_name = hash_string(str(Path(file_path).expanduser().resolve().absolute()))
+
+    if module_name in sys.modules:
+        module = sys.modules[module_name]
+    else:
+        # setting to a sequence (and not None) indicates that the module is a package,
+        # which lets us use relative imports for submodules
+        submodule_search_locations = []
+
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            file_path,
+            submodule_search_locations=submodule_search_locations,
+        )
+        if spec is None:
+            raise ImportError(path=file_path)
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+
+        assert spec.loader is not None
+
+        spec.loader.exec_module(module)
+
+    if attr is None:
+        return module
+    else:
+        return getattr(module, attr)
+
+
+def has_attr_or_property(obj: object, attr: str) -> bool:
+    """Check if an object has an attribute or property by the name `attr`."""
+    return hasattr(obj, attr) or (
+        hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property)
+    )
+
+
+def write_only_property(func: Callable):
+    def raise_write_only(*args, **kwargs):
+        raise AttributeError(f"{func.__name__} is write-only")
+
+    return property(
+        fget=raise_write_only,
+        fset=func,
+    )
+
+
+def try_set_attr(obj: object, attr: str, value: Any) -> bool:
+    """Set an attribute or property if possible, and return whether it was successful."""
+
+    def _should() -> bool:
+        # If we have a property, it's going to tell us all we need to know
+        if hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property):
+            # If the property is settable, use it to set the value
+            if getattr(type(obj), attr).fset is not None:
+                return True
+            # If not, it's not settable, end here
+            return False
+
+        # If there's an instance only attribute, we can set it
+        if hasattr(obj, attr) and not hasattr(type(obj), attr):
+            return True
+
+        # If there's an instance attribute, that's unique compared to the class attribute,
+        # we can set it. We don't need to check for a property here because we already
+        # checked for that above.
+        if (
+            hasattr(obj, attr)
+            and hasattr(type(obj), attr)
+            and getattr(obj, attr) is not getattr(type(obj), attr)
+        ):
+            return True
+
+        return False
+
+    if _should():
+        setattr(obj, attr, value)
+        return True
+    return False
+
+
+AUTO_RECOMPILE = ConfigFlag(
+    "AUTO_RECOMPILE",
+    default=False,
+    descr="Automatically recompile source files if they have changed",
+)
+
+
+# Check if installed as editable
+def is_editable_install():
+    distro = Distribution.from_name("atopile")
+    return (
+        json.loads(distro.read_text("direct_url.json") or "")
+        .get("dir_info", {})
+        .get("editable", False)
+    )

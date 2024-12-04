@@ -286,12 +286,19 @@ def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
         ) from e
 
     if part.stock < qty:
-        raise PickError(
-            f"Part with LCSC part number {lcsc_pn} has insufficient stock", module
+        logger.warning(
+            f"Part for {repr(module)} with LCSC part number {lcsc_pn} has insufficient stock",
         )
 
-    # FIXME: check that params are compatible
-    part.attach(module, try_get_param_mapping(module))
+    try:
+        part.attach(module, try_get_param_mapping(module), allow_TBD=True)
+    except Exception as e:
+        # TODO: narrow this exception type
+        # TODO: might be better to raise an error that makes the picker give up
+        # but this works for now, just not extremely efficient
+        raise PickError(
+            f"Could not attach part with LCSC part number {lcsc_pn}: {e}", module
+        ) from e
 
 
 def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
@@ -354,7 +361,12 @@ def find_and_attach_by_mfr(module: Module, solver: Solver):
     for part in parts:
         try:
             # FIXME: check that params are compatible
-            part.attach(module, try_get_param_mapping(module))
+            part.attach(module, try_get_param_mapping(module), allow_TBD=True)
+            if part.stock < qty:
+                logger.warning(
+                    f"Part for {repr(module)} with {mfr=} {mfr_pn=} has insufficient stock",
+                )
+
             return
         except ValueError as e:
             logger.warning(f"Failed to attach component: {e}")

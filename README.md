@@ -111,7 +111,7 @@ Find our [documentation](https://atopile.io/), [installation video](https://www.
 
 ### Most Basic Installation
 
-`atopile` requires *python3.11* or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
+`atopile` requires *python3.12* or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
 
 Then just `pipx install atopile` and you're good to go!
 

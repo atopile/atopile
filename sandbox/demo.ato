@@ -1,0 +1,17 @@
+from "generics/resistors.ato" import Resistor
+
+component SomeFET:
+    lcsc_id = "C8545"
+    signal gate ~ pin 1
+    signal drain ~ pin 3
+    signal source ~ pin 2
+
+module Main:
+    fet = new SomeFET
+    fet2 = new SomeFET
+    fet3 = new SomeFET
+    fet4 = new SomeFET
+
+    fet.drain ~ fet2.drain
+    fet2.drain ~ fet3.drain
+    fet3.drain ~ fet4.drain

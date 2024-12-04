@@ -9,24 +9,34 @@ jobs:
         steps:
         - name: Checkout code
           uses: actions/checkout@v4
-        - name: Set up Python
+        # Required due to a bug in the checkout action
+        # https://github.com/actions/checkout/issues/1471
+        - run: git fetch --prune --unshallow --tags
+        - name: Install uv
+          uses: astral-sh/setup-uv@v4
+          with:
+            version: 0.5.5
+            enable-cache: true
+            cache-dependency-glob: "pyproject.toml"  # TOOD: uv.lock
+        - name: "Set up Python"
           uses: actions/setup-python@v5
           with:
-            python-version: '3.12'
-            #cache: 'hatch'
-        - name: Install dependencies
-          run: |
-            python -m pip install hatch --upgrade pip
-            hatch env create test
-        - name: Lint with Ruff
-          run: hatch run ruff check --output-format=github .
-          #continue-on-error: true
+            python-version-file: "pyproject.toml"
         - name: Setup cmake
           uses: jwlawson/actions-setup-cmake@v2
+        - name: Build project
+          run: uv build --wheel
+        - name: Install project + dependencies
+          run: |
+            uv sync --no-install-project --all-extras
+            uv pip install dist/*.whl
+        - name: Lint with Ruff
+          run: uv run ruff check --output-format=github .
+          #continue-on-error: true
         - name: Run pytest
           id: pytest
           continue-on-error: true
-          run: hatch run test:pytest
+          run: uv run pytest -m "not not_in_ci"
         - name: Upload all test logs
           if: steps.pytest.outcome == 'failure'
           uses: actions/upload-artifact@v4
@@ -34,7 +44,6 @@ jobs:
             name: test-logs
             path: artifacts/**/*.log
             if-no-files-found: warn
-        - run: tree .
         - name: Upload all test report
           if: steps.pytest.outcome == 'failure'
           uses: actions/upload-artifact@v4

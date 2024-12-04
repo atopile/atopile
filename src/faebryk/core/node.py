@@ -24,13 +24,13 @@ from faebryk.core.graphinterface import (
     GraphInterface,
 )
 from faebryk.core.link import LinkNamedParent, LinkSibling
-from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
     cast_assert,
-    debugging,
     find,
+    in_debug_session,
     not_none,
     post_init_decorator,
     times,
@@ -141,13 +141,13 @@ def list_f_field[T, **P](n: int, con: Callable[P, T]) -> Callable[P, list[T]]:
     return _  # type: ignore
 
 
-class NodeException(FaebrykException):
+class NodeException(UserException):
     def __init__(self, node: "Node", *args: object) -> None:
         super().__init__(*args)
         self.node = node
 
 
-class FieldConstructionError(FaebrykException):
+class FieldConstructionError(UserException):
     def __init__(self, node: "Node", field: str, *args: object) -> None:
         super().__init__(*args)
         self.node = node
@@ -441,7 +441,7 @@ class Node(CNode):
             except Exception as e:
                 # this is a bit of a hack to provide complete context to debuggers
                 # for underlying field construction errors
-                if debugging():
+                if in_debug_session():
                     raise
                 raise FieldConstructionError(
                     self,
@@ -565,6 +565,18 @@ class Node(CNode):
         params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
 
         return params_str
+
+    def relative_address(self, root: "Node | None" = None) -> str:
+        """Return the address from root to self"""
+        if root is None:
+            return self.get_full_name()
+
+        root_name = root.get_full_name()
+        self_name = self.get_full_name()
+        if not self_name.startswith(root_name):
+            raise ValueError(f"Root {root_name} is not an ancestor of {self_name}")
+
+        return self_name.removeprefix(root_name + ".")
 
     # Trait stuff ----------------------------------------------------------------------
 

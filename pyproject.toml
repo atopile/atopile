@@ -15,9 +15,9 @@ requires-python = ">=3.12,<3.13"
 dynamic = ["version"]
 license = { file = "LICENSE" }
 authors = [
-    { name = "Matthew Wildoer", email = "mawildoer@gmail.com" },
+    { name = "Matthew Wildoer", email = "matt@atopile.io" },
     { name = "Ioannis Papamanoglou", email = "ioannis@atopile.io" },
-    { name = "Narayan Powderly", email = "napowderly@gmail.com" },
+    { name = "Narayan Powderly", email = "narayan@atopile.io" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -31,7 +31,7 @@ dependencies = [
     "sexpdata==1.0.2",
     "black~=24.4.2",
     "typing-extensions>=4.6.3,<5.0.0",
-    "easyeda2kicad~=0.8.0",
+    "easyeda2kicad @ git+https://github.com/atopile/easyeda2kicad.py.git",
     "shapely~=2.0.1",
     "freetype-py~=2.4.0",
     "kicadcliwrapper~=1.0.0",
@@ -51,13 +51,11 @@ dependencies = [
 
     # Extra dependencies
     # TODO:
-    "antlr4-python3-runtime==4.13.0",
+    "antlr4-python3-runtime==4.13.2",
     "attrs>=23.2.0",
     "case-converter>=1.1.0",
     "cattrs>=23.2.3",
-    "click>=8.1.7",
     "DeepDiff>=6.7.1",
-    "easyeda2ato>=0.2.7",
     "eseries>=1.2.1",
     "fake-useragent>=1.4.0",
     "fastapi>=0.109.0",
@@ -101,6 +99,7 @@ dev = [
     "dash~=2.18.1",
     "dash_cytoscape~=1.0.2",
     "nanobind~=2.2.0",
+    "coverage>=7.6.8",
 ]
 
 test = [
@@ -117,7 +116,7 @@ docs = ["mkdocs", "mkdocs-material", "mkdocs-drawio-file >= 1.5.2"]
 
 
 [project.scripts]
-ato = "atopile.cli.cli:cli"
+ato = "atopile.cli.cli:main"
 faebryk = "faebryk.tools.main:__main__"
 
 [tool.hatch]
@@ -143,7 +142,7 @@ dependencies = ["atopile[test]"]
 # Add the built viewer to the python package
 [tool.hatch.build.targets.wheel]
 artifacts = ["**/viewer/dist"]
-# packages = ["src/faebryk"]  # TODO: remove - I don't believe this is required
+packages = ["src/faebryk", "src/atopile"]
 
 [tool.hatch.build.targets.wheel.hooks.scikit-build]
 experimental = true
@@ -167,6 +166,7 @@ addopts = [
     "--html=artifacts/test-report.html",
     "--self-contained-html",
     "--numprocesses=auto",
+    "-m", "not slow",
 ]
 filterwarnings = ["ignore:.*:DeprecationWarning"]
 testpaths = ["test"]
@@ -174,6 +174,11 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 log_file_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
 # log_file_level = "DEBUG"  # <-- you can set this in a PR if you want to debug tests in CI
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "not_in_ci: marks tests that should not be run in CI",
+]
+
 
 [tool.ruff]
 line-length = 88         # Same as Black.

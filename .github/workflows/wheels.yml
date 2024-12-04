@@ -58,9 +58,9 @@ jobs:
       with:
         submodules: true
 
-    - uses: astral-sh/setup-uv@v3
+    - uses: astral-sh/setup-uv@v4
 
-    - uses: pypa/cibuildwheel@v2.21
+    - uses: pypa/cibuildwheel@v2.22
       env:
         CIBW_ARCHS_MACOS: x86_64 arm64
         CIBW_ARCHS_LINUX: x86_64 # aarch64

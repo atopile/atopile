@@ -78,7 +78,22 @@ def api_filter_by_module_params_and_attach(
         if check_compatible_parameters(cmp, part, mapping, solver)
     )
 
-    try_attach(cmp, parts_gen, mapping, qty=1)
+    try:
+        try_attach(cmp, parts_gen, mapping, qty=1)
+    except PickError as ex:
+        try:
+            friendly_params = [
+                f"{p.param_name} within {getattr(cmp, p.param_name, 'unknown')}"
+                for p in mapping
+            ]
+        except Exception:
+            logger.exception("Failed to make a friendly description of the parameters")
+            friendly_params = []
+
+        raise PickError(
+            f"No components found that match {' and '.join(friendly_params)}",
+            cmp,
+        ) from ex
 
 
 def get_footprint_candidates(module: Module) -> list["FootprintCandidate"]:
@@ -198,6 +213,10 @@ class ApiClient:
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
+        logger.debug(
+            f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"
+        )
+
         return response
 
     def _post(
@@ -210,6 +229,11 @@ class ApiClient:
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
+
+        logger.debug(
+            f"POST {self.config.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
+            f"{json.dumps(response.json(), indent=2)}"
+        )
 
         return response
 

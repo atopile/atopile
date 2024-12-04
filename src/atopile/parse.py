@@ -9,18 +9,20 @@ from antlr4.error.ErrorListener import ErrorListener
 from atopile.parser.AtopileLexer import AtopileLexer
 from atopile.parser.AtopileParser import AtopileParser
 
-from .errors import AtoFileNotFoundError, AtoSyntaxError
+from .errors import UserFileNotFoundError, UserSyntaxError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+IMMEDIATE_RAISE = False
+
 
 def error_factory(
     e: Exception, msg: str, offendingSymbol, line, column
-) -> AtoSyntaxError:
+) -> UserSyntaxError:
     from atopile.parse_utils import get_src_info_from_token
 
-    error = AtoSyntaxError(f"{str(e)} '{msg}'")
+    error = UserSyntaxError(f"{str(e)} '{msg}'")
 
     src_path, src_line, src_col = get_src_info_from_token(offendingSymbol)
     error.src_path = src_path
@@ -70,12 +72,15 @@ def set_error_listener(parser: AtopileParser, error_listener: ErrorListener) -> 
 @contextmanager
 def defer_parser_errors(parser: AtopileParser) -> None:
     """Defer errors from a parser until the end of the context manager."""
-    error_listener = ErrorListenerCollector()
+    if IMMEDIATE_RAISE:
+        error_listener = ErrorListenerConverter()
+    else:
+        error_listener = ErrorListenerCollector()
     set_error_listener(parser, error_listener)
 
-    yield parser
+    yield
 
-    if error_listener.errors:
+    if not IMMEDIATE_RAISE and error_listener.errors:
         raise ExceptionGroup("Errors caused parsing failure", error_listener.errors)
 
 
@@ -119,7 +124,7 @@ class FileParser:
 
         if src_origin_str not in self.cache:
             if not src_origin_path.exists():
-                raise AtoFileNotFoundError(src_origin_str)
+                raise UserFileNotFoundError(src_origin_str)
             self.cache[src_origin_str] = parse_file(src_origin_path)
 
         return self.cache[src_origin_str]

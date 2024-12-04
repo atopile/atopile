@@ -30,6 +30,7 @@ from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
 from faebryk.library.has_footprint_requirement import has_footprint_requirement
+from faebryk.library.is_app_root import is_app_root
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
@@ -42,6 +43,7 @@ from faebryk.library.has_kicad_ref import has_kicad_ref
 from faebryk.library.has_picker import has_picker
 from faebryk.library.has_pcb_layout import has_pcb_layout
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
+from faebryk.library.has_reference_layout import has_reference_layout
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_dynamic import is_dynamic
@@ -135,8 +137,6 @@ from faebryk.library.Potentiometer import Potentiometer
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.can_be_surge_protected_defined import can_be_surge_protected_defined
-from faebryk.library.is_decoupled_nodes import is_decoupled_nodes
-from faebryk.library.can_be_decoupled_defined import can_be_decoupled_defined
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.B0505S_1WR3 import B0505S_1WR3
 from faebryk.library.Battery import Battery

@@ -10,15 +10,16 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 from urllib.parse import urlparse
 
-import click
 import requests
 import ruamel.yaml
+import typer
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 import atopile.config
+import faebryk.libs.exceptions
 from atopile import errors, version
 from atopile.utils import robustly_rm_dir
 
@@ -28,19 +29,19 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-@click.command("install")
-@click.argument("to_install", required=False)
-@click.option("--jlcpcb", is_flag=True, help="JLCPCB component ID")
-@click.option("--link", is_flag=True, help="Keep this dependency linked to the source")
-@click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
-@errors.muffle_fatalities()
-@errors.log_ato_errors()
 def install(
-    to_install: str,
-    jlcpcb: bool,
-    link: bool,
-    upgrade: bool,
-    path: Optional[Path] = None,
+    to_install: Annotated[str | None, typer.Argument()] = None,
+    jlcpcb: Annotated[
+        bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID")
+    ] = False,
+    link: Annotated[
+        bool,
+        typer.Option("--link", "-l", help="Keep this dependency linked to the source"),
+    ] = False,
+    upgrade: Annotated[
+        bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
+    ] = False,
+    path: Annotated[Path | None, typer.Argument()] = None,
 ):
     """
     Install atopile packages or components from jlcpcb.com/parts
@@ -49,11 +50,7 @@ def install(
 
 
 def do_install(
-    to_install: str,
-    jlcpcb: bool,
-    link: bool,
-    upgrade: bool,
-    path: Optional[Path] = None,
+    to_install: str | None, jlcpcb: bool, link: bool, upgrade: bool, path: Path | None
 ):
     """
     Actually do the installation of the dependencies.
@@ -65,77 +62,19 @@ def do_install(
     ctx = atopile.config.ProjectContext.from_config(config)
     top_level_path = config.location
 
-    log.info(f"Installing {to_install} in {top_level_path}")
+    log.info(f"Installing {to_install + ' ' if to_install else ''}in {top_level_path}")
 
-    # with errors.handle_ato_errors():
-    if jlcpcb:  # eg. "ato install --jlcpcb=C123"
+    if jlcpcb:
+        if to_install is None:
+            raise errors.UserBadParameterError("No component ID specified")
+        # eg. "ato install --jlcpcb=C123"
         install_jlcpcb(to_install, top_level_path)
-        return
-
-    if to_install:  # eg. "ato install some-atopile-module"
-        dependency = atopile.config.Dependency.from_str(to_install)
-        name = _name_and_clone_url_helper(dependency.name)[0]
-        if link:
-            dependency.link_broken = False
-            abs_path = ctx.module_path / name
-            dependency.path = abs_path.relative_to(ctx.project_path)
-        else:
-            abs_path = ctx.src_path / name
-            dependency.path = abs_path.relative_to(ctx.project_path)
-            dependency.link_broken = True
-
-        try:
-            installed_version = install_dependency(dependency, upgrade, abs_path)
-        except GitCommandError as ex:
-            if "already exists and is not an empty directory" in ex.stderr:
-                # FIXME: shouldn't `--upgrade` do this already?
-                raise errors.AtoError(
-                    f"Directory {abs_path} already exists and is not empty. "
-                    "Please move or remove it before installing this new content."
-                ) from ex
-            raise
-        # If the link's broken, remove the .git directory so git treats it as copy-pasted code
-        if dependency.link_broken:
-            try:
-                robustly_rm_dir(abs_path / ".git")
-            except (PermissionError, OSError, FileNotFoundError) as ex:
-                errors.AtoError(f"Failed to remove .git directory: {repr(ex)}").log(
-                    log, logging.WARNING
-                )
-
-        if dependency.version_spec is None and installed_version:
-            # If the user didn't specify a version, we'll
-            # use the one we just installed as a basis
-            dependency.version_spec = f"@{installed_version}"
-
-        names = {dep.name: i for i, dep in enumerate(config.dependencies)}
-        if dependency.name in names:
-            config.dependencies[names[dependency.name]] = dependency
-        else:
-            config.dependencies.append(dependency)
-        config.save_changes()
-
-    else:  # eg. "ato install"
-        for _ctx, dependency in errors.iter_through_errors(config.dependencies):
-            with _ctx():
-                if not dependency.link_broken:
-                    # FIXME: these dependency objects are a little too entangled
-                    name = _name_and_clone_url_helper(dependency.name)[0]
-                    abs_path = ctx.module_path / name
-                    dependency.path = abs_path.relative_to(ctx.project_path)
-
-                    try:
-                        installed_version = install_dependency(
-                            dependency, upgrade, abs_path
-                        )
-                    except GitCommandError as ex:
-                        if "already exists and is not an empty directory" in ex.stderr:
-                            # FIXME: shouldn't `--upgrade` do this already?
-                            raise errors.AtoError(
-                                f"Directory {abs_path} already exists and is not empty. "
-                                "Please move or remove it before installing this new content."
-                            ) from ex
-                        raise
+    elif to_install:
+        # eg. "ato install some-atopile-module"
+        install_single_dependency(to_install, link, upgrade, config, ctx)
+    else:
+        # eg. "ato install"
+        install_project_dependencies(config, ctx, upgrade)
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
@@ -151,19 +90,100 @@ def get_package_repo_from_registry(module_name: str) -> str:
             timeout=10,
         )
     except requests.exceptions.ReadTimeout as ex:
-        raise errors.AtoInfraError(
+        raise errors.UserInfraError(
             f"Request to registry timed out for package '{module_name}'"
         ) from ex
 
     if response.status_code == 500:
-        raise errors.AtoError(f"Could not find package '{module_name}' in registry.")
+        raise errors.UserException(
+            f"Could not find package '{module_name}' in registry."
+        )
     response.raise_for_status()
     return_data = response.json()
     try:
         return_url = return_data["data"]["repo_url"]
     except KeyError as ex:
-        raise errors.AtoError(f"No repo_url found for package '{module_name}'") from ex
+        raise errors.UserException(
+            f"No repo_url found for package '{module_name}'"
+        ) from ex
     return return_url
+
+
+def install_single_dependency(
+    to_install: str,
+    link: bool,
+    upgrade: bool,
+    config: atopile.config.ProjectConfig,
+    ctx: atopile.config.ProjectContext,
+):
+    dependency = atopile.config.Dependency.from_str(to_install)
+    name = _name_and_clone_url_helper(dependency.name)[0]
+    if link:
+        dependency.link_broken = False
+        abs_path = ctx.module_path / name
+        dependency.path = abs_path.relative_to(ctx.project_path)
+    else:
+        abs_path = ctx.src_path / name
+        dependency.path = abs_path.relative_to(ctx.project_path)
+        dependency.link_broken = True
+
+    try:
+        installed_version = install_dependency(dependency, upgrade, abs_path)
+    except GitCommandError as ex:
+        if "already exists and is not an empty directory" in ex.stderr:
+            # FIXME: shouldn't `--upgrade` do this already?
+            raise errors.UserException(
+                f"Directory {abs_path} already exists and is not empty. "
+                "Please move or remove it before installing this new content."
+            ) from ex
+        raise
+    # If the link's broken, remove the .git directory so git treats it as copy-pasted code
+    if dependency.link_broken:
+        try:
+            robustly_rm_dir(abs_path / ".git")
+        except (PermissionError, OSError, FileNotFoundError) as ex:
+            errors.UserException(f"Failed to remove .git directory: {repr(ex)}").log(
+                log, logging.WARNING
+            )
+
+    if dependency.version_spec is None and installed_version:
+        # If the user didn't specify a version, we'll
+        # use the one we just installed as a basis
+        dependency.version_spec = f"@{installed_version}"
+
+    names = {dep.name: i for i, dep in enumerate(config.dependencies)}
+    if dependency.name in names:
+        config.dependencies[names[dependency.name]] = dependency
+    else:
+        config.dependencies.append(dependency)
+    config.save_changes()
+
+
+def install_project_dependencies(
+    config: atopile.config.ProjectConfig,
+    ctx: atopile.config.ProjectContext,
+    upgrade: bool,
+):
+    for _ctx, dependency in faebryk.libs.exceptions.iter_through_errors(
+        config.dependencies
+    ):
+        with _ctx():
+            if not dependency.link_broken:
+                # FIXME: these dependency objects are a little too entangled
+                name = _name_and_clone_url_helper(dependency.name)[0]
+                abs_path = ctx.module_path / name
+                dependency.path = abs_path.relative_to(ctx.project_path)
+
+                try:
+                    install_dependency(dependency, upgrade, abs_path)
+                except GitCommandError as ex:
+                    if "already exists and is not an empty directory" in ex.stderr:
+                        # FIXME: shouldn't `--upgrade` do this already?
+                        raise errors.UserException(
+                            f"Directory {abs_path} already exists and is not empty. "
+                            "Please move or remove it before installing this new content."
+                        ) from ex
+                    raise
 
 
 def install_dependency(
@@ -205,7 +225,7 @@ def install_dependency(
     for tag in repo.tags:
         try:
             semver_to_tag[version.parse(tag.name)] = tag
-        except errors.AtoError:
+        except errors.UserException:
             log.debug(f"Tag {tag.name} is not a valid semver tag. Skipping.")
 
     if "@" in module_spec:
@@ -215,7 +235,7 @@ def install_dependency(
         # Otherwise we're gonna find the best tag meeting the semver spec
         valid_versions = [v for v in semver_to_tag if version.match(module_spec, v)]
         if not valid_versions:
-            raise errors.AtoError(
+            raise errors.UserException(
                 f"No versions of {module_name} match spec {module_spec}.\n"
                 f"Available versions: {', '.join(map(str, semver_to_tag))}"
             )
@@ -230,7 +250,7 @@ def install_dependency(
 
     # If the repo is dirty, throw an error
     if repo.is_dirty():
-        raise errors.AtoError(
+        raise errors.UserException(
             f"Module {module_name} has uncommitted changes. Aborting."
         )
 
@@ -261,7 +281,7 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
     """Install a component from JLCPCB"""
     component_id = component_id.upper()
     if not component_id.startswith("C") or not component_id[1:].isdigit():
-        raise errors.AtoError(f"Component id {component_id} is invalid. Aborting.")
+        raise errors.UserException(f"Component id {component_id} is invalid. Aborting.")
 
     footprints_dir = (
         top_level_path
@@ -299,7 +319,7 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
         print("Command executed successfully")
     else:
         component_link = f"https://jlcpcb.com/partdetail/{component_id}"
-        raise errors.AtoError(
+        raise errors.UserException(
             "Oh no! Looks like this component doesnt have a model available. "
             f"More information about the component can be found here: {component_link}"
         )

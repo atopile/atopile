@@ -11,16 +11,19 @@ from faebryk.libs.util import cast_assert
 
 class ElectricPower(F.Power):
     class can_be_decoupled_power(F.can_be_decoupled.impl()):
-        def on_obj_set(self):
-            obj = self.get_obj(ElectricPower)
-            self.hv = obj.hv
-            self.lv = obj.lv
-
         def decouple(self):
             obj = self.get_obj(ElectricPower)
-            return F.can_be_decoupled_defined.decouple(self).builder(
-                lambda c: c.max_voltage.constrain_ge(obj.voltage * 2.0)
-            )
+
+            capacitor = obj.add(F.Capacitor())
+            capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
+
+            obj.hv.connect_via(capacitor, obj.lv)
+
+            obj.add(F.is_decoupled(capacitor))
+            return capacitor
+
+        def is_implemented(self):
+            return not self.obj.has_trait(F.is_decoupled)
 
     class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
         def on_obj_set(self):

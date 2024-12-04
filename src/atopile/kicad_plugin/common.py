@@ -1,16 +1,26 @@
+import contextlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 import pcbnew
 
-LOG_FILE = Path("~/.atopile/kicad-plugin.log").expanduser().absolute()
+LOG_FILE = (Path(__file__).parent / "log.log").expanduser().absolute()
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.FileHandler(str(LOG_FILE), "w", "utf-8"))
 log.setLevel(logging.DEBUG)
+
+
+@contextlib.contextmanager
+def log_exceptions():
+    try:
+        yield
+    except Exception as e:
+        log.exception(e)
+        raise
 
 
 def get_prj_dir(path: Path) -> Path:
@@ -38,15 +48,17 @@ def groups_by_name(board: pcbnew.BOARD) -> dict[str, pcbnew.PCB_GROUP]:
     return {g.GetName(): g for g in board.Groups()}
 
 
-def get_footprint_uuid(fp: pcbnew.FOOTPRINT) -> str:
-    """Return the UUID of a footprint."""
-    path = fp.GetPath().AsString()
-    return path.split("/")[-1]
+def get_footprint_addr(fp: pcbnew.FOOTPRINT) -> Optional[str]:
+    """Return the property "atopile_address" of a footprint."""
+    field: pcbnew.PCB_FIELD = fp.GetFieldByName("atopile_address")
+    if field:
+        return field.GetText()
+    return None
 
 
-def footprints_by_uuid(board: pcbnew.BOARD) -> dict[str, pcbnew.FOOTPRINT]:
-    """Return a dict of footprints by UUID."""
-    return {get_footprint_uuid(fp): fp for fp in board.GetFootprints()}
+def footprints_by_addr(board: pcbnew.BOARD) -> dict[str, pcbnew.FOOTPRINT]:
+    """Return a dict of footprints by "atopile_address"."""
+    return {addr: fp for fp in board.GetFootprints() if (addr := get_footprint_addr(fp))}
 
 
 def get_layout_map(board_path: Path) -> dict[str, Any]:
@@ -98,7 +110,7 @@ def update_zone_net(
     source_board: pcbnew.BOARD,
     target_zone: pcbnew.ZONE,
     target_board: pcbnew.BOARD,
-    uuid_map: dict[str, str],
+    addr_map: dict[str, str],
 ):
     """Finds a pin connected to original zone, pulls pin net name from new board net"""
     source_netname = source_zone.GetNetname()
@@ -118,15 +130,14 @@ def update_zone_net(
             break
 
     if matched_fp and matched_pad_index != None:
-        matched_fp_uuid = get_footprint_uuid(matched_fp)
-        target_fp_uuid = uuid_map.get(matched_fp_uuid, None)
-        if target_fp_uuid:
-            target_uuids = footprints_by_uuid(target_board)
-            target_fp = target_uuids.get(target_fp_uuid, None)
-            if target_fp:
-                new_netinfo = target_fp.Pads()[matched_pad_index].GetNet()
-                target_zone.SetNet(new_netinfo)
-                return
+        if matched_fp_addr := get_footprint_addr(matched_fp):
+            if target_fp_addr := addr_map.get(matched_fp_addr, None):
+                target_fps = footprints_by_addr(target_board)
+                target_fp = target_fps.get(target_fp_addr, None)
+                if target_fp:
+                    new_netinfo = target_fp.Pads()[matched_pad_index].GetNet()
+                    target_zone.SetNet(new_netinfo)
+                    return
 
     # TODO: Verify that this will always set net to no net
     target_zone.SetNetCode(0)
@@ -145,19 +156,19 @@ def sync_zone(zone: pcbnew.ZONE, target: pcbnew.BOARD) -> pcbnew.ZONE:
 
 
 def sync_footprints(
-    source: pcbnew.BOARD, target: pcbnew.BOARD, uuid_map: dict[str, str]
+    source: pcbnew.BOARD, target: pcbnew.BOARD, addr_map: dict[str, str]
 ) -> list[str]:
     """Update the target board with the layout from the source board."""
     # Update the footprint position, orientation, and side to match the source
-    source_uuids = footprints_by_uuid(source)
-    target_uuids = footprints_by_uuid(target)
-    missing_uuids = []
-    for s_uuid, t_uuid in uuid_map.items():
+    source_addrs = footprints_by_addr(source)
+    target_addrs = footprints_by_addr(target)
+    missing_addrs = []
+    for s_addr, t_addr in addr_map.items():
         try:
-            target_fp = target_uuids[t_uuid]
-            source_fp = source_uuids[s_uuid]
+            target_fp = target_addrs[t_addr]
+            source_fp = source_addrs[s_addr]
         except KeyError:
-            missing_uuids.append(s_uuid)
+            missing_addrs.append(s_addr)
             continue
         target_fp.SetPosition(source_fp.GetPosition())
         target_fp.SetOrientation(source_fp.GetOrientation())
@@ -177,7 +188,7 @@ def sync_footprints(
             target_pad.SetLayer(source_pad.GetLayer())
             target_pad.SetLayerSet(source_pad.GetLayerSet())
 
-    return missing_uuids
+    return missing_addrs
 
 
 def find_anchor_footprint(fps: Iterable[pcbnew.FOOTPRINT]) -> pcbnew.FOOTPRINT:

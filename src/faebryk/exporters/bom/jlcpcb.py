@@ -53,16 +53,17 @@ def write_bom_jlcpcb(components: set[Module], path: Path) -> None:
         rows = [vars(line) for line in bomlines]
         rename_column(rows, "LCSC_Partnumber", "LCSC Part #")
 
-        writer = csv.DictWriter(
-            bom_csv,
-            fieldnames=list(rows[0].keys()),
-            delimiter=",",
-            quotechar='"',
-            quoting=csv.QUOTE_MINIMAL,
-            lineterminator="\n",
-        )
-        writer.writeheader()
-        writer.writerows(rows)
+        if rows:
+            writer = csv.DictWriter(
+                bom_csv,
+                fieldnames=list(rows[0].keys()),
+                delimiter=",",
+                quotechar='"',
+                quoting=csv.QUOTE_MINIMAL,
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            writer.writerows(rows)
 
 
 def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:

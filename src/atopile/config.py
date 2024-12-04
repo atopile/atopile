@@ -1,21 +1,30 @@
 # pylint: disable=too-few-public-methods
 
-"""Schema and utils for atopile config files."""
+"""
+Schema and utils for atopile config files.
+
+Requirements for the config files include:
+- Structured + typed access
+- Preservation of structure and comments
+"""
 
 import copy
 import fnmatch
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 import cattrs
 import deepdiff
+from attr import fields_dict
 from attrs import Factory, define
 from ruamel.yaml import YAML
 
 import atopile.errors
 import atopile.version
 from atopile import address
+from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 
 log = logging.getLogger(__name__)
 yaml = YAML()
@@ -31,7 +40,7 @@ LOCK_FILE_NAME = "ato-lock.yaml"
 _converter = cattrs.Converter()
 
 
-class AtoConfigError(atopile.errors.AtoError):
+class AtoConfigError(atopile.errors.UserException):
     """An error in the config file."""
 
 
@@ -39,9 +48,19 @@ class AtoConfigError(atopile.errors.AtoError):
 class ProjectPaths:
     """Config grouping for all the paths in a project."""
 
-    src: Path = "elec/src"
-    layout: Path = "elec/layout"
-    footprints: Path = "elec/footprints/footprints"
+    src: Path = Factory(lambda: ProjectPaths._conditional_path(Path("elec") / "src"))
+    layout: Path = Factory(
+        lambda: ProjectPaths._conditional_path(Path("elec") / "layout")
+    )
+    footprints: Path = Factory(
+        lambda: ProjectPaths._conditional_path(
+            Path("elec") / "footprints" / "footprints"
+        )
+    )
+
+    @staticmethod
+    def _conditional_path(path: Path, fallback: Path = Path(".")) -> Path:
+        return path if path.exists() else fallback
 
 
 @define
@@ -82,7 +101,7 @@ class Dependency:
                     version_spec = version_spec.strip()
                     version_spec = splitter + version_spec
                 except TypeError as ex:
-                    raise atopile.errors.AtoTypeError(
+                    raise atopile.errors.UserTypeError(
                         f"Invalid dependency spec: {spec_str}"
                     ) from ex
                 return cls(name, version_spec)
@@ -107,7 +126,8 @@ class ProjectConfig:
     def _sanitise_dict_keys(cls, data: dict) -> dict:
         """Sanitise the keys of a dictionary to be valid python identifiers."""
         data = copy.deepcopy(data) or {}
-        data["ato_version"] = data.pop("ato-version", cls.ato_version)
+        fields = fields_dict(cls)
+        data["ato_version"] = data.pop("ato-version", fields["ato_version"].default)
         return data
 
     @staticmethod
@@ -208,7 +228,7 @@ def get_project_dir_from_path(path: Path) -> Path:
         clean_path = p.resolve().absolute()
         if (clean_path / CONFIG_FILENAME).exists():
             return clean_path
-    raise atopile.errors.AtoFileNotFoundError(
+    raise atopile.errors.UserFileNotFoundError(
         f"Could not find {CONFIG_FILENAME} in {path} or any parents"
     )
 
@@ -280,10 +300,12 @@ def match_user_layout(path: Path) -> bool:
     return True
 
 
-def find_layout(layout_base: Path) -> Optional[Path]:
+def find_layout(layout_base: Path) -> Path:
     """Return the layout associated with a build."""
+
     if layout_base.with_suffix(".kicad_pcb").exists():
         return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
+
     elif layout_base.is_dir():
         layout_candidates = list(
             filter(match_user_layout, layout_base.glob("*.kicad_pcb"))
@@ -293,10 +315,44 @@ def find_layout(layout_base: Path) -> Optional[Path]:
             return layout_candidates[0].resolve().absolute()
 
         else:
-            raise atopile.errors.AtoError(
+            raise atopile.errors.UserException(
                 "Layout directories must contain only 1 layout,"
                 f" but {len(layout_candidates)} found in {layout_base}"
             )
+
+    else:
+        layout_path = layout_base.with_suffix(".kicad_pcb")
+
+        log.warning("Creating new layout at %s", layout_path)
+
+        C_kicad_pcb_file.skeleton(
+            generator=atopile.version.DISTRIBUTION_NAME,
+            generator_version=str(atopile.version.get_installed_atopile_version()),
+        ).dumps(layout_path)
+
+        return layout_path
+
+
+class BuildType(Enum):
+    ATO = "ato"
+    PYTHON = "python"
+
+
+@define
+class BuildPaths:
+    """Output paths for a build."""
+
+    root: (
+        Path | None
+    )  # eg. path/to/project/<where ato.yaml is> OR git repo OR None is indiscernible
+    layout: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
+    lock_file: Path | None  # eg. path/to/project/ato-lock.yaml
+    build: Path  # eg. path/to/project/build/<build-name>
+    output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
+    netlist: Path
+    fp_lib_table: Path
+    component_lib: Path
+    kicad_project: Path
 
 
 @define
@@ -304,20 +360,35 @@ class BuildContext:
     """A class to hold the arguments to a build."""
 
     project_context: ProjectContext
-
     name: str
-
     entry: address.AddrStr  # eg. "path/to/project/src/entry-name.ato:module.path"
     targets: list[str]
     exclude_targets: list[str]
     fail_on_drcs: bool
     dont_solve_equations: bool
 
-    layout_path: Optional[Path]  # eg. path/to/project/layouts/default/default.kicad_pcb
-    lock_file_path: Optional[Path]  # eg. path/to/project/ato-lock.yaml
-    build_path: Path  # eg. path/to/project/build/<build-name>
+    paths: BuildPaths
 
-    output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
+    @property
+    def build_type(self) -> BuildType:
+        """
+        Determine build type from the entry.
+
+        **/*.ato:* -> BuildType.ATO
+        **/*.py:* -> BuildType.PYTHON
+        """
+
+        suffix = self.entry.file_path.suffix
+
+        match suffix:
+            case ".ato":
+                return BuildType.ATO
+            case ".py":
+                return BuildType.PYTHON
+            case _:
+                raise atopile.errors.UserException(
+                    f"Unknown entry suffix: {suffix} for {self.entry}"
+                )
 
     @classmethod
     def from_config(
@@ -327,9 +398,14 @@ class BuildContext:
         project_context: ProjectContext,
     ) -> "BuildContext":
         """Create a BuildArgs object from a Config object."""
-        abs_entry = address.AddrStr(project_context.project_path / build_config.entry)
+        abs_entry = address.AddrStr(
+            str((project_context.project_path / (build_config.entry or "")).resolve())
+        )
 
         build_path = Path(project_context.project_path) / BUILD_DIR_NAME
+        layout_path = find_layout(
+            project_context.project_path / project_context.layout_path / config_name
+        )
 
         return BuildContext(
             project_context=project_context,
@@ -339,12 +415,17 @@ class BuildContext:
             exclude_targets=build_config.exclude_targets,
             fail_on_drcs=build_config.fail_on_drcs,
             dont_solve_equations=build_config.dont_solve_equations,
-            layout_path=find_layout(
-                project_context.project_path / project_context.layout_path / config_name
+            paths=BuildPaths(
+                root=project_context.project_path,
+                layout=layout_path,
+                lock_file=project_context.lock_file_path,
+                build=build_path,
+                output_base=build_path / config_name,
+                netlist=build_path / config_name / f"{config_name}.net",
+                fp_lib_table=layout_path.parent / "fp-lib-table",
+                component_lib=build_path / "kicad" / "libs",
+                kicad_project=layout_path.with_suffix(".kicad_pro"),
             ),
-            lock_file_path=project_context.project_path / LOCK_FILE_NAME,
-            build_path=build_path,
-            output_base=build_path / config_name,
         )
 
     @classmethod
@@ -355,12 +436,16 @@ class BuildContext:
         try:
             build_config = config.builds[build_name]
         except KeyError as ex:
-            raise atopile.errors.AtoError(
+            raise atopile.errors.UserException(
                 f"Build {build_name} not found for project {config.location}\n"
                 f"Available builds: {list(config.builds.keys())}"
             ) from ex
 
         return cls.from_config(build_name, build_config, project_context)
+
+    def ensure_paths(self) -> None:
+        self.paths.build.mkdir(parents=True, exist_ok=True)
+        self.paths.output_base.parent.mkdir(parents=True, exist_ok=True)
 
 
 _project_context: Optional[ProjectContext] = None

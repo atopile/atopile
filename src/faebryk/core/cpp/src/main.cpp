@@ -186,6 +186,9 @@ PYMOD(m) {
         .def("get_hierarchy", &Node::get_hierarchy)
         .def("get_full_name", &Node::get_full_name, "types"_a = false)
         .def("bfs_node", &Node::bfs_node, "filter"_a)
+        .def_prop_rw("no_include_parents_in_full_name",
+                     &Node::getter_no_include_parents_in_full_name,
+                     &Node::setter_no_include_parents_in_full_name)
         .def("__repr__", &Node::repr);
 
     nb::exception<Node::NodeException>(m, "NodeException");
