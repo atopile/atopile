@@ -13,30 +13,9 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
+from faebryk.libs.library.L import Range
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.units import P
 from faebryk.libs.util import has_attr_or_property, write_only_property
-
-# Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
-try:
-    from faebryk.libs.units import UnitCompatibilityError, dimensionless  # type: ignore
-except ImportError:
-
-    class UnitCompatibilityError(Exception):
-        """Placeholder Exception"""
-
-    dimensionless = P.dimensionless
-
-try:
-    from faebryk.libs.library.L import Range  # type: ignore
-except ImportError:
-    from faebryk.library._F import Range  # type: ignore
-
-try:
-    from faebryk.library import Single  # type: ignore  # noqa: F401
-except ImportError:
-    pass  # type: ignore
-
 
 log = logging.getLogger(__name__)
 

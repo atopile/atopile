@@ -9,7 +9,7 @@ from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
 from pint._typing import Scalar as _Scalar  # noqa: F401
 from pint.util import UnitsContainer as _UnitsContainer
 
-from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import cast_assert
 
 P = UnitRegistry()
@@ -81,7 +81,7 @@ def Scalar(value: float):
     return Quantity(value)
 
 
-class UnitCompatibilityError(FaebrykException):
+class UnitCompatibilityError(UserException):
     """
     Incompatible units.
     """

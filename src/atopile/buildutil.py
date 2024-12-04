@@ -6,6 +6,7 @@ from atopile import layout
 from atopile.config import BuildContext
 from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
@@ -28,7 +29,7 @@ from faebryk.libs.app.designators import (
     attach_random_designators,
     override_names_with_designators,
 )
-from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
+from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_netlist,
@@ -41,6 +42,7 @@ from faebryk.libs.exceptions import (
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.api.pickers import add_api_pickers
+from faebryk.libs.picker.common import CachePicker
 from faebryk.libs.picker.picker import pick_part_recursively
 
 logger = logging.getLogger(__name__)
@@ -48,34 +50,33 @@ logger = logging.getLogger(__name__)
 
 def build(build_ctx: BuildContext, app: Module) -> None:
     """Build the project."""
-
     G = app.get_graph()
+    solver = DefaultSolver()
 
-    # TODO: consider making each of these a configurable target
-    logger.info("Filling unspecified parameters")
-    replace_tbd_with_any(app, recursive=True)
-
-    logger.info("Picking parts")
-    modules = {
-        n.get_most_special() for n in app.get_children(direct_only=False, types=Module)
-    }
-    for n in modules:
-        # TODO: make configurable
-        add_api_pickers(n, base_prio=10)
-    pick_part_recursively(app)
+    logger.info("Resolving dynamic parameters")
+    resolve_dynamic_parameters(G)
 
     logger.info("Running checks")
     run_checks(app, G)
+
+    # Picking ------------------------------------------------------------------
+    logger.info("Picking parts")
+    modules = app.get_children_modules(types=Module)
+    CachePicker.add_to_modules(modules, prio=-20)
+    for n in modules:
+        # TODO: make configurable
+        add_api_pickers(n, base_prio=10)
+
+    pick_part_recursively(app, solver)
+    solver.find_and_lock_solution(G)
 
     build_ctx.ensure_paths()
 
     logger.info("Make netlist & pcb")
     build_paths = build_ctx.paths
-    resolve_dynamic_parameters(G)
-
-    logger.info(f"Writing netlist to {build_paths.netlist}")
 
     # Write Netlist ------------------------------------------------------------
+    logger.info(f"Writing netlist to {build_paths.netlist}")
     netlist_path = build_paths.netlist
 
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
