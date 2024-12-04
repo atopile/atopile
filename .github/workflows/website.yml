@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '.github/workflows/website.yml'
 permissions:
   contents: write
 jobs:
