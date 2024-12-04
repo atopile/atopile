@@ -137,7 +137,7 @@ def install_single_dependency(
                 "Please move or remove it before installing this new content."
             ) from ex
         raise
-    # If the link's broken, remove the .git directory so git treats it as copy-pasted code
+    # If the link's broken, remove the .git directory so git treats it as copy-pasted code # noqa: E501  # pre-existing
     if dependency.link_broken:
         try:
             robustly_rm_dir(abs_path / ".git")
@@ -181,7 +181,7 @@ def install_project_dependencies(
                         # FIXME: shouldn't `--upgrade` do this already?
                         raise errors.UserException(
                             f"Directory {abs_path} already exists and is not empty. "
-                            "Please move or remove it before installing this new content."
+                            "Please move or remove it before installing this new content."  # noqa: E501  # pre-existing
                         ) from ex
                     raise
 
@@ -216,7 +216,7 @@ def install_dependency(
             log.info(
                 f"{module_name} already exists. If you wish to upgrade, use --upgrade"
             )
-            # here we're done because we don't want to play with peoples' deps under them
+            # here we're done because we don't want to play with peoples' deps under them # noqa: E501  # pre-existing
             return
 
     # Figure out what version of this thing we need
@@ -243,7 +243,7 @@ def install_dependency(
         best_checkout = semver_to_tag[installed_semver]
     else:
         log.warning(
-            "No semver tags found for this module. Using latest default branch :hot_pepper:.",
+            "No semver tags found for this module. Using latest default branch :hot_pepper:.",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
         return None
@@ -265,12 +265,12 @@ def install_dependency(
 
     if repo.head.commit == ref_before_checkout:
         log.info(
-            f"Already on the best option ([cyan bold]{best_checkout}[/]) for {module_name}",
+            f"Already on the best option ([cyan bold]{best_checkout}[/]) for {module_name}",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
     else:
         log.info(
-            f"Using :sparkles: [cyan bold]{best_checkout}[/] :sparkles: of {module_name}",
+            f"Using :sparkles: [cyan bold]{best_checkout}[/] :sparkles: of {module_name}",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
 

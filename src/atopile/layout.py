@@ -71,7 +71,7 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
 
 
 def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
-    """Generate a file containing a list of all the modules and their components in the build."""
+    """Generate a file containing a list of all the modules and their components in the build."""  # noqa: E501  # pre-existing
     module_map = {}
 
     module_layouts = _index_module_layouts()
@@ -97,7 +97,7 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
             ) from e
 
         # Build up a map of UUIDs of the children of the module
-        # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout
+        # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout # noqa: E501  # pre-existing
         uuid_map = {}
         addr_map = {}
         for inst_child in module_instance.get_children_modules(types=Module):

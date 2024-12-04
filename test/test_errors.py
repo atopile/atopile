@@ -72,7 +72,7 @@ def test_build_error_logging(build_name: str):
 
     # exiting cleanly
     assert process.stdout.strip().endswith(
-        "Unfortunately errors ^^^ stopped the build. If you need a hand jump on Discord! \nhttps://discord.gg/mjtxARsr9V 👋"
+        "Unfortunately errors ^^^ stopped the build. If you need a hand jump on Discord! \nhttps://discord.gg/mjtxARsr9V 👋"  # noqa: E501  # pre-existing
     )
 
     # exception groups are unwrapped

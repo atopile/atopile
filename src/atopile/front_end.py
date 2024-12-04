@@ -89,7 +89,8 @@ class from_dsl(Trait.decless()):
 class BasicsMixin:
     def visitName(self, ctx: ap.NameContext) -> str:
         """
-        If this is an int, convert it to one (for pins), else return the name as a string.
+        If this is an int, convert it to one (for pins),
+        else return the name as a string.
         """
         return ctx.getText()
 
@@ -141,7 +142,8 @@ class PhysicalValuesMixin:
         elif ctx.bound_quantity():
             value = self.visitBound_quantity(ctx.bound_quantity())
         else:
-            raise ValueError  # this should be protected because it shouldn't be parseable
+            # this should be protected because it shouldn't be parseable
+            raise ValueError
         return value
 
     def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
@@ -204,7 +206,7 @@ class PhysicalValuesMixin:
         if nominal_qty.unitless:
             nominal_qty = nominal_qty * tol_qty.units
 
-        # If the nominal has a unit, then we rely on the ranged value's unit compatibility
+        # If the nominal has a unit, then we rely on the ranged value's unit compatibility # noqa: E501  # pre-existing
         if not nominal_qty.is_compatible_with(tol_qty):
             raise errors.UserTypeError.from_ctx(
                 tol_name,
@@ -265,7 +267,7 @@ class SequenceMixin:
         def _visit():
             for err_cltr, child in iter_through_errors(children):
                 with err_cltr():
-                    # Since we're in a SequenceMixin, we need to cast self to the visitor type
+                    # Since we're in a SequenceMixin, we need to cast self to the visitor type # noqa: E501  # pre-existing
                     child_result = cast(AtopileParserVisitor, self).visit(child)
                     if child_result is not NOTHING:
                         yield child_result
@@ -877,7 +879,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 with downgrade(errors.UserException):
                     raise errors.UserException.from_ctx(
                         ctx,
-                        f"Ignoring assignment of {value} to {assigned_name} on {target}",
+                        f"Ignoring assignment of {value} to {assigned_name} on {target}",  # noqa: E501  # pre-existing
                     )
 
         else:
@@ -1174,7 +1176,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             logger.warning(
                 errors.UserKeyError.from_ctx(
                     ctx,
-                    f"Ignoring declaration of {assigned_name} because it's already defined",
+                    f"Ignoring declaration of {assigned_name} because it's already defined",  # noqa: E501  # pre-existing
                 )
             )
 
