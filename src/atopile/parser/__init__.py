@@ -29,7 +29,7 @@ if is_editable_install() and AUTO_RECOMPILE.get():
 
             return False
         except Exception:
-            # If we can't check git status (not a git repo, etc), assume we don't need to recompile
+            # If we can't check git status (not a git repo, etc), assume we don't need to recompile # noqa: E501  # pre-existing
             return False
 
     SAUCY_FILES = [

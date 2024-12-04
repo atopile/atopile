@@ -222,7 +222,8 @@ def iter_through_errors[T](
 ) -> Iterable[tuple[Callable[[], ContextManager], T]]:
     """
     Wraps an iterable and yields:
-    - a context manager that collects any ato errors raised while processing the iterable
+    - a context manager that collects any ato errors
+        raised while processing the iterable
     - the item from the iterable
     """
 

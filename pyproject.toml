@@ -202,10 +202,6 @@ select = [
     #"ARG",  # flake8-unused-arguments
     #"PTH",  # flake8-use-pathlib
 ]
-ignore = [
-    # Line too long
-    "E501", # TODO: get the repo back on the same page to 88 characters
-]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = [
