@@ -644,7 +644,7 @@ class Quantity_Interval_Disjoint(Quantity_Set, Serializable):
     def any(self) -> Quantity:
         return self.min_elem()
 
-    def serialize(self) -> dict:
+    def serialize(self) -> dict[str, Any]:
         return {
             "intervals": [r.serialize() for r in self._intervals.intervals],
             "unit": str(self.units),

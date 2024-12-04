@@ -4,10 +4,10 @@
 import functools
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import requests
-from dataclasses_json import config, dataclass_json
+from dataclasses_json import dataclass_json
 
 from faebryk.core.module import Module
 
@@ -24,7 +24,6 @@ from faebryk.libs.picker.common import (
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
 from faebryk.libs.picker.picker import PickError
-from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.util import (
     ConfigFlagString,
     KeyErrorAmbiguous,
@@ -57,11 +56,6 @@ class ApiHTTPError(ApiError):
         status_code = self.response.status_code
         detail = self.response.json()["detail"]
         return f"{super().__str__()}: {status_code} {detail}"
-
-
-class ParameterSet(Quantity_Interval_Disjoint):
-    def __init__(self, parameter: Parameter, solver: Solver):
-        super().__init__(*solver.inspect_get_known_superranges(parameter))
 
 
 def api_filter_by_module_params_and_attach(
@@ -154,15 +148,28 @@ class BaseParams(Serializable):
         return self.to_dict()  # type: ignore
 
 
-def ParameterSetField(cls):
-    return field(metadata=config(encoder=ParameterSet.serialize))
+@dataclass(frozen=True)
+class Interval:
+    min: float | None
+    max: float | None
+
+
+@dataclass
+class ParameterSet:
+    intervals: list[Interval]
+    unit: str
+
+    def __init__(self, parameter: Parameter, solver: Solver):
+        param_ranges = solver.inspect_get_known_superranges(parameter).serialize()
+        self.intervals = param_ranges["intervals"]
+        self.unit = param_ranges["unit"]
 
 
 @dataclass(frozen=True)
 class ResistorParams(BaseParams):
-    resistance: ParameterSet = ParameterSetField(ParameterSet)
-    max_power: ParameterSet = ParameterSetField(ParameterSet)
-    max_voltage: ParameterSet = ParameterSetField(ParameterSet)
+    resistance: ParameterSet
+    max_power: ParameterSet
+    max_voltage: ParameterSet
 
 
 @dataclass(frozen=True)
