@@ -1,22 +1,14 @@
 """CLI command definition for `ato build`."""
 
-import json
 import logging
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
-import atopile.config
-from atopile import buildutil, errors, front_end
-from atopile.cli.common import create_build_contexts
-from atopile.config import BuildContext, BuildType
-from atopile.datatypes import Ref
-from faebryk.core.module import Module
-from faebryk.library import _F as F
-from faebryk.libs.exceptions import ExceptionAccumulator, log_user_errors
-from faebryk.libs.library import L
-from faebryk.libs.picker import lcsc
-from faebryk.libs.util import import_from_path
+from atopile.config import BuildContext
+
+if TYPE_CHECKING:
+    from faebryk.core.module import Module
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +28,16 @@ def build(
     Optionally specify a different entrypoint with the argument ENTRY.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
+    import json
+
+    import atopile.config
+    from atopile import buildutil
+    from atopile.cli.common import create_build_contexts
+    from atopile.config import BuildType
+    from faebryk.library import _F as F
+    from faebryk.libs.exceptions import ExceptionAccumulator, log_user_errors
+    from faebryk.libs.picker import lcsc
+
     build_ctxs = create_build_contexts(entry, build, target, option)
 
     with ExceptionAccumulator() as accumulator:
@@ -85,8 +87,11 @@ def build(
     logger.info("Build successful! 🚀")
 
 
-def _init_python_app(build_ctx: BuildContext) -> Module:
+def _init_python_app(build_ctx: BuildContext) -> "Module":
     """Initialize a specific .py build."""
+
+    from atopile import errors
+    from faebryk.libs.util import import_from_path
 
     try:
         app_class = import_from_path(
@@ -116,8 +121,13 @@ def _init_python_app(build_ctx: BuildContext) -> Module:
     return app
 
 
-def _init_ato_app(build_ctx: BuildContext) -> Module:
+def _init_ato_app(build_ctx: BuildContext) -> "Module":
     """Initialize a specific .ato build."""
+
+    from atopile import front_end
+    from atopile.datatypes import Ref
+    from faebryk.libs.library import L
+
     node = front_end.bob.build_file(
         build_ctx.entry.file_path, Ref(build_ctx.entry.entry_section.split("."))
     )
