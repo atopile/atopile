@@ -4,7 +4,7 @@
 import glob
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import dedent
 
@@ -102,24 +102,16 @@ def main(ctx: typer.Context, name: str, local: bool = True, overwrite: bool = Fa
 def module(
     ctx: typer.Context, interface: bool = False, mfr: bool = False, lcsc: bool = False
 ):
-    name = get_name(ctx)
-
-    docstring = "TODO: Docstring describing your module"
-    base = "Module" if not interface else "ModuleInterface"
+    template = Template(
+        name=get_name(ctx),
+        base="Module" if not interface else "ModuleInterface",
+    )
 
     part: Component | None = None
-    traits = []
-    nodes = []
-
-    imports = [
-        "import faebryk.library._F as F  # noqa: F401",
-        f"from faebryk.core.{base.lower()} import {base}",
-        "from faebryk.libs.library import L  # noqa: F401",
-        "from faebryk.libs.units import P  # noqa: F401",
-    ]
 
     if mfr and lcsc:
         raise ValueError("Cannot use both mfr and lcsc")
+
     if mfr or lcsc:
         import faebryk.libs.picker.lcsc as lcsc_
 
@@ -129,16 +121,17 @@ def module(
         lcsc_.MODEL_PATH = None
 
     if lcsc:
-        part = find_component_by_lcsc_id(name)
-        traits.append(
+        part = find_component_by_lcsc_id(template.name)
+        template.traits.append(
             "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{'LCSC': '{name}'}})"
+            f"({{'LCSC': '{template.name}'}})"
         )
+
     elif mfr:
-        if "," in name:
-            mfr_, mfr_pn = name.split(",", maxsplit=1)
+        if "," in template.name:
+            mfr_, mfr_pn = template.name.split(",", maxsplit=1)
         else:
-            mfr_, mfr_pn = "", name
+            mfr_, mfr_pn = "", template.name
         try:
             part = find_component_by_mfr(mfr_, mfr_pn)
         except KeyErrorAmbiguous as e:
@@ -154,32 +147,49 @@ def module(
                 sys.exit(1)
 
     if part:
-        name = sanitize_name(f"{part.mfr_name}_{part.mfr}")
-        assert isinstance(name, str)
-        ki_footprint, _, easyeda_footprint, _, easyeda_symbol = download_easyeda_info(
-            part.partno, get_model=False
-        )
+        template.add_part(part)
+
+    out = template.dumps()
+
+    write(ctx, out, filename=template.name)
+
+
+@dataclass
+class Template:
+    name: str
+    base: str
+    imports: list[str] = field(default_factory=list)
+    traits: list[str] = field(default_factory=list)
+    nodes: list[str] = field(default_factory=list)
+    docstring: str = "TODO: Docstring describing your module"
+
+    def add_part(self, part: Component):
+        self.name = sanitize_name(f"{part.mfr_name}_{part.mfr}")
+        assert isinstance(self.name, str)
+        _, _, _, _, easyeda_symbol = download_easyeda_info(part.partno, get_model=False)
 
         designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
-        traits.append(
+        self.traits.append(
             f"designator_prefix = L.f_field(F.has_designator_prefix_defined)"
             f"('{designator_prefix}')"
         )
 
-        imports.append("from faebryk.libs.picker.picker import DescriptiveProperties")
-        traits.append(
+        self.imports.append(
+            "from faebryk.libs.picker.picker import DescriptiveProperties"
+        )
+        self.traits.append(
             f"descriptive_properties = L.f_field(F.has_descriptive_properties_defined)"
             f"({{DescriptiveProperties.manufacturer: '{part.mfr_name}', "
             f"DescriptiveProperties.partno: '{part.mfr}'}})"
         )
 
         if part.datasheet:
-            traits.append(
+            self.traits.append(
                 f"datasheet = L.f_field(F.has_datasheet_defined)('{part.datasheet}')"
             )
 
         partdoc = part.description.replace("  ", "\n")
-        docstring = f"{docstring}\n\n{partdoc}"
+        self.docstring = f"{self.docstring}\n\n{partdoc}"
 
         # pins --------------------------------
         no_name: list[str] = []
@@ -198,7 +208,7 @@ def module(
                     pyname = sanitize_name(pin_name)
                     interface_names_by_pin_num[pin_num] = pyname
 
-        nodes.append(
+        self.nodes.append(
             "#TODO: Change auto-generated interface types to actual high level types"
         )
 
@@ -209,7 +219,7 @@ def module(
             pin_nums = [x[0] for x in _items]
             line = f"{interface_name}: F.Electrical  # {"pin" if len(pin_nums) == 1 else "pins"}: {", ".join(pin_nums)}"  # noqa: E501  # pre-existing
             _interface_lines_by_min_pin_num[min(pin_nums)] = line
-        nodes.extend(
+        self.nodes.extend(
             line
             for _, line in natsorted(
                 _interface_lines_by_min_pin_num.items(), key=lambda x: x[0]
@@ -217,7 +227,7 @@ def module(
         )
 
         if no_name:
-            nodes.append(f"unnamed = L.list_field({len(no_name)}, F.Electrical)")
+            self.nodes.append(f"unnamed = L.list_field({len(no_name)}, F.Electrical)")
 
         pin_lines = (
             [
@@ -227,7 +237,7 @@ def module(
             + [f'"{pin_num}": None,' for pin_num in no_connection]
             + [f'"{pin_num}": self.unnamed[{i}],' for i, pin_num in enumerate(no_name)]
         )
-        traits.append(
+        self.traits.append(
             fix_indent(f"""
             @L.rt_field
             def attach_via_pinmap(self):
@@ -239,43 +249,53 @@ def module(
         """)
         )
 
-    out = fix_indent(f"""
-        # This file is part of the faebryk project
-        # SPDX-License-Identifier: MIT
+    def dumps(self) -> str:
+        always_import = [
+            "import faebryk.library._F as F  # noqa: F401",
+            f"from faebryk.core.{self.base.lower()} import {self.base}",
+            "from faebryk.libs.library import L  # noqa: F401",
+            "from faebryk.libs.units import P  # noqa: F401",
+        ]
 
-        import logging
+        self.imports = always_import + self.imports
 
-        {gen_repeated_block(imports)}
+        out = fix_indent(f"""
+            # This file is part of the faebryk project
+            # SPDX-License-Identifier: MIT
 
-        logger = logging.getLogger(__name__)
+            import logging
 
-        class {name}({base}):
-            \"\"\"
-            {gen_block(docstring)}
-            \"\"\"
+            {gen_repeated_block(self.imports)}
 
-            # ----------------------------------------
-            #     modules, interfaces, parameters
-            # ----------------------------------------
-            {gen_repeated_block(nodes)}
+            logger = logging.getLogger(__name__)
 
-            # ----------------------------------------
-            #                 traits
-            # ----------------------------------------
-            {gen_repeated_block(traits)}
+            class {self.name}({self.base}):
+                \"\"\"
+                {gen_block(self.docstring)}
+                \"\"\"
 
-            def __preinit__(self):
-                # ------------------------------------
-                #           connections
-                # ------------------------------------
+                # ----------------------------------------
+                #     modules, interfaces, parameters
+                # ----------------------------------------
+                {gen_repeated_block(self.nodes)}
 
-                # ------------------------------------
-                #          parametrization
-                # ------------------------------------
-                pass
-    """)
+                # ----------------------------------------
+                #                 traits
+                # ----------------------------------------
+                {gen_repeated_block(self.traits)}
 
-    write(ctx, out, filename=name)
+                def __preinit__(self):
+                    # ------------------------------------
+                    #           connections
+                    # ------------------------------------
+
+                    # ------------------------------------
+                    #          parametrization
+                    # ------------------------------------
+                    pass
+        """)
+
+        return out
 
 
 @main.command()
