@@ -16,6 +16,7 @@ from faebryk.libs.picker.api.api import (
     LDOParams,
     LEDParams,
     MOSFETParams,
+    ParameterSet,
     ResistorParams,
     TVSParams,
     api_filter_by_module_params_and_attach,
@@ -145,12 +146,12 @@ def find_resistor(cmp: Module, solver: Solver):
 
     parts = client.fetch_resistors(
         ResistorParams(
-            resistances=api_generate_si_values(
-                cmp.resistance, solver, E_SERIES_VALUES.E96
-            ),
-            package_candidates=get_package_candidates(cmp),
+            footprint_candidates=get_footprint_candidates(cmp),
             qty=qty,
-        ),
+            resistance=ParameterSet(cmp.resistance, solver),
+            max_power=ParameterSet(cmp.max_power, solver),
+            max_voltage=ParameterSet(cmp.max_voltage, solver),
+        )
     )
 
     api_filter_by_module_params_and_attach(cmp, parts, solver)

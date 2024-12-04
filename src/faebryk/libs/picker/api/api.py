@@ -160,7 +160,9 @@ def ParameterSetField(cls):
 
 @dataclass(frozen=True)
 class ResistorParams(BaseParams):
-    resistances: list[SIvalue]
+    resistance: ParameterSet = ParameterSetField(ParameterSet)
+    max_power: ParameterSet = ParameterSetField(ParameterSet)
+    max_voltage: ParameterSet = ParameterSetField(ParameterSet)
 
 
 @dataclass(frozen=True)
