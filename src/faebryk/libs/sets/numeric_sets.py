@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from bisect import bisect
 from collections.abc import Generator
 from typing import Any, TypeVar, override
 
 from faebryk.libs.sets.sets import BoolSet, P_Set
+from faebryk.libs.util import Serializable
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,7 @@ class Numeric_Set[T](P_Set[T]):
     pass
 
 
-class Numeric_Interval(Numeric_Set[NumericT]):
+class Numeric_Interval(Numeric_Set[NumericT], Serializable):
     """
     Numeric interval [min, max].
     """
@@ -224,6 +226,12 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     @override
     def any(self) -> NumericT:
         return self._min
+
+    def serialize(self) -> dict:
+        return {
+            "min": None if math.isinf(self._min) else self._min,
+            "max": None if math.isinf(self._max) else self._max,
+        }
 
 
 def Numeric_Singleton(value: NumericT) -> Numeric_Interval[NumericT]:

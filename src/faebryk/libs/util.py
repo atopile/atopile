@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import abc
 import asyncio
 import collections.abc
 import hashlib
@@ -24,6 +25,7 @@ from functools import wraps
 from genericpath import commonprefix
 from importlib.metadata import Distribution
 from itertools import chain, pairwise
+from json import JSONEncoder
 from pathlib import Path
 from textwrap import indent
 from types import ModuleType
@@ -52,6 +54,16 @@ from tortoise import Model
 from tortoise.queryset import QuerySet
 
 logger = logging.getLogger(__name__)
+
+
+class Serializable(abc.ABC):
+    @abstractmethod
+    def serialize(self) -> dict | list: ...
+
+
+class SerializableJSONEncoder(JSONEncoder):
+    def default(self, o: Serializable):
+        return o.serialize()
 
 
 class lazy:

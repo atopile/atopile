@@ -19,7 +19,13 @@ from faebryk.libs.units import (
     quantity,
     to_si_str,
 )
-from faebryk.libs.util import cast_assert, not_none, operator_type_check, round_str
+from faebryk.libs.util import (
+    Serializable,
+    cast_assert,
+    not_none,
+    operator_type_check,
+    round_str,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -327,7 +333,7 @@ class Quantity_Singleton(Quantity_Interval):
         return cls(value.min_elem())
 
 
-class Quantity_Interval_Disjoint(Quantity_Set):
+class Quantity_Interval_Disjoint(Quantity_Set, Serializable):
     """
     Quantity interval (min < max) with gaps. \n
     Represented by Set of multiple Quantity interval (without gaps).
@@ -637,6 +643,12 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     @override
     def any(self) -> Quantity:
         return self.min_elem()
+
+    def serialize(self) -> dict:
+        return {
+            "intervals": [r.serialize() for r in self._intervals.intervals],
+            "unit": str(self.units),
+        }
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

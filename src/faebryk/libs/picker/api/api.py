@@ -4,10 +4,10 @@
 import functools
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import requests
-from dataclasses_json import dataclass_json
+from dataclasses_json import config, dataclass_json
 
 from faebryk.core.module import Module
 
@@ -29,6 +29,7 @@ from faebryk.libs.util import (
     ConfigFlagString,
     KeyErrorAmbiguous,
     KeyErrorNotFound,
+    Serializable,
     closest_base_class,
     find,
 )
@@ -56,6 +57,11 @@ class ApiHTTPError(ApiError):
         status_code = self.response.status_code
         detail = self.response.json()["detail"]
         return f"{super().__str__()}: {status_code} {detail}"
+
+
+class ParameterSet(Quantity_Interval_Disjoint):
+    def __init__(self, parameter: Parameter, solver: Solver):
+        super().__init__(*solver.inspect_get_known_superranges(parameter))
 
 
 def api_filter_by_module_params_and_attach(
@@ -140,12 +146,16 @@ class PackageCandidate:
 
 @dataclass_json
 @dataclass(frozen=True)
-class BaseParams:
-    package_candidates: list[PackageCandidate]
+class BaseParams(Serializable):
+    footprint_candidates: list[FootprintCandidate]
     qty: int
 
-    def convert_to_dict(self) -> dict:
+    def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
+
+
+def ParameterSetField(cls):
+    return field(metadata=config(encoder=ParameterSet.serialize))
 
 
 @dataclass(frozen=True)
@@ -261,7 +271,7 @@ class ApiClient:
         ]
 
     def query_parts(self, method: str, params: BaseParams) -> list[Component]:
-        response = self._post(f"/v0/query/{method}", params.convert_to_dict())
+        response = self._post(f"/v0/query/{method}", params.serialize())
         return [
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]
