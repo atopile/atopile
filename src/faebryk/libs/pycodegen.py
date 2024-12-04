@@ -68,7 +68,7 @@ def sanitize_name(raw, expect_arithmetic: bool = False):
 
     to_escape = re.findall("[^a-zA-Z_0-9]", sanitized)
     if len(to_escape) > 0:
-        return None, to_escape
+        raise ValueError(f"Cannot sanitize name: {raw}")
 
     return sanitized
 
