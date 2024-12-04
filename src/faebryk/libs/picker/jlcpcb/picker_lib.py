@@ -361,7 +361,7 @@ def find_and_attach_by_mfr(module: Module, solver: Solver):
     for part in parts:
         try:
             # FIXME: check that params are compatible
-            part.attach(module, try_get_param_mapping(module), allow_TBD=True)
+            part.attach(module, try_get_param_mapping(module))
             if part.stock < qty:
                 logger.warning(
                     f"Part for {repr(module)} with {mfr=} {mfr_pn=} has insufficient stock",
