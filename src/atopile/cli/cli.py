@@ -84,7 +84,7 @@ def cli(
 
 
 app.command()(build.build)
-app.command()(create.create)
+app.add_typer(create.create_app, name="create")
 app.command()(install.install)
 app.command()(configure.configure)
 app.command()(inspect.inspect)

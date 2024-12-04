@@ -6,7 +6,6 @@ import sys
 import tempfile
 import textwrap
 import webbrowser
-from enum import Enum
 from pathlib import Path
 from typing import Annotated, Iterator
 
@@ -14,6 +13,7 @@ import caseconverter
 import click
 import git
 import jinja2
+import questionary
 import rich
 import ruamel.yaml
 import typer
@@ -29,7 +29,7 @@ log.setLevel(logging.INFO)
 
 PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 
-dev_app = typer.Typer()
+create_app = typer.Typer()
 
 
 def check_name(name: str) -> bool:
@@ -52,7 +52,7 @@ def _stuck_user_helper() -> Iterator[bool]:
     threshold = 5
     for i in itertools.count():
         if i >= threshold:
-            if rich.prompt.Confirm.ask("Are you trying to exit?"):
+            if questionary.confirm("Are you trying to exit?").ask():
                 rich.print("No worries! Try Ctrl+C next time!")
                 exit(0)
             threshold += 5
@@ -71,36 +71,21 @@ def _in_git_repo(path: Path) -> bool:
     return True
 
 
-class ProjectType(str, Enum):
-    project = "project"
-    build = "build"
-
-
-@dev_app.command()
-def create(
+@create_app.command()
+def project(
     name: Annotated[str | None, typer.Argument()] = None,
     repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
-    project_type: Annotated[ProjectType | None, typer.Option("--type", "-t")] = None,
 ):  # pylint: disable=redefined-builtin
     """
-    Create a new ato project or build configuration.
+    Create a new ato project.
     """
-
-    project_type = rich.prompt.Prompt.ask(
-        "What do you want to create?", choices=list(ProjectType)
-    )
-
-    if project_type == ProjectType.build:
-        create_build()
-        return
 
     # Get a project name
     kebab_name = None
     for _ in stuck_user_helper_generator:
         if not name:
-            name = rich.prompt.Prompt.ask(
-                ":rocket: What's your project [cyan]name?[/]", default=kebab_name
-            )
+            rich.print(":rocket: What's your project [cyan]name?[/]")
+            name = questionary.text("").ask()
 
         if name is None:
             continue
@@ -115,9 +100,8 @@ def create(
                 """
             )
 
-            if rich.prompt.Confirm.ask(
-                f"Do you want to use [cyan]{kebab_name}[/] instead?", default=True
-            ):
+            rich.print(f"Do you want to use [cyan]{kebab_name}[/] instead?")
+            if questionary.confirm("").ask():
                 name = kebab_name
 
         if check_name(name):
@@ -129,8 +113,11 @@ def create(
             )
             name = None
 
-    if not repo and not rich.prompt.Confirm.ask(
-        "Would you like to create a new repo for this project?"
+    if (
+        not repo
+        and not questionary.confirm(
+            "Would you like to create a new repo for this project?"
+        ).ask()
     ):
         repo = PROJECT_TEMPLATE
 
@@ -154,17 +141,19 @@ def create(
                 {make_repo_url}
                 """
             )
-            if rich.prompt.Confirm.ask(
-                ":rocket: Open browser to create Github repo?", default=True
-            ):
+
+            rich.print(":rocket: Open browser to create Github repo?")
+            if questionary.confirm("").ask():
                 webbrowser.open(make_repo_url)
 
-            repo = rich.prompt.Prompt.ask(":rocket: What's the [cyan]repo's URL?[/]")
+            rich.print(":rocket: What's the [cyan]repo's URL?[/]")
+            repo = questionary.text("").ask()
 
         # Try download the repo from the user-provided URL
         if Path(name).exists():
             raise click.ClickException(
-                f"Directory {name} already exists. Please put the repo elsewhere or choose a different name."  # noqa: E501  # pre-existing
+                f"Directory {name} already exists. Please put the repo elsewhere or"
+                " choose a different name."
             )
 
         try:
@@ -224,13 +213,18 @@ def create(
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
 
 
-def create_build():
+@create_app.command()
+def build(
+    name: Annotated[str | None, typer.Argument()] = None,
+):
     """
     Create a new build configuration.
     - adds entry to ato.yaml
     - creates a new directory in layout
     """
-    build_name = caseconverter.kebabcase(rich.prompt.Prompt.ask("Enter the build name"))
+    if not name:
+        name = caseconverter.kebabcase(questionary.text("Enter the build name").ask())
+
     try:
         project_config = config.get_project_config_from_path(Path("."))
         project_context = config.ProjectContext.from_config(project_config)
@@ -244,11 +238,11 @@ def create_build():
 
     # Get user input for the entry file and module name
     rich.print("We will create a new ato file and add the entry to the ato.yaml")
-    entry = rich.prompt.Prompt.ask(
+    entry = questionary.text(
         "What would you like to call the entry file? (e.g., psuDebug)"
-    )
+    ).ask()
 
-    target_layout_path = layout_path / build_name
+    target_layout_path = layout_path / name
     with tempfile.TemporaryDirectory() as tmpdirname:
         try:
             git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname)
@@ -265,14 +259,15 @@ def create_build():
             target_layout_path.mkdir(parents=True, exist_ok=True)
             shutil.copytree(source_layout_path, target_layout_path, dirs_exist_ok=True)
             # Configure the files in the directory using the do_configure function
-            do_configure(build_name, str(target_layout_path), debug=False)
+            do_configure(name, str(target_layout_path), debug=False)
 
         # Add the build to the ato.yaml file
         ato_yaml_path = top_level_path / config.CONFIG_FILENAME
         # Check if ato.yaml exists
         if not ato_yaml_path.exists():
             print(
-                f"ato.yaml not found in {top_level_path}. Please ensure the file exists before proceeding."  # noqa: E501  # pre-existing
+                f"ato.yaml not found in {top_level_path}. Please ensure the file"
+                " exists before proceeding."
             )
         else:
             # Load the existing YAML configuration
@@ -286,7 +281,7 @@ def create_build():
             # Update the ato_config with the new build information
             if "builds" not in ato_config:
                 ato_config["builds"] = {}
-            ato_config["builds"][build_name] = {
+            ato_config["builds"][name] = {
                 "entry": f"elec/src/{entry_file}:{entry_module}"
             }
 
@@ -299,11 +294,12 @@ def create_build():
         ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
 
         rich.print(
-            f":sparkles: Successfully created a new build configuration for {build_name}! :sparkles:"  # noqa: E501  # pre-existing
+            f":sparkles: Successfully created a new build configuration for {name}!"
+            " :sparkles:"
         )
 
 
-@dev_app.command()
+@create_app.command(hidden=True)
 def configure(name: str, repo_path: str):
     """Command useful in developing templates."""
     do_configure(name, repo_path, debug=True)
@@ -351,5 +347,29 @@ def do_configure(name: str, _repo_path: str, debug: bool):
             template_path.unlink()
 
 
+@create_app.command()
+def component():
+    """Create a new component."""
+    pass
+
+
+@create_app.callback(invoke_without_command=True)
+def main(ctx: typer.Context):
+    """"""
+    if ctx.resilient_parsing:
+        return
+
+    if not ctx.invoked_subcommand:
+        command_name = questionary.select(
+            "What would you like to create?",
+            choices=[n for n, c in ctx.command.commands.items() if not c.hidden],
+        ).ask()
+
+        assert command_name in ctx.command.commands
+
+        # Run the command
+        ctx.invoke(ctx.command.commands[command_name].callback)
+
+
 if __name__ == "__main__":
-    dev_app()  # pylint: disable=no-value-for-parameter
+    create_app()  # pylint: disable=no-value-for-parameter
