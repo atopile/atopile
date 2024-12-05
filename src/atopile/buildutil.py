@@ -22,6 +22,7 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
+from faebryk.library import _F as F
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.designators import (
     attach_designators,
@@ -105,10 +106,9 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
 
-    # TODO: handle PCB transformations
-    # logger.info("Transform PCB")
-    # if transform:
-    #     transform(transformer)
+    if transform_trait := app.try_get_trait(F.has_layout_transform):
+        logger.info("Transforming PCB")
+        transform_trait.transform(transformer)
 
     # set layout
     apply_layouts(app)

@@ -44,6 +44,7 @@ from faebryk.library.has_simple_value_representation import has_simple_value_rep
 from faebryk.library.has_capacitance import has_capacitance
 from faebryk.library.has_footprint_requirement import has_footprint_requirement
 from faebryk.library.has_kicad_ref import has_kicad_ref
+from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.has_picker import has_picker
 from faebryk.library.has_pcb_layout import has_pcb_layout
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
