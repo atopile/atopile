@@ -169,6 +169,8 @@ cython_debug/
 
 # ide
 .vscode/
+!.vscode/*.shared.json
+!.vscode/extensions.json
 .aider*
 
 # generic outputs
