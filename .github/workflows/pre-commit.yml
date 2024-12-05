@@ -14,11 +14,4 @@ jobs:
       with:
         python-version-file: 'pyproject.toml'
 
-    - name: Install pre-commit
-      run: pip install pre-commit
-
-    - name: Run pre-commit
-      run: pre-commit run --all-files
-
-    - name: Fail on diff after pre-commit is run
-      run: git diff --exit-code
+    - uses: pre-commit/action@v3.0.1
