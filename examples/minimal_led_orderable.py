@@ -21,7 +21,7 @@ from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.manufacturing import export_pcba_artifacts
 from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.buildutil import BUILD_DIR, PCB_FILE, apply_design_to_pcb
+from faebryk.libs.examples.buildutil import BUILD_DIR, apply_design_to_pcb, build_paths
 from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 from faebryk.libs.logging import setup_basic_logging
@@ -151,8 +151,8 @@ def main():
 
     logger.info("Export")
     apply_design_to_pcb(app, transform_pcb)
-    export_pcba_artifacts(ARTIFACTS, PCB_FILE, app)
-    export_svg(PCB_FILE, ARTIFACTS / Path("pcba.svg"))
+    export_pcba_artifacts(ARTIFACTS, build_paths.layout, app)
+    export_svg(build_paths.layout, ARTIFACTS / Path("pcba.svg"))
     export_datasheets(app, BUILD_DIR / "documentation" / "datasheets")
 
 
