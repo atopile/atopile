@@ -5,11 +5,7 @@ on:
   pull_request:
   push:
     branches:
-     - main
-    tags:
-      - 'v*'
-    paths:
-      - '.github/workflows/cd.yml'
+      - main
 
 jobs:
   python-build:
@@ -101,7 +97,7 @@ jobs:
         with:
           images: |
             ghcr.io/atopile/${{ matrix.image }}
-          # TODO: re-enable @latest tag once main is stable again
+          # TODO: re-enable @latest tag once main is stable again (@v0.3)
           flavor: |
             latest=false
           tags: |

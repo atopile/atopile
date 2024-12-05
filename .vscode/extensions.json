@@ -1,5 +1,11 @@
 {
   // See http://go.microsoft.com/fwlink/?LinkId=827846
   // for the documentation about the extensions.json format
-  "recommendations": ["dbaeumer.vscode-eslint", "amodio.tsl-problem-matcher", "esbenp.prettier-vscode", "ms-python.python"]
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "github.vscode-github-actions",
+    "swellaby.workspace-config-plus", // For workspace settings sharing. Otherwise, you can copy the settings.shared.json file.
+    "atopile.atopile",
+  ]
 }

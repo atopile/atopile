@@ -2,14 +2,13 @@
 
 name: Wheels
 
+
 on:
   workflow_dispatch:
   pull_request:
   push:
     branches:
      - main
-    paths:
-      - '.github/workflows/wheels.yml'
   release:
     types:
   #    - created
