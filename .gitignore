@@ -189,3 +189,7 @@ _local
 # ANTLR generated files
 .antlr/
 **/.antlr/
+
+
+# Stray atopile artifacts
+projectless/

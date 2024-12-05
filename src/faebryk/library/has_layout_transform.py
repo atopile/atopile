@@ -18,4 +18,5 @@ class has_layout_transform(L.Module.TraitT.decless()):
     """
 
     def __init__(self, transform: Callable[["PCB_Transformer"], None]):
+        super().__init__()
         self.transform = transform

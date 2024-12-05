@@ -14,15 +14,12 @@ Netlist samples can be run directly.
 
 import logging
 
-import typer
-
 import faebryk.library._F as F
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.buildutil import apply_design_to_pcb
+from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
-from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -57,105 +54,95 @@ class XOR_with_NANDS(F.LogicGates.XOR):
         Q.connect(q3)
 
 
-def App():
-    # levels
-    on = F.Logic()
-    off = F.Logic()
+class App(Module):
+    def __preinit__(self) -> None:
+        super().__preinit__()
 
-    # power
-    power_source = PowerSource()
+        # levels
+        on = F.Logic()
+        off = F.Logic()
 
-    # alias
-    power = power_source.power
+        # power
+        power_source = PowerSource()
 
-    # logic
-    logic_in = F.Logic()
-    logic_out = F.Logic()
+        # alias
+        power = power_source.power
 
-    xor = F.LogicGates.XOR(F.Constant(2))
-    logic_out.connect(xor.get_trait(F.LogicOps.can_logic_xor).xor(logic_in, on))
+        # logic
+        logic_in = F.Logic()
+        logic_out = F.Logic()
 
-    # led
-    led = F.LEDIndicator()
-    led.power_in.connect(power)
+        xor = F.LogicGates.XOR(F.Constant(2))
+        logic_out.connect(xor.get_trait(F.LogicOps.can_logic_xor).xor(logic_in, on))
 
-    # application
-    switch = F.Switch(F.Logic)()
+        # led
+        led = F.LEDIndicator()
+        led.power_in.connect(power)
 
-    logic_in.connect_via(switch, on)
+        # application
+        switch = F.Switch(F.Logic)()
 
-    # bring logic signals into electrical domain
-    e_in = logic_in.specialize(F.ElectricLogic())
-    e_out = logic_out.specialize(F.ElectricLogic())
-    e_on = on.specialize(F.ElectricLogic())
-    e_off = off.specialize(F.ElectricLogic())
-    e_in.reference.connect(power)
-    e_out.reference.connect(power)
-    e_on.reference.connect(power)
-    e_off.reference.connect(power)
-    e_in.set_weak(on=False)
-    e_on.set(on=True)
-    e_off.set(on=False)
+        logic_in.connect_via(switch, on)
 
-    e_out.connect(led.logic_in)
+        # bring logic signals into electrical domain
+        e_in = logic_in.specialize(F.ElectricLogic())
+        e_out = logic_out.specialize(F.ElectricLogic())
+        e_on = on.specialize(F.ElectricLogic())
+        e_off = off.specialize(F.ElectricLogic())
+        e_in.reference.connect(power)
+        e_out.reference.connect(power)
+        e_on.reference.connect(power)
+        e_off.reference.connect(power)
+        e_in.set_weak(on=False)
+        e_on.set(on=True)
+        e_off.set(on=False)
 
-    nxor = xor.specialize(XOR_with_NANDS())
-    battery = power_source.specialize(F.Battery())
+        e_out.connect(led.logic_in)
 
-    el_switch = switch.specialize(F.Switch(F.ElectricLogic)())
-    e_switch = F.Switch(F.Electrical)()
-    e_switch = el_switch.specialize(
-        e_switch,
-        matrix=[(e, el.signal) for e, el in zip(e_switch.unnamed, el_switch.unnamed)],
-    )
+        nxor = xor.specialize(XOR_with_NANDS())
+        battery = power_source.specialize(F.Battery())
 
-    # build graph
-    app = Module()
-    for c in [
-        led,
-        switch,
-        battery,
-        e_switch,
-    ]:
-        app.add(c)
+        el_switch = switch.specialize(F.Switch(F.ElectricLogic)())
+        e_switch = F.Switch(F.Electrical)()
+        e_switch = el_switch.specialize(
+            e_switch,
+            matrix=[
+                (e, el.signal) for e, el in zip(e_switch.unnamed, el_switch.unnamed)
+            ],
+        )
 
-    # parametrizing
-    for _, t in GraphFunctions(app.get_graph()).nodes_with_trait(
-        F.ElectricLogic.has_pulls
-    ):
-        for pull_resistor in (r for r in t.get_pulls() if r):
-            pull_resistor.resistance.merge(F.Range.from_center_rel(100 * P.kohm, 0.05))
-    power_source.power.voltage.merge(3 * P.V)
-    led.led.led.brightness.merge(
-        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
-    )
+        # build graph
+        for c in [
+            led,
+            switch,
+            battery,
+            e_switch,
+        ]:
+            self.add(c)
 
-    # packages single nands as explicit IC
-    nand_ic = F.TI_CD4011BE()
-    for ic_nand, xor_nand in zip(nand_ic.gates, nxor.nands):
-        xor_nand.specialize(ic_nand)
+        # parametrizing
+        for _, t in GraphFunctions(self.get_graph()).nodes_with_trait(
+            F.ElectricLogic.has_pulls
+        ):
+            for pull_resistor in (r for r in t.get_pulls() if r):
+                pull_resistor.resistance.merge(
+                    F.Range.from_center_rel(100 * P.kohm, 0.05)
+                )
+        power_source.power.voltage.merge(3 * P.V)
+        led.led.led.brightness.merge(
+            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+        )
 
-    # connect power to IC
-    nand_ic.power.connect(power_source.power)
+        # packages single nands as explicit IC
+        nand_ic = F.TI_CD4011BE()
+        for ic_nand, xor_nand in zip(nand_ic.gates, nxor.nands):
+            xor_nand.specialize(ic_nand)
 
-    app.add(nand_ic)
+        # connect power to IC
+        nand_ic.power.connect(power_source.power)
 
-    return app
+        self.add(nand_ic)
 
-
-# Boilerplate -----------------------------------------------------------------
-
-
-def main():
-    logger.info("Building app")
-    app = App()
-
-    logger.info("Export")
-    apply_design_to_pcb(app)
-
-
-if __name__ == "__main__":
-    setup_basic_logging()
-    logger.info("Running example")
-
-    typer.run(main)
+    def __postinit__(self) -> None:
+        for m in self.get_children_modules(types=Module):
+            add_example_pickers(m)
