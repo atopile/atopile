@@ -121,6 +121,22 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
                 )
 
 
+def configure_project_context(entry: str | None) -> atopile.config.ProjectContext:
+    entry, entry_arg_file_path = get_entry_arg_file_path(entry)
+    project_config = get_project_config(entry_arg_file_path)
+
+    # Make sure I an all my sub-configs have appropriate versions
+    check_compiler_versions(project_config)
+
+    log.info("Using project %s", project_config.location)
+
+    # Configure project context
+    project_ctx = atopile.config.ProjectContext.from_config(project_config)
+    atopile.config.set_project_context(project_ctx)
+
+    return project_ctx
+
+
 def create_build_contexts(
     entry: str | None,
     build: Iterable[str],
@@ -143,8 +159,8 @@ def create_build_contexts(
             "If this is a blocker for you, please raise an issue. "
             "In the meantime, you can use the `ato.yaml` file to set these options."
         )
-    else:
-        config: atopile.config.ProjectConfig = project_config
+
+    config: atopile.config.ProjectConfig = project_config
 
     # if we set an entry-point, we now need to deal with that
     entry_addr_override = check_entry_arg_file_path(entry, entry_arg_file_path)

@@ -1,3 +1,4 @@
+from enum import StrEnum, auto
 import itertools
 import logging
 import re
@@ -7,7 +8,7 @@ import tempfile
 import textwrap
 import webbrowser
 from pathlib import Path
-from typing import Annotated, Iterator
+from typing import Annotated, Iterator, cast
 
 import caseconverter
 import click
@@ -19,8 +20,10 @@ import ruamel.yaml
 import typer
 
 from atopile import config, errors
+from atopile.cli.common import configure_project_context
 from atopile.cli.install import do_install
 from atopile.utils import robustly_rm_dir
+from faebryk.libs.exceptions import downgrade
 
 # Set up logging
 log = logging.getLogger(__name__)
@@ -190,9 +193,11 @@ def project(
         try:
             robustly_rm_dir(repo_obj.git_dir)
         except (PermissionError, OSError) as ex:
-            errors.UserException(f"Failed to remove .git directory: {repr(ex)}").log(
-                log, logging.WARNING
-            )
+            with downgrade():
+                raise errors.UserException(
+                    f"Failed to remove .git directory: {repr(ex)}"
+                ) from ex
+
         if not _in_git_repo(Path(repo_obj.working_dir).parent):
             # If we've created this project OUTSIDE an existing git repo
             # then re-init the repo so it has a clean history
@@ -347,10 +352,73 @@ def do_configure(name: str, _repo_path: str, debug: bool):
             template_path.unlink()
 
 
+class ComponentType(StrEnum):
+    ato = auto()
+    fab = auto()
+
+
 @create_app.command()
-def component():
+def component(
+    lcsc: Annotated[str | None, typer.Option("--lcsc", "-l")] = None,
+    mfr: Annotated[str | None, typer.Option("--mfr", "-m")] = None,
+    mfr_pn: Annotated[str | None, typer.Option("--mfr-pn", "-p")] = None,
+    type_: Annotated[ComponentType | None, typer.Option("--type", "-t")] = None,
+):
     """Create a new component."""
-    pass
+    from natsort import natsorted
+
+    from faebryk.libs.picker.api.picker_lib import (
+        find_component_by_lcsc_id,
+        find_component_by_mfr,
+    )
+
+    from faebryk.libs.picker.lcsc import download_easyeda_info
+    from faebryk.libs.pycodegen import (
+        fix_indent,
+        format_and_write,
+        gen_block,
+        gen_repeated_block,
+        sanitize_name,
+    )
+    import faebryk.libs.picker.lcsc as lcsc_
+    from faebryk.tools.libadd import Template, find_part
+
+    project_ctx = configure_project_context(None)
+
+    # TODO: make lcsc build context aware
+    # TODO: get these paths from the build context
+    lcsc_.BUILD_FOLDER = project_ctx.project_path / "build"
+    lcsc_.LIB_FOLDER = lcsc_.LIB_FOLDER / "kicad" / "libs"
+    lcsc_.MODEL_PATH = None
+
+    if lcsc:
+        try:
+            part = find_component_by_lcsc_id(name)
+        except ValueError as e:
+            raise errors.UserException(f"Invalid LCSC part number {name}") from e
+        traits.append(
+            "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
+            f"({{'LCSC': '{name}'}})"
+        )
+
+    elif mfr:
+        if "," in name:
+            mfr_, mfr_pn = name.split(",", maxsplit=1)
+        else:
+            mfr_, mfr_pn = "", name
+        try:
+            part = find_component_by_mfr(mfr_, mfr_pn)
+        except KeyErrorAmbiguous as e:
+            # try find exact match
+            try:
+                part = find(e.duplicates, lambda x: x.mfr == mfr_pn)
+            except KeyErrorNotFound:
+                print(
+                    f"Error: Ambiguous mfr_pn({mfr_pn}):"
+                    f" {[(x.mfr_name, x.mfr) for x in e.duplicates]}"
+                )
+                print("Tip: Specify the full mfr_pn of your choice")
+                sys.exit(1)
 
 
 @create_app.callback(invoke_without_command=True)
@@ -360,15 +428,16 @@ def main(ctx: typer.Context):
         return
 
     if not ctx.invoked_subcommand:
+        commands = cast(dict, ctx.command.commands)  # type: ignore  # commands is an attribute of the context
         command_name = questionary.select(
             "What would you like to create?",
-            choices=[n for n, c in ctx.command.commands.items() if not c.hidden],
+            choices=[n for n, c in commands.items() if not c.hidden],
         ).ask()
 
-        assert command_name in ctx.command.commands
+        assert command_name in commands
 
         # Run the command
-        ctx.invoke(ctx.command.commands[command_name].callback)
+        ctx.invoke(commands[command_name].callback)
 
 
 if __name__ == "__main__":

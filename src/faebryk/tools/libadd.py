@@ -11,6 +11,7 @@ from textwrap import dedent
 import typer
 from natsort import natsorted
 
+from atopile.errors import UserException
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.picker.api.api import Component
 from faebryk.libs.picker.api.picker_lib import (
@@ -107,8 +108,6 @@ def module(
         base="Module" if not interface else "ModuleInterface",
     )
 
-    part: Component | None = None
-
     if mfr and lcsc:
         raise ValueError("Cannot use both mfr and lcsc")
 
@@ -121,7 +120,7 @@ def module(
         lcsc_.MODEL_PATH = None
 
     if lcsc:
-        part = find_component_by_lcsc_id(template.name)
+        template.add_part(find_part(lcsc_id=template.name, mfr=None, mfr_pn=None))
         template.traits.append(
             "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
             f"({{'LCSC': '{template.name}'}})"
@@ -132,26 +131,64 @@ def module(
             mfr_, mfr_pn = template.name.split(",", maxsplit=1)
         else:
             mfr_, mfr_pn = "", template.name
+
         try:
-            part = find_component_by_mfr(mfr_, mfr_pn)
+            template.add_part(find_part(lcsc_id=None, mfr=mfr_, mfr_pn=mfr_pn))
+        except KeyErrorAmbiguous as e:
+            print(
+                f"Error: Ambiguous mfr_pn({mfr_pn}):"
+                f" {[(x.mfr_name, x.mfr) for x in e.duplicates]}"
+            )
+            print("Tip: Specify the full mfr_pn of your choice")
+            sys.exit(1)
+
+        except KeyErrorNotFound:
+            print(f"Error: Could not find {mfr_pn}")
+            sys.exit(1)
+
+    out = template.dumps()
+
+    write(ctx, out, filename=template.name)
+
+
+# TODO: there should be something analogous in common use.
+# Use that instead of re-implementing it here.
+class NoPartFound(UserException):
+    pass
+
+
+class AmbiguousParts(UserException):
+    def __init__(self, duplicates: list[Component]):
+        self.duplicates = duplicates
+
+
+def find_part(lcsc_id: str | None, mfr: str | None, mfr_pn: str | None) -> Component:
+    """
+    Find a part by LCSC ID or Manufacturer Part Number (+ optionally manufacturer).
+
+    Returns a Component object.
+
+    Raises KeyErrorAmbiguous if multiple parts match the query.
+    Raises NoPartFound if no part matches the query.
+    Raises ValueError if no valid query was given.
+    """
+    if lcsc_id:
+        part = find_component_by_lcsc_id(lcsc_id)
+
+    elif mfr_pn:
+        try:
+            part = find_component_by_mfr(mfr or "", mfr_pn)
         except KeyErrorAmbiguous as e:
             # try find exact match
             try:
                 part = find(e.duplicates, lambda x: x.mfr == mfr_pn)
             except KeyErrorNotFound:
-                print(
-                    f"Error: Ambiguous mfr_pn({mfr_pn}):"
-                    f" {[(x.mfr_name, x.mfr) for x in e.duplicates]}"
-                )
-                print("Tip: Specify the full mfr_pn of your choice")
-                sys.exit(1)
+                raise AmbiguousParts(e.duplicates) from e
 
-    if part:
-        template.add_part(part)
+    else:
+        raise ValueError("Need either mfr_pn or lcsc_id")
 
-    out = template.dumps()
-
-    write(ctx, out, filename=template.name)
+    return part
 
 
 @dataclass
