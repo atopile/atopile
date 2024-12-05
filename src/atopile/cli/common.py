@@ -91,11 +91,12 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
     Check that the compiler version is compatible with the version
     used to build the project.
     """
+    assert config.location is not None
     dependency_cfgs = (
         faebryk.libs.exceptions.downgrade(FileNotFoundError)(
             atopile.config.get_project_config_from_path
         )(p)
-        for p in Path(config.location or ".").glob("*")
+        for p in config.location.glob(".ato/modules/**/ato.yaml")
     )
 
     for cltr, cfg in faebryk.libs.exceptions.iter_through_errors(
@@ -126,9 +127,37 @@ def create_build_contexts(
     build: Iterable[str],
     target: Iterable[str],
     option: Iterable[str],
+    no_project: bool,
 ) -> list[atopile.config.BuildContext]:
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
-    project_config = get_project_config(entry_arg_file_path)
+
+    if no_project:
+        if not entry:
+            raise errors.UserBadParameterError(
+                "You must specify an entry to build with the --no-project option"
+            )
+        if not entry_arg_file_path.exists():
+            raise errors.UserBadParameterError(
+                f"The file you have specified does not exist: {entry_arg_file_path}"
+            )
+        if not entry_arg_file_path.is_file():
+            raise errors.UserBadParameterError(
+                "The path you're building with the --no-project"
+                f" option must be a file {entry_arg_file_path}"
+            )
+        if not address.get_entry_section(entry):
+            raise errors.UserBadParameterError(
+                "You must specify what to build within a file to build with the"
+                " --no-project option"
+            )
+
+        project_config = atopile.config.ProjectConfig(
+            location=Path.cwd(),
+            ato_version=f"^{version.get_installed_atopile_version()}",
+            paths=atopile.config.ProjectPaths(layout=Path.cwd() / "projectless"),
+        )
+    else:
+        project_config = get_project_config(entry_arg_file_path)
 
     # Make sure I an all my sub-configs have appropriate versions
     check_compiler_versions(project_config)

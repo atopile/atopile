@@ -30,13 +30,14 @@ def build(
     option: Annotated[
         list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
     ] = [],
+    no_project: Annotated[bool, typer.Option("--no-project")] = False,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
     Optionally specify a different entrypoint with the argument ENTRY.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
-    build_ctxs = create_build_contexts(entry, build, target, option)
+    build_ctxs = create_build_contexts(entry, build, target, option, no_project)
 
     with ExceptionAccumulator() as accumulator:
         for build_ctx in build_ctxs:

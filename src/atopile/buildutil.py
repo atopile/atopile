@@ -41,7 +41,9 @@ from faebryk.libs.exceptions import (
     downgrade,
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
+from faebryk.libs.picker.api.api import ApiNotConfiguredError
 from faebryk.libs.picker.api.pickers import add_api_pickers
+from faebryk.libs.picker.common import DB_PICKER_BACKEND, CachePicker, PickerType
 from faebryk.libs.picker.picker import pick_part_recursively
 
 logger = logging.getLogger(__name__)
@@ -51,32 +53,49 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     """Build the project."""
 
     G = app.get_graph()
+    build_ctx.ensure_paths()
+    build_paths = build_ctx.paths
 
     # TODO: consider making each of these a configurable target
     logger.info("Filling unspecified parameters")
     replace_tbd_with_any(app, recursive=True)
 
-    logger.info("Picking parts")
-    modules = {
-        n.get_most_special() for n in app.get_children(direct_only=False, types=Module)
-    }
-    for n in modules:
-        # TODO: make configurable
-        add_api_pickers(n, base_prio=10)
-    pick_part_recursively(app)
+    resolve_dynamic_parameters(G)
 
     logger.info("Running checks")
     run_checks(app, G)
 
-    build_ctx.ensure_paths()
+    # Pickers ------------------------------------------------------------------
+    logger.info("Picking parts")
+    modules = app.get_children_modules(types=Module)
+    CachePicker.add_to_modules(modules, prio=-20)
 
-    logger.info("Make netlist & pcb")
-    build_paths = build_ctx.paths
-    resolve_dynamic_parameters(G)
+    match DB_PICKER_BACKEND:
+        # Default pickers and expected on-going
+        case PickerType.API:
+            try:
+                for n in modules:
+                    add_api_pickers(n)
+            except ApiNotConfiguredError:
+                logger.warning("API not configured. Skipping API pickers.")
 
-    logger.info(f"Writing netlist to {build_paths.netlist}")
+        # Included here for use on the examples
+        case PickerType.SQLITE:
+            from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
+            from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
+
+            try:
+                JLCPCB_DB()
+                for n in modules:
+                    add_jlcpcb_pickers(n, base_prio=-10)
+            except FileNotFoundError:
+                logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
+
+    pick_part_recursively(app)
 
     # Write Netlist ------------------------------------------------------------
+    logger.info(f"Writing netlist to {build_paths.netlist}")
+
     netlist_path = build_paths.netlist
 
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
@@ -97,11 +116,12 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     netlist_path.parent.mkdir(parents=True, exist_ok=True)
     netlist_path.write_text(netlist, encoding="utf-8")
 
-    # --------------------------------------------------------------------------
+    # Update PCB --------------------------------------------------------------
+    logger.info("Updating PCB")
+
     consolidate_footprints(build_ctx)
     apply_netlist(build_paths, False)
 
-    logger.info("Load PCB")
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
 
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
@@ -117,6 +137,9 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     logger.info(f"Writing pcbfile {build_paths.layout}")
     pcb.dumps(build_paths.layout)
+
+    # Build targets -----------------------------------------------------------
+    logger.info("Building targets")
 
     # Figure out what targets to build
     if build_ctx.targets == ["__default__"]:
