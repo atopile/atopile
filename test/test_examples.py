@@ -16,9 +16,7 @@ EXAMPLES_DIR = repo_root / "examples"
 XFAIL = [
     "iterative_design_nand",
     "mcu",
-    "minimal_led_orderable",
     "signal_processing",
-    "pcb_layout",
 ]
 
 

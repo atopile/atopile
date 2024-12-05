@@ -155,6 +155,7 @@ def create_build_contexts(
             location=Path.cwd(),
             ato_version=f"^{version.get_installed_atopile_version()}",
             paths=atopile.config.ProjectPaths(layout=Path.cwd() / "projectless"),
+            builds={"default": atopile.config.ProjectBuildConfig(targets=[])},
         )
     else:
         project_config = get_project_config(entry_arg_file_path)
