@@ -47,7 +47,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
         rich.print(
             "\n\nUnfortunately errors ^^^ stopped the build. "
-            "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"
+            "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"  # noqa: E501  # pre-existing
         )
         sys.exit(1)
 

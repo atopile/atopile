@@ -83,7 +83,7 @@ def find_and_attach_by_lcsc_id(module: Module):
 
     if part.stock < qty:
         logger.warning(
-            f"Part for {repr(module)} with LCSC part number {lcsc_pn} has insufficient stock",
+            f"Part for {repr(module)} with LCSC part number {lcsc_pn} has insufficient stock",  # noqa: E501  # pre-existing
         )
 
     part.attach(module, [])
@@ -137,7 +137,7 @@ def find_and_attach_by_mfr(module: Module):
             part.attach(module, [])
             if part.stock < qty:
                 logger.warning(
-                    f"Part for {repr(module)} with {mfr=} {mfr_pn=} has insufficient stock",
+                    f"Part for {repr(module)} with {mfr=} {mfr_pn=} has insufficient stock",  # noqa: E501  # pre-existing
                 )
 
             return

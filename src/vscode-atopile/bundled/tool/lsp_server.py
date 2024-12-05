@@ -359,7 +359,7 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
         pass
     else:
         # TODO: deal with assignments made to super
-        output_str += f"**class**: {str(atopile.address.get_name(instance.supers[0].address))}\n\n"
+        output_str += f"**class**: {str(atopile.address.get_name(instance.supers[0].address))}\n\n"  # noqa: E501  # pre-existing
         for key, assignment in instance.assignments.items():
             output_str += "**" + key + "**: "
             if assignment[0] is None:
@@ -369,7 +369,7 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
 
     # check if it is an assignment
     # FIXME: this is broken, because ClassLayers no longer have assignments attached
-    # class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None)
+    # class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None) # noqa: E501  # pre-existing
     # if class_assignments:
     #     output_str = str(class_assignments.value)
 
@@ -447,7 +447,7 @@ def goto_definition(
 @publish_errors_decorator
 def did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """LSP handler for textDocument/didOpen request."""
-    # Currently this just handles new lines so the LSP can still give good completions outside modules
+    # Currently this just handles new lines so the LSP can still give good completions outside modules # noqa: E501  # pre-existing
     for event in params.content_changes:
         # Check if the change is a new line
         if newlines := event.text.count("\n"):
@@ -520,10 +520,10 @@ def initialize(params: lsp.InitializeParams) -> None:
     settings = params.initialization_options["settings"]
     _update_workspace_settings(settings)
     log_to_output(
-        f"Settings used to run Server:\r\n{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"
+        f"Settings used to run Server:\r\n{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
     )
     log_to_output(
-        f"Global settings:\r\n{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
+        f"Global settings:\r\n{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
     )
 
 
@@ -666,16 +666,16 @@ def _run_tool_on_document(
     argv += TOOL_ARGS + settings["args"] + extra_args
 
     if use_stdin:
-        # TODO: update these to pass the appropriate arguments to provide document contents
+        # TODO: update these to pass the appropriate arguments to provide document contents # noqa: E501  # pre-existing
         # to tool via stdin.
         # For example, for pylint args for stdin looks like this:
         #     pylint --from-stdin <path>
-        # Here `--from-stdin` path is used by pylint to make decisions on the file contents
+        # Here `--from-stdin` path is used by pylint to make decisions on the file contents # noqa: E501  # pre-existing
         # that are being processed. Like, applying exclusion rules.
         # It should look like this when you pass it:
         #     argv += ["--from-stdin", document.path]
-        # Read up on how your tool handles contents via stdin. If stdin is not supported use
-        # set use_stdin to False, or provide path, what ever is appropriate for your tool.
+        # Read up on how your tool handles contents via stdin. If stdin is not supported use # noqa: E501  # pre-existing
+        # set use_stdin to False, or provide path, what ever is appropriate for your tool. # noqa: E501  # pre-existing
         argv += []
     else:
         argv += [document.path]
@@ -713,7 +713,7 @@ def _run_tool_on_document(
         elif result.stderr:
             log_to_output(result.stderr)
     else:
-        # In this mode the tool is run as a module in the same process as the language server.
+        # In this mode the tool is run as a module in the same process as the language server. # noqa: E501  # pre-existing
         log_to_output(" ".join([sys.executable, "-m"] + argv))
         log_to_output(f"CWD Linter: {cwd}")
         # This is needed to preserve sys.path, in cases where the tool modifies
@@ -721,11 +721,11 @@ def _run_tool_on_document(
 
         # with utils.substitute_attr(sys, "path", sys.path[:]):
         #     try:
-        #         # TODO: `utils.run_module` is equivalent to running `python -m atopile`.
-        #         # If your tool supports a programmatic API then replace the function below
-        #         # with code for your tool. You can also use `utils.run_api` helper, which
+        #         # TODO: `utils.run_module` is equivalent to running `python -m atopile`. # noqa: E501  # pre-existing
+        #         # If your tool supports a programmatic API then replace the function below # noqa: E501  # pre-existing
+        #         # with code for your tool. You can also use `utils.run_api` helper, which # noqa: E501  # pre-existing
         #         # handles changing working directories, managing io streams, etc.
-        #         # Also update `_run_tool` function and `utils.run_module` in `lsp_runner.py`.
+        #         # Also update `_run_tool` function and `utils.run_module` in `lsp_runner.py`. # noqa: E501  # pre-existing
         #         result = utils.run_module(
         #             module=TOOL_MODULE,
         #             argv=argv,
@@ -798,7 +798,7 @@ def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
         elif result.stderr:
             log_to_output(result.stderr)
     else:
-        # In this mode the tool is run as a module in the same process as the language server.
+        # In this mode the tool is run as a module in the same process as the language server. # noqa: E501  # pre-existing
         log_to_output(" ".join([sys.executable, "-m"] + argv))
         log_to_output(f"CWD Linter: {cwd}")
         # This is needed to preserve sys.path, in cases where the tool modifies
@@ -806,10 +806,10 @@ def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
         with utils.substitute_attr(sys, "path", sys.path[:]):
             try:
                 # TODO: `utils.run_module` is equivalent to running `python -m atopile`.
-                # If your tool supports a programmatic API then replace the function below
-                # with code for your tool. You can also use `utils.run_api` helper, which
+                # If your tool supports a programmatic API then replace the function below # noqa: E501  # pre-existing
+                # with code for your tool. You can also use `utils.run_api` helper, which # noqa: E501  # pre-existing
                 # handles changing working directories, managing io streams, etc.
-                # Also update `_run_tool_on_document` function and `utils.run_module` in `lsp_runner.py`.
+                # Also update `_run_tool_on_document` function and `utils.run_module` in `lsp_runner.py`. # noqa: E501  # pre-existing
                 result = utils.run_module(
                     module=TOOL_MODULE, argv=argv, use_stdin=True, cwd=cwd
                 )

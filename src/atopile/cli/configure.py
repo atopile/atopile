@@ -58,7 +58,7 @@ def configure() -> None:
 
 
 def do_configure_if_needed() -> None:
-    """Configure the user's system for atopile development if it's not already configured."""
+    """Configure the user's system for atopile development if it's not already configured."""  # noqa: E501  # pre-existing
     if not CONFIGURED_FOR_PATH.exists():
         rich.print(
             dedent(

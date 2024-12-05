@@ -22,7 +22,7 @@ class is_decoupled(L.Trait.decless()):
     def get_capacitor(self) -> F.Capacitor:
         if len(self._capacitors) != 1:
             raise ValueError(
-                "get_capacitor supports only one decoupling capacitor. Use capacitors instead."
+                "get_capacitor supports only one decoupling capacitor. Use capacitors instead."  # noqa: E501  # pre-existing
             )
         return first(self._capacitors)
 

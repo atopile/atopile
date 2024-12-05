@@ -207,7 +207,7 @@ def module(
             interface_names_by_pin_num.items(), lambda x: x[1]
         ).items():
             pin_nums = [x[0] for x in _items]
-            line = f"{interface_name}: F.Electrical  # {"pin" if len(pin_nums) == 1 else "pins"}: {", ".join(pin_nums)}"
+            line = f"{interface_name}: F.Electrical  # {"pin" if len(pin_nums) == 1 else "pins"}: {", ".join(pin_nums)}"  # noqa: E501  # pre-existing
             _interface_lines_by_min_pin_num[min(pin_nums)] = line
         nodes.extend(
             line

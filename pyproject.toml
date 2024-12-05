@@ -85,34 +85,29 @@ Homepage = "https://github.com/atopile/atopile"
 "Bug Tracker" = "https://github.com/atopile/atopile/issues"
 
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "atopile[test]",
-    "debugpy",
     "antlr4-tools",
-    "pre-commit>=2.20,<4.0",
-    "pytest>=7.1.3,<9.0.0",
-    "viztracer~=0.16.3",
-    "pyinstrument~=4.7.1",
-    "gprof2dot~=2024.6.6",
-    "pytest-xdist~=3.6.1",
-    "dash~=2.18.1",
-    "dash_cytoscape~=1.0.2",
-    "nanobind~=2.2.0",
+    "atopile[test]",
     "coverage>=7.6.8",
-]
-
-test = [
-    "pytest>=7.1.3,<9.0.0",
-    "pytest-html",
-    "pytest-datafiles",
-    "pytest-asyncio!=0.23.3",
-    "requests",
-    "pytest-xdist~=3.6.1",
+    "dash_cytoscape~=1.0.2",
+    "dash~=2.18.1",
+    "debugpy",
+    "gprof2dot~=2024.6.6",
+    "mkdocs-drawio-file >= 1.5.2",
+    "mkdocs-material",
+    "mkdocs",
     "nanobind~=2.2.0",
+    "pre-commit>=2.20,<4.0",
+    "pyinstrument~=4.7.1",
+    "pytest-asyncio!=0.23.3",
+    "pytest-datafiles",
+    "pytest-html",
+    "pytest-xdist~=3.6.1",
+    "pytest>=7.1.3,<9.0.0",
+    "requests",
+    "viztracer~=0.16.3",
 ]
-
-docs = ["mkdocs", "mkdocs-material", "mkdocs-drawio-file >= 1.5.2"]
 
 
 [project.scripts]
@@ -201,10 +196,6 @@ select = [
     #"TCH",  # flake8-type-checking
     #"ARG",  # flake8-unused-arguments
     #"PTH",  # flake8-use-pathlib
-]
-ignore = [
-    # Line too long
-    "E501", # TODO: get the repo back on the same page to 88 characters
 ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
