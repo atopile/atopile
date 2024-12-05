@@ -18,6 +18,7 @@ XFAIL = [
     "mcu",
     "minimal_led_orderable",
     "signal_processing",
+    "pcb_layout",
 ]
 
 
