@@ -415,7 +415,8 @@ def fold_literals(mutator: Mutator):
 
 def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     """
-    If any operand in an expression has a subset literal, we can add a subset to the expr
+    If any operand in an expression has a subset literal,
+    we can add a subset to the expression.
 
     ```
     A + B | B is [1,5] -> (A + B) , (A + B) subset (A + [1,5])

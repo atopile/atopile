@@ -23,7 +23,7 @@ from faebryk.libs.library import L
 from faebryk.libs.library.L import Range
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
-from faebryk.libs.sets.sets import BoolSet, PlainSet
+from faebryk.libs.sets.sets import BoolSet, EnumSet
 from faebryk.libs.units import P
 from faebryk.libs.util import times
 
@@ -107,8 +107,8 @@ def test_expression_congruence():
 
 def test_expression_congruence_not():
     A = Parameter()
-    x = Is(A, PlainSet(F.LED.Color.EMERALD))
-    assert x.is_congruent_to(Is(A, PlainSet(F.LED.Color.EMERALD)))
+    x = Is(A, EnumSet(F.LED.Color.EMERALD))
+    assert x.is_congruent_to(Is(A, EnumSet(F.LED.Color.EMERALD)))
     assert Not(x).is_congruent_to(Not(x))
 
 

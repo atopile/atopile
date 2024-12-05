@@ -4,52 +4,18 @@ from types import ModuleType, TracebackType
 
 from rich._null_file import NullFile
 from rich.console import Console
-from rich.highlighter import RegexHighlighter
 from rich.logging import RichHandler
-from rich.theme import Theme
 from rich.traceback import Traceback
 
 import atopile
 import faebryk
+import faebryk.libs
+import faebryk.libs.logging
 from atopile.errors import (
     UserPythonModuleError,
     _BaseBaseUserException,
     _BaseUserException,
 )
-
-
-class NodeHighlighter(RegexHighlighter):
-    """
-    Apply style to anything that looks like an faebryk Node\n
-    <*|XOR_with_NANDS.nands[2]|NAND.inputs[0]|Logic> with
-    <*|TI_CD4011BE.nands[2]|ElectricNAND.inputs[0]|ElectricLogic>\n
-    \t<> = Node\n
-    \t|  = Type\n
-    \t.  = Parent\n
-    \t*  = Root
-    """
-
-    base_style = "node."
-    highlights = [
-        #  r"(?P<Rest>(.*))",
-        r"(?P<Node>([/</>]))",
-        r"[?=\|](?P<Type>([a-zA-Z_0-9]+))[?=\>]",
-        r"[\.](?P<Child>([a-zA-Z_0-9]+))[?=\[]",
-        r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",
-        r"[?<=*.](?P<Root>(\*))",
-        r"[?=\[](?P<Number>([0-9]+))[?=\]]",
-        # Solver/Parameter stuff -------------------------------------------------------
-        # Literals
-        r"(?P<Quantity>Quantity_Interval(_Disjoint)?\([^)]*\))",
-        r"(?P<Quantity>\(\[[^)]*\]\))",
-        r"(?P<Quantity>\[(True|False)+\])",
-        # Predicates / Expressions
-        r"(?P<Op> (\+|\*|/))[ {]",
-        r"(?P<Predicate>(is|⊆|≥|≤|)!?!?[✓✗]?)",
-        # Literal Is/IsSubset
-        r"(?P<IsSubset>{(I|S)\|[^}]+})",
-    ]
-
 
 _logged_exceptions: set[tuple[type[Exception], tuple]] = set()
 
@@ -230,24 +196,7 @@ class LogFormatter(logging.Formatter):
         return f"{header}{indented_message}".strip()
 
 
-console = Console(
-    theme=Theme(
-        {
-            "node.Node": "bold magenta",
-            "node.Type": "bright_cyan",
-            "node.Parent": "bright_red",
-            "node.Child": "bright_yellow",
-            "node.Root": "bold yellow",
-            "node.Number": "bright_green",
-            #   "node.Rest": "bright_black",
-            "logging.level.warning": "yellow",
-            "node.Quantity": "bright_yellow",
-            "node.IsSubset": "bright_blue",
-            "node.Predicate": "bright_magenta",
-            "node.Op": "red",
-        }
-    )
-)
+console = Console(theme=faebryk.libs.logging.theme)
 
 
 logger = logging.getLogger(__name__)

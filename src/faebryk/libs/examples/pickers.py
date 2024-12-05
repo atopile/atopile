@@ -33,16 +33,16 @@ def pick_fuse(module: F.Fuse, solver: Solver):
             PickerOption(
                 part=LCSC_Part(partno="C914087"),
                 params={
-                    "fuse_type": L.PlainSet(F.Fuse.FuseType.RESETTABLE),
-                    "response_type": L.PlainSet(F.Fuse.ResponseType.SLOW),
+                    "fuse_type": L.EnumSet(F.Fuse.FuseType.RESETTABLE),
+                    "response_type": L.EnumSet(F.Fuse.ResponseType.SLOW),
                     "trip_current": 1 * P.A,
                 },
             ),
             PickerOption(
                 part=LCSC_Part(partno="C914085"),
                 params={
-                    "fuse_type": L.PlainSet(F.Fuse.FuseType.RESETTABLE),
-                    "response_type": L.PlainSet(F.Fuse.ResponseType.SLOW),
+                    "fuse_type": L.EnumSet(F.Fuse.FuseType.RESETTABLE),
+                    "response_type": L.EnumSet(F.Fuse.ResponseType.SLOW),
                     "trip_current": 0.5 * P.A,
                 },
             ),
@@ -63,14 +63,14 @@ def pick_mosfet(module: F.MOSFET, solver: Solver):
             PickerOption(
                 part=LCSC_Part(partno="C20917"),
                 params={
-                    "channel_type": L.PlainSet(F.MOSFET.ChannelType.N_CHANNEL),
+                    "channel_type": L.EnumSet(F.MOSFET.ChannelType.N_CHANNEL),
                 },
                 pinmap=standard_pinmap,
             ),
             PickerOption(
                 part=LCSC_Part(partno="C15127"),
                 params={
-                    "channel_type": L.PlainSet(F.MOSFET.ChannelType.P_CHANNEL),
+                    "channel_type": L.EnumSet(F.MOSFET.ChannelType.P_CHANNEL),
                 },
                 pinmap=standard_pinmap,
             ),
@@ -194,7 +194,7 @@ def pick_led(module: F.LED, solver: Solver):
             PickerOption(
                 part=LCSC_Part(partno="C72043"),
                 params={
-                    "color": L.PlainSet(F.LED.Color.EMERALD),
+                    "color": L.EnumSet(F.LED.Color.EMERALD),
                     "max_brightness": 285 * P.mcandela,
                     "forward_voltage": L.Single(3.7 * P.volt),
                     "max_current": 100 * P.mA,
@@ -204,7 +204,7 @@ def pick_led(module: F.LED, solver: Solver):
             PickerOption(
                 part=LCSC_Part(partno="C72041"),
                 params={
-                    "color": L.PlainSet(F.LED.Color.BLUE),
+                    "color": L.EnumSet(F.LED.Color.BLUE),
                     "max_brightness": 28.5 * P.mcandela,
                     "forward_voltage": L.Single(3.1 * P.volt),
                     "max_current": 100 * P.mA,
@@ -214,7 +214,7 @@ def pick_led(module: F.LED, solver: Solver):
             PickerOption(
                 part=LCSC_Part(partno="C72038"),
                 params={
-                    "color": L.PlainSet(F.LED.Color.YELLOW),
+                    "color": L.EnumSet(F.LED.Color.YELLOW),
                     "max_brightness": 180 * P.mcandela,
                     "forward_voltage": L.Single(2.3 * P.volt),
                     "max_current": 60 * P.mA,
@@ -264,9 +264,9 @@ def pick_battery(module: F.Battery | Module, solver: Solver):
                 params={
                     "voltage": L.Single(3 * P.V),
                     "capacity": L.Range.from_center(225 * P.mAh, 50 * P.mAh),
-                    "material": L.PlainSet(F.ButtonCell.Material.Lithium),
+                    "material": L.EnumSet(F.ButtonCell.Material.Lithium),
                     "size": L.Single(F.ButtonCell.Size.N_2032),
-                    "shape": L.PlainSet(F.ButtonCell.Shape.Round),
+                    "shape": L.EnumSet(F.ButtonCell.Shape.Round),
                 },
                 pinmap={
                     "1": module.power.lv,

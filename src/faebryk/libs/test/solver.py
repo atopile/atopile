@@ -5,12 +5,12 @@ from faebryk.core.node import Node
 from faebryk.core.parameter import ParameterOperatable
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.sets.sets import PlainSet
+from faebryk.libs.sets.sets import BoolSet
 
 
 def solves_to(stmt: ParameterOperatable, result: bool, solver: Solver):
     def assert_eq(x: ParameterOperatable):
-        assert solver.inspect_known_values(x) == PlainSet(result)
+        assert solver.inspect_known_values(x) == BoolSet(result)
 
     stmt.inspect_add_on_solution(assert_eq)
 

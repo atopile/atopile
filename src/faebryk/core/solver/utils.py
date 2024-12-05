@@ -626,7 +626,8 @@ class Mutators:
                 added = post_mut_nodes - m._old_ops
                 if removed:
                     logger.warning(
-                        f"Mutator removed \n    {'\n    '.join(repr(o) for o in removed)}"
+                        f"Mutator removed \n    "
+                        f"{'\n    '.join(repr(o) for o in removed)}"
                     )
                 if added:
                     logger.warning(
@@ -732,7 +733,8 @@ class Mutators:
         # TODO remove
         if len(graphs) != len(self.mutators):
             logger.debug(
-                f"Mutators created/destroyed graphs: {len(self.mutators)} -> {len(graphs)}"
+                f"Mutators created/destroyed graphs: "
+                f"{len(self.mutators)} -> {len(graphs)}"
             )
             # print_all(graphs, context_new)
 

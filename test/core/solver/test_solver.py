@@ -41,7 +41,7 @@ from faebryk.libs.picker.picker import (
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
-from faebryk.libs.sets.sets import BoolSet, PlainSet
+from faebryk.libs.sets.sets import BoolSet, EnumSet
 from faebryk.libs.units import P, dimensionless, quantity
 from faebryk.libs.util import times
 
@@ -160,7 +160,7 @@ def test_inequality_to_set():
     p0.constrain_le(2.0)
     p0.constrain_ge(1.0)
     solver = DefaultSolver()
-    assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((1.0, 2.0))
+    assert solver.inspect_get_known_supersets(p0) == RangeWithGaps((1.0, 2.0))
 
 
 def test_remove_obvious_tautologies():
@@ -186,7 +186,7 @@ def test_subset_of_literal():
 
     solver = DefaultSolver()
     for p in (p0, p1, p2):
-        assert solver.inspect_get_known_superranges(p) == RangeWithGaps((0.0, 0.0))
+        assert solver.inspect_get_known_supersets(p) == RangeWithGaps((0.0, 0.0))
 
 
 def test_alias_classes():
@@ -219,7 +219,8 @@ def test_solve_realworld_bigger():
     # resolve_dynamic_parameters(app.get_graph())
 
     # TODO broken due to contradiction
-    # ContradictionByLiteral: Intersection of [Quantity_Interval_Disjoint(([-inf, 0])), Quantity_Interval_Disjoint(([3.6, 6.6]))] is empty`
+    # ContradictionByLiteral: Intersection of [Quantity_Interval_Disjoint(([-inf, 0])),
+    # Quantity_Interval_Disjoint(([3.6, 6.6]))] is empty`
     # 3.6, 6.6 = 2 * [1.8, 3.3]
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(app.get_graph())
@@ -230,7 +231,7 @@ def test_inspect_known_superranges():
     p0 = Parameter(units=P.V, within=Range(1 * P.V, 10 * P.V))
     p0.alias_is(Range(1 * P.V, 3 * P.V) + Range(4 * P.V, 6 * P.V))
     solver = DefaultSolver()
-    assert solver.inspect_get_known_superranges(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
+    assert solver.inspect_get_known_supersets(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
 
 
 @pytest.mark.skip(
@@ -567,7 +568,7 @@ def test_assert_any_predicate_super_basic(predicate_type: type[Predicate]):
 
 def test_congruence_filter():
     A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
-    x = Is(A, PlainSet(F.LED.Color.EMERALD))
+    x = Is(A, EnumSet(F.LED.Color.EMERALD))
 
     y1 = Not(x).constrain()
     y2 = Not(x).constrain()
@@ -589,7 +590,7 @@ def test_simple_pick():
             PickerOption(
                 part=LCSC_Part(partno="C72043"),
                 params={
-                    "color": L.PlainSet(F.LED.Color.EMERALD),
+                    "color": L.EnumSet(F.LED.Color.EMERALD),
                     "max_brightness": 285 * P.mcandela,
                     "forward_voltage": L.Single(3.7 * P.volt),
                     "max_current": 100 * P.mA,
@@ -605,7 +606,7 @@ def test_simple_pick():
 
 def test_simple_negative_pick():
     led = F.LED()
-    led.color.constrain_subset(L.PlainSet(F.LED.Color.RED, F.LED.Color.BLUE))
+    led.color.constrain_subset(L.EnumSet(F.LED.Color.RED, F.LED.Color.BLUE))
 
     solver = DefaultSolver()
     pick_module_by_params(
@@ -615,7 +616,7 @@ def test_simple_negative_pick():
             PickerOption(
                 part=LCSC_Part(partno="C72043"),
                 params={
-                    "color": L.PlainSet(F.LED.Color.EMERALD),
+                    "color": L.EnumSet(F.LED.Color.EMERALD),
                     "max_brightness": 285 * P.mcandela,
                     "forward_voltage": L.Single(3.7 * P.volt),
                     "max_current": 100 * P.mA,
@@ -625,7 +626,7 @@ def test_simple_negative_pick():
             PickerOption(
                 part=LCSC_Part(partno="C72041"),
                 params={
-                    "color": L.PlainSet(F.LED.Color.BLUE),
+                    "color": L.EnumSet(F.LED.Color.BLUE),
                     "max_brightness": 28.5 * P.mcandela,
                     "forward_voltage": L.Single(3.1 * P.volt),
                     "max_current": 100 * P.mA,
@@ -666,7 +667,7 @@ def test_jlcpcb_pick_capacitor():
 
 def test_jlcpcb_pick_led():
     led = F.LED()
-    led.color.constrain_subset(L.PlainSet(F.LED.Color.EMERALD))
+    led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
     led.max_current.constrain_ge(10 * P.mA)
 
     solver = DefaultSolver()
@@ -679,7 +680,7 @@ def test_jlcpcb_pick_led():
 
 def test_jlcpcb_pick_powered_led():
     led = F.PoweredLED()
-    led.led.color.constrain_subset(L.PlainSet(F.LED.Color.EMERALD))
+    led.led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
     led.power.voltage.constrain_subset(L.Range(1.8 * P.volt, 5.5 * P.volt))
 
     solver = DefaultSolver()

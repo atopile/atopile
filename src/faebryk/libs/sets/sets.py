@@ -13,6 +13,8 @@ from faebryk.libs.units import Unit, dimensionless
 class P_Set[T](Protocol):
     def is_empty(self) -> bool: ...
 
+    def is_finite(self) -> bool: ...
+
     def __bool__(self) -> bool:
         raise Exception("don't use bool to check for emptiness, use is_empty()")
 
@@ -29,11 +31,20 @@ class P_Set[T](Protocol):
             return Quantity_Interval_Disjoint.from_value(value)
         if isinstance(value, (bool, BoolSet)):
             return BoolSet.from_value(value)
+        if (
+            isinstance(value, Enum)
+            or isinstance(value, type)
+            and issubclass(value, Enum)
+        ):
+            return EnumSet(value)
         if isinstance(value, PlainSet):
             return value
         return PlainSet(value)
 
     def is_subset_of(self, other: "P_Set[T]") -> bool: ...
+
+    def is_superset_of(self, other: "P_Set[T]") -> bool:
+        return P_Set.from_value(other).is_subset_of(self)
 
     @staticmethod
     def intersect_all[P: P_Set](*sets: P) -> P:
@@ -48,6 +59,8 @@ class P_Set[T](Protocol):
     def __and__[P: P_Set](self: P, other: P) -> P: ...
 
     def is_single_element(self) -> bool: ...
+
+    def any(self) -> T: ...
 
 
 class P_IterableSet[T, IterT](P_Set[T], Iterable[IterT], Protocol): ...
@@ -81,7 +94,8 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
 
     def __str__(self) -> str:
         # TODO move enum stuff to EnumSet
-        return f"[{', '.join(str(e) if not isinstance(e, Enum) else f'{e.name}' for e in self.elements)}]"
+        return f"[{', '.join(str(e) if not isinstance(e, Enum) else f'{e.name}'
+                             for e in self.elements)}]"
 
     def __iter__(self) -> Iterator[U]:
         return iter(self.elements)
@@ -113,13 +127,25 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
         return self.op_union(other)
 
     def __eq__(self, value: Any) -> bool:
-        other = type(self).from_value(value)
+        try:
+            other = type(self).from_value(value)
+        # TODO thats a bit whack
+        except Exception:
+            return False
         if not isinstance(other, PlainSet):
             return False
         return self.elements == other.elements
 
     def __contains__(self, item: U) -> bool:
         return item in self.elements
+
+    def any(self) -> U:
+        if self.is_empty():
+            raise ValueError("no elements in set")
+        return next(iter(self.elements))
+
+    def is_finite(self) -> bool:
+        return True
 
 
 type BoolSetLike_ = bool | BoolSet | PlainSet[bool]
@@ -152,6 +178,10 @@ class BoolSet(PlainSet[bool]):
             ]
         )
 
+    @classmethod
+    def unbounded(cls) -> "BoolSet":
+        return cls(True, False)
+
 
 BoolSetLike = bool | BoolSet | PlainSet[bool]
 
@@ -170,3 +200,7 @@ class EnumSet[E: Enum](PlainSet[E]):
     @classmethod
     def empty(cls, enum: type[E]) -> "EnumSet[E]":
         return cls(enum)
+
+    @classmethod
+    def unbounded(cls, enum: type[E]) -> "EnumSet[E]":
+        return cls(*enum)

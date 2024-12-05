@@ -4,7 +4,7 @@
 import logging
 from bisect import bisect
 from collections.abc import Generator
-from typing import Any, TypeVar
+from typing import Any, TypeVar, override
 
 from faebryk.libs.sets.sets import BoolSet, P_Set
 
@@ -38,6 +38,7 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def is_unbounded(self) -> bool:
         return self._min == float("-inf") and self._max == float("inf")
 
+    @override
     def is_finite(self) -> bool:
         return self._min != float("-inf") and self._max != float("inf")
 
@@ -220,6 +221,10 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def is_single_element(self) -> bool:
         return self._min == self._max
 
+    @override
+    def any(self) -> NumericT:
+        return self._min
+
 
 def Numeric_Singleton(value: NumericT) -> Numeric_Interval[NumericT]:
     """
@@ -273,6 +278,7 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             return False
         return self.intervals[0].is_unbounded()
 
+    @override
     def is_finite(self) -> bool:
         if self.is_empty():
             return True
@@ -395,9 +401,7 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             *(r.op_pow_interval(o) for r in self.intervals for o in other.intervals)
         )
 
-    def op_ge_intervals(
-        self, other: "Numeric_Interval_Disjoint[NumericT]"
-    ) -> BoolSet:
+    def op_ge_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
         if self.min_elem() >= other.max_elem():
@@ -406,9 +410,7 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             return BoolSet(False)
         return BoolSet(True, False)
 
-    def op_le_intervals(
-        self, other: "Numeric_Interval_Disjoint[NumericT]"
-    ) -> BoolSet:
+    def op_le_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
         if self.max_elem() <= other.min_elem():
@@ -444,7 +446,8 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
         return hash(tuple(hash(r) for r in self.intervals))
 
     def __repr__(self) -> str:
-        return f"_N_intervals({', '.join(f"[{r._min}, {r._max}]" for r in self.intervals)})"
+        return f"_N_intervals({', '.join(f"[{r._min}, {r._max}]"
+                                         for r in self.intervals)})"
 
     def __iter__(self) -> Generator["Numeric_Interval[NumericT]"]:
         yield from self.intervals
@@ -486,6 +489,10 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
         if self.is_empty():
             return False
         return self.min_elem() == self.max_elem()
+
+    @override
+    def any(self) -> NumericT:
+        return self.min_elem()
 
 
 class Numeric_Set_Discrete(Numeric_Interval_Disjoint[NumericT]):

@@ -2,14 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from collections.abc import Iterable
-from typing import Any, Callable
+from typing import Any, Callable, override
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
-    Numbers,
     Parameter,
     ParameterOperatable,
     Predicate,
@@ -45,10 +43,6 @@ from faebryk.core.solver.utils import (
     get_graphs,
     try_extract_literal,
 )
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval_Disjoint,
-    QuantitySetLikeR,
-)
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import times_out
 
@@ -77,6 +71,11 @@ class DefaultSolver(Solver):
 
     # TODO actually use this...
     timeout: int = 1000
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.superset_cache: dict[Parameter, tuple[int, P_Set]] = {}
 
     def has_no_solution(
         self, total_repr_map: dict[ParameterOperatable, ParameterOperatable.All]
@@ -270,15 +269,29 @@ class DefaultSolver(Solver):
         )
         return Mutators.create_concat_repr_map(total_repr_map), print_context_
 
+    @override
     def get_any_single(
         self,
-        operatable: ParameterOperatable,
+        operatable: Parameter,
         lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
     ) -> Any:
-        raise NotImplementedError()
+        # TODO
+        if suppose_constraint is not None:
+            raise NotImplementedError()
 
+        # TODO
+        if minimize is not None:
+            raise NotImplementedError()
+
+        lit = self.inspect_get_known_supersets(operatable)
+        out = lit.any()
+        if lock:
+            operatable.alias_is(out)
+        return out
+
+    @override
     def find_and_lock_solution(self, G: Graph) -> Solver.SolveResultAll:
         return Solver.SolveResultAll(
             timed_out=False,
@@ -286,57 +299,45 @@ class DefaultSolver(Solver):
         )
         # raise NotImplementedError()
 
-    # TODO implement
-    def inspect_known_min(
-        self, value: ParameterOperatable.NumberLike
-    ) -> ParameterOperatable.Number:
-        raise NotImplementedError()
-
-    def inspect_known_max(
-        self, value: ParameterOperatable.NumberLike
-    ) -> ParameterOperatable.Number:
-        raise NotImplementedError()
-
-    def inspect_known_values(
-        self, value: ParameterOperatable.BooleanLike
-    ) -> P_Set[bool]:
-        raise NotImplementedError()
-
-    def inspect_get_known_supersets(
-        self, value: ParameterOperatable.Sets
-    ) -> Iterable[P_Set]:
-        raise NotImplementedError()
-
     # IMPORTANT ------------------------------------------------------------------------
 
     # Could be exponentially many
-    def inspect_known_supersets_are_few(self, value: ParameterOperatable.Sets) -> bool:
-        return True
+    @override
+    def inspect_known_supersets_are_few(self, value: Parameter) -> bool:
+        lit = self.inspect_get_known_supersets(value)
+        return lit.is_finite()
 
-    def inspect_get_known_superranges(
-        self, param: Parameter
-    ) -> Quantity_Interval_Disjoint:
-        if not isinstance(param.domain, Numbers):
-            raise ValueError(f"Ranges only defined for numbers not {param.domain}")
+    @override
+    def inspect_get_known_supersets(self, param: Parameter) -> P_Set:
+        g_hash = hash(param.get_graph())
+        if self.superset_cache.get(param, (None, None))[0] == g_hash:
+            return self.superset_cache[param][1]
+
+        out = self._inspect_get_known_supersets(param)
+        self.superset_cache[param] = g_hash, out
+        return out
+
+    def _inspect_get_known_supersets(self, param: Parameter) -> P_Set:
+        lit = param.try_get_literal()
+        if lit is not None:
+            return P_Set.from_value(lit)
 
         # run phase 1 solver
         # TODO caching
         repr_map, print_context = self.phase_1_simplify_analytically(param.get_graph())
         if param not in repr_map.repr_map:
             logger.warning(f"Parameter {param} not in repr_map")
-            return Quantity_Interval_Disjoint.unbounded(param.units)
+            return param.domain_set()
 
         # check predicates (is, subset), (ge, le covered too)
         literal = repr_map.try_get_literal(param, allow_subset=True)
 
         if literal is None:
-            return Quantity_Interval_Disjoint.unbounded(param.units)
+            return param.domain_set()
 
-        if not isinstance(literal, QuantitySetLikeR):
-            raise ValueError(f"incompatible literal {literal}")
+        return P_Set.from_value(literal)
 
-        return Quantity_Interval_Disjoint.from_value(literal)
-
+    @override
     def assert_any_predicate[ArgType](
         self,
         predicates: list["Solver.PredicateWithInfo[ArgType]"],
@@ -344,6 +345,14 @@ class DefaultSolver(Solver):
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
     ) -> Solver.SolveResultAny[ArgType]:
+        # TODO
+        if suppose_constraint is not None:
+            raise NotImplementedError()
+
+        # TODO
+        if minimize is not None:
+            raise NotImplementedError()
+
         if not predicates:
             raise ValueError("No predicates given")
 
@@ -398,7 +407,8 @@ class DefaultSolver(Solver):
                         )
                     )
                     logger.warning(
-                        f"NOT DEDUCED: \n    {'\n    '.join([p.compact_repr(print_context_new) for p in not_deducted])}"
+                        f"NOT DEDUCED: \n    {'\n    '.join([
+                            p.compact_repr(print_context_new) for p in not_deducted])}"
                     )
                     result.unknown_predicates.append(p)
                 else:
@@ -414,7 +424,9 @@ class DefaultSolver(Solver):
         result.unknown_predicates.extend(it)
 
         if lock and result.true_predicates:
-            assert len(result.true_predicates) == 1
+            if len(result.true_predicates) > 1:
+                # TODO, move this decision to caller
+                logger.warning("Multiple true predicates, locking first")
             result.true_predicates[0][0].constrain()
 
         return result

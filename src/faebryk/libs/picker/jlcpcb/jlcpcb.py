@@ -477,12 +477,14 @@ class ComponentQuery:
         if not isinstance(param.domain, Numbers):
             raise NotImplementedError()
 
-        if not solver.inspect_known_supersets_are_few(param):
-            raise NotImplementedError()
-
-        candidate_ranges = solver.inspect_get_known_superranges(param)
+        candidate_ranges = solver.inspect_get_known_supersets(param)
         if not candidate_ranges.is_finite():
             return self
+        if not isinstance(candidate_ranges, Quantity_Interval_Disjoint):
+            # TODO nothing we can really do in the sqlite version here
+            # might just save it for later filtering
+            return self
+
         return self.filter_by_si_values(candidate_ranges, e_series)
 
     def filter_by_tolerance(self, tolerance: float) -> Self:

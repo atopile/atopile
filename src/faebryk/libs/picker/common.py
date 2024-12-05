@@ -12,10 +12,10 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
     And,
+    ConstrainableExpression,
     Is,
     Numbers,
     Parameter,
-    ParameterOperatable,
     Predicate,
 )
 from faebryk.core.solver.solver import Solver
@@ -101,7 +101,7 @@ class StaticPartPicker(F.has_multi_picker.Picker, ABC):
 
 def _build_compatible_constraint(
     target: Module, source: Module
-) -> ParameterOperatable.BooleanLike:
+) -> ConstrainableExpression:
     assert type(target) is type(source)
 
     # Override module parameters with picked component parameters
@@ -263,10 +263,8 @@ def check_compatible_parameters(
         if not isinstance(m_param.domain, Numbers):
             continue
 
-        known_superset = Quantity_Interval_Disjoint(
-            *solver.inspect_get_known_superranges(m_param)
-        )
-        if not known_superset.is_superset_of(Quantity_Interval_Disjoint(c_range)):
+        known_superset = solver.inspect_get_known_supersets(m_param)
+        if not known_superset.is_superset_of(c_range):
             known_incompatible = True
             break
 

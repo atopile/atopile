@@ -31,7 +31,7 @@ from faebryk.libs.sets.quantity_sets import (
     QuantityLike,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import P_Set, P_UnitSet, PlainSet  # noqa: F401
+from faebryk.libs.sets.sets import BoolSet, EnumSet  # noqa: F401
 from faebryk.libs.units import Unit
 
 
@@ -70,7 +70,7 @@ class Range(Quantity_Interval):
 class RangeWithGaps(Quantity_Interval_Disjoint):
     def __init__(
         self,
-        *intervals: "Quantity_Interval | Quantity_Interval_Disjoint | tuple[RelaxedQuantity, RelaxedQuantity]",
+        *intervals: "Quantity_Interval | Quantity_Interval_Disjoint | tuple[RelaxedQuantity, RelaxedQuantity]",  # noqa: E501
         units: Unit | None = None,
     ):
         super().__init__(*intervals, units=units)

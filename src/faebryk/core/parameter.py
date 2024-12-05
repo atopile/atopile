@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Self, Sequence, TypeGuard, cast
+from typing import Any, Callable, Self, Sequence, TypeGuard, cast, override
 
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
@@ -17,7 +17,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import BoolSet, P_Set
+from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
@@ -59,9 +59,9 @@ class ParameterOperatable(Node):
 
     type NumberLiteral = Number | P_Set[Number]
     type NumberLike = ParameterOperatable | NumberLiteral
-    type BooleanLiteral = bool | P_Set[bool]
+    type BooleanLiteral = bool | BoolSet
     type BooleanLike = ParameterOperatable | BooleanLiteral
-    type EnumLiteral = Enum | P_Set[Enum]
+    type EnumLiteral = Enum | EnumSet
     type EnumLike = ParameterOperatable | EnumLiteral
     type SetLiteral = NumberLiteral | BooleanLiteral | EnumLiteral
 
@@ -693,7 +693,10 @@ class Expression(ParameterOperatable):
             if len(formatted_operands) == 2:
                 out = f"{formatted_operands[0]} {symbol} {formatted_operands[1]}"
             else:
-                out = f"{formatted_operands[0]}{symbol}({', '.join(formatted_operands[1:])})"
+                out = (
+                    f"{formatted_operands[0]}{symbol}("
+                    f"{', '.join(formatted_operands[1:])})"
+                )
         else:
             assert False
         assert out
@@ -1152,6 +1155,8 @@ class Domain:
             return shared
         return Domain.get_shared_domain(shared, *domains[2:])
 
+    def unbounded(self, param: "Parameter") -> P_Set: ...
+
     def __repr__(self):
         # TODO make more informative
         return f"{type(self).__name__}()"
@@ -1165,6 +1170,10 @@ class Numbers(Domain):
         self.negative = negative
         self.zero_allowed = zero_allowed
         self.integer = integer
+
+    @override
+    def unbounded(self, param: "Parameter") -> Quantity_Interval_Disjoint:
+        return Quantity_Interval_Disjoint.unbounded(param.units)
 
 
 class ESeries(Numbers):
@@ -1182,13 +1191,19 @@ class ESeries(Numbers):
 
 
 class Boolean(Domain):
-    pass
+    @override
+    def unbounded(self, param: "Parameter") -> BoolSet:
+        return BoolSet.unbounded()
 
 
 class EnumDomain(Domain):
     def __init__(self, enum_t: type[Enum]):
         super().__init__()
         self.enum_t = enum_t
+
+    @override
+    def unbounded(self, param: "Parameter") -> EnumSet:
+        return EnumSet.unbounded(self.enum_t)
 
 
 class Predicate(ConstrainableExpression):
@@ -1479,6 +1494,9 @@ class Parameter(ParameterOperatable):
         out += self._get_lit_suffix()
 
         return out
+
+    def domain_set(self) -> P_Set:
+        return self.domain.unbounded(self)
 
 
 p_field = f_field(Parameter)

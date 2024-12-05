@@ -3,7 +3,7 @@
 
 import logging
 from collections.abc import Generator
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar, cast, override
 
 from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval,
@@ -177,6 +177,7 @@ class Quantity_Interval(Quantity_Set):
     def is_unbounded(self) -> bool:
         return self._interval.is_unbounded()
 
+    @override
     def is_finite(self) -> bool:
         return self._interval.is_finite()
 
@@ -301,6 +302,10 @@ class Quantity_Interval(Quantity_Set):
     def is_single_element(self) -> bool:
         return self.min_elem() == self.max_elem()  # type: ignore #TODO
 
+    @override
+    def any(self) -> Quantity:
+        return self.min_elem()
+
 
 class Quantity_Singleton(Quantity_Interval):
     """
@@ -332,7 +337,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
 
     def __init__(
         self,
-        *intervals: "Quantity_Interval | Quantity_Interval_Disjoint | tuple[QuantityLike, QuantityLike]",
+        *intervals: "Quantity_Interval | Quantity_Interval_Disjoint | tuple[QuantityLike, QuantityLike]",  # noqa: E501
         units: Unit | None = None,
     ):
         proper_intervals = [
@@ -401,7 +406,9 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def is_superset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
         if not self.units.is_compatible_with(other.units):
             return False
-        return self._intervals.is_superset_of(other._intervals)
+        return self._intervals.is_superset_of(
+            Quantity_Interval_Disjoint.from_value(other)._intervals
+        )
 
     def is_subset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
         return other.is_superset_of(self)
@@ -527,6 +534,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def is_unbounded(self) -> bool:
         return self._intervals.is_unbounded()
 
+    @override
     def is_finite(self) -> bool:
         return self._intervals.is_finite()
 
@@ -622,6 +630,15 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         if self.is_empty():
             return False
         return self.min_elem() == self.max_elem()  # type: ignore #TODO
+
+    def as_gapless(self) -> "Quantity_Interval":
+        if self.is_empty():
+            raise ValueError("empty interval cannot be gapless")
+        return Quantity_Interval(self.min_elem(), self.max_elem(), units=self.units)
+
+    @override
+    def any(self) -> Quantity:
+        return self.min_elem()
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

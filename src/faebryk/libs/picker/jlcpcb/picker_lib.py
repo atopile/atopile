@@ -4,7 +4,7 @@ from typing import Callable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import EnumDomain, Parameter, ParameterOperableHasNoLiteral
+from faebryk.core.parameter import EnumDomain, Parameter
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.library import L
@@ -17,7 +17,7 @@ from faebryk.libs.picker.picker import (
     DescriptiveProperties,
     PickError,
 )
-from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
@@ -36,37 +36,30 @@ qty: int = 1
 # Generic pickers ----------------------------------------------------------------------
 
 
-def str_to_enum[T: Enum](enum: type[T], x: str) -> L.PlainSet[T]:
+def str_to_enum[T: Enum](enum: type[T], x: str) -> L.EnumSet[T]:
     name = x.replace(" ", "_").replace("-", "_").upper()
     if name not in [e.name for e in enum]:
         raise ValueError(f"Enum translation error: {x}[={name}] not in {enum}")
-    return L.PlainSet(enum[name])
+    return L.EnumSet(enum[name])
 
 
-def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], L.PlainSet[T]]:
-    def f(x: str) -> L.PlainSet[T]:
+def str_to_enum_func[T: Enum](enum: type[T]) -> Callable[[str], L.EnumSet[T]]:
+    def f(x: str) -> L.EnumSet[T]:
         return str_to_enum(enum, x)
 
     return f
 
 
-def enum_to_str(x: Parameter, force: bool = True) -> set[str]:
+def enum_to_str(x: Parameter, solver: Solver, force: bool = True) -> set[str]:
     assert isinstance(x.domain, EnumDomain)
-    try:
-        val = x.get_literal()
-    except ParameterOperableHasNoLiteral:
+    candidates = solver.inspect_get_known_supersets(x)
+    assert isinstance(candidates, EnumSet)
+    if candidates.is_empty() or not candidates.is_finite():
         if force:
-            raise
+            raise ValueError(f"Parameter {x} has no known supersets")
         return set()
 
-    if isinstance(val, x.domain.enum_t):
-        return {val.value}
-
-    if isinstance(val, P_Set):
-        # TODO handle sets
-        raise NotImplementedError()
-
-    raise ValueError(f"Expected an enum, got {val}")
+    return set(candidates.elements)
 
 
 _MAPPINGS_BY_TYPE: dict[type[Module], list[MappingParameterDB]] = {
@@ -291,7 +284,7 @@ def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
         )
 
     try:
-        part.attach(module, try_get_param_mapping(module), allow_TBD=True)
+        part.attach(module, try_get_param_mapping(module))
     except Exception as e:
         # TODO: narrow this exception type
         # TODO: might be better to raise an error that makes the picker give up
@@ -512,7 +505,7 @@ def find_led(cmp: Module, solver: Solver):
         .filter_by_stock(qty)
         .filter_by_traits(cmp)
         .filter_by_specified_parameters(mapping)
-        .filter_by_attribute_mention(list(enum_to_str(cmp.color, force=False)))
+        .filter_by_attribute_mention(list(enum_to_str(cmp.color, solver, force=False)))
         .sort_by_price(qty)
         .filter_by_module_params_and_attach(cmp, mapping, solver, qty)
     )
