@@ -52,10 +52,10 @@ while not EXIT_NOW:
         with utils.substitute_attr(sys, "path", sys.path[:]):
             try:
                 # TODO: `utils.run_module` is equivalent to running `python -m atopile`.
-                # If your tool supports a programmatic API then replace the function below
-                # with code for your tool. You can also use `utils.run_api` helper, which
+                # If your tool supports a programmatic API then replace the function below # noqa: E501  # pre-existing
+                # with code for your tool. You can also use `utils.run_api` helper, which # noqa: E501  # pre-existing
                 # handles changing working directories, managing io streams, etc.
-                # Also update `_run_tool_on_document` and `_run_tool` functions in `lsp_server.py`.
+                # Also update `_run_tool_on_document` and `_run_tool` functions in `lsp_server.py`. # noqa: E501  # pre-existing
                 result = utils.run_module(
                     module=msg["module"],
                     argv=msg["argv"],

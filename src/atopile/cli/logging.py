@@ -94,8 +94,8 @@ class LogHandler(RichHandler):
     ) -> tuple[type[BaseException] | None, BaseException | None, TracebackType | None]:
         def unwrap(exc: BaseException, exc_type: type[BaseException]) -> BaseException:
             """
-            Unwraps an exception chain until we reach an exception that is not an instance of
-            _type.
+            Unwraps an exception chain until we reach an exception
+            that is not an instance of _type.
             """
             while isinstance(exc, exc_type) and exc.__cause__ is not None:
                 exc = exc.__cause__
@@ -176,7 +176,7 @@ class LogHandler(RichHandler):
         )
         if isinstance(self.console.file, NullFile):
             # Handles pythonw, where stdout/stderr are null, and we return NullFile
-            # instance from Console.file. In this case, we still want to make a log record
+            # instance from Console.file. In this case, we still want to make a log record # noqa: E501  # pre-existing
             # even though we won't be writing anything to a file.
             self.handleError(record)
         else:

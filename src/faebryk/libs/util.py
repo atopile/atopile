@@ -1600,7 +1600,7 @@ def write_only_property(func: Callable):
 
 
 def try_set_attr(obj: object, attr: str, value: Any) -> bool:
-    """Set an attribute or property if possible, and return whether it was successful."""
+    """Set an attribute or property if possible, and return whether it was successful."""  # noqa: E501  # pre-existing
 
     def _should() -> bool:
         # If we have a property, it's going to tell us all we need to know
@@ -1615,7 +1615,7 @@ def try_set_attr(obj: object, attr: str, value: Any) -> bool:
         if hasattr(obj, attr) and not hasattr(type(obj), attr):
             return True
 
-        # If there's an instance attribute, that's unique compared to the class attribute,
+        # If there's an instance attribute, that's unique compared to the class attribute, # noqa: E501  # pre-existing
         # we can set it. We don't need to check for a property here because we already
         # checked for that above.
         if (

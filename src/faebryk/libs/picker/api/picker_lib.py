@@ -101,7 +101,8 @@ def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
 
     if part.stock < qty:
         logger.warning(
-            f"Part for {repr(module)} with LCSC part number {lcsc_pn} has insufficient stock",
+            f"Part for {repr(module)} with LCSC part number {lcsc_pn}"
+            " has insufficient stock",
         )
     api_filter_by_module_params_and_attach(module, [part], solver)
 

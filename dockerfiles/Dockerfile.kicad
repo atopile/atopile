@@ -5,6 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH=/venv/bin:/root/.local/bin:$PATH
 
+ENV UV_LINK_MODE=copy
+ENV UV_COMPILE_BYTECODE=1
+
 # build all targets
 ENV ATO_TARGET="all"
 ENV ATO_NON_INTERACTIVE=1
@@ -17,15 +20,7 @@ USER root
 
 WORKDIR /opt/atopile
 
-SHELL ["/bin/bash", "-o", "errexit", "-o", "pipefail", "-o", "nounset", "-c"]
-
 RUN <<EORUN
-apt-get update
-apt-get install -y --no-install-recommends \
-    curl \
-    build-essential
-rm -rf /var/lib/apt/lists/*
-
 chown -R kicad:kicad /opt/atopile
 
 # We need to set the github workspace as a safe directory according
@@ -33,13 +28,14 @@ chown -R kicad:kicad /opt/atopile
 git config --global --add safe.directory /github/workspace
 EORUN
 
-RUN <<EOF
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv --python 3.12 /venv
-EOF
+COPY --from=ghcr.io/astral-sh/uv:0.5.5 /uv /bin/uv
 
-COPY --chown=kicad:kicad dist/atopile-*.tar.gz /tmp/atopile.tar.gz
+# TODO: remove (@https://github.com/astral-sh/uv/issues/6381)
+# @python3.13
+RUN uv python install 3.12
 
-RUN uv pip install "/tmp/atopile.tar.gz[dev,test,docs]"
+COPY --chown=kicad:kicad dist/atopile-*.whl /tmp/
+
+RUN uv tool install /tmp/atopile-*.whl
 
 ENTRYPOINT [ "bash", "-c", "ato install && ato build" ]

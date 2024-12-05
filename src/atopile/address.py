@@ -1,7 +1,8 @@
 """
 Addresses are references to a specific node.
 They take the form: "path/to/file.ato:Entry.Path::instance.path"
-Addresses go by other names in various files for historical reasons - but should be upgraded.
+Addresses go by other names in various files for historical reasons,
+but should be upgraded.
 
 This file provides utilities for working with addresses.
 """
@@ -89,7 +90,8 @@ def get_file(address: AddrStr) -> str:
 def get_relative_addr_str(address: AddrStr, base_path: PathLike) -> AddrStr:
     """
     Extract the relative address starting with the .ato file
-    /abs/path/to/file.ato:Entry.Path::instance.path -> file.ato:Entry.Path::instance.path
+    /abs/path/to/file.ato:Entry.Path::instance.path
+        -> file.ato:Entry.Path::instance.path
 
     FIXME: this is the first and currently only place we're
     using these relative addresses. We should codify them

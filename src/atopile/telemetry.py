@@ -164,7 +164,7 @@ def commonise_project_url(git_url: str) -> str:
 
 
 def get_project_id() -> Optional[str]:
-    """Get the hashed project ID from the git URL of the project, if not available, return 'none'."""
+    """Get the hashed project ID from the git URL of the project, if not available, return 'none'."""  # noqa: E501  # pre-existing
     try:
         git_url = (
             subprocess.check_output(["git", "config", "--get", "remote.origin.url"])

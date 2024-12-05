@@ -142,7 +142,7 @@ def match(spec: str, version: Version):
             specd_version = parse(spec)
             operator = "^"
         except ValueError as ex:
-            # finally, if we could do any of that, we assume there's something wrong with the spec
+            # finally, if we could do any of that, we assume there's something wrong with the spec # noqa: E501  # pre-existing
             raise errors.UserException(f"Invalid version spec: {spec}") from ex
 
     if operator == "^":
