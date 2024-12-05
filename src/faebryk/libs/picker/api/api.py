@@ -111,7 +111,6 @@ type SIvalue = str
 @dataclass(frozen=True)
 class FootprintCandidate:
     footprint: str
-    pin_count: int | None
 
 
 @dataclass_json

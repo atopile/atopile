@@ -488,21 +488,14 @@ class ComponentQuery:
         self.Q &= Q(category_id__in=category_ids)
         return self
 
-    def filter_by_footprint(
-        self, footprint_candidates: Sequence[tuple[str, int | None]] | None
-    ) -> Self:
+    def filter_by_footprint(self, footprint_candidates: Sequence[str] | None) -> Self:
         assert self.Q
         if not footprint_candidates:
             return self
         footprint_query = Q()
         if footprint_candidates is not None:
-            for footprint, pin_count in footprint_candidates:
-                if pin_count is None:
-                    footprint_query |= Q(description__icontains=footprint)
-                else:
-                    footprint_query |= Q(description__icontains=footprint) & Q(
-                        joints=pin_count
-                    )
+            for footprint in footprint_candidates:
+                footprint_query |= Q(description__icontains=footprint)
         self.Q &= footprint_query
         return self
 
@@ -510,7 +503,7 @@ class ComponentQuery:
         out = self
         if obj.has_trait(F.has_footprint_requirement):
             out = self.filter_by_footprint(
-                obj.get_trait(F.has_footprint_requirement).get_footprint_requirement()
+                obj.get_trait(F.has_footprint_requirement).get_footprint_candidates()
             )
 
         return out

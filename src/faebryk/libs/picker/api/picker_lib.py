@@ -177,10 +177,10 @@ def _filter_by_module_params_and_attach(
 def _get_footprint_candidates(module: Module) -> list[FootprintCandidate]:
     if module.has_trait(F.has_footprint_requirement):
         return [
-            FootprintCandidate(footprint, pin_count)
-            for footprint, pin_count in module.get_trait(
+            FootprintCandidate(footprint)
+            for footprint in module.get_trait(
                 F.has_footprint_requirement
-            ).get_footprint_requirement()
+            ).get_footprint_candidates()
         ]
     return []
 

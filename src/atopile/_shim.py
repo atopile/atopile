@@ -53,9 +53,9 @@ def _alias_is(lh, rh):
 shim_map: dict[address.AddrStr, tuple[Type[L.Module], str]] = {}
 
 
-def _register_shim(addr: address.AddrStr, preferred: str):
+def _register_shim(addr: str | address.AddrStr, preferred: str):
     def _wrapper(cls: Type[L.Module]):
-        shim_map[addr] = cls, preferred
+        shim_map[address.AddrStr(addr)] = cls, preferred
         return cls
 
     return _wrapper
@@ -199,7 +199,7 @@ class ModuleShims(L.Module):
 
     @write_only_property
     def package(self, value: str):
-        self.add(F.has_footprint_requirement_defined(footprint=value))
+        self.add(F.has_footprint_requirement(value))
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
@@ -229,8 +229,7 @@ class _ShimResistor(F.Resistor):
 
     @write_only_property
     def package(self, value: str):
-        reqs = [(value, 2)]  # package, pin-count
-        self.add(F.has_footprint_requirement_defined(reqs))
+        self.add(F.has_footprint_requirement(value))
 
     @property
     def p1(self) -> F.Electrical:
@@ -279,8 +278,7 @@ class _ShimCapacitor(F.Capacitor):
 
     @write_only_property
     def package(self, value: str):
-        reqs = [(value, 2)]  # package, pin-count
-        self.add(F.has_footprint_requirement_defined(reqs))
+        self.add(F.has_footprint_requirement(value))
 
     @property
     def p1(self) -> F.Electrical:
