@@ -63,6 +63,8 @@ def api_filter_by_module_params_and_attach(
     """
     Find a component with matching parameters
     """
+
+    # FIXME: should take the desired qty and respect it
     try:
         mapping = find(_MAPPINGS_BY_TYPE.items(), lambda m: isinstance(cmp, m[0]))[1]
     except KeyErrorAmbiguous as e:
@@ -214,7 +216,7 @@ class ApiClient:
             raise ApiHTTPError(e) from e
 
         logger.debug(
-            f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"
+            f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
         )
 
         return response
