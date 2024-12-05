@@ -109,14 +109,14 @@ type SIvalue = str
 
 @dataclass_json
 @dataclass(frozen=True)
-class FootprintCandidate:
-    footprint: str
+class PackageCandidate:
+    package: str
 
 
 @dataclass_json
 @dataclass(frozen=True)
 class BaseParams:
-    footprint_candidates: list[FootprintCandidate]
+    package_candidates: list[PackageCandidate]
     qty: int
 
     def convert_to_dict(self) -> dict:

@@ -37,13 +37,13 @@ class TestPickerBase(unittest.TestCase, ABC):
             self,
             test_case: unittest.TestCase,
             requirement: Module,
-            footprints: list[str],
+            packages: list[str],
             add_pickers_func,
         ):
             self.test_case = test_case
             self.result = requirement
             self.requirement = requirement
-            self.footprints = footprints
+            self.packages = packages
             self.add_pickers_func = add_pickers_func
 
             self.req_lcsc_pn = None
@@ -66,7 +66,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     F.has_descriptive_properties
                 ).get_properties()[DescriptiveProperties.partno]
 
-            requirement.add(F.has_footprint_requirement(*footprints))
+            requirement.add(F.has_package_requirement(*packages))
 
             self.test()
 
@@ -155,7 +155,7 @@ class TestPickerBase(unittest.TestCase, ABC):
             )
             # check pin count
             self.test_case.assertEqual(
-                self.footprints[0][1],
+                self.packages[0][1],
                 len(
                     self.result.get_trait(F.has_footprint)
                     .get_footprint()
@@ -192,7 +192,7 @@ class TestPickerBase(unittest.TestCase, ABC):
         self.TestRequirements(
             self,
             requirement=requirement,
-            footprints=["SOT-23-5"],
+            packages=["SOT-23-5"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -214,7 +214,7 @@ class TestPickerBase(unittest.TestCase, ABC):
         self.TestRequirements(
             self,
             requirement=requirement,
-            footprints=["SOT-23-5"],
+            packages=["SOT-23-5"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -228,7 +228,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     r.rated_voltage.merge(F.Range.lower_bound(25 * P.V)),
                 )
             ),
-            footprints=["0402"],
+            packages=["0402"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -241,7 +241,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     r.rated_voltage.merge(F.Range.lower_bound(50 * P.V)),
                 )
             ),
-            footprints=["0603"],
+            packages=["0603"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -257,7 +257,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     ),
                 )
             ),
-            footprints=["0603"],
+            packages=["0603"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -272,7 +272,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     ),
                 )
             ),
-            footprints=["0402"],
+            packages=["0402"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -289,7 +289,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     ),
                 )
             ),
-            footprints=["0603"],
+            packages=["0603"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -308,7 +308,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     m.on_resistance.merge(F.Range.upper_bound(0.1 * P.ohm)),
                 )
             ),
-            footprints=["SOT-23"],
+            packages=["SOT-23"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -324,7 +324,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     d.max_current.merge(F.Range.lower_bound(1 * P.A)),
                 )
             ),
-            footprints=["SOD-123"],
+            packages=["SOD-123"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -345,7 +345,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     led.max_current.merge(F.Range.upper_bound(20 * P.mA)),
                 )
             ),
-            footprints=["0805"],
+            packages=["0805"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -364,7 +364,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     t.reverse_breakdown_voltage.merge(F.Range.upper_bound(8 * P.V)),
                 )
             ),
-            footprints=["SMB(DO-214AA)"],
+            packages=["SMB(DO-214AA)"],
             add_pickers_func=self.add_pickers,
         )
 
@@ -383,7 +383,7 @@ class TestPickerBase(unittest.TestCase, ABC):
                     u.quiescent_current.merge(F.ANY()),
                 )
             ),
-            footprints=[
+            packages=[
                 "SOT-23",
                 "SOT23",
                 "SOT-23-3",

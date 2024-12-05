@@ -199,7 +199,7 @@ class ModuleShims(L.Module):
 
     @write_only_property
     def package(self, value: str):
-        self.add(F.has_footprint_requirement(value))
+        self.add(F.has_package_requirement(value))
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
@@ -229,7 +229,7 @@ class _ShimResistor(F.Resistor):
 
     @write_only_property
     def package(self, value: str):
-        self.add(F.has_footprint_requirement(value))
+        self.add(F.has_package_requirement(value))
 
     @property
     def p1(self) -> F.Electrical:
@@ -278,7 +278,7 @@ class _ShimCapacitor(F.Capacitor):
 
     @write_only_property
     def package(self, value: str):
-        self.add(F.has_footprint_requirement(value))
+        self.add(F.has_package_requirement(value))
 
     @property
     def p1(self) -> F.Electrical:
