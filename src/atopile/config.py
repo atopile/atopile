@@ -221,7 +221,7 @@ def get_project_dir_from_path(path: Path) -> Path:
     """
     Resolve the project directory from the specified path.
     """
-    # TODO: when provided with the "." path, it doesn't find the config in parent directories
+    # TODO: when provided with the "." path, it doesn't find the config in parent directories # noqa: E501  # pre-existing
     path = Path(path)
     for p in [path] + list(path.parents):
         clean_path = p.resolve().absolute()

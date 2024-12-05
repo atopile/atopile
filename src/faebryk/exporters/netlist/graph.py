@@ -174,7 +174,8 @@ def _lowest_common_ancestor(nodes: Iterable[L.Node]) -> tuple[L.Node, str] | Non
         nodes: Iterable of Node objects to find common ancestor for
 
     Returns:
-        Tuple of (node, name) for the deepest common ancestor, or None if no common ancestor exists
+        Tuple of (node, name) for the deepest common ancestor,
+        or None if no common ancestor exists
     """
     nodes = list(nodes)  # Convert iterable to list to ensure multiple iterations
     if not nodes:
@@ -250,7 +251,7 @@ def generate_net_names(nets: list[F.Net]) -> None:
         if name_candidates:
             names[net].base_name = max(name_candidates, key=name_candidates.get)
 
-    # Resolve as many conflict as possible by prefixing on the lowest common node's full name
+    # Resolve as many conflict as possible by prefixing on the lowest common node's full name # noqa: E501  # pre-existing
     for conflict_nets in _conflicts(names):
         for net in conflict_nets:
             if lcn := _lowest_common_ancestor(net.get_connected_interfaces()):

@@ -80,7 +80,7 @@ def check_entry_arg_file_path(
             )
         else:
             raise ValueError(
-                f"Unexpected entry path type {entry_arg_file_path} - this should never happen!"
+                f"Unexpected entry path type {entry_arg_file_path} - this should never happen!"  # noqa: E501  # pre-existing
             )
 
     return entry_addr_override

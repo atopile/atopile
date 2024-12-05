@@ -109,8 +109,9 @@ def create(
         if name != kebab_name:
             help(
                 f"""
-                We recommend using kebab-case ([cyan]{kebab_name}[/]) for your project name.
-                It makes it easier to use your project with other tools (like git) and it embeds nicely into URLs.
+                We recommend using kebab-case ([cyan]{kebab_name}[/])
+                for your project name. It makes it easier to use your project
+                with other tools (like git) and it embeds nicely into URLs.
                 """
             )
 
@@ -163,7 +164,7 @@ def create(
         # Try download the repo from the user-provided URL
         if Path(name).exists():
             raise click.ClickException(
-                f"Directory {name} already exists. Please put the repo elsewhere or choose a different name."
+                f"Directory {name} already exists. Please put the repo elsewhere or choose a different name."  # noqa: E501  # pre-existing
             )
 
         try:
@@ -271,7 +272,7 @@ def create_build():
         # Check if ato.yaml exists
         if not ato_yaml_path.exists():
             print(
-                f"ato.yaml not found in {top_level_path}. Please ensure the file exists before proceeding."
+                f"ato.yaml not found in {top_level_path}. Please ensure the file exists before proceeding."  # noqa: E501  # pre-existing
             )
         else:
             # Load the existing YAML configuration
@@ -298,7 +299,7 @@ def create_build():
         ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
 
         rich.print(
-            f":sparkles: Successfully created a new build configuration for {build_name}! :sparkles:"
+            f":sparkles: Successfully created a new build configuration for {build_name}! :sparkles:"  # noqa: E501  # pre-existing
         )
 
 
