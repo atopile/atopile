@@ -3,7 +3,7 @@
 
 from collections.abc import Iterable, Iterator
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, override, runtime_checkable
 
 from faebryk.libs.units import Unit, dimensionless
 
@@ -60,119 +60,113 @@ class P_UnitSet[T](P_Set[T], Protocol):
 class P_IterableUnitSet[T, IterT](P_UnitSet[T], Iterable[IterT], Protocol): ...
 
 
+# TODO consider making abstract
 class PlainSet[U](P_IterableUnitSet[U, U]):
-    def __init__(self, *elements: U):
+    def __init__(self, *elements: "U | PlainSet[U]"):
         self.units = dimensionless
-        self.elements = set(elements)
+
+        self.elements: frozenset[U] = frozenset(  # type: ignore
+            {v for v in elements if not isinstance(v, PlainSet)}
+            | {v for vb in elements if isinstance(vb, PlainSet) for v in vb.elements}
+        )
 
     def is_empty(self) -> bool:
         return len(self.elements) == 0
 
-    def __contains__(self, item: U) -> bool:
-        return item in self.elements
-
-    def __eq__(self, value: Any) -> bool:
-        if not isinstance(value, PlainSet):
-            return False
-        return self.elements == value.elements
-
     def __hash__(self) -> int:
-        return sum(hash(e) for e in self.elements)
+        return hash(self.elements)
 
     def __repr__(self) -> str:
-        return f"PlainSet({', '.join(repr(e) for e in self.elements)})"
+        return f"{type(self).__name__}({', '.join(repr(e) for e in self.elements)})"
 
     def __str__(self) -> str:
-        # TODO move enum stuff to new EnumSet
+        # TODO move enum stuff to EnumSet
         return f"[{', '.join(str(e) if not isinstance(e, Enum) else f'{e.name}' for e in self.elements)}]"
 
     def __iter__(self) -> Iterator[U]:
         return iter(self.elements)
 
-    def op_intersection(self, other: "PlainSet[U]") -> "PlainSet[U]":
-        return PlainSet(*(self.elements & other.elements))
+    def op_intersection[T: PlainSet](self: T, other: U | T) -> T:
+        return type(self)(*(self.elements & type(self).from_value(other).elements))
 
-    def is_subset_of(self, other: "PlainSet[U]") -> bool:
-        return self.elements.issubset(other.elements)
+    def op_union[T: PlainSet](self: T, other: U | T) -> T:
+        return type(self)(*(self.elements | type(self).from_value(other).elements))
 
-    def __and__(self, other: "PlainSet[U]") -> "PlainSet[U]":
-        return self.op_intersection(other)
+    def is_subset_of[T: PlainSet](self: T, other: U | T) -> bool:
+        return self.elements.issubset(type(self).from_value(other).elements)
 
     def is_single_element(self) -> bool:
         return len(self.elements) == 1
 
-
-type BoolSetLike_ = bool | BoolSet
-
-
-# TODO think about inheriting from plainset
-class BoolSet(P_Set[bool]):
-    def __init__(self, *values: BoolSetLike_):
-        assert all(isinstance(v, (bool, BoolSet)) for v in values)
-        # flatten
-        self.values = frozenset(
-            {v for v in values if isinstance(v, bool)}
-            | {v for vb in values if isinstance(vb, BoolSet) for v in vb.values}
-        )
-
-    @staticmethod
-    def from_value(value: BoolSetLike_) -> "BoolSet":
-        if isinstance(value, BoolSet):
+    @classmethod
+    def from_value[T: PlainSet](cls: type[T], value: Any) -> T:
+        if isinstance(value, cls):
             return value
-        return BoolSet(value)
+        return cls(value)
 
+    # operators
+
+    def __and__[T: PlainSet](self: T, other: U | T) -> T:
+        return self.op_intersection(other)
+
+    def __or__[T: PlainSet](self: T, other: U | T) -> T:
+        return self.op_union(other)
+
+    def __eq__(self, value: Any) -> bool:
+        other = type(self).from_value(value)
+        if not isinstance(other, PlainSet):
+            return False
+        return self.elements == other.elements
+
+    def __contains__(self, item: U) -> bool:
+        return item in self.elements
+
+
+type BoolSetLike_ = bool | BoolSet | PlainSet[bool]
+
+
+class BoolSet(PlainSet[bool]):
+    # TODO rethink this
+    @override
     def __contains__(self, item: BoolSetLike_) -> bool:
-        return all(o_v in self.values for o_v in BoolSet.from_value(item).values)
-
-    def is_empty(self) -> bool:
-        return not len(self.values)
-
-    def op_intersection(self, other: BoolSetLike_) -> "BoolSet":
-        return BoolSet(*(self.values & BoolSet.from_value(other).values))
+        return all(o_v in self.elements for o_v in BoolSet.from_value(item).elements)
 
     def op_not(self) -> "BoolSet":
-        return BoolSet(*(not v for v in self.values))
+        return BoolSet(*(not v for v in self.elements))
 
     def op_and(self, other: BoolSetLike_) -> "BoolSet":
         return BoolSet(
             *[
                 v and o_v
-                for v in self.values
-                for o_v in BoolSet.from_value(other).values
+                for v in self.elements
+                for o_v in BoolSet.from_value(other).elements
             ]
         )
 
     def op_or(self, other: BoolSetLike_) -> "BoolSet":
         return BoolSet(
-            *[v or o_v for v in self.values for o_v in BoolSet.from_value(other).values]
+            *[
+                v or o_v
+                for v in self.elements
+                for o_v in BoolSet.from_value(other).elements
+            ]
         )
 
-    def __eq__(self, value: Any) -> bool:
-        if value is None:
-            return False
-        if not isinstance(value, BoolSetLike):
-            return False
-        return self.values == BoolSet.from_value(value).values
 
-    def is_subset_of(self, other: BoolSetLike_) -> bool:
-        other_b = BoolSet.from_value(other)
-        return self.values.issubset(other_b.values)
-
-    def __hash__(self) -> int:
-        return hash(self.values)
-
-    def __repr__(self) -> str:
-        return f"BoolSet({', '.join(repr(v) for v in self.values)})"
-
-    def __str__(self) -> str:
-        return f"[{', '.join(str(v) for v in self.values)}]"
-
-    # TODO rethink this
-    def __and__(self, other: BoolSetLike_) -> "BoolSet":
-        return self.op_intersection(other)
-
-    def is_single_element(self) -> bool:
-        return len(self.values) == 1
+BoolSetLike = bool | BoolSet | PlainSet[bool]
 
 
-BoolSetLike = bool | BoolSet
+class EnumSet[E: Enum](PlainSet[E]):
+    def __init__(self, *elements: "E | EnumSet[E] | type[E]"):
+        enum_types = (
+            {e.enum for e in elements if isinstance(e, EnumSet)}
+            | {type(e) for e in elements if isinstance(e, Enum)}
+            | {e for e in elements if isinstance(e, type) and issubclass(e, Enum)}
+        )
+        assert len(enum_types) == 1
+        self.enum = next(iter(enum_types))
+        super().__init__(*(e for e in elements if not isinstance(e, type)))
+
+    @classmethod
+    def empty(cls, enum: type[E]) -> "EnumSet[E]":
+        return cls(enum)

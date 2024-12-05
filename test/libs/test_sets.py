@@ -1,10 +1,12 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from enum import Enum, auto
+
 import pytest
 
 from faebryk.libs.library.L import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
-from faebryk.libs.sets.sets import BoolSet
+from faebryk.libs.sets.sets import BoolSet, EnumSet
 from faebryk.libs.units import P, Unit, dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
@@ -263,3 +265,21 @@ def test_comparison():
     assert (
         RangeWithGaps((1 * P.V, 2 * P.V)) >= RangeWithGaps((2 * P.V, 3 * P.V))
     ) == BoolSet(True, False)
+
+
+def test_enumset():
+    class E(Enum):
+        A = auto()
+        B = auto()
+        C = auto()
+
+    x = EnumSet(E.B, E.C)
+    y = EnumSet(E.A, E.B)
+    z = x & y
+
+    assert z.enum is E
+
+    assert E.B in z
+    assert E.A not in z
+
+    assert z == EnumSet(E.B)
