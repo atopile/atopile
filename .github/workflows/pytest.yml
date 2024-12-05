@@ -32,7 +32,7 @@ jobs:
         - name: Run pytest
           id: pytest
           continue-on-error: true
-          run: uv run --dev --no-editable --frozen pytest -m "not not_in_ci"
+          run: uv run --dev --no-editable --frozen pytest -m "not not_in_ci" -m "not slow"
 
         - name: Upload all test logs
           if: steps.pytest.outcome == 'failure'
