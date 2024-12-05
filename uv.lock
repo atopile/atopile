@@ -67,7 +67,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.2.70.dev358+g70198a22.d20241205"
+version = "0.2.70.dev364+g7abb4d75.d20241205"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -123,6 +123,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "antlr4-tools" },
+    { name = "atopile" },
     { name = "coverage" },
     { name = "dash" },
     { name = "dash-cytoscape" },
@@ -180,7 +181,7 @@ requires-dist = [
     { name = "requests", specifier = "~=2.32.3" },
     { name = "rich", specifier = "~=13.7.1" },
     { name = "ruamel-yaml", specifier = ">=0.18.5" },
-    { name = "ruff", specifier = ">=0.8.1,<0.9.0" },
+    { name = "ruff", specifier = ">=0.8.2,<0.9.0" },
     { name = "schema", specifier = ">=0.7.5" },
     { name = "scipy", specifier = ">=1.12.0" },
     { name = "semver", specifier = ">=3.0.2" },
