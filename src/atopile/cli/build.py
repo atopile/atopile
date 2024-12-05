@@ -30,7 +30,7 @@ def build(
     option: Annotated[
         list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
     ] = [],
-    no_project: Annotated[bool, typer.Option("--no-project")] = False,
+    no_project: Annotated[bool, typer.Option("--no-project", hidden=True)] = False,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
