@@ -59,7 +59,9 @@ def enum_to_str(x: Parameter, solver: Solver, force: bool = True) -> set[str]:
             raise ValueError(f"Parameter {x} has no known supersets")
         return set()
 
-    return set(candidates.elements)
+    return set(
+        e.value if isinstance(e.value, str) else e.name for e in candidates.elements
+    )
 
 
 _MAPPINGS_BY_TYPE: dict[type[Module], list[MappingParameterDB]] = {
