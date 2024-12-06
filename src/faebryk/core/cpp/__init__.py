@@ -1,11 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import json
 import logging
-from importlib.metadata import Distribution
 
-from faebryk.libs.util import ConfigFlag, at_exit, global_lock
+from faebryk.libs.util import (
+    ConfigFlag,
+    at_exit,
+    global_lock,
+    is_editable_install,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -13,16 +16,6 @@ logger = logging.getLogger(__name__)
 LEAK_WARNINGS = ConfigFlag("CPP_LEAK_WARNINGS", default=False)
 DEBUG_BUILD = ConfigFlag("CPP_DEBUG_BUILD", default=False)
 PRINTF_DEBUG = ConfigFlag("CPP_PRINTF_DEBUG", default=False)
-
-
-# Check if installed as editable
-def is_editable_install():
-    distro = Distribution.from_name("atopile")
-    return (
-        json.loads(distro.read_text("direct_url.json") or "")
-        .get("dir_info", {})
-        .get("editable", False)
-    )
 
 
 def compile_and_load():

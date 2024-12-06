@@ -1,19 +1,28 @@
+from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
-from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end import Bob, _Component
+from atopile.front_end import Bob, Component
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 
 
 @pytest.fixture
 def bob() -> Bob:
     return Bob()
+
+
+@pytest.fixture
+def repo_root() -> Path:
+    repo_root = Path(__file__)
+    while not (repo_root / "pyproject.toml").exists():
+        repo_root = repo_root.parent
+    return repo_root
 
 
 def test_empty_module_build(bob: Bob):
@@ -74,13 +83,12 @@ def test_simple_new(bob: Bob):
         """
     )
 
-    with errors.log_ato_errors():
-        tree = parse_text_as_file(text)
-        node = bob.build_ast(tree, Ref(["A"]))
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
-    assert isinstance(child, _Component)
+    assert isinstance(child, Component)
 
     a = Bob.get_node_attr(child, "a")
     assert isinstance(a, F.Electrical)
@@ -114,14 +122,15 @@ def test_nested_nodes(bob: Bob):
         """
     )
 
-    with errors.log_ato_errors():
-        tree = parse_text_as_file(text)
-        node = bob.build_ast(tree, Ref(["A"]))
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
 
 
-def test_resistor(bob: Bob):
+def test_resistor(bob: Bob, repo_root: Path):
+    bob.search_paths.append(repo_root / "examples" / "project" / ".ato" / "modules")
+
     text = dedent(
         """
         from "generics/resistors.ato" import Resistor
@@ -134,13 +143,100 @@ def test_resistor(bob: Bob):
         """
     )
 
-    with errors.log_ato_errors():
-        tree = parse_text_as_file(text)
-        node = bob.build_ast(tree, Ref(["A"]))
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
 
     assert isinstance(node, L.Module)
 
     r1 = Bob.get_node_attr(node, "r1")
-    assert r1.get_trait(F.has_footprint_requirement).get_footprint_requirement() == [
-        ("0805", 2)
-    ]
+    assert r1.get_trait(F.has_package_requirement).get_package_candidates() == ["0805"]
+
+
+def test_standard_library_import(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+
+        module A:
+            r1 = new Resistor
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    r1 = Bob.get_node_attr(node, "r1")
+    assert isinstance(r1, F.Resistor)
+
+
+@pytest.mark.parametrize(
+    "import_stmt,class_name",
+    [
+        ("import Resistor", "Resistor"),
+        ("from 'generics/resistors.ato' import Resistor", "Resistor"),
+        ("from 'generics/capacitors.ato' import Capacitor", "Capacitor"),
+    ],
+)
+def test_reserved_attrs(bob: Bob, import_stmt: str, class_name: str, repo_root: Path):
+    bob.search_paths.append(repo_root / "examples" / "project" / ".ato" / "modules")
+
+    text = dedent(
+        f"""
+        {import_stmt}
+
+        module A:
+            a = new {class_name}
+            a.package = "0402"
+            a.mpn = "1234567890"
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    a = Bob.get_node_attr(node, "a")
+    assert a.get_trait(F.has_package_requirement).get_package_candidates()[0] == "0402"
+    assert a.get_trait(F.has_descriptive_properties).get_properties() == {
+        DescriptiveProperties.partno: "1234567890"
+    }
+
+
+def test_import_ato(bob: Bob, tmp_path):
+    tmp_path = Path(tmp_path)
+    some_module_search_path = tmp_path / "path"
+    some_module_path = some_module_search_path / "to" / "some_module.ato"
+    some_module_path.parent.mkdir(parents=True)
+
+    some_module_path.write_text(
+        dedent(
+            """
+        import Resistor
+
+        module SpecialResistor from Resistor:
+            footprint = "R0805"
+        """
+        )
+    )
+
+    top_module_content = dedent(
+        """
+        from "to/some_module.ato" import SpecialResistor
+
+        module A:
+            r1 = new SpecialResistor
+        """
+    )
+
+    bob.search_paths.append(some_module_search_path)
+
+    tree = parse_text_as_file(top_module_content)
+    node = bob.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    r1 = Bob.get_node_attr(node, "r1")
+    assert isinstance(r1, F.Resistor)

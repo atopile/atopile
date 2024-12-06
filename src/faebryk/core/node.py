@@ -29,8 +29,8 @@ from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
     cast_assert,
-    debugging,
     find,
+    in_debug_session,
     not_none,
     post_init_decorator,
     times,
@@ -441,7 +441,7 @@ class Node(CNode):
             except Exception as e:
                 # this is a bit of a hack to provide complete context to debuggers
                 # for underlying field construction errors
-                if debugging():
+                if in_debug_session():
                     raise
                 raise FieldConstructionError(
                     self,
@@ -492,7 +492,7 @@ class Node(CNode):
         if self._init:
             for f_name in ("__preinit__", "__postinit__"):
                 for base in reversed(type(self).mro()):
-                    if hasattr(base, f_name):
+                    if f_name in base.__dict__:
                         f = getattr(base, f_name)
                         f(self)
 
@@ -559,7 +559,7 @@ class Node(CNode):
         from faebryk.core.parameter import Parameter
 
         params = {
-            not_none(p.get_parent())[1]: p.get_most_narrow()
+            not_none(p.get_parent())[1]: p
             for p in self.get_children(direct_only=True, types=Parameter)
         }
         params_str = "\n".join(f"{k}: {v}" for k, v in params.items())

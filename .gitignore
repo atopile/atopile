@@ -169,6 +169,8 @@ cython_debug/
 
 # ide
 .vscode/
+!.vscode/*.shared.json
+!.vscode/extensions.json
 .aider*
 
 # generic outputs
@@ -187,3 +189,7 @@ _local
 # ANTLR generated files
 .antlr/
 **/.antlr/
+
+
+# Stray atopile artifacts
+standalone/

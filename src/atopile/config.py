@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Optional
 
 import cattrs
-import deepdiff
 from attr import fields_dict
 from attrs import Factory, define
 from ruamel.yaml import YAML
@@ -47,9 +46,19 @@ class AtoConfigError(atopile.errors.UserException):
 class ProjectPaths:
     """Config grouping for all the paths in a project."""
 
-    src: Path = "elec/src"
-    layout: Path = "elec/layout"
-    footprints: Path = "elec/footprints/footprints"
+    src: Path = Factory(lambda: ProjectPaths._conditional_path(Path("elec") / "src"))
+    layout: Path = Factory(
+        lambda: ProjectPaths._conditional_path(Path("elec") / "layout")
+    )
+    footprints: Path = Factory(
+        lambda: ProjectPaths._conditional_path(
+            Path("elec") / "footprints" / "footprints"
+        )
+    )
+
+    @staticmethod
+    def _conditional_path(path: Path, fallback: Path = Path(".")) -> Path:
+        return path if path.exists() else fallback
 
 
 @define
@@ -103,7 +112,7 @@ class ProjectConfig:
     The config object for atopile.
     """
 
-    location: Optional[Path] = None
+    location: Path = None  # type: ignore  # Deferred (but promised)
 
     ato_version: str = "0.1.0"
     paths: ProjectPaths = Factory(ProjectPaths)
@@ -138,9 +147,15 @@ class ProjectConfig:
             for ex in exs.exceptions:
                 # FIXME: make this less shit
                 raise AtoConfigError(f"Bad key in config {repr(ex)}") from ex
+        raise ValueError("Failed to structure config")
 
     def patch_config(self, original: dict) -> dict:
         """Apply a delta between the original and the current config."""
+
+        # delayed import to improve startup time
+        # because deepdiff loads pandas
+        from deepdiff import DeepDiff, Delta
+
         original_cfg = self.structure(original)
 
         # Here we need to work around some structural changes
@@ -158,12 +173,12 @@ class ProjectConfig:
         original_cfg = self.structure(original)
         # Kill me... I'm sorry
 
-        diff = deepdiff.DeepDiff(
+        diff = DeepDiff(
             self._unsanitise_dict_keys(_converter.unstructure(original_cfg)),
             self._unsanitise_dict_keys(_converter.unstructure(self)),
         )
 
-        delta = deepdiff.Delta(diff)
+        delta = Delta(diff)
         return original + delta
 
     def save_changes(self, location: Optional[Path] = None) -> None:
@@ -211,7 +226,7 @@ def get_project_dir_from_path(path: Path) -> Path:
     """
     Resolve the project directory from the specified path.
     """
-    # TODO: when provided with the "." path, it doesn't find the config in parent directories
+    # TODO: when provided with the "." path, it doesn't find the config in parent directories # noqa: E501  # pre-existing
     path = Path(path)
     for p in [path] + list(path.parents):
         clean_path = p.resolve().absolute()
@@ -310,9 +325,20 @@ def find_layout(layout_base: Path) -> Path:
             )
 
     else:
-        raise atopile.errors.UserFileNotFoundError(
-            f"Layout file not found in {layout_base}"
-        )
+        layout_path = layout_base.with_suffix(".kicad_pcb")
+
+        log.warning("Creating new layout at %s", layout_path)
+        layout_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # delayed import to improve startup time
+        from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
+
+        C_kicad_pcb_file.skeleton(
+            generator=atopile.version.DISTRIBUTION_NAME,
+            generator_version=str(atopile.version.get_installed_atopile_version()),
+        ).dumps(layout_path)
+
+        return layout_path
 
 
 class BuildType(Enum):
@@ -324,13 +350,16 @@ class BuildType(Enum):
 class BuildPaths:
     """Output paths for a build."""
 
+    root: (
+        Path | None
+    )  # eg. path/to/project/<where ato.yaml is> OR git repo OR None is indiscernible
     layout: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
     lock_file: Path | None  # eg. path/to/project/ato-lock.yaml
     build: Path  # eg. path/to/project/build/<build-name>
     output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
     netlist: Path
     fp_lib_table: Path
-    footprints: Path
+    component_lib: Path
     kicad_project: Path
 
 
@@ -395,13 +424,14 @@ class BuildContext:
             fail_on_drcs=build_config.fail_on_drcs,
             dont_solve_equations=build_config.dont_solve_equations,
             paths=BuildPaths(
+                root=project_context.project_path,
                 layout=layout_path,
                 lock_file=project_context.lock_file_path,
                 build=build_path,
                 output_base=build_path / config_name,
                 netlist=build_path / config_name / f"{config_name}.net",
                 fp_lib_table=layout_path.parent / "fp-lib-table",
-                footprints=layout_path.parent / "lib" / "footprints" / "lcsc.pretty",
+                component_lib=build_path / "kicad" / "libs",
                 kicad_project=layout_path.with_suffix(".kicad_pro"),
             ),
         )

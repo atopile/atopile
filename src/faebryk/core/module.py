@@ -102,7 +102,7 @@ class Module(Node):
                 continue
             if dst is None:
                 raise Exception(f"Special module misses parameter: {src.get_name()}")
-            dst.merge(src)
+            dst.alias_is(src)
 
         # TODO this cant work
         # for t in self.traits:

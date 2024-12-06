@@ -9,7 +9,6 @@ from more_itertools import partition
 import faebryk.library._F as F
 from faebryk.core.cpp import Graph
 from faebryk.core.graph import GraphFunctions
-from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import Parameter
 from faebryk.libs.test.times import Times
@@ -18,45 +17,18 @@ from faebryk.libs.util import find, groupby
 logger = logging.getLogger(__name__)
 
 
-def replace_tbd_with_any(module: Module, recursive: bool, loglvl: int | None = None):
-    """
-    Replace all F.TBD instances with F.ANY instances in the given module.
-
-    :param module: The module to replace F.TBD instances in.
-    :param recursive: If True, replace F.TBD instances in submodules as well.
-    """
-    lvl = logger.getEffectiveLevel()
-    if loglvl is not None:
-        logger.setLevel(loglvl)
-
-    module = module.get_most_special()
-
-    for param in module.get_children(direct_only=True, types=Parameter):
-        if isinstance(param.get_most_narrow(), F.TBD):
-            logger.debug(f"Replacing in {module}: {param} with F.ANY")
-            param.merge(F.ANY())
-
-    logger.setLevel(lvl)
-
-    if recursive:
-        for m in module.get_children_modules(types=Module):
-            replace_tbd_with_any(m, recursive=False, loglvl=loglvl)
-
-
 def resolve_dynamic_parameters(graph: Graph):
     other_dynamic_params, connection_dynamic_params = partition(
         lambda param_trait: isinstance(param_trait[1], F.is_dynamic_by_connections),
         [
             (param, trait)
-            for param, trait in GraphFunctions(graph).nodes_with_trait(
-                Parameter.is_dynamic
-            )
+            for param, trait in GraphFunctions(graph).nodes_with_trait(F.is_dynamic)
         ],
     )
 
     # non-connection
     for _, trait in other_dynamic_params:
-        trait.execute()
+        trait.exec()
 
     # connection
     _resolve_dynamic_parameters_connection(

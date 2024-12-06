@@ -251,6 +251,22 @@ nb::type_object Node::Type::get_moduleinterface_type() {
     return nb::module_::import_("faebryk.core.moduleinterface").attr("ModuleInterface");
 }
 
+std::unordered_set<Node_ref> Node::bfs_node(std::function<bool(Path)> filter) {
+    std::unordered_set<Node_ref> out;
+
+    auto filter_func = [filter, &out](std::vector<GI_ref_weak> &path, Link_ref) {
+        bool ok = filter(Path(path));
+        if (ok) {
+            out.insert(path.back()->get_node());
+        }
+        return ok;
+    };
+
+    this->self->get_graph()->bfs_visit(
+        filter_func, std::vector({static_cast<GraphInterface *>(this->self.get())}));
+    return out;
+}
+
 void Node::setter_no_include_parents_in_full_name(bool no_include_parents_in_full_name) {
     this->no_include_parents_in_full_name = no_include_parents_in_full_name;
 }

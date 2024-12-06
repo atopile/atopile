@@ -1,4 +1,4 @@
-(kicad_pcb
+(kicad_pcb 
     (version 20240108)
     (generator "pcbnew")
     (generator_version "8.0")
@@ -76,8 +76,8 @@
             (scaleselection 1)
             (outputdirectory "")))
     (net 0 "")
-    (net 2 "*AA08-net-1")
-    (net 3 "*AA08-net-0")
+    (net 2 "net-1")
+    (net 3 "net")
     (footprint "lcsc:R0402"
         (layer "F.Cu")
         (uuid "15f7c75b-59d1-4685-9b01-16f4091e7043")
@@ -203,14 +203,14 @@
             (size 0.57 0.54)
             (layers "F.Cu" "F.Paste" "F.Mask")
             (remove_unused_layers no)
-            (net 2 "*AA08-net-1")
+            (net 2 "net-1")
             (uuid "9e82c7f9-bb48-4671-a044-b1c6fc0b9197"))
         (pad "1" smd rect
             (at -0.43 0 0)
             (size 0.57 0.54)
             (layers "F.Cu" "F.Paste" "F.Mask")
             (remove_unused_layers no)
-            (net 3 "*AA08-net-0")
+            (net 3 "net")
             (uuid "803757cd-6b38-4ab1-b077-312323766f7b"))
         (model "${KIPRJMOD}/../libs/3dmodels/lcsc.3dshapes/R0402_L1.0-W0.5-H0.5.wrl"
             (offset
@@ -380,14 +380,14 @@
             (size 0.79 0.54)
             (layers "F.Cu" "F.Paste" "F.Mask")
             (remove_unused_layers no)
-            (net 2 "*AA08-net-1")
+            (net 2 "net-1")
             (uuid "f1448548-0673-48d5-bf09-3d6e163c5f00"))
         (pad "1" smd rect
             (at -0.55 0 0)
             (size 0.79 0.54)
             (layers "F.Cu" "F.Paste" "F.Mask")
             (remove_unused_layers no)
-            (net 3 "*AA08-net-0")
+            (net 3 "net")
             (uuid "67c01825-197d-436d-aca0-11feb030225b"))
         (model "${KIPRJMOD}/../libs/3dmodels/lcsc.3dshapes/C0402_L1.0-W0.5-H0.5.wrl"
             (offset

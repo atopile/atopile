@@ -24,54 +24,36 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, config, errors
+from atopile._shim import Component, ModuleShims, shim_map
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
 from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
 from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
-from faebryk.libs.exceptions import ExceptionAccumulator, iter_through_errors
-from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.units import P, Quantity, Unit
+from faebryk.libs.exceptions import (
+    ExceptionAccumulator,
+    downgrade,
+    iter_through_errors,
+    log_user_errors,
+)
+from faebryk.libs.library.L import Range, Single
+from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
+from faebryk.libs.units import (
+    Quantity,
+    Unit,
+    UnitCompatibilityError,
+    dimensionless,
+)
 from faebryk.libs.util import (
     FuncDict,
+    cast_assert,
     has_attr_or_property,
+    has_instance_settable_attr,
     import_from_path,
-    try_set_attr,
-    write_only_property,
 )
 
-# Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
-try:
-    from faebryk.libs.units import UnitCompatibilityError, dimensionless  # type: ignore
-except ImportError:
-
-    class UnitCompatibilityError(Exception):
-        """Placeholder Exception"""
-
-    dimensionless = P.dimensionless
-
-try:
-    from faebryk.libs.library.L import Range  # type: ignore
-except ImportError:
-    from faebryk.library._F import Range  # type: ignore
-
-try:
-    from faebryk.library import Single  # type: ignore
-except ImportError:
-    from faebryk.library._F import Constant as Single  # type: ignore
-
-
-def _alias_is(lh, rh):
-    try:
-        return lh.alias_is(rh)
-    except AttributeError:
-        return lh.merge(rh)
-
-
-# End helpers ---------------------------------------------------------------
-
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class from_dsl(Trait.decless()):
@@ -83,7 +65,8 @@ class from_dsl(Trait.decless()):
 class BasicsMixin:
     def visitName(self, ctx: ap.NameContext) -> str:
         """
-        If this is an int, convert it to one (for pins), else return the name as a string.
+        If this is an int, convert it to one (for pins),
+        else return the name as a string.
         """
         return ctx.getText()
 
@@ -125,7 +108,9 @@ class PhysicalValuesMixin:
                 ctx, f"Unknown unit '{unit_str}'"
             ) from ex
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> Range:
+    def visitLiteral_physical(
+        self, ctx: ap.Literal_physicalContext
+    ) -> Quantity_Singleton | Quantity_Interval:
         """Yield a physical value from a physical context."""
         if ctx.quantity():
             qty = self.visitQuantity(ctx.quantity())
@@ -135,7 +120,8 @@ class PhysicalValuesMixin:
         elif ctx.bound_quantity():
             value = self.visitBound_quantity(ctx.bound_quantity())
         else:
-            raise ValueError  # this should be protected because it shouldn't be parseable
+            # this should be protected because it shouldn't be parseable
+            raise ValueError
         return value
 
     def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
@@ -157,7 +143,9 @@ class PhysicalValuesMixin:
 
         return Quantity(value, unit)  # type: ignore
 
-    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> Range:
+    def visitBilateral_quantity(
+        self, ctx: ap.Bilateral_quantityContext
+    ) -> Quantity_Interval:
         """Yield a physical value from a bilateral quantity context."""
         nominal_qty = self.visitQuantity(ctx.quantity())
 
@@ -198,7 +186,7 @@ class PhysicalValuesMixin:
         if nominal_qty.unitless:
             nominal_qty = nominal_qty * tol_qty.units
 
-        # If the nominal has a unit, then we rely on the ranged value's unit compatibility
+        # If the nominal has a unit, then we rely on the ranged value's unit compatibility # noqa: E501  # pre-existing
         if not nominal_qty.is_compatible_with(tol_qty):
             raise errors.UserTypeError.from_ctx(
                 tol_name,
@@ -208,7 +196,7 @@ class PhysicalValuesMixin:
 
         return Range.from_center(nominal_qty, tol_qty)
 
-    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Range:
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Quantity_Interval:
         """Yield a physical value from a bound quantity context."""
 
         start, end = map(self.visitQuantity, ctx.quantity())
@@ -259,7 +247,7 @@ class SequenceMixin:
         def _visit():
             for err_cltr, child in iter_through_errors(children):
                 with err_cltr():
-                    # Since we're in a SequenceMixin, we need to cast self to the visitor type
+                    # Since we're in a SequenceMixin, we need to cast self to the visitor type # noqa: E501  # pre-existing
                     child_result = cast(AtopileParserVisitor, self).visit(child)
                     if child_result is not NOTHING:
                         yield child_result
@@ -325,16 +313,41 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
     def visitImport_stmt(
         self, ctx: ap.Import_stmtContext
     ) -> KeyOptMap[Context.ImportPlaceholder]:
-        lazy_imports = [
-            Context.ImportPlaceholder(
-                ref=self.visitName_or_attr(name_or_attr),
-                from_path=self.visitString(ctx.string()),
-                original_ctx=ctx,
-            )
-            for name_or_attr in ctx.name_or_attr()
-        ]
-        return KeyOptMap(KeyOptItem.from_kv(li.ref, li) for li in lazy_imports)
+        if from_path := ctx.string():
+            lazy_imports = [
+                Context.ImportPlaceholder(
+                    ref=self.visitName_or_attr(name_or_attr),
+                    from_path=self.visitString(from_path),
+                    original_ctx=ctx,
+                )
+                for name_or_attr in ctx.name_or_attr()
+            ]
+            return KeyOptMap(KeyOptItem.from_kv(li.ref, li) for li in lazy_imports)
 
+        else:
+            # Standard library imports are special, and don't require a from path
+            imports = []
+            for collector, name_or_attr in iter_through_errors(ctx.name_or_attr()):
+                with collector():
+                    ref = self.visitName_or_attr(name_or_attr)
+                    if len(ref) > 1:
+                        raise errors.UserKeyError.from_ctx(
+                            ctx, "Standard library imports must be single-name"
+                        )
+
+                    name = ref[0]
+                    if not hasattr(F, name) or not issubclass(
+                        getattr(F, name), (L.Module, L.ModuleInterface)
+                    ):
+                        raise errors.UserKeyError.from_ctx(
+                            ctx, f'Unknown standard library module: "{name}"'
+                        )
+
+                    imports.append(KeyOptItem.from_kv(ref, getattr(F, name)))
+
+            return KeyOptMap(imports)
+
+    # TODO: @v0.4 remove this deprecated import form
     def visitDep_import_stmt(
         self, ctx: ap.Dep_import_stmtContext
     ) -> KeyOptMap[Context.ImportPlaceholder]:
@@ -343,6 +356,14 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
             from_path=self.visitString(ctx.string()),
             original_ctx=ctx,
         )
+        with downgrade(DeprecatedException):
+            raise DeprecatedException.from_ctx(
+                ctx,
+                'Deprecated: "import <something> from <path>" is deprecated and'
+                ' will be removed in a future version. Use "from'
+                f' {ctx.string().getText()} import {ctx.name_or_attr().getText()}"'
+                " instead.",
+            )
         return KeyOptMap.from_kv(lazy_import.ref, lazy_import)
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptMap:
@@ -388,229 +409,10 @@ def ato_error_converter():
             raise ex
 
 
-class _has_kicad_footprint_name_defined(F.has_footprint_impl):
+class DeprecatedException(errors.UserException):
     """
-    This trait defers footprint creation until it's needed,
-    which means we can construct the underlying pin map
+    Raised when a deprecated feature is used.
     """
-
-    def __init__(self, lib_reference: str, pinmap: dict[str, F.Electrical]):
-        super().__init__()
-        self.lib_reference = lib_reference
-        self.pinmap = pinmap
-
-    def _try_get_footprint(self) -> F.Footprint | None:
-        if fps := self.obj.get_children(direct_only=True, types=F.Footprint):
-            return next(iter(fps))
-        else:
-            return None
-
-    def get_footprint(self) -> F.Footprint:
-        if fps := self._try_get_footprint():
-            return fps
-        else:
-            fp = F.KicadFootprint(
-                self.lib_reference,
-                pin_names=list(self.pinmap.keys()),
-            )
-            self.get_trait(F.can_attach_to_footprint).attach(fp)
-            self.set_footprint(fp)
-            return fp
-
-    def handle_duplicate(
-        self, old: "_has_kicad_footprint_name_defined", _: fab_param.Node
-    ) -> bool:
-        if old._try_get_footprint():
-            raise RuntimeError("Too late to set footprint")
-
-        # Update the existing trait...
-        old.lib_reference = self.lib_reference
-        old.pinmap.update(self.pinmap)
-        # ... and we don't need to attach the new
-        return False
-
-
-class _Component(L.Module):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.pinmap = {}
-
-    @L.rt_field
-    def attach_to_footprint(self):
-        return F.can_attach_to_footprint_via_pinmap(self.pinmap)
-
-    @L.rt_field
-    def has_designator_prefix(self):
-        return F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
-
-    def add_pin(self, name: str) -> F.Electrical:
-        if _is_int(name):
-            py_name = f"_{name}"
-        else:
-            py_name = name
-
-        mif = self.add(F.Electrical(), name=py_name)
-        self.pinmap[name] = mif
-        return mif
-
-    @write_only_property
-    def footprint(self, value: str):
-        self.add(_has_kicad_footprint_name_defined(value, self.pinmap))
-
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
-    @write_only_property
-    def designator(self, value: str):
-        self.add(F.has_designator_prefix_defined(value))
-
-
-class _ShimResistor(F.Resistor):
-    """Temporary shim to translate `value` to `resistance`."""
-
-    @property
-    def value(self) -> Range:
-        return self.resistance
-
-    @value.setter
-    def value(self, value: Range):
-        _alias_is(self.resistance, value)
-
-    @write_only_property
-    def footprint(self, value: str):
-        if value.startswith("R"):
-            value = value[1:]
-        self.package = value
-
-    @write_only_property
-    def package(self, value: str):
-        reqs = [(value, 2)]  # package, pin-count
-        self.add(F.has_footprint_requirement_defined(reqs))
-
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
-    @property
-    def p1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-    @property
-    def _1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def _2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-
-class _ShimCapacitor(F.Capacitor):
-    """Temporary shim to translate `value` to `capacitance`."""
-
-    class has_power(L.ModuleInterface.TraitT.decless()):
-        power: F.ElectricPower
-
-    @property
-    def value(self) -> Range:
-        return self.capacitance
-
-    @value.setter
-    def value(self, value: Range):
-        _alias_is(self.capacitance, value)
-
-    @write_only_property
-    def footprint(self, value: str):
-        if value.startswith("C"):
-            value = value[1:]
-        self.package = value
-
-    @write_only_property
-    def package(self, value: str):
-        reqs = [(value, 2)]  # package, pin-count
-        self.add(F.has_footprint_requirement_defined(reqs))
-
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
-    @property
-    def p1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-    @property
-    def _1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def _2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-    @property
-    def power(self) -> F.ElectricPower:
-        if trait := self.try_get_trait(self.has_power):
-            return trait.power
-        else:
-            return self.add(self.has_power()).power
 
 
 class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
@@ -630,12 +432,13 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def __init__(self) -> None:
         super().__init__()
         self._scopes = FuncDict[ParserRuleContext, Context]()  # type: ignore
-        self._python_classes = FuncDict[ap.BlockdefContext, Type[_Component]]()  # type: ignore
+        self._python_classes = FuncDict[ap.BlockdefContext, Type[Component]]()  # type: ignore
         self._node_stack = StackList[L.Node]()  # type: ignore
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()  # type: ignore
         self._param_assignments = FuncDict[
             fab_param.Parameter, "tuple[Range | Single, ParserRuleContext | None]"  # type: ignore
         ]()
+        self.search_paths: list[os.PathLike] = []
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
@@ -691,7 +494,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
     def _finish(self):
         with ExceptionAccumulator() as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():
-                with ex_acc.collect(), ato_error_converter():
+                with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
                     if value is None:
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Parameter {param} never assigned"
@@ -703,7 +506,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                     )  # Since value and ctx should be None together
                     param.add(from_dsl(ctx))
                     try:
-                        _alias_is(param, value)
+                        param.constrain_subset(value)
                     except UnitCompatibilityError as ex:
                         raise errors.UserTypeError.from_ctx(ctx, str(ex)) from ex
 
@@ -736,26 +539,31 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         ast = parser.get_ast_from_file(file_path)
         return self._index_ast(ast, file_path)
 
-    def _import_item(
-        self, context: Context, item: Context.ImportPlaceholder
-    ) -> Type[L.Node] | ap.BlockdefContext:
-        shim_map: dict[tuple[str, Ref], Type[L.Node]] = {
-            ("generics/resistors.ato", Ref.from_one("Resistor")): _ShimResistor,
-            ("generics/capacitors.ato", Ref.from_one("Capacitor")): _ShimCapacitor,
-        }
-        ref = (item.from_path, item.ref)
-        if ref in shim_map:
-            return shim_map[ref]
-
-        prj_context = config.get_project_context()
-        search_paths = [
-            prj_context.src_path,
-            prj_context.module_path,
-        ]
+    def _get_search_paths(self, context: Context) -> list[Path]:
+        search_paths = [Path(p) for p in self.search_paths]
 
         if context.file_path is not None:
             search_paths.insert(0, context.file_path.parent)
 
+        try:
+            prj_context = config.get_project_context()
+        except ValueError:
+            # No project context, so we can't import anything
+            pass
+        else:
+            search_paths += [
+                prj_context.src_path,
+                prj_context.module_path,
+            ]
+
+        return search_paths
+
+    def _import_item(
+        self, context: Context, item: Context.ImportPlaceholder
+    ) -> Type[L.Node] | ap.BlockdefContext:
+        # Build up search paths to check for the import in
+        # Iterate though them, checking if any contains the thing we're looking for
+        search_paths = self._get_search_paths(context)
         for search_path in search_paths:
             candidate_from_path = search_path / item.from_path
             if candidate_from_path.exists():
@@ -767,6 +575,18 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             )
 
         from_path = self._sanitise_path(candidate_from_path)
+
+        # TODO: @v0.4: remove this shimming
+        import_addr = address.AddrStr.from_parts(str(from_path), ".".join(item.ref))
+        for shim_addr, (shim_cls, preferred) in shim_map.items():
+            if import_addr.endswith(shim_addr):
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException.from_ctx(
+                        item.original_ctx,
+                        f"Deprecated: {import_addr} is deprecated and will be"
+                        f" removed in a future version. Use {preferred} instead.",
+                    )
+                return shim_cls
 
         if from_path.suffix == ".py":
             try:
@@ -789,15 +609,17 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         elif from_path.suffix == ".ato":
             context = self._index_file(from_path)
-            node = item
-            for ref in item.ref:
-                if ref not in context.refs:
-                    raise errors.UserKeyError.from_ctx(
-                        item.original_ctx, f"No declaration of {ref} in {from_path}"
-                    )
-                node = context.refs[ref]
+            if item.ref not in context.refs:
+                raise errors.UserKeyError.from_ctx(
+                    item.original_ctx, f"No declaration of {item.ref} in {from_path}"
+                )
+            node = context.refs[item.ref]
 
-            assert isinstance(node, type) and issubclass(node, L.Node)
+            assert (
+                isinstance(node, type)
+                and issubclass(node, L.Node)
+                or isinstance(node, ap.BlockdefContext | ap.File_inputContext)
+            )
             return node
 
         else:
@@ -913,11 +735,20 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
                 assert issubclass(super_class, L.Node)
 
-                class Class_(super_class):  # type: ignore
-                    __name__ = super_ctx.name().getText()
-                    __atopile_src_ctx__ = super_ctx
+                # Create a new type with a more descriptive name
+                type_name = super_ctx.name().getText()
+                type_qualname = f"{super_class.__module__}.{type_name}"
 
-                super_class = Class_
+                super_class = type(
+                    type_name,  # Class name
+                    (super_class,),  # Base classes
+                    {
+                        "__module__": super_class.__module__,
+                        "__qualname__": type_qualname,
+                        "__atopile_src_ctx__": super_ctx,
+                    },
+                )
+
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
@@ -937,7 +768,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 if block_type.INTERFACE():
                     base_class = L.ModuleInterface
                 elif block_type.COMPONENT():
-                    base_class = _Component
+                    base_class = Component
                 elif block_type.MODULE():
                     base_class = L.Module
                 else:
@@ -1024,11 +855,23 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
-            if not try_set_attr(target, assigned_name, value):
-                errors.UserException.from_ctx(
-                    ctx,
-                    f"Ignoring assignment of {value} to {assigned_name} on {target}",
-                ).log(to_level=logging.WARNING)
+            if has_instance_settable_attr(target, assigned_name):
+                setattr(target, assigned_name, value)
+            elif (
+                # If ModuleShims has a settable property, use it
+                hasattr(ModuleShims, assigned_name)
+                and isinstance(getattr(ModuleShims, assigned_name), property)
+                and getattr(ModuleShims, assigned_name).fset
+            ):
+                prop = cast_assert(property, getattr(ModuleShims, assigned_name))
+                prop.fset(target, value)
+            else:
+                with downgrade(errors.UserException):
+                    raise errors.UserException.from_ctx(
+                        ctx,
+                        f'Ignoring assignment of "{value}" to "{assigned_name}" '
+                        f'on "{target}"',
+                    )
 
         else:
             raise ValueError(f"Unhandled assignable type {assignable_ctx.getText()}")
@@ -1045,7 +888,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         else:
             raise ValueError(f"Unhandled pin name type {ctx}")
 
-        if not isinstance(self._current_node, _Component):
+        if not isinstance(self._current_node, Component):
             raise errors.UserTypeError.from_ctx(
                 ctx, f"Can't declare pins on components of type {self._current_node}"
             )
@@ -1055,15 +898,72 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visitName(ctx.name())
-        mif = self._current_node.add(F.Electrical(), name=name)
+        # TODO: @v0.4: remove this protection
+        if (
+            has_attr_or_property(self._current_node, name)
+            or name in self._current_node.runtime
+        ):
+            ref = Ref.from_one(name)
+            # TODO: consider type-checking this
+            mif = self._get_referenced_node(ref, ctx)
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    f"Signal {name} already exists, skipping."
+                    " In the future this will be an error."
+                )
+        else:
+            mif = self._current_node.add(F.Electrical(), name=name)
+
         return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+
+    @classmethod
+    def _connect(cls, a: L.ModuleInterface, b: L.ModuleInterface, nested: bool = False):
+        """
+        FIXME: In ato, we allowed duck-typing of connectables
+        We need to reconcile this with the strong typing
+        in faebryk's connect method
+        For now, we'll attempt to connect by name, and log a deprecation
+        warning if that succeeds, else, re-raise the exception emitted
+        by the connect method
+        """
+        try:
+            a.connect(b)
+        except NodeException as top_ex:
+            for name, (c_a, c_b) in a.zip_children_by_name_with(
+                b, L.ModuleInterface
+            ).items():
+                if c_a is None:
+                    if has_attr_or_property(a, name):
+                        c_a = getattr(a, name)
+                    else:
+                        raise
+
+                if c_b is None:
+                    if has_attr_or_property(b, name):
+                        c_b = getattr(b, name)
+                    else:
+                        raise
+
+                try:
+                    cls._connect(c_a, c_b, nested=True)
+                except NodeException:
+                    raise top_ex
+
+            else:
+                if not nested:
+                    with downgrade(DeprecatedException):
+                        raise DeprecatedException(
+                            f"Deprecated: Connected {a} to {b} by duck-typing."
+                            " They should be of the same type."
+                        )
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
         """Connect interfaces together"""
         connectables = [self.visitConnectable(c) for c in ctx.connectable()]
         for err_cltr, (a, b) in iter_through_errors(itertools.pairwise(connectables)):
             with err_cltr():
-                a.connect(b)
+                self._connect(a, b)
+
         return KeyOptMap.empty()
 
     def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:
@@ -1078,7 +978,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             return node
         elif numerical_ctx := ctx.numerical_pin_ref():
             pin_name = numerical_ctx.getText()
-            node = self.get_node_attr(self._current_node, pin_name)
+            ref = Ref.from_one(pin_name)
+            node = self._get_referenced_node(ref, ctx)
             assert isinstance(node, L.ModuleInterface)
             return node
         else:
@@ -1155,7 +1056,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def visitArithmetic_expression(
         self, ctx: ap.Arithmetic_expressionContext
-    ) -> "fab_param.ParameterOperatable":
+    ) -> fab_param.ParameterOperatable:
         if ctx.OR_OP() or ctx.AND_OP():
             lh = self.visitArithmetic_expression(ctx.arithmetic_expression())
             rh = self.visitSum(ctx.sum_())
@@ -1167,7 +1068,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         return self.visitSum(ctx.sum_())
 
-    def visitSum(self, ctx: ap.SumContext) -> "fab_param.ParameterOperatable":
+    def visitSum(self, ctx: ap.SumContext) -> fab_param.ParameterOperatable:
         if ctx.ADD() or ctx.MINUS():
             lh = self.visitSum(ctx.sum_())
             rh = self.visitTerm(ctx.term())
@@ -1179,7 +1080,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         return self.visitTerm(ctx.term())
 
-    def visitTerm(self, ctx: ap.TermContext) -> "fab_param.ParameterOperatable":
+    def visitTerm(self, ctx: ap.TermContext) -> fab_param.ParameterOperatable:
         if ctx.STAR() or ctx.DIV():
             lh = self.visitTerm(ctx.term())
             rh = self.visitPower(ctx.power())
@@ -1191,7 +1092,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         return self.visitPower(ctx.power())
 
-    def visitPower(self, ctx: ap.PowerContext) -> "fab_param.ParameterOperatable":
+    def visitPower(self, ctx: ap.PowerContext) -> fab_param.ParameterOperatable:
         if ctx.POWER():
             base = self.visitFunctional(ctx.functional())
             exp = self.visitFunctional(ctx.functional())
@@ -1201,17 +1102,17 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def visitFunctional(
         self, ctx: ap.FunctionalContext
-    ) -> "fab_param.ParameterOperatable":
+    ) -> fab_param.ParameterOperatable:
         if ctx.name():
             # TODO: implement min/max
             raise NotImplementedError
         else:
             return self.visitBound(ctx.bound(0))
 
-    def visitBound(self, ctx: ap.BoundContext) -> "fab_param.ParameterOperatable":
+    def visitBound(self, ctx: ap.BoundContext) -> fab_param.ParameterOperatable:
         return self.visitAtom(ctx.atom())
 
-    def visitAtom(self, ctx: ap.AtomContext) -> "fab_param.ParameterOperatable":
+    def visitAtom(self, ctx: ap.AtomContext) -> fab_param.ParameterOperatable:
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
             if len(ref) > 1:
@@ -1229,7 +1130,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         raise ValueError(f"Unhandled atom type {ctx}")
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> Range:
+    def visitLiteral_physical(
+        self, ctx: ap.Literal_physicalContext
+    ) -> Quantity_Singleton | Quantity_Interval:
         return PhysicalValuesMixin.visitLiteral_physical(self, ctx)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
@@ -1266,10 +1169,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         if param not in self._param_assignments:
             self._param_assignments[param] = (None, ctx)
         else:
-            errors.UserKeyError.from_ctx(
-                ctx,
-                f"Ignoring declaration of {assigned_name} because it's already defined",
-            ).log(to_level=logging.WARNING)
+            logger.warning(
+                errors.UserKeyError.from_ctx(
+                    ctx,
+                    f"Ignoring declaration of {assigned_name} because it's already defined",  # noqa: E501  # pre-existing
+                )
+            )
 
         return KeyOptMap.empty()
 

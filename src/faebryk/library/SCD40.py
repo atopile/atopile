@@ -14,12 +14,9 @@ class SCD40(Module):
     """
 
     class _scd4x_esphome_config(F.has_esphome_config.impl()):
-        update_interval: F.TBD
+        update_interval = L.p_field(units=P.s, tolerance_guess=0)
 
         def get_config(self) -> dict:
-            val = self.update_interval.get_most_narrow()
-            assert isinstance(val, F.Constant)
-
             obj = self.get_obj(SCD40)
 
             i2c = F.is_esphome_bus.find_connected_bus(obj.i2c)
@@ -39,16 +36,10 @@ class SCD40(Module):
                         },
                         "address": 0x62,
                         "i2c_id": i2c.get_trait(F.is_esphome_bus).get_bus_id(),
-                        "update_interval": f"{val.value.to('s')}",
+                        "update_interval": self.update_interval,
                     }
                 ]
             }
-
-        def is_implemented(self):
-            return (
-                isinstance(self.update_interval.get_most_narrow(), F.Constant)
-                and super().is_implemented()
-            )
 
     esphome_config: _scd4x_esphome_config
 
@@ -71,10 +62,10 @@ class SCD40(Module):
         )
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
+        self.power.voltage.constrain_subset(L.Range.from_center_rel(3.3 * P.V, 0.05))
         self.i2c.terminate()
         self.power.decoupled.decouple()
-        self.i2c.frequency.merge(
+        self.i2c.frequency.constrain_le(
             F.I2C.define_max_frequency_capability(F.I2C.SpeedMode.fast_speed)
         )
 

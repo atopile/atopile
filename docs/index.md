@@ -29,19 +29,19 @@ The `.ato` files are human readable and can be version controlled, so you can co
 
 To run atopile, you will need the atopile compiler, the VSCode extension for syntax highlighting and git credential manager.
 
-### atopile compiler - with `pipx` <small>recommended</small>
+### atopile compiler — with `uv` <small>(recommended)</small>
 
-atopile is published as a [python package](https://pypi.org/project/atopile/) on pypi. You can install it using `pip` from your command line. We recommend setting up a virtual environment for atopile so that atopile's dependencies don't clash with the rest of your system.
+atopile is published as a [python package](https://pypi.org/project/atopile/) on pypi. You can install it using `uv` from your command line.
 
-It's dead simple with [`pipx`](https://pipx.pypa.io/stable/)
+It's dead simple with [`uv`](https://docs.astral.sh/uv/)
 ``` sh
-pipx install atopile
+uv tool install atopile
 ```
 
 Run `ato --version` to ensure the install worked. You might need to open a new terminal window for the `ato` command to be recognized.
 
-??? question "How do I install `pipx`?"
-    `pipx` has some dead simple installation instructions here: https://pipx.pypa.io/stable/installation/#installing-pipx
+??? question "How do I install `uv`?"
+    `uv` has some dead simple installation instructions here: https://docs.astral.sh/uv/installation/
 
 
 atopile should be installed. You can verify that it worked with the following command which should give you the current version of atopile.
@@ -58,38 +58,26 @@ __[Getting started with atopile - get setup and build your first project from sc
 
 ---
 
-### atopile compiler - for development
+### atopile compiler — for development
 
 atopile can be directly installed from [GitHub](https://github.com/atopile/atopile) by cloning the repository into a subfolder of your project root. This could be useful if you want to use the latest version of atopile:
 
-Start by making sure you have `python@3.12` or later installed on your machine.
+Start by making sure you have `uv` installed on your machine.
 
-??? question "How to install python 3.12 or later"
-
-    To install python 3.12 or later, you can use [brew](https://brew.sh)
-
-    `brew install python@3.12`
-
-    once you create your venv, make sure to run:
-
-    `python3.12 -m venv venv`
-
-Setup the venv:
-``` sh
-python3.12 -m venv venv
-```
-Activate the venv:
-``` sh
-source venv/bin/activate
-```
-
-```
+```sh
 git clone https://github.com/atopile/atopile.git
 ```
-This will create a repository with the latest version of atopile. You can install it using pip:
 
+This will create a repository with the latest version of atopile. You can install it using `uv`:
+
+
+``` sh
+uv sync --dev
 ```
-pip install -e atopile
+
+Activate the venv:
+``` sh
+source .venv/bin/activate
 ```
 
 ### VSCode extension - extension store

@@ -110,4 +110,4 @@ class INA228(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range(2.7 * P.V, 5.5 * P.V))
+        self.power.voltage.constrain_subset(L.Range(2.7 * P.V, 5.5 * P.V))

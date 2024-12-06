@@ -12,6 +12,8 @@ from atopile import errors
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+DISTRIBUTION_NAME = "atopile"
+
 
 class VersionMismatchError(errors.UserException):
     """
@@ -63,7 +65,7 @@ def get_installed_atopile_version() -> Version:
     """
     Get the installed atopile version
     """
-    ap_version_str = importlib.metadata.version("atopile")
+    ap_version_str = importlib.metadata.version(DISTRIBUTION_NAME)
     semver = parse(ap_version_str)
     return semver
 
@@ -140,7 +142,7 @@ def match(spec: str, version: Version):
             specd_version = parse(spec)
             operator = "^"
         except ValueError as ex:
-            # finally, if we could do any of that, we assume there's something wrong with the spec
+            # finally, if we could do any of that, we assume there's something wrong with the spec # noqa: E501  # pre-existing
             raise errors.UserException(f"Invalid version spec: {spec}") from ex
 
     if operator == "^":
