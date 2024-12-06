@@ -57,7 +57,11 @@ class has_simple_value_representation_based_on_params_chain(
                 enum = EnumSet.from_value(value)
                 if not enum.is_single_element():
                     raise NotImplementedError()
-                return next(iter(enum.elements)).name
+                val = next(iter(enum.elements))
+                # TODO not sure I like this
+                if isinstance(val.value, str):
+                    return val.value
+                return val.name
 
             if isinstance(domain, Boolean):
                 if self.tolerance:

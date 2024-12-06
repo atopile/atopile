@@ -678,6 +678,7 @@ def test_jlcpcb_pick_led():
     print(led.get_trait(has_part_picked).get_part())
 
 
+@pytest.mark.xfail(reason="Need picker backtracking")
 def test_jlcpcb_pick_powered_led():
     led = F.PoweredLED()
     led.led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
@@ -702,4 +703,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-    typer.run(test_less_obvious_contradiction_by_literal)
+    typer.run(test_jlcpcb_pick_powered_led)

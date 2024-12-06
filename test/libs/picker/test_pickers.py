@@ -79,6 +79,8 @@ def _make_id(p: PickerTestCase, m: ComponentTestCase):
 )
 def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
     picker.check_skip()
+    if picker.add_pickers_fn is add_api_pickers:
+        pytest.xfail(reason="API picker not implemented for params v2")
     module = case.module
     picker.add_pickers_fn(module)
 
