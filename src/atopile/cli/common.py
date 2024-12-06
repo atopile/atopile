@@ -126,11 +126,11 @@ def create_build_contexts(
     build: Iterable[str],
     target: Iterable[str],
     option: Iterable[str],
-    no_project: bool,
+    standalone: bool,
 ) -> list[atopile.config.BuildContext]:
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
 
-    if no_project:
+    if standalone:
         if not entry:
             raise errors.UserBadParameterError(
                 "You must specify an entry to build with the --standalone option"
