@@ -15,6 +15,7 @@ from faebryk.core.link import (
 )
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
+from faebryk.core.node import NodeException
 from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
 from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
@@ -560,5 +561,35 @@ def test_regression_rp2040_usb_diffpair_full():
     resolve_dynamic_parameters(app.get_graph())
 
 
-if __name__ == "__main__":
-    test_regression_rp2040_usb_diffpair()
+def test_connect_incompatible():
+    class A(ModuleInterface):
+        pass
+
+    class B(ModuleInterface):
+        pass
+
+    x = A()
+    y = B()
+    with pytest.raises(NodeException):
+        x.connect(y)  # type: ignore
+
+
+def test_connect_incompatible_hierarchical():
+    class A(ModuleInterface):
+        pass
+
+    class B(A):
+        pass
+
+    x = A()
+    y = B()
+    with pytest.raises(NodeException):
+        x.connect(y)  # type: ignore
+
+
+def test_connect_incompatible_hierarchical_regression():
+    x = F.ElectricPower()
+    y = F.Electrical()
+
+    with pytest.raises(NodeException):
+        x.connect(y)  # type: ignore
