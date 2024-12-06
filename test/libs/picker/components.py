@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComponentTestCase:
     module: Module
-    footprint: list[tuple[str, int]]
+    packages: list[str]
     descriptive_properties: dict[str, str] = field(default_factory=dict)
     override_test_name: str | None = None
 
@@ -41,7 +41,7 @@ mfr_parts = [
                 r.slew_rate.constrain_le(1 * P.MV / P.us),
             )
         ),
-        footprint=[("SOT-23-5", 5)],
+        packages=["SOT-23-5"],
         descriptive_properties={
             DescriptiveProperties.partno: "LMV321IDBVR",
             DescriptiveProperties.manufacturer: "Texas Instruments",
@@ -63,7 +63,7 @@ lcsc_id_parts = [
                 r.slew_rate.constrain_le(1 * P.MV / P.us),
             )
         ),
-        footprint=[("SOT-23-5", 5)],
+        packages=["SOT-23-5"],
         descriptive_properties={"LCSC": "C7972"},
         override_test_name="LCSC_ID_C7972",
     )
@@ -80,7 +80,7 @@ resistors = [
                 r.max_voltage.constrain_ge(25 * P.V),
             )
         ),
-        footprint=[("0402", 2)],
+        packages=["0402"],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -92,7 +92,7 @@ resistors = [
                 r.max_voltage.constrain_ge(50 * P.V),
             )
         ),
-        footprint=[("0603", 2)],
+        packages=["0603"],
     ),
 ]
 
@@ -109,7 +109,7 @@ capacitors = [
                 ),
             )
         ),
-        footprint=[("0603", 2)],
+        packages=["0603"],
     ),
     ComponentTestCase(
         F.Capacitor().builder(
@@ -123,7 +123,7 @@ capacitors = [
                 ),
             )
         ),
-        footprint=[("0402", 2)],
+        packages=["0402"],
     ),
 ]
 
@@ -139,7 +139,7 @@ inductors = [
                 i.self_resonant_frequency.constrain_ge(100 * P.Mhertz),
             )
         ),
-        footprint=[("0603", 2)],
+        packages=["0603"],
     ),
 ]
 
@@ -157,7 +157,7 @@ mosfets = [
                 m.on_resistance.constrain_le(0.1 * P.ohm),
             )
         ),
-        footprint=[("SOT-23", 3)],
+        packages=["SOT-23"],
     ),
 ]
 
@@ -172,7 +172,7 @@ diodes = [
                 d.max_current.constrain_ge(1 * P.A),
             )
         ),
-        footprint=[("SOD-123", 2)],
+        packages=["SOD-123"],
     ),
 ]
 
@@ -191,7 +191,7 @@ leds = [
                 led.max_current.constrain_ge(20 * P.mA),
             )
         ),
-        footprint=[("0805", 2)],
+        packages=["0805"],
     ),
 ]
 
@@ -207,7 +207,7 @@ tvs = [
                 t.reverse_breakdown_voltage.constrain_le(8 * P.V),
             )
         ),
-        footprint=[("SMB(DO-214AA)", 2)],
+        packages=["SMB(DO-214AA)"],
     ),
 ]
 
@@ -227,11 +227,11 @@ ldos = [
                 # u.quiescent_current,
             )
         ),
-        footprint=[
-            ("SOT-23", 3),
-            ("SOT23", 3),
-            ("SOT-23-3", 3),
-            ("SOT-23-3L", 3),
+        packages=[
+            "SOT-23",
+            "SOT23",
+            "SOT-23-3",
+            "SOT-23-3L",
         ],
     ),
 ]

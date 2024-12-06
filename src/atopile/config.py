@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Optional
 
 import cattrs
-import deepdiff
 from attr import fields_dict
 from attrs import Factory, define
 from ruamel.yaml import YAML
@@ -24,7 +23,6 @@ from ruamel.yaml import YAML
 import atopile.errors
 import atopile.version
 from atopile import address
-from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 
 log = logging.getLogger(__name__)
 yaml = YAML()
@@ -152,6 +150,11 @@ class ProjectConfig:
 
     def patch_config(self, original: dict) -> dict:
         """Apply a delta between the original and the current config."""
+
+        # delayed import to improve startup time
+        # because deepdiff loads pandas
+        from deepdiff import DeepDiff, Delta
+
         original_cfg = self.structure(original)
 
         # Here we need to work around some structural changes
@@ -169,12 +172,12 @@ class ProjectConfig:
         original_cfg = self.structure(original)
         # Kill me... I'm sorry
 
-        diff = deepdiff.DeepDiff(
+        diff = DeepDiff(
             self._unsanitise_dict_keys(_converter.unstructure(original_cfg)),
             self._unsanitise_dict_keys(_converter.unstructure(self)),
         )
 
-        delta = deepdiff.Delta(diff)
+        delta = Delta(diff)
         return original + delta
 
     def save_changes(self, location: Optional[Path] = None) -> None:
@@ -324,6 +327,9 @@ def find_layout(layout_base: Path) -> Path:
         layout_path = layout_base.with_suffix(".kicad_pcb")
 
         log.warning("Creating new layout at %s", layout_path)
+
+        # delayed import to improve startup time
+        from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 
         C_kicad_pcb_file.skeleton(
             generator=atopile.version.DISTRIBUTION_NAME,

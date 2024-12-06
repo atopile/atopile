@@ -230,19 +230,15 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
 
         for c in self.get_children_modules(types=F.Capacitor):
             if c in caps_small:
-                c.add(F.has_footprint_requirement_defined([("0201", 2)]))
+                c.add(F.has_package_requirement("0201"))
             else:
-                c.add(
-                    F.has_footprint_requirement_defined(
-                        [("0402", 2), ("0603", 2), ("0805", 2)]
-                    )
-                )
+                c.add(F.has_package_requirement("0402", "0603", "0805"))
 
         for r in self.get_children_modules(types=F.Resistor):
             if r in resistor_small:
-                r.add(F.has_footprint_requirement_defined([("0201", 2)]))
+                r.add(F.has_package_requirement("0201"))
             else:
-                r.add(F.has_footprint_requirement_defined([("0402", 2)]))
+                r.add(F.has_package_requirement("0402"))
 
         self.reset_button.add(F.has_descriptive_properties_defined({"LCSC": "C139797"}))
         self.boot_selector.switch.add(

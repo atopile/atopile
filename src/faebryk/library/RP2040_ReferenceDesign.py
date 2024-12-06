@@ -179,7 +179,7 @@ class RP2040_ReferenceDesign(Module):
             self
         )
         for c in caps_100nF:
-            c.add(F.has_footprint_requirement_defined([("0201", 2)]))
+            c.add(F.has_package_requirement("0201"))
 
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self

@@ -99,15 +99,15 @@ def api_filter_by_module_params_and_attach(
         ) from ex
 
 
-def get_footprint_candidates(module: Module) -> list["FootprintCandidate"]:
+def get_package_candidates(module: Module) -> list["PackageCandidate"]:
     import faebryk.library._F as F
 
-    if module.has_trait(F.has_footprint_requirement):
+    if module.has_trait(F.has_package_requirement):
         return [
-            FootprintCandidate(footprint, pin_count)
-            for footprint, pin_count in module.get_trait(
-                F.has_footprint_requirement
-            ).get_footprint_requirement()
+            PackageCandidate(package)
+            for package in module.get_trait(
+                F.has_package_requirement
+            ).get_package_candidates()
         ]
     return []
 
@@ -134,15 +134,14 @@ def api_generate_si_values(
 
 @dataclass_json
 @dataclass(frozen=True)
-class FootprintCandidate:
-    footprint: str
-    pin_count: int
+class PackageCandidate:
+    package: str
 
 
 @dataclass_json
 @dataclass(frozen=True)
 class BaseParams:
-    footprint_candidates: list[FootprintCandidate]
+    package_candidates: list[PackageCandidate]
     qty: int
 
     def convert_to_dict(self) -> dict:

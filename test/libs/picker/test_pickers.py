@@ -90,8 +90,8 @@ def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
             F.has_descriptive_properties
         ).get_properties()
 
-    if case.footprint:
-        module.add(F.has_footprint_requirement_defined(case.footprint))
+    if case.packages:
+        module.add(F.has_package_requirement(*case.packages))
 
     # pick
     solver = DefaultSolver()
@@ -120,12 +120,6 @@ def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
                 # Test if all params are aliased to Literal
                 param.get_literal()
     # TODO check that part params are equal (alias_is) to module params
-
-    # Check footprint
-    fp = module.get_trait(F.has_footprint)
-    kicad_fp = fp.get_trait(F.has_kicad_footprint)
-    assert len(kicad_fp.get_pin_names()) == case.footprint[0][1]
-    # TODO check footprint is correct
 
 
 @pytest.fixture(autouse=True)

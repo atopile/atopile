@@ -28,8 +28,8 @@ from faebryk.library.has_footprint import has_footprint
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_linked_pad import has_linked_pad
+from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.has_reference import has_reference
-from faebryk.library.has_footprint_requirement import has_footprint_requirement
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
@@ -63,7 +63,6 @@ from faebryk.library.Footprint import Footprint
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.Symbol import Symbol
-from faebryk.library.has_footprint_requirement_defined import has_footprint_requirement_defined
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.has_datasheet_defined import has_datasheet_defined

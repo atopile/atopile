@@ -5,6 +5,7 @@ It will be removed in v0.4.
 """
 
 import logging
+import re
 from typing import Type
 
 from more_itertools import first
@@ -13,7 +14,7 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
-from faebryk.libs.library.L import Range
+from faebryk.libs.exceptions import DeprecatedException, downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import has_attr_or_property, write_only_property
 
@@ -30,9 +31,9 @@ def _alias_is(lh, rh):
 shim_map: dict[address.AddrStr, tuple[Type[L.Module], str]] = {}
 
 
-def _register_shim(addr: address.AddrStr, preferred: str):
+def _register_shim(addr: str | address.AddrStr, preferred: str):
     def _wrapper(cls: Type[L.Module]):
-        shim_map[addr] = cls, preferred
+        shim_map[address.AddrStr(addr)] = cls, preferred
         return cls
 
     return _wrapper
@@ -127,9 +128,28 @@ class Component(L.Module):
         return mif
 
     @write_only_property
+    def mpn(self, value: str):
+        # handles duplicates gracefully
+        self.add(
+            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
+        )
+
+        # TODO: @v0.4: remove this - mpn != lcsc id
+        if re.match(r"C[0-9]+", value):
+            self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    "mpn is deprecated for assignment of LCSC IDs, use lcsc_id instead"
+                )
+
+    @write_only_property
     def footprint(self, value: str):
         self.add(_has_kicad_footprint_name_defined(value, self.pinmap))
 
+
+# FIXME: this would ideally be some kinda of mixin,
+# however, we can't have multiple bases for Nodes
+class ModuleShims(L.Module):
     @write_only_property
     def lcsc_id(self, value: str):
         # handles duplicates gracefully
@@ -151,12 +171,13 @@ class Component(L.Module):
             F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
         )
 
-        # TODO: @v0.4: remove this - mpn != lcsc id
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+    @write_only_property
+    def designator_prefix(self, value: str):
+        self.add(F.has_designator_prefix_defined(value))
 
     @write_only_property
-    def designator(self, value: str):
-        self.add(F.has_designator_prefix_defined(value))
+    def package(self, value: str):
+        self.add(F.has_package_requirement(value))
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
@@ -171,11 +192,11 @@ class _ShimResistor(F.Resistor):
         super().__init__(*args, **kwargs)
 
     @property
-    def value(self) -> Range:
+    def value(self) -> L.Range:
         return self.resistance
 
     @value.setter
-    def value(self, value: Range):
+    def value(self, value: L.Range):
         _alias_is(self.resistance, value)
 
     @write_only_property
@@ -186,29 +207,7 @@ class _ShimResistor(F.Resistor):
 
     @write_only_property
     def package(self, value: str):
-        reqs = [(value, 2)]  # package, pin-count
-        self.add(F.has_footprint_requirement_defined(reqs))
-
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
+        self.add(F.has_package_requirement(value))
 
     @property
     def p1(self) -> F.Electrical:
@@ -242,11 +241,11 @@ class _ShimCapacitor(F.Capacitor):
         power: F.ElectricPower
 
     @property
-    def value(self) -> Range:
+    def value(self) -> L.Range:
         return self.capacitance
 
     @value.setter
-    def value(self, value: Range):
+    def value(self, value: L.Range):
         _alias_is(self.capacitance, value)
 
     @write_only_property
@@ -257,29 +256,7 @@ class _ShimCapacitor(F.Capacitor):
 
     @write_only_property
     def package(self, value: str):
-        reqs = [(value, 2)]  # package, pin-count
-        self.add(F.has_footprint_requirement_defined(reqs))
-
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
+        self.add(F.has_package_requirement(value))
 
     @property
     def p1(self) -> F.Electrical:

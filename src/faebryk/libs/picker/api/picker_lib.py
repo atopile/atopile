@@ -21,7 +21,7 @@ from faebryk.libs.picker.api.api import (
     api_filter_by_module_params_and_attach,
     api_generate_si_values,
     get_api_client,
-    get_footprint_candidates,
+    get_package_candidates,
 )
 
 # re-use the existing model for components from the jlcparts dataset, but as the data
@@ -148,7 +148,7 @@ def find_resistor(cmp: Module, solver: Solver):
             resistances=api_generate_si_values(
                 cmp.resistance, solver, E_SERIES_VALUES.E96
             ),
-            footprint_candidates=get_footprint_candidates(cmp),
+            package_candidates=get_package_candidates(cmp),
             qty=qty,
         ),
     )
@@ -168,7 +168,7 @@ def find_capacitor(cmp: Module, solver: Solver):
             capacitances=api_generate_si_values(
                 cmp.capacitance, solver, E_SERIES_VALUES.E24
             ),
-            footprint_candidates=get_footprint_candidates(cmp),
+            package_candidates=get_package_candidates(cmp),
             qty=qty,
         ),
     )
@@ -188,7 +188,7 @@ def find_inductor(cmp: Module, solver: Solver):
             inductances=api_generate_si_values(
                 cmp.inductance, solver, E_SERIES_VALUES.E24
             ),
-            footprint_candidates=get_footprint_candidates(cmp),
+            package_candidates=get_package_candidates(cmp),
             qty=qty,
         ),
     )
@@ -204,7 +204,7 @@ def find_tvs(cmp: Module, solver: Solver):
         raise PickError("Module is not a TVS diode", cmp)
 
     parts = client.fetch_tvs(
-        TVSParams(footprint_candidates=get_footprint_candidates(cmp), qty=qty),
+        TVSParams(package_candidates=get_package_candidates(cmp), qty=qty),
     )
 
     api_filter_by_module_params_and_attach(cmp, parts, solver)
@@ -225,7 +225,7 @@ def find_diode(cmp: Module, solver: Solver):
             reverse_working_voltages=api_generate_si_values(
                 cmp.reverse_working_voltage, solver, E_SERIES_VALUES.E3
             ),
-            footprint_candidates=get_footprint_candidates(cmp),
+            package_candidates=get_package_candidates(cmp),
             qty=qty,
         ),
     )
@@ -241,7 +241,7 @@ def find_led(cmp: Module, solver: Solver):
         raise PickError("Module is not an LED", cmp)
 
     parts = client.fetch_leds(
-        LEDParams(footprint_candidates=get_footprint_candidates(cmp), qty=qty)
+        LEDParams(package_candidates=get_package_candidates(cmp), qty=qty)
     )
 
     api_filter_by_module_params_and_attach(cmp, parts, solver)
@@ -256,7 +256,7 @@ def find_mosfet(cmp: Module, solver: Solver):
         raise PickError("Module is not a MOSFET", cmp)
 
     parts = client.fetch_mosfets(
-        MOSFETParams(footprint_candidates=get_footprint_candidates(cmp), qty=qty)
+        MOSFETParams(package_candidates=get_package_candidates(cmp), qty=qty)
     )
 
     api_filter_by_module_params_and_attach(cmp, parts, solver)
@@ -271,7 +271,7 @@ def find_ldo(cmp: Module, solver: Solver):
         raise PickError("Module is not a LDO", cmp)
 
     parts = client.fetch_ldos(
-        LDOParams(footprint_candidates=get_footprint_candidates(cmp), qty=qty)
+        LDOParams(package_candidates=get_package_candidates(cmp), qty=qty)
     )
 
     api_filter_by_module_params_and_attach(cmp, parts, solver)

@@ -24,7 +24,7 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, config, errors
-from atopile._shim import Component, shim_map
+from atopile._shim import Component, ModuleShims, shim_map
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtopileParser import AtopileParser as ap
@@ -47,9 +47,10 @@ from faebryk.libs.units import (
 )
 from faebryk.libs.util import (
     FuncDict,
+    cast_assert,
     has_attr_or_property,
+    has_instance_settable_attr,
     import_from_path,
-    try_set_attr,
 )
 
 logger = logging.getLogger(__name__)
@@ -583,7 +584,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                     raise DeprecatedException.from_ctx(
                         item.original_ctx,
                         f"Deprecated: {import_addr} is deprecated and will be"
-                        " removed in a future version. Use {preferred} instead.",
+                        f" removed in a future version. Use {preferred} instead.",
                     )
                 return shim_cls
 
@@ -854,11 +855,22 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
-            if not try_set_attr(target, assigned_name, value):
+            if has_instance_settable_attr(target, assigned_name):
+                setattr(target, assigned_name, value)
+            elif (
+                # If ModuleShims has a settable property, use it
+                hasattr(ModuleShims, assigned_name)
+                and isinstance(getattr(ModuleShims, assigned_name), property)
+                and getattr(ModuleShims, assigned_name).fset
+            ):
+                prop = cast_assert(property, getattr(ModuleShims, assigned_name))
+                prop.fset(target, value)
+            else:
                 with downgrade(errors.UserException):
                     raise errors.UserException.from_ctx(
                         ctx,
-                        f"Ignoring assignment of {value} to {assigned_name} on {target}",  # noqa: E501  # pre-existing
+                        f'Ignoring assignment of "{value}" to "{assigned_name}" '
+                        f'on "{target}"',
                     )
 
         else:

@@ -6,10 +6,12 @@ import rich
 from atopile import telemetry
 from atopile.cli.logging import logger
 from atopile.errors import _BaseBaseUserException
-from faebryk.libs.util import in_debug_session
 
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
+    # delayed import to improve startup time
+    from faebryk.libs.util import in_debug_session
+
     if issubclass(exc_type, _BaseBaseUserException):
         # If we're in a debug session, we want to see the
         # unadulterated exception. We do this pre-logging because
