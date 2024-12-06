@@ -36,7 +36,7 @@ class TI_CD4011BE(F.CD4011):
         self.add(
             F.has_descriptive_properties_defined(
                 {
-                    DescriptiveProperties.manufacturer.value: "Texas Instruments",
+                    DescriptiveProperties.manufacturer: "Texas Instruments",
                     DescriptiveProperties.partno: "CD4011BE",
                 },
             )

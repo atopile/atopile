@@ -23,9 +23,9 @@ class App(Module):
         self.led.power.connect(self.battery.power)
 
         # Parametrize
-        self.led.led.color.merge(F.LED.Color.YELLOW)
-        self.led.led.brightness.merge(
-            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+        self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
+        self.led.led.brightness.constrain_subset(
+            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
     def __postinit__(self) -> None:

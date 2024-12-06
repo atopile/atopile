@@ -16,29 +16,7 @@ import faebryk.libs.library.L as L
 from atopile import address
 from faebryk.libs.exceptions import DeprecatedException, downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.units import P
 from faebryk.libs.util import has_attr_or_property, write_only_property
-
-# Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
-try:
-    from faebryk.libs.units import UnitCompatibilityError, dimensionless  # type: ignore
-except ImportError:
-
-    class UnitCompatibilityError(Exception):
-        """Placeholder Exception"""
-
-    dimensionless = P.dimensionless
-
-try:
-    from faebryk.libs.library.L import Range  # type: ignore
-except ImportError:
-    from faebryk.library._F import Range  # type: ignore
-
-try:
-    from faebryk.library import Single  # type: ignore  # noqa: F401
-except ImportError:
-    pass  # type: ignore
-
 
 log = logging.getLogger(__name__)
 
@@ -214,11 +192,11 @@ class _ShimResistor(F.Resistor):
         super().__init__(*args, **kwargs)
 
     @property
-    def value(self) -> Range:
+    def value(self) -> L.Range:
         return self.resistance
 
     @value.setter
-    def value(self, value: Range):
+    def value(self, value: L.Range):
         _alias_is(self.resistance, value)
 
     @write_only_property
@@ -263,11 +241,11 @@ class _ShimCapacitor(F.Capacitor):
         power: F.ElectricPower
 
     @property
-    def value(self) -> Range:
+    def value(self) -> L.Range:
         return self.capacitance
 
     @value.setter
-    def value(self, value: Range):
+    def value(self, value: L.Range):
         _alias_is(self.capacitance, value)
 
     @write_only_property

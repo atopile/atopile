@@ -7,6 +7,7 @@ but should be upgraded.
 This file provides utilities for working with addresses.
 """
 
+import os
 from functools import wraps
 from os import PathLike
 from pathlib import Path
@@ -30,7 +31,10 @@ class AddrStr(str):
 
     @classmethod
     def from_parts(
-        cls, file: str, entry: Optional[str] = None, instance: Optional[str] = None
+        cls,
+        file: str | os.PathLike | None,
+        entry: str | None = None,
+        instance: str | None = None,
     ) -> "AddrStr":
         return cls(from_parts(file, entry, instance))
 
@@ -189,7 +193,9 @@ def add_entries(address: AddrStr, entries: Iterable[str]) -> AddrStr:
 
 
 def from_parts(
-    file: str | None, entry: str | None = None, instance: str | None = None
+    file: str | None | os.PathLike,
+    entry: str | None = None,
+    instance: str | None = None,
 ) -> AddrStr:
     """
     Create an address from its parts.

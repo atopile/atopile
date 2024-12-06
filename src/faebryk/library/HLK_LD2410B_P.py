@@ -9,14 +9,15 @@ from faebryk.libs.units import P
 
 class HLK_LD2410B_P(Module):
     class _ld2410b_esphome_config(F.has_esphome_config.impl()):
-        throttle: F.TBD
+        throttle = L.p_field(
+            units=P.ms,
+            soft_set=L.Range(10 * P.ms, 1000 * P.ms),
+            tolerance_guess=0,
+        )
 
         def get_config(self) -> dict:
-            val = self.throttle.get_most_narrow()
-            assert isinstance(val, F.Constant), "No update interval set!"
-
             obj = self.obj
-            assert isinstance(obj, HLK_LD2410B_P), "This is not an HLK_LD2410B_P!"
+            assert isinstance(obj, HLK_LD2410B_P)
 
             uart_candidates = {
                 mif
@@ -34,7 +35,7 @@ class HLK_LD2410B_P(Module):
 
             return {
                 "ld2410": {
-                    "throttle": f"{val.value.to('ms')}",
+                    "throttle": self.throttle,
                     "uart_id": uart_cfg["id"],
                 },
                 "binary_sensor": [
@@ -77,7 +78,7 @@ class HLK_LD2410B_P(Module):
         )
 
     def __preinit__(self):
-        self.uart.baud.merge(F.Constant(256 * P.kbaud))
+        self.uart.baud.constrain_le(256 * P.kbaud)
 
     # connect all logic references
     @L.rt_field
