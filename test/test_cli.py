@@ -16,3 +16,21 @@ def test_app(config):
     assert result.returncode == 0
     assert "Build successful!" in result.stdout
     assert "ERROR" not in result.stdout
+
+
+@pytest.mark.xfail(reason="Absolute performance will vary w/ hardware")
+@pytest.mark.benchmark(
+    min_rounds=10,
+    max_time=0.3,
+)
+def test_snapiness(benchmark):
+    def run_cli():
+        return run(
+            [sys.executable, "-m", "atopile", "--help"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+        )
+
+    result = benchmark(run_cli)
+    assert result.returncode == 0
