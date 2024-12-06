@@ -7,16 +7,13 @@ This file contains a faebryk sample.
 
 import logging
 
-import typer
-
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.exporters.pcb.routing.util import Path
-from faebryk.libs.examples.buildutil import apply_design_to_pcb
+from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
-from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.units import P
 from faebryk.libs.util import times
 
@@ -137,7 +134,9 @@ class App(Module):
     def arrays(self):
         return times(2, lambda: ResistorArray(self._count, self._extrude_y))
 
-    def __init__(self, count: int, extrude_y: tuple[float, float]) -> None:
+    def __init__(
+        self, count: int = 2, extrude_y: tuple[float, float] = (15, 5)
+    ) -> None:
         super().__init__()
         self._count = count
         self._extrude_y = extrude_y
@@ -164,20 +163,6 @@ class App(Module):
         F.has_pcb_routing_strategy_greedy_direct_line.Topology.STAR
     )
 
-
-# Boilerplate -----------------------------------------------------------------
-
-
-def main(count: int = 2, extrude_y: tuple[float, float] = (15, 5)):
-    logger.info("Building app")
-    app = App(count, extrude_y)
-
-    logger.info("Export")
-    apply_design_to_pcb(app)
-
-
-if __name__ == "__main__":
-    setup_basic_logging()
-    logger.info("Running example")
-
-    typer.run(main)
+    def __postinit__(self) -> None:
+        for m in self.get_children_modules(types=Module):
+            add_example_pickers(m)

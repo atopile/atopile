@@ -36,6 +36,7 @@ from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.has_reference import has_reference
 from faebryk.library.is_app_root import is_app_root
+from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_descriptive_properties import has_descriptive_properties

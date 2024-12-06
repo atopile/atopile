@@ -6,29 +6,15 @@ This file contains a faebryk sample.
 """
 
 import logging
-from pathlib import Path
-
-import typer
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.exporters.documentation.datasheets import export_datasheets
-from faebryk.exporters.pcb.kicad.artifacts import export_svg
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
-from faebryk.libs.app.checks import run_checks
-from faebryk.libs.app.manufacturing import export_pcba_artifacts
-from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.buildutil import BUILD_DIR, apply_design_to_pcb, build_paths
 from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
-from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.picker.common import CachePicker
-from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
-from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
-from faebryk.libs.picker.picker import pick_part_recursively
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +40,10 @@ class App(Module):
     battery: F.Battery
     power_button: PowerButton
 
+    @L.rt_field
+    def transform_pcb(self):
+        return F.has_layout_transform(transform_pcb)
+
     def __preinit__(self) -> None:
         self.led.power.connect_via(self.power_button, self.battery.power)
 
@@ -62,6 +52,10 @@ class App(Module):
         self.led.led.brightness.merge(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
         )
+
+    def __postinit__(self) -> None:
+        for m in self.get_children_modules(types=Module):
+            add_example_pickers(m)
 
 
 # PCB layout etc ---------------------------------------------------------------
@@ -119,45 +113,3 @@ def transform_pcb(transformer: PCB_Transformer):
         ),
         remove_existing_outline=True,
     )
-
-
-# Boilerplate -----------------------------------------------------------------
-
-
-def main():
-    ARTIFACTS = BUILD_DIR / Path("artifacts")
-
-    logger.info("Building app")
-    app = App()
-    G = app.get_graph()
-    resolve_dynamic_parameters(G)
-
-    # picking ----------------------------------------------------------------
-    replace_tbd_with_any(app, recursive=True)
-    modules = app.get_children_modules(types=Module)
-    CachePicker.add_to_modules(modules, prio=-20)
-    try:
-        JLCPCB_DB()
-        for n in modules:
-            add_jlcpcb_pickers(n, base_prio=-10)
-    except FileNotFoundError:
-        logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
-
-    for n in modules:
-        add_example_pickers(n)
-    pick_part_recursively(app)
-
-    run_checks(app, G)
-
-    logger.info("Export")
-    apply_design_to_pcb(app, transform_pcb)
-    export_pcba_artifacts(ARTIFACTS, build_paths.layout, app)
-    export_svg(build_paths.layout, ARTIFACTS / Path("pcba.svg"))
-    export_datasheets(app, BUILD_DIR / "documentation" / "datasheets")
-
-
-if __name__ == "__main__":
-    setup_basic_logging()
-    logger.info("Running example")
-
-    typer.run(main)
