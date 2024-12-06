@@ -5,7 +5,6 @@ import time
 import unittest
 from itertools import combinations
 
-from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.util import (
     SharedReference,
     assert_once,
@@ -143,8 +142,3 @@ class TestUtil(unittest.TestCase):
 
         self.assertRaises(TimeoutError, do, 0.5)
         do(0)
-
-
-if __name__ == "__main__":
-    setup_basic_logging()
-    unittest.main()

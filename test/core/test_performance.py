@@ -276,7 +276,3 @@ class TestPerformance(unittest.TestCase):
         timings.times["total"] = sum(all_times)
 
         logger.info(f"\n{timings}")
-
-
-if __name__ == "__main__":
-    unittest.main()
