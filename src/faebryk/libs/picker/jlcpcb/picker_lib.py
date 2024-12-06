@@ -99,7 +99,7 @@ _MAPPINGS_BY_TYPE: dict[type[Module], list[MappingParameterDB]] = {
             "Tolerance",
         ),
         MappingParameterDB(
-            "rated_current",
+            "max_current",
             ["Rated Current"],
         ),
         MappingParameterDB(

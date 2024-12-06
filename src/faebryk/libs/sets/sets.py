@@ -107,7 +107,11 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
         return type(self)(*(self.elements | type(self).from_value(other).elements))
 
     def is_subset_of[T: PlainSet](self: T, other: U | T) -> bool:
-        return self.elements.issubset(type(self).from_value(other).elements)
+        try:
+            other_set = type(self).from_value(other)
+        except Exception:
+            return False
+        return self.elements.issubset(other_set.elements)
 
     def is_single_element(self) -> bool:
         return len(self.elements) == 1

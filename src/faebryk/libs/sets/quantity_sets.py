@@ -125,13 +125,11 @@ class Quantity_Interval(Quantity_Set):
         else:
             num_max = max
 
-        is_int = isinstance(num_min, int) or isinstance(num_max, int)
-        if is_int:
-            if num_min is None or num_max is None:
-                raise ValueError("min and max must be provided for ints")
-        else:
+        is_int = isinstance(num_min, int) and isinstance(num_max, int)
+        if not is_int:
             num_min = float(num_min) if num_min is not None else float("-inf")
             num_max = float(num_max) if num_max is not None else float("inf")
+        assert num_min is not None and num_max is not None
 
         self._interval = Numeric_Interval(num_min, num_max)
 
