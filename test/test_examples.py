@@ -20,7 +20,7 @@ XFAIL = [
 ]
 
 
-# @pytest.mark.slow
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "example",
     [

@@ -33,6 +33,7 @@ from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.Operation import Operation
 from faebryk.library.has_linked_pad import has_linked_pad
+from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.has_reference import has_reference
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
@@ -43,7 +44,6 @@ from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_capacitance import has_capacitance
-from faebryk.library.has_footprint_requirement import has_footprint_requirement
 from faebryk.library.has_kicad_ref import has_kicad_ref
 from faebryk.library.has_picker import has_picker
 from faebryk.library.has_pcb_layout import has_pcb_layout
@@ -73,7 +73,6 @@ from faebryk.library.has_datasheet_defined import has_datasheet_defined
 from faebryk.library.has_designator_defined import has_designator_defined
 from faebryk.library.has_simple_value_representation_based_on_params import has_simple_value_representation_based_on_params
 from faebryk.library.has_simple_value_representation_defined import has_simple_value_representation_defined
-from faebryk.library.has_footprint_requirement_defined import has_footprint_requirement_defined
 from faebryk.library.has_multi_picker import has_multi_picker
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
 from faebryk.library.has_single_connection_impl import has_single_connection_impl
