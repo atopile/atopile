@@ -112,7 +112,7 @@ class ProjectConfig:
     The config object for atopile.
     """
 
-    location: Optional[Path] = None
+    location: Path = None  # type: ignore  # Deferred (but promised)
 
     ato_version: str = "0.1.0"
     paths: ProjectPaths = Factory(ProjectPaths)
@@ -147,6 +147,7 @@ class ProjectConfig:
             for ex in exs.exceptions:
                 # FIXME: make this less shit
                 raise AtoConfigError(f"Bad key in config {repr(ex)}") from ex
+        raise ValueError("Failed to structure config")
 
     def patch_config(self, original: dict) -> dict:
         """Apply a delta between the original and the current config."""
@@ -327,6 +328,7 @@ def find_layout(layout_base: Path) -> Path:
         layout_path = layout_base.with_suffix(".kicad_pcb")
 
         log.warning("Creating new layout at %s", layout_path)
+        layout_path.parent.mkdir(parents=True, exist_ok=True)
 
         # delayed import to improve startup time
         from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
