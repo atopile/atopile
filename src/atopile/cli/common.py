@@ -127,14 +127,14 @@ def create_build_contexts(
     build: Iterable[str],
     target: Iterable[str],
     option: Iterable[str],
-    no_project: bool,
+    standalone: bool,
 ) -> list[atopile.config.BuildContext]:
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
 
-    if no_project:
+    if standalone:
         if not entry:
             raise errors.UserBadParameterError(
-                "You must specify an entry to build with the --no-project option"
+                "You must specify an entry to build with the --standalone option"
             )
         if not entry_arg_file_path.exists():
             raise errors.UserBadParameterError(
@@ -142,19 +142,19 @@ def create_build_contexts(
             )
         if not entry_arg_file_path.is_file():
             raise errors.UserBadParameterError(
-                "The path you're building with the --no-project"
+                "The path you're building with the --standalone"
                 f" option must be a file {entry_arg_file_path}"
             )
         if not address.get_entry_section(entry):
             raise errors.UserBadParameterError(
                 "You must specify what to build within a file to build with the"
-                " --no-project option"
+                " --standalone option"
             )
 
         project_config = atopile.config.ProjectConfig(
             location=Path.cwd(),
             ato_version=f"^{version.get_installed_atopile_version()}",
-            paths=atopile.config.ProjectPaths(layout=Path.cwd() / "projectless"),
+            paths=atopile.config.ProjectPaths(layout=Path.cwd() / "standalone"),
             builds={"default": atopile.config.ProjectBuildConfig(targets=[])},
         )
     else:

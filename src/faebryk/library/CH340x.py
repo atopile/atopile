@@ -27,9 +27,9 @@ class CH340x(Module):
     def __preinit__(self):
         self.gpio_power.lv.connect(self.usb.usb_if.buspower.lv)
 
-        self.gpio_power.voltage.merge(F.Range(0 * P.V, 5.3 * P.V))
+        self.gpio_power.voltage.constrain_subset(L.Range(0 * P.V, 5.3 * P.V))
         self.gpio_power.decoupled.decouple()
-        self.usb.usb_if.buspower.voltage.merge(F.Range(4 * P.V, 5.3 * P.V))
+        self.usb.usb_if.buspower.voltage.constrain_subset(L.Range(4 * P.V, 5.3 * P.V))
 
         self.usb.usb_if.buspower.decoupled.decouple()
 

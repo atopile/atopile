@@ -6,6 +6,7 @@ from atopile import layout
 from atopile.config import BuildContext
 from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
@@ -29,7 +30,7 @@ from faebryk.libs.app.designators import (
     attach_random_designators,
     override_names_with_designators,
 )
-from faebryk.libs.app.parameters import replace_tbd_with_any, resolve_dynamic_parameters
+from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_netlist,
@@ -51,15 +52,12 @@ logger = logging.getLogger(__name__)
 
 def build(build_ctx: BuildContext, app: Module) -> None:
     """Build the project."""
-
     G = app.get_graph()
+    solver = DefaultSolver()
     build_ctx.ensure_paths()
     build_paths = build_ctx.paths
 
-    # TODO: consider making each of these a configurable target
-    logger.info("Filling unspecified parameters")
-    replace_tbd_with_any(app, recursive=True)
-
+    logger.info("Resolving dynamic parameters")
     resolve_dynamic_parameters(G)
 
     logger.info("Running checks")
@@ -91,7 +89,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
             except FileNotFoundError:
                 logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
 
-    pick_part_recursively(app)
+    pick_part_recursively(app, solver)
 
     # Write Netlist ------------------------------------------------------------
     logger.info(f"Writing netlist to {build_paths.netlist}")

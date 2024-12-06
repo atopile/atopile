@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import TYPE_CHECKING
+from types import UnionType
+from typing import TYPE_CHECKING, overload
 
 from faebryk.core.cpp import Graph
 from faebryk.core.node import Node
@@ -45,5 +46,10 @@ class GraphFunctions:
     def nodes_of_type[T: "Node"](self, t: type[T]) -> set[T]:
         return {n for n in self.graph.node_projection() if isinstance(n, t)}
 
-    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]:
+    @overload
+    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]: ...
+    @overload
+    def nodes_of_types(self, t: UnionType) -> set["Node"]: ...
+
+    def nodes_of_types(self, t):  # type: ignore TODO
         return {n for n in self.graph.node_projection() if isinstance(n, t)}

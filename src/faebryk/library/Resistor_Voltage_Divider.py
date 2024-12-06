@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,8 @@ class Resistor_Voltage_Divider(Module):
     resistor = L.list_field(2, F.Resistor)
     node = L.list_field(3, F.Electrical)
 
-    ratio: F.TBD
-    max_current: F.TBD
+    ratio = L.p_field(units=P.dimensionless)
+    max_current = L.p_field(units=P.A)
 
     def __preinit__(self):
         self.node[0].connect_via(self.resistor[0], self.node[1])

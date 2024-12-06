@@ -343,14 +343,18 @@ class USB2514B(Module):
         # ----------------------------------------
         #              parametrization
         # ----------------------------------------
-        self.power_pll.voltage.merge(
-            F.Range.from_center_rel(1.8 * P.V, 0.05)
+        self.power_pll.voltage.constrain_subset(
+            L.Range.from_center_rel(1.8 * P.V, 0.05)
         )  # datasheet does not specify a voltage range
-        self.power_core.voltage.merge(
-            F.Range.from_center_rel(1.8 * P.V, 0.05)
+        self.power_core.voltage.constrain_subset(
+            L.Range.from_center_rel(1.8 * P.V, 0.05)
         )  # datasheet does not specify a voltage range
-        self.power_3v3_regulator.voltage.merge(
-            F.Range.from_center(3.3 * P.V, 0.3 * P.V)
+        self.power_3v3_regulator.voltage.constrain_subset(
+            L.Range.from_center(3.3 * P.V, 0.3 * P.V)
         )
-        self.power_3v3_analog.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
-        self.power_io.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
+        self.power_3v3_analog.voltage.constrain_subset(
+            L.Range.from_center(3.3 * P.V, 0.3 * P.V)
+        )
+        self.power_io.voltage.constrain_subset(
+            L.Range.from_center(3.3 * P.V, 0.3 * P.V)
+        )

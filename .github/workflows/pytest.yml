@@ -5,7 +5,7 @@ on:
 
 jobs:
     pytest:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-16vcpu-ubuntu-2204
         steps:
         - name: Checkout code
           uses: actions/checkout@v4
@@ -15,14 +15,14 @@ jobs:
         - run: git fetch --prune --unshallow --tags
 
         - name: Install uv
-          uses: astral-sh/setup-uv@v4
+          uses: useblacksmith/setup-uv@v4
           with:
             version: 0.5.5
             enable-cache: true
             cache-dependency-glob: "uv.lock"
 
         - name: "Set up Python"
-          uses: actions/setup-python@v5
+          uses: useblacksmith/setup-python@v6
           with:
             python-version-file: "pyproject.toml"
 
@@ -32,7 +32,7 @@ jobs:
         - name: Run pytest
           id: pytest
           continue-on-error: true
-          run: uv run --dev --no-editable --frozen pytest -m "not not_in_ci" -m "not slow"
+          run: uv run --dev --no-editable --frozen pytest -m "not not_in_ci and not slow"
 
         - name: Upload all test logs
           if: steps.pytest.outcome == 'failure'

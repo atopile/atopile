@@ -2,507 +2,123 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import unittest
-from abc import ABC, abstractmethod
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import mkdtemp
+from typing import Any, Callable
 
 import pytest
 
 import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
-from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.logging import setup_basic_logging
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
 from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
-from faebryk.libs.picker.picker import DescriptiveProperties, has_part_picked
-from faebryk.libs.test.times import Times
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.picker.picker import has_part_picked, pick_part_recursively
+from faebryk.libs.util import groupby
+
+sys.path.append(str(Path(__file__).parent))
+
+try:
+    from components import ComponentTestCase, components_to_test
+except ImportError:
+    components_to_test = []
 
 logger = logging.getLogger(__name__)
 
 lcsc.LIB_FOLDER = Path(mkdtemp())
 
 
-class TestPickerBase(unittest.TestCase, ABC):
-    @abstractmethod
-    def add_pickers(self, module: Module):
-        pass
-
-    class TestRequirements:
-        def __init__(
-            self,
-            test_case: unittest.TestCase,
-            requirement: Module,
-            packages: list[str],
-            add_pickers_func,
-        ):
-            self.test_case = test_case
-            self.result = requirement
-            self.requirement = requirement
-            self.packages = packages
-            self.add_pickers_func = add_pickers_func
-
-            self.req_lcsc_pn = None
-            if self.requirement.has_trait(F.has_descriptive_properties) and "LCSC" in (
-                self.requirement.get_trait(F.has_descriptive_properties).get_properties,
-            ):
-                self.req_lcsc_pn = self.requirement.get_trait(
-                    F.has_descriptive_properties
-                ).get_properties()["LCSC"]
-
-            self.req_manufacturer_pn = None
-            if (
-                self.requirement.has_trait(F.has_descriptive_properties)
-                and DescriptiveProperties.partno
-                in self.requirement.get_trait(
-                    F.has_descriptive_properties
-                ).get_properties()
-            ):
-                self.req_manufacturer_pn = self.requirement.get_trait(
-                    F.has_descriptive_properties
-                ).get_properties()[DescriptiveProperties.partno]
-
-            requirement.add(F.has_package_requirement(*packages))
-
-            self.test()
-
-        def satisfies_requirements(self):
-            self.test_case.assertTrue(
-                self.result.has_trait(F.has_descriptive_properties)
-            )
-            if self.req_lcsc_pn is not None:
-                self.test_case.assertIn(
-                    "LCSC",
-                    self.result.get_trait(
-                        F.has_descriptive_properties
-                    ).get_properties(),
-                )
-
-                self.test_case.assertEqual(
-                    self.req_lcsc_pn,
-                    self.result.get_trait(
-                        F.has_descriptive_properties
-                    ).get_properties()["LCSC"],
-                )
-
-            if self.req_manufacturer_pn is not None:
-                self.test_case.assertIn(
-                    DescriptiveProperties.partno,
-                    self.result.get_trait(
-                        F.has_descriptive_properties
-                    ).get_properties(),
-                )
-                self.test_case.assertEqual(
-                    self.req_manufacturer_pn,
-                    self.result.get_trait(
-                        F.has_descriptive_properties
-                    ).get_properties()[DescriptiveProperties.partno],
-                )
-
-            for req, res in zip(
-                self.requirement.get_children(direct_only=True, types=Parameter),
-                self.result.get_children(direct_only=True, types=Parameter),
-            ):
-                req = req.get_most_narrow()
-                res = res.get_most_narrow()
-
-                if isinstance(req, F.Range):
-                    self.test_case.assertTrue(res in req)
-                elif isinstance(req, F.Constant):
-                    self.test_case.assertEqual(req, res)
-                elif isinstance(req, F.Set):
-                    self.test_case.assertIn(res, req.params)
-                elif isinstance(req, F.TBD):
-                    self.test_case.assertTrue(isinstance(res, F.ANY))
-                elif isinstance(req, F.ANY):
-                    self.test_case.assertTrue(isinstance(res, F.ANY))
-                else:
-                    raise NotImplementedError(
-                        f"Unsupported type of parameter: {type(req)}: {req}"
-                    )
-
-        def test(self):
-            self.add_pickers_func(self.result)
-            self.result.get_trait(F.has_picker).pick()
-
-            self.test_case.assertTrue(self.result.has_trait(has_part_picked))
-
-            # check part number
-            self.test_case.assertTrue(
-                self.result.has_trait(F.has_descriptive_properties)
-            )
-            self.test_case.assertIn(
-                DescriptiveProperties.partno,
-                self.result.get_trait(F.has_descriptive_properties).get_properties(),
-            )
-            self.test_case.assertNotEqual(
-                "",
-                self.result.get_trait(F.has_descriptive_properties).get_properties()[
-                    DescriptiveProperties.partno
-                ],
-            )
-
-            # check footprint
-            self.test_case.assertTrue(self.result.has_trait(F.has_footprint))
-            self.test_case.assertTrue(
-                self.result.get_trait(F.has_footprint)
-                .get_footprint()
-                .has_trait(F.has_kicad_footprint)
-            )
-
-            # check requirements from module
-            self.satisfies_requirements()
-
-    def test_find_manufacturer_partnumber(self):
-        requirement = F.OpAmp().builder(
-            lambda r: (
-                r.bandwidth.merge(F.Range.upper_bound(1 * P.Mhertz)),
-                r.common_mode_rejection_ratio.merge(
-                    F.Range.lower_bound(Quantity(50, P.dB))
-                ),
-                r.input_bias_current.merge(F.Range.upper_bound(1 * P.nA)),
-                r.input_offset_voltage.merge(F.Range.upper_bound(1 * P.mV)),
-                r.gain_bandwidth_product.merge(F.Range.upper_bound(1 * P.Mhertz)),
-                r.output_current.merge(F.Range.upper_bound(1 * P.mA)),
-                r.slew_rate.merge(F.Range.upper_bound(1 * P.MV / P.us)),
-            )
-        )
-        requirement.add(
-            F.has_descriptive_properties_defined(
-                {
-                    DescriptiveProperties.partno: "LMV321IDBVR",
-                    DescriptiveProperties.manufacturer: "Texas Instruments",
-                }
-            )
-        )
-        self.TestRequirements(
-            self,
-            requirement=requirement,
-            packages=["SOT-23-5"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_lcsc_partnumber(self):
-        requirement = F.OpAmp().builder(
-            lambda r: (
-                r.bandwidth.merge(F.Range.upper_bound(1 * P.Mhertz)),
-                r.common_mode_rejection_ratio.merge(
-                    F.Range.lower_bound(Quantity(50, P.dB))
-                ),
-                r.input_bias_current.merge(F.Range.upper_bound(1 * P.nA)),
-                r.input_offset_voltage.merge(F.Range.upper_bound(1 * P.mV)),
-                r.gain_bandwidth_product.merge(F.Range.upper_bound(1 * P.Mhertz)),
-                r.output_current.merge(F.Range.upper_bound(1 * P.mA)),
-                r.slew_rate.merge(F.Range.upper_bound(1 * P.MV / P.us)),
-            )
-        )
-        requirement.add(F.has_descriptive_properties_defined({"LCSC": "C7972"}))
-        self.TestRequirements(
-            self,
-            requirement=requirement,
-            packages=["SOT-23-5"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_resistor(self):
-        self.TestRequirements(
-            self,
-            requirement=F.Resistor().builder(
-                lambda r: (
-                    r.resistance.merge(F.Range.from_center(10 * P.kohm, 1 * P.kohm)),
-                    r.rated_power.merge(F.Range.lower_bound(0.05 * P.W)),
-                    r.rated_voltage.merge(F.Range.lower_bound(25 * P.V)),
-                )
-            ),
-            packages=["0402"],
-            add_pickers_func=self.add_pickers,
-        )
-
-        self.TestRequirements(
-            self,
-            requirement=F.Resistor().builder(
-                lambda r: (
-                    r.resistance.merge(F.Range.from_center(69 * P.kohm, 2 * P.kohm)),
-                    r.rated_power.merge(F.Range.lower_bound(0.1 * P.W)),
-                    r.rated_voltage.merge(F.Range.lower_bound(50 * P.V)),
-                )
-            ),
-            packages=["0603"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_capacitor(self):
-        self.TestRequirements(
-            self,
-            requirement=F.Capacitor().builder(
-                lambda c: (
-                    c.capacitance.merge(F.Range.from_center(100 * P.nF, 10 * P.nF)),
-                    c.rated_voltage.merge(F.Range.lower_bound(25 * P.V)),
-                    c.temperature_coefficient.merge(
-                        F.Range.lower_bound(F.Capacitor.TemperatureCoefficient.X7R)
-                    ),
-                )
-            ),
-            packages=["0603"],
-            add_pickers_func=self.add_pickers,
-        )
-
-        self.TestRequirements(
-            self,
-            requirement=F.Capacitor().builder(
-                lambda c: (
-                    c.capacitance.merge(F.Range.from_center(47 * P.pF, 4.7 * P.pF)),
-                    c.rated_voltage.merge(F.Range.lower_bound(50 * P.V)),
-                    c.temperature_coefficient.merge(
-                        F.Range.lower_bound(F.Capacitor.TemperatureCoefficient.C0G)
-                    ),
-                )
-            ),
-            packages=["0402"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_inductor(self):
-        self.TestRequirements(
-            self,
-            requirement=F.Inductor().builder(
-                lambda i: (
-                    i.inductance.merge(F.Range.from_center(4.7 * P.nH, 0.47 * P.nH)),
-                    i.rated_current.merge(F.Range.lower_bound(0.01 * P.A)),
-                    i.dc_resistance.merge(F.Range.upper_bound(1 * P.ohm)),
-                    i.self_resonant_frequency.merge(
-                        F.Range.lower_bound(100 * P.Mhertz)
-                    ),
-                )
-            ),
-            packages=["0603"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_mosfet(self):
-        self.TestRequirements(
-            self,
-            requirement=F.MOSFET().builder(
-                lambda m: (
-                    m.channel_type.merge(F.Constant(F.MOSFET.ChannelType.N_CHANNEL)),
-                    m.saturation_type.merge(
-                        F.Constant(F.MOSFET.SaturationType.ENHANCEMENT)
-                    ),
-                    m.gate_source_threshold_voltage.merge(F.Range(0.4 * P.V, 3 * P.V)),
-                    m.max_drain_source_voltage.merge(F.Range.lower_bound(20 * P.V)),
-                    m.max_continuous_drain_current.merge(F.Range.lower_bound(2 * P.A)),
-                    m.on_resistance.merge(F.Range.upper_bound(0.1 * P.ohm)),
-                )
-            ),
-            packages=["SOT-23"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_diode(self):
-        self.TestRequirements(
-            self,
-            requirement=F.Diode().builder(
-                lambda d: (
-                    d.current.merge(F.Range.lower_bound(1 * P.A)),
-                    d.forward_voltage.merge(F.Range.upper_bound(1.7 * P.V)),
-                    d.reverse_working_voltage.merge(F.Range.lower_bound(20 * P.V)),
-                    d.reverse_leakage_current.merge(F.Range.upper_bound(100 * P.uA)),
-                    d.max_current.merge(F.Range.lower_bound(1 * P.A)),
-                )
-            ),
-            packages=["SOD-123"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_led(self):
-        self.TestRequirements(
-            self,
-            requirement=F.LED().builder(
-                lambda led: (
-                    led.color.merge(F.LED.Color.RED),
-                    led.brightness.merge(
-                        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
-                    ),
-                    # TODO: check semantics of F.ANY vs F.TBD
-                    led.reverse_leakage_current.merge(F.ANY()),
-                    led.reverse_working_voltage.merge(F.ANY()),
-                    led.max_brightness.merge(F.Range.lower_bound(100 * P.millicandela)),
-                    led.forward_voltage.merge(F.Range.upper_bound(2.5 * P.V)),
-                    led.max_current.merge(F.Range.upper_bound(20 * P.mA)),
-                )
-            ),
-            packages=["0805"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_tvs(self):
-        self.TestRequirements(
-            self,
-            requirement=F.TVS().builder(
-                lambda t: (
-                    # TODO: There is no current specified for TVS diodes, only peak
-                    # current
-                    t.current.merge(F.ANY()),
-                    t.forward_voltage.merge(F.ANY()),
-                    t.reverse_working_voltage.merge(F.Range.lower_bound(5 * P.V)),
-                    t.reverse_leakage_current.merge(F.ANY()),
-                    t.max_current.merge(F.Range.lower_bound(10 * P.A)),
-                    t.reverse_breakdown_voltage.merge(F.Range.upper_bound(8 * P.V)),
-                )
-            ),
-            packages=["SMB(DO-214AA)"],
-            add_pickers_func=self.add_pickers,
-        )
-
-    def test_find_ldo(self):
-        self.TestRequirements(
-            self,
-            F.LDO().builder(
-                lambda u: (
-                    u.output_voltage.merge(F.Range.from_center(3.3 * P.V, 0.1 * P.V)),
-                    u.output_current.merge(F.Range.lower_bound(0.1 * P.A)),
-                    u.power_in.voltage.merge(5 * P.V),
-                    u.dropout_voltage.merge(F.Range.upper_bound(1 * P.V)),
-                    u.output_polarity.merge(F.Constant(F.LDO.OutputPolarity.POSITIVE)),
-                    u.output_type.merge(F.Constant(F.LDO.OutputType.FIXED)),
-                    u.psrr.merge(F.ANY()),
-                    u.quiescent_current.merge(F.ANY()),
-                )
-            ),
-            packages=[
-                "SOT-23",
-                "SOT23",
-                "SOT-23-3",
-                "SOT-23-3L",
-            ],
-            add_pickers_func=self.add_pickers,
-        )
+def test_load_components():
+    assert components_to_test, "Failed to load components"
 
 
-class TestPickerPerformanceBase(unittest.TestCase, ABC):
-    @abstractmethod
-    def add_pickers(self, module: Module):
-        pass
-
-    def test_simple_full(self):
-        # conclusions
-        # - first pick overall is slow, need to load sqlite into buffer cache
-        # - first pick of component type is slower than subsequent picks
-        #   (even with different parameters)
-        # - component type order has no influence
-        # - component type speed differs a lot (res = 500ms, cap = 100ms)
-        #   (even though both value based)
-        #   e-series speed (query or count), if resistor with E24, 200ms
-        #   still 2x though, maybe total count?
-        # - e-series intersect 20% execution time
-        #   => optimized with cache
-
-        timings = Times()
-
-        def r_builder(resistance_kohm: float):
-            return F.Resistor().builder(
-                lambda r: (
-                    r.resistance.merge(
-                        F.Range.from_center_rel(resistance_kohm * P.kohm, 0.1)
-                    ),
-                    r.rated_power.merge(F.ANY()),
-                    r.rated_voltage.merge(F.ANY()),
-                )
-            )
-
-        def c_builder(capacitance_pf: float):
-            return F.Capacitor().builder(
-                lambda c: (
-                    c.capacitance.merge(
-                        F.Range.from_center_rel(capacitance_pf * P.pF, 0.1)
-                    ),
-                    c.rated_voltage.merge(F.ANY()),
-                    c.temperature_coefficient.merge(F.ANY()),
-                )
-            )
-
-        resistors = [r_builder(5 * (i + 1)) for i in range(5)] + [
-            r_builder(5 * (i + 1)) for i in reversed(range(5))
-        ]
-        caps = [c_builder(10 * (i + 1)) for i in range(5)] + [
-            c_builder(10 * (i + 1)) for i in reversed(range(5))
-        ]
-        resistors_10k = [r_builder(10) for _ in range(10)]
-
-        mods = resistors + caps + resistors_10k
-
-        for mod in mods:
-            self.add_pickers(mod)
-
-        with timings.context("resistors"):
-            for i, r in enumerate(resistors):
-                r.get_trait(F.has_picker).pick()
-                timings.add(
-                    f"full pick value pick (resistor {i}:"
-                    f" {r.resistance.as_unit_with_tolerance('ohm')})"
-                )
-
-        # cache is warm now, but also for non resistors?
-        with timings.context("capacitors"):
-            for i, c in enumerate(caps):
-                c.get_trait(F.has_picker).pick()
-                timings.add(
-                    f"full pick value pick (capacitor {i}:"
-                    f" {c.capacitance.as_unit_with_tolerance('F')})"
-                )
-
-        with timings.context("resistors_10k"):
-            for i, r in enumerate(resistors_10k):
-                r.get_trait(F.has_picker).pick()
-                timings.add(
-                    f"full pick value pick (resistor {i}:"
-                    f" {r.resistance.as_unit_with_tolerance('ohm')})"
-                )
-
-        print(timings)
+@dataclass
+class PickerTestCase:
+    add_pickers_fn: Callable[[Module], None]
+    check_skip: Callable[[], Any] = lambda: False
 
 
 def is_db_available():
     return JLCPCB_DB.config.db_path.exists()
 
 
+pickers = [
+    PickerTestCase(
+        add_jlcpcb_pickers,
+        lambda: None if is_db_available() else pytest.skip("DB not available"),
+    ),
+    PickerTestCase(add_api_pickers),
+]
+
+
+def _make_id(p: PickerTestCase, m: ComponentTestCase):
+    picker_name = p.add_pickers_fn.__name__.split("_")[1]
+    if m.override_test_name:
+        module_name = m.override_test_name
+    else:
+        module_name = type(m.module).__name__
+        gouped_by_type = groupby(components_to_test, lambda c: type(c.module))
+        group_for_module = gouped_by_type[type(m.module)]
+        if len(group_for_module) > 1:
+            module_name += f"[{group_for_module.index(m)}]"
+
+    return f"{picker_name}-{module_name}"
+
+
+@pytest.mark.xfail(reason="Super flaky and sometimes times out")
 @pytest.mark.slow
-@unittest.skipIf(not is_db_available(), reason="Requires large db")
-class TestPickerJlcpcb(TestPickerBase):
-    def add_pickers(self, module):
-        add_jlcpcb_pickers(module)
+@pytest.mark.skipif(components_to_test is None, reason="Failed to load components")
+@pytest.mark.parametrize(
+    "case,picker",
+    [(m, p) for p in pickers for m in components_to_test],
+    ids=[_make_id(p, m) for p in pickers for m in components_to_test],
+)
+def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
+    picker.check_skip()
+    if picker.add_pickers_fn is add_api_pickers:
+        pytest.xfail(reason="API picker not implemented for params v2")
+    module = case.module
+    picker.add_pickers_fn(module)
 
-    def tearDown(self):
-        # in test atexit not triggered, thus need to close DB manually
-        JLCPCB_DB.get().close()
+    pre_pick_descriptive_properties = {}
+    if module.has_trait(F.has_descriptive_properties):
+        pre_pick_descriptive_properties = module.get_trait(
+            F.has_descriptive_properties
+        ).get_properties()
+
+    if case.packages:
+        module.add(F.has_package_requirement(*case.packages))
+
+    # pick
+    solver = DefaultSolver()
+    pick_part_recursively(module, solver)
+
+    # Check descriptive properties
+    assert module.has_trait(has_part_picked)
+    part = module.get_trait(has_part_picked).get_part()
+    assert module.has_trait(F.has_descriptive_properties)
+    properties = module.get_trait(F.has_descriptive_properties).get_properties()
+
+    # Sanity check
+    assert part.partno
+    assert part.partno == properties["LCSC"]
+
+    # Check LCSC & MFR
+    for prop, value in pre_pick_descriptive_properties.items():
+        assert properties.get(prop) == value
+
+    # Check parameters
+    # params = module.get_children(types=Parameter, direct_only=True)
+    # TODO check that part params are equal (alias_is) to module params
 
 
-@pytest.mark.slow
-@unittest.skipIf(not is_db_available(), reason="Requires large db")
-class TestPickerPerformanceJlcpcb(TestPickerPerformanceBase):
-    def add_pickers(self, module):
-        add_jlcpcb_pickers(module)
-
-    def tearDown(self):
-        JLCPCB_DB.get().close()
-
-
-class TestPickerApi(TestPickerBase):
-    def add_pickers(self, module):
-        add_api_pickers(module)
-
-
-class TestPickerPerformanceApi(TestPickerPerformanceBase):
-    def add_pickers(self, module):
-        add_api_pickers(module)
-
-
-if __name__ == "__main__":
-    setup_basic_logging()
-    logger.setLevel(logging.DEBUG)
-
-    unittest.main()
+@pytest.fixture(autouse=True)
+def cleanup_db():
+    # Run test first
+    yield
+    # in test atexit not triggered, thus need to close DB manually
+    JLCPCB_DB.close()

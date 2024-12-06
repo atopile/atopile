@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 # Netlists --------------------------------------------------------------------
 @pytest.fixture
 def netlist_graph():
-    resistor1 = F.Resistor().builder(lambda r: r.resistance.merge(100 * P.ohm))
-    resistor2 = F.Resistor().builder(lambda r: r.resistance.merge(200 * P.ohm))
+    resistor1 = F.Resistor().builder(lambda r: r.resistance.alias_is(100 * P.ohm))
+    resistor2 = F.Resistor().builder(lambda r: r.resistance.alias_is(200 * P.ohm))
     power = F.ElectricPower()
 
     # net labels

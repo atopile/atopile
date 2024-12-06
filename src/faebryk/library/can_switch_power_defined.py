@@ -17,7 +17,7 @@ class can_switch_power_defined(F.can_switch_power.impl()):
         self.out_power = out_power
         self.in_logic = in_logic
 
-        out_power.voltage.merge(in_power.voltage)
+        out_power.voltage.alias_is(in_power.voltage)
 
     def get_logic_in(self) -> F.ElectricLogic:
         return self.in_logic

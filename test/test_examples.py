@@ -42,14 +42,7 @@ def test_example(example: Path, tmp_path: Path):
     example = example_copy
 
     result = run(
-        [
-            sys.executable,
-            "-m",
-            "atopile",
-            "build",
-            "--no-project",
-            f"{example_copy}:App",
-        ],
+        [sys.executable, "-m", "atopile", "build", "--standalone", f"{example}:App"],
         capture_output=True,
         text=True,
         env={**os.environ, "ATO_NON_INTERACTIVE": "1"},

@@ -4,13 +4,17 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 
 class SPIFlash(Module):
     power: F.ElectricPower
     qspi = L.f_field(F.MultiSPI)(4)
 
-    memory_size: F.TBD
+    memory_size = L.p_field(
+        units=P.byte,
+        domain=L.Domains.Numbers.NATURAL(),
+    )
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.U
     )
