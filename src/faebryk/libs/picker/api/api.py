@@ -4,15 +4,15 @@
 import functools
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import requests
+from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.picker.common import SIvalue, check_compatible_parameters, try_attach
+from faebryk.libs.picker.common import check_compatible_parameters, try_attach
 
 # TODO: replace with API-specific data model
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component

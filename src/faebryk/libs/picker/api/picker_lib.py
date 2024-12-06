@@ -16,7 +16,6 @@ from faebryk.libs.picker.api.api import (
     LDOParams,
     LEDParams,
     MOSFETParams,
-    ParameterSet,
     ResistorParams,
     TVSParams,
     api_filter_by_module_params_and_attach,
