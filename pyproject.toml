@@ -2,7 +2,7 @@
 requires = [
     "hatchling",
     "scikit-build-core==0.9.2",
-    "nanobind~=2.2.0",
+    "nanobind>=2.2,<2.5",
     "hatch-vcs",
 ]
 build-backend = "hatchling.build"
@@ -97,7 +97,7 @@ dev = [
     "mkdocs-drawio-file >= 1.5.2",
     "mkdocs-material",
     "mkdocs",
-    "nanobind~=2.2.0",
+    "nanobind>=2.2,<2.5",
     "pre-commit>=2.20,<4.0",
     "pyinstrument~=4.7.1",
     "pytest-asyncio!=0.23.3",
