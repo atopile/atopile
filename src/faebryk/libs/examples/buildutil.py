@@ -26,9 +26,6 @@ NAME = "example"
 BUILD_DIR = Path("./build")
 KICAD_SRC = BUILD_DIR / "kicad" / "source"
 
-lcsc.BUILD_FOLDER = BUILD_DIR
-lcsc.LIB_FOLDER = BUILD_DIR / "kicad" / "libs"
-lcsc.MODEL_PATH = None
 
 build_paths: BuildPaths = BuildPaths(
     root=Path("."),
@@ -41,6 +38,12 @@ build_paths: BuildPaths = BuildPaths(
     component_lib=BUILD_DIR / "footprints",
     kicad_project=KICAD_SRC / f"{NAME}.kicad_pro",
 )
+
+
+lcsc.BUILD_FOLDER = build_paths.build
+lcsc.LIB_FOLDER = build_paths.component_lib
+lcsc.MODEL_PATH = None
+
 
 DEV_MODE = ConfigFlag("EXP_DEV_MODE", False)
 

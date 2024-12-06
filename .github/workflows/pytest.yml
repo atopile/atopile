@@ -29,20 +29,10 @@ jobs:
         - name: Setup cmake
           uses: jwlawson/actions-setup-cmake@v2
 
-        - name: Build project
-          run: uv build --wheel
-
-        - name: Install project + dependencies
-          run: |
-            uv sync --no-install-project --all-extras
-            uv pip install dist/*.whl
-        - name: Lint with Ruff
-          run: uv run ruff check --output-format=github .
-          #continue-on-error: true
         - name: Run pytest
           id: pytest
           continue-on-error: true
-          run: uv run pytest -m "not not_in_ci"
+          run: uv run --dev --no-editable --frozen pytest -m "not not_in_ci" -m "not slow"
 
         - name: Upload all test logs
           if: steps.pytest.outcome == 'failure'
