@@ -1,4 +1,4 @@
-ato-version: ^0.2.0
+ato-version: ^0.3.0
 builds:
   unconstructable:
     entry: unconstructable.py:App
