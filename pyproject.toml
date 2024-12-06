@@ -33,7 +33,7 @@ dependencies = [
     "typing-extensions>=4.6.3,<5.0.0",
     "easyeda2kicad @ git+https://github.com/atopile/easyeda2kicad.py.git",
     "shapely~=2.0.1",
-    "freetype-py~=2.4.0",
+    "freetype-py>=2.4,<2.6",
     "kicadcliwrapper~=1.0.0",
     "dataclasses-json~=0.6.7",
     "patool~=2.3.0",
