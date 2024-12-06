@@ -38,7 +38,7 @@ def test_example(example: Path):
     assert example.exists()
 
     result = run(
-        [sys.executable, "-m", "atopile", "build", "--no-project", f"{example}:App"],
+        [sys.executable, "-m", "atopile", "build", "--standalone", f"{example}:App"],
         capture_output=True,
         text=True,
         env={**os.environ, "ATO_NON_INTERACTIVE": "1"},

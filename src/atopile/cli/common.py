@@ -91,7 +91,6 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
     Check that the compiler version is compatible with the version
     used to build the project.
     """
-    assert config.location is not None
     dependency_cfgs = (
         faebryk.libs.exceptions.downgrade(FileNotFoundError)(
             atopile.config.get_project_config_from_path
@@ -134,7 +133,7 @@ def create_build_contexts(
     if no_project:
         if not entry:
             raise errors.UserBadParameterError(
-                "You must specify an entry to build with the --no-project option"
+                "You must specify an entry to build with the --standalone option"
             )
         if not entry_arg_file_path.exists():
             raise errors.UserBadParameterError(
@@ -142,19 +141,19 @@ def create_build_contexts(
             )
         if not entry_arg_file_path.is_file():
             raise errors.UserBadParameterError(
-                "The path you're building with the --no-project"
+                "The path you're building with the --standalone"
                 f" option must be a file {entry_arg_file_path}"
             )
         if not address.get_entry_section(entry):
             raise errors.UserBadParameterError(
                 "You must specify what to build within a file to build with the"
-                " --no-project option"
+                " --standalone option"
             )
 
         project_config = atopile.config.ProjectConfig(
             location=Path.cwd(),
             ato_version=f"^{version.get_installed_atopile_version()}",
-            paths=atopile.config.ProjectPaths(layout=Path.cwd() / "projectless"),
+            paths=atopile.config.ProjectPaths(layout=Path.cwd() / "standalone"),
             builds={"default": atopile.config.ProjectBuildConfig(targets=[])},
         )
     else:
