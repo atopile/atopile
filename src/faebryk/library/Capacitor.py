@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import IntEnum, auto
+from enum import Enum, auto
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class Capacitor(Module):
-    class TemperatureCoefficient(IntEnum):
+    class TemperatureCoefficient(Enum):
         Y5V = auto()
         Z5U = auto()
         X7S = auto()

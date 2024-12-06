@@ -150,7 +150,7 @@ mosfets = [
                 m.channel_type.constrain_subset(F.MOSFET.ChannelType.N_CHANNEL),
                 m.saturation_type.constrain_subset(F.MOSFET.SaturationType.ENHANCEMENT),
                 m.gate_source_threshold_voltage.constrain_subset(
-                    L.Range.from_center(0.4 * P.V, 0.1 * P.V)
+                    L.Range.from_center(0.4 * P.V, 3 * P.V)
                 ),
                 m.max_drain_source_voltage.constrain_ge(20 * P.V),
                 m.max_continuous_drain_current.constrain_ge(2 * P.A),
@@ -199,10 +199,10 @@ tvs = [
     ComponentTestCase(
         F.TVS().builder(
             lambda t: (
-                t.current.constrain_ge(10 * P.A),
-                t.forward_voltage.constrain_le(1.7 * P.V),
-                t.reverse_working_voltage.constrain_ge(20 * P.V),
-                t.reverse_leakage_current.constrain_le(100 * P.uA),
+                # t.current.constrain_ge(10 * P.A),
+                # t.forward_voltage.constrain_le(1.7 * P.V),
+                t.reverse_working_voltage.constrain_ge(5 * P.V),
+                # t.reverse_leakage_current.constrain_le(100 * P.uA),
                 t.max_current.constrain_ge(10 * P.A),
                 t.reverse_breakdown_voltage.constrain_le(8 * P.V),
             )

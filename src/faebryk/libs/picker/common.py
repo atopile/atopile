@@ -14,7 +14,6 @@ from faebryk.core.parameter import (
     And,
     ConstrainableExpression,
     Is,
-    Numbers,
     Parameter,
     Predicate,
 )
@@ -257,10 +256,6 @@ def check_compatible_parameters(
     # is compatible already instead of waiting for the solver
     for m_param, c_range in param_mapping:
         if not solver.inspect_known_supersets_are_few(m_param):
-            continue
-
-        # TODO
-        if not isinstance(m_param.domain, Numbers):
             continue
 
         known_superset = solver.inspect_get_known_supersets(m_param)
