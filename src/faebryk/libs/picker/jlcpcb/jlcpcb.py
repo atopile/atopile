@@ -488,26 +488,22 @@ class ComponentQuery:
         self.Q &= Q(category_id__in=category_ids)
         return self
 
-    def filter_by_footprint(
-        self, footprint_candidates: Sequence[tuple[str, int]] | None
-    ) -> Self:
+    def filter_by_package(self, package_candidates: Sequence[str] | None) -> Self:
         assert self.Q
-        if not footprint_candidates:
+        if not package_candidates:
             return self
-        footprint_query = Q()
-        if footprint_candidates is not None:
-            for footprint, pin_count in footprint_candidates:
-                footprint_query |= Q(description__icontains=footprint) & Q(
-                    joints=pin_count
-                )
-        self.Q &= footprint_query
+        package_query = Q()
+        if package_candidates is not None:
+            for package in package_candidates:
+                package_query |= Q(description__icontains=package)
+        self.Q &= package_query
         return self
 
     def filter_by_traits(self, obj: Module) -> Self:
         out = self
-        if obj.has_trait(F.has_footprint_requirement):
-            out = self.filter_by_footprint(
-                obj.get_trait(F.has_footprint_requirement).get_footprint_requirement()
+        if obj.has_trait(F.has_package_requirement):
+            out = self.filter_by_package(
+                obj.get_trait(F.has_package_requirement).get_package_candidates()
             )
 
         return out

@@ -11,11 +11,11 @@ from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.picker.api.api import (
     CapacitorParams,
     DiodeParams,
-    FootprintCandidate,
     InductorParams,
     LDOParams,
     LEDParams,
     MOSFETParams,
+    PackageCandidate,
     ResistorParams,
     TVSParams,
     get_api_client,
@@ -174,13 +174,13 @@ def _filter_by_module_params_and_attach(
         )
 
 
-def _get_footprint_candidates(module: Module) -> list[FootprintCandidate]:
-    if module.has_trait(F.has_footprint_requirement):
+def _get_package_candidates(module: Module) -> list[PackageCandidate]:
+    if module.has_trait(F.has_package_requirement):
         return [
-            FootprintCandidate(footprint, pin_count)
-            for footprint, pin_count in module.get_trait(
-                F.has_footprint_requirement
-            ).get_footprint_requirement()
+            PackageCandidate(package)
+            for package in module.get_trait(
+                F.has_package_requirement
+            ).get_package_candidates()
         ]
     return []
 
@@ -195,7 +195,7 @@ def find_resistor(cmp: Module):
     parts = client.fetch_resistors(
         ResistorParams(
             resistances=generate_si_values(cmp.resistance, "Ω", E_SERIES_VALUES.E96),
-            footprint_candidates=_get_footprint_candidates(cmp),
+            package_candidates=_get_package_candidates(cmp),
             qty=qty,
         ),
     )
@@ -213,7 +213,7 @@ def find_capacitor(cmp: Module):
     parts = client.fetch_capacitors(
         CapacitorParams(
             capacitances=generate_si_values(cmp.capacitance, "F", E_SERIES_VALUES.E24),
-            footprint_candidates=_get_footprint_candidates(cmp),
+            package_candidates=_get_package_candidates(cmp),
             qty=qty,
         ),
     )
@@ -231,7 +231,7 @@ def find_inductor(cmp: Module):
     parts = client.fetch_inductors(
         InductorParams(
             inductances=generate_si_values(cmp.inductance, "H", E_SERIES_VALUES.E24),
-            footprint_candidates=_get_footprint_candidates(cmp),
+            package_candidates=_get_package_candidates(cmp),
             qty=qty,
         ),
     )
@@ -247,7 +247,7 @@ def find_tvs(cmp: Module):
         raise PickError("Module is not a TVS diode", cmp)
 
     parts = client.fetch_tvs(
-        TVSParams(footprint_candidates=_get_footprint_candidates(cmp), qty=qty),
+        TVSParams(package_candidates=_get_package_candidates(cmp), qty=qty),
     )
 
     _filter_by_module_params_and_attach(cmp, F.TVS, parts)
@@ -266,7 +266,7 @@ def find_diode(cmp: Module):
             reverse_working_voltages=generate_si_values(
                 cmp.reverse_working_voltage, "V", E_SERIES_VALUES.E3
             ),
-            footprint_candidates=_get_footprint_candidates(cmp),
+            package_candidates=_get_package_candidates(cmp),
             qty=qty,
         ),
     )
@@ -282,7 +282,7 @@ def find_led(cmp: Module):
         raise PickError("Module is not an LED", cmp)
 
     parts = client.fetch_leds(
-        LEDParams(footprint_candidates=_get_footprint_candidates(cmp), qty=qty)
+        LEDParams(package_candidates=_get_package_candidates(cmp), qty=qty)
     )
 
     _filter_by_module_params_and_attach(cmp, F.LED, parts)
@@ -297,7 +297,7 @@ def find_mosfet(cmp: Module):
         raise PickError("Module is not a MOSFET", cmp)
 
     parts = client.fetch_mosfets(
-        MOSFETParams(footprint_candidates=_get_footprint_candidates(cmp), qty=qty)
+        MOSFETParams(package_candidates=_get_package_candidates(cmp), qty=qty)
     )
 
     _filter_by_module_params_and_attach(cmp, F.MOSFET, parts)
@@ -312,7 +312,7 @@ def find_ldo(cmp: Module):
         raise PickError("Module is not a LDO", cmp)
 
     parts = client.fetch_ldos(
-        LDOParams(footprint_candidates=_get_footprint_candidates(cmp), qty=qty)
+        LDOParams(package_candidates=_get_package_candidates(cmp), qty=qty)
     )
 
     _filter_by_module_params_and_attach(cmp, F.LDO, parts)
