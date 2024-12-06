@@ -506,7 +506,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                     )  # Since value and ctx should be None together
                     param.add(from_dsl(ctx))
                     try:
-                        param.alias_is(value)
+                        param.constrain_subset(value)
                     except UnitCompatibilityError as ex:
                         raise errors.UserTypeError.from_ctx(ctx, str(ex)) from ex
 
