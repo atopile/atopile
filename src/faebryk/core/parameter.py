@@ -445,7 +445,9 @@ class ParameterOperatable(Node):
 
         variable_mapping: VariableMapping = field(default_factory=VariableMapping)
 
-    def compact_repr(self, context: ReprContext | None = None) -> str:
+    def compact_repr(
+        self, context: ReprContext | None = None, no_lit: bool = False
+    ) -> str:
         raise NotImplementedError()
 
     # TODO move to Expression
@@ -641,7 +643,9 @@ class Expression(ParameterOperatable):
     REPR_STYLE: ReprStyle = ReprStyle()
 
     def compact_repr(
-        self, context: ParameterOperatable.ReprContext | None = None
+        self,
+        context: ParameterOperatable.ReprContext | None = None,
+        no_lit: bool = False,
     ) -> str:
         if context is None:
             context = ParameterOperatable.ReprContext()
@@ -658,12 +662,13 @@ class Expression(ParameterOperatable):
             if self._solver_evaluates_to_true:
                 symbol_suffix += "!"
         symbol += symbol_suffix
-        symbol += self._get_lit_suffix()
+        if not no_lit:
+            symbol += self._get_lit_suffix()
 
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
                 return str(op)
-            op_out = op.compact_repr(context)
+            op_out = op.compact_repr(context, no_lit)
             if isinstance(op, Expression) and len(op.operands) > 1:
                 op_out = f"({op_out})"
             return op_out
@@ -1446,7 +1451,9 @@ class Parameter(ParameterOperatable):
         return False
 
     def compact_repr(
-        self, context: ParameterOperatable.ReprContext | None = None
+        self,
+        context: ParameterOperatable.ReprContext | None = None,
+        no_lit: bool = False,
     ) -> str:
         """
         Unit only printed if not dimensionless.
@@ -1491,7 +1498,8 @@ class Parameter(ParameterOperatable):
         letter = param_id_to_human_str(context.variable_mapping.mapping[self])
 
         out = f"{letter}{unitstr}"
-        out += self._get_lit_suffix()
+        if not no_lit:
+            out += self._get_lit_suffix()
 
         return out
 
