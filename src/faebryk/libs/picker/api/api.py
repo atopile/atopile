@@ -17,11 +17,14 @@ from faebryk.libs.picker.common import SIvalue, check_compatible_parameters, try
 # TODO: replace with API-specific data model
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
+from faebryk.libs.picker.picker import PickError
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import (
     ConfigFlagString,
     KeyErrorAmbiguous,
     KeyErrorNotFound,
     Serializable,
+    SerializableJSONEncoder,
     closest_base_class,
     find,
 )
@@ -114,7 +117,7 @@ class PackageCandidate:
 @dataclass_json
 @dataclass(frozen=True)
 class BaseParams(Serializable):
-    footprint_candidates: list[FootprintCandidate]
+    package_candidates: list[PackageCandidate]
     qty: int
 
     def serialize(self) -> dict:
@@ -127,54 +130,75 @@ class Interval:
     max: float | None
 
 
-@dataclass
-class ParameterSet:
-    intervals: list[Interval]
-    unit: str
-
-    def __init__(self, parameter: Parameter, solver: Solver):
-        param_ranges = solver.inspect_get_known_superranges(parameter).serialize()
-        self.intervals = param_ranges["intervals"]
-        self.unit = param_ranges["unit"]
+def SerializableField():
+    return field(
+        metadata=dataclass_json_config(encoder=SerializableJSONEncoder().default)
+    )
 
 
 @dataclass(frozen=True)
 class ResistorParams(BaseParams):
-    resistance: ParameterSet
-    max_power: ParameterSet
-    max_voltage: ParameterSet
+    resistance: P_Set = SerializableField()
+    max_power: P_Set = SerializableField()
+    max_voltage: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
 class CapacitorParams(BaseParams):
-    capacitances: list[SIvalue]
+    capacitance: P_Set = SerializableField()
+    max_voltage: P_Set = SerializableField()
+    temperature_coefficient: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
 class InductorParams(BaseParams):
-    inductances: list[SIvalue]
-
-
-@dataclass(frozen=True)
-class TVSParams(BaseParams): ...
+    inductance: P_Set = SerializableField()
+    self_resonant_frequency: P_Set = SerializableField()
+    max_current: P_Set = SerializableField()
+    dc_resistance: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
 class DiodeParams(BaseParams):
-    max_currents: list[SIvalue]
-    reverse_working_voltages: list[SIvalue]
+    forward_voltage: P_Set = SerializableField()
+    current: P_Set = SerializableField()
+    reverse_working_voltage: P_Set = SerializableField()
+    reverse_leakage_current: P_Set = SerializableField()
+    max_current: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
-class LEDParams(BaseParams): ...
+class TVSParams(DiodeParams):
+    reverse_breakdown_voltage: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
-class MOSFETParams(BaseParams): ...
+class LEDParams(DiodeParams):
+    brightness: P_Set = SerializableField()
+    max_brightness: P_Set = SerializableField()
+    color: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
-class LDOParams(BaseParams): ...
+class LDOParams(BaseParams):
+    max_input_voltage: P_Set = SerializableField()
+    output_voltage: P_Set = SerializableField()
+    quiescent_current: P_Set = SerializableField()
+    dropout_voltage: P_Set = SerializableField()
+    psrr: P_Set = SerializableField()
+    output_polarity: P_Set = SerializableField()
+    output_type: P_Set = SerializableField()
+    output_current: P_Set = SerializableField()
+
+
+@dataclass(frozen=True)
+class MOSFETParams(BaseParams):
+    channel_type: P_Set = SerializableField()
+    saturation_type: P_Set = SerializableField()
+    gate_source_threshold_voltage: P_Set = SerializableField()
+    max_drain_source_voltage: P_Set = SerializableField()
+    max_continuous_drain_current: P_Set = SerializableField()
+    on_resistance: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)

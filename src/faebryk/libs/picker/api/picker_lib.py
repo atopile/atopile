@@ -149,9 +149,16 @@ def _find_component_by_params[T: BaseParams](
     if not isinstance(cmp, cmp_class):
         raise PickError(f"Module is not a {cmp_class.__name__}", cmp)
 
-    fps = get_footprint_candidates(cmp)
-    cmp_params = {p.get_name(): ParameterSet(p, solver) for p in cmp.get_parameters()}
-    parts = api_method(param_cls(footprint_candidates=fps, qty=qty, **cmp_params))
+    fps = get_package_candidates(cmp)
+    cmp_params = {
+        p.get_name(): solver.inspect_get_known_supersets(p)
+        for p in cmp.get_parameters()
+    }
+
+    print(param_cls(package_candidates=fps, qty=qty, **cmp_params))
+    # print(param_cls(footprint_candidates=fps, qty=qty, **cmp_params).serialize())
+
+    parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))
 
     api_filter_by_module_params_and_attach(cmp, parts, solver)
 
