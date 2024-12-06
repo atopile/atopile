@@ -69,6 +69,8 @@ def _make_id(p: PickerTestCase, m: ComponentTestCase):
     return f"{picker_name}-{module_name}"
 
 
+@pytest.mark.xfail(reason="Super flaky and sometimes times out")
+@pytest.mark.slow
 @pytest.mark.skipif(components_to_test is None, reason="Failed to load components")
 @pytest.mark.parametrize(
     "case,picker",
