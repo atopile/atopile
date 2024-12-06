@@ -1527,7 +1527,8 @@ def get_module_from_path(
     try:
         module = find(
             sys.modules.values(),
-            lambda m: getattr(m, "__file__", None) == sanitized_file_path,
+            lambda m: str(getattr(m, "__file__", None)).lower()
+            == sanitized_file_path.lower(),
         )
     except KeyErrorNotFound:
         return None
