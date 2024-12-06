@@ -14,9 +14,9 @@ EXAMPLES_DIR = repo_root / "examples"
 
 # TODO: remove these as they pass
 XFAIL = [
-    "iterative_design_nand",
-    "mcu",
-    "signal_processing",
+    "ch2_8_iterative_design_nand",
+    "ch2_7_mcu",
+    "ch2_4_signal_processing",
 ]
 
 
@@ -34,13 +34,30 @@ XFAIL = [
     ],
     ids=lambda p: p.stem,
 )
-def test_example(example: Path):
+def test_example(example: Path, tmp_path: Path):
     assert example.exists()
 
+    example_copy = tmp_path / example.name
+    example_copy.write_text(example.read_text())
+    example = example_copy
+
     result = run(
-        [sys.executable, "-m", "atopile", "build", "--no-project", f"{example}:App"],
+        [
+            sys.executable,
+            "-m",
+            "atopile",
+            "build",
+            "--no-project",
+            f"{example_copy}:App",
+        ],
         capture_output=True,
         text=True,
         env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+        cwd=tmp_path,
     )
     assert result.returncode == 0
+
+
+@pytest.mark.parametrize("example", XFAIL)
+def test_xfail_list_exists(example: str):
+    assert (EXAMPLES_DIR / f"{example}.py").exists(), "Handle the missing xfail example"
