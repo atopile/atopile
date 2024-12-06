@@ -1523,13 +1523,17 @@ def get_module_from_path(
     """
     Return a module based on a file path if already imported, or return None.
     """
-    sanitized_file_path = str(Path(file_path).expanduser().resolve().absolute())
+    sanitized_file_path = Path(file_path).expanduser().resolve().absolute()
+
+    def _needle(m: ModuleType) -> bool:
+        try:
+            file = Path(getattr(m, "__file__"))
+        except Exception:
+            return False
+        return sanitized_file_path.samefile(file)
+
     try:
-        module = find(
-            sys.modules.values(),
-            lambda m: str(getattr(m, "__file__", None)).lower()
-            == sanitized_file_path.lower(),
-        )
+        module = find(sys.modules.values(), _needle)
     except KeyErrorNotFound:
         return None
 
