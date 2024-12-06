@@ -67,7 +67,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.2.70.dev363+g2356d348.d20241205"
+version = "0.2.70.dev367+g402a4357.d20241206"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -208,7 +208,7 @@ dev = [
     { name = "mkdocs" },
     { name = "mkdocs-drawio-file", specifier = ">=1.5.2" },
     { name = "mkdocs-material" },
-    { name = "nanobind", specifier = "~=2.2.0" },
+    { name = "nanobind", specifier = ">=2.2,<3.0" },
     { name = "pre-commit", specifier = ">=2.20,<4.0" },
     { name = "pyinstrument", specifier = "~=4.7.1" },
     { name = "pytest", specifier = ">=7.1.3,<9.0.0" },
