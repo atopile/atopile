@@ -61,7 +61,3 @@ class TestLCSC(unittest.TestCase):
             self.assertEqual(
                 (translation.x, translation.y, translation.z), expected, f"{part}"
             )
-
-
-if __name__ == "__main__":
-    unittest.main()

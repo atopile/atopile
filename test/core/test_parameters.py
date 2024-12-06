@@ -21,7 +21,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range
-from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
 from faebryk.libs.sets.sets import BoolSet, EnumSet
 from faebryk.libs.units import P
@@ -164,19 +163,3 @@ def test_visualize_inspect_app():
 
     G = rp2040.get_graph()
     visualize_parameters(G, height=1400)
-
-
-# TODO remove
-if __name__ == "__main__":
-    # if run in jupyter notebook
-    import sys
-
-    func = test_compact_repr
-
-    if "ipykernel" in sys.modules:
-        func()
-    else:
-        import typer
-
-        setup_basic_logging()
-        typer.run(func)

@@ -15,8 +15,8 @@ JLOG = ConfigFlag("JLOG", descr="Enable jlcpcb picker debug log")
 FLOG_FMT = ConfigFlag("LOG_FMT", descr="Enable (old) log formatting")
 
 
-def setup_basic_logging():
-    if FLOG_FMT:
+def setup_basic_logging(force_fmt: bool = False):
+    if FLOG_FMT or force_fmt:
         logging.basicConfig(
             format="%(message)s",
             level=logging.INFO,
