@@ -558,7 +558,3 @@ def test_regression_rp2040_usb_diffpair_full():
     app.rp2040.i2c[0].connect(rp2040_3.i2c[0])
 
     resolve_dynamic_parameters(app.get_graph())
-
-
-if __name__ == "__main__":
-    test_regression_rp2040_usb_diffpair()
