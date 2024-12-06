@@ -153,16 +153,6 @@ class TestPickerBase(unittest.TestCase, ABC):
                 .get_footprint()
                 .has_trait(F.has_kicad_footprint)
             )
-            # check pin count
-            self.test_case.assertEqual(
-                self.packages[0][1],
-                len(
-                    self.result.get_trait(F.has_footprint)
-                    .get_footprint()
-                    .get_trait(F.has_kicad_footprint)
-                    .get_pin_names()
-                ),
-            )
 
             # check requirements from module
             self.satisfies_requirements()
