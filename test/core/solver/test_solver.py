@@ -7,9 +7,6 @@ from typing import Any, Iterable
 import pytest
 
 import faebryk.library._F as F
-
-# Sets LCSC paths
-import faebryk.libs.examples.buildutil  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
     Add,
