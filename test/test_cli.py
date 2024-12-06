@@ -5,6 +5,9 @@ from subprocess import run
 import pytest
 
 
+# FIXME: this is because we're defaulting to the JLCPCB picker,
+# which we don't have access to in the CI
+@pytest.mark.not_in_ci
 @pytest.mark.parametrize("config", ["ato", "faebryk"])
 def test_app(config):
     result = run(
