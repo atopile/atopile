@@ -1,9 +1,11 @@
+import logging
 import os
 import sys
 from pathlib import Path
-from subprocess import run
 
 import pytest
+
+from faebryk.libs.util import run_live
 
 repo_root = Path.cwd()
 while not (repo_root / "pyproject.toml").exists():
@@ -15,7 +17,6 @@ EXAMPLES_DIR = repo_root / "examples"
 # TODO: remove these as they pass
 XFAIL = [
     "ch2_8_iterative_design_nand",
-    "ch2_7_mcu",
     "ch2_4_signal_processing",
 ]
 
@@ -34,21 +35,20 @@ XFAIL = [
     ],
     ids=lambda p: p.stem,
 )
-def test_example(example: Path, tmp_path: Path):
+def test_example(example: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+    caplog.set_level(logging.INFO)
     assert example.exists()
 
     example_copy = tmp_path / example.name
     example_copy.write_text(example.read_text())
     example = example_copy
 
-    result = run(
+    run_live(
         [sys.executable, "-m", "atopile", "build", "--standalone", f"{example}:App"],
-        capture_output=True,
-        text=True,
         env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
         cwd=tmp_path,
+        stdout_level=logging.INFO,
     )
-    assert result.returncode == 0
 
 
 @pytest.mark.parametrize("example", XFAIL)
