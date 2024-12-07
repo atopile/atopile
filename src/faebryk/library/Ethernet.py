@@ -8,6 +8,9 @@ from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
+class Ethernet(ModuleInterface):
+    tx: F.DifferentialPair
+    rx: F.DifferentialPair
 
 class GigabitEthernet(ModuleInterface):
     """
@@ -18,7 +21,7 @@ class GigabitEthernet(ModuleInterface):
     pair1: F.DifferentialPair  # Ethernet_Pair1_P/N
     pair2: F.DifferentialPair  # Ethernet_Pair2_P/N
     pair3: F.DifferentialPair  # Ethernet_Pair3_P/N
-    
+
     # Status LEDs
     led_speed: F.ElectricLogic  # Speed LED
     led_link: F.ElectricLogic     # Link LED
