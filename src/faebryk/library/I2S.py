@@ -1,14 +1,12 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from enum import Enum
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.parameter import R
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.core.parameter import R
-from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
