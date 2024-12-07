@@ -10,7 +10,7 @@ from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval_Disjoint,
     NumericT,
 )
-from faebryk.libs.sets.sets import BoolSet, P_UnitSet
+from faebryk.libs.sets.sets import BoolSet, P_Set, P_UnitSet
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
@@ -19,7 +19,12 @@ from faebryk.libs.units import (
     quantity,
     to_si_str,
 )
-from faebryk.libs.util import cast_assert, not_none, operator_type_check, round_str
+from faebryk.libs.util import (
+    cast_assert,
+    not_none,
+    operator_type_check,
+    round_str,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +80,15 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
         return to_si_str(
             self.base_to_units(number), self.units, num_decimals=num_decimals
         )
+
+    @override
+    def serialize_pset(self) -> dict:
+        return Quantity_Interval_Disjoint.from_value(self).serialize_pset()
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        return Quantity_Interval_Disjoint.deserialize(data)
 
 
 QuantitySetLikeR = (Quantity_Set, *QuantityLikeR)
@@ -637,6 +651,21 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     @override
     def any(self) -> Quantity:
         return self.min_elem()
+
+    def serialize_pset(self) -> dict[str, Any]:
+        return {
+            "intervals": self._intervals.serialize(),
+            "unit": str(self.units),
+        }
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        from faebryk.libs.units import P
+
+        out = cls(units=getattr(P, data["unit"]))
+        out._intervals = P_Set.deserialize(data["intervals"])
+        return out
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

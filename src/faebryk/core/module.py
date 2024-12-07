@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Callable, Iterable
 
 from faebryk.core.cpp import GraphInterfaceModuleSibling
 from faebryk.core.node import Node, NodeException, f_field
+from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait
 from faebryk.libs.util import cast_assert, unique_ref
 
@@ -159,3 +160,6 @@ class Module(Node):
         type(self).connect_all_interfaces_by_name(
             self, dst, allow_partial=allow_partial
         )
+
+    def get_parameters(self) -> list[Parameter]:
+        return list(self.get_children(types=Parameter, direct_only=True))
