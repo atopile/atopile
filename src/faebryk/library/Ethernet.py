@@ -8,25 +8,26 @@ from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
+
 class Ethernet(ModuleInterface):
     tx: F.DifferentialPair
     rx: F.DifferentialPair
+
 
 class GigabitEthernet(ModuleInterface):
     """
     1000BASE-T Gigabit Ethernet Interface
     """
+
     # Ethernet pairs
     pairs = L.list_field(4, F.DifferentialPair)
 
     # Status LEDs
     led_speed: F.ElectricLogic  # Speed LED
-    led_link: F.ElectricLogic     # Link LED
-
+    led_link: F.ElectricLogic  # Link LED
 
     @L.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
-

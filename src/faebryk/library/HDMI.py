@@ -13,14 +13,13 @@ class HDMI(ModuleInterface):
     """
     HDMI interface
     """
-    data0: F.DifferentialPair
-    data1: F.DifferentialPair
-    data2: F.DifferentialPair
+
+    power: F.ElectricPower
+    data = L.list_field(3, F.DifferentialPair)
     clock: F.DifferentialPair
     i2c: F.I2C
     cec: F.ElectricLogic
     hotplug: F.ElectricLogic
-    power: F.ElectricPower
 
     @L.rt_field
     def single_electric_reference(self):
