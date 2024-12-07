@@ -10,7 +10,7 @@ from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval_Disjoint,
     NumericT,
 )
-from faebryk.libs.sets.sets import BoolSet, P_UnitSet
+from faebryk.libs.sets.sets import BoolSet, P_Set, P_UnitSet
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
@@ -20,7 +20,6 @@ from faebryk.libs.units import (
     to_si_str,
 )
 from faebryk.libs.util import (
-    Serializable,
     cast_assert,
     not_none,
     operator_type_check,
@@ -81,6 +80,15 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
         return to_si_str(
             self.base_to_units(number), self.units, num_decimals=num_decimals
         )
+
+    @override
+    def serialize_pset(self) -> dict:
+        return Quantity_Interval_Disjoint.from_value(self).serialize_pset()
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        return Quantity_Interval_Disjoint.deserialize(data)
 
 
 QuantitySetLikeR = (Quantity_Set, *QuantityLikeR)
@@ -333,7 +341,7 @@ class Quantity_Singleton(Quantity_Interval):
         return cls(value.min_elem())
 
 
-class Quantity_Interval_Disjoint(Quantity_Set, Serializable):
+class Quantity_Interval_Disjoint(Quantity_Set):
     """
     Quantity interval (min < max) with gaps. \n
     Represented by Set of multiple Quantity interval (without gaps).
@@ -644,11 +652,20 @@ class Quantity_Interval_Disjoint(Quantity_Set, Serializable):
     def any(self) -> Quantity:
         return self.min_elem()
 
-    def serialize(self) -> dict[str, Any]:
+    def serialize_pset(self) -> dict[str, Any]:
         return {
-            "intervals": [r.serialize() for r in self._intervals.intervals],
+            "intervals": self._intervals.serialize(),
             "unit": str(self.units),
         }
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        from faebryk.libs.units import P
+
+        out = cls(units=getattr(P, data["unit"]))
+        out._intervals = P_Set.deserialize(data["intervals"])
+        return out
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

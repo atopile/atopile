@@ -8,7 +8,7 @@ from collections.abc import Generator
 from typing import Any, TypeVar, override
 
 from faebryk.libs.sets.sets import BoolSet, P_Set
-from faebryk.libs.util import Serializable
+from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class Numeric_Set[T](P_Set[T]):
     pass
 
 
-class Numeric_Interval(Numeric_Set[NumericT], Serializable):
+class Numeric_Interval(Numeric_Set[NumericT]):
     """
     Numeric interval [min, max].
     """
@@ -227,11 +227,19 @@ class Numeric_Interval(Numeric_Set[NumericT], Serializable):
     def any(self) -> NumericT:
         return self._min
 
-    def serialize(self) -> dict:
+    @override
+    def serialize_pset(self) -> dict:
         return {
             "min": None if math.isinf(self._min) else self._min,
             "max": None if math.isinf(self._max) else self._max,
         }
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        min_ = data["min"] if data["min"] is not None else float("-inf")
+        max_ = data["max"] if data["max"] is not None else float("inf")
+        return cls(min_, max_)  # type: ignore
 
 
 def Numeric_Singleton(value: NumericT) -> Numeric_Interval[NumericT]:
@@ -501,6 +509,20 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
     @override
     def any(self) -> NumericT:
         return self.min_elem()
+
+    @override
+    def serialize_pset(self) -> dict:
+        return {"intervals": [r.serialize() for r in self.intervals]}
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        return cls(
+            *[
+                cast_assert(Numeric_Interval, P_Set.deserialize(r))
+                for r in data["intervals"]
+            ]
+        )
 
 
 class Numeric_Set_Discrete(Numeric_Interval_Disjoint[NumericT]):
