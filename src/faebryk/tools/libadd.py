@@ -178,12 +178,15 @@ def find_part(lcsc_id: str | None, mfr: str | None, mfr_pn: str | None) -> Compo
     elif mfr_pn:
         try:
             part = find_component_by_mfr(mfr or "", mfr_pn)
+        except KeyErrorNotFound as e:
+            raise NoPartFound(mfr_pn) from e
         except KeyErrorAmbiguous as e:
             # try find exact match
             try:
                 part = find(e.duplicates, lambda x: x.mfr == mfr_pn)
             except KeyErrorNotFound:
-                raise AmbiguousParts(e.duplicates) from e
+                pass  # fall through to raise AmbiguousParts
+            raise AmbiguousParts(e.duplicates) from e
 
     else:
         raise ValueError("Need either mfr_pn or lcsc_id")

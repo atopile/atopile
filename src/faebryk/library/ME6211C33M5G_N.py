@@ -19,7 +19,7 @@ class ME6211C33M5G_N(F.LDO):
 
     def __preinit__(self):
         # set constraints
-        self.output_voltage.merge(F.Range(3.3 * 0.98 * P.V, 3.3 * 1.02 * P.V))
+        self.output_voltage.constrain_superset(L.Range.from_center_rel(3.3 * P.V, 0.02))
 
         if self._default_enabled:
             self.enable.set(True)

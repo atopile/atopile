@@ -1,11 +1,17 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import time
 import unittest
 from itertools import combinations
 
-from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.util import SharedReference, assert_once, once, zip_non_locked
+from faebryk.libs.util import (
+    SharedReference,
+    assert_once,
+    once,
+    times_out,
+    zip_non_locked,
+)
 
 
 class TestUtil(unittest.TestCase):
@@ -129,7 +135,10 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(a.a, 3)
         self.assertRaises(AssertionError, a.do_with_arg, 2)
 
+    def test_times_out(self):
+        @times_out(0.1)
+        def do(wait_s: float):
+            time.sleep(wait_s)
 
-if __name__ == "__main__":
-    setup_basic_logging()
-    unittest.main()
+        self.assertRaises(TimeoutError, do, 0.5)
+        do(0)

@@ -35,7 +35,7 @@ def from_project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.usefixtures("from_project_dir")
 def test_build_errors(build_name: str, expected_error):
     build_ctxs = create_build_contexts(
-        entry=None, build=[build_name], target=[], option=[]
+        entry=None, build=[build_name], target=[], option=[], standalone=False
     )
 
     (build_ctx,) = build_ctxs

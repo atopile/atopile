@@ -1,4 +1,3 @@
-from enum import StrEnum, auto
 import itertools
 import logging
 import re
@@ -7,9 +6,11 @@ import sys
 import tempfile
 import textwrap
 import webbrowser
+from enum import StrEnum, auto
 from pathlib import Path
 from typing import Annotated, Iterator, cast
 
+from rich.table import Table
 import caseconverter
 import click
 import git
@@ -24,6 +25,7 @@ from atopile.cli.common import configure_project_context
 from atopile.cli.install import do_install
 from atopile.utils import robustly_rm_dir
 from faebryk.libs.exceptions import downgrade
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
 # Set up logging
 log = logging.getLogger(__name__)
@@ -359,19 +361,20 @@ class ComponentType(StrEnum):
 
 @create_app.command()
 def component(
-    lcsc: Annotated[str | None, typer.Option("--lcsc", "-l")] = None,
-    mfr: Annotated[str | None, typer.Option("--mfr", "-m")] = None,
-    mfr_pn: Annotated[str | None, typer.Option("--mfr-pn", "-p")] = None,
-    type_: Annotated[ComponentType | None, typer.Option("--type", "-t")] = None,
+    name: Annotated[str | None, typer.Option("--name", "-n")] = None,
+    search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
 ):
     """Create a new component."""
     from natsort import natsorted
 
+    import faebryk.libs.picker.lcsc as lcsc_
     from faebryk.libs.picker.api.picker_lib import (
+        client,
+        extract_numeric_id,
         find_component_by_lcsc_id,
         find_component_by_mfr,
     )
-
+    from faebryk.libs.picker.jlcpcb.jlcpcb import Component
     from faebryk.libs.picker.lcsc import download_easyeda_info
     from faebryk.libs.pycodegen import (
         fix_indent,
@@ -380,45 +383,112 @@ def component(
         gen_repeated_block,
         sanitize_name,
     )
-    import faebryk.libs.picker.lcsc as lcsc_
     from faebryk.tools.libadd import Template, find_part
 
-    project_ctx = configure_project_context(None)
+    try:
+        project_ctx = configure_project_context(None)
+    except FileNotFoundError:
+        lcsc_.BUILD_FOLDER = Path.cwd() / "build"
+    else:
+        # TODO: make lcsc build context aware
+        # TODO: get these paths from the build context
+        lcsc_.BUILD_FOLDER = project_ctx.project_path / "build"
 
-    # TODO: make lcsc build context aware
-    # TODO: get these paths from the build context
-    lcsc_.BUILD_FOLDER = project_ctx.project_path / "build"
-    lcsc_.LIB_FOLDER = lcsc_.LIB_FOLDER / "kicad" / "libs"
+    lcsc_.LIB_FOLDER = lcsc_.BUILD_FOLDER / "kicad" / "libs"
     lcsc_.MODEL_PATH = None
 
-    if lcsc:
-        try:
-            part = find_component_by_lcsc_id(name)
-        except ValueError as e:
-            raise errors.UserException(f"Invalid LCSC part number {name}") from e
-        traits.append(
-            "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{'LCSC': '{name}'}})"
-        )
+    component: Component | None = None
 
-    elif mfr:
-        if "," in name:
-            mfr_, mfr_pn = name.split(",", maxsplit=1)
-        else:
-            mfr_, mfr_pn = "", name
+    for _ in stuck_user_helper_generator:
+        if not search_term:
+            search_term = questionary.text(
+                "Search for a component (Part Number or LCSC ID):"
+            ).ask()
+            assert search_term is not None
+
         try:
-            part = find_component_by_mfr(mfr_, mfr_pn)
-        except KeyErrorAmbiguous as e:
-            # try find exact match
-            try:
-                part = find(e.duplicates, lambda x: x.mfr == mfr_pn)
-            except KeyErrorNotFound:
-                print(
-                    f"Error: Ambiguous mfr_pn({mfr_pn}):"
-                    f" {[(x.mfr_name, x.mfr) for x in e.duplicates]}"
-                )
-                print("Tip: Specify the full mfr_pn of your choice")
-                sys.exit(1)
+            lcsc_id = extract_numeric_id(search_term)
+        except ValueError:
+            lcsc_id = None
+
+        if lcsc_id:
+            components = client.fetch_part_by_lcsc(lcsc_id)
+        else:
+            components = client.fetch_part_by_mfr("", search_term)
+
+        if len(components) == 0:
+            rich.print(f'No components found for "{search_term}"')
+            search_term = None
+            continue
+
+        component_table = Table()
+        component_table.add_column("Manufacturer")
+        component_table.add_column("Part Number")
+        component_table.add_column("Description")
+
+        for component in components:
+            component_table.add_row(
+                component.mfr, component.mfr_name, component.description
+            )
+
+        rich.print(component_table)
+
+        choices = [
+            {"name": f"{component.mfr} {component.mfr_name}", "value": component}
+            for component in components
+        ] + [{"name": "Search again...", "value": None}]
+
+        component = questionary.select("Select a component", choices=choices).ask()
+
+        if component is not None:
+            break
+
+        # Reset the input terms to start over if we didn't find what we're looking for
+        search_term = None
+
+    # template = Template(base="Module")
+
+    # if mfr and lcsc:
+    #     raise ValueError("Cannot use both mfr and lcsc")
+
+    # if mfr or lcsc:
+    #     import faebryk.libs.picker.lcsc as lcsc_
+
+    #     BUILD_DIR = Path("./build")
+    #     lcsc_.BUILD_FOLDER = BUILD_DIR
+    #     lcsc_.LIB_FOLDER = BUILD_DIR / Path("kicad/libs")
+    #     lcsc_.MODEL_PATH = None
+
+    # if lcsc:
+    #     template.add_part(find_part(lcsc_id=template.name, mfr=None, mfr_pn=None))
+    #     template.traits.append(
+    #         "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
+    #         f"({{'LCSC': '{template.name}'}})"
+    #     )
+
+    # elif mfr:
+    #     if "," in template.name:
+    #         mfr_, mfr_pn = template.name.split(",", maxsplit=1)
+    #     else:
+    #         mfr_, mfr_pn = "", template.name
+
+    #     try:
+    #         template.add_part(find_part(lcsc_id=None, mfr=mfr_, mfr_pn=mfr_pn))
+    #     except KeyErrorAmbiguous as e:
+    #         print(
+    #             f"Error: Ambiguous mfr_pn({mfr_pn}):"
+    #             f" {[(x.mfr_name, x.mfr) for x in e.duplicates]}"
+    #         )
+    #         print("Tip: Specify the full mfr_pn of your choice")
+    #         sys.exit(1)
+
+    #     except KeyErrorNotFound:
+    #         print(f"Error: Could not find {mfr_pn}")
+    #         sys.exit(1)
+
+    # out = template.dumps()
+
+    # write(ctx, out, filename=template.name)
 
 
 @create_app.callback(invoke_without_command=True)

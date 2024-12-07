@@ -22,6 +22,7 @@ def build(
     option: Annotated[
         list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
     ] = [],
+    standalone: Annotated[bool, typer.Option("--standalone", hidden=True)] = False,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -38,7 +39,7 @@ def build(
     from faebryk.libs.exceptions import ExceptionAccumulator, log_user_errors
     from faebryk.libs.picker import lcsc
 
-    build_ctxs = create_build_contexts(entry, build, target, option)
+    build_ctxs = create_build_contexts(entry, build, target, option, standalone)
 
     with ExceptionAccumulator() as accumulator:
         for build_ctx in build_ctxs:
