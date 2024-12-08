@@ -10,11 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 class Ethernet(ModuleInterface):
-    tx: F.DifferentialPair
-    rx: F.DifferentialPair
-
-
-class GigabitEthernet(ModuleInterface):
     """
     1000BASE-T Gigabit Ethernet Interface
     """
