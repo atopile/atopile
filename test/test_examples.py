@@ -16,8 +16,8 @@ EXAMPLES_DIR = repo_root / "examples"
 
 # TODO: remove these as they pass
 XFAIL = [
-    "ch2_8_iterative_design_nand",
-    "ch2_4_signal_processing",
+    "ch2_5_signal_processing",
+    "ch2_9_iterative_design_nand",
 ]
 
 
