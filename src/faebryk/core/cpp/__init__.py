@@ -111,7 +111,8 @@ def compile_and_load():
             )
         )
         run_live(
-            [sys.executable, "-m", "ruff", "check", "--fix", pyi_out], logger=logger
+            [sys.executable, "-m", "ruff", "check", "--fix", pyi_out],
+            logger=logger,
         )
 
 

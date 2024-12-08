@@ -91,6 +91,7 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
     Check that the compiler version is compatible with the version
     used to build the project.
     """
+    assert config.location is not None
     dependency_cfgs = (
         faebryk.libs.exceptions.downgrade(FileNotFoundError)(
             atopile.config.get_project_config_from_path

@@ -5,7 +5,7 @@ paths:
   layout: ./layout
 
 builds:
-  faebryk:
-    entry: fab.py:App
   ato:
-    entry: ato.ato:App
+    entry: ch1_1_ato.ato:App
+  fab:
+    entry: ch2_1_fab.py:App
