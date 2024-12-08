@@ -9,20 +9,27 @@ from faebryk.libs.library import L
 logger = logging.getLogger(__name__)
 
 
-class Ethernet(ModuleInterface):
+class HDMI(ModuleInterface):
     """
-    1000BASE-T Gigabit Ethernet Interface
+    HDMI interface
     """
 
-    # Ethernet pairs
-    pairs = L.list_field(4, F.DifferentialPair)
-
-    # Status LEDs
-    led_speed: F.ElectricLogic  # Speed LED
-    led_link: F.ElectricLogic  # Link LED
+    power: F.ElectricPower
+    data = L.list_field(3, F.DifferentialPair)
+    clock: F.DifferentialPair
+    i2c: F.I2C
+    cec: F.ElectricLogic
+    hotplug: F.ElectricLogic
 
     @L.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    # @staticmethod
+    # def define_max_frequency_capability(mode: SpeedMode):
+    #     return F.Range(I2C.SpeedMode.low_speed, mode)
+
+    def __preinit__(self) -> None:
+        pass

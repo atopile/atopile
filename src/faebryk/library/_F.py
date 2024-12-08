@@ -156,14 +156,15 @@ from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
-from faebryk.library.Ethernet import Ethernet
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
 from faebryk.library.USB_Type_C_Receptacle_24_pin import USB_Type_C_Receptacle_24_pin
 from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
+from faebryk.library.Ethernet import Ethernet
 from faebryk.library.GenericBusProtection import GenericBusProtection
 from faebryk.library.I2C import I2C
+from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
 from faebryk.library.LDO import LDO
 from faebryk.library.MultiSPI import MultiSPI
@@ -188,6 +189,7 @@ from faebryk.library.ElectricLogicGates import ElectricLogicGates
 from faebryk.library.Logic74xx import Logic74xx
 from faebryk.library.BH1750FVI_TR import BH1750FVI_TR
 from faebryk.library.EEPROM import EEPROM
+from faebryk.library.HDMI import HDMI
 from faebryk.library.INA228 import INA228
 from faebryk.library.ISO1540 import ISO1540
 from faebryk.library.M24C08_FMN6TP import M24C08_FMN6TP
