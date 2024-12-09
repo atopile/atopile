@@ -45,7 +45,7 @@ dependencies = [
     "ruff>=0.8.2,<0.9.0",
     "pint>=0.24.4,<1.0.0",
     "deprecated~=1.2.14",
-    "more-itertools~=10.4.0",
+    "more-itertools>=10.4,<10.6",
     "psutil~=6.0.0",
     # Extra dependencies
     "antlr4-python3-runtime==4.13.2",
