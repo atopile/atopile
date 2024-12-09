@@ -68,7 +68,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.2.70.dev356+g1a8571bd.d20241207"
+version = "0.3.1.dev6+g34f7759b.d20241206"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
