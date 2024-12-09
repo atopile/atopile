@@ -52,7 +52,7 @@ def sanitize_name(raw, expect_arithmetic: bool = False):
     # rest
     def handle_unknown_invalid_symbold(match):
         logger.warning(
-            "Replacing unknown invalid symbol {} in {} with _".format(
+            'Replacing unknown invalid symbol "{}" in "{}" with _'.format(
                 match.group(0), raw
             )
         )
