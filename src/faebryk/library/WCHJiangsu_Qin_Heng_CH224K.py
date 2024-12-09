@@ -34,10 +34,10 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
         # voltage | resistance | cfg connections [1, 2, 3]
         connection_matrix = {
             "5V": (None, [1, 0, 0]),
-            "9V": (F.Range.from_center_rel(6.8 * P.kohm, 0.001), [0, 0, 0]),
-            "12V": (F.Range.from_center_rel(24 * P.kohm, 0.001), [0, 0, 1]),
-            "15V": (F.Range.from_center_rel(56 * P.kohm, 0.001), [0, 1, 1]),
-            "20V": (F.Range.lower_bound(math.inf * P.kohm), [0, 1, 0]),
+            "9V": (L.Range.from_center_rel(6.8 * P.kohm, 0.001), [0, 0, 0]),
+            "12V": (L.Range.from_center_rel(24 * P.kohm, 0.001), [0, 0, 1]),
+            "15V": (L.Range.from_center_rel(56 * P.kohm, 0.001), [0, 1, 1]),
+            "20V": (L.Range.min_elem(math.inf * P.kohm), [0, 1, 0]),
         }
         if mode == "Resistor":
             if voltage == "5V":
@@ -48,7 +48,7 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
             elif voltage == "20V":
                 return  # no resistor connected
 
-            self.cfg[0].set_weak(on=False).resistance.merge(
+            self.cfg[0].set_weak(on=False).resistance.constrain_subset(
                 connection_matrix[voltage][0]
             )
         elif mode == "LogicLevel":
@@ -110,7 +110,7 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range(3.0 * P.V, 3.6 * P.V))
+        self.power.voltage.merge(L.Range(3.0 * P.V, 3.6 * P.V))
 
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         self.power.connect(F.ElectricLogic.connect_all_references(self.cfg))

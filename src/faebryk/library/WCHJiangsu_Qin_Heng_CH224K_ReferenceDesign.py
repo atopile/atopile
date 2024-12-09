@@ -27,7 +27,7 @@ class WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign(Module):
     cc = L.list_field(2, F.Electrical)
     vdd_resistor: F.Resistor
 
-    # power_good_indicator = L.f_field(F.LEDIndicator)(use_mosfet=False, active_low=False)
+    power_good_indicator = L.f_field(F.LEDIndicator)(use_mosfet=False)
 
     # ----------------------------------------
     #                 traits
@@ -37,8 +37,8 @@ class WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
-        self.controller.vbus_detect.set_weak(on=True).resistance.merge(
-            F.Range.from_center_rel(1 * P.kohm, 0.01)
+        self.controller.vbus_detect.set_weak(on=True).resistance.constrain_subset(
+            L.Range.from_center_rel(1 * P.kohm, 0.01)
         )
         self.controller.vbus_detect.reference.connect(self.vbus)
 
@@ -55,8 +55,10 @@ class WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.controller.power.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(1 * P.uF, 0.1)
+        self.controller.power.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(1 * P.uF, 0.1)
         )
 
-        self.vdd_resistor.resistance.merge(F.Range.from_center_rel(10 * P.kohm, 0.01))
+        self.vdd_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(10 * P.kohm, 0.01)
+        )
