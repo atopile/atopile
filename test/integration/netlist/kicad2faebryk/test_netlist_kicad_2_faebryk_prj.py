@@ -39,7 +39,3 @@ class TestNetlistKicad2FaebrykProject(unittest.TestCase):
         # path = Path("./build/faebryk_prj.py")
         # logger.info("Writing Experiment prj to {}".format(path.absolute()))
         # path.write_text(prj)
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -4,22 +4,20 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.parameter import R
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
-class Ethernet(ModuleInterface):
-    """
-    1000BASE-T Gigabit Ethernet Interface
-    """
+class I2S(ModuleInterface):
+    sd: F.ElectricLogic  # Serial Data
+    ws: F.ElectricLogic  # Word Select (Left/Right Clock)
+    sck: F.ElectricLogic  # Serial Clock
 
-    # Ethernet pairs
-    pairs = L.list_field(4, F.DifferentialPair)
-
-    # Status LEDs
-    led_speed: F.ElectricLogic  # Speed LED
-    led_link: F.ElectricLogic  # Link LED
+    sample_rate = L.p_field(units=P.hertz, domain=R.Domains.Numbers.NATURAL())
+    bit_depth = L.p_field(units=P.bit, domain=R.Domains.Numbers.NATURAL())
 
     @L.rt_field
     def single_electric_reference(self):
