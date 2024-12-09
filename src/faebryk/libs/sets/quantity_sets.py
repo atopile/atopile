@@ -169,19 +169,21 @@ class Quantity_Interval(Quantity_Set):
         )
 
     def as_center_tuple(self, relative: bool = False) -> tuple[QuantityT, QuantityT]:
-        center = cast_assert(QuantityLikeR, (self.min_elem() + self.max_elem())) / 2
-        delta = (self.max_elem() - self.min_elem()) / 2
+        center = cast_assert(QuantityLikeR, (self.min_elem + self.max_elem) / 2)
+        delta = (self.max_elem - self.min_elem) / 2
         if relative:
             delta /= center
         assert isinstance(center, QuantityLikeR)
         assert isinstance(delta, type(center))
         return center, delta  # type: ignore
 
+    @property
     def min_elem(self) -> Quantity:
-        return self.base_to_units(self._interval.min_elem())
+        return self.base_to_units(self._interval.min_elem)
 
+    @property
     def max_elem(self) -> Quantity:
-        return self.base_to_units(self._interval.max_elem())
+        return self.base_to_units(self._interval.max_elem)
 
     def is_empty(self) -> bool:
         return self._interval.is_empty()
@@ -314,11 +316,11 @@ class Quantity_Interval(Quantity_Set):
         return self.op_intersect_interval(other)
 
     def is_single_element(self) -> bool:
-        return self.min_elem() == self.max_elem()  # type: ignore #TODO
+        return self.min_elem == self.max_elem  # type: ignore #TODO
 
     @override
     def any(self) -> Quantity:
-        return self.min_elem()
+        return self.min_elem
 
 
 class Quantity_Singleton(Quantity_Interval):
@@ -331,16 +333,16 @@ class Quantity_Singleton(Quantity_Interval):
         super().__init__(min=value, max=value)
 
     def get_value(self) -> Quantity:
-        return self.min_elem()
+        return self.min_elem
 
     def __iter__(self) -> Generator[Quantity]:
-        yield self.min_elem()
+        yield self.min_elem
 
     @classmethod
     def cast(cls, value: Quantity_Interval) -> "Quantity_Singleton":
-        if value.min_elem() != value.max_elem():
+        if value.min_elem != value.max_elem:
             raise ValueError(f"Interval is not a singleton: {value}")
-        return cls(value.min_elem())
+        return cls(value.min_elem)
 
 
 class Quantity_Interval_Disjoint(Quantity_Set):
@@ -400,15 +402,17 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def is_empty(self) -> bool:
         return self._intervals.is_empty()
 
+    @property
     def min_elem(self) -> Quantity:
         if self.is_empty():
             raise ValueError("empty interval cannot have min element")
-        return self.base_to_units(self._intervals.min_elem())
+        return self.base_to_units(self._intervals.min_elem)
 
+    @property
     def max_elem(self) -> Quantity:
         if self.is_empty():
             raise ValueError("empty interval cannot have max element")
-        return self.base_to_units(self._intervals.max_elem())
+        return self.base_to_units(self._intervals.max_elem)
 
     def closest_elem(self, target: Quantity) -> Quantity:
         if not self.units.is_compatible_with(target.units):
@@ -509,13 +513,13 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     ) -> "Quantity_Interval_Disjoint":
         if not other.units.is_compatible_with(dimensionless):
             raise ValueError("exponent must have dimensionless units")
-        if other.min_elem() != other.max_elem() and not self.units.is_compatible_with(
+        if other.min_elem != other.max_elem and not self.units.is_compatible_with(
             dimensionless
         ):
             raise ValueError(
                 "base must have dimensionless units when exponent is interval"
             )
-        units = self.units ** other.min_elem().magnitude
+        units = self.units**other.min_elem.magnitude
         _interval = self._intervals.op_pow_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(_interval, units)
 
@@ -650,16 +654,16 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def is_single_element(self) -> bool:
         if self.is_empty():
             return False
-        return self.min_elem() == self.max_elem()  # type: ignore #TODO
+        return self.min_elem == self.max_elem  # type: ignore #TODO
 
     def as_gapless(self) -> "Quantity_Interval":
         if self.is_empty():
             raise ValueError("empty interval cannot be gapless")
-        return Quantity_Interval(self.min_elem(), self.max_elem(), units=self.units)
+        return Quantity_Interval(self.min_elem, self.max_elem, units=self.units)
 
     @override
     def any(self) -> Quantity:
-        return self.min_elem()
+        return self.min_elem
 
     def serialize_pset(self) -> dict[str, Any]:
         return {

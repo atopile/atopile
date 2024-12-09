@@ -84,11 +84,11 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         if is_left:
             param = ge.operands[0]
             lit = Quantity_Interval_Disjoint.from_value(ge.operands[1])
-            interval = Quantity_Interval_Disjoint(Quantity_Interval(min=lit.max_elem()))
+            interval = Quantity_Interval_Disjoint(Quantity_Interval(min=lit.max_elem))
         else:
             param = ge.operands[1]
             lit = Quantity_Interval_Disjoint.from_value(ge.operands[0])
-            interval = Quantity_Interval_Disjoint(Quantity_Interval(max=lit.min_elem()))
+            interval = Quantity_Interval_Disjoint(Quantity_Interval(max=lit.min_elem))
 
         mutator.mutate_expression(
             ge,

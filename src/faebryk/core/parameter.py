@@ -882,11 +882,11 @@ class Power(Arithmetic):
         units = dimensionless
         if not base_unit.is_compatible_with(dimensionless):
             exp_val = Quantity_Interval_Disjoint.from_value(exponent)
-            if exp_val.min_elem() != exp_val.max_elem():
+            if exp_val.min_elem != exp_val.max_elem:
                 raise ValueError(
                     "exponent must be a single value for non-dimensionless base"
                 )
-            units = base_unit ** exp_val.min_elem().magnitude
+            units = base_unit**exp_val.min_elem.magnitude
         assert isinstance(units, Unit)
         self.units = units
 

@@ -52,7 +52,7 @@ def test_interval_unit_different():
 
 def test_set_min_elem():
     x = DiscreteSet(5, 3, 2, 4, 1)
-    assert x.min_elem() == 1
+    assert x.min_elem == 1
 
 
 def test_set_closest_elem():
@@ -78,7 +78,7 @@ def test_union_min_elem():
         Single(9),
         RangeWithGaps(Range(1, 2), RangeWithGaps(Range(0, 1))),
     )
-    assert x.min_elem() == 0
+    assert x.min_elem == 0
 
 
 def test_union_contains():
