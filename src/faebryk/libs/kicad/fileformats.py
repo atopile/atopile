@@ -661,6 +661,7 @@ class C_footprint:
         die_length: Optional[float] = None
         options: Optional[C_options] = None
         primitives: Optional[C_gr] = None
+        # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
         unknown: CatchAll = None
 
     @dataclass_json(undefined=Undefined.INCLUDE)
