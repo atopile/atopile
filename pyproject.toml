@@ -46,7 +46,7 @@ dependencies = [
     # Waiting for a new release that works on python 3.13
     "pint @ git+https://github.com/hgrecco/pint.git@a8bcb6ee1d0d61278bf17e332bc1aa473672e273",
     "deprecated~=1.2.14",
-    "more-itertools~=10.4.0",
+    "more-itertools>=10.4,<10.6",
     "psutil~=6.0.0",
     # Extra dependencies
     # TODO:
