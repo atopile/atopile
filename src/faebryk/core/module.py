@@ -71,9 +71,9 @@ class Module(Node):
 
     def specialize[T: Module](
         self,
-        special: T,
+        special: T,  # @mawildoer would this make sense to specialise to a type instead of an instance?
         matrix: list[tuple["ModuleInterface", "ModuleInterface"]] | None = None,
-        attach_to: Node | None = None,
+        attach_to: Node | None = None,  # @mawildoer I didn't find a user of this in the stdlib. What is it for?
     ) -> T:
         from faebryk.core.moduleinterface import ModuleInterface
         from faebryk.core.parameter import Parameter
@@ -116,6 +116,7 @@ class Module(Node):
         # Attach to new parent
         has_parent = special.get_parent() is not None
         assert not has_parent or attach_to is None
+        # @mawildoer this behaviour is a little unclear to me. Why don't we just replace if with the specialised version?
         if not has_parent:
             if attach_to:
                 attach_to.add(special, container=attach_to.specialized_)

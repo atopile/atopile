@@ -1,5 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+from contextlib import contextmanager
 import logging
 from abc import abstractmethod
 from dataclasses import InitVar as dataclass_InitVar
@@ -8,6 +9,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Generator,
     Iterable,
     Self,
     Type,
@@ -19,13 +21,15 @@ from typing import (
 from deprecated import deprecated
 from more_itertools import partition
 
-from faebryk.core.cpp import Node as CNode
+from faebryk.core.cpp import LinkParent, Node as CNode
 from faebryk.core.graphinterface import (
     GraphInterface,
 )
 from faebryk.core.link import LinkNamedParent, LinkSibling
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
+    FuncDict,
+    FuncSet,
     KeyErrorNotFound,
     Tree,
     cast_assert,
@@ -142,7 +146,7 @@ def list_f_field[T, **P](n: int, con: Callable[P, T]) -> Callable[P, list[T]]:
 
 
 class NodeException(UserException):
-    def __init__(self, node: "Node", *args: object) -> None:
+    def __init__(self, node: "BaseNode", *args: object) -> None:
         super().__init__(*args)
         self.node = node
 
@@ -155,7 +159,7 @@ class FieldConstructionError(UserException):
 
 
 class NodeAlreadyBound(NodeException):
-    def __init__(self, node: "Node", other: "Node", *args: object) -> None:
+    def __init__(self, node: "BaseNode", other: "BaseNode", *args: object) -> None:
         super().__init__(
             node,
             *args,
@@ -177,9 +181,309 @@ class InitVar(dataclass_InitVar):
 
 # -----------------------------------------------------------------------------
 
+class BaseNode(CNode):
+    """Base class for all faebryk nodes"""
+    class _Skipped(Exception):
+        pass
+
+    def _remove_child(self, node: "Node"):
+        node.parent.disconnect_parent()
+
+    def _handle_added_to_parent(self): ...
+
+    def builder(self, op: Callable[[Self], Any]) -> Self:
+        op(self)
+        return self
+
+    # printing -------------------------------------------------------------------------
+
+    @try_avoid_endless_recursion
+    def __str__(self) -> str:
+        return f"<{self.get_full_name(types=True)}>"
+
+    def pretty_params(self) -> str:
+        from faebryk.core.parameter import Parameter
+
+        params = {
+            not_none(p.get_parent())[1]: p
+            for p in self.get_children(direct_only=True, types=Parameter)
+        }
+        params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
+
+        return params_str
+
+    def relative_address(self, root: "Node | None" = None) -> str:
+        """Return the address from root to self"""
+        if root is None:
+            return self.get_full_name()
+
+        root_name = root.get_full_name()
+        self_name = self.get_full_name()
+        if not self_name.startswith(root_name):
+            raise ValueError(f"Root {root_name} is not an ancestor of {self_name}")
+
+        return self_name.removeprefix(root_name + ".")
+
+    # Trait stuff ----------------------------------------------------------------------
+
+    @deprecated("Just use add")
+    def add_trait[_TImpl: "TraitImpl"](self, trait: _TImpl) -> _TImpl:
+        return self.add(trait)
+
+    def _find_trait_impl[V: "Trait | TraitImpl"](
+        self, trait: type[V], only_implemented: bool
+    ) -> V | None:
+        from faebryk.core.trait import (
+            Trait,
+            TraitImpl,
+            TraitImplementationConfusedWithTrait,
+        )
+
+        if TraitImpl.is_traitimpl_type(trait):
+            if not trait.__trait__.__decless_trait__:
+                raise TraitImplementationConfusedWithTrait(
+                    self, cast(type[Trait], trait)
+                )
+            trait = trait.__trait__
+
+        out = self.get_children(
+            direct_only=True,
+            types=Trait,
+            f_filter=lambda impl: trait.is_traitimpl(impl)
+            and (cast(TraitImpl, impl).is_implemented() or not only_implemented),
+        )
+
+        assert len(out) <= 1
+        return cast_assert(trait, next(iter(out))) if out else None
+
+    def del_trait(self, trait: type["Trait"]):
+        impl = self._find_trait_impl(trait, only_implemented=False)
+        if not impl:
+            return
+        self._remove_child(impl)
+
+    def try_get_trait[V: "Trait | TraitImpl"](self, trait: Type[V]) -> V | None:
+        return self._find_trait_impl(trait, only_implemented=True)
+
+    def has_trait(self, trait: type["Trait | TraitImpl"]) -> bool:
+        return self.try_get_trait(trait) is not None
+
+    def get_trait[V: "Trait | TraitImpl"](self, trait: Type[V]) -> V:
+        from faebryk.core.trait import Trait, TraitNotFound
+
+        impl = self.try_get_trait(trait)
+        if not impl:
+            raise TraitNotFound(self, cast(type[Trait], trait))
+
+        return cast_assert(trait, impl)
+
+    # Graph stuff ----------------------------------------------------------------------
+    def get_children[T: Node](
+        self,
+        direct_only: bool,
+        types: type[T] | tuple[type[T], ...],
+        include_root: bool = False,
+        f_filter: Callable[[T], bool] | None = None,
+        sort: bool = True,
+    ) -> set[T]:
+        return cast(
+            set[T],
+            set(
+                super().get_children(
+                    direct_only=direct_only,
+                    types=types if isinstance(types, tuple) else (types,),
+                    include_root=include_root,
+                    f_filter=f_filter,  # type: ignore
+                    sort=sort,
+                )
+            ),
+        )
+
+    def get_tree[T: Node](
+        self,
+        types: type[T] | tuple[type[T], ...],
+        include_root: bool = True,
+        f_filter: Callable[[T], bool] | None = None,
+        sort: bool = True,
+    ) -> Tree[T]:
+        out = self.get_children(
+            direct_only=True,
+            types=types,
+            f_filter=f_filter,
+            sort=sort,
+        )
+
+        tree = Tree[T](
+            {
+                n: n.get_tree(
+                    types=types,
+                    include_root=False,
+                    f_filter=f_filter,
+                    sort=sort,
+                )
+                for n in out
+            }
+        )
+
+        if include_root:
+            if isinstance(self, types):
+                if not f_filter or f_filter(self):
+                    tree = Tree[T]({self: tree})
+
+        return tree
+
+    @staticmethod
+    def get_nodes_from_gifs(gifs: Iterable[GraphInterface]):
+        # TODO move this to gif?
+        return {gif.node for gif in gifs}
+        # TODO what is faster
+        # return {n.node for n in gifs if isinstance(n, GraphInterfaceSelf)}
+
+    # Hierarchy queries ----------------------------------------------------------------
+
+    def get_hierarchy(self) -> list[tuple["Node", str]]:
+        return [(cast_assert(Node, n), name) for n, name in super().get_hierarchy()]
+
+    def get_parent_f(
+        self,
+        filter_expr: Callable[["Node"], bool],
+        direct_only: bool = False,
+        include_root: bool = True,
+    ):
+        parents = [p for p, _ in self.get_hierarchy()]
+        if not include_root:
+            parents = parents[:-1]
+        if direct_only:
+            parents = parents[-1:]
+        for p in reversed(parents):
+            if filter_expr(p):
+                return p
+        return None
+
+    def get_parent_of_type[T: Node](
+        self, parent_type: type[T], direct_only: bool = False, include_root: bool = True
+    ) -> T | None:
+        return cast(
+            parent_type | None,
+            self.get_parent_f(
+                lambda p: isinstance(p, parent_type),
+                direct_only=direct_only,
+                include_root=include_root,
+            ),
+        )
+
+    def get_parent_with_trait[TR: Trait](
+        self, trait: type[TR], include_self: bool = True
+    ):
+        hierarchy = self.get_hierarchy()
+        if not include_self:
+            hierarchy = hierarchy[:-1]
+        for parent, _ in reversed(hierarchy):
+            if parent.has_trait(trait):
+                return parent, parent.get_trait(trait)
+        raise KeyErrorNotFound(f"No parent with trait {trait} found")
+
+    def get_first_child_of_type[U: Node](self, child_type: type[U]) -> U:
+        for level in self.get_tree(types=Node).iter_by_depth():
+            for child in level:
+                if isinstance(child, child_type):
+                    return child
+        raise KeyErrorNotFound(f"No child of type {child_type} found")
+
+    # ----------------------------------------------------------------------------------
+    def zip_children_by_name_with[N: Node](
+        self, other: "Node", sub_type: type[N]
+    ) -> dict[str, tuple[N, N]]:
+        nodes = self, other
+        children = tuple(
+            Node.with_names(
+                n.get_children(direct_only=True, include_root=False, types=sub_type)
+            )
+            for n in nodes
+        )
+        return zip_dicts_by_key(*children)
+
+    @staticmethod
+    def with_names[N: Node](nodes: Iterable[N]) -> dict[str, N]:
+        return {n.get_name(): n for n in nodes}
+
+
+class VanillaNode(BaseNode):
+    """Vanilla Pythonic Node"""
+    def __init__(self):
+        super().__init__()
+        CNode.transfer_ownership(self)
+        self.__anon__: FuncSet[BaseNode] = FuncSet()
+
+    def __hash__(self) -> int:
+        # TODO: proper hash or remove and use FuncDic
+        return hash(id(self))
+
+    def add[T: BaseNode | GraphInterface](
+        self,
+        obj: T,
+    ) -> T:
+        assert obj is not None
+
+        if isinstance(obj, GraphInterface):
+            obj.node = self
+            obj.name = ""
+            obj.connect(self.self_gif, LinkSibling())
+
+        elif isinstance(obj, BaseNode):
+            if obj.get_parent():
+                raise NodeAlreadyBound(self, obj)
+
+            from faebryk.core.trait import TraitImpl
+
+            if TraitImpl.is_traitimpl(obj):
+                if self.has_trait(obj.__trait__):
+                    if not obj.handle_duplicate(
+                        cast(TraitImpl, self.get_trait(obj.__trait__)), self
+                    ):
+                        return obj
+
+            self.__anon__.add(obj)
+            # TODO: maybe this should have a hash of it's
+            # ID or the likes as a default name
+            obj.parent.connect(self.children, LinkParent())
+            obj._handle_added_to_parent()
+
+        else:
+            raise TypeError(f"Cannot add {type(obj)}")
+
+        return obj
+
+    def _set_name(self, node: BaseNode, name: str) -> None:
+        node.parent.disconnect_parent()
+        node.parent.connect(node.children, LinkNamedParent(name))
+        # ensure the node isn't in anon anymore, since it's now known
+        self.__anon__.discard(node)
+
+    def _setattr_node(self, name: str, value: BaseNode) -> None:
+        if parent := value.get_parent():  # ... and the node has a parent
+            if parent[0] is self:  # ... and we're the parent of this node
+                self._set_name(value, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if isinstance(value, BaseNode):  # If the value is a BaseNode
+            self._setattr_node(name, value)
+        elif isinstance(value, GraphInterface):
+            value.name = name
+        elif isinstance(value, (list, tuple)):
+            for i, v in enumerate(value):
+                if isinstance(v, BaseNode):
+                    self._setattr_node(f"{name}[{i}]", v)
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                if isinstance(v, BaseNode):
+                    self._setattr_node(f"{name}[{k}]", v)
+
+        return super().__setattr__(name, value)
+
 
 @post_init_decorator
-class Node(CNode):
+class Node(BaseNode):
     runtime_anon: list["Node"]
     runtime: dict[str, "Node"]
     specialized_: list["Node"]

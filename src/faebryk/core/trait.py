@@ -3,7 +3,7 @@
 import logging
 from typing import TypeGuard, cast
 
-from faebryk.core.node import Node, NodeException
+from faebryk.core.node import BaseNode, Node, NodeException
 from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ class TraitImpl(Node):
     # Overwriteable --------------------------------------------------------------------
     def _handle_added_to_parent(self): ...
     def on_obj_set(self): ...
-    def handle_duplicate(self, old: "TraitImpl", node: Node) -> bool:
+    def handle_duplicate(self, old: "TraitImpl", node: BaseNode) -> bool:
         """
         Returns True if the duplicate was handled, False if the trait should be skipped
         """
