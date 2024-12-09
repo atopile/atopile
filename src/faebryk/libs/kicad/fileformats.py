@@ -813,6 +813,7 @@ class C_kicad_pcb_file(SEXP_File):
                 edge_connector: Optional[E_edge_connector_type] = None
                 castellated_pads: Optional[bool] = None
                 edge_plating: Optional[bool] = None
+                unknown: CatchAll = None
 
             stackup: Optional[C_stackup] = None
             pad_to_mask_clearance: int = 0
