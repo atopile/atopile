@@ -40,7 +40,7 @@ dependencies = [
     "requests~=2.32.3",
     "tortoise-orm~=0.21.3",
     "rich~=13.7.1",
-    "typer>=0.12,<0.13",
+    "typer>=0.12,<0.16",
     "isort~=5.6.4",
     "ruff>=0.8.2,<0.9.0",
     # Waiting for a new release that works on python 3.13
