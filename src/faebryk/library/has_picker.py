@@ -4,8 +4,9 @@
 from abc import abstractmethod
 
 from faebryk.core.module import Module
+from faebryk.core.solver.solver import Solver
 
 
 class has_picker(Module.TraitT):
     @abstractmethod
-    def pick(self) -> None: ...
+    def pick(self, solver: Solver) -> None: ...

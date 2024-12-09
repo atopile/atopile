@@ -9,11 +9,20 @@ from atopile.datatypes import Ref
 from atopile.front_end import Bob, Component
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 
 
 @pytest.fixture
 def bob() -> Bob:
     return Bob()
+
+
+@pytest.fixture
+def repo_root() -> Path:
+    repo_root = Path(__file__)
+    while not (repo_root / "pyproject.toml").exists():
+        repo_root = repo_root.parent
+    return repo_root
 
 
 def test_empty_module_build(bob: Bob):
@@ -119,12 +128,8 @@ def test_nested_nodes(bob: Bob):
     assert isinstance(node, L.Module)
 
 
-def test_resistor(bob: Bob):
-    prj_root = Path(__file__)
-    while not (prj_root / "pyproject.toml").exists():
-        prj_root = prj_root.parent
-
-    bob.search_paths.append(prj_root / "examples" / "project" / ".ato" / "modules")
+def test_resistor(bob: Bob, repo_root: Path):
+    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
 
     text = dedent(
         """
@@ -144,9 +149,7 @@ def test_resistor(bob: Bob):
     assert isinstance(node, L.Module)
 
     r1 = Bob.get_node_attr(node, "r1")
-    assert r1.get_trait(F.has_footprint_requirement).get_footprint_requirement() == [
-        ("0805", 2)
-    ]
+    assert r1.get_trait(F.has_package_requirement).get_package_candidates() == ["0805"]
 
 
 def test_standard_library_import(bob: Bob):
@@ -166,6 +169,40 @@ def test_standard_library_import(bob: Bob):
 
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
+
+
+@pytest.mark.parametrize(
+    "import_stmt,class_name",
+    [
+        ("import Resistor", "Resistor"),
+        ("from 'generics/resistors.ato' import Resistor", "Resistor"),
+        ("from 'generics/capacitors.ato' import Capacitor", "Capacitor"),
+    ],
+)
+def test_reserved_attrs(bob: Bob, import_stmt: str, class_name: str, repo_root: Path):
+    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+
+    text = dedent(
+        f"""
+        {import_stmt}
+
+        module A:
+            a = new {class_name}
+            a.package = "0402"
+            a.mpn = "1234567890"
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    a = Bob.get_node_attr(node, "a")
+    assert a.get_trait(F.has_package_requirement).get_package_candidates()[0] == "0402"
+    assert a.get_trait(F.has_descriptive_properties).get_properties() == {
+        DescriptiveProperties.partno: "1234567890"
+    }
 
 
 def test_import_ato(bob: Bob, tmp_path):

@@ -63,6 +63,6 @@ class PANASONIC_AQY212EHAX(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.led.max_current.merge(F.Range(1.2 * P.mA, 3.0 * P.mA))
-        self.led.reverse_working_voltage.merge(F.Range.upper_bound(5.0 * P.V))
-        self.led.forward_voltage.merge(F.Range(1.25 * P.V, 2.0 * P.V))
+        self.led.max_current.constrain_subset(L.Range(1.2 * P.mA, 3.0 * P.mA))
+        self.led.reverse_working_voltage.constrain_subset(L.Range(0 * P.V, 5.0 * P.V))
+        self.led.forward_voltage.constrain_subset(L.Range(1.25 * P.V, 2.0 * P.V))
