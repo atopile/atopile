@@ -212,4 +212,4 @@ handler = LogHandler(
 
 handler.setFormatter(LogFormatter())
 
-logging.basicConfig(level="INFO", handlers=[handler])
+faebryk.libs.logging.setup_basic_logging(handlers=[handler])

@@ -50,6 +50,13 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def max_elem(self) -> NumericT:
         return self._max
 
+    def as_center_rel(self) -> tuple[NumericT, float]:
+        center = (self._min + self._max) / 2
+        if isinstance(self._min, int):
+            center = int(center)
+        rel = (self._max - self._min) / center
+        return center, rel  # type: ignore
+
     def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
         return self._min >= other._min and self._max <= other._max
 
@@ -195,6 +202,14 @@ class Numeric_Interval(Numeric_Set[NumericT]):
 
     def __repr__(self) -> str:
         return f"_interval({self._min}, {self._max})"
+
+    def __str__(self) -> str:
+        if self._min == self._max:
+            return f"[{self._min}]"
+        center, rel = self.as_center_rel()
+        if rel < 1:
+            return f"{center} ± {rel * 100}%"
+        return f"[{self._min}, {self._max}]"
 
     def __add__(self, other: "Numeric_Interval[NumericT]"):
         return self.op_add_interval(other)

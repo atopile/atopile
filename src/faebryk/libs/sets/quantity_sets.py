@@ -281,10 +281,12 @@ class Quantity_Interval(Quantity_Set):
     def __str__(self) -> str:
         min_ = self._format_number(self._interval._min)
         max_ = self._format_number(self._interval._max)
-        if min_ != max_:
-            return f"[{min_}, {max_}]"
-        else:
+        if min_ == max_:
             return f"[{min_}]"
+        center, rel = self._interval.as_center_rel()
+        if rel < 1:
+            return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
+        return f"[{min_}, {max_}]"
 
     # operators
     @operator_type_check
@@ -423,7 +425,11 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         )
 
     def is_subset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
-        return other.is_superset_of(self)
+        if not self.units.is_compatible_with(other.units):
+            return False
+        return self._intervals.is_subset_of(
+            Quantity_Interval_Disjoint.from_value(other)._intervals
+        )
 
     def op_intersect_interval(
         self, other: "Quantity_Interval"
@@ -530,12 +536,15 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return f"{self.__class__.__name__}({self})"
 
     def __str__(self) -> str:
-        out = ", ".join(
-            f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
-            if r._min != r._max
-            else f"[{self._format_number(r._min)}]"
-            for r in self._intervals.intervals
-        )
+        def _format_interval(r: Numeric_Interval[NumericT]) -> str:
+            if r._min == r._max:
+                return f"[{self._format_number(r._min)}]"
+            center, rel = r.as_center_rel()
+            if rel < 1:
+                return f"{self._format_number(center)} ± {rel * 100}%"
+            return f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
+
+        out = ", ".join(_format_interval(r) for r in self._intervals.intervals)
 
         return f"({out})"
 

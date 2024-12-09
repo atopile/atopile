@@ -29,7 +29,7 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
-from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.e_series import E_SERIES
 from faebryk.libs.picker.common import (
     PickerESeriesIntersectionError,
@@ -477,6 +477,8 @@ class ComponentQuery:
         if not isinstance(param.domain, Numbers):
             raise NotImplementedError()
 
+        if LOG_PICK_SOLVE:
+            logger.info(f"SQL filter: Getting known supersets for {param}")
         candidate_ranges = solver.inspect_get_known_supersets(param)
         if not candidate_ranges.is_finite():
             return self
@@ -717,14 +719,32 @@ class JLCPCB_DB:
         ans = input(prompt + " [y/N]:").lower()
         return ans == "y"
 
+    async def _remove_out_of_stock(self, non_passives: bool = False):
+        if not non_passives:
+            categories = [
+                ("Resistors", ""),
+                ("Capacitors", ""),
+                ("Inductors", ""),
+                ("Diodes", ""),
+            ]
+            category_ids = [
+                ids
+                for category, subcategory in categories
+                for ids in await Category().get_ids(category, subcategory)
+            ]
+            logger.info("Deleting out-of-stock passives from DB")
+            await Component.filter(category_id__in=category_ids, stock__lt=1).delete()
+
+        else:
+            logger.info("Deleting out-of-stock components from DB")
+            await Component.filter(stock__lt=1).delete()
+
     async def post_process_db(self):
-        return
         # Ignoring all OOS components isn't a good idea, since there are many
         # parts you may want to explicitly include in your BoM, even when OOS
         # eg. most ICs, micros
         # TODO: consider another approach to optimize the DB, eg. partitioning
-        logger.info("Deleting out-of-stock components from DB")
-        await Component.filter(stock__lt=1).delete()
+        await self._remove_out_of_stock(non_passives=False)
 
         logger.info("Vacuuming DB")
         await Tortoise.get_connection("default").execute_query("VACUUM;")

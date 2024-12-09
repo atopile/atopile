@@ -13,8 +13,11 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.util import ConfigFlag
 
 logger = logging.getLogger(__name__)
+
+LOG_PICK_SOLVE = ConfigFlag("LOG_PICK_SOLVE", False)
 
 
 class Solver(Protocol):
@@ -100,7 +103,6 @@ class Solver(Protocol):
     # run deferred work
     def find_and_lock_solution(self, G: Graph) -> SolveResultAll: ...
 
-    # Could be exponentially many
-    def inspect_known_supersets_are_few(self, value: Parameter) -> bool: ...
-
-    def inspect_get_known_supersets(self, value: Parameter) -> P_Set: ...
+    def inspect_get_known_supersets(
+        self, value: Parameter, force_update: bool = True
+    ) -> P_Set: ...
