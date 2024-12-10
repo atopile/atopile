@@ -1,9 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
+import faebryk.library._F as F  # noqa: F401
+from faebryk.core.module import Module  # noqa: F401
+from faebryk.libs.library import L  # noqa: F401
 
 
 class LEDIndicator(Module):
@@ -16,19 +16,20 @@ class LEDIndicator(Module):
 
     led: F.PoweredLED
 
-    power_switch = L.f_field(F.PowerSwitch)(normally_closed=False)
-
-    def __init__(self, use_mosfet: bool = True):
+    def __init__(self, use_mosfet: bool = True, active_low: bool = False):
         super().__init__()
         self._use_mosfet = use_mosfet
+        self._active_low = active_low
 
     def __preinit__(self):
-        self.power_in.connect_via(self.power_switch, self.led.power)
-        self.power_switch.logic_in.connect(self.logic_in)
-
         if self._use_mosfet:
-            self.power_switch.specialize(
-                F.PowerSwitchMOSFET(lowside=True, normally_closed=False)
+            power_switch = self.add(
+                F.PowerSwitchMOSFET(lowside=True, normally_closed=self._active_low)
             )
         else:
-            self.power_switch.specialize(F.PowerSwitchStatic())
+            power_switch = self.add(
+                F.PowerSwitchStatic(normally_closed=self._active_low)
+            )
+
+        self.power_in.connect_via(power_switch, self.led.power)
+        power_switch.logic_in.connect(self.logic_in)
