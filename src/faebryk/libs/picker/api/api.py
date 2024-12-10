@@ -50,7 +50,10 @@ class ApiHTTPError(ApiError):
 
     def __str__(self) -> str:
         status_code = self.response.status_code
-        detail = self.response.json()["detail"]
+        try:
+            detail = self.response.json()["detail"]
+        except Exception:
+            detail = self.response.text
         return f"{super().__str__()}: {status_code} {detail}"
 
 
