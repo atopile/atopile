@@ -224,7 +224,7 @@ ldos = [
     ComponentTestCase(
         F.LDO().builder(
             lambda u: (
-                u.output_voltage.constrain_subset(
+                u.output_voltage.constrain_superset(
                     L.Range.from_center(3.3 * P.V, 0.1 * P.V)
                 ),
                 u.output_current.constrain_ge(0.1 * P.A),
