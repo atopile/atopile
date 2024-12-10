@@ -244,7 +244,7 @@ class Component(Model):
 
         try:
             value = quantity(value_field)
-        except UndefinedUnitError as e:
+        except (AssertionError, UndefinedUnitError) as e:
             raise ValueError(f"Could not parse value field '{value_field}'") from e
 
         if not use_tolerance:
@@ -326,36 +326,22 @@ class Component(Model):
 
     def get_literal_for_mappings(
         self, mapping: list[MappingParameterDB]
-    ) -> tuple[
-        dict[MappingParameterDB, ParameterOperatable.Literal],
-        dict[MappingParameterDB, Exception],
-    ]:
+    ) -> dict[MappingParameterDB, ParameterOperatable.Literal | None]:
         params = {}
-        exceptions = {}
         for m in mapping:
             try:
                 params[m] = self.get_literal(m)
-            except (LookupError, ValueError, AssertionError) as e:
-                exceptions[m] = e
-        return params, exceptions
+            except (ValueError, LookupError):
+                params[m] = None
+        return params
 
     def attach(
         self,
         module: Module,
         mapping: list[MappingParameterDB],
         qty: int = 1,
-        ignore_exceptions: bool = False,
     ):
-        params, exceptions = self.get_literal_for_mappings(mapping)
-
-        if not ignore_exceptions and exceptions:
-            params_str = indent(
-                "\n" + "\n".join(repr(e) for e in exceptions.values()),
-                " " * 4,
-            )
-            raise Component.ParseError(
-                f"Failed to parse parameters for component {self.partno}: {params_str}"
-            )
+        params = self.get_literal_for_mappings(mapping)
 
         attach(module, self.partno)
 
@@ -377,7 +363,12 @@ class Component(Model):
         module.add(has_part_picked_defined(JLCPCB_Part(self.partno)))
 
         for name, value in params.items():
-            getattr(module, name.param_name).alias_is(value)
+            p = getattr(module, name.param_name)
+            assert isinstance(p, Parameter)
+            if value is None:
+                p.constrain_superset(p.domain.unbounded(p))
+            else:
+                p.alias_is(value)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -496,8 +487,15 @@ class ComponentQuery:
         return self.filter_by_description(f"±{tol_int}%")
 
     def filter_by_category(self, category: str, subcategory: str) -> Self:
+        return self.filter_by_categories([(category, subcategory)])
+
+    def filter_by_categories(self, categories: list[tuple[str, str]]) -> Self:
         assert self.Q
-        category_ids = asyncio.run(Category().get_ids(category, subcategory))
+        category_ids = [
+            c_id
+            for category, subcategory in categories
+            for c_id in asyncio.run(Category().get_ids(category, subcategory))
+        ]
         self.Q &= Q(category_id__in=category_ids)
         return self
 

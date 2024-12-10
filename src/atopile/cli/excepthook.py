@@ -6,6 +6,7 @@ import rich
 from atopile import telemetry
 from atopile.cli.logging import logger
 from atopile.errors import _BaseBaseUserException
+from faebryk.libs.logging import FLOG_FMT
 
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
@@ -54,4 +55,5 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         sys.exit(1)
 
 
-sys.excepthook = handle_exception
+if not FLOG_FMT:
+    sys.excepthook = handle_exception

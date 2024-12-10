@@ -545,7 +545,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
                 return f"[{self._format_number(r._min)}]"
             center, rel = r.as_center_rel()
             if rel < 1:
-                return f"{self._format_number(center)} ± {rel * 100}%"
+                return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
             return f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
 
         out = ", ".join(_format_interval(r) for r in self._intervals.intervals)

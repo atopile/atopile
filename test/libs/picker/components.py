@@ -141,6 +141,15 @@ inductors = [
         ),
         packages=["0603"],
     ),
+    ComponentTestCase(
+        F.Inductor().builder(
+            lambda i: (
+                i.inductance.constrain_subset(L.Range.from_center_rel(10 * P.uH, 0.4)),
+                i.max_current.constrain_ge(4 * P.A),
+            )
+        ),
+        packages=[],
+    ),
 ]
 
 mosfets = [

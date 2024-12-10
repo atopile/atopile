@@ -1173,6 +1173,16 @@ class Numbers(Domain):
 
     @override
     def unbounded(self, param: "Parameter") -> Quantity_Interval_Disjoint:
+        if self.integer:
+            raise NotImplementedError("Integer unbounded not implemented")
+        if not self.zero_allowed:
+            raise NotImplementedError("Non-zero unbounded not implemented")
+        if not self.negative:
+            return Quantity_Interval_Disjoint.from_value(
+                Quantity_Interval(
+                    min=quantity(0, param.units), max=None, units=param.units
+                )
+            )
         return Quantity_Interval_Disjoint.unbounded(param.units)
 
 
