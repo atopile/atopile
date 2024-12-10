@@ -334,9 +334,11 @@ class USB2514B(Module):
             exclude={
                 self.power_pll,
                 self.power_core,
-                self.power_io,
+                # self.power_io,
                 self.vbus_detect,
                 self.local_power_detection,
+                self.power_3v3_regulator,
+                self.power_3v3_analog,
             },
         )
 

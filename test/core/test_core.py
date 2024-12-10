@@ -200,7 +200,3 @@ class TestGraph(unittest.TestCase):
         assert_and_reset(3)
         N112()
         assert_and_reset(2)
-
-
-if __name__ == "__main__":
-    unittest.main()

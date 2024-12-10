@@ -26,7 +26,3 @@ class TestClassNames(unittest.TestCase):
                 if class_name.startswith("_"):
                     continue
                 self.assertEqual(class_name, file_name, f"In {py_file}")
-
-
-if __name__ == "__main__":
-    unittest.main()

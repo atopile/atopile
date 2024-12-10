@@ -141,6 +141,15 @@ inductors = [
         ),
         packages=["0603"],
     ),
+    ComponentTestCase(
+        F.Inductor().builder(
+            lambda i: (
+                i.inductance.constrain_subset(L.Range.from_center_rel(10 * P.uH, 0.4)),
+                i.max_current.constrain_ge(4 * P.A),
+            )
+        ),
+        packages=[],
+    ),
 ]
 
 mosfets = [
@@ -215,7 +224,7 @@ ldos = [
     ComponentTestCase(
         F.LDO().builder(
             lambda u: (
-                u.output_voltage.constrain_subset(
+                u.output_voltage.constrain_superset(
                     L.Range.from_center(3.3 * P.V, 0.1 * P.V)
                 ),
                 u.output_current.constrain_ge(0.1 * P.A),
@@ -229,6 +238,7 @@ ldos = [
         ),
         packages=[
             "SOT-23",
+            "SOT-23-5",
             "SOT23",
             "SOT-23-3",
             "SOT-23-3L",

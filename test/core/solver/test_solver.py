@@ -24,6 +24,7 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
+from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps, Single
 from faebryk.libs.picker.api.pickers import add_api_pickers
@@ -212,13 +213,8 @@ def test_solve_realworld():
 
 def test_solve_realworld_bigger():
     app = F.RP2040_ReferenceDesign()
-    # TODO
-    # resolve_dynamic_parameters(app.get_graph())
+    resolve_dynamic_parameters(app.get_graph())
 
-    # TODO broken due to contradiction
-    # ContradictionByLiteral: Intersection of [Quantity_Interval_Disjoint(([-inf, 0])),
-    # Quantity_Interval_Disjoint(([3.6, 6.6]))] is empty`
-    # 3.6, 6.6 = 2 * [1.8, 3.3]
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(app.get_graph())
     # TODO actually test something
@@ -692,12 +688,3 @@ def test_jlcpcb_pick_powered_led():
     picked_parts = [mod for mod in children_mods if mod.has_trait(has_part_picked)]
     assert len(picked_parts) == 2
     print([(p, p.get_trait(has_part_picked).get_part()) for p in picked_parts])
-
-
-if __name__ == "__main__":
-    import typer
-
-    from faebryk.libs.logging import setup_basic_logging
-
-    setup_basic_logging()
-    typer.run(test_jlcpcb_pick_powered_led)

@@ -10,7 +10,7 @@ from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval_Disjoint,
     NumericT,
 )
-from faebryk.libs.sets.sets import BoolSet, P_UnitSet
+from faebryk.libs.sets.sets import BoolSet, P_Set, P_UnitSet
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
@@ -19,7 +19,12 @@ from faebryk.libs.units import (
     quantity,
     to_si_str,
 )
-from faebryk.libs.util import cast_assert, not_none, operator_type_check, round_str
+from faebryk.libs.util import (
+    cast_assert,
+    not_none,
+    operator_type_check,
+    round_str,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +80,15 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
         return to_si_str(
             self.base_to_units(number), self.units, num_decimals=num_decimals
         )
+
+    @override
+    def serialize_pset(self) -> dict:
+        return Quantity_Interval_Disjoint.from_value(self).serialize_pset()
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        return Quantity_Interval_Disjoint.deserialize(data)
 
 
 QuantitySetLikeR = (Quantity_Set, *QuantityLikeR)
@@ -155,19 +169,21 @@ class Quantity_Interval(Quantity_Set):
         )
 
     def as_center_tuple(self, relative: bool = False) -> tuple[QuantityT, QuantityT]:
-        center = cast_assert(QuantityLikeR, (self.min_elem() + self.max_elem())) / 2
-        delta = (self.max_elem() - self.min_elem()) / 2
+        center = cast_assert(QuantityLikeR, (self.min_elem + self.max_elem) / 2)
+        delta = (self.max_elem - self.min_elem) / 2
         if relative:
             delta /= center
         assert isinstance(center, QuantityLikeR)
         assert isinstance(delta, type(center))
         return center, delta  # type: ignore
 
+    @property
     def min_elem(self) -> Quantity:
-        return self.base_to_units(self._interval.min_elem())
+        return self.base_to_units(self._interval.min_elem)
 
+    @property
     def max_elem(self) -> Quantity:
-        return self.base_to_units(self._interval.max_elem())
+        return self.base_to_units(self._interval.max_elem)
 
     def is_empty(self) -> bool:
         return self._interval.is_empty()
@@ -267,10 +283,12 @@ class Quantity_Interval(Quantity_Set):
     def __str__(self) -> str:
         min_ = self._format_number(self._interval._min)
         max_ = self._format_number(self._interval._max)
-        if min_ != max_:
-            return f"[{min_}, {max_}]"
-        else:
+        if min_ == max_:
             return f"[{min_}]"
+        center, rel = self._interval.as_center_rel()
+        if rel < 1:
+            return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
+        return f"[{min_}, {max_}]"
 
     # operators
     @operator_type_check
@@ -298,11 +316,11 @@ class Quantity_Interval(Quantity_Set):
         return self.op_intersect_interval(other)
 
     def is_single_element(self) -> bool:
-        return self.min_elem() == self.max_elem()  # type: ignore #TODO
+        return self.min_elem == self.max_elem  # type: ignore #TODO
 
     @override
     def any(self) -> Quantity:
-        return self.min_elem()
+        return self.min_elem
 
 
 class Quantity_Singleton(Quantity_Interval):
@@ -315,16 +333,16 @@ class Quantity_Singleton(Quantity_Interval):
         super().__init__(min=value, max=value)
 
     def get_value(self) -> Quantity:
-        return self.min_elem()
+        return self.min_elem
 
     def __iter__(self) -> Generator[Quantity]:
-        yield self.min_elem()
+        yield self.min_elem
 
     @classmethod
     def cast(cls, value: Quantity_Interval) -> "Quantity_Singleton":
-        if value.min_elem() != value.max_elem():
+        if value.min_elem != value.max_elem:
             raise ValueError(f"Interval is not a singleton: {value}")
-        return cls(value.min_elem())
+        return cls(value.min_elem)
 
 
 class Quantity_Interval_Disjoint(Quantity_Set):
@@ -384,15 +402,17 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def is_empty(self) -> bool:
         return self._intervals.is_empty()
 
+    @property
     def min_elem(self) -> Quantity:
         if self.is_empty():
             raise ValueError("empty interval cannot have min element")
-        return self.base_to_units(self._intervals.min_elem())
+        return self.base_to_units(self._intervals.min_elem)
 
+    @property
     def max_elem(self) -> Quantity:
         if self.is_empty():
             raise ValueError("empty interval cannot have max element")
-        return self.base_to_units(self._intervals.max_elem())
+        return self.base_to_units(self._intervals.max_elem)
 
     def closest_elem(self, target: Quantity) -> Quantity:
         if not self.units.is_compatible_with(target.units):
@@ -409,7 +429,11 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         )
 
     def is_subset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
-        return other.is_superset_of(self)
+        if not self.units.is_compatible_with(other.units):
+            return False
+        return self._intervals.is_subset_of(
+            Quantity_Interval_Disjoint.from_value(other)._intervals
+        )
 
     def op_intersect_interval(
         self, other: "Quantity_Interval"
@@ -489,13 +513,13 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     ) -> "Quantity_Interval_Disjoint":
         if not other.units.is_compatible_with(dimensionless):
             raise ValueError("exponent must have dimensionless units")
-        if other.min_elem() != other.max_elem() and not self.units.is_compatible_with(
+        if other.min_elem != other.max_elem and not self.units.is_compatible_with(
             dimensionless
         ):
             raise ValueError(
                 "base must have dimensionless units when exponent is interval"
             )
-        units = self.units ** other.min_elem().magnitude
+        units = self.units**other.min_elem.magnitude
         _interval = self._intervals.op_pow_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(_interval, units)
 
@@ -516,12 +540,15 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return f"{self.__class__.__name__}({self})"
 
     def __str__(self) -> str:
-        out = ", ".join(
-            f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
-            if r._min != r._max
-            else f"[{self._format_number(r._min)}]"
-            for r in self._intervals.intervals
-        )
+        def _format_interval(r: Numeric_Interval[NumericT]) -> str:
+            if r._min == r._max:
+                return f"[{self._format_number(r._min)}]"
+            center, rel = r.as_center_rel()
+            if rel < 1:
+                return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
+            return f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
+
+        out = ", ".join(_format_interval(r) for r in self._intervals.intervals)
 
         return f"({out})"
 
@@ -627,16 +654,31 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def is_single_element(self) -> bool:
         if self.is_empty():
             return False
-        return self.min_elem() == self.max_elem()  # type: ignore #TODO
+        return self.min_elem == self.max_elem  # type: ignore #TODO
 
     def as_gapless(self) -> "Quantity_Interval":
         if self.is_empty():
             raise ValueError("empty interval cannot be gapless")
-        return Quantity_Interval(self.min_elem(), self.max_elem(), units=self.units)
+        return Quantity_Interval(self.min_elem, self.max_elem, units=self.units)
 
     @override
     def any(self) -> Quantity:
-        return self.min_elem()
+        return self.min_elem
+
+    def serialize_pset(self) -> dict[str, Any]:
+        return {
+            "intervals": self._intervals.serialize(),
+            "unit": str(self.units),
+        }
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        from faebryk.libs.units import P
+
+        out = cls(units=getattr(P, data["unit"]))
+        out._intervals = P_Set.deserialize(data["intervals"])
+        return out
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

@@ -173,13 +173,3 @@ def test_cpp_type():
 
     obj2 = LinkDirectDerived()
     assert not LinkDirect.is_cloneable(obj2)
-
-
-if __name__ == "__main__":
-    # test_add()
-    # test_cobject()
-    # test_cnodes()
-    # test_link()
-    test_mif_link()
-    # test_pynode()
-    # test_derived_pynodes()

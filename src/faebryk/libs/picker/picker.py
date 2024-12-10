@@ -24,7 +24,9 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.util import flatten, not_none
+from faebryk.libs.util import ConfigFlag, flatten, not_none
+
+NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +104,7 @@ class PickErrorChildren(PickError):
 
 
 class PickErrorParams(PickError):
-    def __init__(self, module: Module, options: list[PickerOption]):
+    def __init__(self, module: Module, options: list[PickerOption], solver: Solver):
         self.options = options
 
         MAX = 5
@@ -115,7 +117,7 @@ class PickErrorParams(PickError):
 
         message = (
             f"Could not find part for {module}"
-            f"\nwith params:\n{indent(module.pretty_params(), ' '*4)}"
+            f"\nwith params:\n{indent(module.pretty_params(solver), ' '*4)}"
             f"\nin options:\n {indent(options_str, ' '*4)}"
         )
         super().__init__(message, module)
@@ -197,7 +199,7 @@ def pick_module_by_params(
         predicates[o] = And(*predicate_list)
 
     if len(predicates) == 0:
-        raise PickErrorParams(module, list(options))
+        raise PickErrorParams(module, list(options), solver)
 
     solve_result = solver.assert_any_predicate(
         [(p, k) for k, p in predicates.items()], lock=True
@@ -207,7 +209,7 @@ def pick_module_by_params(
 
     # pick first valid option
     if not solve_result.true_predicates:
-        raise PickErrorParams(module, list(options))
+        raise PickErrorParams(module, list(options), solver)
 
     _, option = next(iter(solve_result.true_predicates))
 
@@ -231,7 +233,7 @@ def _get_mif_top_level_modules(mif: ModuleInterface) -> set[Module]:
 
 class PickerProgress:
     def __init__(self):
-        self.progress = Progress()
+        self.progress = Progress(disable=bool(NO_PROGRESS_BAR))
         self.task = self.progress.add_task("Picking", total=1)
 
     @staticmethod
@@ -262,7 +264,10 @@ def pick_part_recursively(module: Module, solver: Solver):
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
         for m, sube in failed_parts.items():
-            logger.error(f"Could not find pick for {m}:\n {sube.message}")
+            logger.error(
+                f"Could not find pick for {m}:\n {sube.message}\n"
+                f"Params:\n{indent(m.pretty_params(solver), prefix=' '*4)}"
+            )
         raise e
 
     # check if lowest children are picked

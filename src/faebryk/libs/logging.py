@@ -15,8 +15,12 @@ JLOG = ConfigFlag("JLOG", descr="Enable jlcpcb picker debug log")
 FLOG_FMT = ConfigFlag("LOG_FMT", descr="Enable (old) log formatting")
 
 
-def setup_basic_logging():
-    if FLOG_FMT:
+def setup_basic_logging(
+    force_fmt: bool = False, handlers: list[logging.Handler] | None = None
+):
+    if handlers is None:
+        handlers = []
+    if FLOG_FMT or force_fmt:
         logging.basicConfig(
             format="%(message)s",
             level=logging.INFO,
@@ -33,7 +37,7 @@ def setup_basic_logging():
             ],
         )
     else:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.INFO, handlers=handlers)
 
     if PLOG:
         from faebryk.library.has_multi_picker import logger as plog
@@ -75,7 +79,7 @@ class NodeHighlighter(RegexHighlighter):
         r"(?P<Quantity>\[(True|False)+\])",
         # Predicates / Expressions
         r"(?P<Op> (\+|\*|/))[ {]",
-        r"(?P<Predicate>(is|⊆|≥|≤|)!?!?[✓✗]?)",
+        r"(?P<Predicate> (is|⊆|≥|≤|)!?!?[✓✗]?) ",
         # Literal Is/IsSubset
         r"(?P<IsSubset>{(I|S)\|[^}]+})",
     ]

@@ -111,6 +111,8 @@ class CH344Q_ReferenceDesign(Module):
         # TODO: already done by lowpass filter
         # self.usb_uart_converter.reset.pulled.pull(up=True)
 
+        self.ldo.enable_output()
+
         # ------------------------------------
         #          parametrization
         # ------------------------------------

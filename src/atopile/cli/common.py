@@ -91,6 +91,7 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
     Check that the compiler version is compatible with the version
     used to build the project.
     """
+    assert config.location is not None
     dependency_cfgs = (
         faebryk.libs.exceptions.downgrade(FileNotFoundError)(
             atopile.config.get_project_config_from_path
@@ -121,13 +122,9 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
                 )
 
 
-def create_build_contexts(
-    entry: str | None,
-    build: Iterable[str],
-    target: Iterable[str],
-    option: Iterable[str],
-    standalone: bool,
-) -> list[atopile.config.BuildContext]:
+def configure_project_context(
+    entry: str | None, standalone: bool = False
+) -> tuple[atopile.config.ProjectConfig, atopile.config.ProjectContext]:
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
 
     if standalone:
@@ -139,21 +136,14 @@ def create_build_contexts(
             raise errors.UserBadParameterError(
                 f"The file you have specified does not exist: {entry_arg_file_path}"
             )
-        if not entry_arg_file_path.is_file():
-            raise errors.UserBadParameterError(
-                "The path you're building with the --standalone"
-                f" option must be a file {entry_arg_file_path}"
-            )
-        if not address.get_entry_section(entry):
-            raise errors.UserBadParameterError(
-                "You must specify what to build within a file to build with the"
-                " --standalone option"
-            )
 
         project_config = atopile.config.ProjectConfig(
             location=Path.cwd(),
             ato_version=f"^{version.get_installed_atopile_version()}",
-            paths=atopile.config.ProjectPaths(layout=Path.cwd() / "standalone"),
+            paths=atopile.config.ProjectPaths(
+                layout=Path.cwd() / "standalone",
+                src=Path.cwd(),
+            ),
             builds={"default": atopile.config.ProjectBuildConfig(targets=[])},
         )
     else:
@@ -164,6 +154,39 @@ def create_build_contexts(
 
     log.info("Using project %s", project_config.location)
 
+    # Configure project context
+    project_ctx = atopile.config.ProjectContext.from_config(project_config)
+    atopile.config.set_project_context(project_ctx)
+
+    return project_config, project_ctx
+
+
+def create_build_contexts(
+    entry: str | None,
+    build: Iterable[str],
+    target: Iterable[str],
+    option: Iterable[str],
+    standalone: bool,
+) -> list[atopile.config.BuildContext]:
+    entry, entry_arg_file_path = get_entry_arg_file_path(entry)
+
+    config, project_ctx = configure_project_context(entry, standalone)
+
+    # These checks are only relevant if we're **building** standalone
+    # TODO: Some of the contents should be moved out of the project context
+    if standalone:
+        if not entry_arg_file_path.is_file():
+            raise errors.UserBadParameterError(
+                "The path you're building with the --standalone"
+                f" option must be a file {entry_arg_file_path}"
+            )
+        assert entry is not None  # Handled by configure_project_context
+        if not address.get_entry_section(entry):
+            raise errors.UserBadParameterError(
+                "You must specify what to build within a file to build with the"
+                " --standalone option"
+            )
+
     # add custom config overrides
     if option:
         raise errors.UserNotImplementedError(
@@ -172,15 +195,9 @@ def create_build_contexts(
             "If this is a blocker for you, please raise an issue. "
             "In the meantime, you can use the `ato.yaml` file to set these options."
         )
-    else:
-        config: atopile.config.ProjectConfig = project_config
 
     # if we set an entry-point, we now need to deal with that
     entry_addr_override = check_entry_arg_file_path(entry, entry_arg_file_path)
-
-    # Configure project context
-    project_ctx = atopile.config.ProjectContext.from_config(config)
-    atopile.config.set_project_context(project_ctx)
 
     # Make build contexts
     if build_names := build or config.builds.keys():
