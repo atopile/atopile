@@ -78,6 +78,9 @@ class LCSCException(Exception):
         self.partno = partno
         super().__init__(*args)
 
+    def __str__(self) -> str:
+        return f"{type(self).__name__}: {self.partno} - {self.args}"
+
 
 class LCSC_NoDataException(LCSCException): ...
 

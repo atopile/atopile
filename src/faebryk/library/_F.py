@@ -157,9 +157,8 @@ from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
-from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
 from faebryk.library.USB_Type_C_Receptacle_24_pin import USB_Type_C_Receptacle_24_pin
-from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
+from faebryk.library.Diodes_Incorporated_AP255x_x import Diodes_Incorporated_AP255x_x
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
 from faebryk.library.Ethernet import Ethernet
 from faebryk.library.GenericBusProtection import GenericBusProtection
@@ -185,6 +184,8 @@ from faebryk.library.can_switch_power import can_switch_power
 from faebryk.library.pf_74AHCT2G125 import pf_74AHCT2G125
 from faebryk.library.TPS2116 import TPS2116
 from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
+from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
+from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
 from faebryk.library.ElectricLogicGates import ElectricLogicGates
 from faebryk.library.Logic74xx import Logic74xx
 from faebryk.library.BH1750FVI_TR import BH1750FVI_TR
@@ -211,6 +212,8 @@ from faebryk.library.UART_RS485 import UART_RS485
 from faebryk.library.USB2514B import USB2514B
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
+from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
+from faebryk.library.WCHJiangsu_Qin_Heng_CH224K import WCHJiangsu_Qin_Heng_CH224K
 from faebryk.library.can_switch_power_defined import can_switch_power_defined
 from faebryk.library.RS485_Bus_Protection import RS485_Bus_Protection
 from faebryk.library.CD4011 import CD4011
@@ -257,4 +260,5 @@ from faebryk.library.LEDIndicator import LEDIndicator
 from faebryk.library.CH344Q_ReferenceDesign import CH344Q_ReferenceDesign
 from faebryk.library.RaspberryPiPicoBase_ReferenceDesign import RaspberryPiPicoBase_ReferenceDesign
 from faebryk.library.USB2514B_ReferenceDesign import USB2514B_ReferenceDesign
+from faebryk.library.WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign import WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign
 from faebryk.library.RaspberryPiPico import RaspberryPiPico

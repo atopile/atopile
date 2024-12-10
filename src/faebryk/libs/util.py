@@ -19,11 +19,12 @@ from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from enum import StrEnum
+from enum import Enum, StrEnum
 from functools import wraps
 from genericpath import commonprefix
 from importlib.metadata import Distribution
 from itertools import chain, pairwise
+from json import JSONEncoder
 from pathlib import Path
 from textwrap import indent
 from types import ModuleType
@@ -36,15 +37,18 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Protocol,
     Self,
     Sequence,
     SupportsFloat,
     SupportsInt,
     Type,
     TypeGuard,
+    cast,
     get_origin,
     get_type_hints,
     overload,
+    override,
 )
 
 import psutil
@@ -52,6 +56,18 @@ from tortoise import Model
 from tortoise.queryset import QuerySet
 
 logger = logging.getLogger(__name__)
+
+
+class Serializable(Protocol):
+    def serialize(self) -> dict: ...
+
+    @classmethod
+    def deserialize(cls, data: dict) -> Self: ...
+
+
+class SerializableJSONEncoder(JSONEncoder):
+    def default(self, o: Serializable):
+        return o.serialize()
 
 
 class lazy:
@@ -1648,3 +1664,80 @@ def is_editable_install():
         .get("dir_info", {})
         .get("editable", False)
     )
+
+
+class SerializableEnum[E: Enum](Serializable):
+    class Value[E_: Enum](Serializable):
+        def __init__(self, enum: "SerializableEnum", value: E_):
+            self._value = value
+            self._enum = enum
+
+        @property
+        def name(self) -> str:
+            return self._value.name
+
+        @property
+        def value(self) -> E:
+            return self._value.value
+
+        @override
+        def serialize(self) -> dict:
+            return {"name": self._value.name}
+
+        def __eq__(self, other: "SerializableEnum.Value[E]") -> bool:
+            if not other._enum == self._enum:
+                return False
+            return (
+                other._value.name == self._value.name
+                and other._value.value == self._value.value
+            )
+
+        def __hash__(self) -> int:
+            return hash(self._value)
+
+        def __repr__(self) -> str:
+            return f"{self._enum.enum.__name__}.{self._value.name}"
+
+    def __init__(self, enum: type[Enum]):
+        self.enum = enum
+
+        class _Value(SerializableEnum.Value[E]):
+            @override
+            @staticmethod
+            def deserialize(data: dict) -> "_Value":
+                return _Value(self, self.enum[data["name"]])
+
+        self.value_cls = _Value
+
+    def serialize(self) -> dict:
+        enum = self.enum
+        # check enum values to all be ints or str
+        if not all(isinstance(e.value, (int, str, float)) for e in enum):
+            raise ValueError(f"Can't serialize {enum}: has non-primitive values")
+
+        enum_cls_serialized = {
+            "name": enum.__name__,
+            "values": {e.name: e.value for e in enum},
+        }
+
+        return enum_cls_serialized
+
+    @staticmethod
+    def deserialize(data: dict) -> "SerializableEnum":
+        enum_cls = Enum(data["name"], data["values"])
+        return SerializableEnum(cast(type[Enum], enum_cls))
+
+    def make_value(
+        self, value: "E | SerializableEnum.Value[E]"
+    ) -> "SerializableEnum.Value[E]":
+        if isinstance(value, SerializableEnum.Value):
+            return value
+        return self.value_cls(self, value)
+
+    def deserialize_value(self, data: dict) -> "SerializableEnum.Value[E]":
+        return self.value_cls.deserialize(data)
+
+    def __eq__(self, other: "SerializableEnum") -> bool:
+        return self.enum.__name__ == other.enum.__name__ and {
+            e.name: e.value for e in self.enum
+        } == {e.name: e.value for e in other.enum}

@@ -17,7 +17,7 @@ from faebryk.core.parameter import (
     Parameter,
     Predicate,
 )
-from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.e_series import E_SERIES, e_series_intersect
 from faebryk.libs.picker.lcsc import LCSC_NoDataException, LCSC_PinmapException, attach
 from faebryk.libs.picker.picker import (
@@ -44,7 +44,7 @@ class PickerType(StrEnum):
 
 
 DB_PICKER_BACKEND = ConfigFlagEnum(
-    PickerType, "PICKER", PickerType.SQLITE, "Picker backend to use"
+    PickerType, "PICKER", PickerType.API, "Picker backend to use"
 )
 type SIvalue = str
 
@@ -201,7 +201,7 @@ def try_attach(
     failures = []
     for c in parts:
         try:
-            c.attach(module, mapping, qty, ignore_exceptions=False)
+            c.attach(module, mapping, qty)
             return
         except (ValueError, Component.ParseError) as e:
             failures.append((c, e))
@@ -237,15 +237,12 @@ def check_compatible_parameters(
     if not mapping:
         return True
 
-    range_mapping, exceptions = c.get_literal_for_mappings(mapping)
-
-    if exceptions:  # TODO
-        return False
+    range_mapping = c.get_literal_for_mappings(mapping)
 
     param_mapping = [
         (
-            cast_assert(Parameter, getattr(module, m.param_name)),
-            c_range,
+            (p := cast_assert(Parameter, getattr(module, m.param_name))),
+            c_range if c_range is not None else p.domain.unbounded(p),
         )
         for m, c_range in range_mapping.items()
     ]
@@ -255,11 +252,15 @@ def check_compatible_parameters(
     # check for any param that has few supersets whether the component's range
     # is compatible already instead of waiting for the solver
     for m_param, c_range in param_mapping:
-        if not solver.inspect_known_supersets_are_few(m_param):
-            continue
-
-        known_superset = solver.inspect_get_known_supersets(m_param)
+        # TODO other loglevel
+        # logger.warning(f"Checking obvious incompatibility for param {m_param}")
+        known_superset = solver.inspect_get_known_supersets(m_param, force_update=False)
         if not known_superset.is_superset_of(c_range):
+            if LOG_PICK_SOLVE:
+                logger.warning(
+                    f"Known superset {known_superset} is not a superset of {c_range}"
+                    f" for part C{c.lcsc}"
+                )
             known_incompatible = True
             break
 
@@ -273,6 +274,8 @@ def check_compatible_parameters(
             )
         )
 
+        if LOG_PICK_SOLVE:
+            logger.info(f"Solving for module: {module}")
         result = solver.assert_any_predicate([(anded, None)], lock=False)
         if not result.true_predicates:
             known_incompatible = True

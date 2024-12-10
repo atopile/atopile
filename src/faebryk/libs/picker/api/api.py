@@ -4,31 +4,27 @@
 import functools
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import requests
+from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
 from faebryk.core.module import Module
+from faebryk.core.solver.solver import Solver
+from faebryk.libs.picker.common import check_compatible_parameters, try_attach
 
 # TODO: replace with API-specific data model
-from faebryk.core.parameter import Numbers, Parameter
-from faebryk.core.solver.solver import Solver
-from faebryk.libs.e_series import E_SERIES
-from faebryk.libs.picker.common import (
-    SIvalue,
-    check_compatible_parameters,
-    generate_si_values,
-    try_attach,
-)
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
 from faebryk.libs.picker.picker import PickError
-from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import (
     ConfigFlagString,
     KeyErrorAmbiguous,
     KeyErrorNotFound,
+    Serializable,
+    SerializableJSONEncoder,
     closest_base_class,
     find,
 )
@@ -54,7 +50,10 @@ class ApiHTTPError(ApiError):
 
     def __str__(self) -> str:
         status_code = self.response.status_code
-        detail = self.response.json()["detail"]
+        try:
+            detail = self.response.json()["detail"]
+        except Exception:
+            detail = self.response.text
         return f"{super().__str__()}: {status_code} {detail}"
 
 
@@ -112,26 +111,6 @@ def get_package_candidates(module: Module) -> list["PackageCandidate"]:
     return []
 
 
-def api_generate_si_values(
-    value: Parameter, solver: Solver, e_series: E_SERIES | None = None
-) -> list[SIvalue]:
-    if not isinstance(value.domain, Numbers):
-        raise NotImplementedError(f"Parameter {value} is not a number")
-
-    if not solver.inspect_known_supersets_are_few(value):
-        raise NotImplementedError(f"Parameter {value} has too many known supersets")
-
-    candidate_ranges = solver.inspect_get_known_supersets(value)
-    # TODO api support for unbounded
-    if not candidate_ranges.is_finite():
-        logger.warning(f"Parameter {value} has unbounded known supersets")
-        raise PickError(
-            module=None, message=f"Parameter {value} has unbounded known supersets"
-        )
-    assert isinstance(candidate_ranges, Quantity_Interval_Disjoint)
-    return generate_si_values(candidate_ranges, e_series=e_series)
-
-
 @dataclass_json
 @dataclass(frozen=True)
 class PackageCandidate:
@@ -140,49 +119,89 @@ class PackageCandidate:
 
 @dataclass_json
 @dataclass(frozen=True)
-class BaseParams:
+class BaseParams(Serializable):
     package_candidates: list[PackageCandidate]
     qty: int
 
-    def convert_to_dict(self) -> dict:
+    def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
 
 
 @dataclass(frozen=True)
+class Interval:
+    min: float | None
+    max: float | None
+
+
+def SerializableField():
+    return field(
+        metadata=dataclass_json_config(encoder=SerializableJSONEncoder().default)
+    )
+
+
+@dataclass(frozen=True)
 class ResistorParams(BaseParams):
-    resistances: list[SIvalue]
+    resistance: P_Set = SerializableField()
+    max_power: P_Set = SerializableField()
+    max_voltage: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
 class CapacitorParams(BaseParams):
-    capacitances: list[SIvalue]
+    capacitance: P_Set = SerializableField()
+    max_voltage: P_Set = SerializableField()
+    temperature_coefficient: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
 class InductorParams(BaseParams):
-    inductances: list[SIvalue]
-
-
-@dataclass(frozen=True)
-class TVSParams(BaseParams): ...
+    inductance: P_Set = SerializableField()
+    self_resonant_frequency: P_Set = SerializableField()
+    max_current: P_Set = SerializableField()
+    dc_resistance: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
 class DiodeParams(BaseParams):
-    max_currents: list[SIvalue]
-    reverse_working_voltages: list[SIvalue]
+    forward_voltage: P_Set = SerializableField()
+    current: P_Set = SerializableField()
+    reverse_working_voltage: P_Set = SerializableField()
+    reverse_leakage_current: P_Set = SerializableField()
+    max_current: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
-class LEDParams(BaseParams): ...
+class TVSParams(DiodeParams):
+    reverse_breakdown_voltage: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
-class MOSFETParams(BaseParams): ...
+class LEDParams(DiodeParams):
+    brightness: P_Set = SerializableField()
+    max_brightness: P_Set = SerializableField()
+    color: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
-class LDOParams(BaseParams): ...
+class LDOParams(BaseParams):
+    max_input_voltage: P_Set = SerializableField()
+    output_voltage: P_Set = SerializableField()
+    quiescent_current: P_Set = SerializableField()
+    dropout_voltage: P_Set = SerializableField()
+    psrr: P_Set = SerializableField()
+    output_polarity: P_Set = SerializableField()
+    output_type: P_Set = SerializableField()
+    output_current: P_Set = SerializableField()
+
+
+@dataclass(frozen=True)
+class MOSFETParams(BaseParams):
+    channel_type: P_Set = SerializableField()
+    saturation_type: P_Set = SerializableField()
+    gate_source_threshold_voltage: P_Set = SerializableField()
+    max_drain_source_voltage: P_Set = SerializableField()
+    max_continuous_drain_current: P_Set = SerializableField()
+    on_resistance: P_Set = SerializableField()
 
 
 @dataclass(frozen=True)
@@ -261,7 +280,7 @@ class ApiClient:
         ]
 
     def query_parts(self, method: str, params: BaseParams) -> list[Component]:
-        response = self._post(f"/v0/query/{method}", params.convert_to_dict())
+        response = self._post(f"/v0/query/{method}", params.serialize())
         return [
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]

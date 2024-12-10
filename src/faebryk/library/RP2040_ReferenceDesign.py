@@ -84,9 +84,7 @@ class RP2040_ReferenceDesign(Module):
         #            parametrization
         # ----------------------------------------
         # LDO
-        self.ldo.output_current.constrain_subset(
-            L.Range.from_center_rel(600 * P.mA, 0.05)
-        )
+        self.ldo.output_current.constrain_ge(600 * P.mA)
         self.ldo.power_in.decoupled.decouple().capacitance.constrain_subset(
             L.Range.from_center_rel(10 * P.uF, 0.05)
         )

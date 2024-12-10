@@ -13,8 +13,8 @@ class PowerSwitchStatic(F.PowerSwitch):
 
     picked: has_part_picked_remove
 
-    def __init__(self) -> None:
-        super().__init__(normally_closed=False)
+    def __init__(self, normally_closed: bool) -> None:
+        super().__init__(normally_closed=normally_closed)
 
     def __preinit__(self):
         self.power_in.connect(self.switched_power_out)

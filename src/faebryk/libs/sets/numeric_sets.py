@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from bisect import bisect
 from collections.abc import Generator
 from typing import Any, TypeVar, override
 
 from faebryk.libs.sets.sets import BoolSet, P_Set
+from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +44,20 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def is_finite(self) -> bool:
         return self._min != float("-inf") and self._max != float("inf")
 
+    @property
     def min_elem(self) -> NumericT:
         return self._min
 
+    @property
     def max_elem(self) -> NumericT:
         return self._max
+
+    def as_center_rel(self) -> tuple[NumericT, float]:
+        center = (self._min + self._max) / 2
+        if isinstance(self._min, int):
+            center = int(center)
+        rel = (self._max - self._min) / center
+        return center, rel  # type: ignore
 
     def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
         return self._min >= other._min and self._max <= other._max
@@ -91,9 +102,9 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         self, other: "Numeric_Interval"
     ) -> "Numeric_Interval_Disjoint[float]":
         # TODO implement this properly
-        if other.max_elem() < 0:
+        if other.max_elem < 0:
             return self.op_pow_interval(other.op_negate()).op_invert()
-        if other.min_elem() < 0:
+        if other.min_elem < 0:
             raise NotImplementedError("passing zero in exp not implemented yet")
         if self._min < 0 and self._max > 0:
             raise NotImplementedError("crossing zero in base not implemented yet")
@@ -194,6 +205,14 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def __repr__(self) -> str:
         return f"_interval({self._min}, {self._max})"
 
+    def __str__(self) -> str:
+        if self._min == self._max:
+            return f"[{self._min}]"
+        center, rel = self.as_center_rel()
+        if rel < 1:
+            return f"{center} ± {rel * 100}%"
+        return f"[{self._min}, {self._max}]"
+
     def __add__(self, other: "Numeric_Interval[NumericT]"):
         return self.op_add_interval(other)
 
@@ -225,6 +244,20 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def any(self) -> NumericT:
         return self._min
 
+    @override
+    def serialize_pset(self) -> dict:
+        return {
+            "min": None if math.isinf(self._min) else self._min,
+            "max": None if math.isinf(self._max) else self._max,
+        }
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        min_ = data["min"] if data["min"] is not None else float("-inf")
+        max_ = data["max"] if data["max"] is not None else float("inf")
+        return cls(min_, max_)  # type: ignore
+
 
 def Numeric_Singleton(value: NumericT) -> Numeric_Interval[NumericT]:
     """
@@ -255,7 +288,7 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
                     yield r
 
         non_empty_intervals = list(gen_flat_non_empty())
-        sorted_intervals = sorted(non_empty_intervals, key=lambda e: e.min_elem())
+        sorted_intervals = sorted(non_empty_intervals, key=lambda e: e.min_elem)
 
         def gen_merge():
             last = None
@@ -284,26 +317,28 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             return True
         return self.intervals[0].is_finite() and self.intervals[-1].is_finite()
 
+    @property
     def min_elem(self) -> NumericT:
         if self.is_empty():
             raise ValueError("empty interval cannot have min element")
-        return self.intervals[0].min_elem()
+        return self.intervals[0].min_elem
 
+    @property
     def max_elem(self) -> NumericT:
         if self.is_empty():
             raise ValueError("empty interval cannot have max element")
-        return self.intervals[-1].max_elem()
+        return self.intervals[-1].max_elem
 
     def closest_elem(self, target: NumericT) -> NumericT:
         if self.is_empty():
             raise ValueError("empty interval cannot have closest element")
-        index = bisect(self.intervals, target, key=lambda r: r.min_elem())
+        index = bisect(self.intervals, target, key=lambda r: r.min_elem)
         left = self.intervals[index - 1] if index > 0 else None
         if left is not None and target in left:
             return target
-        left_bound = left.max_elem() if left is not None else None
+        left_bound = left.max_elem if left is not None else None
         right_bound = (
-            self.intervals[index].min_elem() if index < len(self.intervals) else None
+            self.intervals[index].min_elem if index < len(self.intervals) else None
         )
         try:
             [one] = [b for b in [left_bound, right_bound] if b is not None]
@@ -339,16 +374,16 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             if not intersect.is_empty():
                 result.append(intersect)
 
-            if rs.max_elem() < ro.min_elem():
+            if rs.max_elem < ro.min_elem:
                 # no remaining element in other list can intersect with rs
                 s += 1
-            elif ro.max_elem() < rs.min_elem():
+            elif ro.max_elem < rs.min_elem:
                 # no remaining element in self list can intersect with ro
                 o += 1
-            elif rs.max_elem() < ro.max_elem():
+            elif rs.max_elem < ro.max_elem:
                 # rs ends before ro, so move to next in self list
                 s += 1
-            elif ro.max_elem() < rs.max_elem():
+            elif ro.max_elem < rs.max_elem:
                 # ro ends before rs, so move to next in other list
                 o += 1
             else:
@@ -404,23 +439,23 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
     def op_ge_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
-        if self.min_elem() >= other.max_elem():
+        if self.min_elem >= other.max_elem:
             return BoolSet(True)
-        if self.max_elem() < other.min_elem():
+        if self.max_elem < other.min_elem:
             return BoolSet(False)
         return BoolSet(True, False)
 
     def op_le_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
-        if self.max_elem() <= other.min_elem():
+        if self.max_elem <= other.min_elem:
             return BoolSet(True)
-        if self.min_elem() > other.max_elem():
+        if self.min_elem > other.max_elem:
             return BoolSet(False)
         return BoolSet(True, False)
 
     def __contains__(self, item: NumericT) -> bool:
-        index = bisect(self.intervals, item, key=lambda r: r.min_elem())
+        index = bisect(self.intervals, item, key=lambda r: r.min_elem)
 
         if index == 0:
             return False
@@ -488,11 +523,25 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
     def is_single_element(self) -> bool:
         if self.is_empty():
             return False
-        return self.min_elem() == self.max_elem()
+        return self.min_elem == self.max_elem
 
     @override
     def any(self) -> NumericT:
-        return self.min_elem()
+        return self.min_elem
+
+    @override
+    def serialize_pset(self) -> dict:
+        return {"intervals": [r.serialize() for r in self.intervals]}
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        return cls(
+            *[
+                cast_assert(Numeric_Interval, P_Set.deserialize(r))
+                for r in data["intervals"]
+            ]
+        )
 
 
 class Numeric_Set_Discrete(Numeric_Interval_Disjoint[NumericT]):

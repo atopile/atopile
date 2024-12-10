@@ -76,7 +76,7 @@ class has_simple_value_representation_based_on_params_chain(
                 # TODO If tolerance, maybe hint that it's weird there isn't any
                 value_lit = Quantity_Interval_Disjoint.from_value(value)
                 if value_lit.is_single_element():
-                    return to_si_str(value_lit.min_elem(), unit, 2)
+                    return to_si_str(value_lit.min_elem, unit, 2)
                 if len(value_lit._intervals.intervals) > 1:
                     raise NotImplementedError()
                 center, tolerance = value_lit.as_gapless().as_center_tuple(

@@ -641,7 +641,7 @@ class C_footprint:
             @dataclass
             class C_gr_poly(C_polygon):
                 width: float
-                fill: bool
+                fill: bool | None = None
 
             gr_poly: list[C_gr_poly] = field(
                 **sexp_field(multidict=True), default_factory=list
