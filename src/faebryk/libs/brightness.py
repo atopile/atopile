@@ -78,9 +78,13 @@ class TypicalLuminousIntensity(Enum):
     APPLICATION_CAR_BREAK_LIGHT_BRIGHT = 50 * P.kcandela
 
     # not sure about these values
-    APPLICATION_LED_STANDBY = L.Range(1 * P.millicandela, 10 * P.mcandela)
-    APPLICATION_LED_INDICATOR_INSIDE = L.Range(10 * P.millicandela, 100 * P.mcandela)
-    APPLICATION_LED_KEYBOARD_BACKLIGHT = L.Range(50 * P.millicandela, 500 * P.mcandela)
+    APPLICATION_LED_STANDBY = L.Range(1 * P.millicandela, 10 * P.millicandela)
+    APPLICATION_LED_INDICATOR_INSIDE = L.Range(
+        10 * P.millicandela, 100 * P.millicandela
+    )
+    APPLICATION_LED_KEYBOARD_BACKLIGHT = L.Range(
+        50 * P.millicandela, 500 * P.millicandela
+    )
     APPLICATION_LED_INDICATOR_OUTSIDE = L.Range(100 * P.millicandela, 1 * P.candela)
     APPLICATION_LED_DECORATIVE_LIGHTING = L.Range(100 * P.millicandela, 1 * P.candela)
     APPLICATION_LED_FLASHLIGHT = L.Range(10 * P.candela, 1 * P.kcandela)
