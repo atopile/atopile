@@ -1,6 +1,7 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Iterable
 
 from git import Repo
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 if is_editable_install() and AUTO_RECOMPILE.get():
 
-    def has_uncommitted_changes(files: list[str | Path]) -> bool:
+    def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
         """Check if any of the given files have uncommitted changes."""
         try:
             repo = Repo(search_parent_directories=True)
