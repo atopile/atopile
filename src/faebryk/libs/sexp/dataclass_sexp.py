@@ -391,10 +391,14 @@ def _encode(t) -> netlist_type:
     catch_all_fields = [
         f for f in fields(t) if f.type is CatchAllVar or f.type is CatchAll
     ]
-    if len(catch_all_fields) > 1:
+    if len(catch_all_fields) == 0:
+        catch_all_field = None
+    elif len(catch_all_fields) == 1:
+        catch_all_field = catch_all_fields[0]
+    else:
         raise ValueError(f"Multiple catch-all fields not allowed: {catch_all_fields}")
 
-    fs = [(f, sexp_field.from_field(f)) for f in fields(t) if f not in catch_all_fields]
+    fs = [(f, sexp_field.from_field(f)) for f in fields(t) if f != catch_all_field]
 
     for f, sp in sorted(fs, key=lambda x: (not x[1].positional, x[1].order)):
         name = f.name
@@ -432,8 +436,8 @@ def _encode(t) -> netlist_type:
         else:
             _append_kv(f.name, val)
 
-    if catch_all_fields:
-        catch_all: dict[int, Any] = getattr(t, catch_all_fields[0].name, {}) or {}
+    if catch_all_field is not None:
+        catch_all: dict[int, Any] = getattr(t, catch_all_field.name, {}) or {}
         for i, v in catch_all.items():
             sexp.insert(i + 1, v)
 
