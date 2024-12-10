@@ -567,7 +567,6 @@ class C_polygon:
     pts: C_pts
 
 
-@dataclass_json(undefined=Undefined.INCLUDE)
 @dataclass(kw_only=True)
 class C_footprint:
     class E_attr(SymEnum):
@@ -596,7 +595,6 @@ class C_footprint:
         layer: str
         uuid: UUID = field(default_factory=gen_uuid)
 
-    @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass(kw_only=True)
     class C_pad:
         class E_type(SymEnum):
@@ -664,7 +662,6 @@ class C_footprint:
         # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
         unknown: CatchAll = None
 
-    @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
     class C_model:
         path: Path = field(**sexp_field(positional=True))
@@ -710,7 +707,6 @@ class C_footprint:
 
 @dataclass
 class C_kicad_pcb_file(SEXP_File):
-    @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
     class C_kicad_pcb:
         @dataclass
@@ -718,7 +714,6 @@ class C_kicad_pcb_file(SEXP_File):
             thickness: float = 1.6
             legacy_teardrops: bool = False
 
-        @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
         class C_layer:
             class E_type(SymEnum):
@@ -731,7 +726,6 @@ class C_kicad_pcb_file(SEXP_File):
             alias: Optional[str] = field(**sexp_field(positional=True), default=None)
             unknown: CatchAll = None
 
-        @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass(kw_only=True)
         class C_setup:
             @dataclass
@@ -773,7 +767,6 @@ class C_kicad_pcb_file(SEXP_File):
                 outputdirectory: str = ""
                 unknown: CatchAll = None
 
-            @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_stackup:
                 @dataclass
@@ -785,6 +778,7 @@ class C_kicad_pcb_file(SEXP_File):
                     material: Optional[str] = None
                     epsilon_r: Optional[float] = None
                     loss_tangent: Optional[float] = None
+                    unknown: CatchAll = None
 
                 class E_edge_connector_type(SymEnum):
                     edge_connector_bevelled = "bevelled"
@@ -826,7 +820,6 @@ class C_kicad_pcb_file(SEXP_File):
             number: int = field(**sexp_field(positional=True))
             name: str = field(**sexp_field(positional=True))
 
-        @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass(kw_only=True)
         class C_pcb_footprint(C_footprint):
             @dataclass(kw_only=True)
@@ -847,7 +840,6 @@ class C_kicad_pcb_file(SEXP_File):
             path: Optional[str] = None
             unknown: CatchAll = None
 
-        @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
         class C_via:
             at: C_xy
@@ -858,10 +850,8 @@ class C_kicad_pcb_file(SEXP_File):
             layers: list[str] = field(default_factory=list)
             unknown: CatchAll = None
 
-        @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass(kw_only=True)
         class C_zone:
-            @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_hatch:
                 class E_mode(SymEnum):
@@ -873,7 +863,6 @@ class C_kicad_pcb_file(SEXP_File):
                 pitch: float = field(**sexp_field(positional=True))
                 unknown: CatchAll = None
 
-            @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass(kw_only=True)
             class C_connect_pads:
                 class E_mode(SymEnum):
@@ -888,7 +877,6 @@ class C_kicad_pcb_file(SEXP_File):
                 clearance: float
                 unknown: CatchAll = None
 
-            @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass(kw_only=True)
             class C_fill:
                 class E_mode(SymEnum):
@@ -922,7 +910,6 @@ class C_kicad_pcb_file(SEXP_File):
                 island_area_min: Optional[float] = None
                 unknown: CatchAll = None
 
-            @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_keepout:
                 class E_keepout_bool(SymEnum):
@@ -936,7 +923,6 @@ class C_kicad_pcb_file(SEXP_File):
                 footprints: E_keepout_bool
                 unknown: CatchAll = None
 
-            @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass(kw_only=True)
             class C_filled_polygon:
                 layer: str
@@ -981,7 +967,6 @@ class C_kicad_pcb_file(SEXP_File):
         class C_arc_segment(C_segment):
             mid: C_xy
 
-        @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass(kw_only=True)
         class C_group:
             name: Optional[str] = field(**sexp_field(positional=True), default=None)
@@ -1219,6 +1204,7 @@ class C_kicad_footprint_file(SEXP_File):
         generator: str
         generator_version: str = ""
         tedit: Optional[str] = None
+        unknown: CatchAll = None
 
     footprint: C_footprint_in_file
 
