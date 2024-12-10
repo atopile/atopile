@@ -29,7 +29,7 @@ THE SOFTWARE.
 
   /*
    * Contributors :
-   * [Willie Shen](https://github.com/Willie169) : Fix that `case [a, *_] if a == 0:` throws error `rule soft_kw__not__wildcard failed predicate: {this.isnotEqualToCurrentTokenText("_")}?`
+   * [Willie Shen](https://github.com/Willie169) : Fix that `case [a, *_] if a == 0:` throws error `rule soft_kw__not__wildcard failed predicate: {self.isnotEqualToCurrentTokenText("_")}?`
   */
 
 parser grammar PythonParser; // Python 3.12.6  https://docs.python.org/3.12/reference/grammar.html#full-grammar-specification
@@ -875,10 +875,10 @@ func_type_comment
     | TYPE_COMMENT;
 
 // *** Soft Keywords:  https://docs.python.org/3.12/reference/lexical_analysis.html#soft-keywords
-soft_kw_type:           {this.isEqualToCurrentTokenText("type")}?  NAME;
-soft_kw_match:          {this.isEqualToCurrentTokenText("match")}? NAME;
-soft_kw_case:           {this.isEqualToCurrentTokenText("case")}?  NAME;
-soft_kw_wildcard:       {this.isEqualToCurrentTokenText("_")}?     NAME;
-soft_kw__not__wildcard: {this.isnotEqualToCurrentTokenText("_")}?  NAME;
+soft_kw_type:           {self.isEqualToCurrentTokenText("type")}?  NAME;
+soft_kw_match:          {self.isEqualToCurrentTokenText("match")}? NAME;
+soft_kw_case:           {self.isEqualToCurrentTokenText("case")}?  NAME;
+soft_kw_wildcard:       {self.isEqualToCurrentTokenText("_")}?     NAME;
+soft_kw__not__wildcard: {self.isnotEqualToCurrentTokenText("_")}?  NAME;
 
 // ========================= END OF THE GRAMMAR ===========================
