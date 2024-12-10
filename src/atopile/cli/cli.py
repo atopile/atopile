@@ -80,7 +80,7 @@ def cli(
     elif verbose > 1:
         logger.root.setLevel(logging.NOTSET)
 
-    if not non_interactive:
+    if not non_interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()
 
 
