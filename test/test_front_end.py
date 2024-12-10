@@ -129,7 +129,7 @@ def test_nested_nodes(bob: Bob):
 
 
 def test_resistor(bob: Bob, repo_root: Path):
-    bob.search_paths.append(repo_root / "examples" / "project" / ".ato" / "modules")
+    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
 
     text = dedent(
         """
@@ -180,7 +180,7 @@ def test_standard_library_import(bob: Bob):
     ],
 )
 def test_reserved_attrs(bob: Bob, import_stmt: str, class_name: str, repo_root: Path):
-    bob.search_paths.append(repo_root / "examples" / "project" / ".ato" / "modules")
+    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
 
     text = dedent(
         f"""

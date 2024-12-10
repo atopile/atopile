@@ -37,13 +37,14 @@ client = get_api_client()
 qty: int = 1
 
 
-def _find_component_by_lcsc_id(lcsc_id: str) -> Component:
-    def extract_numeric_id(lcsc_id: str) -> int:
-        match = re.match(r"C(\d+)", lcsc_id)
-        if match is None:
-            raise ValueError(f"Invalid LCSC part number {lcsc_id}")
-        return int(match[1])
+def extract_numeric_id(lcsc_id: str) -> int:
+    match = re.match(r"C(\d+)", lcsc_id)
+    if match is None:
+        raise ValueError(f"Invalid LCSC part number {lcsc_id}")
+    return int(match[1])
 
+
+def find_component_by_lcsc_id(lcsc_id: str) -> Component:
     parts = client.fetch_part_by_lcsc(extract_numeric_id(lcsc_id))
 
     if len(parts) < 1:
@@ -57,7 +58,7 @@ def _find_component_by_lcsc_id(lcsc_id: str) -> Component:
     return next(iter(parts))
 
 
-def _find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
+def find_component_by_mfr(mfr: str, mfr_pn: str) -> Component:
     parts = client.fetch_part_by_mfr(mfr, mfr_pn)
 
     if len(parts) < 1:
@@ -88,7 +89,7 @@ def find_and_attach_by_lcsc_id(module: Module, solver: Solver):
 
     # TODO: pass through errors from API
     try:
-        part = _find_component_by_lcsc_id(lcsc_pn)
+        part = find_component_by_lcsc_id(lcsc_pn)
     except KeyErrorNotFound as e:
         raise PickError(
             f"Could not find part with LCSC part number {lcsc_pn}", module
@@ -124,7 +125,7 @@ def find_and_attach_by_mfr(module: Module, solver: Solver):
     mfr_pn = properties[DescriptiveProperties.partno]
 
     try:
-        parts = [_find_component_by_mfr(mfr, mfr_pn)]
+        parts = [find_component_by_mfr(mfr, mfr_pn)]
     except KeyErrorNotFound as e:
         raise PickError(
             f"Could not find part with manufacturer part number {mfr_pn}", module
