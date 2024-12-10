@@ -472,16 +472,16 @@ def e_series_intersect(
 
     if (
         value_set.is_empty()
-        or value_set.min_elem() < 0
-        or value_set.max_elem() == float("inf")
+        or value_set.min_elem < 0
+        or value_set.max_elem == float("inf")
     ):
         raise ValueError("Need positive finite set")
 
     out = Quantity_Set_Empty(value_set.units)
 
     for sub_range in value_set:
-        min_val_q = sub_range.min_elem().to_compact()
-        max_val_q = sub_range.max_elem().to(min_val_q.units)
+        min_val_q = sub_range.min_elem.to_compact()
+        max_val_q = sub_range.max_elem.to(min_val_q.units)
 
         min_val = min_val_q.magnitude
         max_val = max_val_q.magnitude
@@ -499,7 +499,7 @@ def e_series_intersect(
 def e_series_discretize_to_nearest(
     value: Quantity_Interval, e_series: E_SERIES = E_SERIES_VALUES.E_ALL
 ) -> Quantity:
-    target = cast(Quantity, (value.min_elem() + value.max_elem())) / 2
+    target = cast(Quantity, (value.min_elem + value.max_elem)) / 2
 
     e_series_values = repeat_set_over_base(
         e_series,
@@ -542,14 +542,13 @@ def e_series_ratio(
     rl_e = e_series_intersect(rl, e_values)
 
     target_ratio = (
-        cast(Quantity, (output_input_ratio.min_elem() + output_input_ratio.max_elem()))
-        / 2
+        cast(Quantity, (output_input_ratio.min_elem + output_input_ratio.max_elem)) / 2
     )
 
     solutions = []
 
     for rh_range in rh_e:
-        rh_val = rh_range.min_elem()
+        rh_val = rh_range.min_elem
         rl_ideal = rh_val / (1 / target_ratio - 1)
 
         rl_nearest_e_val = rl_e.closest_elem(rl_ideal)

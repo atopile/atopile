@@ -882,11 +882,11 @@ class Power(Arithmetic):
         units = dimensionless
         if not base_unit.is_compatible_with(dimensionless):
             exp_val = Quantity_Interval_Disjoint.from_value(exponent)
-            if exp_val.min_elem() != exp_val.max_elem():
+            if exp_val.min_elem != exp_val.max_elem:
                 raise ValueError(
                     "exponent must be a single value for non-dimensionless base"
                 )
-            units = base_unit ** exp_val.min_elem().magnitude
+            units = base_unit**exp_val.min_elem.magnitude
         assert isinstance(units, Unit)
         self.units = units
 
@@ -1173,6 +1173,16 @@ class Numbers(Domain):
 
     @override
     def unbounded(self, param: "Parameter") -> Quantity_Interval_Disjoint:
+        if self.integer:
+            raise NotImplementedError("Integer unbounded not implemented")
+        if not self.zero_allowed:
+            raise NotImplementedError("Non-zero unbounded not implemented")
+        if not self.negative:
+            return Quantity_Interval_Disjoint.from_value(
+                Quantity_Interval(
+                    min=quantity(0, param.units), max=None, units=param.units
+                )
+            )
         return Quantity_Interval_Disjoint.unbounded(param.units)
 
 

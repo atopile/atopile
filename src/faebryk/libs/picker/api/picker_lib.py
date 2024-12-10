@@ -8,8 +8,8 @@ from typing import Callable
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.e_series import E_SERIES_VALUES
 from faebryk.libs.picker.api.api import (
+    BaseParams,
     CapacitorParams,
     DiodeParams,
     InductorParams,
@@ -19,7 +19,6 @@ from faebryk.libs.picker.api.api import (
     ResistorParams,
     TVSParams,
     api_filter_by_module_params_and_attach,
-    api_generate_si_values,
     get_api_client,
     get_package_candidates,
 )
@@ -137,145 +136,73 @@ def find_and_attach_by_mfr(module: Module, solver: Solver):
     api_filter_by_module_params_and_attach(module, parts, solver)
 
 
-def find_resistor(cmp: Module, solver: Solver):
+def _find_component_by_params[T: BaseParams](
+    api_method: Callable[[T], list[Component]],
+    cmp_class: type[Module],
+    param_cls: type[T],
+    cmp: Module,
+    solver: Solver,
+) -> None:
     """
-    Find a resistor with matching parameters
+    Find a component with matching parameters
     """
-    if not isinstance(cmp, F.Resistor):
-        raise PickError("Module is not a resistor", cmp)
+    if not isinstance(cmp, cmp_class):
+        raise PickError(f"Module is not a {cmp_class.__name__}", cmp)
 
-    parts = client.fetch_resistors(
-        ResistorParams(
-            resistances=api_generate_si_values(
-                cmp.resistance, solver, E_SERIES_VALUES.E96
-            ),
-            package_candidates=get_package_candidates(cmp),
-            qty=qty,
-        ),
-    )
+    fps = get_package_candidates(cmp)
+    cmp_params = {
+        p.get_name(): solver.inspect_get_known_supersets(p)
+        for p in cmp.get_parameters()
+    }
+
+    print(param_cls(package_candidates=fps, qty=qty, **cmp_params))
+    # print(param_cls(footprint_candidates=fps, qty=qty, **cmp_params).serialize())
+
+    parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))
 
     api_filter_by_module_params_and_attach(cmp, parts, solver)
+
+
+def find_resistor(cmp: Module, solver: Solver):
+    return _find_component_by_params(
+        client.fetch_resistors, F.Resistor, ResistorParams, cmp, solver
+    )
 
 
 def find_capacitor(cmp: Module, solver: Solver):
-    """
-    Find a capacitor with matching parameters
-    """
-    if not isinstance(cmp, F.Capacitor):
-        raise PickError("Module is not a capacitor", cmp)
-
-    parts = client.fetch_capacitors(
-        CapacitorParams(
-            capacitances=api_generate_si_values(
-                cmp.capacitance, solver, E_SERIES_VALUES.E24
-            ),
-            package_candidates=get_package_candidates(cmp),
-            qty=qty,
-        ),
+    return _find_component_by_params(
+        client.fetch_capacitors, F.Capacitor, CapacitorParams, cmp, solver
     )
-
-    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_inductor(cmp: Module, solver: Solver):
-    """
-    Find an inductor with matching parameters
-    """
-    if not isinstance(cmp, F.Inductor):
-        raise PickError("Module is not an inductor", cmp)
-
-    parts = client.fetch_inductors(
-        InductorParams(
-            inductances=api_generate_si_values(
-                cmp.inductance, solver, E_SERIES_VALUES.E24
-            ),
-            package_candidates=get_package_candidates(cmp),
-            qty=qty,
-        ),
+    return _find_component_by_params(
+        client.fetch_inductors, F.Inductor, InductorParams, cmp, solver
     )
-
-    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_tvs(cmp: Module, solver: Solver):
-    """
-    Find a TVS diode with matching parameters
-    """
-    if not isinstance(cmp, F.TVS):
-        raise PickError("Module is not a TVS diode", cmp)
-
-    parts = client.fetch_tvs(
-        TVSParams(package_candidates=get_package_candidates(cmp), qty=qty),
-    )
-
-    api_filter_by_module_params_and_attach(cmp, parts, solver)
-
-
-def find_diode(cmp: Module, solver: Solver):
-    """
-    Find a diode with matching parameters
-    """
-    if not isinstance(cmp, F.Diode):
-        raise PickError("Module is not a diode", cmp)
-
-    parts = client.fetch_diodes(
-        DiodeParams(
-            max_currents=api_generate_si_values(
-                cmp.max_current, solver, E_SERIES_VALUES.E3
-            ),
-            reverse_working_voltages=api_generate_si_values(
-                cmp.reverse_working_voltage, solver, E_SERIES_VALUES.E3
-            ),
-            package_candidates=get_package_candidates(cmp),
-            qty=qty,
-        ),
-    )
-
-    api_filter_by_module_params_and_attach(cmp, parts, solver)
+    return _find_component_by_params(client.fetch_tvs, F.TVS, TVSParams, cmp, solver)
 
 
 def find_led(cmp: Module, solver: Solver):
-    """
-    Find an LED with matching parameters
-    """
-    if not isinstance(cmp, F.LED):
-        raise PickError("Module is not an LED", cmp)
+    return _find_component_by_params(client.fetch_leds, F.LED, LEDParams, cmp, solver)
 
-    parts = client.fetch_leds(
-        LEDParams(package_candidates=get_package_candidates(cmp), qty=qty)
+
+def find_diode(cmp: Module, solver: Solver):
+    return _find_component_by_params(
+        client.fetch_diodes, F.Diode, DiodeParams, cmp, solver
     )
-
-    api_filter_by_module_params_and_attach(cmp, parts, solver)
-
-
-def find_mosfet(cmp: Module, solver: Solver):
-    """
-    Find a MOSFET with matching parameters
-    """
-
-    if not isinstance(cmp, F.MOSFET):
-        raise PickError("Module is not a MOSFET", cmp)
-
-    parts = client.fetch_mosfets(
-        MOSFETParams(package_candidates=get_package_candidates(cmp), qty=qty)
-    )
-
-    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 def find_ldo(cmp: Module, solver: Solver):
-    """
-    Find an LDO with matching parameters
-    """
+    return _find_component_by_params(client.fetch_ldos, F.LDO, LDOParams, cmp, solver)
 
-    if not isinstance(cmp, F.LDO):
-        raise PickError("Module is not a LDO", cmp)
 
-    parts = client.fetch_ldos(
-        LDOParams(package_candidates=get_package_candidates(cmp), qty=qty)
+def find_mosfet(cmp: Module, solver: Solver):
+    return _find_component_by_params(
+        client.fetch_mosfets, F.MOSFET, MOSFETParams, cmp, solver
     )
-
-    api_filter_by_module_params_and_attach(cmp, parts, solver)
 
 
 TYPE_SPECIFIC_LOOKUP: dict[type[Module], Callable[[Module, Solver], None]] = {
@@ -285,6 +212,6 @@ TYPE_SPECIFIC_LOOKUP: dict[type[Module], Callable[[Module, Solver], None]] = {
     F.TVS: find_tvs,
     F.LED: find_led,
     F.Diode: find_diode,
-    F.MOSFET: find_mosfet,
     F.LDO: find_ldo,
+    F.MOSFET: find_mosfet,
 }

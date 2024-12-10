@@ -92,8 +92,12 @@ def pick_capacitor(module: F.Capacitor, solver: Solver):
             PickerOption(
                 part=LCSC_Part(partno="C1525"),
                 params={
-                    "temperature_coefficient": L.Range(
+                    "temperature_coefficient": L.EnumSet(
                         F.Capacitor.TemperatureCoefficient.Y5V,
+                        F.Capacitor.TemperatureCoefficient.Z5U,
+                        F.Capacitor.TemperatureCoefficient.X7S,
+                        F.Capacitor.TemperatureCoefficient.X5R,
+                        F.Capacitor.TemperatureCoefficient.X6R,
                         F.Capacitor.TemperatureCoefficient.X7R,
                     ),
                     "capacitance": L.Single(100 * P.nF),
@@ -103,8 +107,12 @@ def pick_capacitor(module: F.Capacitor, solver: Solver):
             PickerOption(
                 part=LCSC_Part(partno="C19702"),
                 params={
-                    "temperature_coefficient": L.Range(
+                    "temperature_coefficient": L.EnumSet(
                         F.Capacitor.TemperatureCoefficient.Y5V,
+                        F.Capacitor.TemperatureCoefficient.Z5U,
+                        F.Capacitor.TemperatureCoefficient.X7S,
+                        F.Capacitor.TemperatureCoefficient.X5R,
+                        F.Capacitor.TemperatureCoefficient.X6R,
                         F.Capacitor.TemperatureCoefficient.X7R,
                     ),
                     "capacitance": L.Single(10 * P.uF),

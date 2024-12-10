@@ -31,7 +31,7 @@ from faebryk.core.solver.canonical import (
     convert_to_canonical_literals,
     convert_to_canonical_operations,
 )
-from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     PRINT_START,
     S_LOG,
@@ -91,7 +91,8 @@ class DefaultSolver(Solver):
         g: Graph,
         print_context: ParameterOperatable.ReprContext | None = None,
     ):
-        logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
+        if LOG_PICK_SOLVE:
+            logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
 
         # TODO move into comment here
         # strategies
@@ -262,11 +263,12 @@ class DefaultSolver(Solver):
 
         Mutators.print_all(*graphs, context=print_context_)
 
-        logger.info(
-            f"Phase 1 Solving: Analytical Solving done in {iterno} iterations ".ljust(
-                80, "="
+        if LOG_PICK_SOLVE:
+            logger.info(
+                f"Phase 1 Solving: Analytical Solving done in {iterno} iterations ".ljust(  # noqa: E501
+                    80, "="
+                )
             )
-        )
         return Mutators.create_concat_repr_map(total_repr_map), print_context_
 
     @override
@@ -301,41 +303,51 @@ class DefaultSolver(Solver):
 
     # IMPORTANT ------------------------------------------------------------------------
 
-    # Could be exponentially many
+    # TODO: Could be exponentially many
     @override
-    def inspect_known_supersets_are_few(self, value: Parameter) -> bool:
-        lit = self.inspect_get_known_supersets(value)
-        return lit.is_finite()
-
-    @override
-    def inspect_get_known_supersets(self, param: Parameter) -> P_Set:
+    def inspect_get_known_supersets(
+        self, param: Parameter, force_update: bool = False
+    ) -> P_Set:
         g_hash = hash(param.get_graph())
-        if self.superset_cache.get(param, (None, None))[0] == g_hash:
+        cached = self.superset_cache.get(param, (None, None))[0]
+        if cached == g_hash or (cached is not None and not force_update):
             return self.superset_cache[param][1]
 
-        out = self._inspect_get_known_supersets(param)
+        out, repr_map = self._inspect_get_known_supersets(param)
         self.superset_cache[param] = g_hash, out
+
+        if repr_map:
+            for p in repr_map.repr_map:
+                if not isinstance(p, Parameter):
+                    continue
+                lit = repr_map.try_get_literal(p, allow_subset=True)
+                if lit is None:
+                    continue
+                self.superset_cache[p] = g_hash, P_Set.from_value(lit)
+
         return out
 
-    def _inspect_get_known_supersets(self, param: Parameter) -> P_Set:
+    def _inspect_get_known_supersets(
+        self, param: Parameter
+    ) -> tuple[P_Set, Mutators.ReprMap | None]:
         lit = param.try_get_literal()
         if lit is not None:
-            return P_Set.from_value(lit)
+            return P_Set.from_value(lit), None
 
         # run phase 1 solver
         # TODO caching
         repr_map, print_context = self.phase_1_simplify_analytically(param.get_graph())
         if param not in repr_map.repr_map:
             logger.warning(f"Parameter {param} not in repr_map")
-            return param.domain_set()
+            return param.domain_set(), repr_map
 
         # check predicates (is, subset), (ge, le covered too)
         literal = repr_map.try_get_literal(param, allow_subset=True)
 
         if literal is None:
-            return param.domain_set()
+            return param.domain_set(), repr_map
 
-        return P_Set.from_value(literal)
+        return P_Set.from_value(literal), repr_map
 
     @override
     def assert_any_predicate[ArgType](
@@ -411,8 +423,12 @@ class DefaultSolver(Solver):
                             p.compact_repr(print_context_new) for p in not_deducted])}"
                     )
                     result.unknown_predicates.append(p)
-                else:
-                    result.true_predicates.append(p)
+                    continue
+
+                result.true_predicates.append(p)
+                # This is allowed, but we might want to add an option to prohibit
+                # short-circuiting
+                break
 
             except Contradiction:
                 result.false_predicates.append(p)
@@ -425,7 +441,7 @@ class DefaultSolver(Solver):
 
         if lock and result.true_predicates:
             if len(result.true_predicates) > 1:
-                # TODO, move this decision to caller
+                # TODO, move this decision to caller (see short-circuiting)
                 logger.warning("Multiple true predicates, locking first")
             result.true_predicates[0][0].constrain()
 

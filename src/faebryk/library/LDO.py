@@ -65,7 +65,7 @@ class LDO(Module):
 
     def __preinit__(self):
         self.max_input_voltage.constrain_ge(self.power_in.voltage)
-        self.power_out.voltage.alias_is(self.output_voltage)
+        self.power_out.voltage.constrain_subset(self.output_voltage)
 
         self.enable.reference.connect(self.power_in)
         # TODO: should be implemented differently (see below)

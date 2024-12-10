@@ -12,10 +12,11 @@ import typer
 from atopile import telemetry
 from atopile.cli import build, configure, create, inspect, install, view
 from atopile.cli.logging import logger
+from faebryk.libs.logging import FLOG_FMT
 
 app = typer.Typer(
     no_args_is_help=True,
-    pretty_exceptions_enable=False,  # required to override the excepthook
+    pretty_exceptions_enable=bool(FLOG_FMT),  # required to override the excepthook
 )
 
 
