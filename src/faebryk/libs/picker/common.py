@@ -44,7 +44,7 @@ class PickerType(StrEnum):
 
 
 DB_PICKER_BACKEND = ConfigFlagEnum(
-    PickerType, "PICKER", PickerType.SQLITE, "Picker backend to use"
+    PickerType, "PICKER", PickerType.API, "Picker backend to use"
 )
 type SIvalue = str
 
