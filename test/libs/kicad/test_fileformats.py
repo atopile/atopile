@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from dataclasses_json import CatchAll
 
+import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
 from faebryk.libs.kicad.fileformats import (
     C_effects,
     C_footprint,
