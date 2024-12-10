@@ -238,6 +238,7 @@ ldos = [
         ),
         packages=[
             "SOT-23",
+            "SOT-23-5",
             "SOT23",
             "SOT-23-3",
             "SOT-23-3L",
