@@ -4,10 +4,10 @@
 This file generates faebryk/src/faebryk/library/__init__.py
 """
 
-from itertools import groupby
 import logging
 import re
 from graphlib import TopologicalSorter
+from itertools import groupby
 from pathlib import Path
 from typing import Iterable
 
