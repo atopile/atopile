@@ -27,7 +27,7 @@ class WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign(Module):
     cc = L.list_field(2, F.Electrical)
     vdd_resistor: F.Resistor
 
-    power_good_indicator = L.f_field(F.LEDIndicator)(use_mosfet=False)
+    power_good_indicator = L.f_field(F.LEDIndicator)(use_mosfet=False, active_low=True)
 
     # ----------------------------------------
     #                 traits
@@ -49,8 +49,8 @@ class WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign(Module):
         self.controller.cc2.signal.connect(self.cc[1])
         self.controller.usb.connect(self.usb_data)
 
-        # self.power_good_indicator.logic_in.connect(self.controller.power_good)
-        # self.power_good_indicator.power_in.connect(self.vbus)
+        self.power_good_indicator.logic_in.connect(self.controller.power_good)
+        self.power_good_indicator.logic_in.reference.connect(self.vbus)
 
         # ------------------------------------
         #          parametrization

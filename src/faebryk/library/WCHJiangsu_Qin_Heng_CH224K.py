@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import math
 from typing import Literal
 
 import faebryk.library._F as F  # noqa: F401
@@ -37,7 +36,7 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
             "9V": (L.Range.from_center_rel(6.8 * P.kohm, 0.001), [0, 0, 0]),
             "12V": (L.Range.from_center_rel(24 * P.kohm, 0.001), [0, 0, 1]),
             "15V": (L.Range.from_center_rel(56 * P.kohm, 0.001), [0, 1, 1]),
-            "20V": (L.Range.min_elem(math.inf * P.kohm), [0, 1, 0]),
+            "20V": (None, [0, 1, 0]),
         }
         if mode == "Resistor":
             if voltage == "5V":
@@ -110,7 +109,7 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(L.Range(3.0 * P.V, 3.6 * P.V))
+        self.power.voltage.constrain_subset(L.Range(3.0 * P.V, 3.6 * P.V))
 
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         self.power.connect(F.ElectricLogic.connect_all_references(self.cfg))
