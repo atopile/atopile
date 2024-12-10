@@ -128,6 +128,9 @@ def build(build_ctx: BuildContext, app: Module) -> None:
         logger.info("Transforming PCB")
         transform_trait.transform(transformer)
 
+    # create groups
+    transformer.insert_groups()
+
     # set layout
     apply_layouts(app)
     transformer.move_footprints()

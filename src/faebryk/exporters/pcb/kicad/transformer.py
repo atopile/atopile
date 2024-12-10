@@ -885,6 +885,44 @@ class PCB_Transformer:
             )
         )
 
+    def insert_groups(self, group_name: str = ""):
+        """
+        Create groups for all modules with the is_app_root trait.
+        """
+        for n, t in GraphFunctions(self.graph).nodes_with_trait(F.is_app_root):
+            group_title = n.get_full_name()
+            if not group_title and group_name:
+                group_title = group_name
+            else:
+                logger.warning("No group name provided for for this group")
+                group_title = "No_Name"
+            logger.info(f"Creating group for {group_title}")
+            # add all uuids of modules where the full name is also in the
+            # atopile_address property of the component in the pcb file
+            comps_in_pcb = {
+                c.propertys["atopile_address"].value: c.uuid
+                for c in self.pcb.footprints
+                if "atopile_address" in c.propertys
+            }
+            module_children = n.get_children(direct_only=False, types=Module)
+            self.pcb.groups.append(
+                PCB.C_group(
+                    name=group_title,
+                    uuid=self.gen_uuid(mark=True),
+                    locked=False,
+                    members=[
+                        uuid
+                        for mod_name, uuid in comps_in_pcb.items()
+                        if mod_name
+                        in [child_mod.get_full_name() for child_mod in module_children]
+                    ],
+                )
+            )
+            logger.debug(f"PCB components: {comps_in_pcb}")
+            logger.debug(
+                f"Module children: {[child_mod.get_full_name() for child_mod in module_children]}"  # noqa E501
+            )
+
     # JLCPCB ---------------------------------------------------------------------------
     class JLCPBC_QR_Size(Enum):
         SMALL_5x5mm = C_xy(5, 5)
