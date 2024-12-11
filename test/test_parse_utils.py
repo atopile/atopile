@@ -44,3 +44,27 @@ def test_example_reconstruction(example: Path):
     assert example.exists()
     file_ast = atopile.parse.parse_file(example)
     assert atopile.parse_utils.reconstruct(file_ast) == example.read_text()
+
+
+def test_partial_reconstruction():
+    code = "a=1;b=2"
+    file_ast = atopile.parse.parse_text_as_file(code)
+    assert (
+        atopile.parse_utils.reconstruct(
+            file_ast.stmt()[0].simple_stmts().simple_stmt()[1]
+        )
+        == "b=2"
+    )
+
+
+def test_marked_reconstruction():
+    code = "a=1;b=2\nc=3;d=4\ne=5"
+    file_ast = atopile.parse.parse_text_as_file(code)
+    second_stmt = file_ast.stmt()[1].simple_stmts().simple_stmt()[1]
+
+    reconstructed = atopile.parse_utils.reconstruct(
+        file_ast,
+        mark=second_stmt,
+    )
+
+    assert reconstructed == "a=1;b=2\nc=3;d=4\n    ^^^\ne=5\n"
