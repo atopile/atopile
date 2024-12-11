@@ -15,8 +15,6 @@ import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.picker.api.pickers import add_api_pickers
-from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
-from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.picker import has_part_picked, pick_part_recursively
 from faebryk.libs.util import groupby
 
@@ -42,15 +40,7 @@ class PickerTestCase:
     check_skip: Callable[[], Any] = lambda: False
 
 
-def is_db_available():
-    return JLCPCB_DB.config.db_path.exists()
-
-
 pickers = [
-    PickerTestCase(
-        add_jlcpcb_pickers,
-        lambda: None if is_db_available() else pytest.skip("DB not available"),
-    ),
     PickerTestCase(add_api_pickers),
 ]
 
@@ -111,11 +101,3 @@ def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
     # Check parameters
     # params = module.get_children(types=Parameter, direct_only=True)
     # TODO check that part params are equal (alias_is) to module params
-
-
-@pytest.fixture(autouse=True)
-def cleanup_db():
-    # Run test first
-    yield
-    # in test atexit not triggered, thus need to close DB manually
-    JLCPCB_DB.close()

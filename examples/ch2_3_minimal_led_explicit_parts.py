@@ -44,6 +44,6 @@ class App(Module):
         )
 
         # Here is the hack: Disables param matching for LCSC & MFR picks
-        from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
+        from faebryk.libs.picker.jlcpcb.mappings import _MAPPINGS_BY_TYPE
 
         _MAPPINGS_BY_TYPE.clear()
