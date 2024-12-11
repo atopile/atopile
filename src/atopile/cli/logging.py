@@ -1,9 +1,12 @@
 import logging
-import textwrap
+from io import StringIO
 from types import ModuleType, TracebackType
 
+import rich
+import rich.padding
+import rich.text
 from rich._null_file import NullFile
-from rich.console import Console
+from rich.console import Console, ConsoleRenderable
 from rich.logging import RichHandler
 from rich.traceback import Traceback
 
@@ -169,31 +172,34 @@ class LogFormatter(logging.Formatter):
         if not isinstance(exc, _BaseBaseUserException):
             return super().format(record)
 
-        header = ""
+        header: list[ConsoleRenderable] = []
+        indent_message = False
+        message: list[ConsoleRenderable] = []
 
         if exc.title:
-            header += f"[bold]{exc.title}[/]\n"
-            record.markup = True
+            indent_message = True
+            header += [rich.text.Text(exc.title, style="bold")]
 
         # Attach source info if we have it
         if isinstance(exc, _BaseUserException):
             if source_info := exc.src_path:
-                print(f"{source_info=}")
                 source_info = str(source_info)
                 if src_line := exc.src_line:
                     source_info += f":{src_line}"
                 if src_col := exc.src_col:
                     source_info += f":{src_col}"
 
-                header += f"{source_info}\n"
+                header += [rich.text.Text(source_info)]
 
-        indented_message = (
-            textwrap.indent(record.getMessage(), "    ")
-            if exc.title or source_info
-            else record.getMessage()
-        )
+        _str = StringIO()
+        _console = Console(file=_str, force_terminal=console.is_terminal)
+        _console.print(header, sep="\n")
+        for msg in message:
+            if indent_message:
+                msg = rich.padding.Padding.indent(msg, 4)
+            _console.print(msg, sep="\n")
 
-        return f"{header}{indented_message}".strip()
+        return _str.getvalue().strip()
 
 
 console = Console(theme=faebryk.libs.logging.theme)
