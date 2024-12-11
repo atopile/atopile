@@ -56,7 +56,7 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         center = (self._min + self._max) / 2
         if isinstance(self._min, int):
             center = int(center)
-        rel = (self._max - self._min) / center
+        rel = (self._max - self._min) / 2 / center
         return center, rel  # type: ignore
 
     def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
