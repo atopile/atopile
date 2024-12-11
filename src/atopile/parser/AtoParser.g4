@@ -1,9 +1,9 @@
 
-parser grammar AtopileParser;
+parser grammar AtoParser;
 
 options {
-    superClass = AtopileParserBase ;
-    tokenVocab = AtopileLexer ;
+    superClass = AtoParserBase ;
+    tokenVocab = AtoLexer ;
 }
 
 file_input: (NEWLINE | stmt)* EOF;
