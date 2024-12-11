@@ -46,7 +46,6 @@ from faebryk.libs.exceptions import (
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.api.api import ApiNotConfiguredError
 from faebryk.libs.picker.api.pickers import add_api_pickers
-from faebryk.libs.picker.common import DB_PICKER_BACKEND, CachePicker, PickerType
 from faebryk.libs.picker.picker import pick_part_recursively
 
 logger = logging.getLogger(__name__)
@@ -68,28 +67,16 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     # Pickers ------------------------------------------------------------------
     logger.info("Picking parts")
     modules = app.get_children_modules(types=Module)
-    CachePicker.add_to_modules(modules, prio=-20)
+    # TODO currently slow
+    # CachePicker.add_to_modules(modules, prio=-20)
 
-    match DB_PICKER_BACKEND:
-        # Default pickers and expected on-going
-        case PickerType.API:
-            try:
-                for n in modules:
-                    add_api_pickers(n)
-            except ApiNotConfiguredError:
-                logger.warning("API not configured. Skipping API pickers.")
+    try:
+        for n in modules:
+            add_api_pickers(n)
+    except ApiNotConfiguredError:
+        logger.warning("API not configured. Skipping API pickers.")
 
-        # Included here for use on the examples
-        case PickerType.SQLITE:
-            from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
-            from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
-
-            try:
-                JLCPCB_DB()
-                for n in modules:
-                    add_jlcpcb_pickers(n, base_prio=-10)
-            except FileNotFoundError:
-                logger.warning("JLCPCB database not found. Skipping JLCPCB pickers.")
+    # Included here for use on the examples
 
     pick_part_recursively(app, solver)
 

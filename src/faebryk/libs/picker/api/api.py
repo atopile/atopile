@@ -12,21 +12,19 @@ from dataclasses_json import dataclass_json
 
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.picker.common import check_compatible_parameters, try_attach
+from faebryk.libs.picker.api.common import check_compatible_parameters, try_attach
 
 # TODO: replace with API-specific data model
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
-from faebryk.libs.picker.jlcpcb.picker_lib import _MAPPINGS_BY_TYPE
+from faebryk.libs.picker.jlcpcb.mappings import (
+    try_get_param_mapping,
+)
 from faebryk.libs.picker.picker import PickError
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import (
     ConfigFlagString,
-    KeyErrorAmbiguous,
-    KeyErrorNotFound,
     Serializable,
     SerializableJSONEncoder,
-    closest_base_class,
-    find,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,17 +61,9 @@ def api_filter_by_module_params_and_attach(
     """
     Find a component with matching parameters
     """
+    mapping = try_get_param_mapping(cmp)
 
     # FIXME: should take the desired qty and respect it
-    try:
-        mapping = find(_MAPPINGS_BY_TYPE.items(), lambda m: isinstance(cmp, m[0]))[1]
-    except KeyErrorAmbiguous as e:
-        mapping = _MAPPINGS_BY_TYPE[
-            closest_base_class(type(cmp), [k for k, _ in e.duplicates])
-        ]
-    except KeyErrorNotFound:
-        mapping = []
-
     parts_gen = (
         part
         for part in parts
@@ -83,18 +73,8 @@ def api_filter_by_module_params_and_attach(
     try:
         try_attach(cmp, parts_gen, mapping, qty=1)
     except PickError as ex:
-        try:
-            friendly_params = [
-                f"{p.param_name} within {getattr(cmp, p.param_name, 'unknown')}"
-                for p in mapping
-            ]
-        except Exception:
-            logger.exception("Failed to make a friendly description of the parameters")
-            friendly_params = []
-
         raise PickError(
-            f"No components found that match {' and '.join(friendly_params)}",
-            cmp,
+            f"No components found that match {cmp.pretty_params(solver)}", cmp
         ) from ex
 
 
