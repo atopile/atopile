@@ -12,8 +12,12 @@ from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+from faebryk.core.parameter import Parameter
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
+from faebryk.libs.picker.api.pickers import add_api_pickers
+from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
 
@@ -276,3 +280,33 @@ class TestPerformance(unittest.TestCase):
         timings.times["total"] = sum(all_times)
 
         logger.info(f"\n{timings}")
+
+
+# DONT COMMIT
+def test_complex_module_full():
+    timings = Times()
+
+    class App(Module):
+        rp2040: F.RP2040
+        ldo: F.LDO
+        led: F.LED
+
+    app = App()
+    timings.add("construct")
+
+    resolve_dynamic_parameters(app.get_graph())
+    timings.add("resolve bus params")
+
+    solver = DefaultSolver()
+    for mod in app.get_children(direct_only=False, types=Module):
+        add_api_pickers(mod)
+    timings.add("add_pickers")
+
+    p = next(iter(app.get_children(direct_only=False, types=Parameter)))
+    solver.inspect_get_known_supersets(p)
+    timings.add("pre-solve")
+
+    pick_part_recursively(app, solver)
+    timings.add("pick")
+
+    logger.info(f"\n{timings}")

@@ -7,6 +7,7 @@ from typing import Callable, Optional
 from atopile import layout
 from atopile.config import BuildContext
 from atopile.front_end import DeprecatedException
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
@@ -65,7 +66,6 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     run_checks(app, G)
 
     # Pickers ------------------------------------------------------------------
-    logger.info("Picking parts")
     modules = app.get_children_modules(types=Module)
     # TODO currently slow
     # CachePicker.add_to_modules(modules, prio=-20)
@@ -78,6 +78,8 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     # Included here for use on the examples
 
+    pickable_modules = GraphFunctions(G).nodes_with_trait(F.has_picker)
+    logger.info(f"Picking parts for {len(pickable_modules)} modules")
     pick_part_recursively(app, solver)
 
     # Load PCB ----------------------------------------------------------------

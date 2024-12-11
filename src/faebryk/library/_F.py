@@ -23,6 +23,7 @@ from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
+from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.Signal import Signal
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.Mechanical import Mechanical
@@ -48,6 +49,7 @@ from faebryk.library.has_reference_layout import has_reference_layout
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_dynamic import is_dynamic
+from faebryk.library.is_optional import is_optional
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
@@ -160,12 +162,12 @@ from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB_Type_C_Receptacle_24_pin import USB_Type_C_Receptacle_24_pin
 from faebryk.library.Diodes_Incorporated_AP255x_x import Diodes_Incorporated_AP255x_x
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
+from faebryk.library.EnablePin import EnablePin
 from faebryk.library.Ethernet import Ethernet
 from faebryk.library.GenericBusProtection import GenericBusProtection
 from faebryk.library.I2C import I2C
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
-from faebryk.library.LDO import LDO
 from faebryk.library.MultiSPI import MultiSPI
 from faebryk.library.Pinmux import Pinmux
 from faebryk.library.RS232 import RS232
@@ -188,6 +190,7 @@ from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_A
 from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
 from faebryk.library.ElectricLogicGates import ElectricLogicGates
 from faebryk.library.Logic74xx import Logic74xx
+from faebryk.library.LDO import LDO
 from faebryk.library.BH1750FVI_TR import BH1750FVI_TR
 from faebryk.library.EEPROM import EEPROM
 from faebryk.library.HDMI import HDMI
@@ -197,7 +200,6 @@ from faebryk.library.M24C08_FMN6TP import M24C08_FMN6TP
 from faebryk.library.OLED_Module import OLED_Module
 from faebryk.library.QWIIC_Connector import QWIIC_Connector
 from faebryk.library.SCD40 import SCD40
-from faebryk.library.ME6211C33M5G_N import ME6211C33M5G_N
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.RP2040Pinmux import RP2040Pinmux
 from faebryk.library.DE9RS232Connector import DE9RS232Connector
@@ -217,6 +219,7 @@ from faebryk.library.WCHJiangsu_Qin_Heng_CH224K import WCHJiangsu_Qin_Heng_CH224
 from faebryk.library.can_switch_power_defined import can_switch_power_defined
 from faebryk.library.RS485_Bus_Protection import RS485_Bus_Protection
 from faebryk.library.CD4011 import CD4011
+from faebryk.library.ME6211C33M5G_N import ME6211C33M5G_N
 from faebryk.library.INA228_ReferenceDesign import INA228_ReferenceDesign
 from faebryk.library.ISO1540_ReferenceDesign import ISO1540_ReferenceDesign
 from faebryk.library.Winbond_Elec_W25Q128JVSIQ import Winbond_Elec_W25Q128JVSIQ

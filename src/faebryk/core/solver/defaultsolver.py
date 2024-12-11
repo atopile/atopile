@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import time
 from typing import Any, Callable, override
 
 from faebryk.core.graph import Graph, GraphFunctions
@@ -91,6 +92,7 @@ class DefaultSolver(Solver):
         g: Graph,
         print_context: ParameterOperatable.ReprContext | None = None,
     ):
+        now = time.time()
         if LOG_PICK_SOLVE:
             logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
 
@@ -265,9 +267,8 @@ class DefaultSolver(Solver):
 
         if LOG_PICK_SOLVE:
             logger.info(
-                f"Phase 1 Solving: Analytical Solving done in {iterno} iterations ".ljust(  # noqa: E501
-                    80, "="
-                )
+                f"Phase 1 Solving: Analytical Solving done in {iterno} iterations"
+                f" and {time.time() - now:.3f} seconds".ljust(80, "=")
             )
         return Mutators.create_concat_repr_map(total_repr_map), print_context_
 
@@ -431,6 +432,8 @@ class DefaultSolver(Solver):
                 break
 
             except Contradiction:
+                if LOG_PICK_SOLVE:
+                    logger.warning(f"CONTRADICTION: {pred.compact_repr(print_context)}")
                 result.false_predicates.append(p)
             except TimeoutError:
                 result.unknown_predicates.append(p)

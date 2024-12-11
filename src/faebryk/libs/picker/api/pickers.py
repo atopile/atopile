@@ -40,12 +40,17 @@ class StaticApiPartPicker(StaticPartPicker):
 
 def add_api_pickers(module: Module, base_prio: int = 0) -> None:
     # Generic pickers
-    module.add(
-        F.has_multi_picker(base_prio, ApiPicker(picker_lib.find_and_attach_by_lcsc_id))
-    )
-    module.add(
-        F.has_multi_picker(base_prio, ApiPicker(picker_lib.find_and_attach_by_mfr))
-    )
+    # TODO: might want to remove this 'if' since the trait might be defined later
+    # but for now handy to guard, since it makes logging more concise
+    if module.has_trait(F.has_descriptive_properties):
+        module.add(
+            F.has_multi_picker(
+                base_prio, ApiPicker(picker_lib.find_and_attach_by_lcsc_id)
+            )
+        )
+        module.add(
+            F.has_multi_picker(base_prio, ApiPicker(picker_lib.find_and_attach_by_mfr))
+        )
 
     # Type-specific pickers
     F.has_multi_picker.add_pickers_by_type(
