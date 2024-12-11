@@ -57,14 +57,56 @@ def test_partial_reconstruction():
     )
 
 
-def test_marked_reconstruction():
-    code = "a=1;b=2\nc=3;d=4\ne=5"
-    file_ast = atopile.parse.parse_text_as_file(code)
-    second_stmt = file_ast.stmt()[1].simple_stmts().simple_stmt()[1]
+@pytest.fixture
+def abcde():
+    code = {
+        "a": "a=1",
+        "b": "b=2",
+        "c": "c=3",
+        "d": "d=4",
+        "e": "e=5",
+    }
+    src = "a=1;b=2\nc=3;d=4\ne=5"
+    file_ast = atopile.parse.parse_text_as_file(src)
+    stmts = {
+        "a": file_ast.stmt()[0].simple_stmts().simple_stmt()[0],
+        "b": file_ast.stmt()[0].simple_stmts().simple_stmt()[1],
+        "c": file_ast.stmt()[1].simple_stmts().simple_stmt()[0],
+        "d": file_ast.stmt()[1].simple_stmts().simple_stmt()[1],
+        "e": file_ast.stmt()[2].simple_stmts().simple_stmt()[0],
+    }
+    return file_ast, stmts, code
 
+
+@pytest.mark.parametrize(
+    "mark, result",
+    [
+        ("a", "a=1;b=2\n^^^\nc=3;d=4\ne=5\n"),
+        ("b", "a=1;b=2\n    ^^^\nc=3;d=4\ne=5\n"),
+        ("c", "a=1;b=2\nc=3;d=4\n^^^\ne=5\n"),
+        ("d", "a=1;b=2\nc=3;d=4\n    ^^^\ne=5\n"),
+        ("e", "a=1;b=2\nc=3;d=4\ne=5\n^^^\n"),
+    ],
+)
+def test_marked_reconstruction(abcde, mark, result):
+    file_ast, stmts, _ = abcde
     reconstructed = atopile.parse_utils.reconstruct(
         file_ast,
-        mark=second_stmt,
+        mark=stmts[mark],
     )
 
-    assert reconstructed == "a=1;b=2\nc=3;d=4\n    ^^^\ne=5\n"
+    assert reconstructed == result
+
+
+def test_reconstruct_expand(abcde):
+    _, stmts, _ = abcde
+    assert atopile.parse_utils.reconstruct(stmts["c"]) == "c=3"
+    assert atopile.parse_utils.reconstruct(stmts["c"], expand_before=0) == "c=3"
+    assert (
+        atopile.parse_utils.reconstruct(stmts["c"], expand_before=1) == "a=1;b=2\nc=3"
+    )
+    assert atopile.parse_utils.reconstruct(stmts["c"], expand_after=0) == "c=3;d=4"
+    assert atopile.parse_utils.reconstruct(stmts["c"], expand_after=1) == "c=3;d=4\ne=5"
+    assert atopile.parse_utils.reconstruct(stmts["d"]) == "d=4"
+    assert atopile.parse_utils.reconstruct(stmts["d"], expand_after=0) == "d=4"
+    assert atopile.parse_utils.reconstruct(stmts["d"], expand_before=0) == "c=3;d=4"

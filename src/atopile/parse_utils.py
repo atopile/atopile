@@ -32,40 +32,105 @@ def format_src_info(ctx: ParserRuleContext) -> str:
     return f"{src}:{start_line}:{start_col}"
 
 
-def reconstruct(ctx: ParserRuleContext, mark: ParserRuleContext | None = None) -> str:
-    """Reconstruct the source code from a parse tree"""
+def reconstruct(
+    ctx: ParserRuleContext,
+    mark: ParserRuleContext | None = None,
+    expand_before: int | None = None,
+    expand_after: int | None = None,
+) -> str:
+    """
+    Reconstruct the source code from a parse tree
+
+    Args:
+        ctx: The parse tree to reconstruct
+        mark: The context to mark with carets underneath
+        expand_before: The number of lines to expand before the mark.
+            0 -> To the start of the current line
+        expand_after: The number of lines to expand after the mark.
+            0 -> To the end of the current line
+    """
     from atopile.parser.AtoLexer import AtoLexer
     from atopile.parser.AtoParser import AtoParser
 
     assert isinstance(ctx.parser, AtoParser)
     input_stream: CommonTokenStream = ctx.parser.getInputStream()
 
+    newlines_before = []
+    newlines_after = []
+    found_start = False
+    found_stop = False
     rewriter = TokenStreamRewriter(input_stream)
     for token in input_stream.tokens:
         assert isinstance(token, Token)
+        if token is ctx.start:
+            found_start = True
+        if token is ctx.stop:
+            found_stop = True
+
         if token.type in {AtoLexer.INDENT, AtoLexer.DEDENT}:
             rewriter.deleteToken(token)
+
         elif token.type == AtoLexer.NEWLINE:
+            if not found_start:
+                newlines_before.append(token)
+            if found_stop:
+                newlines_after.append(token)
+
             rewriter.replaceSingleToken(token, "\n")
 
+    # Figure out where to start and stop
+    if expand_before is not None:
+        try:
+            start_after_token = newlines_before[-expand_before - 1]
+        except IndexError:
+            start_token = input_stream.tokens[0]
+        else:
+            try:
+                # Take the token after the indicated newline
+                start_token = input_stream.tokens[start_after_token.tokenIndex + 1]
+            except IndexError:
+                # If nothing before, start at the first token
+                start_token = input_stream.tokens[0]
+
+    else:
+        start_token = ctx.start
+
+    if expand_after is not None:
+        try:
+            start_before_token = newlines_after[expand_after]
+        except IndexError:
+            # Expand to end
+            stop_token = input_stream.tokens[-1]
+        else:
+            try:
+                # Take the token after the indicated newline
+                stop_token = input_stream.tokens[start_before_token.tokenIndex - 1]
+            except IndexError:
+                # If nothing before, start at the first token
+                stop_token = input_stream.tokens[0]
+
+    else:
+        stop_token = ctx.stop
+
+    # Generate marked code
     if mark is None:
         return rewriter.getText(
             TokenStreamRewriter.DEFAULT_PROGRAM_NAME,
-            ctx.start.tokenIndex,
-            ctx.stop.tokenIndex,
+            start_token.tokenIndex,
+            stop_token.tokenIndex,
         )
 
     else:
         # Get the text up to the mark token
         before_marked: str = rewriter.getText(
             TokenStreamRewriter.DEFAULT_PROGRAM_NAME,
-            ctx.start.tokenIndex,
+            start_token.tokenIndex,
             mark.start.tokenIndex - 1,
         )
         after_marked: str = rewriter.getText(
             TokenStreamRewriter.DEFAULT_PROGRAM_NAME,
             mark.start.tokenIndex,
-            ctx.stop.tokenIndex,
+            stop_token.tokenIndex,
         )
 
         # Count characters to align the marker
@@ -77,9 +142,6 @@ def reconstruct(ctx: ParserRuleContext, mark: ParserRuleContext | None = None) -
 
         # Insert the marker on the next line
         leftover_line, *remaining_content = after_marked.split("\n", 1)
-
-        if remaining_content and not remaining_content[0]:
-            remaining_content = []
 
         return "\n".join(
             [
