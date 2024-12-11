@@ -115,7 +115,7 @@ class Component(L.Module):
         # TODO: @v0.4: remove this
         if has_attr_or_property(self, py_name):
             log.warning(
-                f"Deprecated: Pin {name} already exists, skipping."
+                f"Pin {name} already exists, skipping."
                 " In the future this will be an error."
             )
             mif = getattr(self, py_name)
@@ -185,10 +185,6 @@ class _ShimResistor(F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
 
     def __init__(self, *args, **kwargs):
-        log.warning(
-            "Deprecated: generics/resistors.ato:Resistor is deprecated, use"
-            ' "import Resistor" instead.'
-        )
         super().__init__(*args, **kwargs)
 
     @property
@@ -231,10 +227,6 @@ class _ShimCapacitor(F.Capacitor):
     """Temporary shim to translate `value` to `capacitance`."""
 
     def __init__(self, *args, **kwargs):
-        log.warning(
-            "Deprecated: generics/capacitors.ato:Capacitor is deprecated, use"
-            ' "import Capacitor" instead.'
-        )
         super().__init__(*args, **kwargs)
 
     class has_power(L.ModuleInterface.TraitT.decless()):
@@ -287,10 +279,6 @@ class _ShimPower(F.ElectricPower):
     """Temporary shim to translate `value` to `power`."""
 
     def __init__(self, *args, **kwargs):
-        log.warning(
-            "Deprecated: generics/interfaces.ato:Power is deprecated, use"
-            ' "import ElectricPower" instead.'
-        )
         super().__init__(*args, **kwargs)
 
     @property
