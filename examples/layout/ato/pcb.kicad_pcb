@@ -92,7 +92,7 @@
                     (size 1 1)
                     (thickness 0.15))
                 (hide no)))
-        (property "Value" "10kΩ ±1% 62.5mW"
+        (property "Value" "8.2kΩ ±1% 62.5mW"
             (at 0 4 0)
             (layer "F.Fab")
             (hide no)
@@ -112,7 +112,7 @@
                     (size 1.27 1.27)
                     (thickness 0.15))
                 (hide yes)))
-        (property "LCSC" "C25744"
+        (property "LCSC" "C25924"
             (at 0 0 0)
             (layer "User.9")
             (hide no)

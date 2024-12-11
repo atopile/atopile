@@ -8,14 +8,12 @@ import pytest
 from faebryk.libs.util import run_live
 
 
-# FIXME: this is because we're defaulting to the JLCPCB picker,
-# which we don't have access to in the CI
-@pytest.mark.not_in_ci
+@pytest.mark.slow
 @pytest.mark.parametrize("config", ["ato", "fab"])
 def test_app(config, caplog: pytest.LogCaptureFixture):
     caplog.set_level(logging.INFO)
     stdout, _ = run_live(
-        [sys.executable, "-m", "atopile", "build", "examples/project", "-b", config],
+        [sys.executable, "-m", "atopile", "build", "examples", "-b", config],
         env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
         stdout_level=logging.INFO,
     )

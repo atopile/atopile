@@ -22,10 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# TODO replace Single with actual Range.from_center_rel
-
-
-def pick_fuse(module: F.Fuse, solver: Solver):
+def pick_fuse(module: F.Fuse | Module, solver: Solver):
     pick_module_by_params(
         module,
         solver,
@@ -44,208 +41,6 @@ def pick_fuse(module: F.Fuse, solver: Solver):
                     "fuse_type": L.EnumSet(F.Fuse.FuseType.RESETTABLE),
                     "response_type": L.EnumSet(F.Fuse.ResponseType.SLOW),
                     "trip_current": 0.5 * P.A,
-                },
-            ),
-        ],
-    )
-
-
-def pick_mosfet(module: F.MOSFET, solver: Solver):
-    standard_pinmap = {
-        "1": module.gate,
-        "2": module.source,
-        "3": module.drain,
-    }
-    pick_module_by_params(
-        module,
-        solver,
-        [
-            PickerOption(
-                part=LCSC_Part(partno="C20917"),
-                params={
-                    "channel_type": L.EnumSet(F.MOSFET.ChannelType.N_CHANNEL),
-                },
-                pinmap=standard_pinmap,
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C15127"),
-                params={
-                    "channel_type": L.EnumSet(F.MOSFET.ChannelType.P_CHANNEL),
-                },
-                pinmap=standard_pinmap,
-            ),
-        ],
-    )
-
-
-def pick_capacitor(module: F.Capacitor, solver: Solver):
-    """
-    Link a partnumber/footprint to a Capacitor
-
-    Uses 0402 when possible
-    """
-
-    pick_module_by_params(
-        module,
-        solver,
-        [
-            PickerOption(
-                part=LCSC_Part(partno="C1525"),
-                params={
-                    "temperature_coefficient": L.EnumSet(
-                        F.Capacitor.TemperatureCoefficient.Y5V,
-                        F.Capacitor.TemperatureCoefficient.Z5U,
-                        F.Capacitor.TemperatureCoefficient.X7S,
-                        F.Capacitor.TemperatureCoefficient.X5R,
-                        F.Capacitor.TemperatureCoefficient.X6R,
-                        F.Capacitor.TemperatureCoefficient.X7R,
-                    ),
-                    "capacitance": L.Single(100 * P.nF),
-                    "max_voltage": 16 * P.V,
-                },
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C19702"),
-                params={
-                    "temperature_coefficient": L.EnumSet(
-                        F.Capacitor.TemperatureCoefficient.Y5V,
-                        F.Capacitor.TemperatureCoefficient.Z5U,
-                        F.Capacitor.TemperatureCoefficient.X7S,
-                        F.Capacitor.TemperatureCoefficient.X5R,
-                        F.Capacitor.TemperatureCoefficient.X6R,
-                        F.Capacitor.TemperatureCoefficient.X7R,
-                    ),
-                    "capacitance": L.Single(10 * P.uF),
-                    "max_voltage": 10 * P.V,
-                },
-            ),
-        ],
-    )
-
-
-def pick_resistor(resistor: F.Resistor, solver: Solver):
-    """
-    Link a partnumber/footprint to a Resistor
-
-    Selects only 1% 0402 resistors
-    """
-
-    pick_module_by_params(
-        resistor,
-        solver,
-        [
-            PickerOption(
-                part=LCSC_Part(partno="C25111"),
-                params={"resistance": L.Single(40.2 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25076"),
-                params={"resistance": L.Single(100 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25087"),
-                params={"resistance": L.Single(200 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C11702"),
-                params={"resistance": L.Single(1 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25879"),
-                params={"resistance": L.Single(2.2 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25900"),
-                params={"resistance": L.Single(4.7 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25905"),
-                params={"resistance": L.Single(5.1 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25917"),
-                params={"resistance": L.Single(6.8 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25744"),
-                params={"resistance": L.Single(10 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25752"),
-                params={"resistance": L.Single(12 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25771"),
-                params={"resistance": L.Single(27 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25741"),
-                params={"resistance": L.Single(100 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25782"),
-                params={"resistance": L.Single(390 * P.kohm)},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C25790"),
-                params={"resistance": L.Single(470 * P.kohm)},
-            ),
-        ],
-    )
-
-
-def pick_led(module: F.LED, solver: Solver):
-    pick_module_by_params(
-        module,
-        solver,
-        [
-            PickerOption(
-                part=LCSC_Part(partno="C72043"),
-                params={
-                    "color": L.EnumSet(F.LED.Color.EMERALD),
-                    "max_brightness": 285 * P.mcandela,
-                    "forward_voltage": L.Single(3.7 * P.volt),
-                    "max_current": 100 * P.mA,
-                },
-                pinmap={"1": module.cathode, "2": module.anode},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C72041"),
-                params={
-                    "color": L.EnumSet(F.LED.Color.BLUE),
-                    "max_brightness": 28.5 * P.mcandela,
-                    "forward_voltage": L.Single(3.1 * P.volt),
-                    "max_current": 100 * P.mA,
-                },
-                pinmap={"1": module.cathode, "2": module.anode},
-            ),
-            PickerOption(
-                part=LCSC_Part(partno="C72038"),
-                params={
-                    "color": L.EnumSet(F.LED.Color.YELLOW),
-                    "max_brightness": 180 * P.mcandela,
-                    "forward_voltage": L.Single(2.3 * P.volt),
-                    "max_current": 60 * P.mA,
-                },
-                pinmap={"1": module.cathode, "2": module.anode},
-            ),
-        ],
-    )
-
-
-def pick_tvs(module: F.TVS, solver: Solver):
-    pick_module_by_params(
-        module,
-        solver,
-        [
-            PickerOption(
-                part=LCSC_Part(partno="C85402"),
-                params={
-                    "reverse_working_voltage": L.Single(5 * P.V),
-                },
-                pinmap={
-                    "1": module.cathode,
-                    "2": module.anode,
                 },
             ),
         ],
@@ -306,14 +101,9 @@ def pick_switch(module: "_TSwitch", solver: Solver):
 
 def add_example_pickers(module: Module):
     lookup = {
-        F.Resistor: pick_resistor,
-        F.LED: pick_led,
-        F.Fuse: pick_fuse,
-        F.TVS: pick_tvs,
-        F.MOSFET: pick_mosfet,
-        F.Capacitor: pick_capacitor,
         F.Battery: pick_battery,
         F.Switch(F.Electrical): pick_switch,
+        F.Fuse: pick_fuse,
     }
     F.has_multi_picker.add_pickers_by_type(
         module,

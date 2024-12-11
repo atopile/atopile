@@ -32,7 +32,12 @@ jobs:
         - name: Run pytest
           id: pytest
           continue-on-error: true
-          run: uv run --dev --no-editable --frozen pytest -m "not not_in_ci and not slow"
+          run: |
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              uv run --dev --no-editable --frozen pytest -m "not not_in_ci"
+            else
+              uv run --dev --no-editable --frozen pytest -m "not not_in_ci and not slow"
+            fi
 
         - name: Upload all test logs
           if: steps.pytest.outcome == 'failure'
