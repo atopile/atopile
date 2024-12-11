@@ -1,5 +1,7 @@
 import logging
 import shutil
+import time
+from copy import deepcopy
 from typing import Callable, Optional
 
 from atopile import layout
@@ -78,12 +80,15 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     pick_part_recursively(app, solver)
 
+    # Load PCB ----------------------------------------------------------------
+    pcb = C_kicad_pcb_file.loads(build_paths.layout)
+    original_pcb = deepcopy(pcb)
+
     # Write Netlist ------------------------------------------------------------
     logger.info(f"Writing netlist to {build_paths.netlist}")
 
     netlist_path = build_paths.netlist
 
-    pcb = C_kicad_pcb_file.loads(build_paths.layout)
     known_designators = PCB_Transformer.load_designators(G, pcb.kicad_pcb)
     attach_designators(known_designators)
     attach_random_designators(G)
@@ -107,6 +112,8 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     consolidate_footprints(build_ctx)
     apply_netlist(build_paths, False)
 
+    # FIXME: we've got to reload the pcb after applying the netlist
+    # because it mutates the file on disk
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
 
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
@@ -120,8 +127,18 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     transformer.move_footprints()
     apply_routing(app, transformer)
 
-    logger.info(f"Writing pcbfile {build_paths.layout}")
-    pcb.dumps(build_paths.layout)
+    if pcb == original_pcb:
+        logger.info(f"No changes to layout. Not writing {build_paths.layout}")
+    else:
+        backup_file = build_paths.output_base.with_suffix(
+            f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
+        )
+        logger.info(f"Backing up layout to {backup_file}")
+        with build_paths.layout.open("rb") as f:
+            backup_file.write_bytes(f.read())
+
+        logger.info(f"Updating layout {build_paths.layout}")
+        pcb.dumps(build_paths.layout)
 
     # Build targets -----------------------------------------------------------
     logger.info("Building targets")
