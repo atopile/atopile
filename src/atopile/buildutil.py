@@ -125,6 +125,10 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     consolidate_footprints(build_ctx)
     apply_netlist(build_paths, False)
 
+    # FIXME: we've got to reload the pcb after applying the netlist
+    # because it mutates the file on disk
+    pcb = C_kicad_pcb_file.loads(build_paths.layout)
+
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):
