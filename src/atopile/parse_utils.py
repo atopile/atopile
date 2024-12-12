@@ -207,10 +207,12 @@ class PygmentsLexerShim(pygments.lexer.Lexer):
 
     def __init__(
         self,
+        ctx: ParserRuleContext,
         rewriter: AtoRewriter,
         start: int,
         stop: int,
     ):
+        self.ctx = ctx
         self.rewriter = rewriter
         self.start = start
         self.stop = stop
@@ -244,13 +246,17 @@ class PygmentsLexerShim(pygments.lexer.Lexer):
         )
         stop_index = expand(input_stream.tokens, ctx.stop.tokenIndex, 1, expand_after)
 
-        lexer = PygmentsLexerShim(rewriter, start_index, stop_index)
+        lexer = PygmentsLexerShim(ctx, rewriter, start_index, stop_index)
 
         return lexer
 
     @property
     def start_line(self) -> int:
         return self.rewriter.tokens.tokens[self.start].line
+
+    @property
+    def ctx_lines(self) -> set[int]:
+        return set(range(self.ctx.start.line, self.ctx.stop.line + 1))
 
 
 def reconstruct(

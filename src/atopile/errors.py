@@ -52,9 +52,7 @@ class _BaseUserException(_BaseBaseUserException):
         renderables += [Text(self.message)]
 
         if self.origin:
-            (src_path, src_line, src_col, src_stop_line, src_stop_col) = (
-                get_src_info_from_ctx(self.origin)
-            )
+            (src_path, src_line, src_col, _, _) = get_src_info_from_ctx(self.origin)
 
             # Make the path relative to the current working directory, if possible
             try:
@@ -72,13 +70,15 @@ class _BaseUserException(_BaseBaseUserException):
             ]
 
             if isinstance(self.origin, ParserRuleContext):
-                lexer = PygmentsLexerShim.from_ctx(self.origin, 0, 0)
+                lexer = PygmentsLexerShim.from_ctx(self.origin, 1, 1)
                 renderables += [
                     Syntax(
                         lexer.get_code(),
                         lexer,  # type: ignore  # The PygmentsLexerShim is pygments.Lexer-y enough
                         line_numbers=True,
                         start_line=lexer.start_line,
+                        indent_guides=True,
+                        highlight_lines=lexer.ctx_lines,
                     )
                 ]
 
@@ -171,8 +171,6 @@ class UserBadParameterError(UserException):
     """
     Raised when a bad CLI param is given
     """
-
-    title = "Bad Parameter"
 
 
 class UserPythonLoadError(UserException):
