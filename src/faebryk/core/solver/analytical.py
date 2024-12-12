@@ -142,7 +142,6 @@ def remove_congruent_expressions(mutator: Mutator):
 
         eq_id = id(eq_class)
         if eq_id not in repres:
-            logger.debug(f"Remove congruent: {eq_class}")
             representative = mutator.mutate_expression(expr)
             repres[eq_id] = representative
 
@@ -298,7 +297,11 @@ def merge_intersect_subsets(mutator: Mutator):
         # intersect
         intersected = P_Set.intersect_all(*literal_subsets)
         if intersected.is_empty():
-            raise ContradictionByLiteral(f"Intersection of {literal_subsets} is empty`")
+            raise ContradictionByLiteral(
+                "Intersection of literals is empty",
+                involved=[param],
+                literals=literal_subsets,
+            )
 
         direct_literal_subsets = [
             e for e in constrained_subset_ops_with_literal if is_literal(e.operands[1])

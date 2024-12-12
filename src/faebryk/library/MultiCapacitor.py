@@ -7,6 +7,7 @@ import faebryk.library._F as F  # noqa: F401
 from faebryk.core.parameter import Add, ParameterOperatable
 from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.picker.picker import skip_self_pick
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -56,3 +57,13 @@ class MultiCapacitor(F.Capacitor):
     def set_equal_capacitance_each(self, capacitance: ParameterOperatable.NumberLike):
         for c in self.capacitors:
             c.capacitance.constrain_subset(capacitance)
+
+    # TODO kinda weird
+    def explicit(
+        self,
+        nominal_capacitance: Quantity | None = None,
+        tolerance: float | None = None,
+        footprint: str | None = None,
+    ):
+        for c in self.capacitors:
+            c.explicit(nominal_capacitance, tolerance, footprint)

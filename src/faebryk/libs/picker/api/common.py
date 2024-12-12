@@ -18,7 +18,12 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.e_series import E_SERIES, e_series_intersect
-from faebryk.libs.picker.lcsc import LCSC_NoDataException, LCSC_PinmapException, attach
+from faebryk.libs.picker.lcsc import (
+    LCSC_NoDataException,
+    LCSC_PinmapException,
+    attach,
+    get_raw,
+)
 from faebryk.libs.picker.picker import (
     PickError,
     has_part_picked,
@@ -194,10 +199,16 @@ def try_attach(
             c.attach(module, mapping, qty)
             return
         except (ValueError, Component.ParseError) as e:
+            if LOG_PICK_SOLVE:
+                logger.warning(f"Failed to attach {c} to {module}: {e}")
             failures.append((c, e))
         except LCSC_NoDataException as e:
+            if LOG_PICK_SOLVE:
+                logger.warning(f"Failed to attach {c} to {module}: {e}")
             failures.append((c, e))
         except LCSC_PinmapException as e:
+            if LOG_PICK_SOLVE:
+                logger.warning(f"Failed to attach {c} to {module}: {e}")
             failures.append((c, e))
 
     if failures:
@@ -227,6 +238,12 @@ def check_compatible_parameters(
     if not mapping:
         return True
 
+    # shortcut because solving slow
+    try:
+        get_raw(c.partno)
+    except LCSC_NoDataException:
+        return False
+
     range_mapping = c.get_literal_for_mappings(mapping)
 
     param_mapping = [
@@ -237,8 +254,6 @@ def check_compatible_parameters(
         for m, c_range in range_mapping.items()
     ]
 
-    known_incompatible = False
-
     # check for any param that has few supersets whether the component's range
     # is compatible already instead of waiting for the solver
     for m_param, c_range in param_mapping:
@@ -246,36 +261,24 @@ def check_compatible_parameters(
         # logger.warning(f"Checking obvious incompatibility for param {m_param}")
         known_superset = solver.inspect_get_known_supersets(m_param, force_update=False)
         if not known_superset.is_superset_of(c_range):
-            if LOG_PICK_SOLVE:
-                logger.warning(
-                    f"Known superset {known_superset} is not a superset of {c_range}"
-                    f" for part C{c.lcsc}"
-                )
-            known_incompatible = True
-            break
+            # TODO reenable
+            # if LOG_PICK_SOLVE:
+            #    logger.warning(
+            #        f"Known superset {known_superset} is not a superset of {c_range}"
+            #        f" for part C{c.lcsc}"
+            #    )
+            return False
 
     # check for every param whether the candidate component's range is
     # compatible by querying the solver
-    if not known_incompatible:
-        anded = And(
-            *(
-                m_param.operation_is_superset(c_range)
-                for m_param, c_range in param_mapping
-            )
-        )
+    anded = And(
+        *(m_param.operation_is_superset(c_range) for m_param, c_range in param_mapping)
+    )
 
-        if LOG_PICK_SOLVE:
-            logger.info(f"Solving for module: {module}")
-        result = solver.assert_any_predicate([(anded, None)], lock=False)
-        if not result.true_predicates:
-            known_incompatible = True
-
-    # debug
-    if known_incompatible:
-        logger.debug(
-            f"Component {c.lcsc} doesn't match: "
-            f"{[p for p, v in range_mapping.items()]}"
-        )
+    if LOG_PICK_SOLVE:
+        logger.info(f"Solving for module: {module}")
+    result = solver.assert_any_predicate([(anded, None)], lock=False)
+    if not result.true_predicates:
         return False
 
     if logger.isEnabledFor(logging.DEBUG):

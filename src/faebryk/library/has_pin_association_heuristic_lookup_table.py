@@ -4,6 +4,7 @@
 import logging
 
 import faebryk.library._F as F
+from faebryk.libs.util import KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,13 @@ class has_pin_association_heuristic_lookup_table(
                         matches.append((number, name))
                         break
             if not matches:
+                try:
+                    _, is_optional = mif.get_parent_with_trait(F.is_optional)
+                    if not is_optional.is_needed():
+                        is_optional._handle_result(False)
+                        continue
+                except KeyErrorNotFound:
+                    pass
                 raise F.has_pin_association_heuristic.PinMatchException(
                     f"Could not find a match for pin {mif} with names '{alt_names}'"
                     f" in the pins: {pins}"

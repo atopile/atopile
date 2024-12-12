@@ -13,6 +13,7 @@ from typing import Callable, Iterable
 from rich.progress import Progress
 
 import faebryk.library._F as F
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
@@ -23,7 +24,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
-from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.util import ConfigFlag, flatten, not_none
 
 NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
@@ -257,6 +258,11 @@ class PickerProgress:
 
 # TODO should be a Picker
 def pick_part_recursively(module: Module, solver: Solver):
+    pickable_modules = GraphFunctions(module.get_graph()).nodes_with_trait(F.has_picker)
+    if LOG_PICK_SOLVE:
+        names = sorted(p[0].get_full_name(types=True) for p in pickable_modules)
+        logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
+
     pp = PickerProgress.from_module(module)
     try:
         with pp.context():
