@@ -38,7 +38,7 @@ class has_pin_association_heuristic_lookup_table(
 
         pinmap = {}
         for mif, alt_names in self.mapping.items():
-            match = None
+            matches = []
             for number, name in pins:
                 if name in self.nc:
                     continue
@@ -47,12 +47,12 @@ class has_pin_association_heuristic_lookup_table(
                         alt_name = alt_name.lower()
                         name = name.lower()
                     if self.accept_prefix and name.endswith(alt_name):
-                        match = (number, name)
+                        matches.append((number, name))
                         break
                     elif name == alt_name:
-                        match = (number, name)
+                        matches.append((number, name))
                         break
-            if not match:
+            if not matches:
                 try:
                     _, is_optional = mif.get_parent_with_trait(F.is_optional)
                     if not is_optional.is_needed():
@@ -64,12 +64,12 @@ class has_pin_association_heuristic_lookup_table(
                     f"Could not find a match for pin {mif} with names '{alt_names}'"
                     f" in the pins: {pins}"
                 )
-            number, name = match
-            pinmap[number] = mif
-            logger.debug(
-                f"Matched pin {number} with name {name} to {mif} with "
-                f"alias {alt_names}"
-            )
+            for number, name in matches:
+                pinmap[number] = mif
+                logger.debug(
+                    f"Matched pin {number} with name {name} to {mif} with "
+                    f"alias {alt_names}"
+                )
 
         unmatched = [p for p in pins if p[0] not in pinmap]
         if unmatched:

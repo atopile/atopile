@@ -6,8 +6,8 @@ from pathlib import Path
 from antlr4 import CommonTokenStream, FileStream, InputStream
 from antlr4.error.ErrorListener import ErrorListener
 
-from atopile.parser.AtopileLexer import AtopileLexer
-from atopile.parser.AtopileParser import AtopileParser
+from atopile.parser.AtoLexer import AtoLexer
+from atopile.parser.AtoParser import AtoParser
 
 from .errors import UserFileNotFoundError, UserSyntaxError
 
@@ -54,23 +54,23 @@ class ErrorListenerCollector(ErrorListenerConverter):
         self.errors.append(error_factory(e, msg, offendingSymbol, line, column))
 
 
-def make_parser(src_stream: InputStream) -> AtopileParser:
+def make_parser(src_stream: InputStream) -> AtoParser:
     """Make a parser from a stream."""
-    lexer = AtopileLexer(src_stream)
+    lexer = AtoLexer(src_stream)
     stream = CommonTokenStream(lexer)
-    parser = AtopileParser(stream)
+    parser = AtoParser(stream)
 
     return parser
 
 
-def set_error_listener(parser: AtopileParser, error_listener: ErrorListener) -> None:
+def set_error_listener(parser: AtoParser, error_listener: ErrorListener) -> None:
     """Utility function to set the error listener on a parser."""
     parser.removeErrorListeners()
     parser.addErrorListener(error_listener)
 
 
 @contextmanager
-def defer_parser_errors(parser: AtopileParser) -> None:
+def defer_parser_errors(parser: AtoParser) -> None:
     """Defer errors from a parser until the end of the context manager."""
     if IMMEDIATE_RAISE:
         error_listener = ErrorListenerConverter()
@@ -86,7 +86,7 @@ def defer_parser_errors(parser: AtopileParser) -> None:
 
 def parse_text_as_file(
     src_code: str, src_path: None | str | Path = None
-) -> AtopileParser.File_inputContext:
+) -> AtoParser.File_inputContext:
     """Parse a string as a file input."""
     input = InputStream(src_code)
     input.name = src_path
@@ -97,7 +97,7 @@ def parse_text_as_file(
     return tree
 
 
-def parse_file(src_path: Path) -> AtopileParser.File_inputContext:
+def parse_file(src_path: Path) -> AtoParser.File_inputContext:
     """Parse a file from a path."""
     input = FileStream(str(src_path), encoding="utf-8")
     input.name = src_path
@@ -114,9 +114,7 @@ class FileParser:
     def __init__(self) -> None:
         self.cache = {}
 
-    def get_ast_from_file(
-        self, src_origin: PathLike
-    ) -> AtopileParser.File_inputContext:
+    def get_ast_from_file(self, src_origin: PathLike) -> AtoParser.File_inputContext:
         """Get the AST from a file."""
 
         src_origin_str = str(src_origin)

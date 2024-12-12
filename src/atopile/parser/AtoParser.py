@@ -1,4 +1,4 @@
-# Generated from AtopileParser.g4 by ANTLR 4.13.2
+# Generated from AtoParser.g4 by ANTLR 4.13.2
 # encoding: utf-8
 from antlr4 import *
 from io import StringIO
@@ -9,13 +9,13 @@ else:
 	from typing.io import TextIO
 
 if "." in __name__:
-    from .AtopileParserBase import AtopileParserBase
+    from .AtoParserBase import AtoParserBase
 else:
-    from AtopileParserBase import AtopileParserBase
+    from AtoParserBase import AtoParserBase
 
 def serializedATN():
     return [
-        4,1,80,403,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
+        4,1,82,403,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
         6,2,7,7,7,2,8,7,8,2,9,7,9,2,10,7,10,2,11,7,11,2,12,7,12,2,13,7,13,
         2,14,7,14,2,15,7,15,2,16,7,16,2,17,7,17,2,18,7,18,2,19,7,19,2,20,
         7,20,2,21,7,21,2,22,7,22,2,23,7,23,2,24,7,24,2,25,7,25,2,26,7,26,
@@ -50,8 +50,8 @@ def serializedATN():
         1,51,1,51,1,52,1,52,1,53,1,53,1,53,0,3,66,68,70,54,0,2,4,6,8,10,
         12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,
         56,58,60,62,64,66,68,70,72,74,76,78,80,82,84,86,88,90,92,94,96,98,
-        100,102,104,106,0,7,1,0,6,8,1,0,72,73,1,0,67,68,2,0,46,46,48,48,
-        1,0,51,52,2,0,36,36,53,53,1,0,16,17,404,0,112,1,0,0,0,2,119,1,0,
+        100,102,104,106,0,7,1,0,6,8,1,0,71,72,1,0,66,67,2,0,45,45,47,47,
+        1,0,50,51,2,0,35,35,52,52,1,0,16,17,404,0,112,1,0,0,0,2,119,1,0,
         0,0,4,121,1,0,0,0,6,147,1,0,0,0,8,149,1,0,0,0,10,151,1,0,0,0,12,
         160,1,0,0,0,14,172,1,0,0,0,16,174,1,0,0,0,18,181,1,0,0,0,20,192,
         1,0,0,0,22,195,1,0,0,0,24,202,1,0,0,0,26,209,1,0,0,0,28,216,1,0,
@@ -64,14 +64,14 @@ def serializedATN():
         0,0,82,354,1,0,0,0,84,356,1,0,0,0,86,360,1,0,0,0,88,365,1,0,0,0,
         90,371,1,0,0,0,92,378,1,0,0,0,94,380,1,0,0,0,96,383,1,0,0,0,98,387,
         1,0,0,0,100,394,1,0,0,0,102,396,1,0,0,0,104,398,1,0,0,0,106,400,
-        1,0,0,0,108,111,5,20,0,0,109,111,3,2,1,0,110,108,1,0,0,0,110,109,
+        1,0,0,0,108,111,5,78,0,0,109,111,3,2,1,0,110,108,1,0,0,0,110,109,
         1,0,0,0,111,114,1,0,0,0,112,110,1,0,0,0,112,113,1,0,0,0,113,115,
         1,0,0,0,114,112,1,0,0,0,115,116,5,0,0,1,116,1,1,0,0,0,117,120,3,
         4,2,0,118,120,3,8,4,0,119,117,1,0,0,0,119,118,1,0,0,0,120,3,1,0,
-        0,0,121,126,3,6,3,0,122,123,5,41,0,0,123,125,3,6,3,0,124,122,1,0,
+        0,0,121,126,3,6,3,0,122,123,5,40,0,0,123,125,3,6,3,0,124,122,1,0,
         0,0,125,128,1,0,0,0,126,124,1,0,0,0,126,127,1,0,0,0,127,130,1,0,
-        0,0,128,126,1,0,0,0,129,131,5,41,0,0,130,129,1,0,0,0,130,131,1,0,
-        0,0,131,132,1,0,0,0,132,133,5,20,0,0,133,5,1,0,0,0,134,148,3,18,
+        0,0,128,126,1,0,0,0,129,131,5,40,0,0,130,129,1,0,0,0,130,131,1,0,
+        0,0,131,132,1,0,0,0,132,133,5,78,0,0,133,5,1,0,0,0,134,148,3,18,
         9,0,135,148,3,16,8,0,136,148,3,22,11,0,137,148,3,24,12,0,138,148,
         3,26,13,0,139,148,3,36,18,0,140,148,3,34,17,0,141,148,3,42,21,0,
         142,148,3,40,20,0,143,148,3,50,25,0,144,148,3,20,10,0,145,148,3,
@@ -81,19 +81,19 @@ def serializedATN():
         1,0,0,0,147,145,1,0,0,0,147,146,1,0,0,0,148,7,1,0,0,0,149,150,3,
         10,5,0,150,9,1,0,0,0,151,152,3,12,6,0,152,155,3,102,51,0,153,154,
         5,12,0,0,154,156,3,92,46,0,155,153,1,0,0,0,155,156,1,0,0,0,156,157,
-        1,0,0,0,157,158,5,40,0,0,158,159,3,14,7,0,159,11,1,0,0,0,160,161,
-        7,0,0,0,161,13,1,0,0,0,162,173,3,4,2,0,163,164,5,20,0,0,164,166,
+        1,0,0,0,157,158,5,39,0,0,158,159,3,14,7,0,159,11,1,0,0,0,160,161,
+        7,0,0,0,161,13,1,0,0,0,162,173,3,4,2,0,163,164,5,78,0,0,164,166,
         5,1,0,0,165,167,3,2,1,0,166,165,1,0,0,0,167,168,1,0,0,0,168,166,
         1,0,0,0,168,169,1,0,0,0,169,170,1,0,0,0,170,171,5,2,0,0,171,173,
         1,0,0,0,172,162,1,0,0,0,172,163,1,0,0,0,173,15,1,0,0,0,174,175,5,
         13,0,0,175,176,3,92,46,0,176,177,5,12,0,0,177,178,3,104,52,0,178,
         17,1,0,0,0,179,180,5,12,0,0,180,182,3,104,52,0,181,179,1,0,0,0,181,
         182,1,0,0,0,182,183,1,0,0,0,183,184,5,13,0,0,184,189,3,92,46,0,185,
-        186,5,39,0,0,186,188,3,92,46,0,187,185,1,0,0,0,188,191,1,0,0,0,189,
+        186,5,38,0,0,186,188,3,92,46,0,187,185,1,0,0,0,188,191,1,0,0,0,189,
         187,1,0,0,0,189,190,1,0,0,0,190,19,1,0,0,0,191,189,1,0,0,0,192,193,
         3,92,46,0,193,194,3,94,47,0,194,21,1,0,0,0,195,197,3,92,46,0,196,
         198,3,94,47,0,197,196,1,0,0,0,197,198,1,0,0,0,198,199,1,0,0,0,199,
-        200,5,43,0,0,200,201,3,32,16,0,201,23,1,0,0,0,202,204,3,92,46,0,
+        200,5,42,0,0,200,201,3,32,16,0,201,23,1,0,0,0,202,204,3,92,46,0,
         203,205,3,94,47,0,204,203,1,0,0,0,204,205,1,0,0,0,205,206,1,0,0,
         0,206,207,3,28,14,0,207,208,3,30,15,0,208,25,1,0,0,0,209,211,3,92,
         46,0,210,212,3,94,47,0,211,210,1,0,0,0,211,212,1,0,0,0,212,213,1,
@@ -102,8 +102,8 @@ def serializedATN():
         1,0,0,0,220,219,1,0,0,0,221,31,1,0,0,0,222,228,3,104,52,0,223,228,
         3,44,22,0,224,228,3,82,41,0,225,228,3,66,33,0,226,228,3,106,53,0,
         227,222,1,0,0,0,227,223,1,0,0,0,227,224,1,0,0,0,227,225,1,0,0,0,
-        227,226,1,0,0,0,228,33,1,0,0,0,229,230,3,92,46,0,230,231,5,66,0,
-        0,231,232,3,92,46,0,232,35,1,0,0,0,233,234,3,38,19,0,234,235,5,55,
+        227,226,1,0,0,0,228,33,1,0,0,0,229,230,3,92,46,0,230,231,5,65,0,
+        0,231,232,3,92,46,0,232,35,1,0,0,0,233,234,3,38,19,0,234,235,5,54,
         0,0,235,236,3,38,19,0,236,37,1,0,0,0,237,242,3,92,46,0,238,242,3,
         96,48,0,239,242,3,40,20,0,240,242,3,42,21,0,241,237,1,0,0,0,241,
         238,1,0,0,0,241,239,1,0,0,0,241,240,1,0,0,0,242,39,1,0,0,0,243,244,
@@ -117,9 +117,9 @@ def serializedATN():
         0,0,0,268,274,3,56,28,0,269,274,3,58,29,0,270,274,3,60,30,0,271,
         274,3,62,31,0,272,274,3,64,32,0,273,268,1,0,0,0,273,269,1,0,0,0,
         273,270,1,0,0,0,273,271,1,0,0,0,273,272,1,0,0,0,274,55,1,0,0,0,275,
-        276,5,58,0,0,276,277,3,66,33,0,277,57,1,0,0,0,278,279,5,59,0,0,279,
-        280,3,66,33,0,280,59,1,0,0,0,281,282,5,62,0,0,282,283,3,66,33,0,
-        283,61,1,0,0,0,284,285,5,61,0,0,285,286,3,66,33,0,286,63,1,0,0,0,
+        276,5,57,0,0,276,277,3,66,33,0,277,57,1,0,0,0,278,279,5,58,0,0,279,
+        280,3,66,33,0,280,59,1,0,0,0,281,282,5,61,0,0,282,283,3,66,33,0,
+        283,61,1,0,0,0,284,285,5,60,0,0,285,286,3,66,33,0,286,63,1,0,0,0,
         287,288,5,18,0,0,288,289,3,66,33,0,289,65,1,0,0,0,290,291,6,33,-1,
         0,291,292,3,68,34,0,292,298,1,0,0,0,293,294,10,2,0,0,294,295,7,3,
         0,0,295,297,3,68,34,0,296,293,1,0,0,0,297,300,1,0,0,0,298,296,1,
@@ -130,37 +130,37 @@ def serializedATN():
         35,-1,0,313,314,3,72,36,0,314,320,1,0,0,0,315,316,10,2,0,0,316,317,
         7,5,0,0,317,319,3,72,36,0,318,315,1,0,0,0,319,322,1,0,0,0,320,318,
         1,0,0,0,320,321,1,0,0,0,321,71,1,0,0,0,322,320,1,0,0,0,323,326,3,
-        74,37,0,324,325,5,42,0,0,325,327,3,74,37,0,326,324,1,0,0,0,326,327,
+        74,37,0,324,325,5,41,0,0,325,327,3,74,37,0,326,324,1,0,0,0,326,327,
         1,0,0,0,327,73,1,0,0,0,328,339,3,76,38,0,329,330,3,102,51,0,330,
-        332,5,37,0,0,331,333,3,76,38,0,332,331,1,0,0,0,333,334,1,0,0,0,334,
-        332,1,0,0,0,334,335,1,0,0,0,335,336,1,0,0,0,336,337,5,38,0,0,337,
+        332,5,36,0,0,331,333,3,76,38,0,332,331,1,0,0,0,333,334,1,0,0,0,334,
+        332,1,0,0,0,334,335,1,0,0,0,335,336,1,0,0,0,336,337,5,37,0,0,337,
         339,1,0,0,0,338,328,1,0,0,0,338,329,1,0,0,0,339,75,1,0,0,0,340,341,
         3,78,39,0,341,77,1,0,0,0,342,346,3,92,46,0,343,346,3,82,41,0,344,
         346,3,80,40,0,345,342,1,0,0,0,345,343,1,0,0,0,345,344,1,0,0,0,346,
-        79,1,0,0,0,347,348,5,37,0,0,348,349,3,66,33,0,349,350,5,38,0,0,350,
+        79,1,0,0,0,347,348,5,36,0,0,348,349,3,66,33,0,349,350,5,37,0,0,350,
         81,1,0,0,0,351,355,3,84,42,0,352,355,3,86,43,0,353,355,3,88,44,0,
         354,351,1,0,0,0,354,352,1,0,0,0,354,353,1,0,0,0,355,83,1,0,0,0,356,
         357,3,88,44,0,357,358,5,15,0,0,358,359,3,88,44,0,359,85,1,0,0,0,
-        360,361,3,88,44,0,361,362,5,30,0,0,362,363,3,90,45,0,363,87,1,0,
+        360,361,3,88,44,0,361,362,5,29,0,0,362,363,3,90,45,0,363,87,1,0,
         0,0,364,366,7,4,0,0,365,364,1,0,0,0,365,366,1,0,0,0,366,367,1,0,
         0,0,367,369,5,4,0,0,368,370,3,102,51,0,369,368,1,0,0,0,369,370,1,
-        0,0,0,370,89,1,0,0,0,371,374,5,4,0,0,372,375,5,33,0,0,373,375,3,
+        0,0,0,370,89,1,0,0,0,371,374,5,4,0,0,372,375,5,32,0,0,373,375,3,
         102,51,0,374,372,1,0,0,0,374,373,1,0,0,0,374,375,1,0,0,0,375,91,
         1,0,0,0,376,379,3,98,49,0,377,379,3,102,51,0,378,376,1,0,0,0,378,
-        377,1,0,0,0,379,93,1,0,0,0,380,381,5,40,0,0,381,382,3,92,46,0,382,
-        95,1,0,0,0,383,384,3,92,46,0,384,385,5,34,0,0,385,386,3,100,50,0,
-        386,97,1,0,0,0,387,390,3,102,51,0,388,389,5,34,0,0,389,391,3,102,
+        377,1,0,0,0,379,93,1,0,0,0,380,381,5,39,0,0,381,382,3,92,46,0,382,
+        95,1,0,0,0,383,384,3,92,46,0,384,385,5,33,0,0,385,386,3,100,50,0,
+        386,97,1,0,0,0,387,390,3,102,51,0,388,389,5,33,0,0,389,391,3,102,
         51,0,390,388,1,0,0,0,391,392,1,0,0,0,392,390,1,0,0,0,392,393,1,0,
-        0,0,393,99,1,0,0,0,394,395,5,4,0,0,395,101,1,0,0,0,396,397,5,21,
+        0,0,393,99,1,0,0,0,394,395,5,4,0,0,395,101,1,0,0,0,396,397,5,20,
         0,0,397,103,1,0,0,0,398,399,5,3,0,0,399,105,1,0,0,0,400,401,7,6,
         0,0,401,107,1,0,0,0,33,110,112,119,126,130,147,155,168,172,181,189,
         197,204,211,220,227,241,250,266,273,298,309,320,326,334,338,345,
         354,365,369,374,378,392
     ]
 
-class AtopileParser ( AtopileParserBase ):
+class AtoParser ( AtoParserBase ):
 
-    grammarFileName = "AtopileParser.g4"
+    grammarFileName = "AtoParser.g4"
 
     atn = ATNDeserializer().deserialize(serializedATN())
 
@@ -174,33 +174,34 @@ class AtopileParser ( AtopileParserBase ):
                      "'import'", "'assert'", "'to'", "'True'", "'False'", 
                      "'within'", "'pass'", "<INVALID>", "<INVALID>", "<INVALID>", 
                      "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
-                     "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
-                     "'+/-'", "'\\u00B1'", "'%'", "'.'", "'...'", "'*'", 
-                     "'('", "')'", "','", "':'", "';'", "'**'", "'='", "'['", 
-                     "']'", "'|'", "'^'", "'&'", "'<<'", "'>>'", "'+'", 
-                     "'-'", "'/'", "'//'", "'~'", "'{'", "'}'", "'<'", "'>'", 
-                     "'=='", "'>='", "'<='", "'<>'", "'!='", "'@'", "'->'", 
-                     "'+='", "'-='", "'*='", "'@='", "'/='", "'&='", "'|='", 
-                     "'^='", "'<<='", "'>>='", "'**='", "'//='" ]
+                     "<INVALID>", "<INVALID>", "<INVALID>", "'+/-'", "'\\u00B1'", 
+                     "'%'", "'.'", "'...'", "'*'", "'('", "')'", "','", 
+                     "':'", "';'", "'**'", "'='", "'['", "']'", "'|'", "'^'", 
+                     "'&'", "'<<'", "'>>'", "'+'", "'-'", "'/'", "'//'", 
+                     "'~'", "'{'", "'}'", "'<'", "'>'", "'=='", "'>='", 
+                     "'<='", "'<>'", "'!='", "'@'", "'->'", "'+='", "'-='", 
+                     "'*='", "'@='", "'/='", "'&='", "'|='", "'^='", "'<<='", 
+                     "'>>='", "'**='", "'//='" ]
 
     symbolicNames = [ "<INVALID>", "INDENT", "DEDENT", "STRING", "NUMBER", 
                       "INTEGER", "COMPONENT", "MODULE", "INTERFACE", "PIN", 
                       "SIGNAL", "NEW", "FROM", "IMPORT", "ASSERT", "TO", 
-                      "TRUE", "FALSE", "WITHIN", "PASS", "NEWLINE", "NAME", 
-                      "STRING_LITERAL", "BYTES_LITERAL", "DECIMAL_INTEGER", 
-                      "OCT_INTEGER", "HEX_INTEGER", "BIN_INTEGER", "FLOAT_NUMBER", 
-                      "IMAG_NUMBER", "PLUS_OR_MINUS", "PLUS_SLASH_MINUS", 
-                      "PLUS_MINUS_SIGN", "PERCENT", "DOT", "ELLIPSIS", "STAR", 
-                      "OPEN_PAREN", "CLOSE_PAREN", "COMMA", "COLON", "SEMI_COLON", 
-                      "POWER", "ASSIGN", "OPEN_BRACK", "CLOSE_BRACK", "OR_OP", 
-                      "XOR", "AND_OP", "LEFT_SHIFT", "RIGHT_SHIFT", "ADD", 
-                      "MINUS", "DIV", "IDIV", "NOT_OP", "OPEN_BRACE", "CLOSE_BRACE", 
+                      "TRUE", "FALSE", "WITHIN", "PASS", "NAME", "STRING_LITERAL", 
+                      "BYTES_LITERAL", "DECIMAL_INTEGER", "OCT_INTEGER", 
+                      "HEX_INTEGER", "BIN_INTEGER", "FLOAT_NUMBER", "IMAG_NUMBER", 
+                      "PLUS_OR_MINUS", "PLUS_SLASH_MINUS", "PLUS_MINUS_SIGN", 
+                      "PERCENT", "DOT", "ELLIPSIS", "STAR", "OPEN_PAREN", 
+                      "CLOSE_PAREN", "COMMA", "COLON", "SEMI_COLON", "POWER", 
+                      "ASSIGN", "OPEN_BRACK", "CLOSE_BRACK", "OR_OP", "XOR", 
+                      "AND_OP", "LEFT_SHIFT", "RIGHT_SHIFT", "ADD", "MINUS", 
+                      "DIV", "IDIV", "NOT_OP", "OPEN_BRACE", "CLOSE_BRACE", 
                       "LESS_THAN", "GREATER_THAN", "EQUALS", "GT_EQ", "LT_EQ", 
                       "NOT_EQ_1", "NOT_EQ_2", "AT", "ARROW", "ADD_ASSIGN", 
                       "SUB_ASSIGN", "MULT_ASSIGN", "AT_ASSIGN", "DIV_ASSIGN", 
                       "AND_ASSIGN", "OR_ASSIGN", "XOR_ASSIGN", "LEFT_SHIFT_ASSIGN", 
                       "RIGHT_SHIFT_ASSIGN", "POWER_ASSIGN", "IDIV_ASSIGN", 
-                      "SKIP_", "UNKNOWN_CHAR" ]
+                      "NEWLINE", "COMMENT", "WS", "EXPLICIT_LINE_JOINING", 
+                      "ERRORTOKEN" ]
 
     RULE_file_input = 0
     RULE_stmt = 1
@@ -292,67 +293,69 @@ class AtopileParser ( AtopileParserBase ):
     FALSE=17
     WITHIN=18
     PASS=19
-    NEWLINE=20
-    NAME=21
-    STRING_LITERAL=22
-    BYTES_LITERAL=23
-    DECIMAL_INTEGER=24
-    OCT_INTEGER=25
-    HEX_INTEGER=26
-    BIN_INTEGER=27
-    FLOAT_NUMBER=28
-    IMAG_NUMBER=29
-    PLUS_OR_MINUS=30
-    PLUS_SLASH_MINUS=31
-    PLUS_MINUS_SIGN=32
-    PERCENT=33
-    DOT=34
-    ELLIPSIS=35
-    STAR=36
-    OPEN_PAREN=37
-    CLOSE_PAREN=38
-    COMMA=39
-    COLON=40
-    SEMI_COLON=41
-    POWER=42
-    ASSIGN=43
-    OPEN_BRACK=44
-    CLOSE_BRACK=45
-    OR_OP=46
-    XOR=47
-    AND_OP=48
-    LEFT_SHIFT=49
-    RIGHT_SHIFT=50
-    ADD=51
-    MINUS=52
-    DIV=53
-    IDIV=54
-    NOT_OP=55
-    OPEN_BRACE=56
-    CLOSE_BRACE=57
-    LESS_THAN=58
-    GREATER_THAN=59
-    EQUALS=60
-    GT_EQ=61
-    LT_EQ=62
-    NOT_EQ_1=63
-    NOT_EQ_2=64
-    AT=65
-    ARROW=66
-    ADD_ASSIGN=67
-    SUB_ASSIGN=68
-    MULT_ASSIGN=69
-    AT_ASSIGN=70
-    DIV_ASSIGN=71
-    AND_ASSIGN=72
-    OR_ASSIGN=73
-    XOR_ASSIGN=74
-    LEFT_SHIFT_ASSIGN=75
-    RIGHT_SHIFT_ASSIGN=76
-    POWER_ASSIGN=77
-    IDIV_ASSIGN=78
-    SKIP_=79
-    UNKNOWN_CHAR=80
+    NAME=20
+    STRING_LITERAL=21
+    BYTES_LITERAL=22
+    DECIMAL_INTEGER=23
+    OCT_INTEGER=24
+    HEX_INTEGER=25
+    BIN_INTEGER=26
+    FLOAT_NUMBER=27
+    IMAG_NUMBER=28
+    PLUS_OR_MINUS=29
+    PLUS_SLASH_MINUS=30
+    PLUS_MINUS_SIGN=31
+    PERCENT=32
+    DOT=33
+    ELLIPSIS=34
+    STAR=35
+    OPEN_PAREN=36
+    CLOSE_PAREN=37
+    COMMA=38
+    COLON=39
+    SEMI_COLON=40
+    POWER=41
+    ASSIGN=42
+    OPEN_BRACK=43
+    CLOSE_BRACK=44
+    OR_OP=45
+    XOR=46
+    AND_OP=47
+    LEFT_SHIFT=48
+    RIGHT_SHIFT=49
+    ADD=50
+    MINUS=51
+    DIV=52
+    IDIV=53
+    NOT_OP=54
+    OPEN_BRACE=55
+    CLOSE_BRACE=56
+    LESS_THAN=57
+    GREATER_THAN=58
+    EQUALS=59
+    GT_EQ=60
+    LT_EQ=61
+    NOT_EQ_1=62
+    NOT_EQ_2=63
+    AT=64
+    ARROW=65
+    ADD_ASSIGN=66
+    SUB_ASSIGN=67
+    MULT_ASSIGN=68
+    AT_ASSIGN=69
+    DIV_ASSIGN=70
+    AND_ASSIGN=71
+    OR_ASSIGN=72
+    XOR_ASSIGN=73
+    LEFT_SHIFT_ASSIGN=74
+    RIGHT_SHIFT_ASSIGN=75
+    POWER_ASSIGN=76
+    IDIV_ASSIGN=77
+    NEWLINE=78
+    COMMENT=79
+    WS=80
+    EXPLICIT_LINE_JOINING=81
+    ERRORTOKEN=82
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
@@ -371,23 +374,23 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def EOF(self):
-            return self.getToken(AtopileParser.EOF, 0)
+            return self.getToken(AtoParser.EOF, 0)
 
         def NEWLINE(self, i:int=None):
             if i is None:
-                return self.getTokens(AtopileParser.NEWLINE)
+                return self.getTokens(AtoParser.NEWLINE)
             else:
-                return self.getToken(AtopileParser.NEWLINE, i)
+                return self.getToken(AtoParser.NEWLINE, i)
 
         def stmt(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.StmtContext)
+                return self.getTypedRuleContexts(AtoParser.StmtContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.StmtContext,i)
+                return self.getTypedRuleContext(AtoParser.StmtContext,i)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_file_input
+            return AtoParser.RULE_file_input
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitFile_input" ):
@@ -400,7 +403,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def file_input(self):
 
-        localctx = AtopileParser.File_inputContext(self, self._ctx, self.state)
+        localctx = AtoParser.File_inputContext(self, self._ctx, self.state)
         self.enterRule(localctx, 0, self.RULE_file_input)
         self._la = 0 # Token type
         try:
@@ -408,15 +411,15 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 112
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 3700680) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 1603528) != 0) or _la==78:
                 self.state = 110
                 self._errHandler.sync(self)
                 token = self._input.LA(1)
-                if token in [20]:
+                if token in [78]:
                     self.state = 108
-                    self.match(AtopileParser.NEWLINE)
+                    self.match(AtoParser.NEWLINE)
                     pass
-                elif token in [3, 6, 7, 8, 9, 10, 12, 13, 14, 19, 21]:
+                elif token in [3, 6, 7, 8, 9, 10, 12, 13, 14, 19, 20]:
                     self.state = 109
                     self.stmt()
                     pass
@@ -428,7 +431,7 @@ class AtopileParser ( AtopileParserBase ):
                 _la = self._input.LA(1)
 
             self.state = 115
-            self.match(AtopileParser.EOF)
+            self.match(AtoParser.EOF)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -446,15 +449,15 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def simple_stmts(self):
-            return self.getTypedRuleContext(AtopileParser.Simple_stmtsContext,0)
+            return self.getTypedRuleContext(AtoParser.Simple_stmtsContext,0)
 
 
         def compound_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Compound_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Compound_stmtContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_stmt
+            return AtoParser.RULE_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitStmt" ):
@@ -467,13 +470,13 @@ class AtopileParser ( AtopileParserBase ):
 
     def stmt(self):
 
-        localctx = AtopileParser.StmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.StmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 2, self.RULE_stmt)
         try:
             self.state = 119
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [3, 9, 10, 12, 13, 14, 19, 21]:
+            if token in [3, 9, 10, 12, 13, 14, 19, 20]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 117
                 self.simple_stmts()
@@ -504,22 +507,22 @@ class AtopileParser ( AtopileParserBase ):
 
         def simple_stmt(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.Simple_stmtContext)
+                return self.getTypedRuleContexts(AtoParser.Simple_stmtContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.Simple_stmtContext,i)
+                return self.getTypedRuleContext(AtoParser.Simple_stmtContext,i)
 
 
         def NEWLINE(self):
-            return self.getToken(AtopileParser.NEWLINE, 0)
+            return self.getToken(AtoParser.NEWLINE, 0)
 
         def SEMI_COLON(self, i:int=None):
             if i is None:
-                return self.getTokens(AtopileParser.SEMI_COLON)
+                return self.getTokens(AtoParser.SEMI_COLON)
             else:
-                return self.getToken(AtopileParser.SEMI_COLON, i)
+                return self.getToken(AtoParser.SEMI_COLON, i)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_simple_stmts
+            return AtoParser.RULE_simple_stmts
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSimple_stmts" ):
@@ -532,7 +535,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def simple_stmts(self):
 
-        localctx = AtopileParser.Simple_stmtsContext(self, self._ctx, self.state)
+        localctx = AtoParser.Simple_stmtsContext(self, self._ctx, self.state)
         self.enterRule(localctx, 4, self.RULE_simple_stmts)
         self._la = 0 # Token type
         try:
@@ -545,7 +548,7 @@ class AtopileParser ( AtopileParserBase ):
             while _alt!=2 and _alt!=ATN.INVALID_ALT_NUMBER:
                 if _alt==1:
                     self.state = 122
-                    self.match(AtopileParser.SEMI_COLON)
+                    self.match(AtoParser.SEMI_COLON)
                     self.state = 123
                     self.simple_stmt() 
                 self.state = 128
@@ -555,13 +558,13 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 130
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==41:
+            if _la==40:
                 self.state = 129
-                self.match(AtopileParser.SEMI_COLON)
+                self.match(AtoParser.SEMI_COLON)
 
 
             self.state = 132
-            self.match(AtopileParser.NEWLINE)
+            self.match(AtoParser.NEWLINE)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -579,59 +582,59 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def import_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Import_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Import_stmtContext,0)
 
 
         def dep_import_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Dep_import_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Dep_import_stmtContext,0)
 
 
         def assign_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Assign_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Assign_stmtContext,0)
 
 
         def cum_assign_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Cum_assign_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Cum_assign_stmtContext,0)
 
 
         def set_assign_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Set_assign_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Set_assign_stmtContext,0)
 
 
         def connect_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Connect_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Connect_stmtContext,0)
 
 
         def retype_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Retype_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Retype_stmtContext,0)
 
 
         def pindef_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Pindef_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Pindef_stmtContext,0)
 
 
         def signaldef_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Signaldef_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Signaldef_stmtContext,0)
 
 
         def assert_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Assert_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Assert_stmtContext,0)
 
 
         def declaration_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Declaration_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Declaration_stmtContext,0)
 
 
         def string_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.String_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.String_stmtContext,0)
 
 
         def pass_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Pass_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Pass_stmtContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_simple_stmt
+            return AtoParser.RULE_simple_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSimple_stmt" ):
@@ -644,7 +647,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def simple_stmt(self):
 
-        localctx = AtopileParser.Simple_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Simple_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 6, self.RULE_simple_stmt)
         try:
             self.state = 147
@@ -746,11 +749,11 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def blockdef(self):
-            return self.getTypedRuleContext(AtopileParser.BlockdefContext,0)
+            return self.getTypedRuleContext(AtoParser.BlockdefContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_compound_stmt
+            return AtoParser.RULE_compound_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCompound_stmt" ):
@@ -763,7 +766,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def compound_stmt(self):
 
-        localctx = AtopileParser.Compound_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Compound_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 8, self.RULE_compound_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
@@ -786,29 +789,29 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def blocktype(self):
-            return self.getTypedRuleContext(AtopileParser.BlocktypeContext,0)
+            return self.getTypedRuleContext(AtoParser.BlocktypeContext,0)
 
 
         def name(self):
-            return self.getTypedRuleContext(AtopileParser.NameContext,0)
+            return self.getTypedRuleContext(AtoParser.NameContext,0)
 
 
         def COLON(self):
-            return self.getToken(AtopileParser.COLON, 0)
+            return self.getToken(AtoParser.COLON, 0)
 
         def block(self):
-            return self.getTypedRuleContext(AtopileParser.BlockContext,0)
+            return self.getTypedRuleContext(AtoParser.BlockContext,0)
 
 
         def FROM(self):
-            return self.getToken(AtopileParser.FROM, 0)
+            return self.getToken(AtoParser.FROM, 0)
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_blockdef
+            return AtoParser.RULE_blockdef
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBlockdef" ):
@@ -821,7 +824,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def blockdef(self):
 
-        localctx = AtopileParser.BlockdefContext(self, self._ctx, self.state)
+        localctx = AtoParser.BlockdefContext(self, self._ctx, self.state)
         self.enterRule(localctx, 10, self.RULE_blockdef)
         self._la = 0 # Token type
         try:
@@ -835,13 +838,13 @@ class AtopileParser ( AtopileParserBase ):
             _la = self._input.LA(1)
             if _la==12:
                 self.state = 153
-                self.match(AtopileParser.FROM)
+                self.match(AtoParser.FROM)
                 self.state = 154
                 self.name_or_attr()
 
 
             self.state = 157
-            self.match(AtopileParser.COLON)
+            self.match(AtoParser.COLON)
             self.state = 158
             self.block()
         except RecognitionException as re:
@@ -861,16 +864,16 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def COMPONENT(self):
-            return self.getToken(AtopileParser.COMPONENT, 0)
+            return self.getToken(AtoParser.COMPONENT, 0)
 
         def MODULE(self):
-            return self.getToken(AtopileParser.MODULE, 0)
+            return self.getToken(AtoParser.MODULE, 0)
 
         def INTERFACE(self):
-            return self.getToken(AtopileParser.INTERFACE, 0)
+            return self.getToken(AtoParser.INTERFACE, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_blocktype
+            return AtoParser.RULE_blocktype
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBlocktype" ):
@@ -883,7 +886,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def blocktype(self):
 
-        localctx = AtopileParser.BlocktypeContext(self, self._ctx, self.state)
+        localctx = AtoParser.BlocktypeContext(self, self._ctx, self.state)
         self.enterRule(localctx, 12, self.RULE_blocktype)
         self._la = 0 # Token type
         try:
@@ -912,27 +915,27 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def simple_stmts(self):
-            return self.getTypedRuleContext(AtopileParser.Simple_stmtsContext,0)
+            return self.getTypedRuleContext(AtoParser.Simple_stmtsContext,0)
 
 
         def NEWLINE(self):
-            return self.getToken(AtopileParser.NEWLINE, 0)
+            return self.getToken(AtoParser.NEWLINE, 0)
 
         def INDENT(self):
-            return self.getToken(AtopileParser.INDENT, 0)
+            return self.getToken(AtoParser.INDENT, 0)
 
         def DEDENT(self):
-            return self.getToken(AtopileParser.DEDENT, 0)
+            return self.getToken(AtoParser.DEDENT, 0)
 
         def stmt(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.StmtContext)
+                return self.getTypedRuleContexts(AtoParser.StmtContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.StmtContext,i)
+                return self.getTypedRuleContext(AtoParser.StmtContext,i)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_block
+            return AtoParser.RULE_block
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBlock" ):
@@ -945,24 +948,24 @@ class AtopileParser ( AtopileParserBase ):
 
     def block(self):
 
-        localctx = AtopileParser.BlockContext(self, self._ctx, self.state)
+        localctx = AtoParser.BlockContext(self, self._ctx, self.state)
         self.enterRule(localctx, 14, self.RULE_block)
         self._la = 0 # Token type
         try:
             self.state = 172
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [3, 9, 10, 12, 13, 14, 19, 21]:
+            if token in [3, 9, 10, 12, 13, 14, 19, 20]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 162
                 self.simple_stmts()
                 pass
-            elif token in [20]:
+            elif token in [78]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 163
-                self.match(AtopileParser.NEWLINE)
+                self.match(AtoParser.NEWLINE)
                 self.state = 164
-                self.match(AtopileParser.INDENT)
+                self.match(AtoParser.INDENT)
                 self.state = 166 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
@@ -972,11 +975,11 @@ class AtopileParser ( AtopileParserBase ):
                     self.state = 168 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 2652104) != 0)):
+                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 1603528) != 0)):
                         break
 
                 self.state = 170
-                self.match(AtopileParser.DEDENT)
+                self.match(AtoParser.DEDENT)
                 pass
             else:
                 raise NoViableAltException(self)
@@ -998,21 +1001,21 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def IMPORT(self):
-            return self.getToken(AtopileParser.IMPORT, 0)
+            return self.getToken(AtoParser.IMPORT, 0)
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def FROM(self):
-            return self.getToken(AtopileParser.FROM, 0)
+            return self.getToken(AtoParser.FROM, 0)
 
         def string(self):
-            return self.getTypedRuleContext(AtopileParser.StringContext,0)
+            return self.getTypedRuleContext(AtoParser.StringContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_dep_import_stmt
+            return AtoParser.RULE_dep_import_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitDep_import_stmt" ):
@@ -1025,16 +1028,16 @@ class AtopileParser ( AtopileParserBase ):
 
     def dep_import_stmt(self):
 
-        localctx = AtopileParser.Dep_import_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Dep_import_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 16, self.RULE_dep_import_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 174
-            self.match(AtopileParser.IMPORT)
+            self.match(AtoParser.IMPORT)
             self.state = 175
             self.name_or_attr()
             self.state = 176
-            self.match(AtopileParser.FROM)
+            self.match(AtoParser.FROM)
             self.state = 177
             self.string()
         except RecognitionException as re:
@@ -1054,30 +1057,30 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def IMPORT(self):
-            return self.getToken(AtopileParser.IMPORT, 0)
+            return self.getToken(AtoParser.IMPORT, 0)
 
         def name_or_attr(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.Name_or_attrContext)
+                return self.getTypedRuleContexts(AtoParser.Name_or_attrContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,i)
+                return self.getTypedRuleContext(AtoParser.Name_or_attrContext,i)
 
 
         def FROM(self):
-            return self.getToken(AtopileParser.FROM, 0)
+            return self.getToken(AtoParser.FROM, 0)
 
         def string(self):
-            return self.getTypedRuleContext(AtopileParser.StringContext,0)
+            return self.getTypedRuleContext(AtoParser.StringContext,0)
 
 
         def COMMA(self, i:int=None):
             if i is None:
-                return self.getTokens(AtopileParser.COMMA)
+                return self.getTokens(AtoParser.COMMA)
             else:
-                return self.getToken(AtopileParser.COMMA, i)
+                return self.getToken(AtoParser.COMMA, i)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_import_stmt
+            return AtoParser.RULE_import_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitImport_stmt" ):
@@ -1090,7 +1093,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def import_stmt(self):
 
-        localctx = AtopileParser.Import_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Import_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 18, self.RULE_import_stmt)
         self._la = 0 # Token type
         try:
@@ -1100,21 +1103,21 @@ class AtopileParser ( AtopileParserBase ):
             _la = self._input.LA(1)
             if _la==12:
                 self.state = 179
-                self.match(AtopileParser.FROM)
+                self.match(AtoParser.FROM)
                 self.state = 180
                 self.string()
 
 
             self.state = 183
-            self.match(AtopileParser.IMPORT)
+            self.match(AtoParser.IMPORT)
             self.state = 184
             self.name_or_attr()
             self.state = 189
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while _la==39:
+            while _la==38:
                 self.state = 185
-                self.match(AtopileParser.COMMA)
+                self.match(AtoParser.COMMA)
                 self.state = 186
                 self.name_or_attr()
                 self.state = 191
@@ -1138,15 +1141,15 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def type_info(self):
-            return self.getTypedRuleContext(AtopileParser.Type_infoContext,0)
+            return self.getTypedRuleContext(AtoParser.Type_infoContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_declaration_stmt
+            return AtoParser.RULE_declaration_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitDeclaration_stmt" ):
@@ -1159,7 +1162,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def declaration_stmt(self):
 
-        localctx = AtopileParser.Declaration_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Declaration_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 20, self.RULE_declaration_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
@@ -1184,22 +1187,22 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def ASSIGN(self):
-            return self.getToken(AtopileParser.ASSIGN, 0)
+            return self.getToken(AtoParser.ASSIGN, 0)
 
         def assignable(self):
-            return self.getTypedRuleContext(AtopileParser.AssignableContext,0)
+            return self.getTypedRuleContext(AtoParser.AssignableContext,0)
 
 
         def type_info(self):
-            return self.getTypedRuleContext(AtopileParser.Type_infoContext,0)
+            return self.getTypedRuleContext(AtoParser.Type_infoContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_assign_stmt
+            return AtoParser.RULE_assign_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAssign_stmt" ):
@@ -1212,7 +1215,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def assign_stmt(self):
 
-        localctx = AtopileParser.Assign_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Assign_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 22, self.RULE_assign_stmt)
         self._la = 0 # Token type
         try:
@@ -1222,13 +1225,13 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 197
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==40:
+            if _la==39:
                 self.state = 196
                 self.type_info()
 
 
             self.state = 199
-            self.match(AtopileParser.ASSIGN)
+            self.match(AtoParser.ASSIGN)
             self.state = 200
             self.assignable()
         except RecognitionException as re:
@@ -1248,23 +1251,23 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def cum_operator(self):
-            return self.getTypedRuleContext(AtopileParser.Cum_operatorContext,0)
+            return self.getTypedRuleContext(AtoParser.Cum_operatorContext,0)
 
 
         def cum_assignable(self):
-            return self.getTypedRuleContext(AtopileParser.Cum_assignableContext,0)
+            return self.getTypedRuleContext(AtoParser.Cum_assignableContext,0)
 
 
         def type_info(self):
-            return self.getTypedRuleContext(AtopileParser.Type_infoContext,0)
+            return self.getTypedRuleContext(AtoParser.Type_infoContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_cum_assign_stmt
+            return AtoParser.RULE_cum_assign_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCum_assign_stmt" ):
@@ -1277,7 +1280,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def cum_assign_stmt(self):
 
-        localctx = AtopileParser.Cum_assign_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Cum_assign_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 24, self.RULE_cum_assign_stmt)
         self._la = 0 # Token type
         try:
@@ -1287,7 +1290,7 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 204
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==40:
+            if _la==39:
                 self.state = 203
                 self.type_info()
 
@@ -1313,25 +1316,25 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def cum_assignable(self):
-            return self.getTypedRuleContext(AtopileParser.Cum_assignableContext,0)
+            return self.getTypedRuleContext(AtoParser.Cum_assignableContext,0)
 
 
         def OR_ASSIGN(self):
-            return self.getToken(AtopileParser.OR_ASSIGN, 0)
+            return self.getToken(AtoParser.OR_ASSIGN, 0)
 
         def AND_ASSIGN(self):
-            return self.getToken(AtopileParser.AND_ASSIGN, 0)
+            return self.getToken(AtoParser.AND_ASSIGN, 0)
 
         def type_info(self):
-            return self.getTypedRuleContext(AtopileParser.Type_infoContext,0)
+            return self.getTypedRuleContext(AtoParser.Type_infoContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_set_assign_stmt
+            return AtoParser.RULE_set_assign_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSet_assign_stmt" ):
@@ -1344,7 +1347,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def set_assign_stmt(self):
 
-        localctx = AtopileParser.Set_assign_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Set_assign_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 26, self.RULE_set_assign_stmt)
         self._la = 0 # Token type
         try:
@@ -1354,14 +1357,14 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 211
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==40:
+            if _la==39:
                 self.state = 210
                 self.type_info()
 
 
             self.state = 213
             _la = self._input.LA(1)
-            if not(_la==72 or _la==73):
+            if not(_la==71 or _la==72):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)
@@ -1385,13 +1388,13 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def ADD_ASSIGN(self):
-            return self.getToken(AtopileParser.ADD_ASSIGN, 0)
+            return self.getToken(AtoParser.ADD_ASSIGN, 0)
 
         def SUB_ASSIGN(self):
-            return self.getToken(AtopileParser.SUB_ASSIGN, 0)
+            return self.getToken(AtoParser.SUB_ASSIGN, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_cum_operator
+            return AtoParser.RULE_cum_operator
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCum_operator" ):
@@ -1404,14 +1407,14 @@ class AtopileParser ( AtopileParserBase ):
 
     def cum_operator(self):
 
-        localctx = AtopileParser.Cum_operatorContext(self, self._ctx, self.state)
+        localctx = AtoParser.Cum_operatorContext(self, self._ctx, self.state)
         self.enterRule(localctx, 28, self.RULE_cum_operator)
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 216
             _la = self._input.LA(1)
-            if not(_la==67 or _la==68):
+            if not(_la==66 or _la==67):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)
@@ -1433,15 +1436,15 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def literal_physical(self):
-            return self.getTypedRuleContext(AtopileParser.Literal_physicalContext,0)
+            return self.getTypedRuleContext(AtoParser.Literal_physicalContext,0)
 
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_cum_assignable
+            return AtoParser.RULE_cum_assignable
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCum_assignable" ):
@@ -1454,7 +1457,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def cum_assignable(self):
 
-        localctx = AtopileParser.Cum_assignableContext(self, self._ctx, self.state)
+        localctx = AtoParser.Cum_assignableContext(self, self._ctx, self.state)
         self.enterRule(localctx, 30, self.RULE_cum_assignable)
         try:
             self.state = 220
@@ -1490,27 +1493,27 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def string(self):
-            return self.getTypedRuleContext(AtopileParser.StringContext,0)
+            return self.getTypedRuleContext(AtoParser.StringContext,0)
 
 
         def new_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.New_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.New_stmtContext,0)
 
 
         def literal_physical(self):
-            return self.getTypedRuleContext(AtopileParser.Literal_physicalContext,0)
+            return self.getTypedRuleContext(AtoParser.Literal_physicalContext,0)
 
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def boolean_(self):
-            return self.getTypedRuleContext(AtopileParser.Boolean_Context,0)
+            return self.getTypedRuleContext(AtoParser.Boolean_Context,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_assignable
+            return AtoParser.RULE_assignable
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAssignable" ):
@@ -1523,7 +1526,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def assignable(self):
 
-        localctx = AtopileParser.AssignableContext(self, self._ctx, self.state)
+        localctx = AtoParser.AssignableContext(self, self._ctx, self.state)
         self.enterRule(localctx, 32, self.RULE_assignable)
         try:
             self.state = 227
@@ -1578,16 +1581,16 @@ class AtopileParser ( AtopileParserBase ):
 
         def name_or_attr(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.Name_or_attrContext)
+                return self.getTypedRuleContexts(AtoParser.Name_or_attrContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,i)
+                return self.getTypedRuleContext(AtoParser.Name_or_attrContext,i)
 
 
         def ARROW(self):
-            return self.getToken(AtopileParser.ARROW, 0)
+            return self.getToken(AtoParser.ARROW, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_retype_stmt
+            return AtoParser.RULE_retype_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitRetype_stmt" ):
@@ -1600,14 +1603,14 @@ class AtopileParser ( AtopileParserBase ):
 
     def retype_stmt(self):
 
-        localctx = AtopileParser.Retype_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Retype_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 34, self.RULE_retype_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 229
             self.name_or_attr()
             self.state = 230
-            self.match(AtopileParser.ARROW)
+            self.match(AtoParser.ARROW)
             self.state = 231
             self.name_or_attr()
         except RecognitionException as re:
@@ -1628,16 +1631,16 @@ class AtopileParser ( AtopileParserBase ):
 
         def connectable(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.ConnectableContext)
+                return self.getTypedRuleContexts(AtoParser.ConnectableContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.ConnectableContext,i)
+                return self.getTypedRuleContext(AtoParser.ConnectableContext,i)
 
 
         def NOT_OP(self):
-            return self.getToken(AtopileParser.NOT_OP, 0)
+            return self.getToken(AtoParser.NOT_OP, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_connect_stmt
+            return AtoParser.RULE_connect_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitConnect_stmt" ):
@@ -1650,14 +1653,14 @@ class AtopileParser ( AtopileParserBase ):
 
     def connect_stmt(self):
 
-        localctx = AtopileParser.Connect_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Connect_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 36, self.RULE_connect_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 233
             self.connectable()
             self.state = 234
-            self.match(AtopileParser.NOT_OP)
+            self.match(AtoParser.NOT_OP)
             self.state = 235
             self.connectable()
         except RecognitionException as re:
@@ -1677,23 +1680,23 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def numerical_pin_ref(self):
-            return self.getTypedRuleContext(AtopileParser.Numerical_pin_refContext,0)
+            return self.getTypedRuleContext(AtoParser.Numerical_pin_refContext,0)
 
 
         def signaldef_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Signaldef_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Signaldef_stmtContext,0)
 
 
         def pindef_stmt(self):
-            return self.getTypedRuleContext(AtopileParser.Pindef_stmtContext,0)
+            return self.getTypedRuleContext(AtoParser.Pindef_stmtContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_connectable
+            return AtoParser.RULE_connectable
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitConnectable" ):
@@ -1706,7 +1709,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def connectable(self):
 
-        localctx = AtopileParser.ConnectableContext(self, self._ctx, self.state)
+        localctx = AtoParser.ConnectableContext(self, self._ctx, self.state)
         self.enterRule(localctx, 38, self.RULE_connectable)
         try:
             self.state = 241
@@ -1754,14 +1757,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def SIGNAL(self):
-            return self.getToken(AtopileParser.SIGNAL, 0)
+            return self.getToken(AtoParser.SIGNAL, 0)
 
         def name(self):
-            return self.getTypedRuleContext(AtopileParser.NameContext,0)
+            return self.getTypedRuleContext(AtoParser.NameContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_signaldef_stmt
+            return AtoParser.RULE_signaldef_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSignaldef_stmt" ):
@@ -1774,12 +1777,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def signaldef_stmt(self):
 
-        localctx = AtopileParser.Signaldef_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Signaldef_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 40, self.RULE_signaldef_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 243
-            self.match(AtopileParser.SIGNAL)
+            self.match(AtoParser.SIGNAL)
             self.state = 244
             self.name()
         except RecognitionException as re:
@@ -1799,22 +1802,22 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def PIN(self):
-            return self.getToken(AtopileParser.PIN, 0)
+            return self.getToken(AtoParser.PIN, 0)
 
         def name(self):
-            return self.getTypedRuleContext(AtopileParser.NameContext,0)
+            return self.getTypedRuleContext(AtoParser.NameContext,0)
 
 
         def totally_an_integer(self):
-            return self.getTypedRuleContext(AtopileParser.Totally_an_integerContext,0)
+            return self.getTypedRuleContext(AtoParser.Totally_an_integerContext,0)
 
 
         def string(self):
-            return self.getTypedRuleContext(AtopileParser.StringContext,0)
+            return self.getTypedRuleContext(AtoParser.StringContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_pindef_stmt
+            return AtoParser.RULE_pindef_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPindef_stmt" ):
@@ -1827,16 +1830,16 @@ class AtopileParser ( AtopileParserBase ):
 
     def pindef_stmt(self):
 
-        localctx = AtopileParser.Pindef_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Pindef_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 42, self.RULE_pindef_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 246
-            self.match(AtopileParser.PIN)
+            self.match(AtoParser.PIN)
             self.state = 250
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [21]:
+            if token in [20]:
                 self.state = 247
                 self.name()
                 pass
@@ -1868,14 +1871,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def NEW(self):
-            return self.getToken(AtopileParser.NEW, 0)
+            return self.getToken(AtoParser.NEW, 0)
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_new_stmt
+            return AtoParser.RULE_new_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitNew_stmt" ):
@@ -1888,12 +1891,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def new_stmt(self):
 
-        localctx = AtopileParser.New_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.New_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 44, self.RULE_new_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 252
-            self.match(AtopileParser.NEW)
+            self.match(AtoParser.NEW)
             self.state = 253
             self.name_or_attr()
         except RecognitionException as re:
@@ -1913,11 +1916,11 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def string(self):
-            return self.getTypedRuleContext(AtopileParser.StringContext,0)
+            return self.getTypedRuleContext(AtoParser.StringContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_string_stmt
+            return AtoParser.RULE_string_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitString_stmt" ):
@@ -1930,7 +1933,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def string_stmt(self):
 
-        localctx = AtopileParser.String_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.String_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 46, self.RULE_string_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
@@ -1953,10 +1956,10 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def PASS(self):
-            return self.getToken(AtopileParser.PASS, 0)
+            return self.getToken(AtoParser.PASS, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_pass_stmt
+            return AtoParser.RULE_pass_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPass_stmt" ):
@@ -1969,12 +1972,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def pass_stmt(self):
 
-        localctx = AtopileParser.Pass_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Pass_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 48, self.RULE_pass_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 257
-            self.match(AtopileParser.PASS)
+            self.match(AtoParser.PASS)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -1992,14 +1995,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def ASSERT(self):
-            return self.getToken(AtopileParser.ASSERT, 0)
+            return self.getToken(AtoParser.ASSERT, 0)
 
         def comparison(self):
-            return self.getTypedRuleContext(AtopileParser.ComparisonContext,0)
+            return self.getTypedRuleContext(AtoParser.ComparisonContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_assert_stmt
+            return AtoParser.RULE_assert_stmt
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAssert_stmt" ):
@@ -2012,12 +2015,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def assert_stmt(self):
 
-        localctx = AtopileParser.Assert_stmtContext(self, self._ctx, self.state)
+        localctx = AtoParser.Assert_stmtContext(self, self._ctx, self.state)
         self.enterRule(localctx, 50, self.RULE_assert_stmt)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 259
-            self.match(AtopileParser.ASSERT)
+            self.match(AtoParser.ASSERT)
             self.state = 260
             self.comparison()
         except RecognitionException as re:
@@ -2037,18 +2040,18 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def compare_op_pair(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.Compare_op_pairContext)
+                return self.getTypedRuleContexts(AtoParser.Compare_op_pairContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.Compare_op_pairContext,i)
+                return self.getTypedRuleContext(AtoParser.Compare_op_pairContext,i)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_comparison
+            return AtoParser.RULE_comparison
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitComparison" ):
@@ -2061,7 +2064,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def comparison(self):
 
-        localctx = AtopileParser.ComparisonContext(self, self._ctx, self.state)
+        localctx = AtoParser.ComparisonContext(self, self._ctx, self.state)
         self.enterRule(localctx, 52, self.RULE_comparison)
         self._la = 0 # Token type
         try:
@@ -2077,7 +2080,7 @@ class AtopileParser ( AtopileParserBase ):
                 self.state = 266 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 7782220156096479232) != 0)):
+                if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 3891110078048370688) != 0)):
                     break
 
         except RecognitionException as re:
@@ -2097,27 +2100,27 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def lt_arithmetic_or(self):
-            return self.getTypedRuleContext(AtopileParser.Lt_arithmetic_orContext,0)
+            return self.getTypedRuleContext(AtoParser.Lt_arithmetic_orContext,0)
 
 
         def gt_arithmetic_or(self):
-            return self.getTypedRuleContext(AtopileParser.Gt_arithmetic_orContext,0)
+            return self.getTypedRuleContext(AtoParser.Gt_arithmetic_orContext,0)
 
 
         def lt_eq_arithmetic_or(self):
-            return self.getTypedRuleContext(AtopileParser.Lt_eq_arithmetic_orContext,0)
+            return self.getTypedRuleContext(AtoParser.Lt_eq_arithmetic_orContext,0)
 
 
         def gt_eq_arithmetic_or(self):
-            return self.getTypedRuleContext(AtopileParser.Gt_eq_arithmetic_orContext,0)
+            return self.getTypedRuleContext(AtoParser.Gt_eq_arithmetic_orContext,0)
 
 
         def in_arithmetic_or(self):
-            return self.getTypedRuleContext(AtopileParser.In_arithmetic_orContext,0)
+            return self.getTypedRuleContext(AtoParser.In_arithmetic_orContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_compare_op_pair
+            return AtoParser.RULE_compare_op_pair
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCompare_op_pair" ):
@@ -2130,28 +2133,28 @@ class AtopileParser ( AtopileParserBase ):
 
     def compare_op_pair(self):
 
-        localctx = AtopileParser.Compare_op_pairContext(self, self._ctx, self.state)
+        localctx = AtoParser.Compare_op_pairContext(self, self._ctx, self.state)
         self.enterRule(localctx, 54, self.RULE_compare_op_pair)
         try:
             self.state = 273
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [58]:
+            if token in [57]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 268
                 self.lt_arithmetic_or()
                 pass
-            elif token in [59]:
+            elif token in [58]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 269
                 self.gt_arithmetic_or()
                 pass
-            elif token in [62]:
+            elif token in [61]:
                 self.enterOuterAlt(localctx, 3)
                 self.state = 270
                 self.lt_eq_arithmetic_or()
                 pass
-            elif token in [61]:
+            elif token in [60]:
                 self.enterOuterAlt(localctx, 4)
                 self.state = 271
                 self.gt_eq_arithmetic_or()
@@ -2181,14 +2184,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def LESS_THAN(self):
-            return self.getToken(AtopileParser.LESS_THAN, 0)
+            return self.getToken(AtoParser.LESS_THAN, 0)
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_lt_arithmetic_or
+            return AtoParser.RULE_lt_arithmetic_or
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitLt_arithmetic_or" ):
@@ -2201,12 +2204,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def lt_arithmetic_or(self):
 
-        localctx = AtopileParser.Lt_arithmetic_orContext(self, self._ctx, self.state)
+        localctx = AtoParser.Lt_arithmetic_orContext(self, self._ctx, self.state)
         self.enterRule(localctx, 56, self.RULE_lt_arithmetic_or)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 275
-            self.match(AtopileParser.LESS_THAN)
+            self.match(AtoParser.LESS_THAN)
             self.state = 276
             self.arithmetic_expression(0)
         except RecognitionException as re:
@@ -2226,14 +2229,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def GREATER_THAN(self):
-            return self.getToken(AtopileParser.GREATER_THAN, 0)
+            return self.getToken(AtoParser.GREATER_THAN, 0)
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_gt_arithmetic_or
+            return AtoParser.RULE_gt_arithmetic_or
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitGt_arithmetic_or" ):
@@ -2246,12 +2249,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def gt_arithmetic_or(self):
 
-        localctx = AtopileParser.Gt_arithmetic_orContext(self, self._ctx, self.state)
+        localctx = AtoParser.Gt_arithmetic_orContext(self, self._ctx, self.state)
         self.enterRule(localctx, 58, self.RULE_gt_arithmetic_or)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 278
-            self.match(AtopileParser.GREATER_THAN)
+            self.match(AtoParser.GREATER_THAN)
             self.state = 279
             self.arithmetic_expression(0)
         except RecognitionException as re:
@@ -2271,14 +2274,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def LT_EQ(self):
-            return self.getToken(AtopileParser.LT_EQ, 0)
+            return self.getToken(AtoParser.LT_EQ, 0)
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_lt_eq_arithmetic_or
+            return AtoParser.RULE_lt_eq_arithmetic_or
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitLt_eq_arithmetic_or" ):
@@ -2291,12 +2294,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def lt_eq_arithmetic_or(self):
 
-        localctx = AtopileParser.Lt_eq_arithmetic_orContext(self, self._ctx, self.state)
+        localctx = AtoParser.Lt_eq_arithmetic_orContext(self, self._ctx, self.state)
         self.enterRule(localctx, 60, self.RULE_lt_eq_arithmetic_or)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 281
-            self.match(AtopileParser.LT_EQ)
+            self.match(AtoParser.LT_EQ)
             self.state = 282
             self.arithmetic_expression(0)
         except RecognitionException as re:
@@ -2316,14 +2319,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def GT_EQ(self):
-            return self.getToken(AtopileParser.GT_EQ, 0)
+            return self.getToken(AtoParser.GT_EQ, 0)
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_gt_eq_arithmetic_or
+            return AtoParser.RULE_gt_eq_arithmetic_or
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitGt_eq_arithmetic_or" ):
@@ -2336,12 +2339,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def gt_eq_arithmetic_or(self):
 
-        localctx = AtopileParser.Gt_eq_arithmetic_orContext(self, self._ctx, self.state)
+        localctx = AtoParser.Gt_eq_arithmetic_orContext(self, self._ctx, self.state)
         self.enterRule(localctx, 62, self.RULE_gt_eq_arithmetic_or)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 284
-            self.match(AtopileParser.GT_EQ)
+            self.match(AtoParser.GT_EQ)
             self.state = 285
             self.arithmetic_expression(0)
         except RecognitionException as re:
@@ -2361,14 +2364,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def WITHIN(self):
-            return self.getToken(AtopileParser.WITHIN, 0)
+            return self.getToken(AtoParser.WITHIN, 0)
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_in_arithmetic_or
+            return AtoParser.RULE_in_arithmetic_or
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitIn_arithmetic_or" ):
@@ -2381,12 +2384,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def in_arithmetic_or(self):
 
-        localctx = AtopileParser.In_arithmetic_orContext(self, self._ctx, self.state)
+        localctx = AtoParser.In_arithmetic_orContext(self, self._ctx, self.state)
         self.enterRule(localctx, 64, self.RULE_in_arithmetic_or)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 287
-            self.match(AtopileParser.WITHIN)
+            self.match(AtoParser.WITHIN)
             self.state = 288
             self.arithmetic_expression(0)
         except RecognitionException as re:
@@ -2406,21 +2409,21 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def sum_(self):
-            return self.getTypedRuleContext(AtopileParser.SumContext,0)
+            return self.getTypedRuleContext(AtoParser.SumContext,0)
 
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def OR_OP(self):
-            return self.getToken(AtopileParser.OR_OP, 0)
+            return self.getToken(AtoParser.OR_OP, 0)
 
         def AND_OP(self):
-            return self.getToken(AtopileParser.AND_OP, 0)
+            return self.getToken(AtoParser.AND_OP, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_arithmetic_expression
+            return AtoParser.RULE_arithmetic_expression
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitArithmetic_expression" ):
@@ -2433,7 +2436,7 @@ class AtopileParser ( AtopileParserBase ):
     def arithmetic_expression(self, _p:int=0):
         _parentctx = self._ctx
         _parentState = self.state
-        localctx = AtopileParser.Arithmetic_expressionContext(self, self._ctx, _parentState)
+        localctx = AtoParser.Arithmetic_expressionContext(self, self._ctx, _parentState)
         _prevctx = localctx
         _startState = 66
         self.enterRecursionRule(localctx, 66, self.RULE_arithmetic_expression, _p)
@@ -2451,7 +2454,7 @@ class AtopileParser ( AtopileParserBase ):
                     if self._parseListeners is not None:
                         self.triggerExitRuleEvent()
                     _prevctx = localctx
-                    localctx = AtopileParser.Arithmetic_expressionContext(self, _parentctx, _parentState)
+                    localctx = AtoParser.Arithmetic_expressionContext(self, _parentctx, _parentState)
                     self.pushNewRecursionContext(localctx, _startState, self.RULE_arithmetic_expression)
                     self.state = 293
                     if not self.precpred(self._ctx, 2):
@@ -2459,7 +2462,7 @@ class AtopileParser ( AtopileParserBase ):
                         raise FailedPredicateException(self, "self.precpred(self._ctx, 2)")
                     self.state = 294
                     _la = self._input.LA(1)
-                    if not(_la==46 or _la==48):
+                    if not(_la==45 or _la==47):
                         self._errHandler.recoverInline(self)
                     else:
                         self._errHandler.reportMatch(self)
@@ -2487,21 +2490,21 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def term(self):
-            return self.getTypedRuleContext(AtopileParser.TermContext,0)
+            return self.getTypedRuleContext(AtoParser.TermContext,0)
 
 
         def sum_(self):
-            return self.getTypedRuleContext(AtopileParser.SumContext,0)
+            return self.getTypedRuleContext(AtoParser.SumContext,0)
 
 
         def ADD(self):
-            return self.getToken(AtopileParser.ADD, 0)
+            return self.getToken(AtoParser.ADD, 0)
 
         def MINUS(self):
-            return self.getToken(AtopileParser.MINUS, 0)
+            return self.getToken(AtoParser.MINUS, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_sum
+            return AtoParser.RULE_sum
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSum" ):
@@ -2514,7 +2517,7 @@ class AtopileParser ( AtopileParserBase ):
     def sum_(self, _p:int=0):
         _parentctx = self._ctx
         _parentState = self.state
-        localctx = AtopileParser.SumContext(self, self._ctx, _parentState)
+        localctx = AtoParser.SumContext(self, self._ctx, _parentState)
         _prevctx = localctx
         _startState = 68
         self.enterRecursionRule(localctx, 68, self.RULE_sum, _p)
@@ -2532,7 +2535,7 @@ class AtopileParser ( AtopileParserBase ):
                     if self._parseListeners is not None:
                         self.triggerExitRuleEvent()
                     _prevctx = localctx
-                    localctx = AtopileParser.SumContext(self, _parentctx, _parentState)
+                    localctx = AtoParser.SumContext(self, _parentctx, _parentState)
                     self.pushNewRecursionContext(localctx, _startState, self.RULE_sum)
                     self.state = 304
                     if not self.precpred(self._ctx, 2):
@@ -2540,7 +2543,7 @@ class AtopileParser ( AtopileParserBase ):
                         raise FailedPredicateException(self, "self.precpred(self._ctx, 2)")
                     self.state = 305
                     _la = self._input.LA(1)
-                    if not(_la==51 or _la==52):
+                    if not(_la==50 or _la==51):
                         self._errHandler.recoverInline(self)
                     else:
                         self._errHandler.reportMatch(self)
@@ -2568,21 +2571,21 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def power(self):
-            return self.getTypedRuleContext(AtopileParser.PowerContext,0)
+            return self.getTypedRuleContext(AtoParser.PowerContext,0)
 
 
         def term(self):
-            return self.getTypedRuleContext(AtopileParser.TermContext,0)
+            return self.getTypedRuleContext(AtoParser.TermContext,0)
 
 
         def STAR(self):
-            return self.getToken(AtopileParser.STAR, 0)
+            return self.getToken(AtoParser.STAR, 0)
 
         def DIV(self):
-            return self.getToken(AtopileParser.DIV, 0)
+            return self.getToken(AtoParser.DIV, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_term
+            return AtoParser.RULE_term
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitTerm" ):
@@ -2595,7 +2598,7 @@ class AtopileParser ( AtopileParserBase ):
     def term(self, _p:int=0):
         _parentctx = self._ctx
         _parentState = self.state
-        localctx = AtopileParser.TermContext(self, self._ctx, _parentState)
+        localctx = AtoParser.TermContext(self, self._ctx, _parentState)
         _prevctx = localctx
         _startState = 70
         self.enterRecursionRule(localctx, 70, self.RULE_term, _p)
@@ -2613,7 +2616,7 @@ class AtopileParser ( AtopileParserBase ):
                     if self._parseListeners is not None:
                         self.triggerExitRuleEvent()
                     _prevctx = localctx
-                    localctx = AtopileParser.TermContext(self, _parentctx, _parentState)
+                    localctx = AtoParser.TermContext(self, _parentctx, _parentState)
                     self.pushNewRecursionContext(localctx, _startState, self.RULE_term)
                     self.state = 315
                     if not self.precpred(self._ctx, 2):
@@ -2621,7 +2624,7 @@ class AtopileParser ( AtopileParserBase ):
                         raise FailedPredicateException(self, "self.precpred(self._ctx, 2)")
                     self.state = 316
                     _la = self._input.LA(1)
-                    if not(_la==36 or _la==53):
+                    if not(_la==35 or _la==52):
                         self._errHandler.recoverInline(self)
                     else:
                         self._errHandler.reportMatch(self)
@@ -2650,16 +2653,16 @@ class AtopileParser ( AtopileParserBase ):
 
         def functional(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.FunctionalContext)
+                return self.getTypedRuleContexts(AtoParser.FunctionalContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.FunctionalContext,i)
+                return self.getTypedRuleContext(AtoParser.FunctionalContext,i)
 
 
         def POWER(self):
-            return self.getToken(AtopileParser.POWER, 0)
+            return self.getToken(AtoParser.POWER, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_power
+            return AtoParser.RULE_power
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPower" ):
@@ -2672,7 +2675,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def power(self):
 
-        localctx = AtopileParser.PowerContext(self, self._ctx, self.state)
+        localctx = AtoParser.PowerContext(self, self._ctx, self.state)
         self.enterRule(localctx, 72, self.RULE_power)
         try:
             self.enterOuterAlt(localctx, 1)
@@ -2683,7 +2686,7 @@ class AtopileParser ( AtopileParserBase ):
             la_ = self._interp.adaptivePredict(self._input,23,self._ctx)
             if la_ == 1:
                 self.state = 324
-                self.match(AtopileParser.POWER)
+                self.match(AtoParser.POWER)
                 self.state = 325
                 self.functional()
 
@@ -2706,23 +2709,23 @@ class AtopileParser ( AtopileParserBase ):
 
         def bound(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.BoundContext)
+                return self.getTypedRuleContexts(AtoParser.BoundContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.BoundContext,i)
+                return self.getTypedRuleContext(AtoParser.BoundContext,i)
 
 
         def name(self):
-            return self.getTypedRuleContext(AtopileParser.NameContext,0)
+            return self.getTypedRuleContext(AtoParser.NameContext,0)
 
 
         def OPEN_PAREN(self):
-            return self.getToken(AtopileParser.OPEN_PAREN, 0)
+            return self.getToken(AtoParser.OPEN_PAREN, 0)
 
         def CLOSE_PAREN(self):
-            return self.getToken(AtopileParser.CLOSE_PAREN, 0)
+            return self.getToken(AtoParser.CLOSE_PAREN, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_functional
+            return AtoParser.RULE_functional
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitFunctional" ):
@@ -2735,7 +2738,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def functional(self):
 
-        localctx = AtopileParser.FunctionalContext(self, self._ctx, self.state)
+        localctx = AtoParser.FunctionalContext(self, self._ctx, self.state)
         self.enterRule(localctx, 74, self.RULE_functional)
         self._la = 0 # Token type
         try:
@@ -2753,7 +2756,7 @@ class AtopileParser ( AtopileParserBase ):
                 self.state = 329
                 self.name()
                 self.state = 330
-                self.match(AtopileParser.OPEN_PAREN)
+                self.match(AtoParser.OPEN_PAREN)
                 self.state = 332 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
@@ -2763,11 +2766,11 @@ class AtopileParser ( AtopileParserBase ):
                     self.state = 334 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 6755536882106384) != 0)):
+                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 3377768441053200) != 0)):
                         break
 
                 self.state = 336
-                self.match(AtopileParser.CLOSE_PAREN)
+                self.match(AtoParser.CLOSE_PAREN)
                 pass
 
 
@@ -2788,11 +2791,11 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def atom(self):
-            return self.getTypedRuleContext(AtopileParser.AtomContext,0)
+            return self.getTypedRuleContext(AtoParser.AtomContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_bound
+            return AtoParser.RULE_bound
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBound" ):
@@ -2805,7 +2808,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def bound(self):
 
-        localctx = AtopileParser.BoundContext(self, self._ctx, self.state)
+        localctx = AtoParser.BoundContext(self, self._ctx, self.state)
         self.enterRule(localctx, 76, self.RULE_bound)
         try:
             self.enterOuterAlt(localctx, 1)
@@ -2828,19 +2831,19 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def literal_physical(self):
-            return self.getTypedRuleContext(AtopileParser.Literal_physicalContext,0)
+            return self.getTypedRuleContext(AtoParser.Literal_physicalContext,0)
 
 
         def arithmetic_group(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_groupContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_groupContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_atom
+            return AtoParser.RULE_atom
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAtom" ):
@@ -2853,23 +2856,23 @@ class AtopileParser ( AtopileParserBase ):
 
     def atom(self):
 
-        localctx = AtopileParser.AtomContext(self, self._ctx, self.state)
+        localctx = AtoParser.AtomContext(self, self._ctx, self.state)
         self.enterRule(localctx, 78, self.RULE_atom)
         try:
             self.state = 345
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [21]:
+            if token in [20]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 342
                 self.name_or_attr()
                 pass
-            elif token in [4, 51, 52]:
+            elif token in [4, 50, 51]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 343
                 self.literal_physical()
                 pass
-            elif token in [37]:
+            elif token in [36]:
                 self.enterOuterAlt(localctx, 3)
                 self.state = 344
                 self.arithmetic_group()
@@ -2894,17 +2897,17 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def OPEN_PAREN(self):
-            return self.getToken(AtopileParser.OPEN_PAREN, 0)
+            return self.getToken(AtoParser.OPEN_PAREN, 0)
 
         def arithmetic_expression(self):
-            return self.getTypedRuleContext(AtopileParser.Arithmetic_expressionContext,0)
+            return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
         def CLOSE_PAREN(self):
-            return self.getToken(AtopileParser.CLOSE_PAREN, 0)
+            return self.getToken(AtoParser.CLOSE_PAREN, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_arithmetic_group
+            return AtoParser.RULE_arithmetic_group
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitArithmetic_group" ):
@@ -2917,16 +2920,16 @@ class AtopileParser ( AtopileParserBase ):
 
     def arithmetic_group(self):
 
-        localctx = AtopileParser.Arithmetic_groupContext(self, self._ctx, self.state)
+        localctx = AtoParser.Arithmetic_groupContext(self, self._ctx, self.state)
         self.enterRule(localctx, 80, self.RULE_arithmetic_group)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 347
-            self.match(AtopileParser.OPEN_PAREN)
+            self.match(AtoParser.OPEN_PAREN)
             self.state = 348
             self.arithmetic_expression(0)
             self.state = 349
-            self.match(AtopileParser.CLOSE_PAREN)
+            self.match(AtoParser.CLOSE_PAREN)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -2944,19 +2947,19 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def bound_quantity(self):
-            return self.getTypedRuleContext(AtopileParser.Bound_quantityContext,0)
+            return self.getTypedRuleContext(AtoParser.Bound_quantityContext,0)
 
 
         def bilateral_quantity(self):
-            return self.getTypedRuleContext(AtopileParser.Bilateral_quantityContext,0)
+            return self.getTypedRuleContext(AtoParser.Bilateral_quantityContext,0)
 
 
         def quantity(self):
-            return self.getTypedRuleContext(AtopileParser.QuantityContext,0)
+            return self.getTypedRuleContext(AtoParser.QuantityContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_literal_physical
+            return AtoParser.RULE_literal_physical
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitLiteral_physical" ):
@@ -2969,7 +2972,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def literal_physical(self):
 
-        localctx = AtopileParser.Literal_physicalContext(self, self._ctx, self.state)
+        localctx = AtoParser.Literal_physicalContext(self, self._ctx, self.state)
         self.enterRule(localctx, 82, self.RULE_literal_physical)
         try:
             self.state = 354
@@ -3012,16 +3015,16 @@ class AtopileParser ( AtopileParserBase ):
 
         def quantity(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.QuantityContext)
+                return self.getTypedRuleContexts(AtoParser.QuantityContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.QuantityContext,i)
+                return self.getTypedRuleContext(AtoParser.QuantityContext,i)
 
 
         def TO(self):
-            return self.getToken(AtopileParser.TO, 0)
+            return self.getToken(AtoParser.TO, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_bound_quantity
+            return AtoParser.RULE_bound_quantity
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBound_quantity" ):
@@ -3034,14 +3037,14 @@ class AtopileParser ( AtopileParserBase ):
 
     def bound_quantity(self):
 
-        localctx = AtopileParser.Bound_quantityContext(self, self._ctx, self.state)
+        localctx = AtoParser.Bound_quantityContext(self, self._ctx, self.state)
         self.enterRule(localctx, 84, self.RULE_bound_quantity)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 356
             self.quantity()
             self.state = 357
-            self.match(AtopileParser.TO)
+            self.match(AtoParser.TO)
             self.state = 358
             self.quantity()
         except RecognitionException as re:
@@ -3061,18 +3064,18 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def quantity(self):
-            return self.getTypedRuleContext(AtopileParser.QuantityContext,0)
+            return self.getTypedRuleContext(AtoParser.QuantityContext,0)
 
 
         def PLUS_OR_MINUS(self):
-            return self.getToken(AtopileParser.PLUS_OR_MINUS, 0)
+            return self.getToken(AtoParser.PLUS_OR_MINUS, 0)
 
         def bilateral_tolerance(self):
-            return self.getTypedRuleContext(AtopileParser.Bilateral_toleranceContext,0)
+            return self.getTypedRuleContext(AtoParser.Bilateral_toleranceContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_bilateral_quantity
+            return AtoParser.RULE_bilateral_quantity
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBilateral_quantity" ):
@@ -3085,14 +3088,14 @@ class AtopileParser ( AtopileParserBase ):
 
     def bilateral_quantity(self):
 
-        localctx = AtopileParser.Bilateral_quantityContext(self, self._ctx, self.state)
+        localctx = AtoParser.Bilateral_quantityContext(self, self._ctx, self.state)
         self.enterRule(localctx, 86, self.RULE_bilateral_quantity)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 360
             self.quantity()
             self.state = 361
-            self.match(AtopileParser.PLUS_OR_MINUS)
+            self.match(AtoParser.PLUS_OR_MINUS)
             self.state = 362
             self.bilateral_tolerance()
         except RecognitionException as re:
@@ -3112,20 +3115,20 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def NUMBER(self):
-            return self.getToken(AtopileParser.NUMBER, 0)
+            return self.getToken(AtoParser.NUMBER, 0)
 
         def name(self):
-            return self.getTypedRuleContext(AtopileParser.NameContext,0)
+            return self.getTypedRuleContext(AtoParser.NameContext,0)
 
 
         def ADD(self):
-            return self.getToken(AtopileParser.ADD, 0)
+            return self.getToken(AtoParser.ADD, 0)
 
         def MINUS(self):
-            return self.getToken(AtopileParser.MINUS, 0)
+            return self.getToken(AtoParser.MINUS, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_quantity
+            return AtoParser.RULE_quantity
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitQuantity" ):
@@ -3138,7 +3141,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def quantity(self):
 
-        localctx = AtopileParser.QuantityContext(self, self._ctx, self.state)
+        localctx = AtoParser.QuantityContext(self, self._ctx, self.state)
         self.enterRule(localctx, 88, self.RULE_quantity)
         self._la = 0 # Token type
         try:
@@ -3146,10 +3149,10 @@ class AtopileParser ( AtopileParserBase ):
             self.state = 365
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==51 or _la==52:
+            if _la==50 or _la==51:
                 self.state = 364
                 _la = self._input.LA(1)
-                if not(_la==51 or _la==52):
+                if not(_la==50 or _la==51):
                     self._errHandler.recoverInline(self)
                 else:
                     self._errHandler.reportMatch(self)
@@ -3157,7 +3160,7 @@ class AtopileParser ( AtopileParserBase ):
 
 
             self.state = 367
-            self.match(AtopileParser.NUMBER)
+            self.match(AtoParser.NUMBER)
             self.state = 369
             self._errHandler.sync(self)
             la_ = self._interp.adaptivePredict(self._input,29,self._ctx)
@@ -3183,17 +3186,17 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def NUMBER(self):
-            return self.getToken(AtopileParser.NUMBER, 0)
+            return self.getToken(AtoParser.NUMBER, 0)
 
         def PERCENT(self):
-            return self.getToken(AtopileParser.PERCENT, 0)
+            return self.getToken(AtoParser.PERCENT, 0)
 
         def name(self):
-            return self.getTypedRuleContext(AtopileParser.NameContext,0)
+            return self.getTypedRuleContext(AtoParser.NameContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_bilateral_tolerance
+            return AtoParser.RULE_bilateral_tolerance
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBilateral_tolerance" ):
@@ -3206,18 +3209,18 @@ class AtopileParser ( AtopileParserBase ):
 
     def bilateral_tolerance(self):
 
-        localctx = AtopileParser.Bilateral_toleranceContext(self, self._ctx, self.state)
+        localctx = AtoParser.Bilateral_toleranceContext(self, self._ctx, self.state)
         self.enterRule(localctx, 90, self.RULE_bilateral_tolerance)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 371
-            self.match(AtopileParser.NUMBER)
+            self.match(AtoParser.NUMBER)
             self.state = 374
             self._errHandler.sync(self)
             la_ = self._interp.adaptivePredict(self._input,30,self._ctx)
             if la_ == 1:
                 self.state = 372
-                self.match(AtopileParser.PERCENT)
+                self.match(AtoParser.PERCENT)
 
             elif la_ == 2:
                 self.state = 373
@@ -3241,15 +3244,15 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def attr(self):
-            return self.getTypedRuleContext(AtopileParser.AttrContext,0)
+            return self.getTypedRuleContext(AtoParser.AttrContext,0)
 
 
         def name(self):
-            return self.getTypedRuleContext(AtopileParser.NameContext,0)
+            return self.getTypedRuleContext(AtoParser.NameContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_name_or_attr
+            return AtoParser.RULE_name_or_attr
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitName_or_attr" ):
@@ -3262,7 +3265,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def name_or_attr(self):
 
-        localctx = AtopileParser.Name_or_attrContext(self, self._ctx, self.state)
+        localctx = AtoParser.Name_or_attrContext(self, self._ctx, self.state)
         self.enterRule(localctx, 92, self.RULE_name_or_attr)
         try:
             self.state = 378
@@ -3298,14 +3301,14 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def COLON(self):
-            return self.getToken(AtopileParser.COLON, 0)
+            return self.getToken(AtoParser.COLON, 0)
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_type_info
+            return AtoParser.RULE_type_info
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitType_info" ):
@@ -3318,12 +3321,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def type_info(self):
 
-        localctx = AtopileParser.Type_infoContext(self, self._ctx, self.state)
+        localctx = AtoParser.Type_infoContext(self, self._ctx, self.state)
         self.enterRule(localctx, 94, self.RULE_type_info)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 380
-            self.match(AtopileParser.COLON)
+            self.match(AtoParser.COLON)
             self.state = 381
             self.name_or_attr()
         except RecognitionException as re:
@@ -3343,18 +3346,18 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def name_or_attr(self):
-            return self.getTypedRuleContext(AtopileParser.Name_or_attrContext,0)
+            return self.getTypedRuleContext(AtoParser.Name_or_attrContext,0)
 
 
         def DOT(self):
-            return self.getToken(AtopileParser.DOT, 0)
+            return self.getToken(AtoParser.DOT, 0)
 
         def totally_an_integer(self):
-            return self.getTypedRuleContext(AtopileParser.Totally_an_integerContext,0)
+            return self.getTypedRuleContext(AtoParser.Totally_an_integerContext,0)
 
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_numerical_pin_ref
+            return AtoParser.RULE_numerical_pin_ref
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitNumerical_pin_ref" ):
@@ -3367,14 +3370,14 @@ class AtopileParser ( AtopileParserBase ):
 
     def numerical_pin_ref(self):
 
-        localctx = AtopileParser.Numerical_pin_refContext(self, self._ctx, self.state)
+        localctx = AtoParser.Numerical_pin_refContext(self, self._ctx, self.state)
         self.enterRule(localctx, 96, self.RULE_numerical_pin_ref)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 383
             self.name_or_attr()
             self.state = 384
-            self.match(AtopileParser.DOT)
+            self.match(AtoParser.DOT)
             self.state = 385
             self.totally_an_integer()
         except RecognitionException as re:
@@ -3395,19 +3398,19 @@ class AtopileParser ( AtopileParserBase ):
 
         def name(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(AtopileParser.NameContext)
+                return self.getTypedRuleContexts(AtoParser.NameContext)
             else:
-                return self.getTypedRuleContext(AtopileParser.NameContext,i)
+                return self.getTypedRuleContext(AtoParser.NameContext,i)
 
 
         def DOT(self, i:int=None):
             if i is None:
-                return self.getTokens(AtopileParser.DOT)
+                return self.getTokens(AtoParser.DOT)
             else:
-                return self.getToken(AtopileParser.DOT, i)
+                return self.getToken(AtoParser.DOT, i)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_attr
+            return AtoParser.RULE_attr
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAttr" ):
@@ -3420,7 +3423,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def attr(self):
 
-        localctx = AtopileParser.AttrContext(self, self._ctx, self.state)
+        localctx = AtoParser.AttrContext(self, self._ctx, self.state)
         self.enterRule(localctx, 98, self.RULE_attr)
         try:
             self.enterOuterAlt(localctx, 1)
@@ -3432,7 +3435,7 @@ class AtopileParser ( AtopileParserBase ):
             while _alt!=2 and _alt!=ATN.INVALID_ALT_NUMBER:
                 if _alt == 1:
                     self.state = 388
-                    self.match(AtopileParser.DOT)
+                    self.match(AtoParser.DOT)
                     self.state = 389
                     self.name()
 
@@ -3459,10 +3462,10 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def NUMBER(self):
-            return self.getToken(AtopileParser.NUMBER, 0)
+            return self.getToken(AtoParser.NUMBER, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_totally_an_integer
+            return AtoParser.RULE_totally_an_integer
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitTotally_an_integer" ):
@@ -3475,12 +3478,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def totally_an_integer(self):
 
-        localctx = AtopileParser.Totally_an_integerContext(self, self._ctx, self.state)
+        localctx = AtoParser.Totally_an_integerContext(self, self._ctx, self.state)
         self.enterRule(localctx, 100, self.RULE_totally_an_integer)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 394
-            self.match(AtopileParser.NUMBER)
+            self.match(AtoParser.NUMBER)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -3498,10 +3501,10 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def NAME(self):
-            return self.getToken(AtopileParser.NAME, 0)
+            return self.getToken(AtoParser.NAME, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_name
+            return AtoParser.RULE_name
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitName" ):
@@ -3514,12 +3517,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def name(self):
 
-        localctx = AtopileParser.NameContext(self, self._ctx, self.state)
+        localctx = AtoParser.NameContext(self, self._ctx, self.state)
         self.enterRule(localctx, 102, self.RULE_name)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 396
-            self.match(AtopileParser.NAME)
+            self.match(AtoParser.NAME)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -3537,10 +3540,10 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def STRING(self):
-            return self.getToken(AtopileParser.STRING, 0)
+            return self.getToken(AtoParser.STRING, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_string
+            return AtoParser.RULE_string
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitString" ):
@@ -3553,12 +3556,12 @@ class AtopileParser ( AtopileParserBase ):
 
     def string(self):
 
-        localctx = AtopileParser.StringContext(self, self._ctx, self.state)
+        localctx = AtoParser.StringContext(self, self._ctx, self.state)
         self.enterRule(localctx, 104, self.RULE_string)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 398
-            self.match(AtopileParser.STRING)
+            self.match(AtoParser.STRING)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -3576,13 +3579,13 @@ class AtopileParser ( AtopileParserBase ):
             self.parser = parser
 
         def TRUE(self):
-            return self.getToken(AtopileParser.TRUE, 0)
+            return self.getToken(AtoParser.TRUE, 0)
 
         def FALSE(self):
-            return self.getToken(AtopileParser.FALSE, 0)
+            return self.getToken(AtoParser.FALSE, 0)
 
         def getRuleIndex(self):
-            return AtopileParser.RULE_boolean_
+            return AtoParser.RULE_boolean_
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBoolean_" ):
@@ -3595,7 +3598,7 @@ class AtopileParser ( AtopileParserBase ):
 
     def boolean_(self):
 
-        localctx = AtopileParser.Boolean_Context(self, self._ctx, self.state)
+        localctx = AtoParser.Boolean_Context(self, self._ctx, self.state)
         self.enterRule(localctx, 106, self.RULE_boolean_)
         self._la = 0 # Token type
         try:

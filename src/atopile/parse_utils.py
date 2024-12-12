@@ -3,15 +3,9 @@ Utils related to handling the parse tree
 """
 
 from pathlib import Path
-from typing import Any, Optional
 
-from antlr4 import (
-    InputStream,
-    Lexer,
-    ParserRuleContext,
-    ParseTreeVisitor,
-    Token,
-)
+from antlr4 import CommonTokenStream, InputStream, ParserRuleContext, Token
+from antlr4.TokenStreamRewriter import TokenStreamRewriter
 
 
 def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
@@ -38,55 +32,122 @@ def format_src_info(ctx: ParserRuleContext) -> str:
     return f"{src}:{start_line}:{start_col}"
 
 
-# FIXME: I hate this pattern
-# It should instead at least return a list of tokens
-# for processing in a regular for loop
-class _Reconstructor(ParseTreeVisitor):
-    def __init__(self) -> None:
-        super().__init__()
-        self.txt = ""
-        self.last_line = None
-        self.last_col = None
+def reconstruct(
+    ctx: ParserRuleContext,
+    mark: ParserRuleContext | None = None,
+    expand_before: int | None = None,
+    expand_after: int | None = None,
+) -> str:
+    """
+    Reconstruct the source code from a parse tree
 
-    def visitTerminal(self, node) -> str:
-        symbol: Token = node.getSymbol()
+    Args:
+        ctx: The parse tree to reconstruct
+        mark: The context to mark with carets underneath
+        expand_before: The number of lines to expand before the mark.
+            0 -> To the start of the current line
+        expand_after: The number of lines to expand after the mark.
+            0 -> To the end of the current line
+    """
+    from atopile.parser.AtoLexer import AtoLexer
+    from atopile.parser.AtoParser import AtoParser
 
-        if self.last_line is None:
-            self.last_line = symbol.line
-            self.last_col = symbol.start
+    assert isinstance(ctx.parser, AtoParser)
+    input_stream: CommonTokenStream = ctx.parser.getInputStream()
 
-        if symbol.line > self.last_line:
-            self.txt += "\n" * (symbol.line - self.last_line)
-            self.last_col = 0
+    newlines_before = []
+    newlines_after = []
+    found_start = False
+    found_stop = False
+    rewriter = TokenStreamRewriter(input_stream)
+    for token in input_stream.tokens:
+        assert isinstance(token, Token)
+        if token is ctx.start:
+            found_start = True
+        if token is ctx.stop:
+            found_stop = True
 
-        self.txt += " " * (symbol.start - self.last_col - 1)
+        if token.type in {AtoLexer.INDENT, AtoLexer.DEDENT}:
+            rewriter.deleteToken(token)
 
-        self.last_line = symbol.line
-        self.last_col = symbol.stop
+        elif token.type == AtoLexer.NEWLINE:
+            if not found_start:
+                newlines_before.append(token)
+            if found_stop:
+                newlines_after.append(token)
 
-        self.txt += node.getText()
-        return super().visitTerminal(node)
+            rewriter.replaceSingleToken(token, "\n")
 
+    # Figure out where to start and stop
+    if expand_before is not None:
+        try:
+            start_after_token = newlines_before[-expand_before - 1]
+        except IndexError:
+            start_token = input_stream.tokens[0]
+        else:
+            try:
+                # Take the token after the indicated newline
+                start_token = input_stream.tokens[start_after_token.tokenIndex + 1]
+            except IndexError:
+                # If nothing before, start at the first token
+                start_token = input_stream.tokens[0]
 
-def reconstruct(ctx: ParserRuleContext) -> str:
-    """Reconstruct the source code from a parse tree"""
-    reco = _Reconstructor()
-    reco.visit(ctx)
-    return reco.txt
-
-
-def get_comment_from_token(token: Token) -> Optional[str]:
-    """Return the comment from a token's start line."""
-    lexer: Optional[Lexer] = token.getTokenSource()
-    if not lexer or not hasattr(lexer, "comments"):
-        return None
-
-    comments: dict[tuple[Any, int], str] = lexer.comments
-    line: int = token.line
-
-    if input_stream := token.getInputStream():
-        source_name = input_stream.name
     else:
-        return None
+        start_token = ctx.start
 
-    return comments.get((source_name, line))
+    if expand_after is not None:
+        try:
+            start_before_token = newlines_after[expand_after]
+        except IndexError:
+            # Expand to end
+            stop_token = input_stream.tokens[-1]
+        else:
+            try:
+                # Take the token after the indicated newline
+                stop_token = input_stream.tokens[start_before_token.tokenIndex - 1]
+            except IndexError:
+                # If nothing before, start at the first token
+                stop_token = input_stream.tokens[0]
+
+    else:
+        stop_token = ctx.stop
+
+    # Generate marked code
+    if mark is None:
+        return rewriter.getText(
+            TokenStreamRewriter.DEFAULT_PROGRAM_NAME,
+            start_token.tokenIndex,
+            stop_token.tokenIndex,
+        )
+
+    else:
+        # Get the text up to the mark token
+        before_marked: str = rewriter.getText(
+            TokenStreamRewriter.DEFAULT_PROGRAM_NAME,
+            start_token.tokenIndex,
+            mark.start.tokenIndex - 1,
+        )
+        after_marked: str = rewriter.getText(
+            TokenStreamRewriter.DEFAULT_PROGRAM_NAME,
+            mark.start.tokenIndex,
+            stop_token.tokenIndex,
+        )
+
+        # Count characters to align the marker
+        last_newline = before_marked.rfind("\n")
+        if last_newline < 0:
+            marker_offset = len(before_marked)
+        else:
+            marker_offset = len(before_marked) - last_newline - 1
+
+        # Insert the marker on the next line
+        leftover_line, *remaining_content = after_marked.split("\n", 1)
+
+        return "\n".join(
+            [
+                before_marked + leftover_line,
+                " " * marker_offset
+                + "^" * (mark.stop.tokenIndex - mark.start.tokenIndex + 1),
+                *remaining_content,
+            ]
+        )

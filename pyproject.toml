@@ -165,12 +165,12 @@ line-length = 88         # Same as Black.
 target-version = "py312"
 
 exclude = [
-    "src/atopile/parser/AtopileLexer.py",
-    "src/atopile/parser/AtopileLexerBase.py",
-    "src/atopile/parser/AtopileParser.py",
-    "src/atopile/parser/AtopileParserBase.py",
-    "src/atopile/parser/AtopileParserListener.py",
-    "src/atopile/parser/AtopileParserVisitor.py",
+    "src/atopile/parser/AtoLexer.py",
+    "src/atopile/parser/AtoLexerBase.py",
+    "src/atopile/parser/AtoParser.py",
+    "src/atopile/parser/AtoParserBase.py",
+    "src/atopile/parser/AtoParserListener.py",
+    "src/atopile/parser/AtoParserVisitor.py",
     "src/atopile/kicad_plugin",
     "docs/",
     "sandbox/",
