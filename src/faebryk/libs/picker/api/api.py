@@ -113,6 +113,9 @@ class Interval:
     max: float | None
 
 
+ApiParamT = P_Set | None
+
+
 def SerializableField():
     return field(
         metadata=dataclass_json_config(encoder=SerializableJSONEncoder().default)
@@ -121,67 +124,67 @@ def SerializableField():
 
 @dataclass(frozen=True)
 class ResistorParams(BaseParams):
-    resistance: P_Set = SerializableField()
-    max_power: P_Set = SerializableField()
-    max_voltage: P_Set = SerializableField()
+    resistance: ApiParamT = SerializableField()
+    max_power: ApiParamT = SerializableField()
+    max_voltage: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class CapacitorParams(BaseParams):
-    capacitance: P_Set = SerializableField()
-    max_voltage: P_Set = SerializableField()
-    temperature_coefficient: P_Set = SerializableField()
+    capacitance: ApiParamT = SerializableField()
+    max_voltage: ApiParamT = SerializableField()
+    temperature_coefficient: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class InductorParams(BaseParams):
-    inductance: P_Set = SerializableField()
-    self_resonant_frequency: P_Set = SerializableField()
-    max_current: P_Set = SerializableField()
-    dc_resistance: P_Set = SerializableField()
+    inductance: ApiParamT = SerializableField()
+    self_resonant_frequency: ApiParamT = SerializableField()
+    max_current: ApiParamT = SerializableField()
+    dc_resistance: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class DiodeParams(BaseParams):
-    forward_voltage: P_Set = SerializableField()
-    current: P_Set = SerializableField()
-    reverse_working_voltage: P_Set = SerializableField()
-    reverse_leakage_current: P_Set = SerializableField()
-    max_current: P_Set = SerializableField()
+    forward_voltage: ApiParamT = SerializableField()
+    current: ApiParamT = SerializableField()
+    reverse_working_voltage: ApiParamT = SerializableField()
+    reverse_leakage_current: ApiParamT = SerializableField()
+    max_current: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class TVSParams(DiodeParams):
-    reverse_breakdown_voltage: P_Set = SerializableField()
+    reverse_breakdown_voltage: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class LEDParams(DiodeParams):
-    brightness: P_Set = SerializableField()
-    max_brightness: P_Set = SerializableField()
-    color: P_Set = SerializableField()
+    brightness: ApiParamT = SerializableField()
+    max_brightness: ApiParamT = SerializableField()
+    color: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class LDOParams(BaseParams):
-    max_input_voltage: P_Set = SerializableField()
-    output_voltage: P_Set = SerializableField()
-    quiescent_current: P_Set = SerializableField()
-    dropout_voltage: P_Set = SerializableField()
-    psrr: P_Set = SerializableField()
-    output_polarity: P_Set = SerializableField()
-    output_type: P_Set = SerializableField()
-    output_current: P_Set = SerializableField()
+    max_input_voltage: ApiParamT = SerializableField()
+    output_voltage: ApiParamT = SerializableField()
+    quiescent_current: ApiParamT = SerializableField()
+    dropout_voltage: ApiParamT = SerializableField()
+    psrr: ApiParamT = SerializableField()
+    output_polarity: ApiParamT = SerializableField()
+    output_type: ApiParamT = SerializableField()
+    output_current: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class MOSFETParams(BaseParams):
-    channel_type: P_Set = SerializableField()
-    saturation_type: P_Set = SerializableField()
-    gate_source_threshold_voltage: P_Set = SerializableField()
-    max_drain_source_voltage: P_Set = SerializableField()
-    max_continuous_drain_current: P_Set = SerializableField()
-    on_resistance: P_Set = SerializableField()
+    channel_type: ApiParamT = SerializableField()
+    saturation_type: ApiParamT = SerializableField()
+    gate_source_threshold_voltage: ApiParamT = SerializableField()
+    max_drain_source_voltage: ApiParamT = SerializableField()
+    max_continuous_drain_current: ApiParamT = SerializableField()
+    on_resistance: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)

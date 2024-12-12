@@ -66,8 +66,8 @@ class Serializable(Protocol):
 
 
 class SerializableJSONEncoder(JSONEncoder):
-    def default(self, o: Serializable):
-        return o.serialize()
+    def default(self, o: Serializable | None):
+        return None if o is None else o.serialize()
 
 
 class lazy:
