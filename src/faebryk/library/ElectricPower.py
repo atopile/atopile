@@ -11,11 +11,19 @@ from faebryk.libs.util import cast_assert
 
 class ElectricPower(F.Power):
     class can_be_decoupled_power(F.can_be_decoupled.impl()):
-        def decouple(self):
+        def decouple(
+            self,
+            count: int = 1,
+        ):
             obj = self.get_obj(ElectricPower)
 
-            capacitor = obj.add(F.Capacitor())
-            capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
+            if count > 1:
+                capacitor = obj.add(F.MultiCapacitor(count))
+            else:
+                capacitor = obj.add(F.Capacitor())
+
+            # FIXME seems to cause contradictions
+            # capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
 
             obj.hv.connect_via(capacitor, obj.lv)
 
@@ -24,6 +32,8 @@ class ElectricPower(F.Power):
 
         def is_implemented(self):
             return not self.obj.has_trait(F.is_decoupled)
+
+        # TODO implement merging
 
     class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
         def on_obj_set(self):

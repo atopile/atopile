@@ -80,11 +80,27 @@ if S_LOG:
 
 
 class Contradiction(Exception):
-    pass
+    def __init__(self, msg: str, involved: list[ParameterOperatable]):
+        super().__init__(msg)
+        self.msg = msg
+        self.involved_exprs = involved
+
+    def __str__(self):
+        return f"{self.msg}: Involved: {self.involved_exprs}"
 
 
 class ContradictionByLiteral(Contradiction):
-    pass
+    def __init__(
+        self,
+        msg: str,
+        involved: list[ParameterOperatable],
+        literals: list["SolverLiteral"],
+    ):
+        super().__init__(msg, involved)
+        self.literals = literals
+
+    def __str__(self):
+        return f"{super().__str__()}: Literals: {self.literals}"
 
 
 CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
@@ -117,7 +133,9 @@ def try_extract_literal(po, allow_subset: bool = False) -> SolverLiteral | None:
         lit = ParameterOperatable.try_extract_literal(po, allow_subset=allow_subset)
     except KeyErrorAmbiguous as e:
         raise ContradictionByLiteral(
-            f"Duplicate unequal is literals: {e.duplicates}"
+            "Duplicate unequal is literals",
+            involved=[po],
+            literals=e.duplicates,
         ) from e
     assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set, NoneType))
     return lit
@@ -159,7 +177,11 @@ def alias_is_literal(po: ParameterOperatable, literal: ParameterOperatable.Liter
     if existing is not None:
         if existing == literal:
             return
-        raise ContradictionByLiteral(f"{existing} != {literal}")
+        raise ContradictionByLiteral(
+            "Tried alias to different literal",
+            involved=[po],
+            literals=[existing, literal],
+        )
     # prevent (A is X) is X
     if isinstance(po, Is):
         if literal in po.get_literal_operands().values():
@@ -806,6 +828,8 @@ class Mutators:
         def try_get_literal(
             self, param: ParameterOperatable, allow_subset: bool = False
         ) -> ParameterOperatable.Literal | None:
+            if param not in self.repr_map:
+                return None
             lit = try_extract_literal(self.repr_map[param], allow_subset=allow_subset)
             if lit is None:
                 return None

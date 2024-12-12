@@ -297,7 +297,11 @@ def merge_intersect_subsets(mutator: Mutator):
         # intersect
         intersected = P_Set.intersect_all(*literal_subsets)
         if intersected.is_empty():
-            raise ContradictionByLiteral(f"Intersection of {literal_subsets} is empty`")
+            raise ContradictionByLiteral(
+                "Intersection of literals is empty",
+                involved=[param],
+                literals=literal_subsets,
+            )
 
         direct_literal_subsets = [
             e for e in constrained_subset_ops_with_literal if is_literal(e.operands[1])

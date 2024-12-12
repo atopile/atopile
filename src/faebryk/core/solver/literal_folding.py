@@ -409,7 +409,7 @@ def fold_not(
 
     op = expr.operands[0]
     if isinstance(op, ConstrainableExpression) and op.constrained and expr.constrained:
-        raise Contradiction(expr)
+        raise Contradiction("¬!P!", involved=[expr])
 
     if replacable_nonliteral_operands:
         if isinstance(op, Not):

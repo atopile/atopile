@@ -309,7 +309,10 @@ class DefaultSolver(Solver):
     def inspect_get_known_supersets(
         self, param: Parameter, force_update: bool = False
     ) -> P_Set:
-        g_hash = hash(param.get_graph())
+        all_params = GraphFunctions(param.get_graph()).nodes_of_type(
+            ParameterOperatable
+        )
+        g_hash = hash(tuple(sorted(all_params, key=id)))
         cached = self.superset_cache.get(param, (None, None))[0]
         if cached == g_hash or (cached is not None and not force_update):
             return self.superset_cache[param][1]
@@ -318,12 +321,12 @@ class DefaultSolver(Solver):
         self.superset_cache[param] = g_hash, out
 
         if repr_map:
-            for p in repr_map.repr_map:
+            for p in all_params:
                 if not isinstance(p, Parameter):
                     continue
                 lit = repr_map.try_get_literal(p, allow_subset=True)
                 if lit is None:
-                    continue
+                    lit = p.domain_set()
                 self.superset_cache[p] = g_hash, P_Set.from_value(lit)
 
         return out
@@ -339,7 +342,8 @@ class DefaultSolver(Solver):
         # TODO caching
         repr_map, print_context = self.phase_1_simplify_analytically(param.get_graph())
         if param not in repr_map.repr_map:
-            logger.warning(f"Parameter {param} not in repr_map")
+            if LOG_PICK_SOLVE:
+                logger.warning(f"Parameter {param} not in repr_map")
             return param.domain_set(), repr_map
 
         # check predicates (is, subset), (ge, le covered too)
@@ -431,9 +435,10 @@ class DefaultSolver(Solver):
                 # short-circuiting
                 break
 
-            except Contradiction:
+            except Contradiction as e:
                 if LOG_PICK_SOLVE:
                     logger.warning(f"CONTRADICTION: {pred.compact_repr(print_context)}")
+                    logger.warning(f"CAUSE: {e}")
                 result.false_predicates.append(p)
             except TimeoutError:
                 result.unknown_predicates.append(p)
