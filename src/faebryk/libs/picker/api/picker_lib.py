@@ -151,7 +151,7 @@ def _find_component_by_params[T: BaseParams](
 
     fps = get_package_candidates(cmp)
     cmp_params = {
-        p.get_name(): solver.inspect_get_known_supersets(p, force_update=False)
+        p.get_name(): p.get_last_known_deduced_superset(solver)
         for p in cmp.get_parameters()
     }
 

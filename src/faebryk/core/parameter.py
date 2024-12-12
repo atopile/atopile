@@ -6,7 +6,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Self, Sequence, TypeGuard, cast, override
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Self,
+    Sequence,
+    TypeGuard,
+    cast,
+    override,
+)
 
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
@@ -35,6 +44,9 @@ from faebryk.libs.util import (
     find,
     unique,
 )
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
 
@@ -1507,6 +1519,10 @@ class Parameter(ParameterOperatable):
 
     def domain_set(self) -> P_Set:
         return self.domain.unbounded(self)
+
+    def get_last_known_deduced_superset(self, solver: "Solver") -> P_Set | None:
+        as_literal = solver.inspect_get_known_supersets(self, force_update=False)
+        return None if as_literal == self.domain_set() else as_literal
 
 
 p_field = f_field(Parameter)

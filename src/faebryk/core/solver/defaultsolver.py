@@ -86,7 +86,7 @@ class DefaultSolver(Solver):
         # any constrained expression literal is False
         raise NotImplementedError()
 
-    @times_out(30)
+    @times_out(120)
     def phase_1_simplify_analytically(
         self,
         g: Graph,
