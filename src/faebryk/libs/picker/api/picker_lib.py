@@ -151,12 +151,9 @@ def _find_component_by_params[T: BaseParams](
 
     fps = get_package_candidates(cmp)
     cmp_params = {
-        p.get_name(): solver.inspect_get_known_supersets(p)
+        p.get_name(): solver.inspect_get_known_supersets(p, force_update=False)
         for p in cmp.get_parameters()
     }
-
-    # print(param_cls(package_candidates=fps, qty=qty, **cmp_params))
-    # print(param_cls(footprint_candidates=fps, qty=qty, **cmp_params).serialize())
 
     parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))
 

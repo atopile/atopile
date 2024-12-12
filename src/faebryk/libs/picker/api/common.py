@@ -4,7 +4,6 @@
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from enum import StrEnum
 from textwrap import indent
 from typing import TYPE_CHECKING, Iterable
 
@@ -30,22 +29,13 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Singleton,
 )
 from faebryk.libs.units import to_si_str
-from faebryk.libs.util import ConfigFlagEnum, cast_assert
+from faebryk.libs.util import cast_assert
 
 if TYPE_CHECKING:
     from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
 
 logger = logging.getLogger(__name__)
 
-
-class PickerType(StrEnum):
-    SQLITE = "sqlite"
-    API = "api"
-
-
-DB_PICKER_BACKEND = ConfigFlagEnum(
-    PickerType, "PICKER", PickerType.API, "Picker backend to use"
-)
 type SIvalue = str
 
 
