@@ -359,7 +359,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         with downgrade(DeprecatedException):
             raise DeprecatedException.from_ctx(
                 ctx,
-                'Deprecated: "import <something> from <path>" is deprecated and'
+                '"import <something> from <path>" is deprecated and'
                 ' will be removed in a future version. Use "from'
                 f' {ctx.string().getText()} import {ctx.name_or_attr().getText()}"'
                 " instead.",
@@ -583,7 +583,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 with downgrade(DeprecatedException):
                     raise DeprecatedException.from_ctx(
                         item.original_ctx,
-                        f"Deprecated: {import_addr} is deprecated and will be"
+                        f"{item.from_path} is deprecated and will be"
                         f" removed in a future version. Use {preferred} instead.",
                     )
                 return shim_cls
@@ -953,7 +953,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 if not nested:
                     with downgrade(DeprecatedException):
                         raise DeprecatedException(
-                            f"Deprecated: Connected {a} to {b} by duck-typing."
+                            f"Connected {a} to {b} by duck-typing."
                             " They should be of the same type."
                         )
 
