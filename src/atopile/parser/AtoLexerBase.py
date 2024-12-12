@@ -133,7 +133,7 @@ class AtoLexerBase(Lexer, GeneratedAtoLexerProtocol):
                     self.__add_pending_token(self.__cur_token)
                 case Token.EOF:
                     self.__handle_EOF_token()
-                case other:
+                case _:
                     self.__add_pending_token(self.__cur_token)
 
     def __set_current_and_following_tokens(self) -> None:

@@ -1,10 +1,6 @@
 import logging
-from pathlib import Path
 from types import ModuleType, TracebackType
 
-import rich
-import rich.padding
-import rich.text
 from rich._null_file import NullFile
 from rich.console import ConsoleRenderable
 from rich.logging import RichHandler
@@ -17,7 +13,6 @@ import faebryk.libs.logging
 from atopile.errors import (
     UserPythonModuleError,
     _BaseBaseUserException,
-    _BaseUserException,
 )
 
 from . import console
@@ -130,39 +125,10 @@ class LogHandler(RichHandler):
 
         _, exc, _ = record.exc_info
 
-        if not isinstance(exc, _BaseBaseUserException):
+        if not isinstance(exc, ConsoleRenderable):
             return super().render_message(record, message)
 
-        renderables: list[ConsoleRenderable] = []
-        if exc.title:
-            renderables += [rich.text.Text(exc.title, style="bold")]
-        renderables += [rich.text.Text(message)]
-
-        # Attach source info if we have it
-        if isinstance(exc, _BaseUserException):
-            if src_path := exc.src_path:
-                # Make the path relative to the current working directory, if possible
-                try:
-                    src_path = Path(src_path).relative_to(Path.cwd())
-                except ValueError:
-                    pass
-                source_info = str(src_path)
-                if src_line := exc.src_line:
-                    source_info += f":{src_line}"
-                if src_col := exc.src_col:
-                    source_info += f":{src_col}"
-
-                renderables += [
-                    rich.text.Text("Source: ", style="bold")
-                    + rich.text.Text(source_info, style="magenta"),
-                ]
-
-            if exc.src_reconstructed:
-                renderables += [
-                    rich.padding.Padding(rich.text.Text(exc.src_reconstructed), (0, 4))
-                ]
-
-        return rich.console.Group(*renderables)
+        return exc
 
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by logging."""

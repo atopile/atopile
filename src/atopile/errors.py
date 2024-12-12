@@ -1,9 +1,12 @@
 from pathlib import Path
-from typing import Type
+from typing import Any
 
 from antlr4 import ParserRuleContext
+from rich.console import Console, ConsoleOptions, ConsoleRenderable
+from rich.syntax import Syntax
+from rich.text import Text
 
-from atopile.parse_utils import get_src_info_from_ctx, reconstruct
+from atopile.parse_utils import PygmentsLexerShim, get_src_info_from_ctx
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
 
 
@@ -12,78 +15,74 @@ class _BaseUserException(_BaseBaseUserException):
     This exception is thrown when there's an error in the syntax of the language
     """
 
+    class _SameCtx: ...
+
     def __init__(
         self,
         *args,
-        src_path: str | Path | None = None,
-        src_line: int | None = None,
-        src_col: int | None = None,
-        src_stop_line: int | None = None,
-        src_stop_col: int | None = None,
-        src_reconstructed: str | None = None,
+        origin: Any | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.src_path = src_path
-        self.src_line = src_line
-        self.src_col = src_col
-        self.src_stop_line = src_stop_line
-        self.src_stop_col = src_stop_col
-        self.src_reconstructed = src_reconstructed
-
-    class _SameCtx: ...
+        self.origin = origin
 
     @classmethod
     def from_ctx(
         cls,
-        ctx: ParserRuleContext | None,
+        origin: ParserRuleContext | None,
         message: str,
         *args,
-        expand_before: int = 0,
-        expand_after: int = 0,
-        mark: ParserRuleContext | None | Type[_SameCtx] = _SameCtx,
         **kwargs,
     ) -> "_BaseUserException":
         """Create an error from a context."""
-        self = cls(message, *args, **kwargs)
-
-        if ctx is not None:
-            self.set_src_from_ctx(ctx, expand_before, expand_after, mark)
-
+        self = cls(message, *args, origin=origin, **kwargs)
         return self
 
-    def set_src_from_ctx(
-        self,
-        ctx: ParserRuleContext,
-        expand_before: int = 0,
-        expand_after: int = 0,
-        mark: ParserRuleContext | None | Type[_SameCtx] = _SameCtx,
-    ):
-        """Add source info from a context."""
-        (
-            self.src_path,
-            self.src_line,
-            self.src_col,
-            self.src_stop_line,
-            self.src_stop_col,
-        ) = get_src_info_from_ctx(ctx)
-
-        if mark is self._SameCtx:
-            mark = ctx
-
-        assert isinstance(mark, ParserRuleContext) or mark is None
-        self.src_reconstructed = reconstruct(
-            ctx, mark=mark, expand_before=expand_before, expand_after=expand_after
-        )
-
     def get_frozen(self) -> tuple:
-        return super().get_frozen() + (
-            self.src_path,
-            self.src_line,
-            self.src_col,
-            self.src_stop_line,
-            self.src_stop_col,
-        )
+        if self.origin:
+            return super().get_frozen() + get_src_info_from_ctx(self.origin)
+        return super().get_frozen()
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> list[ConsoleRenderable]:
+        renderables: list[ConsoleRenderable] = []
+        if self.title:
+            renderables += [Text(self.title, style="bold")]
+        renderables += [Text(self.message)]
+
+        if self.origin:
+            (src_path, src_line, src_col, _, _) = get_src_info_from_ctx(self.origin)
+
+            # Make the path relative to the current working directory, if possible
+            try:
+                src_path = Path(src_path).relative_to(Path.cwd())
+            except ValueError:
+                pass
+            source_info = str(src_path)
+            if src_line := src_line:
+                source_info += f":{src_line}"
+            if src_col := src_col:
+                source_info += f":{src_col}"
+
+            renderables += [
+                Text("Source: ", style="bold") + Text(source_info, style="magenta"),
+            ]
+
+            if isinstance(self.origin, ParserRuleContext):
+                lexer = PygmentsLexerShim.from_ctx(self.origin, 1, 1)
+                renderables += [
+                    Syntax(
+                        lexer.get_code(),
+                        lexer,  # type: ignore  # The PygmentsLexerShim is pygments.Lexer-y enough
+                        line_numbers=True,
+                        start_line=lexer.start_line,
+                        indent_guides=True,
+                        highlight_lines=lexer.ctx_lines,
+                    )
+                ]
+
+        return renderables
 
 
 class UserFatalException(_BaseUserException):
@@ -172,8 +171,6 @@ class UserBadParameterError(UserException):
     """
     Raised when a bad CLI param is given
     """
-
-    title = "Bad Parameter"
 
 
 class UserPythonLoadError(UserException):
