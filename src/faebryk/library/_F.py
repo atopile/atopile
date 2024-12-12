@@ -20,6 +20,7 @@ from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_esphome_config import has_esphome_config
 from faebryk.library.is_esphome_bus import is_esphome_bus
+from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
@@ -29,7 +30,6 @@ from faebryk.library.has_footprint import has_footprint
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_linked_pad import has_linked_pad
-from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.has_reference import has_reference
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
