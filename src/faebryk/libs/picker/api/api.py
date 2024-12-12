@@ -64,17 +64,22 @@ def api_filter_by_module_params_and_attach(
     mapping = try_get_param_mapping(cmp)
 
     # FIXME: should take the desired qty and respect it
-    parts_gen = (
-        part
-        for part in parts
-        if check_compatible_parameters(cmp, part, mapping, solver)
-    )
+    tried = []
+
+    def parts_gen():
+        for part in parts:
+            if check_compatible_parameters(cmp, part, mapping, solver):
+                tried.append(part)
+                yield part
 
     try:
-        try_attach(cmp, parts_gen, mapping, qty=1)
+        try_attach(cmp, parts_gen(), mapping, qty=1)
     except PickError as ex:
         raise PickError(
-            f"No components found that match {cmp.pretty_params(solver)}", cmp
+            f"No components found that match {cmp.pretty_params(solver)} "
+            f"in {len(tried)} param-matching parts, "
+            f"of {len(parts)} total parts",
+            cmp,
         ) from ex
 
 
@@ -232,10 +237,11 @@ class ApiClient:
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
-        logger.debug(
-            f"POST {self.config.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
-            f"{json.dumps(response.json(), indent=2)}"
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"POST {self.config.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
+                f"{json.dumps(response.json(), indent=2)}"
+            )
 
         return response
 

@@ -142,7 +142,6 @@ def remove_congruent_expressions(mutator: Mutator):
 
         eq_id = id(eq_class)
         if eq_id not in repres:
-            logger.debug(f"Remove congruent: {eq_class}")
             representative = mutator.mutate_expression(expr)
             repres[eq_id] = representative
 

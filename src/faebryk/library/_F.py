@@ -33,6 +33,7 @@ from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.has_reference import has_reference
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
+from faebryk.library.has_picker import has_picker
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
@@ -42,14 +43,13 @@ from faebryk.library.has_simple_value_representation import has_simple_value_rep
 from faebryk.library.has_capacitance import has_capacitance
 from faebryk.library.has_construction_dependency import has_construction_dependency
 from faebryk.library.has_kicad_ref import has_kicad_ref
-from faebryk.library.has_picker import has_picker
 from faebryk.library.has_pcb_layout import has_pcb_layout
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
+from faebryk.library.is_optional import is_optional
 from faebryk.library.has_reference_layout import has_reference_layout
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_dynamic import is_dynamic
-from faebryk.library.is_optional import is_optional
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
@@ -66,6 +66,7 @@ from faebryk.library.Footprint import Footprint
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.Symbol import Symbol
+from faebryk.library.has_multi_picker import has_multi_picker
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.has_datasheet_defined import has_datasheet_defined
@@ -73,7 +74,6 @@ from faebryk.library.has_designator_defined import has_designator_defined
 from faebryk.library.has_simple_value_representation_based_on_params import has_simple_value_representation_based_on_params
 from faebryk.library.has_simple_value_representation_based_on_params_chain import has_simple_value_representation_based_on_params_chain
 from faebryk.library.has_simple_value_representation_defined import has_simple_value_representation_defined
-from faebryk.library.has_multi_picker import has_multi_picker
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
 from faebryk.library.has_single_connection_impl import has_single_connection_impl
 from faebryk.library.is_dynamic_by_connections import is_dynamic_by_connections

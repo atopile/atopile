@@ -310,3 +310,30 @@ def test_complex_module_full():
     timings.add("pick")
 
     logger.info(f"\n{timings}")
+
+
+def test_complex_module_comp_count():
+    timings = Times()
+
+    class App(Module):
+        caps = L.f_field(F.MultiCapacitor)(1)
+
+    app = App()
+    timings.add("construct")
+
+    resolve_dynamic_parameters(app.get_graph())
+    timings.add("resolve bus params")
+
+    solver = DefaultSolver()
+    for mod in app.get_children(direct_only=False, types=Module):
+        add_api_pickers(mod)
+    timings.add("add_pickers")
+
+    p = next(iter(app.get_children(direct_only=False, types=Parameter)))
+    solver.inspect_get_known_supersets(p)
+    timings.add("pre-solve")
+
+    pick_part_recursively(app, solver)
+    timings.add("pick")
+
+    logger.info(f"\n{timings}")
