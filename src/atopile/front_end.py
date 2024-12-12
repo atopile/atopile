@@ -498,7 +498,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                             ctx, f"Parameter {param} never assigned"
                         )
 
-                    del self._promised_params[param]
+                    if param in self._promised_params:
+                        del self._promised_params[param]
 
                     # Set final value of parameter
                     assert isinstance(
@@ -839,7 +840,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                     f" type is {param.__class__.__name__}",
                 )
 
-        if not param.units.compatible_units(unit):
+        if not param.units.is_compatible_with(unit):
             raise errors.UserIncompatibleUnitError.from_ctx(
                 src_ctx,
                 f"Given units {unit} are incompatible"
