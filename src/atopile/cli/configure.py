@@ -139,7 +139,7 @@ def install_kicad_plugin() -> None:
         with plugin_loader_path.open("w", encoding="utf-8") as f:
             f.write(plugin_loader_content)
 
-    kicad_config_search_path = ["~/Documents/KiCad/", "~/.local/share/KiCad/"]
+    kicad_config_search_path = ["~/Documents/KiCad/", "~/.local/share/kicad/"]
     no_plugin_found = True
     for sp in kicad_config_search_path:
         config_path = Path(sp).expanduser().resolve()
