@@ -1,8 +1,9 @@
 from pathlib import Path
+from typing import Type
 
 from antlr4 import ParserRuleContext
 
-from atopile.parse_utils import get_src_info_from_ctx
+from atopile.parse_utils import get_src_info_from_ctx, reconstruct
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
 
 
@@ -19,6 +20,7 @@ class _BaseUserException(_BaseBaseUserException):
         src_col: int | None = None,
         src_stop_line: int | None = None,
         src_stop_col: int | None = None,
+        src_reconstructed: str | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -27,17 +29,36 @@ class _BaseUserException(_BaseBaseUserException):
         self.src_col = src_col
         self.src_stop_line = src_stop_line
         self.src_stop_col = src_stop_col
+        self.src_reconstructed = src_reconstructed
+
+    class _SameCtx: ...
 
     @classmethod
     def from_ctx(
-        cls, ctx: ParserRuleContext | None, message: str, *args, **kwargs
+        cls,
+        ctx: ParserRuleContext | None,
+        message: str,
+        *args,
+        expand_before: int = 0,
+        expand_after: int = 0,
+        mark: ParserRuleContext | None | Type[_SameCtx] = _SameCtx,
+        **kwargs,
     ) -> "_BaseUserException":
         """Create an error from a context."""
         self = cls(message, *args, **kwargs)
-        self.set_src_from_ctx(ctx)
+
+        if ctx is not None:
+            self.set_src_from_ctx(ctx, expand_before, expand_after, mark)
+
         return self
 
-    def set_src_from_ctx(self, ctx: ParserRuleContext):
+    def set_src_from_ctx(
+        self,
+        ctx: ParserRuleContext,
+        expand_before: int = 0,
+        expand_after: int = 0,
+        mark: ParserRuleContext | None | Type[_SameCtx] = _SameCtx,
+    ):
         """Add source info from a context."""
         (
             self.src_path,
@@ -46,6 +67,14 @@ class _BaseUserException(_BaseBaseUserException):
             self.src_stop_line,
             self.src_stop_col,
         ) = get_src_info_from_ctx(ctx)
+
+        if mark is self._SameCtx:
+            mark = ctx
+
+        assert isinstance(mark, ParserRuleContext) or mark is None
+        self.src_reconstructed = reconstruct(
+            ctx, mark=mark, expand_before=expand_before, expand_after=expand_after
+        )
 
     def get_frozen(self) -> tuple:
         return super().get_frozen() + (

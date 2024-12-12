@@ -1,5 +1,5 @@
 interface Power:
-    signal vcc
+    signal vcc  # A signal is the most basic unit of "connectable"
     signal gnd
 
     voltage: voltage

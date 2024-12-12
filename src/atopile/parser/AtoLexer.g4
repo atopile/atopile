@@ -1,4 +1,4 @@
-lexer grammar AtopileLexer;
+lexer grammar AtoLexer;
 
 // All comments that start with "///" are copy-pasted from
 // The Python Language Reference
@@ -6,7 +6,7 @@ lexer grammar AtopileLexer;
 tokens { INDENT, DEDENT }
 
 options {
-    superClass = AtopileLexerBase ;
+    superClass = AtoLexerBase ;
 }
 
 /*
@@ -55,14 +55,6 @@ PASS : 'pass';
 //
 // Stuff from the Python3 grammer we based this on
 //
-
-NEWLINE
- : ( {self.atStartOfInput()}?   SPACES
-   | ( '\r'? '\n' | '\r' | '\f' ) SPACES?
-   | {self.atEndOfInput()}?
-   )
-   {self.onNewLine();}
- ;
 
 /// identifier   ::=  id_start id_continue*
 NAME
@@ -122,15 +114,15 @@ PERCENT : '%';
 DOT : '.';
 ELLIPSIS : '...';
 STAR : '*';
-OPEN_PAREN : '(' {self.openBrace();};
-CLOSE_PAREN : ')' {self.closeBrace();};
+OPEN_PAREN : '(';
+CLOSE_PAREN : ')';
 COMMA : ',';
 COLON : ':';
 SEMI_COLON : ';';
 POWER : '**';
 ASSIGN : '=';
-OPEN_BRACK : '[' {self.openBrace();};
-CLOSE_BRACK : ']' {self.closeBrace();};
+OPEN_BRACK : '[';
+CLOSE_BRACK : ']';
 OR_OP : '|';
 XOR : '^';
 AND_OP : '&';
@@ -141,8 +133,8 @@ MINUS : '-';
 DIV : '/';
 IDIV : '//';
 NOT_OP : '~';
-OPEN_BRACE : '{' {self.openBrace();};
-CLOSE_BRACE : '}' {self.closeBrace();};
+OPEN_BRACE : '{';
+CLOSE_BRACE : '}';
 LESS_THAN : '<';
 GREATER_THAN : '>';
 EQUALS : '==';
@@ -165,13 +157,21 @@ RIGHT_SHIFT_ASSIGN : '>>=';
 POWER_ASSIGN : '**=';
 IDIV_ASSIGN : '//=';
 
-SKIP_
- : ( SPACES | COMMENT | LINE_JOINING ) -> skip
- ;
+// From Python3.12 lexer example credit Robert Einhorn (MIT License)
+// https://github.com/antlr/grammars-v4/blob/6d13b1068d0fc9eba30a3f291fe62026fbc71c2f/python/python3_12/PythonLexer.g4#L169
+// https://docs.python.org/3.12/reference/lexical_analysis.html#physical-lines
+NEWLINE : '\r'? '\n'; // Unix, Windows
 
-UNKNOWN_CHAR
- : .
- ;
+// https://docs.python.org/3.12/reference/lexical_analysis.html#comments
+COMMENT : '#' ~[\r\n]*               -> channel(HIDDEN);
+
+// https://docs.python.org/3.12/reference/lexical_analysis.html#whitespace-between-tokens
+WS : [ \t\f]+                        -> channel(HIDDEN);
+
+// https://docs.python.org/3.12/reference/lexical_analysis.html#explicit-line-joining
+EXPLICIT_LINE_JOINING : '\\' NEWLINE -> channel(HIDDEN);
+
+ERRORTOKEN : . ; // catch the unrecognized characters and redirect these errors to the parser
 
 /*
  * fragments
@@ -306,10 +306,6 @@ fragment BYTES_ESCAPE_SEQ
 
 fragment SPACES
  : [ \t]+
- ;
-
-fragment COMMENT
- : '#' ~[\r\n\f]*
  ;
 
 fragment LINE_JOINING

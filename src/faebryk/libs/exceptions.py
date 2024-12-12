@@ -5,6 +5,8 @@ from typing import Callable, ContextManager, Iterable, Self, Type, cast
 
 from rich.traceback import Traceback
 
+from .titlecase import titlecase
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +38,7 @@ class UserException(Exception):
             return self._title
 
         error_name = self.__class__.__name__
-        return error_name.removeprefix("User")
+        return titlecase(error_name.removeprefix("User"))
 
     def get_frozen(self) -> tuple:
         """
@@ -212,7 +214,7 @@ class downgrade[T: Exception](Pacman):
             exceptions = [exc]
 
         for e in exceptions:
-            self.logger.log(self.to_level, e)
+            self.logger.log(self.to_level, e, exc_info=exc)
 
 
 def iter_through_errors[T](

@@ -27,8 +27,8 @@ from atopile import address, config, errors
 from atopile._shim import Component, ModuleShims, shim_map
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
-from atopile.parser.AtopileParser import AtopileParser as ap
-from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
+from atopile.parser.AtoParser import AtoParser as ap
+from atopile.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import (
@@ -248,7 +248,7 @@ class SequenceMixin:
             for err_cltr, child in iter_through_errors(children):
                 with err_cltr():
                     # Since we're in a SequenceMixin, we need to cast self to the visitor type # noqa: E501  # pre-existing
-                    child_result = cast(AtopileParserVisitor, self).visit(child)
+                    child_result = cast(AtoParserVisitor, self).visit(child)
                     if child_result is not NOTHING:
                         yield child_result
 
@@ -297,7 +297,7 @@ class Context:
     refs: dict[Ref, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
 
 
-class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
+class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Wendy is Bob's business partner and fellow builder in the children's TV series
     "Bob the Builder." She is a skilled construction worker who often manages the
@@ -359,7 +359,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
         with downgrade(DeprecatedException):
             raise DeprecatedException.from_ctx(
                 ctx,
-                'Deprecated: "import <something> from <path>" is deprecated and'
+                '"import <something> from <path>" is deprecated and'
                 ' will be removed in a future version. Use "from'
                 f' {ctx.string().getText()} import {ctx.name_or_attr().getText()}"'
                 " instead.",
@@ -415,7 +415,7 @@ class DeprecatedException(errors.UserException):
     """
 
 
-class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
+class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Bob is a general contractor who runs his own construction company in the town
     of Fixham Harbour (in earlier episodes, he was based in Bobsville). Recognizable
@@ -583,7 +583,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 with downgrade(DeprecatedException):
                     raise DeprecatedException.from_ctx(
                         item.original_ctx,
-                        f"Deprecated: {import_addr} is deprecated and will be"
+                        f"{item.from_path} is deprecated and will be"
                         f" removed in a future version. Use {preferred} instead.",
                     )
                 return shim_cls
@@ -953,7 +953,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 if not nested:
                     with downgrade(DeprecatedException):
                         raise DeprecatedException(
-                            f"Deprecated: Connected {a} to {b} by duck-typing."
+                            f"Connected {a} to {b} by duck-typing."
                             " They should be of the same type."
                         )
 
