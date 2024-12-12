@@ -5,7 +5,7 @@
 from typing import Any, Iterable, Sequence, cast
 
 from pint import Quantity as _Quantity  # noqa: F401
-from pint import UndefinedUnitError, Unit, UnitRegistry  # noqa: F401
+from pint import UndefinedUnitError, UnitRegistry  # noqa: F401
 from pint._typing import Scalar as _Scalar  # noqa: F401
 from pint.util import UnitsContainer as _UnitsContainer
 
@@ -14,6 +14,7 @@ from faebryk.libs.util import cast_assert
 
 P = UnitRegistry()
 
+Unit = P.Unit
 UnitsContainer = _UnitsContainer | str | _Quantity | Unit
 Quantity = P.Quantity
 dimensionless = cast_assert(Unit, P.dimensionless)

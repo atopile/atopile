@@ -180,8 +180,6 @@ class PhysicalValuesMixin:
         else:
             tol_qty = tol_num * nominal_qty.units
 
-        assert isinstance(tol_qty, Quantity)
-
         # Ensure units on the nominal quantity
         if nominal_qty.unitless:
             nominal_qty = nominal_qty * tol_qty.units
