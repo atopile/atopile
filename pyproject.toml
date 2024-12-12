@@ -29,7 +29,7 @@ dependencies = [
     "numpy>=1.24.3,<3.0.0",
     "matplotlib~=3.7.1",
     "sexpdata==1.0.2",
-    "black~=24.4.2",
+    "black>=24.4.2,<24.11.0",
     "typing-extensions>=4.6.3,<5.0.0",
     "easyeda2kicad @ git+https://github.com/atopile/easyeda2kicad.py.git",
     "shapely~=2.0.1",
