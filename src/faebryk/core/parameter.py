@@ -1520,7 +1520,7 @@ class Parameter(ParameterOperatable):
     def domain_set(self) -> P_Set:
         return self.domain.unbounded(self)
 
-    def to_set(self, solver: "Solver") -> P_Set | None:
+    def get_last_known_deduced_superset(self, solver: "Solver") -> P_Set | None:
         as_literal = solver.inspect_get_known_supersets(self, force_update=False)
         return None if as_literal == self.domain_set() else as_literal
 
