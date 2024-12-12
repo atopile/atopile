@@ -150,7 +150,10 @@ def _find_component_by_params[T: BaseParams](
         raise PickError(f"Module is not a {cmp_class.__name__}", cmp)
 
     fps = get_package_candidates(cmp)
-    cmp_params = {p.get_name(): p.to_set(solver) for p in cmp.get_parameters()}
+    cmp_params = {
+        p.get_name(): p.get_last_known_deduced_superset(solver)
+        for p in cmp.get_parameters()
+    }
 
     parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))
 
