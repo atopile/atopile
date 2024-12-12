@@ -155,7 +155,7 @@ def _find_component_by_params[T: BaseParams](
         for p in cmp.get_parameters()
     }
 
-    print(param_cls(package_candidates=fps, qty=qty, **cmp_params))
+    # print(param_cls(package_candidates=fps, qty=qty, **cmp_params))
     # print(param_cls(footprint_candidates=fps, qty=qty, **cmp_params).serialize())
 
     parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))
