@@ -62,7 +62,7 @@ jobs:
           path: dist
 
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@15c56dba361d8335944d31a2ecd17d700fc7bcbc
+        uses: pypa/gh-action-pypi-publish@v1
         with:
           skip-existing: true  # Helpful while we're migrating
 
