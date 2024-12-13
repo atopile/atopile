@@ -42,7 +42,7 @@ class ESP32_C3(Module):
 
         # https://www.espressif.com/sites/default/files/documentation/esp32-c3_technical_reference_manual_en.pdf#uart
         for ser in x.uart:
-            ser.baud.merge(F.Range(0 * P.baud, 5000000 * P.baud))
+            ser.baud.constrain_le(5 * P.mbaud)
 
         # connect all logic references
         # TODO: set correctly for each power domain
@@ -51,12 +51,14 @@ class ESP32_C3(Module):
 
         # set power domain constraints to recommended operating conditions
         for power_domain in [self.vdd3p3_rtc, self.vdd3p3, self.vdda]:
-            power_domain.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
-        self.vdd3p3_cpu.voltage.merge(
-            F.Range(3.0 * P.V, 3.6 * P.V)
+            power_domain.voltage.constrain_subset(
+                L.Range.from_center(3.3 * P.V, 0.3 * P.V)
+            )
+        self.vdd3p3_cpu.voltage.constrain_subset(
+            L.Range(3.0 * P.V, 3.6 * P.V)
         )  # TODO: max 3.3V when writing eFuses
-        self.vdd_spi.voltage.merge(
-            F.Range.from_center(3.3 * P.V, 0.3 * P.V)
+        self.vdd_spi.voltage.constrain_subset(
+            L.Range.from_center(3.3 * P.V, 0.3 * P.V)
         )  # TODO: when configured as input
 
         # connect all grounds to eachother and power
@@ -162,7 +164,7 @@ class ESP32_C3(Module):
 
     #    self.i2c.add(is_esphome_bus_defined("i2c_0"))
     #    self.i2c.add(_i2c_esphome_config())
-    #    self.i2c.frequency.merge(
+    #    self.i2c.frequency.constrain_subset(
     #        Set(
     #            [
     #                F.I2C.define_max_frequency_capability(speed)
@@ -172,7 +174,7 @@ class ESP32_C3(Module):
     #                ]
     #            ]
     #            + [
-    #                F.Range(10 * P.khertz, 800 * P.khertz)
+    #                L.Range(10 * P.khertz, 800 * P.khertz)
     #            ],  # TODO: should be range 200k-800k, but breaks parameter merge
     #        )
     #    )
@@ -211,8 +213,14 @@ class ESP32_C3(Module):
         # set default boot mode to "SPI Boot mode"
         # https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf page 26 # noqa E501
         # TODO: make configurable
-        self.gpio[8].pulled.pull(up=True).resistance.merge(10 * P.kohm)
-        self.gpio[2].pulled.pull(up=True).resistance.merge(10 * P.kohm)
+        self.gpio[8].pulled.pull(up=True).resistance.constrain_subset(
+            L.Range.from_center_rel(10 * P.kohm, 0.1)
+        )
+        self.gpio[2].pulled.pull(up=True).resistance.constrain_subset(
+            L.Range.from_center_rel(10 * P.kohm, 0.1)
+        )
         # gpio[9] has an internal pull-up at boot = SPI-Boot
         if not default_boot_to_spi_flash:
-            self.gpio[9].pulled.pull(up=False).resistance.merge(10 * P.kohm)
+            self.gpio[9].pulled.pull(up=False).resistance.constrain_subset(
+                L.Range.from_center_rel(10 * P.kohm, 0.1)
+            )

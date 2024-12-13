@@ -3,8 +3,8 @@ name: project-regression
 on:
   push:
     branches: [main]  # Adjust this if your default branch has a different name
-  pull_request:
-    branches: [main]  # This will run on PRs targeting your main branch
+  # pull_request:
+  #   branches: [main]  # This will run on PRs targeting your main branch
   workflow_dispatch:  # Add manual trigger capability
 
 jobs:
@@ -28,10 +28,17 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version-file: 'pyproject.toml'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: '0.5.5'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
-        run: pip install .
+        run: uv sync --frozen
 
       - name: Checkout circuit repository
         uses: actions/checkout@v4
@@ -43,28 +50,4 @@ jobs:
       - name: Build circuits
         run: |
           cd circuit_repo
-          ato build
-
-  docs_tests:
-    runs-on: ubuntu-latest
-    env:
-        ATO_NON_INTERACTIVE: '1'
-
-    steps:
-      - uses: actions/checkout@v4
-      # Required due to a bug in the checkout action
-      # https://github.com/actions/checkout/issues/1471
-      - run: git fetch --prune --unshallow --tags
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: pip install .
-
-      - name: Build circuits
-        run: |
-          cd docs/ato-demos
           ato build

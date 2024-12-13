@@ -14,7 +14,10 @@ class can_be_decoupled_rails(F.can_be_decoupled.impl()):
         assert rails
         self._rails = rails
 
-    def decouple(self) -> F.Capacitor:
-        caps = [rail.decoupled.decouple() for rail in self._rails]
+    def decouple(
+        self,
+        count: int = 1,
+    ) -> F.Capacitor:
+        caps = [rail.decoupled.decouple(count) for rail in self._rails]
         # TODO
         return caps[0]

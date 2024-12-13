@@ -101,10 +101,15 @@ std::string Node::get_full_name(bool types) {
     auto p = this->get_parent();
     if (p) {
         auto [parent, name] = *p;
-        auto parent_hierarchy = parent->get_full_name(types);
-        ss << parent_hierarchy << "." << name;
+        if (!parent->getter_no_include_parents_in_full_name()) {
+            auto parent_hierarchy = parent->get_full_name(types);
+            ss << parent_hierarchy << ".";
+        }
+        ss << name;
     } else {
-        ss << this->get_root_id();
+        if (!this->getter_no_include_parents_in_full_name()) {
+            ss << this->get_root_id();
+        }
     }
     if (types) {
         ss << "|" << this->get_type_name();
@@ -244,4 +249,28 @@ bool Node::Type::is_moduleinterface() {
 nb::type_object Node::Type::get_moduleinterface_type() {
     // TODO can be done in a nicer way
     return nb::module_::import_("faebryk.core.moduleinterface").attr("ModuleInterface");
+}
+
+std::unordered_set<Node_ref> Node::bfs_node(std::function<bool(Path)> filter) {
+    std::unordered_set<Node_ref> out;
+
+    auto filter_func = [filter, &out](std::vector<GI_ref_weak> &path, Link_ref) {
+        bool ok = filter(Path(path));
+        if (ok) {
+            out.insert(path.back()->get_node());
+        }
+        return ok;
+    };
+
+    this->self->get_graph()->bfs_visit(
+        filter_func, std::vector({static_cast<GraphInterface *>(this->self.get())}));
+    return out;
+}
+
+void Node::setter_no_include_parents_in_full_name(bool no_include_parents_in_full_name) {
+    this->no_include_parents_in_full_name = no_include_parents_in_full_name;
+}
+
+bool Node::getter_no_include_parents_in_full_name() const {
+    return this->no_include_parents_in_full_name;
 }

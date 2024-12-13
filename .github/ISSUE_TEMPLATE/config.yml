@@ -1,5 +1,5 @@
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
-  - name: Discord Community Support
-    url: https://discord.gg/Sekvbrej8j
+  - name: Support via Discord
+    url: https://discord.gg/nkpC7wYRVw
     about: Please ask and answer questions here.

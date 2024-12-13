@@ -7,13 +7,15 @@ This file generates faebryk/src/faebryk/library/__init__.py
 import logging
 import re
 from graphlib import TopologicalSorter
+from itertools import groupby
 from pathlib import Path
 from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
-DIR = Path(__file__).parent.parent.parent / "src" / "faebryk" / "library"
-OUT = DIR / "_F.py"
+REPO_ROOT = Path(__file__).parent.parent.parent
+LIBRARY_DIR = REPO_ROOT / "src" / "faebryk" / "library"
+OUT = LIBRARY_DIR / "_F.py"
 
 
 def try_(stmt: str, exc: str | type[Exception] | Iterable[type[Exception]]):
@@ -34,11 +36,9 @@ def topo_sort(modules_out: dict[str, tuple[Path, str]]):
         return set(p.findall(f))
 
     if True:
-        # TODO careful collisions
+        SRC_DIR = LIBRARY_DIR.parent.parent
         all_modules = [
-            (p.stem, p)
-            for p in DIR.parent.parent.rglob("*.py")
-            if not p.stem.startswith("_")
+            (p.stem, p) for p in SRC_DIR.rglob("*.py") if not p.stem.startswith("_")
         ]
     else:
         all_modules = [
@@ -46,12 +46,22 @@ def topo_sort(modules_out: dict[str, tuple[Path, str]]):
             for module_name, (module_path, _) in modules_out.items()
         ]
 
-    topo_graph = {
-        module_name: find_deps(module_path) for module_name, module_path in all_modules
+    topo_graph = [
+        (module_name, find_deps(module_path))
+        for module_name, module_path in all_modules
+    ]
+
+    # handles name collisions (of non-lib modules)
+    topo_grouped = groupby(
+        sorted(topo_graph, key=lambda item: item[0]), lambda item: item[0]
+    )
+    topo_merged = {
+        name: {x for xs in group for x in xs[1]} for name, group in topo_grouped
     }
+
+    # sort for deterministic order
     topo_graph = {
-        k: list(sorted(v))
-        for k, v in sorted(topo_graph.items(), key=lambda item: item[0])
+        k: sorted(v) for k, v in sorted(topo_merged.items(), key=lambda item: item[0])
     }
     order = list(TopologicalSorter(topo_graph).static_order())
 
@@ -73,11 +83,11 @@ def topo_sort(modules_out: dict[str, tuple[Path, str]]):
 
 
 def main():
-    assert DIR.exists()
+    assert LIBRARY_DIR.exists()
 
-    logger.info(f"Scanning {DIR} for modules")
+    logger.info(f"Scanning {LIBRARY_DIR} for modules")
 
-    module_files = [p for p in DIR.glob("*.py") if not p.name.startswith("_")]
+    module_files = [p for p in LIBRARY_DIR.glob("*.py") if not p.name.startswith("_")]
 
     logger.info(f"Found {len(module_files)} modules")
 

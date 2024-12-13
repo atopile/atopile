@@ -89,7 +89,9 @@ class ElectricLogic(F.SignalElectrical):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    push_pull: F.TBD
+    push_pull = L.p_field(
+        domain=L.Domains.ENUM(PushPull),
+    )
 
     # ----------------------------------------
     #                 traits

@@ -37,6 +37,7 @@ using Graph_ref = std::shared_ptr<Graph>;
 using GI_refs_weak = std::vector<GI_ref_weak>;
 using HierarchicalNodeRef = std::pair<Node_ref, std::string>;
 using Link_weak_ref = Link *;
+class Path;
 
 class LinkExists : public std::runtime_error {
   private:
@@ -82,6 +83,7 @@ class Node {
   private:
     std::optional<nb::object> py_handle{};
     std::optional<Type> type{};
+    bool no_include_parents_in_full_name = false;
 
   private:
     std::shared_ptr<GraphInterfaceSelf> self;
@@ -117,6 +119,9 @@ class Node {
     void set_py_handle(nb::object handle);
     std::optional<nb::object> get_py_handle();
 
+    void setter_no_include_parents_in_full_name(bool no_include_parents_in_full_name);
+    bool getter_no_include_parents_in_full_name() const;
+
   private:
     std::unordered_set<Node_ref> get_children_all(bool include_root);
     std::unordered_set<Node_ref> get_children_direct();
@@ -127,6 +132,8 @@ class Node {
                  std::optional<std::vector<nb::type_object>> types = {},
                  bool include_root = true,
                  std::function<bool(Node_ref)> f_filter = nullptr, bool sort = true);
+
+    std::unordered_set<Node_ref> bfs_node(std::function<bool(Path)> filter);
 };
 
 class GraphInterface {

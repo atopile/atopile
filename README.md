@@ -109,11 +109,18 @@ Find our [documentation](https://atopile.io/), [installation video](https://www.
 
 `atopile` is on pypi.org: https://pypi.org/project/atopile/
 
-### Most Basic Installation
+### Installation
 
-`atopile` requires *python3.11* or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
+`atopile` is published to [pypi.org](https://pypi.org/project/atopile/). We recommend installing into an isolated environment, e.g. with `uv`:
 
-Then just `pipx install atopile` and you're good to go!
+```sh
+uv tool install atopile
+```
+
+Or with `pipx` (requires Python 3.12 or later):
+```sh
+pipx install atopile
+```
 
 ## ❓ Why Atopile?
 

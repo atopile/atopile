@@ -23,14 +23,15 @@ import atopile.errors
 import atopile.front_end
 import atopile.parse
 import atopile.parse_utils
+import faebryk.libs.exceptions
 
 # **********************************************************
 # Utils for interacting with the atopile front-end
 # **********************************************************
 
 _line_to_def_block: dict[Path, list[Optional[atopile.address.AddrStr]]] = {}
-_error_accumulators: dict[Path, atopile.errors.ExceptionAccumulator] = defaultdict(
-    atopile.errors.ExceptionAccumulator
+_error_accumulators: dict[Path, faebryk.libs.exceptions.ExceptionAccumulator] = (
+    defaultdict(faebryk.libs.exceptions.ExceptionAccumulator)
 )
 
 
@@ -52,7 +53,7 @@ def _index_class_defs_by_line(file: Path):
     addrs = None
     try:
         addrs = atopile.front_end.scoop.ingest_file(file)
-    except* atopile.errors._BaseAtoError as ex:
+    except* atopile.errors._BaseUserException as ex:
         accumulator.add_errors(ex)
     if addrs is None:
         # we don't chuck a hissy here, but the caller won't progress much
@@ -64,7 +65,7 @@ def _index_class_defs_by_line(file: Path):
             if addr == str(file):
                 continue
 
-            atopile.front_end.lofty.get_instance(addr)
+            atopile.front_end.bob.get_instance(addr)
 
             # FIXME: we shouldn't be entangling this
             # code w/ the front-end so much
@@ -199,7 +200,7 @@ def publish_errors(uri: str):
     processed_errors = set()
     for error in _error_accumulators[file].errors:
         if (
-            isinstance(error, atopile.errors._BaseAtoError)
+            isinstance(error, atopile.errors._BaseUserException)
             and error.src_path
             and error.src_col
             and error.src_line
@@ -274,8 +275,8 @@ def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
 
     instance_addr = atopile.address.add_instances(class_addr, word.split(".")[:-1])
     try:
-        instance = atopile.front_end.lofty.get_instance(instance_addr)
-    except (KeyError, atopile.errors.AtoError):
+        instance = atopile.front_end.bob.get_instance(instance_addr)
+    except (KeyError, atopile.errors.UserException):
         pass
     else:
         for child, assignment in instance.assignments.items():
@@ -297,7 +298,7 @@ def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
     if "." not in word:
         try:
             class_ctx = atopile.front_end.scoop.get_obj_def(class_addr)
-        except (KeyError, atopile.errors.AtoError):
+        except (KeyError, atopile.errors.UserException):
             pass
         else:
             closure_contexts = [class_ctx]
@@ -353,12 +354,12 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
     # check if it is an instance
     try:
         instance_addr = atopile.address.add_instances(class_addr, word.split("."))
-        instance = atopile.front_end.lofty.get_instance(instance_addr)
-    except (KeyError, atopile.errors.AtoError, AttributeError):
+        instance = atopile.front_end.bob.get_instance(instance_addr)
+    except (KeyError, atopile.errors.UserException, AttributeError):
         pass
     else:
         # TODO: deal with assignments made to super
-        output_str += f"**class**: {str(atopile.address.get_name(instance.supers[0].address))}\n\n"
+        output_str += f"**class**: {str(atopile.address.get_name(instance.supers[0].address))}\n\n"  # noqa: E501  # pre-existing
         for key, assignment in instance.assignments.items():
             output_str += "**" + key + "**: "
             if assignment[0] is None:
@@ -368,7 +369,7 @@ def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
 
     # check if it is an assignment
     # FIXME: this is broken, because ClassLayers no longer have assignments attached
-    # class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None)
+    # class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None) # noqa: E501  # pre-existing
     # if class_assignments:
     #     output_str = str(class_assignments.value)
 
@@ -410,8 +411,8 @@ def goto_definition(
 
     src_ctx = None
     try:
-        src_ctx = atopile.front_end.lofty.get_instance(instance_addr).src_ctx
-    except (KeyError, atopile.errors.AtoError, AttributeError):
+        src_ctx = atopile.front_end.bob.get_instance(instance_addr).src_ctx
+    except (KeyError, atopile.errors.UserException, AttributeError):
         # See if it's a Class instead
         pass
 
@@ -423,7 +424,7 @@ def goto_definition(
                 atopile.datatypes.Ref(word.split(".")),
             )
         ).src_ctx
-    except (KeyError, atopile.errors.AtoError, AttributeError):
+    except (KeyError, atopile.errors.UserException, AttributeError):
         pass
 
     try:
@@ -446,7 +447,7 @@ def goto_definition(
 @publish_errors_decorator
 def did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """LSP handler for textDocument/didOpen request."""
-    # Currently this just handles new lines so the LSP can still give good completions outside modules
+    # Currently this just handles new lines so the LSP can still give good completions outside modules # noqa: E501  # pre-existing
     for event in params.content_changes:
         # Check if the change is a new line
         if newlines := event.text.count("\n"):
@@ -519,10 +520,10 @@ def initialize(params: lsp.InitializeParams) -> None:
     settings = params.initialization_options["settings"]
     _update_workspace_settings(settings)
     log_to_output(
-        f"Settings used to run Server:\r\n{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"
+        f"Settings used to run Server:\r\n{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
     )
     log_to_output(
-        f"Global settings:\r\n{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
+        f"Global settings:\r\n{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
     )
 
 
@@ -665,16 +666,16 @@ def _run_tool_on_document(
     argv += TOOL_ARGS + settings["args"] + extra_args
 
     if use_stdin:
-        # TODO: update these to pass the appropriate arguments to provide document contents
+        # TODO: update these to pass the appropriate arguments to provide document contents # noqa: E501  # pre-existing
         # to tool via stdin.
         # For example, for pylint args for stdin looks like this:
         #     pylint --from-stdin <path>
-        # Here `--from-stdin` path is used by pylint to make decisions on the file contents
+        # Here `--from-stdin` path is used by pylint to make decisions on the file contents # noqa: E501  # pre-existing
         # that are being processed. Like, applying exclusion rules.
         # It should look like this when you pass it:
         #     argv += ["--from-stdin", document.path]
-        # Read up on how your tool handles contents via stdin. If stdin is not supported use
-        # set use_stdin to False, or provide path, what ever is appropriate for your tool.
+        # Read up on how your tool handles contents via stdin. If stdin is not supported use # noqa: E501  # pre-existing
+        # set use_stdin to False, or provide path, what ever is appropriate for your tool. # noqa: E501  # pre-existing
         argv += []
     else:
         argv += [document.path]
@@ -712,7 +713,7 @@ def _run_tool_on_document(
         elif result.stderr:
             log_to_output(result.stderr)
     else:
-        # In this mode the tool is run as a module in the same process as the language server.
+        # In this mode the tool is run as a module in the same process as the language server. # noqa: E501  # pre-existing
         log_to_output(" ".join([sys.executable, "-m"] + argv))
         log_to_output(f"CWD Linter: {cwd}")
         # This is needed to preserve sys.path, in cases where the tool modifies
@@ -720,11 +721,11 @@ def _run_tool_on_document(
 
         # with utils.substitute_attr(sys, "path", sys.path[:]):
         #     try:
-        #         # TODO: `utils.run_module` is equivalent to running `python -m atopile`.
-        #         # If your tool supports a programmatic API then replace the function below
-        #         # with code for your tool. You can also use `utils.run_api` helper, which
+        #         # TODO: `utils.run_module` is equivalent to running `python -m atopile`. # noqa: E501  # pre-existing
+        #         # If your tool supports a programmatic API then replace the function below # noqa: E501  # pre-existing
+        #         # with code for your tool. You can also use `utils.run_api` helper, which # noqa: E501  # pre-existing
         #         # handles changing working directories, managing io streams, etc.
-        #         # Also update `_run_tool` function and `utils.run_module` in `lsp_runner.py`.
+        #         # Also update `_run_tool` function and `utils.run_module` in `lsp_runner.py`. # noqa: E501  # pre-existing
         #         result = utils.run_module(
         #             module=TOOL_MODULE,
         #             argv=argv,
@@ -797,7 +798,7 @@ def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
         elif result.stderr:
             log_to_output(result.stderr)
     else:
-        # In this mode the tool is run as a module in the same process as the language server.
+        # In this mode the tool is run as a module in the same process as the language server. # noqa: E501  # pre-existing
         log_to_output(" ".join([sys.executable, "-m"] + argv))
         log_to_output(f"CWD Linter: {cwd}")
         # This is needed to preserve sys.path, in cases where the tool modifies
@@ -805,10 +806,10 @@ def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
         with utils.substitute_attr(sys, "path", sys.path[:]):
             try:
                 # TODO: `utils.run_module` is equivalent to running `python -m atopile`.
-                # If your tool supports a programmatic API then replace the function below
-                # with code for your tool. You can also use `utils.run_api` helper, which
+                # If your tool supports a programmatic API then replace the function below # noqa: E501  # pre-existing
+                # with code for your tool. You can also use `utils.run_api` helper, which # noqa: E501  # pre-existing
                 # handles changing working directories, managing io streams, etc.
-                # Also update `_run_tool_on_document` function and `utils.run_module` in `lsp_runner.py`.
+                # Also update `_run_tool_on_document` function and `utils.run_module` in `lsp_runner.py`. # noqa: E501  # pre-existing
                 result = utils.run_module(
                     module=TOOL_MODULE, argv=argv, use_stdin=True, cwd=cwd
                 )

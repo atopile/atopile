@@ -1,16 +1,48 @@
 name: Continuous Delivery
 
 on:
+  workflow_dispatch:
+  pull_request:
   push:
     branches:
-      - 'main'
-    tags:
-      - 'v*'
-  workflow_dispatch: {}
+      - main
 
 jobs:
-  python:
+  python-build:
     runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Required due to a bug in the checkout action
+      # https://github.com/actions/checkout/issues/1471
+      - run: git fetch --prune --unshallow --tags
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: 'pyproject.toml'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: '0.5.5'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Make python package
+        run: uv build
+
+      - name: Upload Python Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist
+
+  python-publish:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    needs: python-build
 
     environment:
       name: pypi
@@ -23,52 +55,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Required due to a bug in the checkout action
-      # https://github.com/actions/checkout/issues/1471
-      - run: git fetch --prune --unshallow --tags
-
-      -
-        name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      -
-        name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '19.5.0'
-
-      -
-        name: Build Web Application
-        run: |
-          npm ci
-          npm run build
-        working-directory: ./src/atopile/viewer
-      -
-        name: Make python package
-        run: |
-          pip install build twine
-          python -m build
-
-      -
-        name: Upload Python Artifact
-        uses: actions/upload-artifact@v4
+      - name: Download python-package
+        uses: actions/download-artifact@v4
         with:
           name: python-package
           path: dist
 
-      -
-        name: Publish package distributions to PyPI
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+      - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@897895f1e160c830e369f9779632ebc134688e1b
         with:
           skip-existing: true  # Helpful while we're migrating
 
   docker:
     runs-on: ubuntu-latest
-
-    needs: python
+    needs: python-build
 
     strategy:
       matrix:
@@ -85,36 +85,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      -
-        name: Download python-package
+      - name: Download python-package
         uses: actions/download-artifact@v4
         with:
           name: python-package
           path: dist
 
-      -
-        name: Docker meta
+      - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
             ghcr.io/atopile/${{ matrix.image }}
+          # TODO: re-enable @latest tag once main is stable again (@v0.3)
+          flavor: |
+            latest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=sha
 
-      -
-        name: Log in to the Container registry
+      - name: Log in to the Container registry
         uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      -
-        name: Build and push
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .

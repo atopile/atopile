@@ -10,103 +10,113 @@ import hashlib
 import json
 import logging
 import uuid
-from collections import defaultdict
+from pathlib import Path
+from typing import Type
 
-from atopile import address, config, errors, instance_methods
-from atopile.instance_methods import (
-    all_descendants,
-    find_matching_super,
-    match_components,
-    match_modules,
+from more_itertools import first
+
+import faebryk.library._F as F
+import faebryk.libs.exceptions
+from atopile import config, errors, front_end
+from faebryk.core.graph import GraphFunctions
+from faebryk.core.module import Module
+from faebryk.libs.util import (
+    FuncDict,
+    KeyErrorAmbiguous,
+    KeyErrorNotFound,
+    find,
+    get_module_from_path,
 )
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
-def generate_uuid_from_string(path: str) -> str:
+def _generate_uuid_from_string(path: str) -> str:
     """Spits out a uuid in hex from a string"""
     path_as_bytes = path.encode("utf-8")
     hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
     return str(uuid.UUID(bytes=hashed_path))
 
 
-def generate_comp_uid(comp_addr: str) -> str:
-    """Get a unique identifier for a component."""
-    instance_section = address.get_instance_section(comp_addr)
-    if not instance_section:
-        raise ValueError(f"Component address {comp_addr} has no instance section")
-    return generate_uuid_from_string(instance_section)
-
-
-def _find_module_layouts() -> dict[str, list[config.BuildContext]]:
-    """
-    Return a dict of all the known entry points of dependencies in the project.
-    The dict maps the entry point's address to another map of the entry point's
-    build name and the layout file path.
-    """
+def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
+    """Find, tag and return a set of all the modules with layouts."""
     directory = config.get_project_context().project_path
 
-    entries = defaultdict(list)
-    for filepath in directory.glob("**/ato.yaml"):
-        cfg = config.get_project_config_from_path(filepath)
+    entries: FuncDict[Module, set[Path]] = FuncDict()
+    ato_modules = front_end.bob.modules
 
-        for build_name in cfg.builds:
-            ctx = config.BuildContext.from_config_name(cfg, build_name)
-            entries[ctx.entry].append(ctx)
+    for filepath in directory.glob("**/ato.yaml"):
+        with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
+            cfg = config.get_project_config_from_path(filepath)
+
+            for build_name in cfg.builds:
+                with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
+                    ctx = config.BuildContext.from_config_name(cfg, build_name)
+
+                    # Check if the module is a known python module
+                    if (
+                        class_ := get_module_from_path(
+                            ctx.entry.file_path, ctx.entry.entry_section
+                        )
+                    ) is not None:
+                        # we only bother to index things we've imported,
+                        # otherwise we can be sure they weren't used
+                        entries.setdefault(class_, set()).add(ctx.paths.layout)
+
+                    # Check if the module is a known ato module
+                    elif class_ := ato_modules.get(ctx.entry):
+                        entries.setdefault(class_, set()).add(ctx.paths.layout)
 
     return entries
 
 
-def generate_module_map(build_ctx: config.BuildContext) -> None:
-    """Generate a file containing a list of all the modules and their components in the build."""
+def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
+    """Generate a file containing a list of all the modules and their components in the build."""  # noqa: E501  # pre-existing
     module_map = {}
 
-    laid_out_modules = _find_module_layouts()
-    for module_instance in filter(match_modules, all_descendants(build_ctx.entry)):
-        module_super = find_matching_super(
-            module_instance, list(laid_out_modules.keys())
-        )
-        if not module_super:
-            continue
+    module_layouts = _index_module_layouts()
 
-        # Skip build entry point
-        if module_instance == build_ctx.entry:
-            continue
+    for module, trait in GraphFunctions(app.get_graph()).nodes_with_trait(
+        F.has_reference_layout
+    ):
+        module_layouts.setdefault(module, set()).update(trait.paths)
 
-        # Get the build context for the laid out module
-        module_super_ctxs = laid_out_modules[module_super]
-        if len(module_super_ctxs) > 1:
-            raise errors.AtoNotImplementedError(
+    for module_instance in app.get_children_modules(types=Module):
+        try:
+            # TODO: this could be improved if we had the mro of the module
+            module_super = find(
+                module_layouts.keys(), lambda x: isinstance(module_instance, x)
+            )
+        except KeyErrorNotFound:
+            continue
+        except KeyErrorAmbiguous as e:
+            raise errors.UserNotImplementedError(
                 "There are multiple build configurations for this module.\n"
                 "We don't currently support multiple layouts for the same module."
                 "Show the issue some love to get it done: https://github.com/atopile/atopile/issues/399"
-            )
-        module_super_ctx = module_super_ctxs[0]
+            ) from e
 
         # Build up a map of UUIDs of the children of the module
-        # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout
-        # FIXME: this currently relies on the `all_descendants` iterator returning the
-        # children in the same order. This is pretty fragile and should be fixed.
+        # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout # noqa: E501  # pre-existing
         uuid_map = {}
-        for inst_addr, layout_addr in instance_methods.common_children(
-            module_instance, module_super_ctx.entry
-        ):
-            if not match_components(inst_addr):
-                # Skip non-components
+        addr_map = {}
+        for inst_child in module_instance.get_children_modules(types=Module):
+            if not inst_child.has_trait(F.has_footprint):
                 continue
+            uuid_map[_generate_uuid_from_string(inst_child.get_full_name())] = (
+                _generate_uuid_from_string(inst_child.relative_address(module_instance))
+            )
+            addr_map[inst_child.get_full_name()] = inst_child.relative_address(
+                module_instance
+            )
 
-            # This should be enforced by the `common_children` function
-            assert address.get_name(inst_addr) == address.get_name(layout_addr)
-
-            uuid_map[generate_comp_uid(inst_addr)] = generate_comp_uid(layout_addr)
-
-        module_map[address.get_instance_section(module_instance)] = {
-            "instance_path": module_instance,
-            "layout_path": str(module_super_ctx.layout_path),
+        module_map[module_instance.relative_address(app)] = {
+            "layout_path": str(first(module_layouts[module_super])),
             "uuid_map": uuid_map,
+            "addr_map": addr_map,
         }
 
     with open(
-        build_ctx.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8"
+        build_ctx.paths.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8"
     ) as f:
         json.dump(module_map, f)

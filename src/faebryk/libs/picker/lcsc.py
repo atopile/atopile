@@ -56,6 +56,9 @@ WORKAROUND_THT_INCH_MM_SWAP_FIX = False
 
 
 def _fix_3d_model_offsets(ki_footprint):
+    if ki_footprint.output.model_3d is None:
+        return
+
     if WORKAROUND_SMD_3D_MODEL_FIX:
         if ki_footprint.input.info.fp_type == "smd":
             ki_footprint.output.model_3d.translation.x = 0
@@ -74,6 +77,9 @@ class LCSCException(Exception):
     def __init__(self, partno: str, *args: object) -> None:
         self.partno = partno
         super().__init__(*args)
+
+    def __str__(self) -> str:
+        return f"{type(self).__name__}: {self.partno} - {self.args}"
 
 
 class LCSC_NoDataException(LCSCException): ...
@@ -226,7 +232,8 @@ def attach(component: Module, partno: str, get_model: bool = True):
             # TODO make this a trait
             pins = [
                 (pin.settings.spice_pin_number, pin.name.text)
-                for pin in easyeda_symbol.pins
+                for unit in easyeda_symbol.units
+                for pin in unit.pins
             ]
             try:
                 pinmap = component.get_trait(F.has_pin_association_heuristic).get_pins(

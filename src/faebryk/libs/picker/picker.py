@@ -13,10 +13,21 @@ from typing import Callable, Iterable
 from rich.progress import Progress
 
 import faebryk.library._F as F
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.parameter import Parameter
-from faebryk.libs.util import flatten, not_none
+from faebryk.core.parameter import (
+    And,
+    Is,
+    Or,
+    Parameter,
+    ParameterOperatable,
+    Predicate,
+)
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.libs.util import ConfigFlag, flatten, not_none
+
+NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +37,7 @@ class Supplier(ABC):
     def attach(self, module: Module, part: "PickerOption"): ...
 
 
-@dataclass
+@dataclass(frozen=True)
 class Part:
     partno: str
     supplier: Supplier
@@ -38,13 +49,21 @@ class DescriptiveProperties(StrEnum):
     datasheet = "Datasheet"
 
 
-@dataclass
+@dataclass(frozen=True)
 class PickerOption:
     part: Part
-    params: dict[str, Parameter] | None = None
+    params: dict[str, ParameterOperatable.SetLiteral] | None = None
+    """
+    Parameters that need to be matched for this option to be valid.
+
+    Assumes specified params are narrowest possible value for this part
+    """
     filter: Callable[[Module], bool] | None = None
     pinmap: dict[str, F.Electrical] | None = None
     info: dict[str | DescriptiveProperties, str] | None = None
+
+    def __hash__(self):
+        return hash(self.part)
 
 
 class PickError(Exception):
@@ -86,7 +105,7 @@ class PickErrorChildren(PickError):
 
 
 class PickErrorParams(PickError):
-    def __init__(self, module: Module, options: list[PickerOption]):
+    def __init__(self, module: Module, options: list[PickerOption], solver: Solver):
         self.options = options
 
         MAX = 5
@@ -99,7 +118,7 @@ class PickErrorParams(PickError):
 
         message = (
             f"Could not find part for {module}"
-            f"\nwith params:\n{indent(module.pretty_params(), ' '*4)}"
+            f"\nwith params:\n{indent(module.pretty_params(solver), ' '*4)}"
             f"\nin options:\n {indent(options_str, ' '*4)}"
         )
         super().__init__(message, module)
@@ -141,50 +160,65 @@ class has_part_picked_remove(has_part_picked.impl()):
             F.has_multi_picker(
                 -1000,
                 F.has_multi_picker.FunctionPicker(
-                    lambda m: m.add(has_part_picked_remove())
+                    lambda m, _: m.add(has_part_picked_remove()) and None
                 ),
             )
         )
 
 
-def pick_module_by_params(module: Module, options: Iterable[PickerOption]):
+class skip_self_pick(Module.TraitT.decless()):
+    """Indicates that a node exists only to contain children, and shouldn't itself be picked"""  # noqa: E501  # pre-existing
+
+
+def pick_module_by_params(
+    module: Module, solver: Solver, options: Iterable[PickerOption]
+):
     if module.has_trait(has_part_picked):
         logger.debug(f"Ignoring already picked module: {module}")
         return
 
     params = {
-        not_none(p.get_parent())[1]: p.get_most_narrow()
+        not_none(p.get_parent())[1]: p
         for p in module.get_children(direct_only=True, types=Parameter)
     }
 
-    options = list(options)
+    filtered_options = [o for o in options if not o.filter or o.filter(module)]
+    predicates: dict[PickerOption, ParameterOperatable.BooleanLike] = {}
+    for o in filtered_options:
+        predicate_list: list[Predicate] = []
 
-    try:
-        option = next(
-            filter(
-                lambda o: (not o.filter or o.filter(module))
-                and all(
-                    v.is_subset_of(params.get(k, F.ANY()))
-                    for k, v in (o.params or {}).items()
-                    if not k.startswith("_")
-                ),
-                options,
-            )
-        )
-    except StopIteration:
-        raise PickErrorParams(module, options)
+        for k, v in (o.params or {}).items():
+            if not k.startswith("_"):
+                param = params[k]
+                predicate_list.append(Is(param, v))
+
+        # No predicates, thus always valid option
+        if len(predicate_list) == 0:
+            predicates[o] = Or(True)
+            continue
+
+        predicates[o] = And(*predicate_list)
+
+    if len(predicates) == 0:
+        raise PickErrorParams(module, list(options), solver)
+
+    solve_result = solver.assert_any_predicate(
+        [(p, k) for k, p in predicates.items()], lock=True
+    )
+
+    # FIXME handle failure parameters
+
+    # pick first valid option
+    if not solve_result.true_predicates:
+        raise PickErrorParams(module, list(options), solver)
+
+    _, option = next(iter(solve_result.true_predicates))
 
     if option.pinmap:
         module.add(F.can_attach_to_footprint_via_pinmap(option.pinmap))
 
     option.part.supplier.attach(module, option)
     module.add(has_part_picked_defined(option.part))
-
-    # Merge params from footprint option
-    for k, v in (option.params or {}).items():
-        if k not in params:
-            continue
-        params[k].override(v)
 
     logger.debug(f"Attached {option.part.partno} to {module}")
     return option
@@ -200,7 +234,7 @@ def _get_mif_top_level_modules(mif: ModuleInterface) -> set[Module]:
 
 class PickerProgress:
     def __init__(self):
-        self.progress = Progress()
+        self.progress = Progress(disable=bool(NO_PROGRESS_BAR))
         self.task = self.progress.add_task("Picking", total=1)
 
     @staticmethod
@@ -223,15 +257,23 @@ class PickerProgress:
 
 
 # TODO should be a Picker
-def pick_part_recursively(module: Module):
+def pick_part_recursively(module: Module, solver: Solver):
+    pickable_modules = GraphFunctions(module.get_graph()).nodes_with_trait(F.has_picker)
+    if LOG_PICK_SOLVE:
+        names = sorted(p[0].get_full_name(types=True) for p in pickable_modules)
+        logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
+
     pp = PickerProgress.from_module(module)
     try:
         with pp.context():
-            _pick_part_recursively(module, pp)
+            _pick_part_recursively(module, solver, pp)
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
         for m, sube in failed_parts.items():
-            logger.error(f"Could not find pick for {m}:\n {sube.message}")
+            logger.error(
+                f"Could not find pick for {m}:\n {sube.message}\n"
+                f"Params:\n{indent(m.pretty_params(solver), prefix=' '*4)}"
+            )
         raise e
 
     # check if lowest children are picked
@@ -268,62 +310,64 @@ def pick_part_recursively(module: Module):
         logger.warning(f"Part without pick {np}")
 
 
-def _pick_part_recursively(module: Module, progress: PickerProgress | None = None):
+def _pick_part_recursively(
+    module: Module, solver: Solver, progress: PickerProgress | None = None
+):
     assert isinstance(module, Module)
 
     # pick only for most specialized module
     module = module.get_most_special()
 
-    if module.has_trait(has_part_picked):
-        return
+    if not module.has_trait(has_part_picked):
+        # pick mif module parts
+        for mif in module.get_children(direct_only=True, types=ModuleInterface):
+            for mod in _get_mif_top_level_modules(mif):
+                _pick_part_recursively(mod, solver, progress)
 
-    # pick mif module parts
-    for mif in module.get_children(direct_only=True, types=ModuleInterface):
-        for mod in _get_mif_top_level_modules(mif):
-            _pick_part_recursively(mod, progress)
+        if module.has_trait(skip_self_pick):
+            logger.debug(f"Skipping virtual module {module}")
 
-    # pick
-    if module.has_trait(F.has_picker):
-        try:
-            module.get_trait(F.has_picker).pick()
-        except PickError as e:
-            # if no children, raise
-            # This whole logic will be so much easier if the recursive
-            # picker is just a normal picker
-            if not module.get_children_modules(types=Module, direct_only=True):
-                raise e
-
-    if module.has_trait(has_part_picked):
-        if progress:
-            progress.advance(module)
-        return
-
-    # if module has been specialized during pick, try again
-    if module.get_most_special() != module:
-        _pick_part_recursively(module, progress)
-        return
-
-    # go level lower
-    to_pick: set[Module] = {
-        c
-        for c in module.get_children(types=Module, direct_only=True)
-        if not c.has_trait(has_part_picked)
-    }
-    failed: dict[Module, PickError] = {}
-
-    logger.debug(f"Try picking unpicked children of {module}: {to_pick}")
-    # try repicking as long as progress is being made
-    while to_pick:
-        for child in to_pick:
+        # pick
+        if module.has_trait(F.has_picker) and not module.has_trait(skip_self_pick):
             try:
-                _pick_part_recursively(child, progress)
+                module.get_trait(F.has_picker).pick(solver)
             except PickError as e:
-                failed[child] = e
+                # if no children, raise
+                # This whole logic will be so much easier if the recursive
+                # picker is just a normal picker
+                if not module.get_children_modules(types=Module, direct_only=True):
+                    raise e
 
-        # no progress or last one failed as only
-        if to_pick == set(failed.keys()) or (len(failed) == 1 and child in failed):
-            logger.debug(f"No progress made on {module}, backtracking")
-            raise PickErrorChildren(module, failed)
+    if not module.has_trait(has_part_picked):
+        # if module has been specialized during pick, try again
+        if module.get_most_special() != module:
+            _pick_part_recursively(module, solver, progress)
 
-        to_pick = set(failed.keys())
-        failed.clear()
+    if not module.has_trait(has_part_picked):
+        # go level lower
+        to_pick: set[Module] = {
+            c
+            for c in module.get_children(types=Module, direct_only=True)
+            if not c.has_trait(has_part_picked)
+        }
+        failed: dict[Module, PickError] = {}
+
+        logger.debug(f"Try picking unpicked children of {module}: {to_pick}")
+        # try repicking as long as progress is being made
+        while to_pick:
+            for child in to_pick:
+                try:
+                    _pick_part_recursively(child, solver, progress)
+                except PickError as e:
+                    failed[child] = e
+
+            # no progress or last one failed as only
+            if to_pick == set(failed.keys()) or (len(failed) == 1 and child in failed):
+                logger.debug(f"No progress made on {module}, backtracking")
+                raise PickErrorChildren(module, failed)
+
+            to_pick = set(failed.keys())
+            failed.clear()
+
+    if progress:
+        progress.advance(module)

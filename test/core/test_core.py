@@ -110,6 +110,19 @@ class TestGraph(unittest.TestCase):
             x.get_full_name(), "[*][0-9A-F]{4}.i0.i1.i2.i3.i4.i5.i6.i7.i8.i9"
         )
 
+    def test_fab_ll_chain_tree_with_root(self):
+        root = Node()
+        root.no_include_parents_in_full_name = True
+        x = root
+        for i in range(10):
+            y = Node()
+            z = Node()
+            x.add(y, f"i{i}")
+            x.add(z, f"j{i}")
+            x = y
+
+        self.assertEqual(x.get_full_name(), "i0.i1.i2.i3.i4.i5.i6.i7.i8.i9")
+
     def test_link_eq_direct(self):
         gif1 = GraphInterface()
         gif2 = GraphInterface()
@@ -148,6 +161,42 @@ class TestGraph(unittest.TestCase):
 
         assert MIFType.LinkDirectShallow() is MIFType.LinkDirectShallow()
 
+    def test_node_preinit(self):
+        counter = 0
 
-if __name__ == "__main__":
-    unittest.main()
+        def assert_and_reset(target: int):
+            nonlocal counter
+            self.assertEqual(counter, target)
+            counter = 0
+
+        class N1(Node):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N11(N1):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N12(N1):
+            pass
+
+        class N111(N11):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N112(N11):
+            pass
+
+        N1()
+        assert_and_reset(1)
+        N11()
+        assert_and_reset(2)
+        N12()
+        assert_and_reset(1)
+        N111()
+        assert_and_reset(3)
+        N112()
+        assert_and_reset(2)

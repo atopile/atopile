@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 
-import math
-
 import faebryk.library._F as F
 from faebryk.core.node import Node
 from faebryk.libs.library import L
@@ -13,18 +11,29 @@ from faebryk.libs.util import cast_assert
 
 class ElectricPower(F.Power):
     class can_be_decoupled_power(F.can_be_decoupled.impl()):
-        def on_obj_set(self):
+        def decouple(
+            self,
+            count: int = 1,
+        ):
             obj = self.get_obj(ElectricPower)
-            self.hv = obj.hv
-            self.lv = obj.lv
 
-        def decouple(self):
-            obj = self.get_obj(ElectricPower)
-            return F.can_be_decoupled_defined.decouple(self).builder(
-                lambda c: c.rated_voltage.merge(
-                    F.Range(obj.voltage * 2.0, math.inf * P.V)
-                )
-            )
+            if count > 1:
+                capacitor = obj.add(F.MultiCapacitor(count))
+            else:
+                capacitor = obj.add(F.Capacitor())
+
+            # FIXME seems to cause contradictions
+            # capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
+
+            obj.hv.connect_via(capacitor, obj.lv)
+
+            obj.add(F.is_decoupled(capacitor))
+            return capacitor
+
+        def is_implemented(self):
+            return not self.obj.has_trait(F.is_decoupled)
+
+        # TODO implement merging
 
     class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
         def on_obj_set(self):
@@ -35,15 +44,21 @@ class ElectricPower(F.Power):
         def protect(self):
             obj = self.get_obj(ElectricPower)
             return [
-                tvs.builder(lambda t: t.reverse_working_voltage.merge(obj.voltage))
+                tvs.builder(lambda t: t.reverse_working_voltage.alias_is(obj.voltage))
                 for tvs in F.can_be_surge_protected_defined.protect(self)
             ]
 
     hv: F.Electrical
     lv: F.Electrical
 
-    voltage: F.TBD
-    max_current: F.TBD
+    voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        domain=L.Domains.Numbers.REAL(),
+        soft_set=L.Range(0 * P.V, 1000 * P.V),
+        tolerance_guess=5 * P.percent,
+    )
+    max_current = L.p_field(units=P.A)
     """
     Only for this particular power interface
     Does not propagate to connections
@@ -65,8 +80,10 @@ class ElectricPower(F.Power):
 
         self.connect_shallow(fused_power)
 
-        fuse.trip_current.merge(F.Constant(self.max_current))
-        # fused_power.max_current.merge(F.Range(0 * P.A, fuse.trip_current))
+        fuse.trip_current.constrain_subset(
+            self.max_current * L.Range.from_center_rel(1.0, 0.1)
+        )
+        fused_power.max_current.constrain_le(fuse.trip_current)
 
         if attach_to is not None:
             attach_to.add(fused_power)
@@ -74,7 +91,8 @@ class ElectricPower(F.Power):
         return fused_power
 
     def __preinit__(self) -> None:
-        # self.voltage.merge(
+        ...
+        # self.voltage.alias_is(
         #    self.hv.potential - self.lv.potential
         # )
         self.voltage.add(

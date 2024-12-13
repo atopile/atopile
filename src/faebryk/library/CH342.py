@@ -25,8 +25,10 @@ class CH342(Module):
         def __preinit__(self):
             F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
 
-            self.power_out.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
-            self.power_in.voltage.merge(F.Range(4 * P.V, 5.5 * P.V))
+            self.power_out.voltage.constrain_superset(
+                L.Range.from_center_rel(3.3 * P.V, 0.1)
+            )
+            self.power_in.voltage.constrain_subset(L.Range(4 * P.V, 5.5 * P.V))
 
         @L.rt_field
         def bridge(self):
@@ -124,8 +126,8 @@ class CH342(Module):
         # ----------------------------------------
         #            parametrization
         # ----------------------------------------
-        self.power_3v.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
-        self.power_io.voltage.merge(F.Range(1.7 * P.V, 5.5 * P.V))
+        self.power_3v.voltage.constrain_subset(L.Range.from_center_rel(3.3 * P.V, 0.1))
+        self.power_io.voltage.constrain_subset(L.Range(1.7 * P.V, 5.5 * P.V))
 
         # ----------------------------------------
         #              connections

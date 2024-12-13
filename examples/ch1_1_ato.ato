@@ -1,0 +1,14 @@
+from "generics/resistors.ato" import Resistor
+from "generics/capacitors.ato" import Capacitor
+
+module App:
+    r1 = new Resistor
+    r1.value = 10kohm +/- 20%
+    r1.package = "0402"
+
+    c1 = new Capacitor
+    c1.value = 100nF +/- 20%
+    c1.package = "0402"
+
+    r1.p1 ~ c1.p1
+    r1.p2 ~ c1.p2

@@ -52,7 +52,7 @@ def sanitize_name(raw, expect_arithmetic: bool = False):
     # rest
     def handle_unknown_invalid_symbold(match):
         logger.warning(
-            "Replacing unknown invalid symbol {} in {} with _".format(
+            'Replacing unknown invalid symbol "{}" in "{}" with _'.format(
                 match.group(0), raw
             )
         )
@@ -61,14 +61,14 @@ def sanitize_name(raw, expect_arithmetic: bool = False):
     sanitized = re.sub(r"[^a-zA-Z_0-9]", handle_unknown_invalid_symbold, sanitized)
 
     if re.match("^[a-zA-Z_]", sanitized) is None:
-        sanitized = "_" + sanitized
+        sanitized = "P" + sanitized
 
     if re.match("^[a-zA-Z_]+[a-zA-Z_0-9]*$", sanitized) is not None:
         return sanitized
 
     to_escape = re.findall("[^a-zA-Z_0-9]", sanitized)
     if len(to_escape) > 0:
-        return None, to_escape
+        raise ValueError(f"Cannot sanitize name: {raw}")
 
     return sanitized
 

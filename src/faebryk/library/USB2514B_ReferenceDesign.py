@@ -27,7 +27,7 @@ class USB2514B_ReferenceDesign(Module):
         Power switched USB2_0 interface.
         """
 
-        power_distribution_switch: F.Diodes_Incorporated_AP2552W6_7
+        power_distribution_switch: F.Diodes_Incorporated_AP2553W6_7
         usb_dfp_power_indicator: F.PoweredLED
 
         power_in: F.ElectricPower
@@ -46,8 +46,8 @@ class USB2514B_ReferenceDesign(Module):
             LVL = LayoutTypeHierarchy.Level
 
             layouts = [
-                LVL(  # Diodes Incorporated AP2552W6_7
-                    mod_type=F.Diodes_Incorporated_AP2552W6_7,
+                LVL(  # Diodes Incorporated AP2553W6_7
+                    mod_type=F.Diodes_Incorporated_AP2553W6_7,
                     layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
                 ),
                 LVL(  # PoweredLED
@@ -61,12 +61,12 @@ class USB2514B_ReferenceDesign(Module):
             # ----------------------------------------
             #              parametrization
             # ----------------------------------------
-            self.usb_dfp_power_indicator.led.color.merge(F.LED.Color.YELLOW)
-            self.usb_dfp_power_indicator.led.brightness.merge(
-                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+            self.usb_dfp_power_indicator.led.color.constrain_subset(F.LED.Color.YELLOW)
+            self.usb_dfp_power_indicator.led.brightness.constrain_subset(
+                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
             )
             self.power_distribution_switch.set_current_limit(
-                F.Range.from_center_rel(520 * P.mA, 0.01)
+                L.Range.from_center_rel(520 * P.mA, 0.01)
             )
 
             # ----------------------------------------
@@ -200,34 +200,36 @@ class USB2514B_ReferenceDesign(Module):
             )
 
         # TODO: load_capacitance is a property of the crystal. remove this
-        self.crystal_oscillator.crystal.load_capacitance.merge(
-            F.Range(8 * P.pF, 15 * P.pF)
+        self.crystal_oscillator.crystal.load_capacitance.constrain_subset(
+            L.Range(8 * P.pF, 15 * P.pF)
         )
-        self.crystal_oscillator.crystal.frequency.merge(
-            F.Range.from_center_rel(24 * P.MHz, 0.01)
+        self.crystal_oscillator.crystal.frequency.constrain_subset(
+            L.Range.from_center_rel(24 * P.MHz, 0.01)
         )
-        self.crystal_oscillator.crystal.frequency_tolerance.merge(
-            F.Range.upper_bound(50 * P.ppm)
-        )
+        self.crystal_oscillator.crystal.frequency_tolerance.constrain_le(50 * P.ppm)
 
         # TODO: ugly
-        self.crystal_oscillator.current_limiting_resistor.resistance.merge(0 * P.ohm)
+        self.crystal_oscillator.current_limiting_resistor.resistance.alias_is(0 * P.ohm)
 
         # usb transceiver bias resistor
-        self.bias_resistor.resistance.merge(F.Range.from_center_rel(12 * P.kohm, 0.01))
+        self.bias_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(12 * P.kohm, 0.01)
+        )
 
         for led in [self.suspend_indicator.led, self.power_3v3_indicator]:
-            led.led.color.merge(F.LED.Color.GREEN)
-            led.led.brightness.merge(
-                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+            led.led.color.constrain_subset(F.LED.Color.GREEN)
+            led.led.brightness.constrain_subset(
+                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
             )
 
-        self.ldo_3v3.output_voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
-        self.ldo_3v3.power_in.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.1)
+        self.ldo_3v3.output_voltage.constrain_subset(
+            L.Range.from_center_rel(3.3 * P.V, 0.05)
         )
-        self.ldo_3v3.power_out.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.1)
+        self.ldo_3v3.power_in.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
+        )
+        self.ldo_3v3.power_out.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
         )
 
         # Hub controller power rails decoupling
@@ -236,32 +238,32 @@ class USB2514B_ReferenceDesign(Module):
                 F.MultiCapacitor(2)
             )
         )
-        regulator_decoupling_caps.capacitors[0].capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.05)
+        regulator_decoupling_caps.capacitors[0].capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.05)
         )
-        regulator_decoupling_caps.capacitors[1].capacitance.merge(
-            F.Range.from_center_rel(4.7 * P.uF, 0.05)
+        regulator_decoupling_caps.capacitors[1].capacitance.constrain_subset(
+            L.Range.from_center_rel(4.7 * P.uF, 0.05)
         )
         self.hub_controller.power_3v3_analog.decoupled.decouple().specialize(
             F.MultiCapacitor(4)
-        ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
-        self.hub_controller.power_pll.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.5)
+        ).set_equal_capacitance_each(L.Range.from_center_rel(100 * P.nF, 0.05))
+        self.hub_controller.power_pll.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.5)
         )
-        self.hub_controller.power_core.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.5)
+        self.hub_controller.power_core.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.5)
         )
-        self.hub_controller.power_io.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.5)
+        self.hub_controller.power_io.decoupled.decouple().capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.5)
         )
 
         # VBUS detect
         for r in self.vbus_voltage_divider.resistor:
-            r.resistance.merge(F.Range.from_center_rel(100 * P.kohm, 0.01))
+            r.resistance.constrain_subset(L.Range.from_center_rel(100 * P.kohm, 0.01))
 
         # reset
-        self.hub_controller.reset.set_weak(on=True).resistance.merge(
-            F.Range.from_center_rel(100 * P.kohm, 0.01)
+        self.hub_controller.reset.set_weak(on=True).resistance.constrain_subset(
+            L.Range.from_center_rel(100 * P.kohm, 0.01)
         )
 
         # ----------------------------------------

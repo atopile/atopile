@@ -65,7 +65,9 @@ class Analog_Devices_ADM2587EBRWZ_ReferenceDesign(Module):
         for cap, value in zip(
             power_unisolated_capacitors, itertools.cycle(capacitance_values)
         ):
-            cap.capacitance.merge(F.Range.from_center_rel(value * P.nF, 0.05))
+            cap.capacitance.constrain_subset(
+                L.Range.from_center_rel(value * P.nF, 0.05)
+            )
 
         # decoupling isolated power in
         for i, cap in enumerate(
@@ -73,8 +75,8 @@ class Analog_Devices_ADM2587EBRWZ_ReferenceDesign(Module):
             .specialize(F.MultiCapacitor(2))
             .capacitors
         ):
-            cap.capacitance.merge(
-                F.Range.from_center_rel(capacitance_values[i] * P.nF, 0.05)
+            cap.capacitance.constrain_subset(
+                L.Range.from_center_rel(capacitance_values[i] * P.nF, 0.05)
             )
         # decoupling isolated power out
         for i, cap in enumerate(
@@ -82,6 +84,6 @@ class Analog_Devices_ADM2587EBRWZ_ReferenceDesign(Module):
             .specialize(F.MultiCapacitor(2))
             .capacitors
         ):
-            cap.capacitance.merge(
-                F.Range.from_center_rel(capacitance_values[i] * P.nF, 0.05)
+            cap.capacitance.constrain_subset(
+                L.Range.from_center_rel(capacitance_values[i] * P.nF, 0.05)
             )
