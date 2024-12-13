@@ -40,10 +40,13 @@ from faebryk.libs.exceptions import (
 from faebryk.libs.library.L import Range, Single
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
 from faebryk.libs.units import (
+    P,
     Quantity,
-    Unit,
     UnitCompatibilityError,
     dimensionless,
+)
+from faebryk.libs.units import (
+    Unit as UnitType,
 )
 from faebryk.libs.util import (
     FuncDict,
@@ -98,11 +101,11 @@ class BasicsMixin:
 
 class PhysicalValuesMixin:
     @staticmethod
-    def _get_unit_from_ctx(ctx: ParserRuleContext) -> Unit:
+    def _get_unit_from_ctx(ctx: ParserRuleContext) -> UnitType:
         """Return a pint unit from a context."""
         unit_str = ctx.getText()
         try:
-            return Unit(unit_str)
+            return P.Unit(unit_str)
         except UndefinedUnitError as ex:
             raise errors.UserUnknownUnitError.from_ctx(
                 ctx, f"Unknown unit '{unit_str}'"
@@ -179,8 +182,6 @@ class PhysicalValuesMixin:
             tol_qty = tol_num * dimensionless
         else:
             tol_qty = tol_num * nominal_qty.units
-
-        assert isinstance(tol_qty, Quantity)
 
         # Ensure units on the nominal quantity
         if nominal_qty.unitless:
@@ -436,7 +437,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         self._node_stack = StackList[L.Node]()  # type: ignore
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()  # type: ignore
         self._param_assignments = FuncDict[
-            fab_param.Parameter, "tuple[Range | Single, ParserRuleContext | None]"  # type: ignore
+            fab_param.Parameter, tuple[Range | Single | None, ParserRuleContext | None]  # type: ignore
         ]()
         self.search_paths: list[os.PathLike] = []
 
@@ -500,11 +501,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                             ctx, f"Parameter {param} never assigned"
                         )
 
+                    if param in self._promised_params:
+                        del self._promised_params[param]
+
                     # Set final value of parameter
                     assert isinstance(
                         ctx, ParserRuleContext
                     )  # Since value and ctx should be None together
-                    param.add(from_dsl(ctx))
+
                     try:
                         param.constrain_subset(value)
                     except UnitCompatibilityError as ex:
@@ -792,14 +796,11 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             for super_ctx in promised_supers:
                 self.visitBlock(super_ctx.block())
 
-        new_node.add_trait(from_dsl(stmt_ctx))
+        new_node.add(from_dsl(stmt_ctx))
         return new_node
 
-    def _ensure_param(
-        self,
-        node: L.Node,
-        name: str,
-        src_ctx: ParserRuleContext,
+    def _get_or_promise_param(
+        self, node: L.Node, name: str, src_ctx: ParserRuleContext
     ) -> fab_param.Parameter:
         """
         Get a param from a node. If it doesn't exist, create it and promise to assign
@@ -807,17 +808,49 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         """
         try:
             node = self.get_node_attr(node, name)
-            assert isinstance(node, fab_param.Parameter)
-            return node
         except AttributeError:
-            default = fab_param.Parameter()
-            param = node.add(default, name=name)
-            self._promised_params.setdefault(param, []).append(src_ctx)
-            return param
+            raise errors.UserNotImplementedError.from_ctx(
+                src_ctx,
+                f"Parameter {name} not found on {node} and"
+                " forward-declared params are not yet implemented",
+            )
+        assert isinstance(node, fab_param.Parameter)
+        return node
 
-    def _fufill_param_promise(self, param: fab_param.Parameter):
-        if param in self._promised_params:
-            del self._promised_params[param]
+    def _ensure_param(
+        self,
+        node: L.Node,
+        name: str,
+        unit: UnitType,
+        src_ctx: ParserRuleContext,
+    ) -> fab_param.Parameter:
+        """
+        Ensure a node has a param with a given name
+        If it already exists, check the unit is compatible and return it
+        """
+        try:
+            param = self.get_node_attr(node, name)
+        except AttributeError:
+            # Here we attach only minimal information, so we can override it later
+            param = node.add(
+                fab_param.Parameter(units=unit, domain=fab_param.Numbers()), name=name
+            )
+        else:
+            if not isinstance(param, fab_param.Parameter):
+                raise errors.UserTypeError.from_ctx(
+                    src_ctx,
+                    f"Cannot assign a parameter to {name} on {node} because it's"
+                    f" type is {param.__class__.__name__}",
+                )
+
+        if not param.units.is_compatible_with(unit):
+            raise errors.UserIncompatibleUnitError.from_ctx(
+                src_ctx,
+                f"Given units {unit} are incompatible"
+                f" with existing units {param.units}.",
+            )
+
+        return param
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Assignment values and create new instance of things."""
@@ -849,9 +882,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         ########## Handle Regular Assignments ##########
         value = self.visit(assignable_ctx)
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
-            param = self._ensure_param(target, assigned_name, ctx)
+            assert isinstance(value.units, UnitType)
+            param = self._ensure_param(target, assigned_name, value.units, ctx)
             self._param_assignments[param] = (value, ctx)
-            self._fufill_param_promise(param)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
@@ -1119,7 +1152,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 target = self._get_referenced_node(Ref(ref[:-1]), ctx)
             else:
                 target = self._current_node
-            return self._ensure_param(target, ref[-1], ctx)
+            return self._get_or_promise_param(target, ref[-1], ctx)
 
         elif ctx.literal_physical():
             return self.visitLiteral_physical(ctx.literal_physical())
@@ -1164,17 +1197,18 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             )
 
         assigned_name = assigned_value_ref[0]
+        unit = self._get_unit_from_ctx(ctx.type_info().name_or_attr())
 
-        param = self._ensure_param(self._current_node, assigned_name, ctx)
+        param = self._ensure_param(self._current_node, assigned_name, unit, ctx)
         if param not in self._param_assignments:
             self._param_assignments[param] = (None, ctx)
         else:
-            logger.warning(
-                errors.UserKeyError.from_ctx(
+            with downgrade(errors.UserKeyError):
+                raise errors.UserKeyError.from_ctx(
                     ctx,
-                    f"Ignoring declaration of {assigned_name} because it's already defined",  # noqa: E501  # pre-existing
+                    f"Ignoring declaration of {assigned_name} "
+                    "because it's already defined",
                 )
-            )
 
         return KeyOptMap.empty()
 
