@@ -224,6 +224,10 @@ class NOTHING:
     """A sentinel object to represent a "nothing" return value."""
 
 
+class SkipPriorFailedException(Exception):
+    """Raised to skip a statement in case a dependency already failed"""
+
+
 class SequenceMixin:
     """
     The base translator is responsible for methods common to
@@ -246,8 +250,12 @@ class SequenceMixin:
         """
 
         def _visit():
-            for err_cltr, child in iter_through_errors(children):
-                with err_cltr():
+            for err_cltr, child in iter_through_errors(
+                children,
+                errors._BaseBaseUserException,
+                SkipPriorFailedException,
+            ):
+                with err_cltr(), log_user_errors():
                     # Since we're in a SequenceMixin, we need to cast self to the visitor type # noqa: E501  # pre-existing
                     child_result = cast(AtoParserVisitor, self).visit(child)
                     if child_result is not NOTHING:
@@ -323,13 +331,15 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 )
                 for name_or_attr in ctx.name_or_attr()
             ]
-            return KeyOptMap(KeyOptItem.from_kv(li.ref, li) for li in lazy_imports)
+            return KeyOptMap(
+                KeyOptItem.from_kv(li.ref, (li, ctx)) for li in lazy_imports
+            )
 
         else:
             # Standard library imports are special, and don't require a from path
             imports = []
             for collector, name_or_attr in iter_through_errors(ctx.name_or_attr()):
-                with collector():
+                with collector(), log_user_errors():
                     ref = self.visitName_or_attr(name_or_attr)
                     if len(ref) > 1:
                         raise errors.UserKeyError.from_ctx(
@@ -344,7 +354,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                             ctx, f'Unknown standard library module: "{name}"'
                         )
 
-                    imports.append(KeyOptItem.from_kv(ref, getattr(F, name)))
+                    imports.append(KeyOptItem.from_kv(ref, (getattr(F, name), ctx)))
 
             return KeyOptMap(imports)
 
@@ -365,11 +375,11 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 f' {ctx.string().getText()} import {ctx.name_or_attr().getText()}"'
                 " instead.",
             )
-        return KeyOptMap.from_kv(lazy_import.ref, lazy_import)
+        return KeyOptMap.from_kv(lazy_import.ref, (lazy_import, ctx))
 
     def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptMap:
         ref = Ref.from_one(self.visitName(ctx.name()))
-        return KeyOptMap.from_kv(ref, ctx)
+        return KeyOptMap.from_kv(ref, (ctx, ctx))
 
     def visitSimple_stmt(self, ctx: ap.Simple_stmtContext | Any) -> KeyOptMap:
         if ctx.import_stmt() or ctx.dep_import_stmt():
@@ -382,11 +392,22 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
     ) -> Context:
         surveyor = cls()
         context = Context(file_path=file_path, scope_ctx=ctx, refs={})
-        for ref, item in surveyor.visit(ctx):
+        for ref, (item, item_ctx) in surveyor.visit(ctx):
             if ref in context.refs:
-                raise errors.UserKeyError.from_ctx(
-                    ctx, f"Duplicate declaration of {ref}"
-                )
+                ex = errors.UserKeyError.from_ctx(item_ctx, f'"{ref}" already declared')
+                # Downgrade the error if we're just importing
+                # the same thing multiple times
+                first_of_dup = context.refs[ref]
+                if (
+                    isinstance(first_of_dup, Context.ImportPlaceholder)
+                    and isinstance(item, Context.ImportPlaceholder)
+                    and first_of_dup.ref == item.ref
+                    and first_of_dup.from_path == item.from_path
+                ):
+                    with downgrade(errors.UserKeyError):
+                        raise ex
+                else:
+                    raise ex
             context.refs[ref] = item
         return context
 
@@ -432,14 +453,19 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
     def __init__(self) -> None:
         super().__init__()
-        self._scopes = FuncDict[ParserRuleContext, Context]()  # type: ignore
-        self._python_classes = FuncDict[ap.BlockdefContext, Type[Component]]()  # type: ignore
-        self._node_stack = StackList[L.Node]()  # type: ignore
-        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()  # type: ignore
+        self._scopes = FuncDict[ParserRuleContext, Context]()
+        self._python_classes = FuncDict[ap.BlockdefContext, Type[Component]]()
+        self._node_stack = StackList[L.Node]()
+        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
         self._param_assignments = FuncDict[
-            fab_param.Parameter, tuple[Range | Single | None, ParserRuleContext | None]  # type: ignore
+            fab_param.Parameter, tuple[Range | Single | None, ParserRuleContext | None]
         ]()
         self.search_paths: list[os.PathLike] = []
+
+        # Keeps track of the nodes whose construction failed,
+        # so we don't report dud key errors when it was a higher failure
+        # that caused the node not to exist
+        self._failed_nodes = FuncDict[L.Node, set[str]]()
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
@@ -447,18 +473,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         """Build a Module from an AST and reference."""
         file_path = self._sanitise_path(file_path) if file_path else None
         context = self._index_ast(ast, file_path)
-        try:
-            return self._build(context, ref)
-        finally:
-            self._finish()
+        return self._build(context, ref)
 
     def build_file(self, path: Path, ref: Ref) -> L.Node:
         """Build a Module from a file and reference."""
         context = self._index_file(self._sanitise_path(path))
-        try:
-            return self._build(context, ref)
-        finally:
-            self._finish()
+        return self._build(context, ref)
 
     @property
     def modules(self) -> dict[address.AddrStr, Type[L.Module]]:
@@ -490,10 +510,17 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             raise errors.UserKeyError.from_ctx(
                 context.scope_ctx, f'No declaration of "{ref}" in {context.file_path}'
             )
-        return self._init_node(context.scope_ctx, ref)
+        try:
+            return self._init_node(context.scope_ctx, ref)
+        except* SkipPriorFailedException:
+            raise errors.UserException("Build failed")
+        finally:
+            self._finish()
 
     def _finish(self):
-        with ExceptionAccumulator() as ex_acc:
+        with ExceptionAccumulator(
+            errors._BaseBaseUserException, SkipPriorFailedException
+        ) as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():
                 with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
                     if value is None:
@@ -697,10 +724,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             try:
                 node = self.get_node_attr(node, name)
             except AttributeError as ex:
+                if name in self._failed_nodes.get(node, set()):
+                    raise SkipPriorFailedException() from ex
                 # Wah wah wah - we don't know what this is
-                raise errors.UserKeyError.from_ctx(
-                    ctx, f"{ref[:i]} has no attribute '{name}'"
-                ) from ex
+                pretty_name = ".".join(ref[:i])
+                if pretty_name:
+                    msg = f"{pretty_name} has no attribute '{name}'"
+                else:
+                    msg = f"No attribute '{name}'"
+                raise errors.UserKeyError.from_ctx(ctx, msg) from ex
+
         return node
 
     def _try_get_referenced_node(
@@ -809,6 +842,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         try:
             node = self.get_node_attr(node, name)
         except AttributeError:
+            if name in self._failed_nodes.get(node, set()):
+                raise SkipPriorFailedException()
+
             raise errors.UserNotImplementedError.from_ctx(
                 src_ctx,
                 f"Parameter {name} not found on {node} and"
@@ -852,6 +888,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         return param
 
+    def _record_failed_node(self, node: L.Node, name: str):
+        self._failed_nodes.setdefault(node, set()).add(name)
+
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Assignment values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
@@ -875,7 +914,13 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             assert isinstance(new_stmt_ctx, ap.New_stmtContext)
             ref = self.visitName_or_attr(new_stmt_ctx.name_or_attr())
 
-            new_node = self._init_node(ctx, ref)
+            try:
+                new_node = self._init_node(ctx, ref)
+            except Exception:
+                # Not a narrower exception because it's often an ExceptionGroup
+                self._record_failed_node(self._current_node, assigned_name)
+                raise
+
             self._current_node.add(new_node, name=assigned_name)
             return KeyOptMap.empty()
 
@@ -993,8 +1038,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
         """Connect interfaces together"""
         connectables = [self.visitConnectable(c) for c in ctx.connectable()]
-        for err_cltr, (a, b) in iter_through_errors(itertools.pairwise(connectables)):
-            with err_cltr():
+        for err_cltr, (a, b) in iter_through_errors(
+            itertools.pairwise(connectables),
+            errors._BaseBaseUserException,
+            SkipPriorFailedException,
+        ):
+            with err_cltr(), log_user_errors():
                 self._connect(a, b)
 
         return KeyOptMap.empty()
@@ -1011,7 +1060,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             return node
         elif numerical_ctx := ctx.numerical_pin_ref():
             pin_name = numerical_ctx.getText()
-            ref = Ref.from_one(pin_name)
+            ref = Ref(pin_name.split("."))
             node = self._get_referenced_node(ref, ctx)
             assert isinstance(node, L.ModuleInterface)
             return node
@@ -1049,25 +1098,18 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         return KeyOptMap.empty()
 
     def visitComparison(self, ctx: ap.ComparisonContext) -> KeyOptMap:
-        _visited = FuncDict[ParserRuleContext, fab_param.Parameter]()
+        exprs = [
+            self.visitArithmetic_expression(c)
+            for c in [ctx.arithmetic_expression()]
+            + [cop.getChild(0).arithmetic_expression() for cop in ctx.compare_op_pair()]
+        ]
+        op_strs = [
+            cop.getChild(0).getChild(0).getText() for cop in ctx.compare_op_pair()
+        ]
 
-        def _visit(ctx: ParserRuleContext) -> fab_param.Parameter:
-            if ctx in _visited:
-                return _visited[ctx]
-            param = self.visit(ctx)
-            _visited[ctx] = param
-            return param
-
-        params = []
-        for lh_ctx, rh_ctx in itertools.pairwise(
-            itertools.chain([ctx.arithmetic_expression()], ctx.compare_op_pair())
-        ):
-            lh = _visit(lh_ctx.arithmetic_expression())
-            rh = _visit(rh_ctx.arithmetic_expression())
-
-            # HACK: this is a cheap way to get the operator string
-            operator_str: str = rh_ctx.getChild(0).getText()
-            match operator_str:
+        predicates = []
+        for (lh, rh), op_str in zip(itertools.pairwise(exprs), op_strs):
+            match op_str:
                 case "<":
                     op = operator.lt
                 case ">":
@@ -1077,15 +1119,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 case ">=":
                     op = operator.ge
                 case "within":
-                    op = operator.contains
+                    # TODO: @ioannis, should I not use this directly?
+                    op = fab_param.IsSubset
                 case _:
                     # We shouldn't be able to get here with parseable input
-                    raise ValueError(f"Unhandled operator {operator_str}")
+                    raise ValueError(f"Unhandled operator {op_str}")
 
             # TODO: should we be reducing here to a series of ANDs?
-            params.append(op(lh, rh))
+            predicates.append(op(lh, rh))
 
-        return KeyOptMap([KeyOptItem.from_kv(None, p) for p in params])
+        return KeyOptMap([KeyOptItem.from_kv(None, p) for p in predicates])
 
     def visitArithmetic_expression(
         self, ctx: ap.Arithmetic_expressionContext
@@ -1127,8 +1170,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
     def visitPower(self, ctx: ap.PowerContext) -> fab_param.ParameterOperatable:
         if ctx.POWER():
-            base = self.visitFunctional(ctx.functional())
-            exp = self.visitFunctional(ctx.functional())
+            base, exp = map(self.visitFunctional, ctx.functional())
             return operator.pow(base, exp)
         else:
             return self.visitFunctional(ctx.functional(0))
@@ -1138,7 +1180,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     ) -> fab_param.ParameterOperatable:
         if ctx.name():
             # TODO: implement min/max
-            raise NotImplementedError
+            raise errors.UserNotImplementedError.from_ctx(
+                ctx, "Min and max functions aren't implemented"
+            )
         else:
             return self.visitBound(ctx.bound(0))
 
