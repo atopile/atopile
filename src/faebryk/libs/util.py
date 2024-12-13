@@ -1072,7 +1072,7 @@ def in_debug_session() -> bool:
     return False
 
 
-class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
+class FuncSet[T, H: Hashable = int](collections.abc.MutableSet[T]):
     """
     A set by pre-processing the objects with the hasher function.
     """
@@ -1111,8 +1111,7 @@ class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
         )
 
 
-# TODO: @python3.13 ..., H: Hashable = int]
-class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
+class FuncDict[T, U, H: Hashable = int](collections.abc.MutableMapping[T, U]):
     """
     A dict by pre-processing the objects with the hasher function.
     """
