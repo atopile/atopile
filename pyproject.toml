@@ -86,7 +86,6 @@ Homepage = "https://github.com/atopile/atopile"
 [dependency-groups]
 dev = [
     "antlr4-tools",
-    "atopile[test]",
     "coverage>=7.6.8",
     "dash_cytoscape~=1.0.2",
     "dash~=2.18.1",
