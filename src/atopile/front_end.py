@@ -1111,15 +1111,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         for (lh, rh), op_str in zip(itertools.pairwise(exprs), op_strs):
             match op_str:
                 case "<":
-                    op = operator.lt
+                    op = fab_param.LessThan
                 case ">":
-                    op = operator.gt
+                    op = fab_param.GreaterThan
                 case "<=":
-                    op = operator.le
+                    op = fab_param.LessOrEqual
                 case ">=":
-                    op = operator.ge
+                    op = fab_param.GreaterOrEqual
                 case "within":
-                    # TODO: @ioannis, should I not use this directly?
                     op = fab_param.IsSubset
                 case _:
                     # We shouldn't be able to get here with parseable input
@@ -1179,10 +1178,38 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         self, ctx: ap.FunctionalContext
     ) -> fab_param.ParameterOperatable:
         if ctx.name():
-            # TODO: implement min/max
-            raise errors.UserNotImplementedError.from_ctx(
-                ctx, "Min and max functions aren't implemented"
-            )
+            name = self.visitName(ctx.name())
+            operands = [self.visitBound(b) for b in ctx.bound()]
+            if name == "min":
+                if len(operands) != 1:
+                    raise errors.UserNotImplementedError.from_ctx(
+                        ctx, "Min can only take one operand"
+                    )
+                if not isinstance(operands[0], fab_param.Parameter):
+                    raise errors.UserNotImplementedError.from_ctx(
+                        ctx, "Min can only take numeric parameters"
+                    )
+                P = fab_param.Parameter(units=operands[0].units)
+                P.constrain_subset(operands[0])
+                P.constrain_le(operands[0])
+                return P
+            elif name == "max":
+                if len(operands) != 1:
+                    raise errors.UserNotImplementedError.from_ctx(
+                        ctx, "Min can only take one operand"
+                    )
+                if not isinstance(operands[0], fab_param.Parameter):
+                    raise errors.UserNotImplementedError.from_ctx(
+                        ctx, "Min can only take numeric parameters"
+                    )
+                P = fab_param.Parameter(units=operands[0].units)
+                P.constrain_subset(operands[0])
+                P.constrain_ge(operands[0])
+                return P
+            else:
+                raise errors.UserNotImplementedError.from_ctx(
+                    ctx, f"Unknown function {name}"
+                )
         else:
             return self.visitBound(ctx.bound(0))
 
