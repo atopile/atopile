@@ -68,7 +68,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.3.1.dev6+g34f7759b.d20241206"
+version = "0.2.70.dev364+g3b379405.d20241209"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -125,6 +125,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "antlr4-tools" },
+    { name = "atopile" },
     { name = "coverage" },
     { name = "dash" },
     { name = "dash-cytoscape" },
