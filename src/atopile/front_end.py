@@ -437,6 +437,17 @@ class DeprecatedException(errors.UserException):
     """
 
 
+_declaration_domain_to_unit = {
+    "resistance": P.ohm,
+    "capacitance": P.farad,
+    "inductance": P.henry,
+    "voltage": P.volt,
+    "current": P.ampere,
+    "power": P.watt,
+    "frequency": P.hertz,
+}
+
+
 class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Bob is a general contractor who runs his own construction company in the town
@@ -524,9 +535,19 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             for param, (value, ctx) in self._param_assignments.items():
                 with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
                     if value is None:
-                        raise errors.UserKeyError.from_ctx(
+                        ex = errors.UserKeyError.from_ctx(
                             ctx, f"Parameter {param} never assigned"
                         )
+                        if param in self._promised_params:
+                            raise ex
+                        else:
+                            with downgrade(DeprecatedException):
+                                raise DeprecatedException.from_ctx(
+                                    ctx,
+                                    "Parameter declared but never assigned."
+                                    " In the future this will be an error.",
+                                )
+                            continue
 
                     if param in self._promised_params:
                         del self._promised_params[param]
@@ -1268,18 +1289,29 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             )
 
         assigned_name = assigned_value_ref[0]
-        unit = self._get_unit_from_ctx(ctx.type_info().name_or_attr())
+        unit_ctx: ap.Name_or_attrContext = ctx.type_info().name_or_attr()
+        # TODO: @v0.4.0: remove this shim
+        unit_ref = self.visitName_or_attr(unit_ctx)
+        if len(unit_ref) == 1 and unit_ref[0] in _declaration_domain_to_unit:
+            unit = _declaration_domain_to_unit[unit_ref[0]]
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    f"Declaration of {assigned_name} with unit {unit} is deprecated."
+                    " Use the unit directly instead."
+                )
+        else:
+            unit = self._get_unit_from_ctx(ctx.type_info().name_or_attr())
 
         param = self._ensure_param(self._current_node, assigned_name, unit, ctx)
-        if param not in self._param_assignments:
-            self._param_assignments[param] = (None, ctx)
-        else:
+        if param in self._param_assignments:
             with downgrade(errors.UserKeyError):
                 raise errors.UserKeyError.from_ctx(
                     ctx,
                     f"Ignoring declaration of {assigned_name} "
                     "because it's already defined",
                 )
+        else:
+            self._param_assignments[param] = (None, ctx)
 
         return KeyOptMap.empty()
 
