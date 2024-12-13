@@ -117,7 +117,7 @@ Find our [documentation](https://atopile.io/), [installation video](https://www.
 uv tool install atopile
 ```
 
-Or with `pipx` (requires Python 3.12 or later):
+Or with `pipx` (requires Python 3.13):
 ```sh
 pipx install atopile
 ```
