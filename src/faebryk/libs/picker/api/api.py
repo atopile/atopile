@@ -4,21 +4,28 @@
 import functools
 import json
 import logging
-import textwrap
-from dataclasses import dataclass
-from typing import Iterable
+from dataclasses import dataclass, field
 
 import requests
+from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
-from pint import DimensionalityError
 
 from faebryk.core.module import Module
+from faebryk.core.solver.solver import Solver
+from faebryk.libs.picker.api.common import check_compatible_parameters, try_attach
 
 # TODO: replace with API-specific data model
-from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
-from faebryk.libs.picker.lcsc import LCSC_NoDataException, LCSC_PinmapException
+from faebryk.libs.picker.jlcpcb.jlcpcb import Component
+from faebryk.libs.picker.jlcpcb.mappings import (
+    try_get_param_mapping,
+)
 from faebryk.libs.picker.picker import PickError
-from faebryk.libs.util import ConfigFlagString, try_or
+from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.util import (
+    ConfigFlagString,
+    Serializable,
+    SerializableJSONEncoder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,124 +48,148 @@ class ApiHTTPError(ApiError):
 
     def __str__(self) -> str:
         status_code = self.response.status_code
-        detail = self.response.json()["detail"]
+        try:
+            detail = self.response.json()["detail"]
+        except Exception:
+            detail = self.response.text
         return f"{super().__str__()}: {status_code} {detail}"
 
 
-def check_compatible_parameters(
-    module: Module, component: Component, mapping: list[MappingParameterDB]
-) -> bool:
+def api_filter_by_module_params_and_attach(
+    cmp: Module, parts: list[Component], solver: Solver
+):
     """
-    Check if the parameters of a component are compatible with the module
+    Find a component with matching parameters
     """
-    # TODO: serialize the module and check compatibility in the backend
+    mapping = try_get_param_mapping(cmp)
 
-    params = component.get_params(mapping)
-    param_matches = [
-        try_or(
-            lambda: p.is_subset_of(getattr(module, m.param_name)),
-            default=False,
-            catch=DimensionalityError,
-        )
-        for p, m in zip(params, mapping)
-    ]
+    # FIXME: should take the desired qty and respect it
+    tried = []
 
-    if not (is_compatible := all(param_matches)):
-        logger.debug(
-            f"Component {component.lcsc} doesn't match: "
-            f"{[p for p, v in zip(params, param_matches) if not v]}"
-        )
+    def parts_gen():
+        for part in parts:
+            if check_compatible_parameters(cmp, part, mapping, solver):
+                tried.append(part)
+                yield part
 
-    return is_compatible
-
-
-def try_attach(
-    cmp: Module, parts: Iterable[Component], mapping: list[MappingParameterDB], qty: int
-) -> bool:
-    failures = []
-    for part in parts:
-        if not check_compatible_parameters(cmp, part, mapping):
-            continue
-
-        try:
-            part.attach(cmp, mapping, qty, allow_TBD=False)
-            return True
-        except (ValueError, Component.ParseError) as e:
-            failures.append((part, e))
-        except LCSC_NoDataException as e:
-            failures.append((part, e))
-        except LCSC_PinmapException as e:
-            failures.append((part, e))
-
-    if failures:
-        fail_str = textwrap.indent(
-            "\n" + f"{'\n'.join(f'{c}: {e}' for c, e in failures)}", " " * 4
-        )
-
+    try:
+        try_attach(cmp, parts_gen(), mapping, qty=1)
+    except PickError as ex:
         raise PickError(
-            f"Failed to attach any components to module {cmp}: {len(failures)}"
-            f" {fail_str}",
+            f"No components found that match {cmp.pretty_params(solver)} "
+            f"in {len(tried)} param-matching parts, "
+            f"of {len(parts)} total parts",
             cmp,
-        )
-
-    return False
+        ) from ex
 
 
-type SIvalue = str
+def get_package_candidates(module: Module) -> list["PackageCandidate"]:
+    import faebryk.library._F as F
+
+    if module.has_trait(F.has_package_requirement):
+        return [
+            PackageCandidate(package)
+            for package in module.get_trait(
+                F.has_package_requirement
+            ).get_package_candidates()
+        ]
+    return []
 
 
 @dataclass_json
 @dataclass(frozen=True)
-class FootprintCandidate:
-    footprint: str
-    pin_count: int
+class PackageCandidate:
+    package: str
 
 
 @dataclass_json
 @dataclass(frozen=True)
-class BaseParams:
-    footprint_candidates: list[FootprintCandidate]
+class BaseParams(Serializable):
+    package_candidates: list[PackageCandidate]
     qty: int
 
-    def convert_to_dict(self) -> dict:
+    def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
 
 
 @dataclass(frozen=True)
+class Interval:
+    min: float | None
+    max: float | None
+
+
+ApiParamT = P_Set | None
+
+
+def SerializableField():
+    return field(
+        metadata=dataclass_json_config(encoder=SerializableJSONEncoder().default)
+    )
+
+
+@dataclass(frozen=True)
 class ResistorParams(BaseParams):
-    resistances: list[SIvalue]
+    resistance: ApiParamT = SerializableField()
+    max_power: ApiParamT = SerializableField()
+    max_voltage: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class CapacitorParams(BaseParams):
-    capacitances: list[SIvalue]
+    capacitance: ApiParamT = SerializableField()
+    max_voltage: ApiParamT = SerializableField()
+    temperature_coefficient: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class InductorParams(BaseParams):
-    inductances: list[SIvalue]
-
-
-@dataclass(frozen=True)
-class TVSParams(BaseParams): ...
+    inductance: ApiParamT = SerializableField()
+    self_resonant_frequency: ApiParamT = SerializableField()
+    max_current: ApiParamT = SerializableField()
+    dc_resistance: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
 class DiodeParams(BaseParams):
-    max_currents: list[SIvalue]
-    reverse_working_voltages: list[SIvalue]
+    forward_voltage: ApiParamT = SerializableField()
+    current: ApiParamT = SerializableField()
+    reverse_working_voltage: ApiParamT = SerializableField()
+    reverse_leakage_current: ApiParamT = SerializableField()
+    max_current: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
-class LEDParams(BaseParams): ...
+class TVSParams(DiodeParams):
+    reverse_breakdown_voltage: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
-class MOSFETParams(BaseParams): ...
+class LEDParams(DiodeParams):
+    brightness: ApiParamT = SerializableField()
+    max_brightness: ApiParamT = SerializableField()
+    color: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
-class LDOParams(BaseParams): ...
+class LDOParams(BaseParams):
+    max_input_voltage: ApiParamT = SerializableField()
+    output_voltage: ApiParamT = SerializableField()
+    quiescent_current: ApiParamT = SerializableField()
+    dropout_voltage: ApiParamT = SerializableField()
+    psrr: ApiParamT = SerializableField()
+    output_polarity: ApiParamT = SerializableField()
+    output_type: ApiParamT = SerializableField()
+    output_current: ApiParamT = SerializableField()
+
+
+@dataclass(frozen=True)
+class MOSFETParams(BaseParams):
+    channel_type: ApiParamT = SerializableField()
+    saturation_type: ApiParamT = SerializableField()
+    gate_source_threshold_voltage: ApiParamT = SerializableField()
+    max_drain_source_voltage: ApiParamT = SerializableField()
+    max_continuous_drain_current: ApiParamT = SerializableField()
+    on_resistance: ApiParamT = SerializableField()
 
 
 @dataclass(frozen=True)
@@ -209,10 +240,11 @@ class ApiClient:
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
-        logger.debug(
-            f"POST {self.config.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
-            f"{json.dumps(response.json(), indent=2)}"
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"POST {self.config.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
+                f"{json.dumps(response.json(), indent=2)}"
+            )
 
         return response
 
@@ -237,7 +269,7 @@ class ApiClient:
         ]
 
     def query_parts(self, method: str, params: BaseParams) -> list[Component]:
-        response = self._post(f"/v0/query/{method}", params.convert_to_dict())
+        response = self._post(f"/v0/query/{method}", params.serialize())
         return [
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]

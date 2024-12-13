@@ -28,7 +28,3 @@ class TestTransformer(unittest.TestCase):
 
         bbox_silk = PCB_Transformer.get_footprint_silkscreen_bbox(fp)
         self.assertEqual(bbox_silk, ((-0.94, -0.5), (0.94, 0.5)))
-
-
-if __name__ == "__main__":
-    unittest.main()

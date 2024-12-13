@@ -39,6 +39,7 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
     from faebryk.core.trait import Trait, TraitImpl
 
 logger = logging.getLogger(__name__)
@@ -492,7 +493,7 @@ class Node(CNode):
         if self._init:
             for f_name in ("__preinit__", "__postinit__"):
                 for base in reversed(type(self).mro()):
-                    if hasattr(base, f_name):
+                    if f_name in base.__dict__:
                         f = getattr(base, f_name)
                         f(self)
 
@@ -555,14 +556,18 @@ class Node(CNode):
     def __str__(self) -> str:
         return f"<{self.get_full_name(types=True)}>"
 
-    def pretty_params(self) -> str:
+    def pretty_params(self, solver: "Solver | None" = None) -> str:
         from faebryk.core.parameter import Parameter
 
         params = {
-            not_none(p.get_parent())[1]: p.get_most_narrow()
+            not_none(p.get_parent())[1]: p
             for p in self.get_children(direct_only=True, types=Parameter)
         }
-        params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
+        params_str = "\n".join(
+            f"{k}: {solver.inspect_get_known_supersets(v, force_update=False)
+                    if solver else v}"
+            for k, v in params.items()
+        )
 
         return params_str
 

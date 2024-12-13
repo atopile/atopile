@@ -1,0 +1,11 @@
+ato-version: ^0.3.0
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  ato:
+    entry: ch1_1_ato.ato:App
+  fab:
+    entry: ch2_1_fab.py:App

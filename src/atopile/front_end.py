@@ -24,11 +24,11 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, config, errors
-from atopile._shim import Component, shim_map
+from atopile._shim import Component, ModuleShims, shim_map
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
-from atopile.parser.AtopileParser import AtopileParser as ap
-from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
+from atopile.parser.AtoParser import AtoParser as ap
+from atopile.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import (
@@ -37,47 +37,26 @@ from faebryk.libs.exceptions import (
     iter_through_errors,
     log_user_errors,
 )
-from faebryk.libs.units import P, Quantity, Unit
+from faebryk.libs.library.L import Range, Single
+from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
+from faebryk.libs.units import (
+    P,
+    Quantity,
+    UnitCompatibilityError,
+    dimensionless,
+)
+from faebryk.libs.units import (
+    Unit as UnitType,
+)
 from faebryk.libs.util import (
     FuncDict,
+    cast_assert,
     has_attr_or_property,
+    has_instance_settable_attr,
     import_from_path,
-    try_set_attr,
 )
 
-# Helpers for auto-upgrading on merge of the https://github.com/atopile/atopile/pull/522
-try:
-    from faebryk.libs.units import UnitCompatibilityError, dimensionless  # type: ignore
-except ImportError:
-
-    class UnitCompatibilityError(Exception):
-        """Placeholder Exception"""
-
-    dimensionless = P.dimensionless
-
-try:
-    from faebryk.libs.library.L import Range  # type: ignore
-except ImportError:
-    from faebryk.library._F import Range  # type: ignore
-
-try:
-    from faebryk.library import Single  # type: ignore
-except ImportError:
-    from faebryk.library._F import Constant as Single  # type: ignore
-
 logger = logging.getLogger(__name__)
-
-
-def _alias_is(lh, rh):
-    try:
-        return lh.alias_is(rh)
-    except AttributeError:
-        return lh.merge(rh)
-
-
-# End helpers ---------------------------------------------------------------
-
-log = logging.getLogger(__name__)
 
 
 class from_dsl(Trait.decless()):
@@ -122,17 +101,19 @@ class BasicsMixin:
 
 class PhysicalValuesMixin:
     @staticmethod
-    def _get_unit_from_ctx(ctx: ParserRuleContext) -> Unit:
+    def _get_unit_from_ctx(ctx: ParserRuleContext) -> UnitType:
         """Return a pint unit from a context."""
         unit_str = ctx.getText()
         try:
-            return Unit(unit_str)
+            return P.Unit(unit_str)
         except UndefinedUnitError as ex:
             raise errors.UserUnknownUnitError.from_ctx(
                 ctx, f"Unknown unit '{unit_str}'"
             ) from ex
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> Range:
+    def visitLiteral_physical(
+        self, ctx: ap.Literal_physicalContext
+    ) -> Quantity_Singleton | Quantity_Interval:
         """Yield a physical value from a physical context."""
         if ctx.quantity():
             qty = self.visitQuantity(ctx.quantity())
@@ -165,7 +146,9 @@ class PhysicalValuesMixin:
 
         return Quantity(value, unit)  # type: ignore
 
-    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> Range:
+    def visitBilateral_quantity(
+        self, ctx: ap.Bilateral_quantityContext
+    ) -> Quantity_Interval:
         """Yield a physical value from a bilateral quantity context."""
         nominal_qty = self.visitQuantity(ctx.quantity())
 
@@ -200,8 +183,6 @@ class PhysicalValuesMixin:
         else:
             tol_qty = tol_num * nominal_qty.units
 
-        assert isinstance(tol_qty, Quantity)
-
         # Ensure units on the nominal quantity
         if nominal_qty.unitless:
             nominal_qty = nominal_qty * tol_qty.units
@@ -216,7 +197,7 @@ class PhysicalValuesMixin:
 
         return Range.from_center(nominal_qty, tol_qty)
 
-    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Range:
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Quantity_Interval:
         """Yield a physical value from a bound quantity context."""
 
         start, end = map(self.visitQuantity, ctx.quantity())
@@ -268,7 +249,7 @@ class SequenceMixin:
             for err_cltr, child in iter_through_errors(children):
                 with err_cltr():
                     # Since we're in a SequenceMixin, we need to cast self to the visitor type # noqa: E501  # pre-existing
-                    child_result = cast(AtopileParserVisitor, self).visit(child)
+                    child_result = cast(AtoParserVisitor, self).visit(child)
                     if child_result is not NOTHING:
                         yield child_result
 
@@ -317,7 +298,7 @@ class Context:
     refs: dict[Ref, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
 
 
-class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
+class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Wendy is Bob's business partner and fellow builder in the children's TV series
     "Bob the Builder." She is a skilled construction worker who often manages the
@@ -379,7 +360,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtopileParserVisitor):
         with downgrade(DeprecatedException):
             raise DeprecatedException.from_ctx(
                 ctx,
-                'Deprecated: "import <something> from <path>" is deprecated and'
+                '"import <something> from <path>" is deprecated and'
                 ' will be removed in a future version. Use "from'
                 f' {ctx.string().getText()} import {ctx.name_or_attr().getText()}"'
                 " instead.",
@@ -435,7 +416,7 @@ class DeprecatedException(errors.UserException):
     """
 
 
-class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor):
+class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Bob is a general contractor who runs his own construction company in the town
     of Fixham Harbour (in earlier episodes, he was based in Bobsville). Recognizable
@@ -456,7 +437,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         self._node_stack = StackList[L.Node]()  # type: ignore
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()  # type: ignore
         self._param_assignments = FuncDict[
-            fab_param.Parameter, "tuple[Range | Single, ParserRuleContext | None]"  # type: ignore
+            fab_param.Parameter, tuple[Range | Single | None, ParserRuleContext | None]  # type: ignore
         ]()
         self.search_paths: list[os.PathLike] = []
 
@@ -520,13 +501,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                             ctx, f"Parameter {param} never assigned"
                         )
 
+                    if param in self._promised_params:
+                        del self._promised_params[param]
+
                     # Set final value of parameter
                     assert isinstance(
                         ctx, ParserRuleContext
                     )  # Since value and ctx should be None together
-                    param.add(from_dsl(ctx))
+
                     try:
-                        _alias_is(param, value)
+                        param.constrain_subset(value)
                     except UnitCompatibilityError as ex:
                         raise errors.UserTypeError.from_ctx(ctx, str(ex)) from ex
 
@@ -597,14 +581,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         from_path = self._sanitise_path(candidate_from_path)
 
         # TODO: @v0.4: remove this shimming
-        import_addr = address.AddrStr.from_parts(from_path, ".".join(item.ref))
+        import_addr = address.AddrStr.from_parts(str(from_path), ".".join(item.ref))
         for shim_addr, (shim_cls, preferred) in shim_map.items():
             if import_addr.endswith(shim_addr):
                 with downgrade(DeprecatedException):
                     raise DeprecatedException.from_ctx(
                         item.original_ctx,
-                        f"Deprecated: {import_addr} is deprecated and will be"
-                        " removed in a future version. Use {preferred} instead.",
+                        f"{item.from_path} is deprecated and will be"
+                        f" removed in a future version. Use {preferred} instead.",
                     )
                 return shim_cls
 
@@ -631,7 +615,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             context = self._index_file(from_path)
             if item.ref not in context.refs:
                 raise errors.UserKeyError.from_ctx(
-                    item.original_ctx, f"No declaration of {ref} in {from_path}"
+                    item.original_ctx, f"No declaration of {item.ref} in {from_path}"
                 )
             node = context.refs[item.ref]
 
@@ -812,14 +796,11 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             for super_ctx in promised_supers:
                 self.visitBlock(super_ctx.block())
 
-        new_node.add_trait(from_dsl(stmt_ctx))
+        new_node.add(from_dsl(stmt_ctx))
         return new_node
 
-    def _ensure_param(
-        self,
-        node: L.Node,
-        name: str,
-        src_ctx: ParserRuleContext,
+    def _get_or_promise_param(
+        self, node: L.Node, name: str, src_ctx: ParserRuleContext
     ) -> fab_param.Parameter:
         """
         Get a param from a node. If it doesn't exist, create it and promise to assign
@@ -827,17 +808,49 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         """
         try:
             node = self.get_node_attr(node, name)
-            assert isinstance(node, fab_param.Parameter)
-            return node
         except AttributeError:
-            default = fab_param.Parameter()
-            param = node.add(default, name=name)
-            self._promised_params.setdefault(param, []).append(src_ctx)
-            return param
+            raise errors.UserNotImplementedError.from_ctx(
+                src_ctx,
+                f"Parameter {name} not found on {node} and"
+                " forward-declared params are not yet implemented",
+            )
+        assert isinstance(node, fab_param.Parameter)
+        return node
 
-    def _fufill_param_promise(self, param: fab_param.Parameter):
-        if param in self._promised_params:
-            del self._promised_params[param]
+    def _ensure_param(
+        self,
+        node: L.Node,
+        name: str,
+        unit: UnitType,
+        src_ctx: ParserRuleContext,
+    ) -> fab_param.Parameter:
+        """
+        Ensure a node has a param with a given name
+        If it already exists, check the unit is compatible and return it
+        """
+        try:
+            param = self.get_node_attr(node, name)
+        except AttributeError:
+            # Here we attach only minimal information, so we can override it later
+            param = node.add(
+                fab_param.Parameter(units=unit, domain=fab_param.Numbers()), name=name
+            )
+        else:
+            if not isinstance(param, fab_param.Parameter):
+                raise errors.UserTypeError.from_ctx(
+                    src_ctx,
+                    f"Cannot assign a parameter to {name} on {node} because it's"
+                    f" type is {param.__class__.__name__}",
+                )
+
+        if not param.units.is_compatible_with(unit):
+            raise errors.UserIncompatibleUnitError.from_ctx(
+                src_ctx,
+                f"Given units {unit} are incompatible"
+                f" with existing units {param.units}.",
+            )
+
+        return param
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
         """Assignment values and create new instance of things."""
@@ -869,17 +882,28 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
         ########## Handle Regular Assignments ##########
         value = self.visit(assignable_ctx)
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
-            param = self._ensure_param(target, assigned_name, ctx)
+            assert isinstance(value.units, UnitType)
+            param = self._ensure_param(target, assigned_name, value.units, ctx)
             self._param_assignments[param] = (value, ctx)
-            self._fufill_param_promise(param)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
-            if not try_set_attr(target, assigned_name, value):
+            if has_instance_settable_attr(target, assigned_name):
+                setattr(target, assigned_name, value)
+            elif (
+                # If ModuleShims has a settable property, use it
+                hasattr(ModuleShims, assigned_name)
+                and isinstance(getattr(ModuleShims, assigned_name), property)
+                and getattr(ModuleShims, assigned_name).fset
+            ):
+                prop = cast_assert(property, getattr(ModuleShims, assigned_name))
+                prop.fset(target, value)
+            else:
                 with downgrade(errors.UserException):
                     raise errors.UserException.from_ctx(
                         ctx,
-                        f"Ignoring assignment of {value} to {assigned_name} on {target}",  # noqa: E501  # pre-existing
+                        f'Ignoring assignment of "{value}" to "{assigned_name}" '
+                        f'on "{target}"',
                     )
 
         else:
@@ -962,7 +986,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
                 if not nested:
                     with downgrade(DeprecatedException):
                         raise DeprecatedException(
-                            f"Deprecated: Connected {a} to {b} by duck-typing."
+                            f"Connected {a} to {b} by duck-typing."
                             " They should be of the same type."
                         )
 
@@ -1065,7 +1089,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def visitArithmetic_expression(
         self, ctx: ap.Arithmetic_expressionContext
-    ) -> "fab_param.ParameterOperatable":
+    ) -> fab_param.ParameterOperatable:
         if ctx.OR_OP() or ctx.AND_OP():
             lh = self.visitArithmetic_expression(ctx.arithmetic_expression())
             rh = self.visitSum(ctx.sum_())
@@ -1077,7 +1101,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         return self.visitSum(ctx.sum_())
 
-    def visitSum(self, ctx: ap.SumContext) -> "fab_param.ParameterOperatable":
+    def visitSum(self, ctx: ap.SumContext) -> fab_param.ParameterOperatable:
         if ctx.ADD() or ctx.MINUS():
             lh = self.visitSum(ctx.sum_())
             rh = self.visitTerm(ctx.term())
@@ -1089,7 +1113,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         return self.visitTerm(ctx.term())
 
-    def visitTerm(self, ctx: ap.TermContext) -> "fab_param.ParameterOperatable":
+    def visitTerm(self, ctx: ap.TermContext) -> fab_param.ParameterOperatable:
         if ctx.STAR() or ctx.DIV():
             lh = self.visitTerm(ctx.term())
             rh = self.visitPower(ctx.power())
@@ -1101,7 +1125,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         return self.visitPower(ctx.power())
 
-    def visitPower(self, ctx: ap.PowerContext) -> "fab_param.ParameterOperatable":
+    def visitPower(self, ctx: ap.PowerContext) -> fab_param.ParameterOperatable:
         if ctx.POWER():
             base = self.visitFunctional(ctx.functional())
             exp = self.visitFunctional(ctx.functional())
@@ -1111,24 +1135,24 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
     def visitFunctional(
         self, ctx: ap.FunctionalContext
-    ) -> "fab_param.ParameterOperatable":
+    ) -> fab_param.ParameterOperatable:
         if ctx.name():
             # TODO: implement min/max
             raise NotImplementedError
         else:
             return self.visitBound(ctx.bound(0))
 
-    def visitBound(self, ctx: ap.BoundContext) -> "fab_param.ParameterOperatable":
+    def visitBound(self, ctx: ap.BoundContext) -> fab_param.ParameterOperatable:
         return self.visitAtom(ctx.atom())
 
-    def visitAtom(self, ctx: ap.AtomContext) -> "fab_param.ParameterOperatable":
+    def visitAtom(self, ctx: ap.AtomContext) -> fab_param.ParameterOperatable:
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
             if len(ref) > 1:
                 target = self._get_referenced_node(Ref(ref[:-1]), ctx)
             else:
                 target = self._current_node
-            return self._ensure_param(target, ref[-1], ctx)
+            return self._get_or_promise_param(target, ref[-1], ctx)
 
         elif ctx.literal_physical():
             return self.visitLiteral_physical(ctx.literal_physical())
@@ -1139,7 +1163,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
 
         raise ValueError(f"Unhandled atom type {ctx}")
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> Range:
+    def visitLiteral_physical(
+        self, ctx: ap.Literal_physicalContext
+    ) -> Quantity_Singleton | Quantity_Interval:
         return PhysicalValuesMixin.visitLiteral_physical(self, ctx)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
@@ -1171,17 +1197,18 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtopileParserVisitor)
             )
 
         assigned_name = assigned_value_ref[0]
+        unit = self._get_unit_from_ctx(ctx.type_info().name_or_attr())
 
-        param = self._ensure_param(self._current_node, assigned_name, ctx)
+        param = self._ensure_param(self._current_node, assigned_name, unit, ctx)
         if param not in self._param_assignments:
             self._param_assignments[param] = (None, ctx)
         else:
-            logger.warning(
-                errors.UserKeyError.from_ctx(
+            with downgrade(errors.UserKeyError):
+                raise errors.UserKeyError.from_ctx(
                     ctx,
-                    f"Ignoring declaration of {assigned_name} because it's already defined",  # noqa: E501  # pre-existing
+                    f"Ignoring declaration of {assigned_name} "
+                    "because it's already defined",
                 )
-            )
 
         return KeyOptMap.empty()
 

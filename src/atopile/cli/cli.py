@@ -12,10 +12,11 @@ import typer
 from atopile import telemetry
 from atopile.cli import build, configure, create, inspect, install, view
 from atopile.cli.logging import logger
+from faebryk.libs.logging import FLOG_FMT
 
 app = typer.Typer(
     no_args_is_help=True,
-    pretty_exceptions_enable=False,  # required to override the excepthook
+    pretty_exceptions_enable=bool(FLOG_FMT),  # required to override the excepthook
 )
 
 
@@ -79,12 +80,12 @@ def cli(
     elif verbose > 1:
         logger.root.setLevel(logging.NOTSET)
 
-    if not non_interactive:
+    if not non_interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()
 
 
 app.command()(build.build)
-app.command()(create.create)
+app.add_typer(create.create_app, name="create")
 app.command()(install.install)
 app.command()(configure.configure)
 app.command()(inspect.inspect)

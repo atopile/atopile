@@ -1,9 +1,11 @@
+import logging
 import os
 import sys
 from pathlib import Path
-from subprocess import run
 
 import pytest
+
+from faebryk.libs.util import run_live
 
 repo_root = Path.cwd()
 while not (repo_root / "pyproject.toml").exists():
@@ -14,15 +16,12 @@ EXAMPLES_DIR = repo_root / "examples"
 
 # TODO: remove these as they pass
 XFAIL = [
-    "iterative_design_nand",
-    "mcu",
-    "minimal_led_orderable",
-    "signal_processing",
-    "pcb_layout",
+    "ch2_5_signal_processing",
+    "ch2_9_iterative_design_nand",
 ]
 
 
-# @pytest.mark.slow
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "example",
     [
@@ -36,13 +35,22 @@ XFAIL = [
     ],
     ids=lambda p: p.stem,
 )
-def test_example(example: Path):
+def test_example(example: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+    caplog.set_level(logging.INFO)
     assert example.exists()
 
-    result = run(
-        [sys.executable, example],
-        capture_output=True,
-        text=True,
+    example_copy = tmp_path / example.name
+    example_copy.write_text(example.read_text())
+    example = example_copy
+
+    run_live(
+        [sys.executable, "-m", "atopile", "build", "--standalone", f"{example}:App"],
         env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+        cwd=tmp_path,
+        stdout_level=logging.INFO,
     )
-    assert result.returncode == 0
+
+
+@pytest.mark.parametrize("example", XFAIL)
+def test_xfail_list_exists(example: str):
+    assert (EXAMPLES_DIR / f"{example}.py").exists(), "Handle the missing xfail example"

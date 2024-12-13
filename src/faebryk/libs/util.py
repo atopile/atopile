@@ -19,9 +19,12 @@ from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from enum import StrEnum
+from enum import Enum, StrEnum
+from functools import wraps
+from genericpath import commonprefix
 from importlib.metadata import Distribution
-from itertools import chain
+from itertools import chain, pairwise
+from json import JSONEncoder
 from pathlib import Path
 from textwrap import indent
 from types import ModuleType
@@ -34,12 +37,18 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Protocol,
     Self,
     Sequence,
     SupportsFloat,
     SupportsInt,
     Type,
+    TypeGuard,
+    cast,
     get_origin,
+    get_type_hints,
+    overload,
+    override,
 )
 
 import psutil
@@ -47,6 +56,18 @@ from tortoise import Model
 from tortoise.queryset import QuerySet
 
 logger = logging.getLogger(__name__)
+
+
+class Serializable(Protocol):
+    def serialize(self) -> dict: ...
+
+    @classmethod
+    def deserialize(cls, data: dict) -> Self: ...
+
+
+class SerializableJSONEncoder(JSONEncoder):
+    def default(self, o: Serializable | None):
+        return None if o is None else o.serialize()
 
 
 class lazy:
@@ -126,7 +147,9 @@ class KeyErrorAmbiguous[T](KeyError):
         self.duplicates = duplicates
 
 
-def find[T](haystack: Iterable[T], needle: Callable[[T], Any]) -> T:
+def find[T](haystack: Iterable[T], needle: Callable[[T], Any] | None = None) -> T:
+    if needle is None:
+        needle = lambda x: x is not None  # noqa: E731
     results = [x for x in haystack if needle(x)]
     if not results:
         raise KeyErrorNotFound()
@@ -293,7 +316,31 @@ def not_none(x):
     return x
 
 
-def cast_assert[T](t: type[T], obj) -> T:
+@overload
+def cast_assert[T](t: type[T], obj) -> T: ...
+
+
+@overload
+def cast_assert[T1, T2](t: tuple[type[T1], type[T2]], obj) -> T1 | T2: ...
+
+
+@overload
+def cast_assert[T1, T2, T3](
+    t: tuple[type[T1], type[T2], type[T3]], obj
+) -> T1 | T2 | T3: ...
+
+
+@overload
+def cast_assert[T1, T2, T3, T4](
+    t: tuple[type[T1], type[T2], type[T3], type[T4]], obj
+) -> T1 | T2 | T3 | T4: ...
+
+
+def cast_assert(t, obj):
+    """
+    Assert that obj is an instance of type t and return it with proper type hints.
+    t can be either a single type or a tuple of types.
+    """
     assert isinstance(obj, t)
     return obj
 
@@ -1150,6 +1197,143 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
         return FuncDict(((v, k) for k, v in self.items()), hasher=self._hasher)
 
 
+def dict_map_values(d: dict, function: Callable[[Any], Any]) -> dict:
+    """recursively map all values in a dict"""
+
+    result = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            result[key] = dict_map_values(value, function)
+        elif isinstance(value, list):
+            result[key] = [dict_map_values(v, function) for v in value]
+        else:
+            result[key] = function(value)
+    return result
+
+
+def merge_dicts(*dicts: dict) -> dict:
+    """merge a list of dicts into a single dict,
+    if same key is present and value is list, lists are merged
+    if same key is dict, dicts are merged recursively
+    """
+    result = {}
+    for d in dicts:
+        for k, v in d.items():
+            if k in result:
+                if isinstance(v, list):
+                    assert isinstance(
+                        result[k], list
+                    ), f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    result[k] += v
+                elif isinstance(v, dict):
+                    assert isinstance(result[k], dict)
+                    result[k] = merge_dicts(result[k], v)
+                else:
+                    result[k] = v
+            else:
+                result[k] = v
+    return result
+
+
+def abstract[T: type](cls: T) -> T:
+    """
+    Mark a class as abstract.
+    """
+
+    old_new = cls.__new__
+
+    def _new(cls_, *args, **kwargs):
+        if cls_ is cls:
+            raise TypeError(f"{cls.__name__} is abstract and cannot be instantiated")
+        return old_new(cls_, *args, **kwargs)
+
+    cls.__new__ = _new
+    return cls
+
+
+def typename(x: object | type) -> str:
+    if not isinstance(x, type):
+        x = type(x)
+    return x.__name__
+
+
+def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
+    for k, v in list(d.items()):
+        if isinstance(v, dict):
+            dict_value_visitor(v, visitor)
+        else:
+            d[k] = visitor(k, v)
+
+
+class DefaultFactoryDict[T, U](dict[T, U]):
+    def __init__(self, factory: Callable[[T], U], *args, **kwargs):
+        self.factory = factory
+        super().__init__(*args, **kwargs)
+
+    def __missing__(self, key: T) -> U:
+        res = self.factory(key)
+        self[key] = res
+        return res
+
+
+class EquivalenceClasses[T: Hashable]:
+    def __init__(self, base: Iterable[T] | None = None):
+        self.classes: dict[T, set[T]] = DefaultFactoryDict(lambda k: {k})
+        for elem in base or []:
+            self.classes[elem]
+
+    def add_eq(self, *values: T):
+        if len(values) < 2:
+            return
+        val1 = values[0]
+        for val in values[1:]:
+            self.classes[val1].update(self.classes[val])
+            for v in self.classes[val]:
+                self.classes[v] = self.classes[val1]
+
+    def is_eq(self, a: T, b: T) -> bool:
+        return self.classes[a] is self.classes[b]
+
+    def get(self) -> list[set[T]]:
+        sets = {id(s): s for s in self.classes.values()}
+        return list(sets.values())
+
+
+def common_prefix_to_tree(iterable: list[str]) -> Iterable[str]:
+    """
+    Turns:
+
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.max_current|Parameter
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.voltage|Parameter
+    <760>|RP2040.adc[1]|ADC.reference|ElectricPower.max_current|Parameter
+    <760>|RP2040.adc[1]|ADC.reference|ElectricPower.voltage|Parameter
+
+    Into:
+
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.max_current|Parameter
+    -----------------------------------------------.voltage|Parameter
+    -----------------1]|ADC.reference|ElectricPower.max_current|Parameter
+    -----------------------------------------------.voltage|Parameter
+
+    Notes:
+        Recommended to sort the iterable first.
+    """
+    yield iterable[0]
+
+    for s1, s2 in pairwise(iterable):
+        prefix = commonprefix([s1, s2])
+        prefix_length = len(prefix)
+        yield "-" * prefix_length + s2[prefix_length:]
+
+
+def ind[T: str | list[str]](lines: T) -> T:
+    prefix = "    "
+    if isinstance(lines, str):
+        return indent(lines, prefix=prefix)
+    if isinstance(lines, list):
+        return [f"{prefix}{line}" for line in lines]  # type: ignore
+
+
 def run_live(
     *args,
     logger: logging.Logger = logger,
@@ -1235,27 +1419,109 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
         lock_file_path.unlink(missing_ok=True)
 
 
-def typename(x: object | type) -> str:
-    if not isinstance(x, type):
-        x = type(x)
-    return x.__name__
-
-
 def consume(iter: Iterable, n: int) -> list:
     assert n >= 0
     out = list(itertools.islice(iter, n))
     return out if len(out) == n else []
 
 
-class DefaultFactoryDict[T, U](dict[T, U]):
-    def __init__(self, factory: Callable[[T], U], *args, **kwargs):
-        self.factory = factory
-        super().__init__(*args, **kwargs)
+def closest_base_class(cls: type, base_classes: list[type]) -> type:
+    """
+    Find the most specific (closest) base class from a list of potential base classes.
 
-    def __missing__(self, key: T) -> U:
-        res = self.factory(key)
-        self[key] = res
-        return res
+    Args:
+        cls: The class to find the closest base class for
+        base_classes: List of potential base classes to check
+
+    Returns:
+        The most specific base class from the list that cls inherits from
+
+    Raises:
+        ValueError: If cls doesn't inherit from any of the base classes
+    """
+    # Get all base classes in method resolution order (most specific first)
+    mro = cls.__mro__
+
+    # Find the first (most specific) base class that appears in the provided list
+    sort = sorted(base_classes, key=lambda x: mro.index(x))
+    return sort[0]
+
+
+def operator_type_check[**P, T](method: Callable[P, T]) -> Callable[P, T]:
+    @wraps(method)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        hints = get_type_hints(
+            method, include_extras=True
+        )  # This resolves string annotations
+        sig = inspect.signature(method)
+        param_hints = {name: hint for name, hint in hints.items() if name != "return"}
+
+        bound_args = sig.bind(*args, **kwargs)
+        bound_args.apply_defaults()
+
+        for name, value in bound_args.arguments.items():
+            if name not in param_hints:
+                continue
+            expected_type = param_hints[name]
+            # Handle Union, Optional, etc.
+            if hasattr(expected_type, "__origin__"):
+                expected_type = expected_type.__origin__
+            if not isinstance(value, expected_type):
+                return NotImplemented
+
+        return method(*args, **kwargs)
+
+    return wrapper
+
+
+@overload
+def partition[Y, T](
+    pred: Callable[[T], TypeGuard[Y]], iterable: Iterable[T]
+) -> tuple[Iterable[T], Iterable[Y]]: ...
+
+
+@overload
+def partition[T](
+    pred: Callable[[T], bool], iterable: Iterable[T]
+) -> tuple[Iterable[T], Iterable[T]]: ...
+
+
+def partition(pred, iterable):  # type: ignore
+    from more_itertools import partition as p
+
+    return p(pred, iterable)
+
+
+def times_out(seconds: float):
+    # if running in debugger, don't timeout
+    if hasattr(sys, "gettrace") and sys.gettrace():
+        return lambda func: func
+
+    def decorator[**P, T](func: Callable[P, T]) -> Callable[P, T]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            import signal
+
+            def timeout_handler(signum, frame):
+                raise TimeoutError(
+                    f"Function {func.__name__} exceeded time limit of {seconds}s"
+                )
+
+            # Set up the signal handler
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            # Set alarm to trigger after specified seconds
+            signal.setitimer(signal.ITIMER_REAL, seconds)
+
+            try:
+                return func(*args, **kwargs)
+            finally:
+                # Cancel the alarm and restore the old signal handler
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, old_handler)
+
+        return wrapper
+
+    return decorator
 
 
 def hash_string(string: str) -> str:
@@ -1273,12 +1539,17 @@ def get_module_from_path(
     """
     Return a module based on a file path if already imported, or return None.
     """
-    sanitized_file_path = str(Path(file_path).expanduser().resolve().absolute())
+    sanitized_file_path = Path(file_path).expanduser().resolve().absolute()
+
+    def _needle(m: ModuleType) -> bool:
+        try:
+            file = Path(getattr(m, "__file__"))
+        except Exception:
+            return False
+        return sanitized_file_path.samefile(file)
+
     try:
-        module = find(
-            sys.modules.values(),
-            lambda m: getattr(m, "__file__", None) == sanitized_file_path,
-        )
+        module = find(sys.modules.values(), _needle)
     except KeyErrorNotFound:
         return None
 
@@ -1349,37 +1620,32 @@ def write_only_property(func: Callable):
     )
 
 
-def try_set_attr(obj: object, attr: str, value: Any) -> bool:
-    """Set an attribute or property if possible, and return whether it was successful."""  # noqa: E501  # pre-existing
-
-    def _should() -> bool:
-        # If we have a property, it's going to tell us all we need to know
-        if hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property):
-            # If the property is settable, use it to set the value
-            if getattr(type(obj), attr).fset is not None:
-                return True
-            # If not, it's not settable, end here
-            return False
-
-        # If there's an instance only attribute, we can set it
-        if hasattr(obj, attr) and not hasattr(type(obj), attr):
+def has_instance_settable_attr(obj: object, attr: str) -> bool:
+    """
+    Check if an object has an instance attribute that is settable.
+    """
+    # If we have a property, it's going to tell us all we need to know
+    if hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property):
+        # If the property is settable, use it to set the value
+        if getattr(type(obj), attr).fset is not None:
             return True
-
-        # If there's an instance attribute, that's unique compared to the class attribute, # noqa: E501  # pre-existing
-        # we can set it. We don't need to check for a property here because we already
-        # checked for that above.
-        if (
-            hasattr(obj, attr)
-            and hasattr(type(obj), attr)
-            and getattr(obj, attr) is not getattr(type(obj), attr)
-        ):
-            return True
-
+        # If not, it's not settable, end here
         return False
 
-    if _should():
-        setattr(obj, attr, value)
+    # If there's an instance only attribute, we can set it
+    if hasattr(obj, attr) and not hasattr(type(obj), attr):
         return True
+
+    # If there's an instance attribute, that's unique compared to the class
+    # attribute, we can set it. We don't need to check for a property here
+    # because we already checked for that above.
+    if (
+        hasattr(obj, attr)
+        and hasattr(type(obj), attr)
+        and getattr(obj, attr) is not getattr(type(obj), attr)
+    ):
+        return True
+
     return False
 
 
@@ -1398,3 +1664,80 @@ def is_editable_install():
         .get("dir_info", {})
         .get("editable", False)
     )
+
+
+class SerializableEnum[E: Enum](Serializable):
+    class Value[E_: Enum](Serializable):
+        def __init__(self, enum: "SerializableEnum", value: E_):
+            self._value = value
+            self._enum = enum
+
+        @property
+        def name(self) -> str:
+            return self._value.name
+
+        @property
+        def value(self) -> E:
+            return self._value.value
+
+        @override
+        def serialize(self) -> dict:
+            return {"name": self._value.name}
+
+        def __eq__(self, other: "SerializableEnum.Value[E]") -> bool:
+            if not other._enum == self._enum:
+                return False
+            return (
+                other._value.name == self._value.name
+                and other._value.value == self._value.value
+            )
+
+        def __hash__(self) -> int:
+            return hash(self._value)
+
+        def __repr__(self) -> str:
+            return f"{self._enum.enum.__name__}.{self._value.name}"
+
+    def __init__(self, enum: type[Enum]):
+        self.enum = enum
+
+        class _Value(SerializableEnum.Value[E]):
+            @override
+            @staticmethod
+            def deserialize(data: dict) -> "_Value":
+                return _Value(self, self.enum[data["name"]])
+
+        self.value_cls = _Value
+
+    def serialize(self) -> dict:
+        enum = self.enum
+        # check enum values to all be ints or str
+        if not all(isinstance(e.value, (int, str, float)) for e in enum):
+            raise ValueError(f"Can't serialize {enum}: has non-primitive values")
+
+        enum_cls_serialized = {
+            "name": enum.__name__,
+            "values": {e.name: e.value for e in enum},
+        }
+
+        return enum_cls_serialized
+
+    @staticmethod
+    def deserialize(data: dict) -> "SerializableEnum":
+        enum_cls = Enum(data["name"], data["values"])
+        return SerializableEnum(cast(type[Enum], enum_cls))
+
+    def make_value(
+        self, value: "E | SerializableEnum.Value[E]"
+    ) -> "SerializableEnum.Value[E]":
+        if isinstance(value, SerializableEnum.Value):
+            return value
+        return self.value_cls(self, value)
+
+    def deserialize_value(self, data: dict) -> "SerializableEnum.Value[E]":
+        return self.value_cls.deserialize(data)
+
+    def __eq__(self, other: "SerializableEnum") -> bool:
+        return self.enum.__name__ == other.enum.__name__ and {
+            e.name: e.value for e in self.enum
+        } == {e.name: e.value for e in other.enum}

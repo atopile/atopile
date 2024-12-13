@@ -12,7 +12,6 @@ from faebryk.exporters.pcb.layout.heuristic_pulls import (
     LayoutHeuristicElectricalClosenessPullResistors,
 )
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -30,8 +29,10 @@ class RP2040_ReferenceDesign(Module):
         switch = L.f_field(F.Switch(F.Electrical))()
 
         def __preinit__(self):
-            self.resistor.resistance.merge(F.Range.from_center_rel(1 * P.kohm, 0.05))
-            self.logic_out.set_weak(True).resistance.merge(self.resistor.resistance)
+            self.resistor.resistance.constrain_subset(
+                L.Range.from_center_rel(1 * P.kohm, 0.05)
+            )
+            self.logic_out.set_weak(True).resistance.alias_is(self.resistor.resistance)
             self.logic_out.signal.connect_via(
                 [self.resistor, self.switch], self.logic_out.reference.lv
             )
@@ -82,66 +83,41 @@ class RP2040_ReferenceDesign(Module):
         #            parametrization
         # ----------------------------------------
         # LDO
-        self.ldo.output_current.merge(F.Range.from_center_rel(600 * P.mA, 0.05))
-        self.ldo.power_in.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
-        )
-        self.ldo.power_out.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
-        )
+        self.ldo.output_current.constrain_ge(600 * P.mA)
+        self.ldo.power_in.decoupled.decouple().explicit(10 * P.uF)
+        self.ldo.power_out.decoupled.decouple().explicit(10 * P.uF)
 
         # XTAL
-        self.clock_source.crystal.load_capacitance.merge(
-            F.Range.from_center_rel(10 * P.pF, 0.05)
+        xtal = self.clock_source.crystal
+        xtal.load_capacitance.constrain_subset(L.Range.from_center_rel(10 * P.pF, 0.2))
+        xtal.frequency.constrain_subset(L.Range.from_center_rel(12 * P.MHz, 0.05))
+
+        self.clock_source.current_limiting_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(1 * P.kohm, 0.05)
         )
 
-        self.clock_source.current_limiting_resistor.resistance.merge(
-            F.Range.from_center_rel(1 * P.kohm, 0.05)
-        )
-        self.clock_source.crystal.add(
-            F.has_descriptive_properties_defined(
-                {
-                    DescriptiveProperties.manufacturer.value: "Abracon LLC",
-                    DescriptiveProperties.partno: "ABM8-272-T3",
-                }
-            )
-        )
+        xtal.add(F.has_descriptive_properties_defined({"LCSC": "C9002"}))
 
         # USB
         terminated_usb_data = self.add(
             self.usb.usb_if.d.terminated(), "_terminated_usb_data"
         )
-        terminated_usb_data.impedance.merge(F.Range.from_center_rel(27.4 * P.ohm, 0.05))
+        terminated_usb_data.impedance.constrain_subset(
+            L.Range.from_center_rel(27.4 * P.ohm, 0.05)
+        )
 
         # Flash
-        self.flash.memory_size.merge(16 * P.Mbit)
-        self.flash.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.05)
-        )
+        self.flash.memory_size.constrain_subset(16 * P.Mbit)
+        self.flash.decoupled.decouple().explicit(100 * P.nF)
 
         # Power rails
-        self.rp2040.power_io.decoupled.decouple().specialize(
-            F.MultiCapacitor(6)
-        ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
-        self.rp2040.core_regulator.power_in.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(1 * P.uF, 0.05)
-        )
-        self.rp2040.power_adc.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.05)
-        )
-        self.rp2040.power_usb_phy.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.05)
-        )
-        power_3v3.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
-        )
-        self.rp2040.power_core.decoupled.decouple().specialize(
-            F.MultiCapacitor(2)
-        ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
-        self.rp2040.core_regulator.power_out.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(1 * P.uF, 0.05)
-        )
-
+        self.rp2040.power_io.decoupled.decouple(6).explicit(100 * P.nF)
+        self.rp2040.power_adc.decoupled.decouple().explicit(100 * P.nF)
+        self.rp2040.power_core.decoupled.decouple(2).explicit(100 * P.nF)
+        self.rp2040.power_usb_phy.decoupled.decouple().explicit(100 * P.nF)
+        self.rp2040.core_regulator.power_in.decoupled.decouple().explicit(1 * P.uF)
+        power_3v3.decoupled.decouple().explicit(10 * P.uF)
+        self.rp2040.core_regulator.power_out.decoupled.decouple().explicit(1 * P.uF)
         # ----------------------------------------
         #              connections
         # ----------------------------------------
@@ -166,9 +142,16 @@ class RP2040_ReferenceDesign(Module):
         LayoutHeuristicElectricalClosenessDecouplingCaps.add_to_all_suitable_modules(  # noqa: E501
             self
         )
-        # for c in caps:
-        #    if F.Constant(100 * P.nF).is_subset_of(c.capacitance):
-        #        c.add(F.has_footprint_requirement_defined([("0201", 2)]))
+        caps_100nF = self.get_children(
+            direct_only=False,
+            types=F.Capacitor,
+            f_filter=lambda c: bool(
+                c.capacitance.try_get_literal()
+                == L.Range.from_center_rel(100 * P.nF, 0.2)
+            ),
+        )
+        for c in caps_100nF:
+            c.add(F.has_package_requirement("0201"))
 
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self

@@ -36,8 +36,8 @@ class ESP32_C3_MINI_1(Module):
 
     def __preinit__(self):
         # connect power decoupling caps
-        self.vdd3v3.decoupled.decouple().capacitance.merge(
-            F.Range(100 * P.nF, 10 * P.uF)
+        self.vdd3v3.decoupled.decouple().capacitance.constrain_subset(
+            L.Range(100 * P.nF, 10 * P.uF)
         )
 
         e = self.esp32_c3

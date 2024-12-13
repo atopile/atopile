@@ -13,4 +13,7 @@ logger = logging.getLogger(__name__)
 # TODO better name
 class can_be_decoupled(Trait):
     @abstractmethod
-    def decouple(self) -> F.Capacitor: ...
+    def decouple(
+        self,
+        count: int = 1,
+    ) -> F.Capacitor: ...

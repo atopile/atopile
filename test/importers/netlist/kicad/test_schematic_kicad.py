@@ -57,7 +57,3 @@ class TestImportSchematicKicad(unittest.TestCase):
         path.write_text(prj)
 
         # TODO actually test for equality with handbuilt netlist
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -1,12 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import sys
 import unittest
-
-from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB, ComponentQuery
-from faebryk.libs.util import at_exit
 
 HELLO = "Hello, World!"
 BYE = "Bye, World!"
@@ -21,10 +16,11 @@ def sync_stuff():
 
 
 def async_stuff():
-    JLCPCB_DB.get()
-    ComponentQuery().filter_by_category(
-        "Instrumentation/Meter", "Tester"
-    ).filter_by_lcsc_pn("92738").get()
+    # FIXME replace this
+    # JLCPCB_DB.get()
+    # ComponentQuery().filter_by_category(
+    #    "Instrumentation/Meter", "Tester"
+    # ).filter_by_lcsc_pn("92738").get()
     print("Done")
 
 
@@ -54,14 +50,8 @@ SWITCH = {
 }
 
 
-def run(i: int = 0):
-    at_exit(ex)
-    print(HELLO)
-    SWITCH[i]()
-
-
 class TestUtilAtExit(unittest.TestCase):
-    @unittest.skip("Requires DB")
+    @unittest.skip("FIXME")
     def test_configs(self):
         import subprocess
 
@@ -84,13 +74,3 @@ class TestUtilAtExit(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------------
-
-
-# -----------------------------------------------------------------------------
-if __name__ == "__main__":
-    setup_basic_logging()
-
-    if len(sys.argv) > 1:
-        run(int(sys.argv[1]))
-    else:
-        unittest.main()

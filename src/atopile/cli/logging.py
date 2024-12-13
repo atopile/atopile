@@ -1,45 +1,21 @@
 import logging
-import textwrap
 from types import ModuleType, TracebackType
 
 from rich._null_file import NullFile
-from rich.console import Console
-from rich.highlighter import RegexHighlighter
+from rich.console import ConsoleRenderable
 from rich.logging import RichHandler
-from rich.theme import Theme
 from rich.traceback import Traceback
 
 import atopile
 import faebryk
+import faebryk.libs
+import faebryk.libs.logging
 from atopile.errors import (
     UserPythonModuleError,
     _BaseBaseUserException,
-    _BaseUserException,
 )
 
-
-class NodeHighlighter(RegexHighlighter):
-    """
-    Apply style to anything that looks like an faebryk Node\n
-    <*|XOR_with_NANDS.nands[2]|NAND.inputs[0]|Logic> with
-    <*|TI_CD4011BE.nands[2]|ElectricNAND.inputs[0]|ElectricLogic>\n
-    \t<> = Node\n
-    \t|  = Type\n
-    \t.  = Parent\n
-    \t*  = Root
-    """
-
-    base_style = "node."
-    highlights = [
-        #  r"(?P<Rest>(.*))",
-        r"(?P<Node>([/</>]))",
-        r"[?=\|](?P<Type>([a-zA-Z_0-9]+))[?=\>]",
-        r"[\.](?P<Child>([a-zA-Z_0-9]+))[?=\[]",
-        r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",
-        r"[?<=*.](?P<Root>(\*))",
-        r"[?=\[](?P<Number>([0-9]+))[?=\]]",
-    ]
-
+from . import console
 
 _logged_exceptions: set[tuple[type[Exception], tuple]] = set()
 
@@ -140,9 +116,22 @@ class LogHandler(RichHandler):
             suppress=suppress,
         )
 
+    def render_message(
+        self, record: logging.LogRecord, message: str
+    ) -> ConsoleRenderable:
+        # special handling for exceptions only
+        if record.exc_info is None:
+            return super().render_message(record, message)
+
+        _, exc, _ = record.exc_info
+
+        if not isinstance(exc, ConsoleRenderable):
+            return super().render_message(record, message)
+
+        return exc
+
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by logging."""
-        message = self.format(record)
         hashable = self._get_hashable(record)
 
         if hashable and hashable in _logged_exceptions:
@@ -151,13 +140,14 @@ class LogHandler(RichHandler):
 
         traceback = self._get_traceback(record)
 
-        message = record.getMessage()
         if self.formatter:
             record.message = record.getMessage()
             formatter = self.formatter
             if hasattr(formatter, "usesTime") and formatter.usesTime():
                 record.asctime = formatter.formatTime(record, formatter.datefmt)
             message = formatter.formatMessage(record)
+        else:
+            message = record.getMessage()
 
         message_renderable = self.render_message(record, message)
 
@@ -179,67 +169,10 @@ class LogHandler(RichHandler):
             _logged_exceptions.add(hashable)
 
 
-class LogFormatter(logging.Formatter):
-    def __init__(self):
-        super().__init__(fmt="%(message)s", datefmt="[%X]")
-
-    def format(self, record: logging.LogRecord) -> str:
-        # special handling for exceptions only
-        if record.exc_info is None:
-            return super().format(record)
-
-        _, exc, _ = record.exc_info
-
-        if not isinstance(exc, _BaseBaseUserException):
-            return super().format(record)
-
-        header = ""
-
-        if exc.title:
-            header += f"[bold]{exc.title}[/]\n"
-            record.markup = True
-
-        # Attach source info if we have it
-        if isinstance(exc, _BaseUserException):
-            if source_info := exc.src_path:
-                print(f"{source_info=}")
-                source_info = str(source_info)
-                if src_line := exc.src_line:
-                    source_info += f":{src_line}"
-                if src_col := exc.src_col:
-                    source_info += f":{src_col}"
-
-                header += f"{source_info}\n"
-
-        indented_message = (
-            textwrap.indent(record.getMessage(), "    ")
-            if exc.title or source_info
-            else record.getMessage()
-        )
-
-        return f"{header}{indented_message}".strip()
-
-
-console = Console(
-    theme=Theme(
-        {
-            "node.Node": "bold magenta",
-            "node.Type": "bright_cyan",
-            "node.Parent": "bright_red",
-            "node.Child": "bright_yellow",
-            "node.Root": "bold yellow",
-            "node.Number": "bright_green",
-            #   "node.Rest": "bright_black",
-            "logging.level.warning": "yellow",
-        }
-    )
-)
-
-
 logger = logging.getLogger(__name__)
 
 handler = LogHandler(
-    console=console,
+    console=console.console,
     rich_tracebacks=True,
     show_path=False,
     tracebacks_suppress=["typer"],
@@ -247,6 +180,6 @@ handler = LogHandler(
     tracebacks_unwrap=[UserPythonModuleError],
 )
 
-handler.setFormatter(LogFormatter())
+handler.setFormatter(logging.Formatter("%(message)s", datefmt="[%X]"))
 
-logging.basicConfig(level="INFO", handlers=[handler])
+faebryk.libs.logging.setup_basic_logging(handlers=[handler])

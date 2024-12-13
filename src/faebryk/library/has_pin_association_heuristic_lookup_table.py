@@ -4,6 +4,7 @@
 import logging
 
 import faebryk.library._F as F
+from faebryk.libs.util import KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -36,29 +37,44 @@ class has_pin_association_heuristic_lookup_table(
         """
 
         pinmap = {}
-        for number, name in pins:
-            if name in self.nc:
-                continue
-            match = None
-            for mif, alt_names in self.mapping.items():
+        for mif, alt_names in self.mapping.items():
+            matches = []
+            for number, name in pins:
+                if name in self.nc:
+                    continue
                 for alt_name in alt_names:
                     if not self.case_sensitive:
                         alt_name = alt_name.lower()
                         name = name.lower()
                     if self.accept_prefix and name.endswith(alt_name):
-                        match = (mif, alt_name)
+                        matches.append((number, name))
                         break
                     elif name == alt_name:
-                        match = (mif, alt_name)
+                        matches.append((number, name))
                         break
-            if not match:
+            if not matches:
+                try:
+                    _, is_optional = mif.get_parent_with_trait(F.is_optional)
+                    if not is_optional.is_needed():
+                        is_optional._handle_result(False)
+                        continue
+                except KeyErrorNotFound:
+                    pass
                 raise F.has_pin_association_heuristic.PinMatchException(
-                    f"Could not find a match for pin {number} with name {name}"
-                    f" in the mapping {self.mapping}"
+                    f"Could not find a match for pin {mif} with names '{alt_names}'"
+                    f" in the pins: {pins}"
                 )
-            pinmap[number] = match[0]
-            logger.debug(
-                f"Matched pin {number} with name {name} to {match[0]} with "
-                f"alias {match[1]}"
+            for number, name in matches:
+                pinmap[number] = mif
+                logger.debug(
+                    f"Matched pin {number} with name {name} to {mif} with "
+                    f"alias {alt_names}"
+                )
+
+        unmatched = [p for p in pins if p[0] not in pinmap]
+        if unmatched:
+            logger.warning(
+                f"Unmatched pins: {unmatched}, all pins: {pins},"
+                f" mapping: {self.mapping}"
             )
         return pinmap

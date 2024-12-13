@@ -37,7 +37,7 @@ class pf_74AHCT2G125(Module):
         )
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range(4.5 * P.V, 5.5 * P.V))
+        self.power.voltage.constrain_subset(L.Range(4.5 * P.V, 5.5 * P.V))
         self.power.decoupled.decouple()
 
     @L.rt_field
