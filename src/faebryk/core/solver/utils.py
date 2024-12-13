@@ -218,10 +218,19 @@ def alias_is_literal_and_check_predicate_eval(
 
 
 def no_other_constrains(
-    po: ParameterOperatable, *other: ConstrainableExpression
+    po: ParameterOperatable,
+    *other: ConstrainableExpression,
+    unfulfilled_only: bool = False,
 ) -> bool:
     no_other_constraints = (
-        len(get_constrained_expressions_involved_in(po).difference(other)) == 0
+        len(
+            [
+                x
+                for x in get_constrained_expressions_involved_in(po).difference(other)
+                if not unfulfilled_only or not x._solver_evaluates_to_true
+            ]
+        )
+        == 0
     )
     return no_other_constraints and not po.has_implicit_constraints_recursive()
 
@@ -767,10 +776,8 @@ class Mutators:
         *graphs: Graph,
         context: ParameterOperatable.ReprContext,
         type_filter: type[ParameterOperatable] = ParameterOperatable,
+        print_out: Callable[[str], None] = logger.debug,
     ):
-        if not logger.isEnabledFor(logging.DEBUG):
-            return
-
         for i, g in enumerate(graphs):
             pre_nodes = GraphFunctions(g).nodes_of_type(type_filter)
             if SHOW_SS_IS:
@@ -783,7 +790,12 @@ class Mutators:
                         isinstance(n, (Is, IsSubset))
                         and n.constrained
                         and n._solver_evaluates_to_true
-                        and any(ParameterOperatable.is_literal(o) for o in n.operands)
+                        and (
+                            # A is/ss Lit
+                            any(ParameterOperatable.is_literal(o) for o in n.operands)
+                            # A is/ss A
+                            or n.operands[0] is n.operands[1]
+                        )
                     )
                 ]
             out = ""
@@ -795,7 +807,7 @@ class Mutators:
 
             if not nodes:
                 continue
-            logger.debug(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
+            print_out(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
     @staticmethod
     def concat_repr_maps(*repr_maps: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
@@ -851,15 +863,21 @@ class Mutators:
         return Mutators.ReprMap(Mutators.concat_repr_maps(*repr_maps))
 
 
-def debug_name_mappings(context: ParameterOperatable.ReprContext, g: Graph):
+def debug_name_mappings(
+    context: ParameterOperatable.ReprContext,
+    g: Graph,
+    print_out: Callable[[str], None] = logger.debug,
+):
     table = Table(title="Name mappings", show_lines=True)
     table.add_column("Before")
     table.add_column("After")
 
-    for p in GraphFunctions(g).nodes_of_type(Parameter):
+    for p in sorted(
+        GraphFunctions(g).nodes_of_type(Parameter), key=Parameter.get_full_name
+    ):
         table.add_row(p.compact_repr(context), p.get_full_name())
 
     if table.rows:
         console = Console(record=True, width=80, file=io.StringIO())
         console.print(table)
-        logger.debug(console.export_text(styles=True))
+        print_out(console.export_text(styles=True))

@@ -256,6 +256,31 @@ class PickerProgress:
             yield self
 
 
+# TODO WIP
+# def get_pick_chain(module: Module) -> list[Module]:
+#    module = module.get_most_special()
+#
+#    if module.has_trait(has_part_picked):
+#        return []
+#
+#    # if module.has_trait(skip_self_pick):
+#    #    return []
+#
+#    mifs = module.get_children(direct_only=True, types=ModuleInterface)
+
+
+# def pick_topologically(module: Module, solver: Solver):
+#    modules = module.get_children_modules(
+#        direct_only=False, types=Module, include_root=True
+#    )
+#    # make pick chain
+#    # mifs reset hierarchy
+#
+#    if LOG_PICK_SOLVE:
+#        names = sorted(p.get_full_name(types=True) for p in pickable_modules)
+#        logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
+
+
 # TODO should be a Picker
 def pick_part_recursively(module: Module, solver: Solver):
     pickable_modules = GraphFunctions(module.get_graph()).nodes_with_trait(F.has_picker)

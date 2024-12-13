@@ -20,6 +20,7 @@ from faebryk.core.solver.analytical import (
     fold_literals,
     merge_intersect_subsets,
     predicate_literal_deduce,
+    predicate_unconstrained_operands_deduce,
     remove_congruent_expressions,
     remove_empty_graphs,
     remove_unconstrained,
@@ -45,7 +46,7 @@ from faebryk.core.solver.utils import (
     try_extract_literal,
 )
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import times_out
+from faebryk.libs.util import groupby, times_out
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,10 @@ class DefaultSolver(Solver):
             ("Fold literals", fold_literals),
             ("Merge intersecting subsets", merge_intersect_subsets),
             ("Predicate literal deduce", predicate_literal_deduce),
+            (
+                "Predicate unconstrained operands deduce",
+                predicate_unconstrained_operands_deduce,
+            ),
             ("Transitive subset", transitive_subset),
             ("Remove empty graphs", remove_empty_graphs),
         ]
@@ -132,8 +137,9 @@ class DefaultSolver(Solver):
 
         print_context_ = print_context or ParameterOperatable.ReprContext()
 
-        debug_name_mappings(print_context_, g)
-        Mutators.print_all(g, context=print_context_, type_filter=Expression)
+        if S_LOG:
+            debug_name_mappings(print_context_, g)
+            Mutators.print_all(g, context=print_context_, type_filter=Expression)
 
         def run_algo(
             graphs: list[Graph],
@@ -263,7 +269,8 @@ class DefaultSolver(Solver):
             )
             # --------------------------------------------------------------------------
 
-        Mutators.print_all(*graphs, context=print_context_)
+        if S_LOG:
+            Mutators.print_all(*graphs, context=print_context_)
 
         if LOG_PICK_SOLVE:
             logger.info(
@@ -398,8 +405,8 @@ class DefaultSolver(Solver):
                 repr_pred = repr_map.repr_map.get(pred)
 
                 # FIXME: workaround for above
-                if repr_pred is not None:
-                    new_Gs = [repr_pred.get_graph()]
+                # if repr_pred is not None:
+                #    new_Gs = [repr_pred.get_graph()]
 
                 new_preds = [
                     n
@@ -427,6 +434,21 @@ class DefaultSolver(Solver):
                         f"NOT DEDUCED: \n    {'\n    '.join([
                             p.compact_repr(print_context_new) for p in not_deducted])}"
                     )
+
+                    if LOG_PICK_SOLVE:
+                        debug_name_mappings(
+                            print_context, pred.get_graph(), print_out=logger.warning
+                        )
+                        not_deduced_grouped = groupby(
+                            not_deducted, key=lambda p: p.get_graph()
+                        )
+                        for g, _ in not_deduced_grouped.items():
+                            Mutators.print_all(
+                                g,
+                                context=print_context_new,
+                                print_out=logger.warning,
+                            )
+
                     result.unknown_predicates.append(p)
                     continue
 
