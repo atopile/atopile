@@ -40,10 +40,13 @@ from faebryk.libs.exceptions import (
 from faebryk.libs.library.L import Range, Single
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
 from faebryk.libs.units import (
+    P,
     Quantity,
-    Unit,
     UnitCompatibilityError,
     dimensionless,
+)
+from faebryk.libs.units import (
+    Unit as UnitType,
 )
 from faebryk.libs.util import (
     FuncDict,
@@ -98,11 +101,11 @@ class BasicsMixin:
 
 class PhysicalValuesMixin:
     @staticmethod
-    def _get_unit_from_ctx(ctx: ParserRuleContext) -> Unit:
+    def _get_unit_from_ctx(ctx: ParserRuleContext) -> UnitType:
         """Return a pint unit from a context."""
         unit_str = ctx.getText()
         try:
-            return Unit(unit_str)
+            return P.Unit(unit_str)
         except UndefinedUnitError as ex:
             raise errors.UserUnknownUnitError.from_ctx(
                 ctx, f"Unknown unit '{unit_str}'"
@@ -818,7 +821,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         self,
         node: L.Node,
         name: str,
-        unit: Unit,
+        unit: UnitType,
         src_ctx: ParserRuleContext,
     ) -> fab_param.Parameter:
         """
@@ -879,7 +882,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         ########## Handle Regular Assignments ##########
         value = self.visit(assignable_ctx)
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
-            assert isinstance(value.units, Unit)
+            assert isinstance(value.units, UnitType)
             param = self._ensure_param(target, assigned_name, value.units, ctx)
             self._param_assignments[param] = (value, ctx)
 
