@@ -156,7 +156,7 @@ markers = [
 
 [tool.ruff]
 line-length = 88         # Same as Black.
-target-version = "py312"
+target-version = "py313"
 
 exclude = [
     "src/atopile/parser/AtoLexer.py",
@@ -276,5 +276,5 @@ ignore-paths = ["tests", "src/atopile/parser/"]
 
 [tool.black]
 line-length = 88
-target-version = ['py312']
+target-version = ['py313']
 extend-exclude = "atopile/parser/"
