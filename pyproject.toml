@@ -11,7 +11,7 @@ build-backend = "hatchling.build"
 name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.13,<3.14"
 dynamic = ["version"]
 license = { file = "LICENSE" }
 authors = [
@@ -92,7 +92,6 @@ dev = [
     "dash~=2.18.1",
     "debugpy",
     "gprof2dot~=2024.6.6",
-    "mkdocs-drawio-file >= 1.5.2",
     "mkdocs-material",
     "mkdocs",
     "nanobind>=2.2,<3.0",
