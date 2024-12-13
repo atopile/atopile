@@ -862,15 +862,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         """
         try:
             node = self.get_node_attr(node, name)
-        except AttributeError:
+        except AttributeError as ex:
             if name in self._failed_nodes.get(node, set()):
-                raise SkipPriorFailedException()
-
+                raise SkipPriorFailedException() from ex
+            # Wah wah wah - we don't know what this is
             raise errors.UserNotImplementedError.from_ctx(
                 src_ctx,
-                f"Parameter {name} not found on {node} and"
+                f'Parameter "{name}" not found and'
                 " forward-declared params are not yet implemented",
-            )
+            ) from ex
+
         assert isinstance(node, fab_param.Parameter)
         return node
 
