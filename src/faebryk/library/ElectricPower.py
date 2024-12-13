@@ -3,6 +3,7 @@
 
 
 import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.library import L
 from faebryk.libs.units import P
@@ -13,27 +14,28 @@ class ElectricPower(F.Power):
     class can_be_decoupled_power(F.can_be_decoupled.impl()):
         def decouple(
             self,
+            owner: Module,
             count: int = 1,
         ):
             obj = self.get_obj(ElectricPower)
 
             if count > 1:
-                capacitor = obj.add(F.MultiCapacitor(count))
+                capacitor = F.MultiCapacitor(count)
             else:
-                capacitor = obj.add(F.Capacitor())
+                capacitor = F.Capacitor()
+
+            owner.add(
+                capacitor,
+                name=f"decoupling_{obj.get_name(accept_no_parent=True)}",
+            )
 
             # FIXME seems to cause contradictions
-            # capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
+            capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
 
             obj.hv.connect_via(capacitor, obj.lv)
 
             obj.add(F.is_decoupled(capacitor))
             return capacitor
-
-        def is_implemented(self):
-            return not self.obj.has_trait(F.is_decoupled)
-
-        # TODO implement merging
 
     class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
         def on_obj_set(self):
