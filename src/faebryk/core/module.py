@@ -54,7 +54,6 @@ class Module(Node):
         include_root: bool = False,
         f_filter: Callable[[T], bool] | None = None,
         sort: bool = True,
-        special_filter: bool = True,
     ) -> set[T]:
         out = self.get_children(
             direct_only=direct_only,
@@ -63,10 +62,51 @@ class Module(Node):
             f_filter=f_filter,
             sort=sort,
         )
+        out_specialized = {
+            n.get_most_special()
+            for n in self.get_children(
+                direct_only=direct_only,
+                types=Module,
+                include_root=include_root,
+                f_filter=lambda x: x.get_most_special() != x,
+                sort=sort,
+            )
+        }
         if most_special:
-            out = {n.get_most_special() for n in out}
-            if special_filter and f_filter:
-                out = {n for n in out if f_filter(n)}
+            special_out = set()
+            todo = out_specialized
+            # TODO can be done more efficiently by just allowing in the graph search
+            # specialize edges
+            for n in out:
+                # Filter out children of specialized modules
+                has_specialized_parent = n.get_parent_f(
+                    lambda x: isinstance(x, Module) and x.get_most_special() != x
+                )
+                if has_specialized_parent:
+                    continue
+                n_special = n.get_most_special()
+                # Non-special can just pass
+                if n_special is n:
+                    special_out.add(n_special)
+                    continue
+                # Already processed
+                if n_special in out | special_out:
+                    continue
+                # To process children
+                todo.add(n)
+
+            for n_special in todo:
+                special_out.update(
+                    n_special.get_children_modules(
+                        types=types,
+                        most_special=True,
+                        direct_only=direct_only,
+                        include_root=True,
+                        f_filter=f_filter,
+                        sort=sort,
+                    )
+                )
+            out = special_out
 
         return out
 

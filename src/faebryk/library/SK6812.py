@@ -65,7 +65,8 @@ class SK6812(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
-        self.power.decoupled.decouple()
+        # FIXME
+        # self.power.decoupled.decouple()
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         F.ElectricLogic.connect_all_module_references(self, exclude=[self.power])
 

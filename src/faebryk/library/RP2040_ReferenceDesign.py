@@ -32,7 +32,9 @@ class RP2040_ReferenceDesign(Module):
             self.resistor.resistance.constrain_subset(
                 L.Range.from_center_rel(1 * P.kohm, 0.05)
             )
-            self.logic_out.set_weak(True).resistance.alias_is(self.resistor.resistance)
+            self.logic_out.set_weak(True, self).resistance.alias_is(
+                self.resistor.resistance
+            )
             self.logic_out.signal.connect_via(
                 [self.resistor, self.switch], self.logic_out.reference.lv
             )
@@ -84,8 +86,8 @@ class RP2040_ReferenceDesign(Module):
         # ----------------------------------------
         # LDO
         self.ldo.output_current.constrain_ge(600 * P.mA)
-        self.ldo.power_in.decoupled.decouple().explicit(10 * P.uF)
-        self.ldo.power_out.decoupled.decouple().explicit(10 * P.uF)
+        self.ldo.power_in.decoupled.decouple(owner=self).explicit(10 * P.uF)
+        self.ldo.power_out.decoupled.decouple(owner=self).explicit(10 * P.uF)
 
         # XTAL
         xtal = self.clock_source.crystal
@@ -108,16 +110,24 @@ class RP2040_ReferenceDesign(Module):
 
         # Flash
         self.flash.memory_size.constrain_subset(16 * P.Mbit)
-        self.flash.decoupled.decouple().explicit(100 * P.nF)
+        self.flash.decoupled.decouple(owner=self).explicit(100 * P.nF)
 
         # Power rails
-        self.rp2040.power_io.decoupled.decouple(6).explicit(100 * P.nF)
-        self.rp2040.power_adc.decoupled.decouple().explicit(100 * P.nF)
-        self.rp2040.power_core.decoupled.decouple(2).explicit(100 * P.nF)
-        self.rp2040.power_usb_phy.decoupled.decouple().explicit(100 * P.nF)
-        self.rp2040.core_regulator.power_in.decoupled.decouple().explicit(1 * P.uF)
-        power_3v3.decoupled.decouple().explicit(10 * P.uF)
-        self.rp2040.core_regulator.power_out.decoupled.decouple().explicit(1 * P.uF)
+        self.rp2040.power_io.decoupled.decouple(owner=self, count=6).explicit(
+            100 * P.nF
+        )
+        self.rp2040.power_adc.decoupled.decouple(owner=self).explicit(100 * P.nF)
+        self.rp2040.power_core.decoupled.decouple(owner=self, count=2).explicit(
+            100 * P.nF
+        )
+        self.rp2040.power_usb_phy.decoupled.decouple(owner=self).explicit(100 * P.nF)
+        self.rp2040.core_regulator.power_in.decoupled.decouple(owner=self).explicit(
+            1 * P.uF
+        )
+        power_3v3.decoupled.decouple(owner=self).explicit(10 * P.uF)
+        self.rp2040.core_regulator.power_out.decoupled.decouple(owner=self).explicit(
+            1 * P.uF
+        )
         # ----------------------------------------
         #              connections
         # ----------------------------------------

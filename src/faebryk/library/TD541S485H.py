@@ -51,9 +51,10 @@ class TD541S485H(Module):
     )
 
     def __preinit__(self):
-        self.power.decoupled.decouple()
-        self.power_iso_in.decoupled.decouple()
-        self.power_iso_out.decoupled.decouple()
+        # FIXME
+        # self.power.decoupled.decouple()
+        # self.power_iso_in.decoupled.decouple()
+        # self.power_iso_out.decoupled.decouple()
 
         self.power_iso_in.lv.connect(self.power_iso_out.lv)
         # TODO tolerance
