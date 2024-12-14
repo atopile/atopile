@@ -69,12 +69,13 @@ class ESP32_C3(Module):
             self.vdd_spi.lv,
         )
 
+        # FIXME: this has to be done in ReferenceDesign or parent
         # connect decoupling caps to power domains
-        self.vdd3p3.decoupled.decouple()
-        self.vdd3p3_cpu.decoupled.decouple()
-        self.vdd3p3_rtc.decoupled.decouple()
-        self.vdda.decoupled.decouple()
-        self.vdd_spi.decoupled.decouple()
+        # self.vdd3p3.decoupled.decouple()
+        # self.vdd3p3_cpu.decoupled.decouple()
+        # self.vdd3p3_rtc.decoupled.decouple()
+        # self.vdda.decoupled.decouple()
+        # self.vdd_spi.decoupled.decouple()
 
         # rc delay circuit on enable pin for startup delay
         # https://www.espressif.com/sites/default/files/documentation/esp32-c3-mini-1_datasheet_en.pdf page 24  # noqa E501
@@ -82,7 +83,8 @@ class ESP32_C3(Module):
         # self.enable.signal.connect_via(
         #    self.en_rc_capacitor, self.pwr3v3.lv
         # )
-        self.enable.pulled.pull(up=True)  # TODO: combine with lowpass filter
+        # FIXME: this has to be done in ReferenceDesign or parent
+        # self.enable.pulled.pull(up=True)  # TODO: combine with lowpass filter
 
     # TODO: Fix this
     #    # set mux states
@@ -209,18 +211,20 @@ class ESP32_C3(Module):
     #    ][0]
     #    return pin, gpio_index
 
-    def set_default_boot_mode(self, default_boot_to_spi_flash: bool = True):
+    def set_default_boot_mode(
+        self, owner: Module, default_boot_to_spi_flash: bool = True
+    ):
         # set default boot mode to "SPI Boot mode"
         # https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf page 26 # noqa E501
         # TODO: make configurable
-        self.gpio[8].pulled.pull(up=True).resistance.constrain_subset(
+        self.gpio[8].pulled.pull(up=True, owner=owner).resistance.constrain_subset(
             L.Range.from_center_rel(10 * P.kohm, 0.1)
         )
-        self.gpio[2].pulled.pull(up=True).resistance.constrain_subset(
+        self.gpio[2].pulled.pull(up=True, owner=owner).resistance.constrain_subset(
             L.Range.from_center_rel(10 * P.kohm, 0.1)
         )
         # gpio[9] has an internal pull-up at boot = SPI-Boot
         if not default_boot_to_spi_flash:
-            self.gpio[9].pulled.pull(up=False).resistance.constrain_subset(
+            self.gpio[9].pulled.pull(up=False, owner=owner).resistance.constrain_subset(
                 L.Range.from_center_rel(10 * P.kohm, 0.1)
             )

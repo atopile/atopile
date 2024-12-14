@@ -12,7 +12,7 @@ from faebryk.libs.units import P
 logger = logging.getLogger(__name__)
 
 
-class ESP32_C3_MINI_1(Module):
+class _ESP32_C3_MINI_1(Module):
     """ESP32-C3-MINI-1 module"""
 
     esp32_c3: F.ESP32_C3
@@ -35,11 +35,6 @@ class ESP32_C3_MINI_1(Module):
         )
 
     def __preinit__(self):
-        # connect power decoupling caps
-        self.vdd3v3.decoupled.decouple().capacitance.constrain_subset(
-            L.Range(100 * P.nF, 10 * P.uF)
-        )
-
         e = self.esp32_c3
         for v33 in (e.vdd3p3, e.vdd3p3_cpu, e.vdd3p3_rtc, e.vdda):
             self.vdd3v3.connect(v33)
@@ -51,16 +46,6 @@ class ESP32_C3_MINI_1(Module):
         # UART0 gpio 20/21
 
         self.chip_enable.connect(e.enable)
-        self.chip_enable.pulled.pull(up=True)
-
-        self.add(
-            F.has_descriptive_properties_defined(
-                {
-                    DescriptiveProperties.manufacturer: "Espressif Systems",
-                    DescriptiveProperties.partno: "ESP32-C3-MINI-1U-H4",
-                },
-            )
-        )
 
     @L.rt_field
     def attach_to_footprint(self):
@@ -132,9 +117,29 @@ class ESP32_C3_MINI_1(Module):
 
         return F.can_attach_to_footprint_via_pinmap(self.pinmap)
 
+    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "Espressif Systems",
+            DescriptiveProperties.partno: "ESP32-C3-MINI-1U-H4",
+        }
+    )
+
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://www.espressif.com/sites/default/files/documentation/esp32-c3-mini-1_datasheet_en.pdf"
     )
+
+
+# TODO rename to ReferenceDesign
+class ESP32_C3_MINI_1(Module):
+    ic: _ESP32_C3_MINI_1
+
+    def __preinit__(self):
+        self.ic.chip_enable.pulled.pull(up=True, owner=self)
+
+        # connect power decoupling caps
+        self.ic.vdd3v3.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range(100 * P.nF, 10 * P.uF)
+        )

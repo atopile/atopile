@@ -37,6 +37,9 @@ class ElectricPower(F.Power):
                 )
                 name = old_capacitor.get_name(accept_no_parent=True) + "'"
 
+            # TODO improve
+            if name in owner.runtime:
+                name += "_"
             owner.add(capacitor, name=name)
             obj.add(F.is_decoupled(capacitor))
 

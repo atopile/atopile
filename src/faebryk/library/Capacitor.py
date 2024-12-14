@@ -70,8 +70,6 @@ class Capacitor(Module):
                 tolerance = 0.2
             capacitance = L.Range.from_center_rel(nominal_capacitance, tolerance)
             self.capacitance.constrain_subset(capacitance)
-            assert self.capacitance.try_get_literal_subset() == capacitance
-            print(self)
 
         if footprint is not None:
             self.attach_to_footprint.add(F.has_package_requirement(footprint))

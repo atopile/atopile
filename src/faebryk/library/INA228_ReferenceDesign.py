@@ -105,8 +105,6 @@ class INA228_ReferenceDesign(Module):
         self.ina288.shunt_input.connect(shunted_power.shunt_sense)
 
         # decouple power rail
-        self.ina288.power.get_trait(
-            F.can_be_decoupled
-        ).decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(0.1 * P.uF, 0.01)
-        )
+        self.ina288.power.get_trait(F.can_be_decoupled).decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(0.1 * P.uF, 0.01))

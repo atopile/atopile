@@ -34,7 +34,7 @@ class SurgeProtection(Module):
 
         for interface in trait_protectable:
             nested = interface.get_trait(F.can_be_surge_protected).protect(
-                surge_protection
+                owner=surge_protection
             )
             surge_protection.add(nested, container=surge_protection.nested)
 

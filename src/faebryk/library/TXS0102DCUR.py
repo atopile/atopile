@@ -35,8 +35,9 @@ class TXS0102DCUR(Module):
         gnd = self.voltage_a_power.lv
         gnd.connect(self.voltage_b_power.lv)
 
-        self.voltage_a_power.decoupled.decouple()
-        self.voltage_b_power.decoupled.decouple()
+        # FIXME
+        # self.voltage_a_power.decoupled.decouple()
+        # self.voltage_b_power.decoupled.decouple()
 
         # eo is referenced to voltage_a_power (active high)
         self.n_oe.reference.connect(self.voltage_a_power)

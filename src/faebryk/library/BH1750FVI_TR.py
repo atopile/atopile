@@ -11,7 +11,7 @@ from faebryk.libs.units import P
 logger = logging.getLogger(__name__)
 
 
-class BH1750FVI_TR(Module):
+class _BH1750FVI_TR(Module):
     class _bh1750_esphome_config(F.has_esphome_config.impl()):
         update_interval = L.p_field(
             units=P.s,
@@ -22,7 +22,7 @@ class BH1750FVI_TR(Module):
 
         def get_config(self) -> dict:
             obj = self.obj
-            assert isinstance(obj, BH1750FVI_TR)
+            assert isinstance(obj, _BH1750FVI_TR)
 
             i2c = F.is_esphome_bus.find_connected_bus(obj.i2c)
 
@@ -68,8 +68,6 @@ class BH1750FVI_TR(Module):
             L.Range.from_center_rel(1 * P.kohm, 0.1)
         )
 
-        self.i2c.terminate()
-
         self.i2c.frequency.constrain_le(
             F.I2C.define_max_frequency_capability(F.I2C.SpeedMode.fast_speed)
         )
@@ -77,9 +75,6 @@ class BH1750FVI_TR(Module):
         # set constraints
         self.power.voltage.constrain_subset(L.Range(2.4 * P.V, 3.6 * P.V))
 
-        self.power.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.1)
-        )
         # TODO: self.dvi.low_pass(self.dvi_capacitor, self.dvi_resistor)
         self.dvi.signal.connect_via(self.dvi_capacitor, self.power.lv)
         self.dvi.signal.connect_via(self.dvi_resistor, self.power.hv)
@@ -111,3 +106,15 @@ class BH1750FVI_TR(Module):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheet.lcsc.com/lcsc/1811081611_ROHM-Semicon-BH1750FVI-TR_C78960.pdf"
     )
+
+
+# TODO should be a reference design
+class BH1750FVI_TR(Module):
+    ic: _BH1750FVI_TR
+
+    def __preinit__(self):
+        self.ic.i2c.terminate(self)
+
+        self.ic.power.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
+        )
