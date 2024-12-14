@@ -51,6 +51,7 @@ def add_api_pickers(module: Module, base_prio: int = 0) -> None:
         module.add(
             F.has_multi_picker(base_prio, ApiPicker(picker_lib.find_and_attach_by_mfr))
         )
+        return
 
     # Type-specific pickers
     F.has_multi_picker.add_pickers_by_type(

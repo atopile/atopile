@@ -503,6 +503,12 @@ def split_recursive_stack(
 CACHED_RECUSION_ERRORS = set()
 
 
+# TODO: now unused
+# Consider splitting into three functions
+# - A "lower_recursion_limit" contextmanager, should increase limit from current usage
+# - A "better_recursion_error" function, should improve recursion error messaging
+# - A separate composable "except" decorator which can be used to more generically
+#   return something in case of a function raising an error
 def try_avoid_endless_recursion(f: Callable[..., str]):
     import sys
 
@@ -1066,7 +1072,7 @@ def in_debug_session() -> bool:
     return False
 
 
-class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
+class FuncSet[T, H: Hashable = int](collections.abc.MutableSet[T]):
     """
     A set by pre-processing the objects with the hasher function.
     """
@@ -1105,8 +1111,7 @@ class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
         )
 
 
-# TODO: @python3.13 ..., H: Hashable = int]
-class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
+class FuncDict[T, U, H: Hashable = int](collections.abc.MutableMapping[T, U]):
     """
     A dict by pre-processing the objects with the hasher function.
     """
