@@ -33,11 +33,17 @@ class LogHandler(RichHandler):
         tracebacks_suppress_map: dict[type[BaseException], list[ModuleType]]
         | None = None,
         tracebacks_unwrap: list[type[BaseException]] | None = None,
+        hide_traceback_types: tuple[type[BaseException], ...] = (),
+        always_show_traceback_types: tuple[type[BaseException], ...] = (),
+        traceback_level: int = logging.ERROR,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.tracebacks_suppress_map = tracebacks_suppress_map or {}
         self.tracebacks_unwrap = tracebacks_unwrap or []
+        self.hide_traceback_types = hide_traceback_types
+        self.always_show_traceback_types = always_show_traceback_types
+        self.traceback_level = traceback_level
 
     def _get_suppress(
         self, exc_type: type[BaseException] | None
@@ -90,9 +96,10 @@ class LogHandler(RichHandler):
 
         suppress = self._get_suppress(exc_type)
 
-        hide_traceback = isinstance(
-            exc_value, _BaseBaseUserException
-        ) and not isinstance(exc_value, UserPythonModuleError)
+        hide_traceback = (
+            isinstance(exc_value, self.hide_traceback_types)
+            and not isinstance(exc_value, self.always_show_traceback_types)
+        ) or record.levelno < self.traceback_level
 
         if isinstance(exc_value, UserPythonModuleError):
             exc_type, exc_value, exc_traceback = self._unwrap_chained_exceptions(
@@ -178,6 +185,9 @@ handler = LogHandler(
     tracebacks_suppress=["typer"],
     tracebacks_suppress_map={UserPythonModuleError: [atopile, faebryk]},
     tracebacks_unwrap=[UserPythonModuleError],
+    hide_traceback_types=(_BaseBaseUserException,),
+    always_show_traceback_types=(UserPythonModuleError,),
+    traceback_level=logging.ERROR,
 )
 
 handler.setFormatter(logging.Formatter("%(message)s", datefmt="[%X]"))
