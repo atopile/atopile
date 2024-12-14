@@ -3,11 +3,16 @@
 
 import logging
 import re
+from dataclasses import fields
 from typing import Callable
 
+import more_itertools
+
 import faebryk.library._F as F
+from atopile.errors import UserException
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
+from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import (
     BaseParams,
     CapacitorParams,
@@ -150,10 +155,20 @@ def _find_component_by_params[T: BaseParams](
         raise PickError(f"Module is not a {cmp_class.__name__}", cmp)
 
     fps = get_package_candidates(cmp)
+    generic_field_names = {f.name for f in fields(param_cls)}
+    known_params, unknown_params = more_itertools.partition(
+        lambda p: p.get_name() in generic_field_names, cmp.get_parameters()
+    )
     cmp_params = {
-        p.get_name(): p.get_last_known_deduced_superset(solver)
-        for p in cmp.get_parameters()
+        p.get_name(): p.get_last_known_deduced_superset(solver) for p in known_params
     }
+
+    for p in unknown_params:
+        with downgrade():
+            raise UserException(
+                f"Parameter {p.get_name()} isn't a supported parameter of the generic "
+                f"parameter class {cmp_class.__name__} and is being ignored"
+            )
 
     parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))
 
