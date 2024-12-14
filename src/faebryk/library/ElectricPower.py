@@ -19,36 +19,39 @@ class ElectricPower(F.Power):
         ):
             obj = self.get_obj(ElectricPower)
 
-            if count > 1:
-                capacitor = F.MultiCapacitor(count)
-            else:
-                capacitor = F.Capacitor()
-
-            owner.add(
-                capacitor,
-                name=f"decoupling_{obj.get_name(accept_no_parent=True)}",
-            )
+            capacitor = F.MultiCapacitor(count)
 
             # FIXME seems to cause contradictions
             capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
 
             obj.hv.connect_via(capacitor, obj.lv)
 
+            name = f"decoupling_{obj.get_name(accept_no_parent=True)}"
+            new_capacitor = capacitor
+            # Merge
+            if obj.has_trait(F.is_decoupled):
+                old_capacitor = obj.get_trait(F.is_decoupled).capacitor
+                capacitor = F.MultiCapacitor.from_capacitors(
+                    old_capacitor,
+                    new_capacitor,
+                )
+                name = old_capacitor.get_name(accept_no_parent=True) + "'"
+
+            owner.add(capacitor, name=name)
             obj.add(F.is_decoupled(capacitor))
-            return capacitor
+
+            return new_capacitor
 
     class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
-        def on_obj_set(self):
+        def protect(self, owner: Module):
             obj = self.get_obj(ElectricPower)
-            self.lv = obj.lv
-            self.hv = obj.hv
-
-        def protect(self):
-            obj = self.get_obj(ElectricPower)
-            return [
-                tvs.builder(lambda t: t.reverse_working_voltage.alias_is(obj.voltage))
-                for tvs in F.can_be_surge_protected_defined.protect(self)
-            ]
+            surge_protection = F.SurgeProtection.from_interfaces(obj.lv, obj.hv)
+            owner.add(
+                surge_protection,
+                name=f"surge_protection_{obj.get_name(accept_no_parent=True)}",
+            )
+            obj.add(F.is_surge_protected_defined(surge_protection))
+            return surge_protection
 
     hv: F.Electrical
     lv: F.Electrical
