@@ -164,10 +164,11 @@ def _find_component_by_params[T: BaseParams](
     }
 
     for p in unknown_params:
-        with downgrade():
+        with downgrade(UserException):
             raise UserException(
-                f"Parameter {p.get_name()} isn't a supported parameter of the generic "
-                f"parameter class {cmp_class.__name__} and is being ignored"
+                f'Parameter "{p.get_name()}" isn\'t a supported parameter of'
+                f' the generic parameter class "{cmp_class.__name__}" and is'
+                " being ignored"
             )
 
     parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))
