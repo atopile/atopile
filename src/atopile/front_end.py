@@ -436,6 +436,10 @@ class DeprecatedException(errors.UserException):
     Raised when a deprecated feature is used.
     """
 
+    def get_frozen(self) -> tuple:
+        # FIXME: this is a bit of a hack to make the logger de-dup these for us
+        return errors._BaseBaseUserException.get_frozen(self)
+
 
 _declaration_domain_to_unit = {
     "resistance": P.ohm,
