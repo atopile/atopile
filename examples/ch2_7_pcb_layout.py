@@ -40,10 +40,10 @@ class App(Module):
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
-        self.eeprom.power.voltage.constrain_subset(
+        self.eeprom.ic.power.voltage.constrain_subset(
             L.Range.from_center_rel(3.3 * P.V, 0.05)
         )
-        self.eeprom.set_address(0x0)
+        self.eeprom.ic.set_address(0x0)
 
         # Layout
         Point = F.has_pcb_position.Point
