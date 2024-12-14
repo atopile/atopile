@@ -503,6 +503,12 @@ def split_recursive_stack(
 CACHED_RECUSION_ERRORS = set()
 
 
+# TODO: now unused
+# Consider splitting into three functions
+# - A "lower_recursion_limit" contextmanager, should increase limit from current usage
+# - A "better_recursion_error" function, should improve recursion error messaging
+# - A separate composable "except" decorator which can be used to more generically
+#   return something in case of a function raising an error
 def try_avoid_endless_recursion(f: Callable[..., str]):
     import sys
 

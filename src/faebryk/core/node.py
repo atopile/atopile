@@ -34,7 +34,6 @@ from faebryk.libs.util import (
     not_none,
     post_init_decorator,
     times,
-    try_avoid_endless_recursion,
     zip_dicts_by_key,
 )
 
@@ -552,7 +551,6 @@ class Node(CNode):
 
     # printing -------------------------------------------------------------------------
 
-    @try_avoid_endless_recursion
     def __str__(self) -> str:
         return f"<{self.get_full_name(types=True)}>"
 
