@@ -4,11 +4,15 @@ import time
 from copy import deepcopy
 from typing import Callable, Optional
 
+from more_itertools import first
+
 from atopile import layout
 from atopile.config import BuildContext
+from atopile.errors import UserException
 from atopile.front_end import DeprecatedException
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
+from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
@@ -47,7 +51,7 @@ from faebryk.libs.exceptions import (
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.api.api import ApiNotConfiguredError
 from faebryk.libs.picker.api.pickers import add_api_pickers
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.picker import PickError, pick_part_recursively
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +84,18 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     pickable_modules = GraphFunctions(G).nodes_with_trait(F.has_picker)
     logger.info(f"Picking parts for {len(pickable_modules)} modules")
-    pick_part_recursively(app, solver)
+    try:
+        pick_part_recursively(app, solver)
+    except PickError as ex:
+        raise UserException("Failed to pick all parts. Cannot continue.") from ex
 
-    # Load PCB ----------------------------------------------------------------
+    # Check all the solutions are valid ----------------------------------------
+    # FIXME: this is a hack to force rechecking of the graph
+    # after we've shoved in user data
+    some_param = first(app.get_children(False, types=(Parameter)))
+    solver.inspect_get_known_supersets(some_param)
+
+    # Load PCB -----------------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
     original_pcb = deepcopy(pcb)
 
