@@ -115,17 +115,22 @@ def apply_design(
         print(f"PCB location: {build_paths.layout}")
 
 
-def include_footprints(build_paths: "BuildPaths"):
-    if build_paths.fp_lib_table.exists():
-        fptable = C_kicad_fp_lib_table_file.loads(
-            path_or_string_or_data=build_paths.fp_lib_table
-        )
-    else:
-        fptable = C_kicad_fp_lib_table_file(
-            C_kicad_fp_lib_table_file.C_fp_lib_table(version=7, libs=[])
-        )
+def ensure_footprint_lib(
+    build_paths: "BuildPaths",
+    lib_name: str,
+    fppath: os.PathLike,
+    fptable: C_kicad_fp_lib_table_file | None = None,
+):
+    fppath = Path(fppath)
 
-    fppath = build_paths.component_lib / "footprints" / "lcsc.pretty"
+    if fptable is None:
+        try:
+            fptable = C_kicad_fp_lib_table_file.loads(
+                path_or_string_or_data=build_paths.fp_lib_table
+            )
+        except FileNotFoundError:
+            fptable = C_kicad_fp_lib_table_file.skeleton()
+
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
@@ -150,26 +155,34 @@ def include_footprints(build_paths: "BuildPaths"):
         assert not uri.startswith("${KIPRJMOD}")
         uri = "${KIPRJMOD}/" + uri
 
-    lcsc_lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
-        name="lcsc",
+    lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+        name=lib_name,
         type="KiCad",
         uri=uri,
         options="",
-        descr="atopile: project LCSC footprints",
+        descr=f"atopile: {lib_name} footprints",
     )
 
-    lcsc_libs = [lib for lib in fptable.fp_lib_table.libs if lib.name == "lcsc"]
-    table_has_one_lcsc = len(lcsc_libs) == 1
-    lcsc_table_outdated = any(lib != lcsc_lib for lib in lcsc_libs)
+    lib_libs = [lib for lib in fptable.fp_lib_table.libs if lib.name == lib_name]
+    table_has_one_lib = len(lib_libs) == 1
+    lib_table_outdated = any(lib != lib for lib in lib_libs)
 
-    if not table_has_one_lcsc or lcsc_table_outdated:
+    if not table_has_one_lib or lib_table_outdated:
         fptable.fp_lib_table.libs = [
-            lib for lib in fptable.fp_lib_table.libs if lib.name != "lcsc"
-        ] + [lcsc_lib]
+            lib for lib in fptable.fp_lib_table.libs if lib.name != lib_name
+        ] + [lib]
 
         logger.warning("pcbnew restart required (updated fp-lib-table)")
 
     fptable.dumps(build_paths.fp_lib_table)
+
+    return fptable
+
+
+def include_footprints(build_paths: "BuildPaths"):
+    ensure_footprint_lib(
+        build_paths, "lcsc", build_paths.component_lib / "footprints" / "lcsc.pretty"
+    )
 
 
 def find_pcbnew() -> os.PathLike:

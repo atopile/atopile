@@ -26,6 +26,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_pick_and_place,
     export_step,
 )
+from faebryk.exporters.pcb.kicad.pcb import _get_footprint
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
@@ -42,11 +43,13 @@ from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_netlist,
     apply_routing,
+    ensure_footprint_lib,
 )
 from faebryk.libs.exceptions import (
     ExceptionAccumulator,
     UserResourceException,
     downgrade,
+    iter_through_errors,
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.api.api import ApiNotConfiguredError
@@ -68,6 +71,10 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     logger.info("Running checks")
     run_checks(app, G)
+
+    # Pre-pick project checks - things to look at before time is spend ---------
+    # Make sure the footprint libraries we're looking for exist
+    consolidate_footprints(build_ctx, app)
 
     # Pickers ------------------------------------------------------------------
     modules = app.get_children_modules(types=Module)
@@ -123,8 +130,6 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
-
-    consolidate_footprints(build_ctx)
     apply_netlist(build_paths, False)
 
     # FIXME: we've got to reload the pcb after applying the netlist
@@ -267,7 +272,7 @@ def generate_variable_report(build_ctx: BuildContext, app: Module) -> None:
     export_parameters_to_file(app, build_ctx.paths.output_base / "variables.md")
 
 
-def consolidate_footprints(build_ctx: BuildContext) -> None:
+def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
     """
     Consolidate all the project's footprints into a single directory.
 
@@ -275,19 +280,42 @@ def consolidate_footprints(build_ctx: BuildContext) -> None:
     If there's an entry named "lib" pointing at "build/footprints/footprints.pretty"
     then copy all footprints we can find there
     """
-    if build_ctx.paths.fp_lib_table.exists():
+    fp_ids_to_check = []
+    for fp_t in app.get_children(False, types=(F.has_footprint)):
+        fp = fp_t.get_footprint()
+        if isinstance(fp, F.KicadFootprint):
+            fp_ids_to_check.append(fp.kicad_identifier)
+
+    try:
         fptable = C_kicad_fp_lib_table_file.loads(build_ctx.paths.fp_lib_table)
-    else:
-        # no fp-lib-table, no worries
-        return
+    except FileNotFoundError:
+        fptable = C_kicad_fp_lib_table_file.skeleton()
 
     # TODO: @windows might need to check backslashes
-    if not any(
+    lib_in_fptable = any(
         lib.name == "lib" and lib.uri.endswith("build/footprints/footprints.pretty")
         for lib in fptable.fp_lib_table.libs
-    ):
+    )
+    lib_prefix_on_ids = any(fp_id.startswith("lib:") for fp_id in fp_ids_to_check)
+    if not lib_in_fptable and not lib_prefix_on_ids:
         # no "lib" entry pointing to the footprints dir, this project isn't broken
         return
+    elif lib_prefix_on_ids and not lib_in_fptable:
+        # we need to add a lib entry pointing to the footprints dir
+        ensure_footprint_lib(
+            build_ctx.paths,
+            "lib",
+            build_ctx.paths.build / "footprints" / "footprints.pretty",
+            fptable,
+        )
+    elif lib_in_fptable and not lib_prefix_on_ids:
+        # We could probably just remove the lib entry
+        # but let's be conservative for now
+        logging.info(
+            "It seems like this project is using a legacy footprint consolidation "
+            "unnecessarily. You can likley remove the 'lib' entry from the "
+            "fp-lib-table file."
+        )
 
     fp_target = build_ctx.paths.build / "footprints" / "footprints.pretty"
     fp_target_step = build_ctx.paths.build / "footprints" / "footprints.3dshapes"
@@ -319,3 +347,8 @@ def consolidate_footprints(build_ctx: BuildContext) -> None:
         raise DeprecatedException(
             "This project uses a deprecated footprint consolidation mechanism."
         )
+
+    # Finally, check that we have all the footprints we know we will need
+    for err_collector, fp_id in iter_through_errors(fp_ids_to_check):
+        with err_collector():
+            _get_footprint(fp_id, build_ctx.paths.fp_lib_table)
