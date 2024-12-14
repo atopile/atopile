@@ -1215,6 +1215,10 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                     raise errors.UserNotImplementedError.from_ctx(
                         ctx, "Min can only take numeric parameters"
                     )
+                if not operands[0].domain == fab_param.Numbers:
+                    raise errors.UserNotImplementedError.from_ctx(
+                        ctx, "Min can only take numeric parameters"
+                    )
                 P = fab_param.Parameter(units=operands[0].units)
                 P.constrain_subset(operands[0])
                 P.constrain_le(operands[0])
@@ -1227,6 +1231,10 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 if not isinstance(operands[0], fab_param.Parameter):
                     raise errors.UserNotImplementedError.from_ctx(
                         ctx, "Min can only take numeric parameters"
+                    )
+                if not operands[0].domain == fab_param.Numbers:
+                    raise errors.UserNotImplementedError.from_ctx(
+                        ctx, "Max can only take numeric parameters"
                     )
                 P = fab_param.Parameter(units=operands[0].units)
                 P.constrain_subset(operands[0])
