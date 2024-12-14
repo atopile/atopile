@@ -156,7 +156,7 @@ def _find_component_by_params[T: BaseParams](
 
     fps = get_package_candidates(cmp)
     generic_field_names = {f.name for f in fields(param_cls)}
-    known_params, unknown_params = more_itertools.partition(
+    unknown_params, known_params = more_itertools.partition(
         lambda p: p.get_name() in generic_field_names, cmp.get_parameters()
     )
     cmp_params = {
