@@ -37,7 +37,6 @@ nav:
 - Blog:
   - blog/index.md
 plugins:
-- drawio_file
 - blog
 - search
 repo_name: atopile/atopile
