@@ -214,6 +214,14 @@ class ModuleShims(L.Module):
             F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
         )
 
+        # TODO: @v0.4: remove this - mpn != lcsc id
+        if re.match(r"C[0-9]+", value):
+            self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    "mpn is deprecated for assignment of LCSC IDs, use lcsc_id instead"
+                )
+
     @write_only_property
     def designator_prefix(self, value: str):
         self.add(F.has_designator_prefix_defined(value))
