@@ -3,12 +3,14 @@
 
 import faebryk.library._F as F
 import faebryk.libs.picker.api.picker_lib as picker_lib
+from atopile.errors import UserException
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
+from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError
 from faebryk.libs.picker.api.common import StaticPartPicker
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
-from faebryk.libs.picker.picker import PickError
+from faebryk.libs.picker.picker import DescriptiveProperties, PickError
 
 
 class ApiPicker(F.has_multi_picker.FunctionPicker):
@@ -43,14 +45,25 @@ def add_api_pickers(module: Module, base_prio: int = 0) -> None:
     # TODO: might want to remove this 'if' since the trait might be defined later
     # but for now handy to guard, since it makes logging more concise
     if module.has_trait(F.has_descriptive_properties):
-        module.add(
-            F.has_multi_picker(
-                base_prio, ApiPicker(picker_lib.find_and_attach_by_lcsc_id)
+        props = module.get_trait(F.has_descriptive_properties).get_properties()
+        if "LCSC" in props:
+            module.add(
+                F.has_multi_picker(
+                    base_prio, ApiPicker(picker_lib.find_and_attach_by_lcsc_id)
+                )
             )
-        )
-        module.add(
-            F.has_multi_picker(base_prio, ApiPicker(picker_lib.find_and_attach_by_mfr))
-        )
+        elif DescriptiveProperties.partno in props:
+            if DescriptiveProperties.manufacturer in props:
+                module.add(
+                    F.has_multi_picker(
+                        base_prio, ApiPicker(picker_lib.find_and_attach_by_mfr)
+                    )
+                )
+            else:
+                with downgrade(UserException):
+                    raise UserException(
+                        "No manufacturer provided. Ignoring pick by part number"
+                    )
         return
 
     # Type-specific pickers
