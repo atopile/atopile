@@ -149,7 +149,7 @@ class ExceptionAccumulator:
         self.accumulate_types = accumulate_types or (UserException,)
         self.group_message = group_message or ""
 
-    def collect(self) -> Pacman:
+    def collect(self) -> contextlib.suppress:
         class _Collector(Pacman):
             def nom_nom_nom(s, exc: BaseException, _):
                 if isinstance(exc, BaseExceptionGroup):
@@ -159,10 +159,7 @@ class ExceptionAccumulator:
 
         return _Collector(*self.accumulate_types)
 
-    def raise_errors(self):
-        """
-        Raise the collected errors as an exception group.
-        """
+    def get_exception(self) -> Exception | None:
         if self.errors:
             # Display unique errors in order
             # FIXME: this is both hard to understand and wildly inefficient
@@ -178,6 +175,13 @@ class ExceptionAccumulator:
                 raise ExceptionGroup(self.group_message, displayed_errors)
             else:
                 raise displayed_errors[0]
+
+    def raise_errors(self):
+        """
+        Raise the collected errors as an exception group.
+        """
+        if ex := self.get_exception():
+            raise ex
 
     def __enter__(self) -> Self:
         return self
