@@ -13,7 +13,6 @@ from typing import Callable, Iterable
 from rich.progress import Progress
 
 import faebryk.library._F as F
-from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
@@ -25,7 +24,14 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.libs.util import ConfigFlag, flatten, not_none
+from faebryk.libs.util import (
+    ConfigFlag,
+    KeyErrorNotFound,
+    Tree,
+    not_none,
+    partition,
+    try_or,
+)
 
 NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 
@@ -233,22 +239,22 @@ def _get_mif_top_level_modules(mif: ModuleInterface) -> set[Module]:
 
 
 class PickerProgress:
-    def __init__(self):
+    def __init__(self, tree: Tree[Module]):
+        self.tree = tree
         self.progress = Progress(disable=bool(NO_PROGRESS_BAR))
-        self.task = self.progress.add_task("Picking", total=1)
+        leaves = list(tree.leaves())
+        count = len(leaves)
 
-    @staticmethod
-    def _get_total(module: Module):
-        return len(module.get_children_modules(types=Module))
-
-    @classmethod
-    def from_module(cls, module: Module) -> "PickerProgress":
-        self = cls()
-        self.progress.update(self.task, total=cls._get_total(module))
-        return self
+        logger.info(f"Picking parts for {count} leaf modules")
+        self.task = self.progress.add_task("Picking", total=count)
 
     def advance(self, module: Module):
-        self.progress.advance(self.task, self._get_total(module))
+        leaf_count = len(list(self.tree.get_subtree(module).leaves()))
+        # module is leaf
+        if not leaf_count:
+            leaf_count = 1
+        logger.warning(f"Advance {leaf_count} by pick {module}")
+        self.progress.advance(self.task, leaf_count)
 
     @contextmanager
     def context(self):
@@ -256,42 +262,112 @@ class PickerProgress:
             yield self
 
 
-# TODO WIP
-# def get_pick_chain(module: Module) -> list[Module]:
-#    module = module.get_most_special()
-#
-#    if module.has_trait(has_part_picked):
-#        return []
-#
-#    # if module.has_trait(skip_self_pick):
-#    #    return []
-#
-#    mifs = module.get_children(direct_only=True, types=ModuleInterface)
+def get_pick_tree(module: Module | ModuleInterface) -> Tree[Module]:
+    if isinstance(module, Module):
+        module = module.get_most_special()
+
+    tree = Tree()
+    merge_tree = tree
+
+    if module.has_trait(has_part_picked):
+        return tree
+
+    if module.has_trait(F.has_picker) and not module.has_trait(skip_self_pick):
+        merge_tree = Tree()
+        tree[module] = merge_tree
+
+    for child in module.get_children(
+        direct_only=True, types=(Module, ModuleInterface), include_root=False
+    ):
+        child_tree = get_pick_tree(child)
+        merge_tree.update(child_tree)
+
+    return tree
 
 
-# def pick_topologically(module: Module, solver: Solver):
-#    modules = module.get_children_modules(
-#        direct_only=False, types=Module, include_root=True
-#    )
-#    # make pick chain
-#    # mifs reset hierarchy
-#
-#    if LOG_PICK_SOLVE:
-#        names = sorted(p.get_full_name(types=True) for p in pickable_modules)
-#        logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
+def check_missing_picks(module: Module):
+    # - not skip self pick
+    # - no parent with part picked
+    # - not specialized
+    # - no module children
+    # - no parent with picker
+
+    missing = module.get_children_modules(
+        types=Module,
+        direct_only=False,
+        include_root=True,
+        # not specialized
+        most_special=True,
+        # leaf == no children
+        f_filter=lambda m: not m.get_children_modules(types=Module)
+        # no parent with part picked
+        and not try_or(
+            lambda: m.get_parent_with_trait(has_part_picked),
+            default=False,
+            catch=KeyErrorNotFound,
+        )
+        # not skip self pick
+        and not m.has_trait(skip_self_pick)
+        # no parent with picker
+        and not try_or(
+            lambda: m.get_parent_with_trait(F.has_picker),
+            default=False,
+            catch=KeyErrorNotFound,
+        ),
+    )
+
+    if missing:
+        no_fp, fp = map(
+            list, partition(lambda m: not m.has_trait(F.has_footprint), missing)
+        )
+
+        if fp:
+            logger.warning(f"No pickers for {fp}")
+        if no_fp:
+            logger.warning(
+                f"No pickers and no footprint for {no_fp}."
+                "Attention: These modules will not apperar in netlist or pcb."
+            )
+
+
+def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgress):
+    if LOG_PICK_SOLVE or True:
+        pickable_modules = next(iter(tree.iter_by_depth()))
+        names = sorted(p.get_full_name(types=True) for p in pickable_modules)
+        logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
+
+    candidates = tree.copy()
+
+    # TODO implement order (by heuristic)
+
+    while candidates:
+        module, subtree = candidates.popitem()
+        try:
+            module.get_trait(F.has_picker).pick(solver)
+            progress.advance(module)
+        except PickError:
+            if not subtree:
+                raise
+            if LOG_PICK_SOLVE:
+                logger.warning(f"Could not pick {module}, descending into {subtree}")
+            candidates.update(subtree)
+
+    if LOG_PICK_SOLVE or True:
+        logger.info("Done picking")
 
 
 # TODO should be a Picker
 def pick_part_recursively(module: Module, solver: Solver):
-    pickable_modules = GraphFunctions(module.get_graph()).nodes_with_trait(F.has_picker)
+    pick_tree = get_pick_tree(module)
     if LOG_PICK_SOLVE:
-        names = sorted(p[0].get_full_name(types=True) for p in pickable_modules)
-        logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
+        logger.info(f"Pick tree:\n{pick_tree.pretty()}")
 
-    pp = PickerProgress.from_module(module)
+    check_missing_picks(module)
+
+    pp = PickerProgress(pick_tree)
     try:
         with pp.context():
-            _pick_part_recursively(module, solver, pp)
+            pick_topologically(pick_tree, solver, pp)
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
         for m, sube in failed_parts.items():
@@ -300,99 +376,3 @@ def pick_part_recursively(module: Module, solver: Solver):
                 f"Params:\n{indent(m.pretty_params(solver), prefix=' '*4)}"
             )
         raise e
-
-    # check if lowest children are picked
-    def get_not_picked(m: Module):
-        ms = m.get_most_special()
-
-        # check if parent is picked
-        if ms is not m:
-            parents = [p for p, _ in ms.get_hierarchy()]
-            if any(p.has_trait(has_part_picked) for p in parents):
-                return []
-
-        m = ms
-
-        out = flatten(
-            [
-                get_not_picked(mod)
-                for mif in m.get_children(direct_only=True, types=ModuleInterface)
-                for mod in _get_mif_top_level_modules(mif)
-            ]
-        )
-
-        if m.has_trait(has_part_picked):
-            return out
-
-        children = m.get_children_modules(types=Module, direct_only=True)
-        if not children:
-            return out + [m]
-
-        return out + flatten([get_not_picked(c) for c in children])
-
-    not_picked = get_not_picked(module)
-    for np in not_picked:
-        logger.warning(f"Part without pick {np}")
-
-
-def _pick_part_recursively(
-    module: Module, solver: Solver, progress: PickerProgress | None = None
-):
-    assert isinstance(module, Module)
-
-    # pick only for most specialized module
-    module = module.get_most_special()
-
-    if not module.has_trait(has_part_picked):
-        # pick mif module parts
-        for mif in module.get_children(direct_only=True, types=ModuleInterface):
-            for mod in _get_mif_top_level_modules(mif):
-                _pick_part_recursively(mod, solver, progress)
-
-        if module.has_trait(skip_self_pick):
-            logger.debug(f"Skipping virtual module {module}")
-
-        # pick
-        if module.has_trait(F.has_picker) and not module.has_trait(skip_self_pick):
-            try:
-                module.get_trait(F.has_picker).pick(solver)
-            except PickError as e:
-                # if no children, raise
-                # This whole logic will be so much easier if the recursive
-                # picker is just a normal picker
-                if not module.get_children_modules(types=Module, direct_only=True):
-                    raise e
-
-    if not module.has_trait(has_part_picked):
-        # if module has been specialized during pick, try again
-        if module.get_most_special() != module:
-            _pick_part_recursively(module, solver, progress)
-
-    if not module.has_trait(has_part_picked):
-        # go level lower
-        to_pick: set[Module] = {
-            c
-            for c in module.get_children(types=Module, direct_only=True)
-            if not c.has_trait(has_part_picked)
-        }
-        failed: dict[Module, PickError] = {}
-
-        logger.debug(f"Try picking unpicked children of {module}: {to_pick}")
-        # try repicking as long as progress is being made
-        while to_pick:
-            for child in to_pick:
-                try:
-                    _pick_part_recursively(child, solver, progress)
-                except PickError as e:
-                    failed[child] = e
-
-            # no progress or last one failed as only
-            if to_pick == set(failed.keys()) or (len(failed) == 1 and child in failed):
-                logger.debug(f"No progress made on {module}, backtracking")
-                raise PickErrorChildren(module, failed)
-
-            to_pick = set(failed.keys())
-            failed.clear()
-
-    if progress:
-        progress.advance(module)

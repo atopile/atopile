@@ -405,8 +405,8 @@ class DefaultSolver(Solver):
                 repr_pred = repr_map.repr_map.get(pred)
 
                 # FIXME: workaround for above
-                # if repr_pred is not None:
-                #    new_Gs = [repr_pred.get_graph()]
+                if repr_pred is not None:
+                    new_Gs = [repr_pred.get_graph()]
 
                 new_preds = [
                     n
