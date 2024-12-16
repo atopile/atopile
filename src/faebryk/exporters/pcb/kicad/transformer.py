@@ -885,6 +885,17 @@ class PCB_Transformer:
             )
         )
 
+    # Groups ---------------------------------------------------------------------------
+    def _add_group(
+        self, members: list[UUID], name: Optional[str] = None, locked: bool = False
+    ) -> UUID:
+        group = C_kicad_pcb_file.C_kicad_pcb.C_group(
+            name=name, members=members, uuid=self.gen_uuid(mark=True), locked=locked
+        )
+        self.pcb.groups.append(group)
+        logger.debug(f"Added group {name} with members: {len(members)}")
+        return group.uuid
+
     # JLCPCB ---------------------------------------------------------------------------
     class JLCPBC_QR_Size(Enum):
         SMALL_5x5mm = C_xy(5, 5)
