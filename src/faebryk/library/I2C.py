@@ -4,6 +4,7 @@ import logging
 from enum import Enum
 
 import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
 from faebryk.libs.units import P
@@ -28,11 +29,11 @@ class I2C(ModuleInterface):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    def terminate(self):
+    def terminate(self, owner: Module):
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
-        self.sda.pulled.pull(up=True)
-        self.scl.pulled.pull(up=True)
+        self.sda.pulled.pull(up=True, owner=owner)
+        self.scl.pulled.pull(up=True, owner=owner)
 
     class SpeedMode(Enum):
         low_speed = 10 * P.khertz

@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Iterable,
     Self,
+    Sequence,
     Type,
     cast,
     get_args,
@@ -34,7 +35,6 @@ from faebryk.libs.util import (
     not_none,
     post_init_decorator,
     times,
-    try_avoid_endless_recursion,
     zip_dicts_by_key,
 )
 
@@ -198,7 +198,7 @@ class Node(CNode):
         self,
         obj: T,
         name: str | None = None,
-        container: list | dict[str, Any] | None = None,
+        container: Sequence | dict[str, Any] | None = None,
     ) -> T:
         assert obj is not None
 
@@ -244,7 +244,10 @@ class Node(CNode):
         return obj
 
     def add_to_container[T: Node](
-        self, n: int, factory: Callable[[], T], container: list["Node"] | None = None
+        self,
+        n: int,
+        factory: Callable[[], T],
+        container: Sequence["Node"] | None = None,
     ):
         if container is None:
             container = self.runtime_anon
@@ -552,7 +555,6 @@ class Node(CNode):
 
     # printing -------------------------------------------------------------------------
 
-    @try_avoid_endless_recursion
     def __str__(self) -> str:
         return f"<{self.get_full_name(types=True)}>"
 

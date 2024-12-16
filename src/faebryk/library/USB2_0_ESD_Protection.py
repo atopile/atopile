@@ -45,7 +45,8 @@ class USB2_0_ESD_Protection(Module):
         # ------------------------------------
         self.usb[0].connect(self.usb[1])
         self.usb[0].usb_if.buspower.connect(self.usb[1].usb_if.buspower)
-        self.usb[0].usb_if.buspower.decoupled.decouple()
+        # FIXME
+        # self.usb[0].usb_if.buspower.decoupled.decouple()
 
         # ------------------------------------
         #          parametrization

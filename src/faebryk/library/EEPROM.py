@@ -50,10 +50,3 @@ class EEPROM(Module):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
-
-    def __preinit__(self):
-        # ----------------------------------------
-        #                connections
-        # ----------------------------------------
-        self.power.decoupled.decouple()
-        self.i2c.terminate()

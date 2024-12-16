@@ -93,7 +93,7 @@ class App(Module):
         e_out.reference.connect(power)
         e_on.reference.connect(power)
         e_off.reference.connect(power)
-        e_in.set_weak(on=False)
+        e_in.set_weak(on=False, owner=self)
         e_on.set(on=True)
         e_off.set(on=False)
 

@@ -21,7 +21,7 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
 
         def __preinit__(self):
             self.logic.signal.connect_via(self.diode, self.logic.reference.hv)
-            self.logic.pulled.pull(up=True)
+            self.logic.pulled.pull(up=True, owner=self)
             self.logic.signal.connect_via(self.cap, self.logic.reference.lv)
 
             self.cap.capacitance.constrain_subset(
@@ -78,8 +78,8 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
 
         self.reset_circuit.logic.connect(self.mcu.reset)
 
-        self.avcc.decoupled.decouple()
-        self.vcc.decoupled.decouple()
+        self.avcc.decoupled.decouple(owner=self)
+        self.vcc.decoupled.decouple(owner=self)
 
         # ----------------------------------------
         #               Parameters

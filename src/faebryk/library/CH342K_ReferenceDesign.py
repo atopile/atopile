@@ -41,6 +41,10 @@ class CH342K_ReferenceDesign(Module):
         # ----------------------------------------
         self.usb_uart_converter.integrated_regulator.power_in.get_trait(
             F.can_be_decoupled
-        ).decouple()
-        self.usb_uart_converter.power_3v.get_trait(F.can_be_decoupled).decouple()
-        self.usb_uart_converter.power_io.get_trait(F.can_be_decoupled).decouple()
+        ).decouple(owner=self)
+        self.usb_uart_converter.power_3v.get_trait(F.can_be_decoupled).decouple(
+            owner=self
+        )
+        self.usb_uart_converter.power_io.get_trait(F.can_be_decoupled).decouple(
+            owner=self
+        )
