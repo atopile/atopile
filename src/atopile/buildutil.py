@@ -55,6 +55,7 @@ from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pc
 from faebryk.libs.picker.api.api import ApiNotConfiguredError
 from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,16 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     build_paths = build_ctx.paths
 
     logger.info("Resolving dynamic parameters")
-    resolve_dynamic_parameters(G)
+    try:
+        resolve_dynamic_parameters(G)
+    except KeyErrorAmbiguous:
+        try:
+            resolve_dynamic_parameters(G)
+        except KeyErrorAmbiguous as ex:
+            raise UserException(
+                "Unfortunately, there's a compiler bug at the moment that means that "
+                "this sometimes fails. Try again, and it'll probably work."
+            ) from ex
 
     logger.info("Running checks")
     run_checks(app, G)
