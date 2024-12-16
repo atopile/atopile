@@ -103,6 +103,7 @@ dev = [
     "viztracer>=1.0.0,<2.0.0",
     "pytest-benchmark>=5.1.0,<6.0.0",
     "pytest-timeout>=2.3.1",
+    "pytest-history",
 ]
 
 
@@ -280,3 +281,6 @@ ignore-paths = ["tests", "src/atopile/parser/"]
 line-length = 88
 target-version = ['py313']
 extend-exclude = "atopile/parser/"
+
+[tool.uv.sources]
+pytest-history = { path = "../pytest-history", editable = true }
