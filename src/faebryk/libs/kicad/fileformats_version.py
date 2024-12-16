@@ -4,7 +4,7 @@
 import logging
 from pathlib import Path
 
-from faebryk.libs.exceptions import ExceptionAccumulator, UserResourceException
+from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats import C_kicad_footprint_file
 from faebryk.libs.kicad.fileformats_v5 import C_kicad_footprint_file_v5
 from faebryk.libs.sexp.dataclass_sexp import DecodeError, loads
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
-    acc = ExceptionAccumulator(DecodeError, group_message="No decoders succeeded")
+    acc = accumulate(DecodeError, group_message="No decoders succeeded")
     if path.read_text().startswith("(module"):
         with acc.collect():
             return loads(path, C_kicad_footprint_file_v5).convert_to_new()
@@ -27,4 +27,4 @@ def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
     # Nothing succeeded in loading the file
     raise UserResourceException(
         f'Footprint "{path.name}" is not a valid KiCad footprint file'
-    )  # from acc.get_exception()
+    ) from acc.get_exception()
