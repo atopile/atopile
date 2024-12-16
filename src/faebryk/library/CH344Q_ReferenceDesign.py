@@ -85,7 +85,7 @@ class CH344Q_ReferenceDesign(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
-        self.usb_uart_converter.power.decoupled.decouple().specialize(
+        self.usb_uart_converter.power.decoupled.decouple(owner=self).specialize(
             F.MultiCapacitor(4)
         ).set_equal_capacitance_each(L.Range.from_center_rel(100 * P.nF, 0.05))
         self.usb.usb_if.buspower.connect_via(self.ldo, pwr_3v3)
@@ -116,7 +116,7 @@ class CH344Q_ReferenceDesign(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.usb_uart_converter.enable_status_or_modem_signals()
+        self.usb_uart_converter.enable_status_or_modem_signals(self)
 
         self.oscillator.crystal.frequency.constrain_subset(
             L.Range.from_center_rel(8 * P.MHz, 0.001)
@@ -127,10 +127,10 @@ class CH344Q_ReferenceDesign(Module):
         )  # TODO: should be property of crystal when picked
         self.oscillator.current_limiting_resistor.resistance.constrain_subset(0 * P.ohm)
 
-        self.ldo.power_in.decoupled.decouple().capacitance.constrain_subset(
+        self.ldo.power_in.decoupled.decouple(owner=self).capacitance.constrain_subset(
             L.Range.from_center_rel(100 * P.nF, 0.1)
         )
-        self.ldo.power_out.decoupled.decouple().capacitance.constrain_subset(
+        self.ldo.power_out.decoupled.decouple(owner=self).capacitance.constrain_subset(
             L.Range.from_center_rel(100 * P.nF, 0.1)
         )
 

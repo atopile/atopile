@@ -29,7 +29,7 @@ class SP3243E_ReferenceDesign(Module):
         # ----------------------------------------
         #              connections
         # ----------------------------------------
-        self.sp3243e.power.decoupled.decouple()
+        self.sp3243e.power.decoupled.decouple(self)
         for pwr in [
             self.sp3243e.positive_charge_pump_power,
             self.sp3243e.negative_charge_pump_power,

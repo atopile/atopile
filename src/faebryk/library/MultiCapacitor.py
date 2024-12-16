@@ -30,13 +30,13 @@ class MultiCapacitor(F.Capacitor):
         super().__init__()
         self._count = count
 
+    skip_self: skip_self_pick
+
     @L.rt_field
     def capacitors(self) -> list[F.Capacitor]:
         return times(self._count, F.Capacitor)
 
     def __preinit__(self):
-        self.add(skip_self_pick())
-
         # ------------------------------------
         #           connections
         # ------------------------------------
@@ -48,6 +48,10 @@ class MultiCapacitor(F.Capacitor):
         #          parametrization
         # ------------------------------------
         self.capacitance.alias_is(Add(*(c.capacitance for c in self.capacitors)))
+        for c in self.capacitors:
+            # TODO use min once available
+            self.max_voltage.constrain_le(c.max_voltage)
+            self.temperature_coefficient.constrain_superset(c.temperature_coefficient)
 
     def set_equal_capacitance(self, capacitance: ParameterOperatable):
         op = capacitance / self._count
@@ -67,3 +71,11 @@ class MultiCapacitor(F.Capacitor):
     ):
         for c in self.capacitors:
             c.explicit(nominal_capacitance, tolerance, footprint)
+
+    @classmethod
+    def from_capacitors(cls, *capacitors: F.Capacitor):
+        # TODO consider merging them more flatly (for multicaps)
+        obj = cls(len(capacitors))
+        for c_old, c_new in zip(capacitors, obj.capacitors):
+            c_new.specialize(c_old)
+        return obj

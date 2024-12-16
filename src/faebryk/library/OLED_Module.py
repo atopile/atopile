@@ -44,10 +44,18 @@ class OLED_Module(Module):
 
     def __preinit__(self):
         self.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5 * P.V))
-        self.power.decoupled.decouple().capacitance.constrain_subset(
-            L.Range(100 * P.uF, 220 * P.uF)
-        )
 
     designator_prefix = L.f_field(F.has_designator_prefix_defined)(
         F.has_designator_prefix.Prefix.DS
     )
+
+    @L.rt_field
+    def can_be_decoupled(self):
+        class _(F.can_be_decoupled.impl()):
+            def decouple(self, owner: Module):
+                obj = self.get_obj(OLED_Module)
+                obj.power.decoupled.decouple(owner=owner).capacitance.constrain_subset(
+                    L.Range(100 * P.uF, 220 * P.uF)
+                )
+
+        return _()

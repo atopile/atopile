@@ -24,6 +24,7 @@ from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
+from faebryk.library.can_be_surge_protected import can_be_surge_protected
 from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.Signal import Signal
 from faebryk.library.has_footprint import has_footprint
@@ -111,8 +112,7 @@ from faebryk.library.can_attach_via_pinmap_equal import can_attach_via_pinmap_eq
 from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
 from faebryk.library.has_kicad_footprint_equal_ifs import has_kicad_footprint_equal_ifs
 from faebryk.library.KicadFootprint import KicadFootprint
-from faebryk.library.can_be_surge_protected import can_be_surge_protected
-from faebryk.library.is_surge_protected import is_surge_protected
+from faebryk.library.SurgeProtection import SurgeProtection
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.Crystal import Crystal
 from faebryk.library.Fuse import Fuse
@@ -129,15 +129,16 @@ from faebryk.library.SMDTwoPin import SMDTwoPin
 from faebryk.library.SOIC import SOIC
 from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
 from faebryk.library.Mounting_Hole import Mounting_Hole
-from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
+from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.MultiCapacitor import MultiCapacitor
-from faebryk.library.can_be_decoupled import can_be_decoupled
 from faebryk.library.is_decoupled import is_decoupled
 from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.Potentiometer import Potentiometer
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
+from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
+from faebryk.library.can_be_decoupled import can_be_decoupled
 from faebryk.library.can_be_surge_protected_defined import can_be_surge_protected_defined
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.B0505S_1WR3 import B0505S_1WR3

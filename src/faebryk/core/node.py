@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Iterable,
     Self,
+    Sequence,
     Type,
     cast,
     get_args,
@@ -197,7 +198,7 @@ class Node(CNode):
         self,
         obj: T,
         name: str | None = None,
-        container: list | dict[str, Any] | None = None,
+        container: Sequence | dict[str, Any] | None = None,
     ) -> T:
         assert obj is not None
 
@@ -243,7 +244,10 @@ class Node(CNode):
         return obj
 
     def add_to_container[T: Node](
-        self, n: int, factory: Callable[[], T], container: list["Node"] | None = None
+        self,
+        n: int,
+        factory: Callable[[], T],
+        container: Sequence["Node"] | None = None,
     ):
         if container is None:
             container = self.runtime_anon

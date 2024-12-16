@@ -3,14 +3,17 @@
 
 import logging
 from abc import abstractmethod
-from typing import Sequence
+from typing import TYPE_CHECKING
 
-import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from faebryk.library.SurgeProtection import SurgeProtection
+
 
 class can_be_surge_protected(Trait):
     @abstractmethod
-    def protect(self) -> Sequence[F.TVS]: ...
+    def protect(self, owner: Module) -> "SurgeProtection": ...

@@ -7,6 +7,8 @@ import unittest
 from itertools import pairwise
 from typing import Callable
 
+import pytest
+
 import faebryk.library._F as F
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.module import Module
@@ -282,7 +284,8 @@ class TestPerformance(unittest.TestCase):
         logger.info(f"\n{timings}")
 
 
-# DONT COMMIT
+# TODO dont commit
+@pytest.mark.slow
 def test_complex_module_full():
     timings = Times()
 
@@ -312,11 +315,39 @@ def test_complex_module_full():
     logger.info(f"\n{timings}")
 
 
+@pytest.mark.slow
+@pytest.mark.xfail(reason="TODO")
+def test_very_complex_module_full():
+    timings = Times()
+
+    app = F.RP2040_ReferenceDesign()
+    timings.add("construct")
+
+    resolve_dynamic_parameters(app.get_graph())
+    timings.add("resolve bus params")
+
+    solver = DefaultSolver()
+    # add_api_pickers(app.ldo)
+    for mod in app.get_children(direct_only=False, types=Module):
+        add_api_pickers(mod)
+    timings.add("add_pickers")
+
+    p = next(iter(app.get_children(direct_only=False, types=Parameter)))
+    solver.inspect_get_known_supersets(p)
+    timings.add("pre-solve")
+
+    pick_part_recursively(app, solver)
+    timings.add("pick")
+
+    logger.info(f"\n{timings}")
+
+
+@pytest.mark.slow
 def test_complex_module_comp_count():
     timings = Times()
 
     class App(Module):
-        caps = L.f_field(F.MultiCapacitor)(1)
+        caps = L.f_field(F.MultiCapacitor)(10)
 
     app = App()
     timings.add("construct")

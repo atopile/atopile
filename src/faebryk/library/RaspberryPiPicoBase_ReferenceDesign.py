@@ -28,7 +28,9 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             self.resistor.resistance.constrain_subset(
                 L.Range.from_center_rel(1 * P.kohm, 0.05)
             )
-            self.logic_out.set_weak(True).resistance.alias_is(self.resistor.resistance)
+            self.logic_out.set_weak(True, owner=self).resistance.alias_is(
+                self.resistor.resistance
+            )
             self.logic_out.signal.connect_via(
                 [self.resistor, self.switch], self.logic_out.reference.lv
             )
@@ -137,10 +139,10 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         self.ldo.output_current.constrain_subset(
             L.Range.from_center_rel(600 * P.mA, 0.05)
         )
-        self.ldo.power_in.decoupled.decouple().capacitance.constrain_subset(
+        self.ldo.power_in.decoupled.decouple(owner=self).capacitance.constrain_subset(
             L.Range.from_center_rel(10 * P.uF, 0.05)
         )
-        self.ldo.power_out.decoupled.decouple().capacitance.constrain_subset(
+        self.ldo.power_out.decoupled.decouple(owner=self).capacitance.constrain_subset(
             L.Range.from_center_rel(10 * P.uF, 0.05)
         )
 
@@ -179,7 +181,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         )
 
         # Flash
-        self.flash.decoupled.decouple().capacitance.constrain_subset(
+        self.flash.decoupled.decouple(owner=self).capacitance.constrain_subset(
             L.Range.from_center_rel(100 * P.nF, 0.05)
         )
 
@@ -188,7 +190,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
 
         caps_small = []
         caps_small.extend(
-            self.rp2040.power_io.decoupled.decouple()
+            self.rp2040.power_io.decoupled.decouple(owner=self)
             .specialize(
                 F.MultiCapacitor(6).builder(
                     lambda mc: mc.set_equal_capacitance_each(cap_100nF)
@@ -197,26 +199,24 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             .capacitors
         )
 
-        self.rp2040.core_regulator.power_in.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(1 * P.uF, 0.05)
-        )
+        self.rp2040.core_regulator.power_in.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(1 * P.uF, 0.05))
         caps_small.append(
-            self.rp2040.power_adc.decoupled.decouple().builder(
+            self.rp2040.power_adc.decoupled.decouple(owner=self).builder(
                 lambda c: c.capacitance.constrain_subset(cap_100nF)
             )
         )
         caps_small.append(
-            self.rp2040.power_usb_phy.decoupled.decouple().builder(
+            self.rp2040.power_usb_phy.decoupled.decouple(owner=self).builder(
                 lambda c: c.capacitance.constrain_subset(cap_100nF)
             )
         )
-        power_3v3.get_trait(
-            F.is_decoupled
-        ).get_capacitor().capacitance.constrain_subset(
+        power_3v3.get_trait(F.is_decoupled).capacitor.capacitance.constrain_subset(
             L.Range.from_center_rel(10 * P.uF, 0.05)
         )
         caps_small.extend(
-            self.rp2040.power_core.decoupled.decouple()
+            self.rp2040.power_core.decoupled.decouple(owner=self)
             .specialize(
                 F.MultiCapacitor(2).builder(
                     lambda mc: mc.set_equal_capacitance_each(cap_100nF)
@@ -224,9 +224,9 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             )
             .capacitors
         )
-        self.rp2040.core_regulator.power_out.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(1 * P.uF, 0.05)
-        )
+        self.rp2040.core_regulator.power_out.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(1 * P.uF, 0.05))
 
         for c in self.get_children_modules(types=F.Capacitor):
             if c in caps_small:
