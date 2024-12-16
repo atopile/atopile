@@ -253,7 +253,6 @@ class PickerProgress:
         # module is leaf
         if not leaf_count:
             leaf_count = 1
-        logger.warning(f"Advance {leaf_count} by pick {module}")
         self.progress.advance(self.task, leaf_count)
 
     @contextmanager
