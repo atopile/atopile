@@ -32,7 +32,7 @@ from atopile.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import (
-    ExceptionAccumulator,
+    accumulate,
     downgrade,
     iter_through_errors,
     log_user_errors,
@@ -533,7 +533,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             self._finish()
 
     def _finish(self):
-        with ExceptionAccumulator(
+        with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():

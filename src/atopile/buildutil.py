@@ -46,8 +46,8 @@ from faebryk.libs.app.pcb import (
     ensure_footprint_lib,
 )
 from faebryk.libs.exceptions import (
-    ExceptionAccumulator,
     UserResourceException,
+    accumulate,
     downgrade,
     iter_through_errors,
 )
@@ -178,7 +178,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     # Make the noise
     built_targets = []
-    with ExceptionAccumulator() as accumulator:
+    with accumulate() as accumulator:
         for target_name in targets:
             logger.info(f"Building '{target_name}' for '{build_ctx.name}' config")
             with accumulator.collect():

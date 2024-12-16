@@ -1,7 +1,8 @@
 import contextlib
 import logging
+from abc import ABC, abstractmethod
 from functools import wraps
-from typing import Callable, ContextManager, Iterable, Self, Type, cast
+from typing import Callable, Iterable, Self, Type, cast
 
 from rich.traceback import Traceback
 
@@ -55,7 +56,7 @@ class UserResourceException(UserException):
     """Indicates an issue with a user-facing resource, e.g. layout files."""
 
 
-class Pacman(contextlib.suppress):
+class Pacman[T: Exception](contextlib.suppress, ABC):
     """
     A yellow spherical object that noms up exceptions.
 
@@ -64,19 +65,19 @@ class Pacman(contextlib.suppress):
 
     def __init__(
         self,
-        *exceptions: Type | tuple[Type],
+        *exceptions: Type[T] | tuple[Type[T]],
         default=None,
     ):
         self._exceptions = exceptions
         self.default = default
 
+    @abstractmethod
     def nom_nom_nom(
         self,
-        exc: BaseException,
-        original_exinfo: tuple[Type[BaseException], BaseException, Traceback],
+        exc: T,
+        original_exinfo: tuple[Type[T], T, Traceback],
     ):
         """Do something with the exception."""
-        raise NotImplementedError
 
     # The following methods are copied and modified from contextlib.suppress
     # type errors are reproduced faithfully
@@ -129,7 +130,7 @@ class Pacman(contextlib.suppress):
         return inner
 
 
-class ExceptionAccumulator:
+class accumulate:
     """
     Collect a group of errors and only raise
     an exception group at the end of execution.
@@ -146,18 +147,18 @@ class ExceptionAccumulator:
         # NOTE: we don't do this in the function signature because
         # we want the defaults to be the same here as in the iter_through_errors
         # function below
-        self.accumulate_types = accumulate_types or (UserException,)
-        self.group_message = group_message or ""
-
-    def collect(self) -> contextlib.suppress:
         class _Collector(Pacman):
-            def nom_nom_nom(s, exc: BaseException, _):
-                if isinstance(exc, BaseExceptionGroup):
+            def nom_nom_nom(s, exc: Exception, original_exinfo) -> None:
+                if isinstance(exc, ExceptionGroup):
                     self.errors.extend(exc.exceptions)
                 else:
                     self.errors.append(exc)
 
-        return _Collector(*self.accumulate_types)
+        self.collector = _Collector(*(accumulate_types or (UserException,)))
+        self.group_message = group_message or ""
+
+    def collect(self) -> contextlib.suppress:
+        return self.collector
 
     def get_exception(self) -> Exception | None:
         if self.errors:
@@ -172,9 +173,9 @@ class ExceptionAccumulator:
                     displayed_errors.append(error)
 
             if len(displayed_errors) > 1:
-                raise ExceptionGroup(self.group_message, displayed_errors)
+                return ExceptionGroup(self.group_message, displayed_errors)
             else:
-                raise displayed_errors[0]
+                return displayed_errors[0]
 
     def raise_errors(self):
         """
@@ -203,7 +204,7 @@ class downgrade[T: Exception](Pacman):
         to_level: int = logging.WARNING,
         logger: logging.Logger = logger,
     ):
-        super().__init__(exceptions, default=default)
+        super().__init__(*exceptions, default=default)
 
         if to_level >= logging.ERROR:
             raise ValueError("to_level must be less than ERROR")
@@ -211,8 +212,8 @@ class downgrade[T: Exception](Pacman):
         self.to_level = to_level
         self.logger = logger
 
-    def nom_nom_nom(self, exc: T, _):
-        if isinstance(exc, BaseExceptionGroup):
+    def nom_nom_nom(self, exc: T, original_exinfo):
+        if isinstance(exc, ExceptionGroup):
             exceptions = exc.exceptions
         else:
             exceptions = [exc]
@@ -225,7 +226,7 @@ def iter_through_errors[T](
     gen: Iterable[T],
     *accumulate_types: Type,
     group_message: str | None = None,
-) -> Iterable[tuple[Callable[[], ContextManager], T]]:
+) -> Iterable[tuple[Callable[[], contextlib.suppress], T]]:
     """
     Wraps an iterable and yields:
     - a context manager that collects any ato errors
@@ -233,9 +234,7 @@ def iter_through_errors[T](
     - the item from the iterable
     """
 
-    with ExceptionAccumulator(
-        *accumulate_types, group_message=group_message
-    ) as accumulator:
+    with accumulate(*accumulate_types, group_message=group_message) as accumulator:
         for item in gen:
             # NOTE: we don't create a single context manager for the whole generator
             # because generator context managers are a bit special
