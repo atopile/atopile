@@ -18,7 +18,6 @@ from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
-from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
@@ -301,9 +300,6 @@ def test_complex_module_full():
     timings.add("resolve bus params")
 
     solver = DefaultSolver()
-    for mod in app.get_children(direct_only=False, types=Module):
-        add_api_pickers(mod)
-    timings.add("add_pickers")
 
     p = next(iter(app.get_children(direct_only=False, types=Parameter)))
     solver.inspect_get_known_supersets(p)
@@ -327,10 +323,6 @@ def test_very_complex_module_full():
     timings.add("resolve bus params")
 
     solver = DefaultSolver()
-    # add_api_pickers(app.ldo)
-    for mod in app.get_children(direct_only=False, types=Module):
-        add_api_pickers(mod)
-    timings.add("add_pickers")
 
     p = next(iter(app.get_children(direct_only=False, types=Parameter)))
     solver.inspect_get_known_supersets(p)
@@ -356,9 +348,6 @@ def test_complex_module_comp_count():
     timings.add("resolve bus params")
 
     solver = DefaultSolver()
-    for mod in app.get_children(direct_only=False, types=Module):
-        add_api_pickers(mod)
-    timings.add("add_pickers")
 
     p = next(iter(app.get_children(direct_only=False, types=Parameter)))
     solver.inspect_get_known_supersets(p)

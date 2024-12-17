@@ -3,18 +3,14 @@
 
 import logging
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from tempfile import mkdtemp
-from typing import Any, Callable
 
 import pytest
 
 import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
-from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import has_part_picked, pick_part_recursively
 from faebryk.libs.util import groupby
 
@@ -34,19 +30,7 @@ def test_load_components():
     assert components_to_test, "Failed to load components"
 
 
-@dataclass
-class PickerTestCase:
-    add_pickers_fn: Callable[[Module], None]
-    check_skip: Callable[[], Any] = lambda: False
-
-
-pickers = [
-    PickerTestCase(add_api_pickers),
-]
-
-
-def _make_id(p: PickerTestCase, m: ComponentTestCase):
-    picker_name = p.add_pickers_fn.__name__.split("_")[1]
+def _make_id(m: ComponentTestCase):
     if m.override_test_name:
         module_name = m.override_test_name
     else:
@@ -56,20 +40,17 @@ def _make_id(p: PickerTestCase, m: ComponentTestCase):
         if len(group_for_module) > 1:
             module_name += f"[{group_for_module.index(m)}]"
 
-    return f"{picker_name}-{module_name}"
+    return module_name
 
 
-@pytest.mark.slow
 @pytest.mark.skipif(components_to_test is None, reason="Failed to load components")
 @pytest.mark.parametrize(
-    "case,picker",
-    [(m, p) for p in pickers for m in components_to_test],
-    ids=[_make_id(p, m) for p in pickers for m in components_to_test],
+    "case",
+    components_to_test,
+    ids=[_make_id(m) for m in components_to_test],
 )
-def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
-    picker.check_skip()
+def test_pick_module(case: ComponentTestCase):
     module = case.module
-    picker.add_pickers_fn(module)
 
     pre_pick_descriptive_properties = {}
     if module.has_trait(F.has_descriptive_properties):

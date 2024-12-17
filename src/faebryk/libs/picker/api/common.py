@@ -63,10 +63,21 @@ def api_filter_by_module_params_and_attach(
     try:
         try_attach(cmp, parts_gen(), mapping, qty=1)
     except PickError as ex:
+        param_mappings = [
+            (
+                p.partno,
+                [
+                    f"{m.param_name}: {lit}"
+                    for m, lit in p.get_literal_for_mappings(mapping).items()
+                ],
+            )
+            for p, _ in zip(parts, range(10))
+        ]
         raise PickError(
-            f"No components found that match {cmp.pretty_params(solver)} "
-            f"in {len(tried)} param-matching parts, "
-            f"of {len(parts)} total parts",
+            f"No components found that match \n{cmp.pretty_params(solver)} "
+            f"\nin {len(tried)} param-matching parts, "
+            f"of {len(parts)} total parts:"
+            f"\n{'\n'.join(f'{p}: {lits}' for p, lits in param_mappings)}",
             cmp,
         ) from ex
 

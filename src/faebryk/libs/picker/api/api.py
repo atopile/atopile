@@ -248,7 +248,6 @@ class ApiClient:
 
     def query_parts(self, method: str, params: BaseParams) -> list["Component"]:
         response = self._post(f"/v0/query/{method}", params.serialize())
-        print(params)
         return [
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]

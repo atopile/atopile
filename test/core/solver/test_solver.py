@@ -27,7 +27,6 @@ from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps, Single
-from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
     PickerOption,
@@ -637,7 +636,6 @@ def test_jlcpcb_pick_resistor():
     resistor.resistance.constrain_subset(L.Range(10 * P.ohm, 100 * P.ohm))
 
     solver = DefaultSolver()
-    add_api_pickers(resistor)
     pick_part_recursively(resistor, solver)
 
     assert resistor.has_trait(has_part_picked)
@@ -650,7 +648,6 @@ def test_jlcpcb_pick_capacitor():
     capacitor.max_voltage.constrain_ge(50 * P.V)
 
     solver = DefaultSolver()
-    add_api_pickers(capacitor)
     pick_part_recursively(capacitor, solver)
 
     assert capacitor.has_trait(has_part_picked)
@@ -663,7 +660,6 @@ def test_jlcpcb_pick_led():
     led.max_current.constrain_ge(10 * P.mA)
 
     solver = DefaultSolver()
-    add_api_pickers(led)
     pick_part_recursively(led, solver)
 
     assert led.has_trait(has_part_picked)
@@ -678,9 +674,6 @@ def test_jlcpcb_pick_powered_led():
 
     solver = DefaultSolver()
     children_mods = led.get_children_modules(direct_only=False, types=(Module,))
-    for mod in children_mods:
-        # add_api_pickers(mod)
-        add_api_pickers(mod)
 
     pick_part_recursively(led, solver)
 

@@ -160,17 +160,6 @@ class has_part_picked_remove(has_part_picked.impl()):
     def get_part(self) -> Part:
         return self.part
 
-    @staticmethod
-    def mark_no_pick_needed(module: Module):
-        module.add(
-            F.has_multi_picker(
-                -1000,
-                F.has_multi_picker.FunctionPicker(
-                    lambda m, _: m.add(has_part_picked_remove()) and None
-                ),
-            )
-        )
-
 
 class skip_self_pick(Module.TraitT.decless()):
     """Indicates that a node exists only to contain children, and shouldn't itself be picked"""  # noqa: E501  # pre-existing
@@ -347,7 +336,7 @@ def pick_part_recursively(module: Module, solver: Solver):
     from faebryk.libs.picker.api.api import ApiNotConfiguredError
     from faebryk.libs.picker.api.picker_lib import add_api_pickers
 
-    modules = module.get_children_modules(types=Module)
+    modules = module.get_children_modules(types=Module, include_root=True)
     # TODO currently slow
     # CachePicker.add_to_modules(modules, prio=-20)
 
