@@ -39,6 +39,8 @@ jobs:
       # Regular tests are run as part of the pytest workflow
       run: |
         uv run --dev --no-editable --frozen pytest -m "not not_in_ci and regression" --timeout=900
+      env:
+        GH_TOKEN: ${{ github.token }}
 
     - name: Upload all test logs
       if: steps.pytest.outcome == 'failure'
