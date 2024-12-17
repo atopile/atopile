@@ -86,21 +86,14 @@ def match_compiler_compatability(built_with_version: Version) -> bool:
         else:
             compiler_semver = compiler_semver.bump_minor()
 
-    # Until the first major release, we're assuming
-    # that minor releases are breaking changes
-    if compiler_semver.major == 0:
-        match_operator = "~"
-    else:
-        match_operator = "^"
-
     # Check if we match
-    return match(f"{match_operator}{built_with_version}", compiler_semver)
+    return match(f">={built_with_version},<0.4.0", compiler_semver)
 
 
-OPERATORS = ("*", "||", "^", "~", "!", "==", ">=", "<=", ">", "<")
+OPERATORS = ("*", "^", "~", "!", "==", ">=", "<=", ">", "<")
 
 
-def match(spec: str, version: Version):
+def match(spec: str, version: Version) -> bool:
     """
     Check if a version matches a given specifier
 
@@ -124,18 +117,16 @@ def match(spec: str, version: Version):
                 return True
         return False
 
-    if " " in spec:
-        for s in spec.split(" "):
+    if "," in spec:
+        for s in spec.split(","):
             if not match(s, version):
                 return False
         return True
 
-    if spec[:2] in ("==", ">=", "<="):
-        operator = spec[:2]
-        specd_version = parse(spec[2:])
-    elif spec[0] in ("^", "~", "!", ">", "<"):
-        operator = spec[0]
-        specd_version = parse(spec[1:])
+    for operator in OPERATORS:
+        if spec.startswith(operator):
+            specd_version = parse(spec[len(operator) :])
+            break
     else:
         # if there's not operator, default to ^ (up to next major)
         try:
@@ -172,3 +163,6 @@ def match(spec: str, version: Version):
 
     if operator == "<":
         return version < specd_version
+
+    else:
+        raise ValueError(f"Invalid operator: {operator}")
