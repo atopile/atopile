@@ -4,20 +4,13 @@ on:
   push:
     branches: [main]  # Adjust this if your default branch has a different name
   pull_request:
-    types: [labeled]
   workflow_dispatch:  # Add manual trigger capability
 
 jobs:
   regression:
     runs-on: blacksmith-4vcpu-ubuntu-2204
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'regression-required') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
     steps:
-    # Untrusted action -> specific githash
-    - uses: snnaplab/get-labels-action@f426df40304808ace3b5282d4f036515f7609576
-    - name: Check if regression tests should run
-      run: |
-        if [[ "${{ github.ref }}" != "refs/heads/main" ]] && [[ "${{ contains(env.LABELS, 'regression-required') }}" != "true" ]]; then
-          exit 78  # Magic exit code to skip the job
-        fi
     - name: Checkout code
       uses: actions/checkout@v4
 
