@@ -194,6 +194,7 @@ def find_component_by_params[T: BaseParams](
     param_cls: type[T],
     cmp: Module,
     solver: Solver,
+    qty: int,
 ) -> list["Component"]:
     """
     Find a component with matching parameters
@@ -208,8 +209,6 @@ def find_component_by_params[T: BaseParams](
         p.get_name(): p.get_last_known_deduced_superset(solver) for p in known_params
     }
 
-    # TODO
-    qty = 1
     parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))  # type: ignore
 
     return parts

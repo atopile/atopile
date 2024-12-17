@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 client = get_api_client()
 
 
-# TODO add trait to module that specifies the quantity of the part
+# TODO add way for user to specify quantity of PCBAs
 qty: int = 1
 
 
@@ -103,7 +103,7 @@ def _find_module_by_api(module: Module, solver: Solver) -> list[Component]:
             return _find_by_mfr(module, solver)
 
     params_t = TYPE_SPECIFIC_LOOKUP[type(module)]
-    return find_component_by_params(client.fetch_parts, params_t, module, solver)
+    return find_component_by_params(client.fetch_parts, params_t, module, solver, qty)
 
 
 def api_get_candidates(
