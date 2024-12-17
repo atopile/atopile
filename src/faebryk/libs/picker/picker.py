@@ -330,7 +330,7 @@ def check_missing_picks(module: Module):
 
 
 def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgress):
-    if LOG_PICK_SOLVE or True:
+    if LOG_PICK_SOLVE:
         pickable_modules = next(iter(tree.iter_by_depth()))
         names = sorted(p.get_full_name(types=True) for p in pickable_modules)
         logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
@@ -351,7 +351,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
                 logger.warning(f"Could not pick {module}, descending into {subtree}")
             candidates.update(subtree)
 
-    if LOG_PICK_SOLVE or True:
+    if LOG_PICK_SOLVE:
         logger.info("Done picking")
 
 
