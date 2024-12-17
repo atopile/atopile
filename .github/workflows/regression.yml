@@ -41,6 +41,8 @@ jobs:
         uv run --dev --no-editable --frozen pytest -m "not not_in_ci and regression" --timeout=900
       env:
         GH_TOKEN: ${{ github.token }}
+        PYTEST_HISTORY_EMAIL: ${{ vars.PYTEST_HISTORY_EMAIL }}
+        PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
 
     - name: Upload all test logs
       if: steps.pytest.outcome == 'failure'
